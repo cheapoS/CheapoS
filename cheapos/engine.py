@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import math
+import os
 import shlex
 import sys
 import threading
@@ -12,9 +13,11 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .providers import BudgetError, ChatProvider, ProviderError, reconcile, reserve, validate_provider
+from .providers import BudgetError, ProviderError, reconcile, reserve, validate_provider
 from .storage import Store, write_json
 from .workspace import Workspace, git
+from .gateways import gateway_for
+from .omniroute import OmniRouteManager
 
 
 def now():
@@ -86,6 +89,7 @@ class Engine:
         self.runtimes = {}
         self.secrets = {}
         self.provider_factory = provider_factory
+        self.gateway = OmniRouteManager(self.store.root)
         try:
             self.config = json.loads((self.store.root / "config.json").read_text())
         except (OSError, ValueError):
@@ -95,13 +99,21 @@ class Engine:
         result = copy.deepcopy(self.config)
         for role in ("worker", "reviewer"):
             if result.get(role):
-                provider = ChatProvider(result[role], self.secrets.get((role, result[role]["base_url"]), ""))
-                result[role]["key_configured"] = bool(provider.key)
+                result[role]["key_configured"] = bool(self.provider_key(role, result[role]))
         return result
+
+    def provider_key(self, role, config):
+        if config.get("gateway") == "omniroute":
+            return self.gateway.api_key if self.gateway.matches(config["base_url"]) else ""
+        return (self.secrets.get((role, config["base_url"]), "")
+                or os.environ.get(config["key_env"], "")
+                or (self.gateway.api_key if self.gateway.matches(config["base_url"]) else ""))
 
     def configure(self, values):
         normalized = {role: validate_provider(values.get(role), role) for role in ("worker", "reviewer")}
         for role, config in normalized.items():
+            if config["gateway"] == "omniroute" and not self.gateway.matches(config["base_url"]):
+                raise ValueError("Connect the OmniRoute backend before selecting its models")
             key = values[role].get("api_key")
             if key is not None:
                 if not isinstance(key, str) or len(key) > 4096 or "\n" in key or "\r" in key:
@@ -161,6 +173,11 @@ class Engine:
             task = self.store.get(task_id)
             if task["status"] in {"approved", "completed"}:
                 raise ValueError("This task is already complete; start a new task for further changes")
+            if not task["demo"] and any(p.get("gateway") == "omniroute" for p in task["providers"].values()):
+                if any(p.get("gateway") == "omniroute" and not self.gateway.matches(p["base_url"]) for p in task["providers"].values()):
+                    raise ValueError("This task uses a different OmniRoute endpoint. Reconnect its original endpoint in Connections.")
+                if self.gateway.snapshot()["status"] != "ready":
+                    raise ValueError("Connect OmniRoute in Connections before starting this task")
             if changes and "limits" in changes:
                 task["limits"] = limits_from(changes["limits"])
             if task["status"] == "takeover_requested":
@@ -201,6 +218,7 @@ class Engine:
         for runtime in list(self.runtimes.values()):
             runtime.stop.set()
             runtime.approval.set()
+        self.gateway.shutdown()
 
     def initial_messages(self, task):
         workspace = Workspace(task["workspace"])
@@ -243,7 +261,7 @@ class Engine:
         config = task["providers"][role]
         reservation = reserve(task, config, messages, tools, role)
         self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": reservation["completion_tokens"]})
-        provider = self.provider_factory(role, config) if self.provider_factory else ChatProvider(config, self.secrets.get((role, config["base_url"]), ""))
+        provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
         message, usage = provider.complete(messages, tools, reservation["completion_tokens"])
         known = reconcile(task, config, reservation, usage)
         self.store.save(task)

@@ -27,6 +27,10 @@ def validate_provider(value, role):
         raise ValueError("Provider settings must be an object")
     endpoint = str(value.get("base_url", "")).rstrip("/")
     parsed = urlsplit(endpoint)
+    try:
+        parsed.port
+    except ValueError:
+        raise ValueError("Use a valid API endpoint port") from None
     if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("Use an API base URL without credentials, query parameters, or fragments")
     if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
@@ -46,7 +50,10 @@ def validate_provider(value, role):
     env = value.get("key_env") or f"CHEAPOS_{role.upper()}_API_KEY"
     if not re.fullmatch(r"CHEAPOS_[A-Z0-9_]+", env):
         raise ValueError("API key environment variable names must start with CHEAPOS_")
-    return {"base_url": endpoint, "model": model, "input_rate": rates[0], "output_rate": rates[1], "key_env": env}
+    gateway = value.get("gateway", "openai")
+    if gateway not in {"openai", "omniroute"}:
+        raise ValueError("Choose OmniRoute or an OpenAI-compatible connection")
+    return {"base_url": endpoint, "model": model, "input_rate": rates[0], "output_rate": rates[1], "key_env": env, "gateway": gateway}
 
 
 class ChatProvider:

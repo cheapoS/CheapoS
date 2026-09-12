@@ -7,6 +7,8 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from . import __version__
+from .gateways import gateway_for
+from .providers import validate_provider, ProviderError
 
 
 def public_task(task, summary=False):
@@ -85,7 +87,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
         engine = self.server.engine
         try:
             if path == "/api/bootstrap":
-                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "tasks": engine.store.list(summary=True)})
+                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "tasks": engine.store.list(summary=True)})
+            elif path == "/api/gateway":
+                self.reply(engine.gateway.snapshot())
+            elif path == "/api/gateway/models":
+                self.reply(engine.gateway.catalog())
             elif path == "/api/tasks":
                 self.reply(engine.store.list(summary=True))
             elif path.startswith("/api/tasks/"):
@@ -126,6 +132,24 @@ class LocalHandler(SimpleHTTPRequestHandler):
             path = urlsplit(self.path).path
             if path == "/api/config":
                 result = engine.configure(values)
+            elif path == "/api/gateway/config":
+                with engine.lock:
+                    if any(r.thread and r.thread.is_alive() for r in engine.runtimes.values()):
+                        raise ValueError("Pause the active task before changing its gateway connection")
+                    result = engine.gateway.configure(values)
+            elif path in {"/api/gateway/start", "/api/gateway/refresh"}:
+                result = engine.gateway.refresh(start=path.endswith("/start"))
+            elif path == "/api/gateway/stop":
+                with engine.lock:
+                    if any(r.thread and r.thread.is_alive() for r in engine.runtimes.values()):
+                        raise ValueError("Pause the active task before stopping OmniRoute")
+                    result = engine.gateway.stop_owned()
+            elif path == "/api/models":
+                role = values.get("role")
+                if role not in {"worker", "reviewer"}:
+                    raise ValueError("Choose a worker or reviewer connection")
+                config = validate_provider(values.get("config"), role)
+                result = {"models": gateway_for(config, engine.provider_key(role, config)).list_models()}
             elif path == "/api/tasks":
                 result = public_task(engine.create(values))
             elif path == "/api/demo":
@@ -149,7 +173,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply({"error": "Route not found"}, 404)
                 return
             self.reply(result)
-        except (ValueError, TypeError, KeyError, OSError) as error:
+        except (ValueError, TypeError, KeyError, OSError, ProviderError) as error:
             self.reply({"error": str(error)[:1000]}, 400)
         except Exception:
             self.reply({"error": "The local server could not complete this action"}, 500)

@@ -5,7 +5,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const activeStatuses = new Set(['running', 'reviewing', 'waiting_approval', 'stopping']);
 const labels = {ready:'Ready to start',running:'Worker is working',reviewing:'Reviewer is checking',waiting_approval:'Command approval needed',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
-const state = {token:'',config:{},tasks:[],task:null,view:'activity',file:0,diff:'unified',run:-1,online:false,loading:false};
+const state = {token:'',config:{},gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,view:'activity',file:0,diff:'unified',run:-1,online:false,loading:false};
 const money = value => '$' + Number(value || 0).toFixed(Number(value || 0) > 0 && value < .01 ? 4 : 2);
 const date = value => new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
@@ -32,7 +32,7 @@ async function formAction(form, operation) {
 }
 function renderSidebar() {
   $('#task-total').textContent=state.tasks.length;
-  $('#connection-indicator').textContent=state.config.worker && state.config.reviewer ? 'Configured' : 'Set up';
+  $('#connection-indicator').textContent=state.config.worker && state.config.reviewer ? (Object.values(state.config).some(p=>p?.gateway==='omniroute') ? ({ready:'Connected',checking:'Connecting',starting:'Starting'}[state.gateway.status]||'Check gateway') : 'Configured') : 'Set up';
   const groups=new Map();
   for(const task of state.tasks){const key=task.demo?'Local demo':task.source;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(task)}
   $('#task-list').innerHTML=groups.size?[...groups].map(([project,tasks])=>`<div class="project-group"><div class="project-label" title="${esc(project)}">${icon('folder')}${esc(project==='Local demo'?project:basename(project))}</div>${tasks.map(t=>`<button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${t.status==='approved'?'done':''} ${activeStatuses.has(t.status)?'pulsing':''}"></span><span>${esc(t.title)}</span></button>`).join('')}</div>`).join(''):'<p class="sidebar-empty">Your tasks will live here.<br>Start small. See what it costs.</p>';
@@ -143,7 +143,7 @@ const readLimits=f=>Object.fromEntries(['dollars','reviewer_tokens','iterations'
 function newTask(prefill='') {
   if(!state.online){toast('Start the local server with python3 run.py');return}
   if(!state.config.worker||!state.config.reviewer){openConnections(()=>newTask(prefill));return}
-  const d=dialog(`<form>${modalHeader('NEW LOCAL TASK','What are we working on?')}<p class="modal-description">Start with a focused fix in a personal project. CheapOS copies eligible files and leaves your source checkout untouched by its file tools.</p><label class="full-field">Git repository path<input name="repository" type="text" placeholder="/Users/you/projects/my-project" required autocomplete="off"></label><label class="full-field">Task<textarea name="prompt" rows="3" minlength="5" maxlength="8000" required placeholder="Describe the change and what success looks like…">${esc(prefill)}</textarea></label><label class="full-field">Verification command<input name="check_command" type="text" placeholder="python3 -m unittest discover -v" required><small>One command, split into arguments. Shell pipes and redirects are not interpreted.</small></label>${limitFields()}<label class="checkbox-field"><input name="auto_approve_checks" type="checkbox"><span>Allow this command without asking during this task<small>Runs repository code on your computer. The task copy is not an OS sandbox.</small></span></label><p class="small muted">Eligible source files and command output are sent to your configured model providers. Spending caps use your configured prices and conservative token estimates; set a provider-side cap for a billing guarantee.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>A snapshot is created first.<br>You start the model separately.</span><button type="submit" class="primary-button">Create task ${icon('arrow')}</button></div></form>`,'new-task-modal');
+  const d=dialog(`<form>${modalHeader('NEW LOCAL TASK','What are we working on?')}<p class="modal-description">Start with a focused fix in a personal project. CheapOS copies eligible files and leaves your source checkout untouched by its file tools.</p><label class="full-field">Git repository path<input name="repository" type="text" placeholder="/Users/you/projects/my-project" required autocomplete="off"></label><label class="full-field">Task<textarea name="prompt" rows="3" minlength="5" maxlength="8000" required placeholder="Describe the change and what success looks like…">${esc(prefill)}</textarea></label><label class="full-field">Verification command<input name="check_command" type="text" placeholder="python3 -m unittest discover -v" required><small>One command, split into arguments. Shell pipes and redirects are not interpreted.</small></label>${limitFields({dollars:[state.config.worker,state.config.reviewer].every(p=>p.input_rate===0&&p.output_rate===0)?0:1,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048})}<label class="checkbox-field"><input name="auto_approve_checks" type="checkbox"><span>Allow this command without asking during this task<small>Runs repository code on your computer. The task copy is not an OS sandbox.</small></span></label><p class="small muted">Eligible source files and command output are sent to your configured model providers. Spending caps use your configured prices and conservative token estimates; set a provider-side cap for a billing guarantee.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>A snapshot is created first.<br>You start the model separately.</span><button type="submit" class="primary-button">Create task ${icon('arrow')}</button></div></form>`,'new-task-modal');
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form),task=await api('/tasks',{repository:f.get('repository'),prompt:f.get('prompt'),check_command:f.get('check_command'),auto_approve_checks:f.has('auto_approve_checks'),limits:readLimits(f)});d.close();$('#task-input').value='';await loadTasks();await selectTask(task.id)})};
 }
 async function startTask(id,changes={}) {try{await api('/tasks/'+id+'/start',changes);await refresh()}catch(e){toast(e.message)}}
@@ -157,11 +157,115 @@ async function startDemo() {
   try{const task=await api('/demo',{});await loadTasks();await selectTask(task.id);await startTask(task.id)}catch(e){toast(e.message)}
 }
 function openConnections(afterSave) {
-  const c=state.config;
-  const providerFields=role=>{const p=c[role]||{};return `<fieldset class="provider-fields"><legend>${role==='worker'?'Worker · inexpensive, tool-capable':'Reviewer · stronger reasoning'}</legend><label class="full-field">Provider preset<select data-preset="${role}"><option value="openrouter">OpenRouter</option><option value="ollama" ${p.base_url?.includes('11434')?'selected':''}>Ollama (local)</option><option value="custom" ${p.base_url&&!p.base_url.includes('openrouter.ai')&&!p.base_url.includes('11434')?'selected':''}>OpenAI-compatible endpoint</option></select></label><label class="full-field">API base URL<input type="url" name="${role}_url" value="${esc(p.base_url||'https://openrouter.ai/api/v1')}" required></label><label class="full-field">Model ID<input name="${role}_model" type="text" value="${esc(p.model||'')}" placeholder="Exact tool-capable model ID from your provider" required autocomplete="off"></label><label class="full-field">API key ${p.key_configured?'· configured':''}<input name="${role}_key" type="password" placeholder="${p.key_configured?'Leave blank to keep the current key':'Optional for local Ollama'}" autocomplete="new-password"></label><div class="field-grid">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div><p class="small muted">Enter the current prices from your provider. Use 0 for free or local models.</p></fieldset>`};
-  const d=dialog(`<form>${modalHeader('MODEL CONNECTIONS','One worker. One second opinion.')}<p class="modal-description">OpenRouter is the easiest starting point: one provider and one key for both roles. Choose an inexpensive tool-capable worker and a stronger reviewer.</p><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div><label class="checkbox-field"><input type="checkbox" name="share_key" checked><span>Use the entered worker key for the reviewer when their API URLs match</span></label><p class="small muted">Keys entered here stay in server memory until it stops. To load keys on startup, set CHEAPOS_WORKER_API_KEY and CHEAPOS_REVIEWER_API_KEY in the launch environment. Keys are never stored in the browser or config file.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Settings apply to new tasks.<br>No model request is made when saving.</span><button class="primary-button" type="submit">Save connections ${icon('check')}</button></div></form>`,'connections-modal');
-  $$('[data-preset]',d).forEach(select=>select.onchange=()=>{const role=select.dataset.preset;if(select.value==='custom')return;$(`[name="${role}_url"]`,d).value=select.value==='ollama'?'http://127.0.0.1:11434/v1':'https://openrouter.ai/api/v1';$(`[name="${role}_model"]`,d).value='';$(`[name="${role}_key"]`,d).value='';for(const price of ['input','output'])$(`[name="${role}_${price}"]`,d).value=select.value==='ollama'?'0':''});
-  const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form),values={};for(const role of ['worker','reviewer']){values[role]={base_url:String(f.get(role+'_url')).trim(),model:String(f.get(role+'_model')).trim(),input_rate:Number(f.get(role+'_input')),output_rate:Number(f.get(role+'_output'))};const key=String(f.get(role+'_key')).trim();if(key)values[role].api_key=key}if(f.has('share_key')&&values.worker.base_url.replace(/\/$/,'')===values.reviewer.base_url.replace(/\/$/,'')&&values.worker.api_key)values.reviewer.api_key=values.worker.api_key;state.config=await api('/config',values);form.reset();d.close();renderSidebar();renderInspector();toast('Connections saved. Keys stay in server memory.');if(typeof afterSave==='function')afterSave()})};
+  const c=state.config, gateway=state.gateway||{}, settings=gateway.settings||{base_url:'http://127.0.0.1:20128/v1',auto_start:true,keep_running:true};
+  const isOmni=p=>p.gateway==='omniroute'||!p.base_url||p.base_url.replace('localhost','127.0.0.1').replace(/\/$/,'')===settings.base_url.replace('localhost','127.0.0.1');
+  const providerFields=role=>{
+    const p=c[role]||{}, preset=isOmni(p)?'omniroute':p.base_url.includes('openrouter.ai')?'openrouter':p.base_url.includes('11434')?'ollama':'custom';
+    return `<fieldset class="provider-fields" data-role="${role}"><legend>${role==='worker'?'Worker · does the work':'Reviewer · checks the evidence'}</legend>
+      <label class="full-field">Connection<select data-preset="${role}">${[['omniroute','OmniRoute (shared local gateway)'],['openrouter','OpenRouter (direct)'],['ollama','Ollama (local)'],['custom','OpenAI-compatible endpoint']].map(([v,n])=>`<option value="${v}" ${v===preset?'selected':''}>${n}</option>`).join('')}</select></label>
+      <div data-direct="${role}"><label class="full-field">API base URL<input type="url" name="${role}_url" value="${esc(p.base_url||settings.base_url)}" required></label><label class="full-field">API key ${p.key_configured?'· configured':''}<input name="${role}_key" type="password" placeholder="Leave blank to keep the current key" autocomplete="new-password"></label></div>
+      <div data-catalog="${role}"><label class="checkbox-field"><input type="checkbox" data-free="${role}" checked><span>Show free models only</span></label><label class="full-field">Available models<select data-model-picker="${role}"><option value="">Loading catalog…</option></select></label></div>
+      <label class="full-field">Model ID<input name="${role}_model" type="text" value="${esc(p.model||'')}" placeholder="Choose above or enter an exact model ID" required autocomplete="off"></label>
+      <p class="model-capabilities small" data-capabilities="${role}"></p>
+      <div class="field-grid">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
+      <p class="small muted">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
+  };
+  const d=dialog(`${modalHeader('MODEL CONNECTIONS','One worker. One second opinion.')}<p class="modal-description">OmniRoute handles provider access. CheapOS handles the work, checks, and review.</p>
+    <form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong>OmniRoute</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
+      <p id="gateway-message" class="small muted"></p><p id="gateway-instance" class="small muted"></p>
+      <div class="gateway-actions"><button type="button" class="outline-button" data-gateway-action="start">Connect / start</button><button type="button" class="subtle-button" data-gateway-action="refresh">Refresh models</button><button type="button" class="subtle-button" data-gateway-action="stop" hidden>Stop instance</button></div>
+      <details class="advanced"><summary>Startup & connection settings</summary><label class="full-field">Local API URL<input name="gateway_url" type="url" value="${esc(settings.base_url)}" required></label>
+        <label class="full-field">Gateway client API key · optional<input name="gateway_key" type="password" placeholder="${gateway.key_configured?'Configured · leave blank to keep':'Only if OmniRoute requires a client key'}" autocomplete="new-password"></label>
+        <p class="small muted">Manage provider credentials in OmniRoute. This client key is separate from your dashboard password and stays in CheapOS memory.</p>
+        <label class="checkbox-field"><input name="auto_start" type="checkbox" ${settings.auto_start?'checked':''}><span>Start installed OmniRoute when CheapOS launches<small>Reuses an existing instance. Does not install or update software.</small></span></label>
+        <label class="checkbox-field"><input name="keep_running" type="checkbox" ${settings.keep_running?'checked':''}><span>Keep OmniRoute running when CheapOS closes<small>CheapOS only stops an instance it started in this session.</small></span></label>
+        <button class="outline-button gateway-save" type="submit">Save gateway settings</button></details><p class="form-error" role="alert"></p></form>
+    <form id="models-form"><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div>
+      <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. Models are chosen explicitly; CheapOS does not select fallback models.</p>
+      <label class="checkbox-field" id="share-key-field"><input type="checkbox" name="share_key" checked><span>Use the entered worker key for the reviewer when their direct API URLs match</span></label>
+      <p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">Save connections ${icon('check')}</button></div></form>`,'connections-modal');
+  const field=(role,name)=>$(`[name="${role}_${name}"]`,d);
+  const usingOmni=role=>$(`[data-preset="${role}"]`,d).value==='omniroute';
+  function capability(role) {
+    const model=usingOmni(role)?state.gatewayModels.find(m=>m.id===field(role,'model').value.trim()):null;
+    $(`[data-capabilities="${role}"]`,d).textContent=model?`${model.tool_calling===true?'Tool calling advertised':model.tool_calling===false?'Tool calling not advertised':'Tool support unknown'}${model.context_length?' · '+Intl.NumberFormat().format(model.context_length)+' context':''}${model.free?' · Free variant':''}`:'Use a model that supports tool calling. Availability has not been tested.';
+  }
+  function picker(role) {
+    const select=$(`[data-model-picker="${role}"]`,d), free=$(`[data-free="${role}"]`,d).checked, current=field(role,'model').value.trim();
+    const models=state.gatewayModels.filter(m=>!free||m.free);
+    select.innerHTML=`<option value="">${models.length?'Choose from '+models.length+' models':'No matching models · refresh or enter an ID'}</option>`+models.map(m=>`<option value="${esc(m.id)}">${esc(m.id)}${m.tool_calling===true?' · tools':m.tool_calling===false?' · no tools advertised':''}</option>`).join('');
+    select.value=models.some(m=>m.id===current)?current:'';
+    capability(role);
+  }
+  function layout(role) {
+    const omni=usingOmni(role);
+    $(`[data-direct="${role}"]`,d).hidden=omni;
+    for(const input of $$('input',$(`[data-direct="${role}"]`,d)))input.disabled=omni;
+    $(`[data-catalog="${role}"]`,d).hidden=!omni;
+    $('#share-key-field',d).hidden=usingOmni('worker')||usingOmni('reviewer');
+    picker(role);
+  }
+  const gatewayForm=$('#gateway-form',d);
+  function updateGateway() {
+    if(!d.open)return;
+    const g=state.gateway||{};
+    const badge=$('#gateway-status',d);badge.textContent=({ready:'Catalog connected',checking:'Connecting…',starting:'Starting…',offline:'Offline',auth_required:'Client key needed',not_installed:'Not installed',unavailable:'Unavailable',error:'Startup failed'})[g.status]||'Not checked';badge.dataset.status=g.status||'unchecked';
+    $('#gateway-message',d).textContent=g.message||'Connect your local gateway to load its model catalog.';
+    $('#gateway-instance',d).textContent=g.status==='ready'?`${g.model_count} models · ${g.owned?'Started by CheapOS':'Reusing an existing instance'}`:'';
+    $('#gateway-dashboard',d).href=g.dashboard_url||'http://127.0.0.1:20128';
+    $$('[data-gateway-action]',d).forEach(b=>{b.disabled=Boolean(g.busy);if(b.dataset.gatewayAction==='stop')b.hidden=!g.owned});
+    $('button[type="submit"]',gatewayForm).disabled=Boolean(g.busy);
+    for(const role of ['worker','reviewer'])picker(role);
+  }
+  state.gatewayListener=updateGateway;
+  d.addEventListener('close',()=>{if(state.gatewayListener===updateGateway)state.gatewayListener=null});
+  $$('[data-gateway-action]',d).forEach(button=>button.onclick=()=>formAction(gatewayForm,async()=>{state.gateway=await api('/gateway/'+button.dataset.gatewayAction,{});updateGateway();await loadGateway()}));
+  gatewayForm.onsubmit=e=>{e.preventDefault();formAction(gatewayForm,async()=>{
+    const f=new FormData(gatewayForm), values={base_url:String(f.get('gateway_url')).trim(),auto_start:f.has('auto_start'),keep_running:f.has('keep_running')},key=String(f.get('gateway_key')).trim();if(key)values.api_key=key;
+    state.gateway=await api('/gateway/config',values);$('[name="gateway_key"]',d).value='';
+    state.gateway=await api('/gateway/refresh',{});updateGateway();toast('Gateway settings saved. Use Connect / start if it is offline.');
+  })};
+  for(const role of ['worker','reviewer']) {
+    layout(role);
+    $(`[data-free="${role}"]`,d).onchange=()=>picker(role);
+    $(`[data-model-picker="${role}"]`,d).onchange=e=>{
+      if(!e.target.value)return;
+      const model=state.gatewayModels.find(m=>m.id===e.target.value);field(role,'model').value=model.id;
+      field(role,'input').value=model.input_rate??'';field(role,'output').value=model.output_rate??'';capability(role);
+    };
+    field(role,'model').oninput=()=>{
+      const model=usingOmni(role)?state.gatewayModels.find(m=>m.id===field(role,'model').value.trim()):null;
+      for(const price of ['input','output'])field(role,price).value=model?.[price+'_rate']??'';
+      picker(role);
+    };
+    $(`[data-preset="${role}"]`,d).onchange=e=>{
+      const preset=e.target.value, p=c[role]||{};
+      field(role,'url').value=preset==='omniroute'?state.gateway.settings.base_url:preset==='ollama'?'http://127.0.0.1:11434/v1':preset==='openrouter'?'https://openrouter.ai/api/v1':'';
+      field(role,'key').value='';field(role,'model').value='';
+      for(const price of ['input','output'])field(role,price).value=preset==='ollama'?'0':'';
+      if(preset==='omniroute'&&isOmni(p)){field(role,'model').value=p.model||'';field(role,'input').value=p.input_rate??'';field(role,'output').value=p.output_rate??''}
+      layout(role);
+    };
+  }
+  const form=$('#models-form',d);
+  form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{
+    const f=new FormData(form),values={};
+    for(const role of ['worker','reviewer']) {
+      const omni=usingOmni(role);
+      if(omni&&state.gateway.status!=='ready')throw new Error('Connect OmniRoute before saving its model choices.');
+      values[role]={gateway:omni?'omniroute':'openai',base_url:omni?state.gateway.settings.base_url:String(f.get(role+'_url')).trim(),model:String(f.get(role+'_model')).trim(),input_rate:Number(f.get(role+'_input')),output_rate:Number(f.get(role+'_output'))};
+      const key=omni?'':String(f.get(role+'_key')).trim();if(key)values[role].api_key=key;
+    }
+    if(!usingOmni('worker')&&!usingOmni('reviewer')&&f.has('share_key')&&values.worker.base_url.replace(/\/$/,'')===values.reviewer.base_url.replace(/\/$/,'')&&values.worker.api_key)values.reviewer.api_key=values.worker.api_key;
+    state.config=await api('/config',values);form.reset();d.close();renderSidebar();renderInspector();toast('Connections saved for new tasks.');if(typeof afterSave==='function')afterSave();
+  })};
+  updateGateway();
+  api('/gateway/refresh',{}).then(g=>{state.gateway=g;updateGateway();return loadGateway()}).catch(e=>toast(e.message));
+}
+async function loadGateway() {
+  const previous=state.gateway, g=await api('/gateway');state.gateway=g;
+  if(state.catalogRevision!==g.revision){const catalog=await api('/gateway/models');state.gatewayModels=catalog.models;state.catalogRevision=catalog.revision}
+  if(JSON.stringify(previous)!==JSON.stringify(g)){renderSidebar();state.gatewayListener?.()}
 }
 function openSearch() {
   const d=dialog(`<div class="search-box">${icon('search')}<input id="task-search" type="search" placeholder="Find a task or project…" aria-label="Search tasks" autofocus><kbd>ESC</kbd></div><div id="search-results"></div><div class="search-footer">Saved on this computer</div>`,'search-modal');
@@ -170,12 +274,12 @@ function openSearch() {
 async function loadTasks() {const tasks=await api('/tasks');const changed=JSON.stringify(tasks)!==JSON.stringify(state.tasks);state.tasks=tasks;if(changed)renderSidebar();}
 async function refresh() {
   if(state.loading)return;
-  await loadTasks();const selected=state.task?.id;if(!selected)return;
+  await loadGateway();await loadTasks();const selected=state.task?.id;if(!selected)return;
   const task=await api('/tasks/'+selected);if(state.task?.id!==selected)return;
   if(task.updated_at!==state.task.updated_at||task.status!==state.task.status){state.task=task;renderTask()}
 }
 async function bootstrap() {
-  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.tasks=data.tasks;state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}if(!state.tasks.some(t=>t.id===selected))selected=state.tasks[0]?.id;if(selected)await selectTask(selected);else welcome();}
+  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.tasks=data.tasks;state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}if(!state.tasks.some(t=>t.id===selected))selected=state.tasks[0]?.id;if(selected)await selectTask(selected);else welcome();}
   catch(e){state.online=false;$('#activity-view').innerHTML='<div class="empty-state"><h2>Start CheapOS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){toast('Local server disconnected. Restart CheapOS and refresh to reconnect.');state.online=false}finally{setTimeout(poll,1500)}}

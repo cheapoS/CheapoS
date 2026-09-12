@@ -3,6 +3,7 @@ import json
 import tempfile
 import threading
 import unittest
+from unittest.mock import Mock, patch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -81,10 +82,40 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post('/api/tasks', {})[0], 400)
         self.assertEqual(self.post('/api/tasks/missing/approval', {'approved':'yes'})[0], 400)
 
+    def test_gateway_api_is_read_only_until_authorized_and_redacts_key(self):
+        with patch.object(self.engine.gateway, 'refresh') as refresh:
+            for path in ['/api/gateway', '/api/gateway/models']:
+                self.assertEqual(self.request('GET', path)[0], 200)
+            self.assertEqual(self.request('POST', '/api/gateway/start', {}, {'Content-Type': 'application/json'})[0], 403)
+            refresh.assert_not_called()
+        status, _, body = self.post('/api/gateway/config', {'api_key': 'fixture-client-secret', 'auto_start': False})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)['key_configured'])
+        self.assertNotIn(b'fixture-client-secret', body)
+        self.assertNotIn(b'fixture-client-secret', self.request('GET', '/api/bootstrap')[2])
+        self.assertNotIn('fixture-client-secret', self.engine.gateway.path.read_text())
+        self.assertEqual(self.post('/api/gateway/stop', {})[0], 400)
+        self.assertEqual(self.post('/api/gateway/config', {'base_url': 'https://example.com/v1'})[0], 400)
+
+    def test_gateway_changes_are_rejected_during_a_task(self):
+        runtime = Mock()
+        runtime.thread.is_alive.return_value = True
+        self.engine.runtimes['fixture'] = runtime
+        for path in ['/api/gateway/config', '/api/gateway/stop']:
+            status, _, body = self.post(path, {})
+            self.assertEqual(status, 400)
+            self.assertIn(b'Pause the active task', body)
+
 
 class FakeModelHandler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('x-omniroute-route-class', 'CLIENT_API')
+        self.end_headers()
+        self.wfile.write(b'{"data":[{"id":"worker"},{"id":"reviewer"}]}')
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
@@ -144,6 +175,12 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(len(self.server.requests), 1)
 
     def test_full_workflow_through_chat_completions_http(self):
+        self.run_full_workflow()
+
+    def test_full_workflow_through_omniroute_gateway_http(self):
+        self.run_full_workflow(managed=True)
+
+    def run_full_workflow(self, managed=False):
         with tempfile.TemporaryDirectory() as directory:
             engine = Engine(directory)
             task = engine.create_demo()
@@ -158,6 +195,12 @@ class ProviderTests(unittest.TestCase):
             self.server.responder = respond
             task['demo'] = False
             task['providers'] = {role: {'base_url':self.provider.config['base_url'], 'model':role, 'key_env':'CHEAPOS_TEST_KEY', 'input_rate':1, 'output_rate':2} for role in ['worker', 'reviewer']}
+            if managed:
+                engine.gateway.configure({'base_url': self.provider.config['base_url'], 'api_key': 'fixture-client-secret'})
+                engine.gateway.startup()
+                engine.gateway.thread.join(5)
+                for provider in task['providers'].values():
+                    provider['gateway'] = 'omniroute'
             engine.store.save(task)
             engine.start(task['id'])
             engine.runtimes[task['id']].thread.join(20)
@@ -165,6 +208,8 @@ class ProviderTests(unittest.TestCase):
             engine.shutdown()
             self.assertEqual(result['status'], 'approved', result['error'])
             self.assertEqual(len(self.server.requests), 9)
+            if managed:
+                self.assertTrue(all(headers.get('Authorization') == 'Bearer fixture-client-secret' for _, headers, _ in self.server.requests))
             self.assertEqual(len(reviews), 2)
             self.assertEqual(result['usage']['worker']['tokens'], 7 * 19)
             self.assertEqual(result['usage']['reviewer']['tokens'], 2 * 19)

@@ -4,6 +4,8 @@
 
 CheapOS is an open-source, local coding workspace experimenting with a simple trade: give an inexpensive model time to implement a change, then ask a stronger model to review the evidence at checkpoints.
 
+**CheapOS decides why and when to spend intelligence. OmniRoute decides where to get it.** CheapOS owns task execution, verification, review checkpoints, and budget accounting. Its optional OmniRoute companion owns provider access and routing. Explicit model choices keep those responsibilities separate.
+
 This is an early, working alpha for small personal projects. It has real repository tools and an execution engine, a desktop-style browser interface, and no account or hosted project requirement. It is not a packaged native desktop application yet. Cost savings are a hypothesis to measure, not a benchmark claim.
 
 ## Run locally
@@ -28,18 +30,37 @@ Click **Try the local demo** first. It creates a tiny Python repository, reprodu
 
 ## Connect models
 
-Open **Connections**. The easiest first setup is **OpenRouter for both roles**: one key, an inexpensive tool-capable worker, and a stronger reviewer. Use the exact model IDs and current input/output prices from your provider.
+Open **Connections**. OmniRoute is the first-class local gateway, with separate model choices for the worker and reviewer. Direct OpenRouter, Ollama, and other OpenAI-compatible endpoints remain available per role.
 
-- **OpenRouter:** `https://openrouter.ai/api/v1`
-- **Local Ollama:** `http://127.0.0.1:11434/v1` with an installed model that supports tool calling; prices can be zero.
-- **Local OmniRoute:** choose the OpenAI-compatible endpoint preset and use `http://127.0.0.1:20128/v1`. Copy the exact provider-prefixed model ID from OmniRoute, such as `openrouter/poolside/laguna-xs-2.1:free`. OmniRoute keeps the upstream provider credentials; if your gateway requires a client API key, enter that in CheapOS. The dashboard password is not an API key. For a free-only test, pin explicit `:free` model IDs for both roles, verify their prices, and set the task's dollar limit to zero.
-- **Other providers:** an HTTPS OpenAI-compatible Chat Completions endpoint supporting tools, `max_tokens`, and token usage in responses.
+### OmniRoute companion
 
-Keys entered in the interface remain in server memory until it stops. They are not saved in browser storage, configuration, or task history. You can alternatively provide `CHEAPOS_WORKER_API_KEY` and `CHEAPOS_REVIEWER_API_KEY` through the launch environment. Do not commit keys or paste them into tasks. CheapOS does not load `.env` files automatically.
+Install and configure [OmniRoute](https://github.com/diegosouzapw/OmniRoute) separately using its official instructions. CheapOS uses your installed `omniroute` command and existing provider configuration; it does not bundle, install, or update it. The integration was checked against OmniRoute 3.8.49.
 
-Saving connections makes no inference request. Provider compatibility is tested against a local HTTP fixture; live provider/model combinations still need validation with your own credentials. A chat subscription does not automatically provide API credits.
+On launch, CheapOS checks `http://127.0.0.1:20128/v1/models`. It reuses an identified OmniRoute instance or starts the installed CLI on loopback when **Start installed OmniRoute when CheapOS launches** is enabled (the default). Startup runs in the background, so your local task history and patches stay accessible if the gateway fails. An occupied port or rejected client key does not trigger another server.
 
-References: [OpenRouter tool calling](https://openrouter.ai/docs/guides/features/tool-calling), [OpenRouter limits](https://openrouter.ai/docs/api-reference/limits), [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility).
+1. In **Connections**, use **Open OmniRoute** to manage providers and their credentials.
+2. Use **Connect / start** or **Refresh models** to load the catalog. If required, enter a gateway client API key under **Startup & connection settings**; this is separate from the dashboard password.
+3. Choose **OmniRoute (shared local gateway)** for each role, then pick an explicit model. The picker shows advertised tool support and context size. Catalog access does not prove that a model can complete a task.
+4. For free tests, leave **Show free models only** checked and choose explicit OpenRouter `:free` variants for both roles. Unknown prices stay blank and must be supplied. New tasks default to a zero dollar cap when both configured model prices are zero.
+5. Save the connections, create a small task, and start it explicitly.
+
+The free filter only filters the catalog; it is not a gateway billing control. CheapOS does not select fallback models. Check OmniRoute's own retries, combos, and fallback policies: `auto/cheap` is not a guarantee of free inference. A zero dollar cap uses configured prices and does not guarantee provider-side billing limits.
+
+OmniRoute also supports Ollama, allowing a local worker and a remote reviewer through the same gateway. Configure the local provider in OmniRoute, then refresh the catalog in CheapOS. If the catalog omits prices, disable the free-model filter to find it and enter zero prices only for a model actually running locally. A direct Ollama connection is also available below. Local inference still depends on your hardware and the model's tool support; that pairing has not been validated by the initial live experiment.
+
+**Keep OmniRoute running when CheapOS closes** is enabled by default, allowing other clients to keep using it. Disable it to stop a process started by the current CheapOS session on exit. CheapOS never stops an instance it merely reused. Startup preferences are saved in `.cheapos/gateway.json`; gateway client keys remain in memory, or can be supplied with `CHEAPOS_GATEWAY_API_KEY` in the launch environment.
+
+### Direct connections
+
+- **OpenRouter:** `https://openrouter.ai/api/v1`. Enter exact model IDs and current input/output prices from the provider.
+- **Ollama:** `http://127.0.0.1:11434/v1`, with an installed model supporting tool calling. Local model prices can be zero.
+- **Other endpoints:** HTTPS OpenAI-compatible Chat Completions APIs supporting tools, `max_tokens`, and response token usage. Plain HTTP is allowed only on loopback.
+
+Direct API keys entered in the interface remain in server memory until it stops. They are not saved in browser storage, configuration, or task history. You can alternatively supply `CHEAPOS_WORKER_API_KEY` and `CHEAPOS_REVIEWER_API_KEY` through the launch environment. Managed OmniRoute connections use the shared gateway key rather than direct provider keys. CheapOS does not load `.env` files automatically.
+
+Saving, startup, and catalog refresh make no inference requests. Automated tests cover the worker/reviewer workflow through local HTTP fixtures. In the initial live free-model experiment, the worker produced a patch that passed six tests, but the reviewer timed out; the full live loop and cost savings remain unproven. A chat subscription does not automatically provide API credits.
+
+References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter tool calling](https://openrouter.ai/docs/guides/features/tool-calling), [OpenRouter limits](https://openrouter.ai/docs/api-reference/limits), [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility).
 
 ## Run a task
 
@@ -92,6 +113,8 @@ Node is only needed for the optional JavaScript syntax check. Tests use temporar
 | `cheapos/engine.py` | Worker/checkpoint/reviewer state machine |
 | `cheapos/workspace.py` | Repository copies, constrained file tools, verification |
 | `cheapos/providers.py` | Chat Completions adapter and usage reservations |
+| `cheapos/gateways.py` | Gateway interface, model discovery, and adapter selection |
+| `cheapos/omniroute.py` | Optional local gateway startup, reuse, and process ownership |
 | `cheapos/storage.py` | Atomic local task persistence |
 | `dist/` | Dependency-free graphical workspace |
 | `tests/` | Execution, accounting, isolation, recovery, and API tests |
