@@ -287,7 +287,12 @@ $$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 $('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;
 $('#mode-select').onclick=()=>{dialog(`${modalHeader('ECONOMY MODE','The inexpensive model does the legwork.')}<p class="modal-description">The worker inspects, edits, and runs your checks. A passing checkpoint goes to the reviewer, who approves, requests changes, or asks to take over.</p><div class="mode-explanation">Economy is the execution mode in this alpha. Both roles, spending limits, and verification permissions are configurable.</div>`)};
 $('#composer').onsubmit=e=>{e.preventDefault();newTask($('#task-input').value.trim())};$('#task-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();newTask(e.target.value.trim())}};
-$('#toggle-inspector').onclick=()=>{if(matchMedia('(max-width:1000px)').matches)$('#inspector').classList.toggle('show');else $('#inspector').classList.toggle('hidden')};$('#compact-session').onclick=()=>$('#inspector').classList.toggle('show');
+function toggleInspector() {
+  const panel=$('#inspector');
+  if(matchMedia('(max-width:1280px)').matches){panel.classList.remove('hidden');panel.classList.toggle('show')}
+  else{panel.classList.remove('show');panel.classList.toggle('hidden')}
+}
+$('#toggle-inspector').onclick=toggleInspector;$('#compact-session').onclick=toggleInspector;
 $('#sidebar-toggle').onclick=()=>{if(matchMedia('(max-width:700px)').matches)$('#sidebar').classList.remove('show');else{$('#sidebar').classList.add('collapsed');$('#mobile-menu').style.display='flex'}};
 $('#mobile-menu').onclick=()=>{if(matchMedia('(max-width:700px)').matches)$('#sidebar').classList.toggle('show');else{$('#sidebar').classList.remove('collapsed');$('#mobile-menu').style.display='none'}};
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}if(e.key==='Escape'){$('#sidebar').classList.remove('show');$('#inspector').classList.remove('show')}});
