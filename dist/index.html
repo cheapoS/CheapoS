@@ -9,10 +9,12 @@
   <title>CheapOS — A little patience. A lot less compute cost.</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2398dfbb'/%3E%3Cpath d='m8 10 6 6-6 6m9 0h7' fill='none' stroke='%2317191b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="./styles.css" />
+  <script src="./guidance.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
 <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+ <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
@@ -39,27 +41,31 @@
 <div class="desktop-shell">
  <aside class="sidebar" id="sidebar">
   <div class="brand-row"><a class="brand" href="./"><span class="brand-mark">›<span>_</span></span>Cheap<span class="brand-os">OS</span></a><button class="icon-btn" id="sidebar-toggle" aria-label="Collapse sidebar"><svg><use href="#i-panel"/></svg></button></div>
-  <button class="new-task" id="new-task"><svg><use href="#i-plus"/></svg>New task<kbd>⌘ N</kbd></button>
-  <button class="search-trigger" id="search-trigger"><svg><use href="#i-search"/></svg>Search tasks<kbd>⌘ K</kbd></button>
-  <div class="section-label">ON THIS COMPUTER <span id="task-total">0</span></div>
-  <nav class="task-list" id="task-list" aria-label="Saved tasks"></nav>
+  <button class="settings-trigger open-project-trigger" id="home-trigger"><svg><use href="#i-folder"/></svg>Open project</button>
+  <button class="new-task" id="new-task"><svg><use href="#i-plus"/></svg>New chat<kbd>⌘ N</kbd></button>
+  <button class="search-trigger" id="search-trigger"><svg><use href="#i-search"/></svg>Search chats<kbd>⌘ K</kbd></button>
+  <div class="section-label">PROJECTS <span id="task-total">0</span></div>
+  <nav class="task-list" id="task-list" aria-label="Projects and chats"></nav>
   <div class="sidebar-bottom"><div class="philosophy"><svg><use href="#i-leaf"/></svg><p>Cheap models work.<br>Smart models check.<br><span>Take your time. Keep your change.</span></p></div>
    <button class="settings-trigger" id="demo-trigger"><svg><use href="#i-play"/></svg>Try the local demo</button>
-   <button class="settings-trigger" id="settings-trigger"><svg><use href="#i-settings"/></svg>Connections <span id="connection-indicator">Set up</span></button>
+   <button class="settings-trigger" id="settings-trigger"><svg><use href="#i-settings"/></svg>Models <span id="connection-indicator">Set up</span></button>
    <div class="profile"><div class="avatar"><svg><use href="#i-code"/></svg></div><div>Local workspace<span>No account required</span></div><span class="version">v0.2</span></div>
   </div>
  </aside>
  <div class="workspace">
-  <header class="topbar"><div class="breadcrumbs"><button class="icon-btn mobile-menu" id="mobile-menu" aria-label="Open sidebar"><svg><use href="#i-panel"/></svg></button><svg><use href="#i-folder"/></svg><span id="project-name">Your workspace</span><span class="slash">/</span><span class="muted">Tasks</span></div><div class="topbar-right"><span class="prototype-label">LOCAL ALPHA</span><span class="branch"><svg><use href="#i-branch"/></svg>isolated snapshot</span><button class="icon-btn" id="toggle-inspector" aria-label="Toggle session details"><svg><use href="#i-panel"/></svg></button></div></header>
+  <header class="topbar"><div class="breadcrumbs"><button class="icon-btn mobile-menu" id="mobile-menu" aria-label="Open sidebar"><svg><use href="#i-panel"/></svg></button><svg><use href="#i-folder"/></svg><span id="project-name">Your workspace</span><span class="slash">/</span><span class="muted">Chat</span></div><div class="topbar-right"><span class="prototype-label">LOCAL ALPHA</span><span class="branch"><svg><use href="#i-branch"/></svg>isolated snapshot</span><button class="icon-btn" id="toggle-inspector" aria-label="Toggle session details"><svg><use href="#i-panel"/></svg></button></div></header>
   <div class="workspace-content">
    <main class="main-pane">
     <div class="task-heading"><div class="eyebrow" id="task-eyebrow"><span class="status-dot"></span><span id="task-status">Local & ready</span><span class="small-divider">·</span><span id="task-date">Economy mode</span></div><div class="title-row"><h1 id="task-title">Good code. A smaller bill.</h1><div id="task-actions"></div></div><p class="task-subtitle" id="task-subtitle">Let an inexpensive model do the work. Bring in a stronger model for review.</p></div>
-    <div class="tabs" role="tablist" aria-label="Task views"><button class="tab active" role="tab" aria-selected="true" data-view="activity"><svg><use href="#i-chat"/></svg>Activity</button><button class="tab" role="tab" aria-selected="false" data-view="changes"><svg><use href="#i-code"/></svg>Changes <span class="count" id="change-count">0</span></button><button class="tab" role="tab" aria-selected="false" data-view="tests"><svg><use href="#i-tests"/></svg>Checks <span class="test-count" id="check-count">0</span></button><span class="diff-tally" id="diff-tally"></span></div>
+    <div class="tabs" role="tablist" aria-label="Task views"><button class="tab active" role="tab" aria-selected="true" data-view="chat"><svg><use href="#i-chat"/></svg>Chat</button><button class="tab" role="tab" aria-selected="false" data-view="changes"><svg><use href="#i-code"/></svg>Changes <span class="count" id="change-count">0</span></button><button class="tab" role="tab" aria-selected="false" data-view="tests"><svg><use href="#i-tests"/></svg>Checks <span class="test-count" id="check-count">0</span></button><span class="diff-tally" id="diff-tally"></span></div>
     <button class="compact-session" id="compact-session"><span>Worker → checks → review</span><strong id="compact-cost">$0.00</strong></button>
-    <div class="view-container" id="view-container"><section class="view" id="activity-view" role="tabpanel"></section><section class="view hidden" id="changes-view" role="tabpanel"></section><section class="view hidden" id="tests-view" role="tabpanel"></section></div>
-    <div class="composer-area"><form class="composer" id="composer"><textarea id="task-input" rows="2" placeholder="What would you like to build or fix?" aria-label="Describe a new task" maxlength="8000"></textarea><div class="composer-controls"><button type="button" class="mode-select" id="mode-select"><svg><use href="#i-leaf"/></svg><span>Economy</span><svg><use href="#i-down"/></svg></button><span class="composer-models" id="composer-models">Worker + checkpoint review</span><button type="submit" class="send-button" aria-label="Create task"><svg><use href="#i-arrow"/></svg></button></div></form><div class="composer-caption"><span><svg><use href="#i-shield"/></svg>Changes stay in a task copy</span><span>Enter to create a task</span></div></div>
+    <div class="view-container" id="view-container"><section class="view" id="chat-view" role="tabpanel"></section><section class="view hidden" id="activity-view" role="tabpanel"></section><section class="view hidden" id="changes-view" role="tabpanel"></section><section class="view hidden" id="tests-view" role="tabpanel"></section></div>
+    <div class="composer-area" id="composer-area">
+     <form class="composer" id="chat-form"><textarea id="chat-input" aria-label="Message CheapOS" placeholder="Ask about your project or describe a change…" rows="3" maxlength="8000"></textarea><div class="composer-controls"><button class="composer-project" type="button" id="composer-project"><svg><use href="#i-folder"/></svg><span>Open project</span></button><button class="composer-budget" type="button" id="chat-budget">$0.00 limit</button><button type="button" class="icon-btn" id="chat-stop" aria-label="Stop working" hidden><svg><use href="#i-x"/></svg></button><button type="submit" class="send-chat" id="chat-send" aria-label="Send message"><svg><use href="#i-up"/></svg></button></div></form>
+     <p class="composer-note" id="composer-note">Edits stay in a separate copy. You review the result.</p>
+    </div>
    </main>
-   <aside class="inspector" id="inspector"><div class="inspector-header"><span>SESSION</span><button class="icon-btn" id="session-settings" aria-label="Open model connections"><svg><use href="#i-settings"/></svg></button></div><div class="inspector-scroll" id="session-details"></div><div class="inspector-footer"><span class="status-dot"></span>Make expensive compute the exception.</div></aside>
+   <aside class="inspector hidden" id="inspector"><div class="inspector-header"><span>SESSION</span><button class="icon-btn" id="session-settings" aria-label="Open model connections"><svg><use href="#i-settings"/></svg></button></div><div class="inspector-scroll" id="session-details"></div><div class="inspector-footer"><span class="status-dot"></span>Make expensive compute the exception.</div></aside>
   </div>
  </div>
 </div>

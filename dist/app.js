@@ -4,8 +4,8 @@ const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const activeStatuses = new Set(['running', 'reviewing', 'waiting_approval', 'stopping']);
-const labels = {ready:'Ready to start',running:'Worker is working',reviewing:'Reviewer is checking',waiting_approval:'Command approval needed',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
-const state = {token:'',config:{},gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,view:'activity',file:0,diff:'unified',run:-1,online:false,loading:false};
+const labels = {awaiting_reply:'Ready for your message',ready:'Ready to start',running:'CheapOS is working',reviewing:'Checking your changes',waiting_approval:'Command approval needed',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
+const state = {token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',run:-1,online:false,loading:false};
 const money = value => '$' + Number(value || 0).toFixed(Number(value || 0) > 0 && value < .01 ? 4 : 2);
 const date = value => new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
@@ -31,30 +31,67 @@ async function formAction(form, operation) {
   finally {buttons.forEach(b=>b.disabled=false)}
 }
 function renderSidebar() {
-  $('#task-total').textContent=state.tasks.length;
-  $('#connection-indicator').textContent=state.config.worker && state.config.reviewer ? (Object.values(state.config).some(p=>p?.gateway==='omniroute') ? ({ready:'Connected',checking:'Connecting',starting:'Starting'}[state.gateway.status]||'Check gateway') : 'Configured') : 'Set up';
-  const groups=new Map();
-  for(const task of state.tasks){const key=task.demo?'Local demo':task.source;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(task)}
-  $('#task-list').innerHTML=groups.size?[...groups].map(([project,tasks])=>`<div class="project-group"><div class="project-label" title="${esc(project)}">${icon('folder')}${esc(project==='Local demo'?project:basename(project))}</div>${tasks.map(t=>`<button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${t.status==='approved'?'done':''} ${activeStatuses.has(t.status)?'pulsing':''}"></span><span>${esc(t.title)}</span></button>`).join('')}</div>`).join(''):'<p class="sidebar-empty">Your tasks will live here.<br>Start small. See what it costs.</p>';
+  $('#task-total').textContent=state.projects.length;
+  $('#connection-indicator').textContent=state.config.worker&&state.config.reviewer?'Configured':'Set up';
+  const groups=state.projects.map(project=>({project,tasks:state.tasks.filter(t=>!t.demo&&t.source===project.path)}));
+  const demos=state.tasks.filter(t=>t.demo);if(demos.length)groups.push({project:{path:'demo',name:'Local demo'},tasks:demos});
+  $('#task-list').innerHTML=groups.map(({project,tasks})=>`<div class="project-group"><button class="project-label ${state.project?.path===project.path?'selected':''}" data-project="${esc(project.path)}" title="${esc(project.path)}">${icon('folder')}<span>${esc(CheapOSGuide.projectName({source:project.path,demo:project.path==='demo'}))}</span></button>${tasks.slice(0,12).map(t=>`<button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${['approved','awaiting_reply'].includes(t.status)?'done':''} ${activeStatuses.has(t.status)?'pulsing':''}"></span><span class="task-list-title">${esc(t.title)}</span>${['error','budget_paused','waiting_approval'].includes(t.status)?'<span class="task-attention" aria-label="Needs attention">•</span>':''}</button>`).join('')}</div>`).join('')||'<p class="sidebar-empty">Open a project to start.<br>Your chats will appear here.</p>';
   $$('[data-task]').forEach(b=>b.onclick=()=>selectTask(b.dataset.task));
+  $$('[data-project]').forEach(b=>b.onclick=()=>b.dataset.project==='demo'?selectTask(demos[0].id):chooseProject(state.projects.find(p=>p.path===b.dataset.project)));
 }
-function welcome() {
-  $('#activity-view').innerHTML=`<div class="welcome"><div class="welcome-symbol">${icon('leaf')}</div><span class="welcome-kicker">MORE PATIENCE. LESS PREMIUM COMPUTE.</span><h2>A worker that keeps going.<br>A reviewer that knows when to step in.</h2><p>CheapOS gives the coding loop to an inexpensive model. When the checks pass, a stronger model reviews the patch and sends back a decision.</p><div class="welcome-flow"><div>${icon('code')}<strong>Work</strong><small>Inspect, edit, iterate</small></div><span>→</span><div>${icon('tests')}<strong>Verify</strong><small>Run your checks</small></div><span>→</span><div>${icon('spark')}<strong>Review</strong><small>Approve or revise</small></div></div><div class="welcome-actions"><button class="primary-button" id="welcome-new">${icon('plus')}Start a real task</button><button class="subtle-button" id="welcome-demo">${icon('play')}Try the local demo</button></div><p class="welcome-footnote">The demo uses scripted model decisions and real file edits, tests, and patches. No API key or model charges.</p></div>`;
-  $('#welcome-new').onclick=()=>newTask(); $('#welcome-demo').onclick=startDemo;
-  renderInspector();
+const draftKey=()=>state.task?.id||state.project?.path||'new';
+function saveDraft(){state.drafts.set(draftKey(),$('#chat-input').value)}
+function restoreDraft(){$('#chat-input').value=state.drafts.get(draftKey())||'';renderComposer()}
+function home() {
+  saveDraft();state.selection++;state.loading=false;state.task=null;state.view='chat';
+  try{localStorage.removeItem('cheapos-selected')}catch{}
+  renderHome();restoreDraft();renderSidebar();$('#sidebar').classList.remove('show');$('#view-container').scrollTop=0;
+}
+function chooseProject(project) {
+  saveDraft();home();state.project=project;renderHome();restoreDraft();renderSidebar();
+  try{localStorage.setItem('cheapos-project',project.path)}catch{}
+  $('#chat-input').focus();
+}
+function renderHome() {
+  $('.task-heading').hidden=true;$('.tabs').hidden=true;$('#compact-session').hidden=true;$('#toggle-inspector').hidden=true;$('#inspector').classList.add('home-hidden');
+  $('.main-pane').classList.add('new-conversation');
+  $('#project-name').textContent=state.project?CheapOSGuide.projectName({source:state.project.path}):'Your workspace';
+  $$('.view').forEach(v=>v.classList.toggle('hidden',v.id!=='chat-view'));
+  $('#chat-view').innerHTML=`<div class="chat-welcome"><div class="welcome-mark">${icon('code')}</div><h1>${state.project?'What would you like to work on?':'Your project. Let’s work on it.'}</h1><p>${state.project?'Ask a question, explore an idea, or describe a change.':'Open a local project, then talk to CheapOS.'}</p>${state.project?`<div class="chat-suggestions"><button data-suggestion="Explain how this project works. Start by reading its README and main entry points.">Explain this project ${icon('chevron')}</button><button data-suggestion="Look through this project and suggest one small improvement. Explain it before making changes.">Find a small improvement ${icon('chevron')}</button></div>`:`<button class="primary-button" id="welcome-open">${icon('folder')}Open project</button>`}</div>`;
+  if($('#welcome-open'))$('#welcome-open').onclick=()=>openProject();
+  $$('[data-suggestion]').forEach(b=>b.onclick=()=>{$('#chat-input').value=b.dataset.suggestion;saveDraft();renderComposer();$('#chat-input').focus()});
+  renderComposer();
+}
+function renderComposer() {
+  const task=state.task, busy=task&&activeStatuses.has(task.status);
+  $('#composer-area').hidden=Boolean(task?.demo);
+  $('#composer-project span').textContent=task?CheapOSGuide.projectName(task):state.project?CheapOSGuide.projectName({source:state.project.path}):'Open project';
+  $('#composer-project').disabled=Boolean(task);
+  $('#chat-input').disabled=state.sending;
+  $('#chat-input').placeholder=state.project?'Ask about your project or describe a change…':'Open a project to get started…';
+  const other=state.tasks.find(t=>t.id!==task?.id&&activeStatuses.has(t.status));
+  $('#chat-send').disabled=state.sending||busy||Boolean(other)||!$('#chat-input').value.trim();
+  $('#chat-stop').hidden=!busy;
+  $('#chat-budget').textContent=money((task?.limits||state.preferences.limits).dollars)+' limit';
+  $('#composer-note').textContent=other?'Another chat is running. Open it in the sidebar to continue or pause it.':busy?'CheapOS is working. You can draft your next message.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
+}
+function openProject(afterOpen) {
+  const d=dialog(`<form>${modalHeader('LOCAL PROJECT','Open a project')}<p class="modal-description">Choose your project once, then chat. CheapOS will work in a separate copy when you send your first message.</p><label class="full-field">Project folder<input name="repository" placeholder="/Users/you/projects/my-project" required autocomplete="off" autofocus><small>Use the root folder of a local Git repository.</small></label><p class="form-error" role="alert"></p><div class="modal-footer"><span>Opening a project makes no model request.</span><button type="submit" class="primary-button">Open project ${icon('chevron')}</button></div></form>`,'project-modal');
+  const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const project=await api('/projects',{repository:new FormData(form).get('repository')});state.projects=await api('/projects');d.close();chooseProject(project);if(afterOpen)afterOpen()})};
 }
 async function selectTask(id) {
-  const wanted=id; state.loading=true;
-  try {const task=await api('/tasks/'+wanted);state.task=task;state.file=0;state.run=-1;state.view='activity';try{localStorage.setItem('cheapos-selected',id)}catch{} renderTask();renderSidebar();$('#sidebar').classList.remove('show');}
-  catch(e){toast(e.message)} finally {state.loading=false}
+  saveDraft();const request=++state.selection;state.loading=true;
+  try {const task=await api('/tasks/'+id);if(request!==state.selection)return;state.task=task;state.project={path:task.source,name:basename(task.source)};state.file=0;state.run=-1;state.view='chat';try{localStorage.setItem('cheapos-selected',id)}catch{}renderTask({resetScroll:true});restoreDraft();renderSidebar();$('#sidebar').classList.remove('show');}
+  catch(e){toast(e.message)}finally{if(request===state.selection)state.loading=false}
 }
 function setView(view) {state.view=view;renderView();$('#view-container').scrollTo({top:0,behavior:'instant'});}
-function renderTask() {
-  const task=state.task;if(!task)return;
+function renderTask({resetScroll=false}={}) {
+  const task=state.task;if(!task)return;$('.main-pane').classList.remove('new-conversation');
+  $('.task-heading').hidden=false;$('.tabs').hidden=false;$('#compact-session').hidden=false;$('#toggle-inspector').hidden=false;$('#inspector').classList.remove('home-hidden');
   const scroller=$('#view-container'), oldScroll=scroller.scrollTop, bottom=scroller.scrollHeight-scroller.clientHeight-oldScroll<60;
-  const expanded=new Map($$('details[data-event]').map(d=>[d.dataset.event,d.open]));
-  $('#task-title').textContent=task.title;
-  $('#project-name').textContent=task.demo?'Local demo':basename(task.source);
+  const expanded=new Map((resetScroll?[]:$$('details[data-event]')).map(d=>[d.dataset.event,d.open]));
+  $('#task-title').textContent=task.title;$('#task-title').title=task.title;
+  $('#project-name').textContent=CheapOSGuide.projectName(task);
   $('#task-status').textContent=labels[task.status]||task.status;
   $('#task-date').textContent=date(task.created_at);
   $('#task-eyebrow').classList.toggle('running',activeStatuses.has(task.status));
@@ -62,18 +99,19 @@ function renderTask() {
   $('#change-count').textContent=task.changes.length;$('#check-count').textContent=task.checks.length;
   const sums=patchTotals(task.patch);$('#diff-tally').innerHTML=`<span>+${sums.add}</span><span>−${sums.remove}</span>`;
   $('#compact-cost').textContent=money(task.usage.cost);
-  $('#task-actions').innerHTML=activeStatuses.has(task.status)?`<button class="subtle-button" id="pause-task">${icon('x')}Pause</button>`:!['approved','completed'].includes(task.status)?`<button class="primary-button" id="resume-task">${icon('play')}${task.status==='ready'?'Start task':task.status==='takeover_requested'?'Review takeover':'Resume'}</button>`:`<a class="subtle-button" href="/api/tasks/${task.id}/patch" download>${icon('file')}Export patch</a>`;
+  $('#task-actions').innerHTML=activeStatuses.has(task.status)?`<button class="subtle-button" id="pause-task">${icon('x')}Pause</button>`:'<button class="subtle-button" id="task-overview">Details</button>';
   if($('#pause-task'))$('#pause-task').onclick=async()=>{try{await api('/tasks/'+task.id+'/stop',{});toast('Pausing. An in-flight model request may take up to 3 minutes.')}catch(e){toast(e.message)}};
-  if($('#resume-task'))$('#resume-task').onclick=()=>task.status==='ready'?startTask(task.id):resumeDialog();
-  renderView();renderInspector();
+  if($('#task-overview'))$('#task-overview').onclick=toggleInspector;
+  renderView();renderInspector();renderComposer();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
-  scroller.scrollTop=bottom?scroller.scrollHeight:oldScroll;
+  scroller.scrollTop=resetScroll?scroller.scrollHeight:['chat','activity'].includes(state.view)&&activeStatuses.has(task.status)&&bottom?scroller.scrollHeight:oldScroll;
 }
 function renderView() {
+  $('#compact-session').hidden=true;
   $$('.tab').forEach(b=>{const selected=b.dataset.view===state.view;b.classList.toggle('active',selected);b.setAttribute('aria-selected',String(selected))});
   $$('.view').forEach(v=>v.classList.toggle('hidden',v.id!==state.view+'-view'));
-  if(!state.task){if(state.view==='activity')welcome();else $('#'+state.view+'-view').innerHTML='<div class="empty-state"><h2>Your next task starts here.</h2><p>Create a task or run the local demo to see its changes and verification results.</p></div>';return}
-  if(state.view==='activity')renderActivity();else if(state.view==='changes')renderChanges();else renderTests();
+  if(!state.task){renderHome();return}
+  if(state.view==='chat')renderChat();else if(state.view==='activity')renderActivity();else if(state.view==='changes')renderChanges();else renderTests();
 }
 function eventDetail(event) {
   const detail=event.detail;
@@ -83,6 +121,47 @@ function eventDetail(event) {
   if(typeof detail==='string')return `<p class="preserve">${esc(detail)}</p>`;
   return detail?`<pre class="output">${esc(JSON.stringify(detail,null,2))}</pre>`:'';
 }
+function messageText(value) {
+  return String(value||'').split(/```[^\n]*\n([\s\S]*?)```/g).map((part,i)=>i%2?`<pre class="chat-code"><code>${esc(part)}</code></pre>`:`<p>${esc(part).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`\n]+)`/g,'<code>$1</code>')}</p>`).join('');
+}
+function renderChat() {
+  const task=state.task,guide=CheapOSGuide.taskGuide(task);
+  const message=(role,text)=>`<article class="chat-message ${role==='You'?'from-user':'from-agent'}"><div class="chat-author">${role==='You'?'<span class="mini-avatar">Y</span>':icon(role==='Review'?'spark':'code')}<strong>${role}</strong></div><div class="chat-message-body">${messageText(text)}</div></article>`;
+  const parts=[task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':'',message('You',task.prompt)];
+  let work=[];
+  const flush=()=>{
+    if(!work.length)return;
+    const actions=work.filter(e=>['tool','checks','tool_error'].includes(e.kind));
+    if(actions.length)parts.push(`<details class="chat-work" data-event="work-${work[0].id}"><summary>${icon('code')}<span>${CheapOSGuide.workLabel(actions)}</span>${icon('chevron')}</summary><div>${actions.map(e=>`<details class="activity-card" data-event="${e.id}"><summary><strong>${esc(e.title)}</strong>${icon('chevron')}</summary><div class="detail-body">${eventDetail(e)}</div></details>`).join('')}</div></details>`);
+    work=[];
+  };
+  for(const event of task.events){
+    if(['user','assistant','review','checkpoint'].includes(event.kind)){
+      flush();
+      if(event.kind==='user'||event.kind==='assistant')parts.push(message(event.kind==='user'?'You':'CheapOS',event.detail));
+      else if(event.kind==='checkpoint')parts.push(message('CheapOS',event.detail.worker_summary));
+      else parts.push(message('Review',event.detail.feedback));
+    }else work.push(event);
+  }
+  flush();
+  const button=(action,label,primary=false)=>`<button class="${primary?'primary-button':'subtle-button'}" data-chat-action="${action}">${label}</button>`;
+  if(task.pending_approval)parts.push(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in the task copy on your computer.</p><div class="button-row">${button('approve','Run command',true)}${button('decline','Decline')}</div></section>`);
+  else if(activeStatuses.has(task.status))parts.push(`<div class="live-progress"><span class="spinner"></span>${task.status==='reviewing'?'Checking the changes with the reviewer…':task.active_role==='reviewer'?'The reviewer is working on your changes…':'Working on your message…'}</div>`);
+  else if(task.status==='ready')parts.push(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
+  else if(['approved','completed'].includes(task.status))parts.push(`<section class="chat-result">${icon('check')}<div><strong>${task.status==='approved'?'Changes are ready to review.':'Implementation finished. Your review is next.'}</strong><p>${task.changes.length} changed files · ${task.checks.at(-1)?.passed?'Latest checks passed':'Check the verification output'}</p><div class="button-row">${button('changes','Review changes',true)}<a class="subtle-button" href="/api/tasks/${task.id}/patch" download>Export patch</a></div></div></section>`);
+  else if(task.status==='awaiting_reply'&&task.changes.length)parts.push(`<div class="chat-saved">${icon('file')}<span>${task.changes.length} changed files saved in this chat.</span>${button('changes','View changes')}</div>`);
+  else if(task.status!=='awaiting_reply')parts.push(`<section class="chat-decision"><strong>${esc(guide.title)}</strong><p>${task.status==='error'?'Your work is saved. You can retry, check the connection, or send a follow-up below.':esc(guide.description)}</p>${task.error?`<details class="chat-error"><summary>Details</summary><p>${esc(task.error)}</p></details>`:''}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?'Review limits':'Resume',true)}${task.status==='error'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
+  $('#chat-view').innerHTML=parts.join('');
+  $$('[data-chat-action]').forEach(b=>b.onclick=async()=>{
+    const action=b.dataset.chatAction;
+    if(action==='changes'){setView('changes');return}
+    if(action==='connections'){openConnections(undefined,task);return}
+    if(action==='resume'){resumeDialog();return}
+    b.disabled=true;
+    if(action==='start'){await startTask(task.id);b.disabled=false;return}
+    try{await api('/tasks/'+task.id+'/approval',{approved:action==='approve'});await refresh()}catch(e){toast(e.message);b.disabled=false}
+  });
+}
 function renderActivity() {
   const task=state.task;
   const events=task.events.map(event=>{
@@ -90,7 +169,8 @@ function renderActivity() {
     const prominent=['review','checkpoint'].includes(event.kind);
     return `<details class="${prominent?'review-card':'activity-card'} ${event.kind==='review'&&event.detail.decision==='APPROVE'?'approved':''}" data-event="${event.id}" ${prominent?'open':''}><summary><span class="activity-icon">${icon(symbol)}</span><strong>${esc(event.title)}</strong><time class="activity-time">${new Date(event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="${prominent?'review-content':'detail-body'}">${eventDetail(event)}</div></details>`;
   }).join('');
-  $('#activity-view').innerHTML=`${task.demo?'<div class="demo-banner">Local demo · model decisions are scripted · no paid requests</div>':''}<div class="user-message"><div class="message-meta"><span class="mini-avatar">Y</span><strong>You</strong><time>${date(task.created_at)}</time></div><p>${esc(task.prompt)}</p></div><div class="live-events">${events}</div>${task.error?`<div class="attention-card"><strong>${esc(labels[task.status])}</strong><p>${esc(task.error)}</p></div>`:''}${task.pending_approval?`<div class="approval-card"><strong>Run the verification command?</strong><code>${esc(task.pending_approval.command.join(' '))}</code><p>This executes repository code on your computer. The task copy isolates edits, but is not an operating-system sandbox.</p><div class="button-row"><button class="primary-button" data-approve="yes">Run command</button><button class="subtle-button" data-approve="no">Decline & pause</button></div></div>`:''}${activeStatuses.has(task.status)&&!task.pending_approval?`<div class="live-progress"><span class="spinner"></span>${esc(labels[task.status])}…</div>`:''}${['approved','completed'].includes(task.status)?`<div class="completion-note">${icon('check')}<span>${task.status==='approved'?'Review complete. Your patch is ready to inspect.':'Takeover finished. Review the patch before applying it.'}</span><button class="text-link" id="see-changes">Open changes →</button></div>`:''}`;
+  $('#activity-view').innerHTML=`<button class="text-link" id="back-chat">← Back to chat</button>${task.demo?'<div class="demo-banner">Local demo · model decisions are scripted · no paid requests</div>':''}<div class="user-message"><div class="message-meta"><span class="mini-avatar">Y</span><strong>You</strong><time>${date(task.created_at)}</time></div><p>${esc(task.prompt)}</p></div><div class="live-events">${events}</div>${task.error?`<div class="attention-card"><strong>${esc(labels[task.status])}</strong><p>${esc(task.error)}</p></div>`:''}${task.pending_approval?`<div class="approval-card"><strong>Run the verification command?</strong><code>${esc(task.pending_approval.command.join(' '))}</code><p>This executes repository code on your computer. The task copy isolates edits, but is not an operating-system sandbox.</p><div class="button-row"><button class="primary-button" data-approve="yes">Run command</button><button class="subtle-button" data-approve="no">Decline & pause</button></div></div>`:''}${activeStatuses.has(task.status)&&!task.pending_approval?`<div class="live-progress"><span class="spinner"></span>${esc(labels[task.status])}…</div>`:''}${['approved','completed'].includes(task.status)?`<div class="completion-note">${icon('check')}<span>${task.status==='approved'?'Review complete. Your patch is ready to inspect.':'Takeover finished. Review the patch before applying it.'}</span><button class="text-link" id="see-changes">Open changes →</button></div>`:''}`;
+  $('#back-chat').onclick=()=>setView('chat');
   $$('[data-checkpoint]').forEach(b=>b.onclick=()=>checkpointDialog(Number(b.dataset.checkpoint)));
   $$('[data-approve]').forEach(b=>b.onclick=async()=>{try{await api('/tasks/'+task.id+'/approval',{approved:b.dataset.approve==='yes'});await refresh()}catch(e){toast(e.message)}});
   if($('#see-changes'))$('#see-changes').onclick=()=>setView('changes');
@@ -132,19 +212,36 @@ function renderInspector() {
   const usage=t?`<section class="usage"><div class="section-title">Compute, thoughtfully spent</div><div class="cost-total"><strong>${money(t.usage.cost)}</strong><span>${t.demo?'no model charges':'accounted session cost'}</span></div><div class="usage-table">${['worker','reviewer'].map(role=>`<div><span>${role==='worker'?'Worker':'Reviewer'}</span><span>${t.usage[role].tokens.toLocaleString()} <small>tokens</small></span><strong>${money(t.usage[role].cost)}</strong></div>`).join('')}</div><div class="budget-meter"><span style="width:${Math.min(100,t.limits.dollars>0?t.usage.cost/t.limits.dollars*100:0)}%"></span></div><p class="small muted">${money(t.limits.dollars)} estimated cap · ${t.limits.reviewer_tokens.toLocaleString()} reviewer tokens</p><p class="small muted">${t.usage.uncertain_requests?`${t.usage.uncertain_requests} uncertain request(s): reservations remain counted.`:t.usage.estimated_requests?'Some costs use your configured token prices.':t.demo?'Demo usage is zero. No savings are claimed.':'Reported cost when available; configured prices otherwise.'}</p>${!activeStatuses.has(t.status)&&!['approved','completed'].includes(t.status)?'<button class="text-link" id="edit-limits">Review limits →</button>':''}</section>`:'';
   const journey=t?`<section class="journey"><div class="section-title">This session</div><ol class="journey-list">${[['Worker turns',t.worker_turns],['Tool actions',t.tool_actions],['Checkpoints',t.checkpoints.length],['Reviewer calls',t.review_count],['Latest check',t.checks.length?(t.checks.at(-1).passed?'Passed':'Failed'):'Not run']].map(([label,value])=>`<li><span class="journey-dot">${icon('check')}</span><span>${label}</span><strong>${value}</strong></li>`).join('')}</ol></section>`:'';
   const workspace=t?`<details class="workspace-info"><summary>Workspace details</summary><p>Task copy</p><code>${esc(t.workspace)}</code><p>Snapshot: ${t.snapshot.files} files · ${t.snapshot.skipped.length} excluded</p><p class="small">Snapshot excludes common secret files and dependency folders. Review your repository before sending its contents to a provider.</p></details>`:`<section class="usage"><div class="section-title">Yours, from the start</div><p class="small muted">Open source. Local task history. Your providers, your keys, your limits.</p><button class="subtle-button" id="inspector-connect">Set up connections →</button></section>`;
-  $('#session-details').innerHTML=intro+models+usage+journey+workspace;
-  if($('#edit-limits'))$('#edit-limits').onclick=resumeDialog;if($('#inspector-connect'))$('#inspector-connect').onclick=openConnections;
+  $('#session-details').innerHTML=intro+models+usage+journey+workspace+(t?'<button class="subtle-button" id="open-activity">Open activity log →</button>':'');if($('#open-activity'))$('#open-activity').onclick=()=>setView('activity');
+  if($('#edit-limits'))$('#edit-limits').onclick=chatLimits;if($('#inspector-connect'))$('#inspector-connect').onclick=openConnections;
 }
 const numberField=(name,label,value,min,max,step='1')=>`<label>${label}<input name="${name}" type="number" min="${min}" max="${max}" step="${step}" value="${value}" required></label>`;
 function limitFields(limits={dollars:1,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}) {
   return `<div class="field-grid">${numberField('dollars','Estimated spending cap ($)',limits.dollars,0,100,'0.01')}${numberField('reviewer_tokens','Reviewer token limit',limits.reviewer_tokens,512,1000000)}</div><details class="advanced"><summary>Advanced limits</summary><div class="field-grid">${numberField('iterations','Max worker iterations',limits.iterations,1,20)}${numberField('worker_turns','Max worker model turns',limits.worker_turns,1,200)}${numberField('output_tokens','Output tokens per request',limits.output_tokens,128,16384)}</div></details>`;
 }
 const readLimits=f=>Object.fromEntries(['dollars','reviewer_tokens','iterations','worker_turns','output_tokens'].map(k=>[k,Number(f.get(k))]));
-function newTask(prefill='') {
-  if(!state.online){toast('Start the local server with python3 run.py');return}
-  if(!state.config.worker||!state.config.reviewer){openConnections(()=>newTask(prefill));return}
-  const d=dialog(`<form>${modalHeader('NEW LOCAL TASK','What are we working on?')}<p class="modal-description">Start with a focused fix in a personal project. CheapOS copies eligible files and leaves your source checkout untouched by its file tools.</p><label class="full-field">Git repository path<input name="repository" type="text" placeholder="/Users/you/projects/my-project" required autocomplete="off"></label><label class="full-field">Task<textarea name="prompt" rows="3" minlength="5" maxlength="8000" required placeholder="Describe the change and what success looks like…">${esc(prefill)}</textarea></label><label class="full-field">Verification command<input name="check_command" type="text" placeholder="python3 -m unittest discover -v" required><small>One command, split into arguments. Shell pipes and redirects are not interpreted.</small></label>${limitFields({dollars:[state.config.worker,state.config.reviewer].every(p=>p.input_rate===0&&p.output_rate===0)?0:1,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048})}<label class="checkbox-field"><input name="auto_approve_checks" type="checkbox"><span>Allow this command without asking during this task<small>Runs repository code on your computer. The task copy is not an OS sandbox.</small></span></label><p class="small muted">Eligible source files and command output are sent to your configured model providers. Spending caps use your configured prices and conservative token estimates; set a provider-side cap for a billing guarantee.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>A snapshot is created first.<br>You start the model separately.</span><button type="submit" class="primary-button">Create task ${icon('arrow')}</button></div></form>`,'new-task-modal');
-  const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form),task=await api('/tasks',{repository:f.get('repository'),prompt:f.get('prompt'),check_command:f.get('check_command'),auto_approve_checks:f.has('auto_approve_checks'),limits:readLimits(f)});d.close();$('#task-input').value='';await loadTasks();await selectTask(task.id)})};
+function newTask(prefill='',preset={}) {
+  home();
+  if(preset.repository){state.project={path:preset.repository,name:basename(preset.repository)};renderHome();restoreDraft()}
+  if(prefill){$('#chat-input').value=prefill;saveDraft();renderComposer()}
+  if(!state.project)openProject();else $('#chat-input').focus();
+}
+function chatLimits() {
+  const task=state.task,limits=task?.limits||state.preferences.limits;
+  const d=dialog(`<form>${modalHeader('SPENDING & LIMITS',task?'Limits for this chat':'Defaults for new chats')}<p class="modal-description">CheapOS uses the saved models and stops at these limits. A zero-dollar cap is intended for local or free models.</p>${limitFields(limits)}<p class="small muted">${task?'Usage is cumulative across this chat. Saving does not resume it.':'These defaults apply when you send the first message in a new chat.'}</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Cost estimates use your configured prices.</span><button class="primary-button" type="submit">Save limits</button></div></form>`);
+  const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const limits=readLimits(new FormData(form));if(task){state.task=await api('/tasks/'+task.id+'/limits',{limits})}else state.preferences=await api('/preferences',{limits});d.close();renderComposer();if(state.task)renderInspector()})};
+}
+async function sendChat() {
+  if(state.sending||state.tasks.some(t=>activeStatuses.has(t.status)))return;
+  const message=$('#chat-input').value.trim();if(!message)return;
+  if(!state.project){openProject(()=>{$('#chat-input').value=message;saveDraft();renderComposer()});return}
+  if(!state.config.worker||!state.config.reviewer){openConnections(()=>{$('#chat-input').focus()});return}
+  const key=draftKey();state.sending=true;renderComposer();
+  try {
+    if(state.task){await api('/tasks/'+state.task.id+'/message',{message});state.drafts.delete(key);$('#chat-input').value='';await refresh()}
+    else {const task=await api('/tasks',{repository:state.project.path,prompt:message,conversational:true,limits:state.preferences.limits});state.drafts.delete(key);$('#chat-input').value='';await loadTasks();await selectTask(task.id);await startTask(task.id)}
+    $('#view-container').scrollTop=$('#view-container').scrollHeight;
+  }catch(e){toast(e.message)}finally{state.sending=false;renderComposer();$('#chat-input').focus()}
 }
 async function startTask(id,changes={}) {try{await api('/tasks/'+id+'/start',changes);await refresh()}catch(e){toast(e.message)}}
 function resumeDialog() {
@@ -156,7 +253,7 @@ async function startDemo() {
   if(!state.online){toast('The local server is unavailable. Start it with python3 run.py');return}
   try{const task=await api('/demo',{});await loadTasks();await selectTask(task.id);await startTask(task.id)}catch(e){toast(e.message)}
 }
-function openConnections(afterSave) {
+function openConnections(afterSave, taskContext=null) {
   const c=state.config, gateway=state.gateway||{}, settings=gateway.settings||{base_url:'http://127.0.0.1:20128/v1',auto_start:true,keep_running:true};
   const isOmni=p=>p.gateway==='omniroute'||!p.base_url||p.base_url.replace('localhost','127.0.0.1').replace(/\/$/,'')===settings.base_url.replace('localhost','127.0.0.1');
   const providerFields=role=>{
@@ -170,7 +267,7 @@ function openConnections(afterSave) {
       <div class="field-grid">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
       <p class="small muted">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
   };
-  const d=dialog(`${modalHeader('MODEL CONNECTIONS','One worker. One second opinion.')}<p class="modal-description">OmniRoute handles provider access. CheapOS handles the work, checks, and review.</p>
+  const d=dialog(`${modalHeader('MODEL CONNECTIONS','One worker. One second opinion.')}<p class="modal-description">OmniRoute handles provider access. CheapOS handles the work, checks, and review.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>To fix access and retry the same models, update the gateway and return to Retry options. To try different models, choose them below and prepare a fresh task.</p></div>`:''}
     <form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong>OmniRoute</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
       <p id="gateway-message" class="small muted"></p><p id="gateway-instance" class="small muted"></p>
       <div class="gateway-actions"><button type="button" class="outline-button" data-gateway-action="start">Connect / start</button><button type="button" class="subtle-button" data-gateway-action="refresh">Refresh models</button><button type="button" class="subtle-button" data-gateway-action="stop" hidden>Stop instance</button></div>
@@ -183,7 +280,7 @@ function openConnections(afterSave) {
     <form id="models-form"><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div>
       <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. Models are chosen explicitly; CheapOS does not select fallback models.</p>
       <label class="checkbox-field" id="share-key-field"><input type="checkbox" name="share_key" checked><span>Use the entered worker key for the reviewer when their direct API URLs match</span></label>
-      <p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">Save connections ${icon('check')}</button></div></form>`,'connections-modal');
+      <p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">${taskContext?'Save & prepare new chat':'Save connections'} ${icon('check')}</button></div></form>`,'connections-modal');
   const field=(role,name)=>$(`[name="${role}_${name}"]`,d);
   const usingOmni=role=>$(`[data-preset="${role}"]`,d).value==='omniroute';
   function capability(role) {
@@ -257,7 +354,7 @@ function openConnections(afterSave) {
       const key=omni?'':String(f.get(role+'_key')).trim();if(key)values[role].api_key=key;
     }
     if(!usingOmni('worker')&&!usingOmni('reviewer')&&f.has('share_key')&&values.worker.base_url.replace(/\/$/,'')===values.reviewer.base_url.replace(/\/$/,'')&&values.worker.api_key)values.reviewer.api_key=values.worker.api_key;
-    state.config=await api('/config',values);form.reset();d.close();renderSidebar();renderInspector();toast('Connections saved for new tasks.');if(typeof afterSave==='function')afterSave();
+    state.config=await api('/config',values);form.reset();d.close();renderSidebar();if(state.task)renderInspector();else renderHome();toast('Connections saved for new tasks.');if(taskContext){const command=taskContext.check_command.map(arg=>"'"+arg.replaceAll("'","'\"'\"'")+"'").join(' ');newTask((taskContext.requests||[taskContext.prompt]).join('\n\nFollow-up:\n'),{repository:taskContext.source,check_command:command})}else if(typeof afterSave==='function')afterSave();
   })};
   updateGateway();
   api('/gateway/refresh',{}).then(g=>{state.gateway=g;updateGateway();return loadGateway()}).catch(e=>toast(e.message));
@@ -265,13 +362,13 @@ function openConnections(afterSave) {
 async function loadGateway() {
   const previous=state.gateway, g=await api('/gateway');state.gateway=g;
   if(state.catalogRevision!==g.revision){const catalog=await api('/gateway/models');state.gatewayModels=catalog.models;state.catalogRevision=catalog.revision}
-  if(JSON.stringify(previous)!==JSON.stringify(g)){renderSidebar();state.gatewayListener?.()}
+  if(JSON.stringify(previous)!==JSON.stringify(g)){renderSidebar();if(!state.task)renderHome();state.gatewayListener?.()}
 }
 function openSearch() {
   const d=dialog(`<div class="search-box">${icon('search')}<input id="task-search" type="search" placeholder="Find a task or project…" aria-label="Search tasks" autofocus><kbd>ESC</kbd></div><div id="search-results"></div><div class="search-footer">Saved on this computer</div>`,'search-modal');
   const render=(q='')=>{const found=state.tasks.filter(t=>(t.title+' '+t.source).toLowerCase().includes(q.toLowerCase()));$('#search-results',d).innerHTML=found.length?found.map(t=>`<button class="search-result" data-result="${t.id}">${icon('chat')}<span><strong>${esc(t.title)}</strong><small>${esc(t.demo?'Local demo':basename(t.source))} · ${esc(labels[t.status])}</small></span>${icon('chevron')}</button>`).join(''):'<div class="no-results">No matching tasks.</div>';$$('[data-result]',d).forEach(b=>b.onclick=()=>{d.close();selectTask(b.dataset.result)})};$('#task-search',d).oninput=e=>render(e.target.value);render();
 }
-async function loadTasks() {const tasks=await api('/tasks');const changed=JSON.stringify(tasks)!==JSON.stringify(state.tasks);state.tasks=tasks;if(changed)renderSidebar();}
+async function loadTasks() {const tasks=await api('/tasks');const changed=JSON.stringify(tasks)!==JSON.stringify(state.tasks);state.tasks=tasks;if(changed){renderSidebar();renderComposer();if(!state.task)renderHome()}}
 async function refresh() {
   if(state.loading)return;
   await loadGateway();await loadTasks();const selected=state.task?.id;if(!selected)return;
@@ -279,14 +376,12 @@ async function refresh() {
   if(task.updated_at!==state.task.updated_at||task.status!==state.task.status){state.task=task;renderTask()}
 }
 async function bootstrap() {
-  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.tasks=data.tasks;state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}if(!state.tasks.some(t=>t.id===selected))selected=state.tasks[0]?.id;if(selected)await selectTask(selected);else welcome();}
-  catch(e){state.online=false;$('#activity-view').innerHTML='<div class="empty-state"><h2>Start CheapOS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
+  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.tasks=data.tasks;state.projects=data.projects||[];state.preferences=data.preferences||state.preferences;try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}if(state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();}
+  catch(e){state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start CheapOS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){toast('Local server disconnected. Restart CheapOS and refresh to reconnect.');state.online=false}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;
-$('#mode-select').onclick=()=>{dialog(`${modalHeader('ECONOMY MODE','The inexpensive model does the legwork.')}<p class="modal-description">The worker inspects, edits, and runs your checks. A passing checkpoint goes to the reviewer, who approves, requests changes, or asks to take over.</p><div class="mode-explanation">Economy is the execution mode in this alpha. Both roles, spending limits, and verification permissions are configurable.</div>`)};
-$('#composer').onsubmit=e=>{e.preventDefault();newTask($('#task-input').value.trim())};$('#task-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();newTask(e.target.value.trim())}};
+$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=async()=>{try{await api('/tasks/'+state.task.id+'/stop',{});toast('Stopping after the current model request.')}catch(e){toast(e.message)}};
 function toggleInspector() {
   const panel=$('#inspector');
   if(matchMedia('(max-width:1280px)').matches){panel.classList.remove('hidden');panel.classList.toggle('show')}

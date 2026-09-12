@@ -30,7 +30,7 @@ Click **Try the local demo** first. It creates a tiny Python repository, reprodu
 
 ## Connect models
 
-Open **Connections**. OmniRoute is the first-class local gateway, with separate model choices for the worker and reviewer. Direct OpenRouter, Ollama, and other OpenAI-compatible endpoints remain available per role.
+Open **Models**. OmniRoute is the first-class local gateway, with separate model choices for the worker and reviewer. Direct OpenRouter, Ollama, and other OpenAI-compatible endpoints remain available per role.
 
 ### OmniRoute companion
 
@@ -38,15 +38,15 @@ Install and configure [OmniRoute](https://github.com/diegosouzapw/OmniRoute) sep
 
 On launch, CheapOS checks `http://127.0.0.1:20128/v1/models`. It reuses an identified OmniRoute instance or starts the installed CLI on loopback when **Start installed OmniRoute when CheapOS launches** is enabled (the default). Startup runs in the background, so your local task history and patches stay accessible if the gateway fails. An occupied port or rejected client key does not trigger another server.
 
-1. In **Connections**, use **Open OmniRoute** to manage providers and their credentials.
+1. In **Models**, use **Open OmniRoute** to manage providers and their credentials.
 2. Use **Connect / start** or **Refresh models** to load the catalog. If required, enter a gateway client API key under **Startup & connection settings**; this is separate from the dashboard password.
 3. Choose **OmniRoute (shared local gateway)** for each role, then pick an explicit model. The picker shows advertised tool support and context size. Catalog access does not prove that a model can complete a task.
-4. For free tests, leave **Show free models only** checked and choose explicit OpenRouter `:free` variants for both roles. Unknown prices stay blank and must be supplied. New tasks default to a zero dollar cap when both configured model prices are zero.
-5. Save the connections, create a small task, and start it explicitly.
+4. For free tests, leave **Show free models only** checked and choose explicit OpenRouter `:free` variants for both roles. Unknown prices stay blank and must be supplied. New chats default to a zero-dollar cap. Change the cap explicitly before using paid models.
+5. Save the connections, open a project, and send a message.
 
 The free filter only filters the catalog; it is not a gateway billing control. CheapOS does not select fallback models. Check OmniRoute's own retries, combos, and fallback policies: `auto/cheap` is not a guarantee of free inference. A zero dollar cap uses configured prices and does not guarantee provider-side billing limits.
 
-OmniRoute also supports Ollama, allowing a local worker and a remote reviewer through the same gateway. Configure the local provider in OmniRoute, then refresh the catalog in CheapOS. If the catalog omits prices, disable the free-model filter to find it and enter zero prices only for a model actually running locally. A direct Ollama connection is also available below. Local inference still depends on your hardware and the model's tool support; that pairing has not been validated by the initial live experiment.
+OmniRoute also supports Ollama, allowing a local worker and a remote reviewer through the same gateway. Configure the local provider in OmniRoute, then refresh the catalog in CheapOS. If the catalog omits prices, disable the free-model filter to find it and enter zero prices only for a model actually running locally. A direct Ollama connection is also available below. Local inference depends on your hardware and the model’s tool support. A local `gemma4:31b` connection has been checked with real file reads, a project question, and a follow-up in the same chat. That verifies conversational use; it is not a completed live edit-and-review experiment.
 
 **Keep OmniRoute running when CheapOS closes** is enabled by default, allowing other clients to keep using it. Disable it to stop a process started by the current CheapOS session on exit. CheapOS never stops an instance it merely reused. Startup preferences are saved in `.cheapos/gateway.json`; gateway client keys remain in memory, or can be supplied with `CHEAPOS_GATEWAY_API_KEY` in the launch environment.
 
@@ -62,14 +62,17 @@ Saving, startup, and catalog refresh make no inference requests. Automated tests
 
 References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter tool calling](https://openrouter.ai/docs/guides/features/tool-calling), [OpenRouter limits](https://openrouter.ai/docs/api-reference/limits), [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility).
 
-## Run a task
+## Open a project and chat
 
-1. Click **New task**, enter the root path of a local Git repository, and describe a focused change.
-2. Set a verification command, such as `python3 -m unittest discover -v`, and your limits.
-3. CheapOS creates a separate copy of eligible tracked and untracked files, including your current edits. Inspect the task and click **Start task**.
-4. Approve verification commands when prompted. The worker reads, searches, edits, and iterates. The controller reruns your command before sending a checkpoint to the reviewer.
-5. The reviewer can **approve**, **request changes**, or **request takeover**. A takeover pauses for your approval and uses the same remaining budget; its final patch still needs your review.
-6. Inspect **Activity**, **Changes**, and **Checks**, then **Export patch**.
+1. Click **Open project** and enter the root folder of a local Git repository. It is remembered on this computer; opening it makes no model request.
+2. Type a question or describe a change, then send. CheapOS creates a separate task copy and uses your saved model choices and limits.
+3. Questions can finish with an answer. For changes, the worker inspects the project, proposes a verification command, and asks for approval in the conversation. The controller reruns checks before requesting a reviewer decision.
+4. Keep talking in the same chat. Follow-ups retain the task copy, original model pair, accumulated usage, and prior requests—even after a completed review. **New chat** starts a fresh copy of the source project.
+5. Open **Changes** to inspect and export a patch. **Checks** shows verification output. The activity log, models, and accounting live under **Details**.
+
+The spending control below the message box edits the current chat's limits, or defaults for new chats. Saving limits does not run a model. Model settings apply to new chats; existing chats retain their original model pair. An error never silently changes models or retries a request.
+
+The reviewer can approve, request revisions, or request takeover. Takeover requires your explicit approval and uses the same remaining budget. Its final patch still needs your review. Plain answers and clarification questions do not count as reviewer approval; saved edits remain available in **Changes**.
 
 The source checkout is not modified by file tools. From the original repository, inspect and apply the downloaded patch:
 
@@ -80,9 +83,9 @@ git apply /path/to/cheapos-TASK_ID.patch
 
 Snapshots omit common secret filenames, symlinks, dependency directories, and ignored files. This is not comprehensive secret detection. Inspect your repository before sending its contents to a remote provider.
 
-Dependencies are not installed automatically. This alpha works best with small, dependency-light projects. For other projects, create the task, find its copy under **Workspace details**, prepare dependencies there yourself, then start it. Commands are split into arguments without a shell; pipes, shell expansion, and redirection are not interpreted.
+Dependencies are not installed automatically. This alpha works best with small, dependency-light projects. For other projects, pause the chat, find its copy under **Details → Workspace details**, prepare dependencies there yourself, then resume. Commands are split into arguments without a shell; pipes, shell expansion, and redirection are not interpreted.
 
-**Verification runs repository code on your host computer. A separate copy is not an operating-system sandbox.** Commands require approval by default. The optional per-task permission allows the exact configured command throughout that task, including after the worker changes code it executes. Use repositories you trust. Checks have a 90-second timeout and output limits; child processes are stopped as a group on macOS/Linux. Model API keys are removed from their environment.
+**Verification runs repository code on your host computer. A separate copy is not an operating-system sandbox.** Commands require approval by default. Legacy tasks may have a saved permission for their exact configured command; a newly proposed command always needs approval. Use repositories you trust. Checks have a 90-second timeout and output limits; child processes are stopped as a group on macOS/Linux. Model API keys are removed from their environment.
 
 ## Limits and recovery
 
@@ -102,6 +105,7 @@ There is no automatic commit, push, dependency installation, merge, arbitrary sh
 ```sh
 python3 -B -m unittest discover -s tests -v
 node --check dist/app.js
+node --test tests/test_guidance.js
 ```
 
 Node is only needed for the optional JavaScript syntax check. Tests use temporary local repositories and HTTP servers; they require no API keys and make no external inference calls.

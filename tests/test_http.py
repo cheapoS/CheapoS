@@ -47,7 +47,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(headers['Cache-Control'], 'no-store')
         self.assertEqual(headers['X-Frame-Options'], 'DENY')
         self.assertNotIn('Access-Control-Allow-Origin', headers)
-        for path in ['/', '/styles.css', '/app.js']:
+        for path in ['/', '/styles.css', '/guidance.js', '/app.js']:
             self.assertEqual(self.request('GET', path)[0], 200)
 
     def test_cross_site_and_dns_rebinding_blocked(self):
@@ -81,6 +81,46 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post('/api/config', [1, 2])[0], 400)
         self.assertEqual(self.post('/api/tasks', {})[0], 400)
         self.assertEqual(self.post('/api/tasks/missing/approval', {'approved':'yes'})[0], 400)
+
+    def test_project_chat_and_followup_api(self):
+        source = self.engine.create_demo()['source']
+        status, _, body = self.post('/api/projects', {'repository':source})
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(body)['path'],source)
+        config = {role:{'base_url':'http://127.0.0.1:1/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']}
+        self.assertEqual(self.post('/api/config', config)[0],200)
+        status, _, body = self.post('/api/tasks', {'repository':source,'prompt':'Hi','conversational':True})
+        self.assertEqual(status,200)
+        task = json.loads(body)
+        self.assertEqual(task['status'],'ready')
+        self.assertEqual(task['check_command'],[])
+        provider = Mock()
+        provider.complete.return_value = ({'role':'assistant','content':'Hello. What would you like to explore?'},{'prompt_tokens':5,'completion_tokens':5,'cost':0})
+        self.engine.provider_factory = lambda role, config:provider
+        self.assertEqual(self.post('/api/tasks/'+task['id']+'/start',{})[0],200)
+        self.engine.runtimes[task['id']].thread.join(5)
+        self.assertEqual(self.post('/api/tasks/'+task['id']+'/message',{'message':'Tell me about this project.'})[0],200)
+        self.engine.runtimes[task['id']].thread.join(5)
+        result = json.loads(self.request('GET','/api/tasks/'+task['id'])[2])
+        self.assertEqual(result['status'],'awaiting_reply')
+        self.assertEqual(result['requests'],['Hi','Tell me about this project.'])
+        self.assertEqual(result['usage']['worker']['tokens'],20)
+        self.assertNotIn('messages',result)
+        for value in [None, '', False]:
+            self.assertEqual(self.post('/api/tasks/'+task['id']+'/message',{'message':value})[0],400)
+
+    def test_preferences_and_limits_save_without_dispatch(self):
+        status, _, body = self.post('/api/preferences', {'limits':{'dollars':0,'output_tokens':4096}})
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(body)['limits']['output_tokens'],4096)
+        bootstrap = json.loads(self.request('GET','/api/bootstrap')[2])
+        self.assertEqual(bootstrap['preferences']['limits']['dollars'],0)
+        task=self.engine.create_demo()
+        status, _, body = self.post('/api/tasks/'+task['id']+'/limits', {'limits':{'dollars':0}})
+        self.assertEqual(status,200)
+        self.assertEqual(json.loads(body)['status'],'ready')
+        self.assertEqual(self.engine.runtimes,{})
+        self.assertEqual(self.post('/api/projects',{'repository':''})[0],400)
 
     def test_gateway_api_is_read_only_until_authorized_and_redacts_key(self):
         with patch.object(self.engine.gateway, 'refresh') as refresh:

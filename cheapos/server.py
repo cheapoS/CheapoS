@@ -14,7 +14,7 @@ from .providers import validate_provider, ProviderError
 def public_task(task, summary=False):
     if summary:
         return {key: task[key] for key in ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage")}
-    return {key: value for key, value in task.items() if key not in {"messages", "fixture_phase", "in_flight"}}
+    return {key: value for key, value in task.items() if key not in {"messages", "fixture_phase", "in_flight", "turn_start_patch"}}
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -78,7 +78,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "styles.css"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "styles.css"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():
@@ -87,7 +87,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
         engine = self.server.engine
         try:
             if path == "/api/bootstrap":
-                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "tasks": engine.store.list(summary=True)})
+                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "tasks": engine.store.list(summary=True), "projects": engine.projects(), "preferences": engine.preferences()})
+            elif path == "/api/projects":
+                self.reply(engine.projects())
             elif path == "/api/gateway":
                 self.reply(engine.gateway.snapshot())
             elif path == "/api/gateway/models":
@@ -132,6 +134,10 @@ class LocalHandler(SimpleHTTPRequestHandler):
             path = urlsplit(self.path).path
             if path == "/api/config":
                 result = engine.configure(values)
+            elif path == "/api/projects":
+                result = engine.open_project(values)
+            elif path == "/api/preferences":
+                result = engine.save_preferences(values)
             elif path == "/api/gateway/config":
                 with engine.lock:
                     if any(r.thread and r.thread.is_alive() for r in engine.runtimes.values()):
@@ -161,6 +167,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 task_id, action = parts[2:]
                 if action == "start":
                     result = public_task(engine.start(task_id, values))
+                elif action == "message":
+                    if not isinstance(values.get("message"), str):
+                        raise ValueError("Provide a message")
+                    result = public_task(engine.start(task_id, {"message": values["message"]}))
+                elif action == "limits":
+                    result = public_task(engine.update_limits(task_id, values))
                 elif action == "stop":
                     result = engine.stop(task_id)
                 elif action == "approval":

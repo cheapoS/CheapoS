@@ -36,14 +36,21 @@ class Workspace:
     def __init__(self, directory):
         self.root = Path(directory).resolve()
 
-    @classmethod
-    def snapshot(cls, source, destination):
+    @staticmethod
+    def project_root(source):
+        if not isinstance(source, (str, Path)) or not str(source).strip():
+            raise ValueError("Choose a local Git repository directory")
         source = Path(source).expanduser().resolve(strict=True)
         if not source.is_dir():
             raise ValueError("Choose a local Git repository directory")
         top = Path(git(source, "rev-parse", "--show-toplevel").strip()).resolve()
         if top != source:
             raise ValueError("Choose the root of the Git repository: " + str(top))
+        return source
+
+    @classmethod
+    def snapshot(cls, source, destination):
+        source = cls.project_root(source)
         destination = Path(destination).resolve()
         if destination == source or destination in source.parents:
             raise ValueError("Snapshot destination must not contain the source repository")
