@@ -1,5 +1,10 @@
 .DS_Store
+/.openai/
 .sites-runtime/
+__pycache__/
 *.log
 node_modules/
 .env
+.env.*
+!.env.example
+.cheapos/

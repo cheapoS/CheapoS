@@ -1,0 +1,134 @@
+"""OpenAI-compatible chat completions, with explicit accounting before dispatch."""
+
+import json
+import math
+import os
+import re
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+class ProviderError(Exception):
+    pass
+
+
+class BudgetError(Exception):
+    pass
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def validate_provider(value, role):
+    if not isinstance(value, dict):
+        raise ValueError("Provider settings must be an object")
+    endpoint = str(value.get("base_url", "")).rstrip("/")
+    parsed = urlsplit(endpoint)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("Use an API base URL without credentials, query parameters, or fragments")
+    if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("Remote model endpoints must use HTTPS")
+    model = str(value.get("model", "")).strip()
+    if not model or len(model) > 200:
+        raise ValueError(f"Choose a {role} model ID")
+    rates = []
+    for key in ("input_rate", "output_rate"):
+        try:
+            rate = float(value[key])
+        except (ValueError, TypeError, KeyError):
+            raise ValueError("Set input and output prices per million tokens (0 for a free/local model)")
+        if not math.isfinite(rate) or rate < 0 or rate > 10000:
+            raise ValueError("Invalid model price")
+        rates.append(rate)
+    env = value.get("key_env") or f"CHEAPOS_{role.upper()}_API_KEY"
+    if not re.fullmatch(r"CHEAPOS_[A-Z0-9_]+", env):
+        raise ValueError("API key environment variable names must start with CHEAPOS_")
+    return {"base_url": endpoint, "model": model, "input_rate": rates[0], "output_rate": rates[1], "key_env": env}
+
+
+class ChatProvider:
+    def __init__(self, config, key=""):
+        self.config = config
+        self.key = key or os.environ.get(config["key_env"], "")
+
+    def complete(self, messages, tools, max_tokens):
+        body = {"model": self.config["model"], "messages": messages, "max_tokens": max_tokens, "stream": False}
+        if tools:
+            body.update({"tools": tools, "tool_choice": "auto", "parallel_tool_calls": False})
+        headers = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "CheapOS/0.2"}
+        if self.key:
+            headers["Authorization"] = "Bearer " + self.key
+        request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
+        try:
+            with build_opener(NoRedirects()).open(request, timeout=90) as response:
+                raw = response.read(4_000_001)
+                if len(raw) > 4_000_000:
+                    raise ProviderError("Provider response exceeded 4 MB")
+                data = json.loads(raw)
+        except HTTPError as error:
+            reason = {401: "API key was rejected", 402: "Provider credit limit reached", 403: "Provider denied access", 429: "Provider rate limit reached"}.get(error.code, f"Provider returned HTTP {error.code}")
+            raise ProviderError(reason + ". The task is paused; no automatic retry was made.") from None
+        except (URLError, TimeoutError, OSError) as error:
+            raise ProviderError("Model request did not complete. Its reserved budget remains counted because billing is uncertain.") from None
+        except (ValueError, KeyError, TypeError):
+            raise ProviderError("Provider returned an invalid JSON response") from None
+        try:
+            message = data["choices"][0]["message"]
+            if not isinstance(message, dict) or not (message.get("content") or message.get("tool_calls")):
+                raise ValueError()
+            # Preserve tool IDs and reasoning_details required by some tool-capable providers.
+            message = {key: value for key, value in message.items() if key in {"role", "content", "tool_calls", "reasoning_details"}}
+            message["role"] = "assistant"
+            return message, data.get("usage") or {}
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise ProviderError("Provider returned no usable message or tool calls") from None
+
+
+def reserve(task, config, messages, tools, role):
+    # A deliberately conservative preflight estimate; provider tokenizers/billing can differ.
+    prompt_bound = len(json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False).encode("utf-8")) + 1024
+    output = int(task["limits"]["output_tokens"])
+    if role == "reviewer":
+        remaining = task["limits"]["reviewer_tokens"] - task["usage"]["reviewer"]["tokens"]
+        output = min(output, remaining - prompt_bound)
+    remaining_cost = task["limits"]["dollars"] - task["usage"]["cost"]
+    input_cost = prompt_bound * config["input_rate"] / 1_000_000
+    if config["output_rate"]:
+        output = min(output, math.floor((remaining_cost - input_cost) * 1_000_000 / config["output_rate"]))
+    projected = input_cost + max(0, output) * config["output_rate"] / 1_000_000
+    if output < 128 or projected > remaining_cost + 1e-10:
+        raise BudgetError("The next model request does not fit the remaining budget. Increase the task limit or use a smaller checkpoint/model.")
+    reservation = {"role": role, "prompt_tokens": prompt_bound, "completion_tokens": output, "tokens": prompt_bound + output, "cost": projected}
+    bucket = task["usage"][role]
+    bucket["tokens"] += reservation["tokens"]
+    bucket["cost"] += projected
+    task["usage"]["cost"] += projected
+    task["usage"]["uncertain_requests"] += 1
+    task["in_flight"] = reservation
+    return reservation
+
+
+def reconcile(task, config, reservation, usage):
+    def count(key):
+        value = usage.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+    prompt, completion = count("prompt_tokens"), count("completion_tokens")
+    if prompt is None or completion is None:
+        task["in_flight"] = None
+        return False
+    cost = usage.get("cost")
+    reported_cost = isinstance(cost, (int, float)) and not isinstance(cost, bool) and math.isfinite(cost) and cost >= 0
+    if not reported_cost:
+        cost = (prompt * config["input_rate"] + completion * config["output_rate"]) / 1_000_000
+    bucket = task["usage"][reservation["role"]]
+    bucket["tokens"] += prompt + completion - reservation["tokens"]
+    bucket["cost"] += cost - reservation["cost"]
+    task["usage"]["cost"] += cost - reservation["cost"]
+    task["usage"]["uncertain_requests"] -= 1
+    if not reported_cost:
+        task["usage"]["estimated_requests"] += 1
+    task["in_flight"] = None
+    return True
