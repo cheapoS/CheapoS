@@ -90,6 +90,7 @@ function renderTask({resetScroll=false}={}) {
   $('.task-heading').hidden=false;$('.tabs').hidden=false;$('#compact-session').hidden=false;$('#toggle-inspector').hidden=false;$('#inspector').classList.remove('home-hidden');
   const scroller=$('#view-container'), oldScroll=scroller.scrollTop, bottom=scroller.scrollHeight-scroller.clientHeight-oldScroll<60;
   const expanded=new Map((resetScroll?[]:$$('details[data-event]')).map(d=>[d.dataset.event,d.open]));
+  const thoughtScroll=new Map((resetScroll?[]:$$('[data-thinking]')).map(el=>[el.dataset.thinking,{top:el.scrollTop,bottom:el.scrollHeight-el.clientHeight-el.scrollTop<30}]));
   $('#task-title').textContent=task.title;$('#task-title').title=task.title;
   $('#project-name').textContent=CheapOSGuide.projectName(task);
   $('#task-status').textContent=labels[task.status]||task.status;
@@ -100,10 +101,11 @@ function renderTask({resetScroll=false}={}) {
   const sums=patchTotals(task.patch);$('#diff-tally').innerHTML=`<span>+${sums.add}</span><span>−${sums.remove}</span>`;
   $('#compact-cost').textContent=money(task.usage.cost);
   $('#task-actions').innerHTML=activeStatuses.has(task.status)?`<button class="subtle-button" id="pause-task">${icon('x')}Pause</button>`:'<button class="subtle-button" id="task-overview">Details</button>';
-  if($('#pause-task'))$('#pause-task').onclick=async()=>{try{await api('/tasks/'+task.id+'/stop',{});toast('Pausing. An in-flight model request may take up to 3 minutes.')}catch(e){toast(e.message)}};
+  if($('#pause-task'))$('#pause-task').onclick=stopTask;
   if($('#task-overview'))$('#task-overview').onclick=toggleInspector;
   renderView();renderInspector();renderComposer();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
+  for(const el of $$('[data-thinking]')){const saved=thoughtScroll.get(el.dataset.thinking);el.scrollTop=!saved||saved.bottom?el.scrollHeight:saved.top}
   scroller.scrollTop=resetScroll?scroller.scrollHeight:['chat','activity'].includes(state.view)&&activeStatuses.has(task.status)&&bottom?scroller.scrollHeight:oldScroll;
 }
 function renderView() {
@@ -124,8 +126,26 @@ function eventDetail(event) {
 function messageText(value) {
   return String(value||'').split(/```[^\n]*\n([\s\S]*?)```/g).map((part,i)=>i%2?`<pre class="chat-code"><code>${esc(part)}</code></pre>`:`<p>${esc(part).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`\n]+)`/g,'<code>$1</code>')}</p>`).join('');
 }
+function progressMarkup(task) {
+  const p=CheapOSGuide.progress(task);if(!p)return '';
+  return `<section class="request-progress ${task.stream&&task.stream.phase!=='waiting'?'is-streaming':''}" aria-label="Current activity"><div class="request-progress-heading"><span class="spinner"></span><strong id="request-stage">${esc(p.title)}</strong><span id="request-elapsed" aria-label="Time in current step">${p.elapsed}</span></div><div class="request-model" id="request-detail">${esc(p.detail)}</div><p class="request-hint" id="request-hint">${esc(p.hint)}</p><div class="request-evidence"><span>${icon('code')}${esc(p.action)}</span><span>${icon('file')}${esc(p.evidence)}</span></div><div class="request-actions"><button class="text-link" data-chat-action="activity">View activity</button><button class="subtle-button" data-chat-action="stop" ${p.stage==='stopping'?'disabled':''}>${p.stage==='stopping'?'Stopping…':'Stop'}</button></div></section>`;
+}
+function updateProgressClock() {
+  if(!state.task||!$('#request-elapsed'))return;
+  const p=CheapOSGuide.progress(state.task);if(!p)return;
+  $('#request-stage').textContent=p.title;$('#request-detail').textContent=p.detail;$('#request-elapsed').textContent=p.elapsed;$('#request-hint').textContent=p.hint;
+  $('.request-progress').classList.toggle('slow',p.slow);
+}
+async function stopTask() {
+  try{await api('/tasks/'+state.task.id+'/stop',{});await refresh()}catch(e){toast(e.message)}
+}
+function thinkingMarkup(detail,live=false) {
+  if(!detail.thinking)return '';
+  const key='generation-'+detail.request_id;
+  return `<details class="thinking-panel ${live?'is-live':''}" data-event="${key}" ${live?'open':''}><summary>${icon('spark')}<strong>${detail.interrupted?'Thinking · interrupted':'Thinking'}</strong><span>${live?'Live':esc(detail.model)}</span>${icon('chevron')}</summary><div class="thinking-output" data-thinking="${key}">${esc(detail.thinking)}</div>${detail.truncated?'<p class="thinking-note">Showing the first 16,000 characters.</p>':''}</details>`;
+}
 function renderChat() {
-  const task=state.task,guide=CheapOSGuide.taskGuide(task);
+  const task=state.task,guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
   const message=(role,text)=>`<article class="chat-message ${role==='You'?'from-user':'from-agent'}"><div class="chat-author">${role==='You'?'<span class="mini-avatar">Y</span>':icon(role==='Review'?'spark':'code')}<strong>${role}</strong></div><div class="chat-message-body">${messageText(text)}</div></article>`;
   const parts=[task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':'',message('You',task.prompt)];
   let work=[];
@@ -136,25 +156,28 @@ function renderChat() {
     work=[];
   };
   for(const event of task.events){
-    if(['user','assistant','review','checkpoint'].includes(event.kind)){
+    if(['user','assistant','review','checkpoint','generation'].includes(event.kind)){
       flush();
       if(event.kind==='user'||event.kind==='assistant')parts.push(message(event.kind==='user'?'You':'CheapOS',event.detail));
+      else if(event.kind==='generation'){parts.push(thinkingMarkup(event.detail));if(event.detail.interrupted&&event.detail.content)parts.push(`<div class="partial-response"><span>Partial response · interrupted</span>${messageText(event.detail.content)}</div>`)}
       else if(event.kind==='checkpoint')parts.push(message('CheapOS',event.detail.worker_summary));
       else parts.push(message('Review',event.detail.feedback));
     }else work.push(event);
   }
   flush();
+  const streamedOutput=task.stream?thinkingMarkup(task.stream,true)+(task.stream.content?`<article class="chat-message from-agent streaming-answer"><div class="chat-author">${icon('code')}<strong>CheapOS</strong><span>Writing…</span></div><div class="chat-message-body">${messageText(task.stream.content)}</div></article>`:''):'';
   const button=(action,label,primary=false)=>`<button class="${primary?'primary-button':'subtle-button'}" data-chat-action="${action}">${label}</button>`;
   if(task.pending_approval)parts.push(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in the task copy on your computer.</p><div class="button-row">${button('approve','Run command',true)}${button('decline','Decline')}</div></section>`);
-  else if(activeStatuses.has(task.status))parts.push(`<div class="live-progress"><span class="spinner"></span>${task.status==='reviewing'?'Checking the changes with the reviewer…':task.active_role==='reviewer'?'The reviewer is working on your changes…':'Working on your message…'}</div>`);
+  else if(activeStatuses.has(task.status))parts.push(progressMarkup(task),streamedOutput);
   else if(task.status==='ready')parts.push(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
   else if(['approved','completed'].includes(task.status))parts.push(`<section class="chat-result">${icon('check')}<div><strong>${task.status==='approved'?'Changes are ready to review.':'Implementation finished. Your review is next.'}</strong><p>${task.changes.length} changed files · ${task.checks.at(-1)?.passed?'Latest checks passed':'Check the verification output'}</p><div class="button-row">${button('changes','Review changes',true)}<a class="subtle-button" href="/api/tasks/${task.id}/patch" download>Export patch</a></div></div></section>`);
   else if(task.status==='awaiting_reply'&&task.changes.length)parts.push(`<div class="chat-saved">${icon('file')}<span>${task.changes.length} changed files saved in this chat.</span>${button('changes','View changes')}</div>`);
-  else if(task.status!=='awaiting_reply')parts.push(`<section class="chat-decision"><strong>${esc(guide.title)}</strong><p>${task.status==='error'?'Your work is saved. You can retry, check the connection, or send a follow-up below.':esc(guide.description)}</p>${task.error?`<details class="chat-error"><summary>Details</summary><p>${esc(task.error)}</p></details>`:''}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?'Review limits':'Resume',true)}${task.status==='error'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
-  $('#chat-view').innerHTML=parts.join('');
+  else if(task.status!=='awaiting_reply')parts.push(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${task.error?`<details class="chat-error"><summary>Details</summary><p>${esc(task.error)}</p></details>`:''}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?'Review limits':'Resume',true)}${task.status==='error'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
+  $('#chat-view').innerHTML=parts.join('');updateProgressClock();
   $$('[data-chat-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.chatAction;
-    if(action==='changes'){setView('changes');return}
+    if(action==='changes'||action==='activity'){setView(action);return}
+    if(action==='stop'){await stopTask();return}
     if(action==='connections'){openConnections(undefined,task);return}
     if(action==='resume'){resumeDialog();return}
     b.disabled=true;
@@ -381,7 +404,7 @@ async function bootstrap() {
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){toast('Local server disconnected. Restart CheapOS and refresh to reconnect.');state.online=false}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=async()=>{try{await api('/tasks/'+state.task.id+'/stop',{});toast('Stopping after the current model request.')}catch(e){toast(e.message)}};
+$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopTask;
 function toggleInspector() {
   const panel=$('#inspector');
   if(matchMedia('(max-width:1280px)').matches){panel.classList.remove('hidden');panel.classList.toggle('show')}
@@ -391,4 +414,4 @@ $('#toggle-inspector').onclick=toggleInspector;$('#compact-session').onclick=tog
 $('#sidebar-toggle').onclick=()=>{if(matchMedia('(max-width:700px)').matches)$('#sidebar').classList.remove('show');else{$('#sidebar').classList.add('collapsed');$('#mobile-menu').style.display='flex'}};
 $('#mobile-menu').onclick=()=>{if(matchMedia('(max-width:700px)').matches)$('#sidebar').classList.toggle('show');else{$('#sidebar').classList.remove('collapsed');$('#mobile-menu').style.display='none'}};
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}if(e.key==='Escape'){$('#sidebar').classList.remove('show');$('#inspector').classList.remove('show')}});
-bootstrap();setTimeout(poll,1500);
+bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);

@@ -169,6 +169,19 @@ class FakeModelHandler(BaseHTTPRequestHandler):
             self.send_response(429)
             self.end_headers()
             return
+        if self.server.mode == 'stream':
+            self.send_response(200)
+            self.send_header('Content-Type','text/event-stream')
+            self.end_headers()
+            for data in [
+                {'choices':[{'index':0,'delta':{'reasoning':'Checking the files.'}}]},
+                {'choices':[{'index':0,'delta':{'content':'Ready.'},'finish_reason':'stop'}]},
+                {'choices':[],'usage':{'prompt_tokens':12,'completion_tokens':7}}
+            ]:
+                self.wfile.write(('data: '+json.dumps(data)+'\n\n').encode())
+                self.wfile.flush()
+            self.wfile.write(b'data: [DONE]\n\n')
+            return
         message = self.server.responder(body) if hasattr(self.server, 'responder') else {'role':'assistant','content':None,'tool_calls':[{'id':'abc','type':'function','function':{'name':'list_files','arguments':'{}'}}]}
         data = {'choices':[{'message':message}], 'usage':{'prompt_tokens':12,'completion_tokens':7,'cost':.00001}}
         encoded = json.dumps(data).encode()
@@ -201,6 +214,17 @@ class ProviderTests(unittest.TestCase):
         self.assertFalse(body['parallel_tool_calls'])
         self.assertEqual(message['tool_calls'][0]['id'], 'abc')
         self.assertEqual(usage['prompt_tokens'], 12)
+
+    def test_streaming_adapter_delivers_thinking_and_answer(self):
+        self.server.mode='stream'
+        seen=[]
+        message,usage=self.provider.complete_with_progress([{'role':'user','content':'Hi'}],[],128,lambda kind,text:seen.append((kind,text)),lambda:False)
+        body=self.server.requests[-1][2]
+        self.assertTrue(body['stream'])
+        self.assertEqual(body['stream_options'],{'include_usage':True})
+        self.assertEqual(seen,[('thinking','Checking the files.'),('answer','Ready.')])
+        self.assertEqual(message['content'],'Ready.')
+        self.assertEqual(usage['completion_tokens'],7)
 
     def test_redirect_is_not_followed(self):
         self.server.mode = 'redirect'

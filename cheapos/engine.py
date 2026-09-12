@@ -13,11 +13,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .providers import BudgetError, ProviderError, reconcile, reserve, validate_provider
+from .providers import BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider
 from .storage import Store, write_json
 from .workspace import Workspace, git
 from .gateways import gateway_for
 from .omniroute import OmniRouteManager
+from .streaming import STREAM_MAX_SECONDS
 
 
 def now():
@@ -251,7 +252,9 @@ class Engine:
                 self.event(task, "user", "You", followup.strip())
             task["status"] = "running"
             task["error"] = None
+            task["error_code"] = None
             task["pending_approval"] = None
+            task["stream"] = None
             # Resume from durable evidence, not by replaying an ambiguous model/tool call.
             task["messages"] = self.initial_messages(task)
             runtime = Runtime(task)
@@ -267,6 +270,8 @@ class Engine:
             if not runtime or not runtime.thread.is_alive():
                 raise ValueError("Task is not running")
             runtime.stop.set()
+            runtime.task["status"] = "stopping"
+            self.event(runtime.task, "state", "Stop requested; waiting for the current operation to finish")
             runtime.approval.set()
         return {"stopping": True}
 
@@ -337,9 +342,42 @@ class Engine:
             return self.fixture_response(task, role)
         config = task["providers"][role]
         reservation = reserve(task, config, messages, tools, role)
-        self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": reservation["completion_tokens"]})
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
-        message, usage = provider.complete(messages, tools, reservation["completion_tokens"])
+        streaming = getattr(provider, "streams_output", False) is True
+        self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": reservation["completion_tokens"], "timeout_seconds": REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": STREAM_MAX_SECONDS if streaming else None})
+        if streaming:
+            live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
+            task["stream"] = live
+            self.store.save(task)
+            published = None
+            completed = False
+            def emit(kind, value):
+                nonlocal published
+                if runtime.stop.is_set():
+                    raise InterruptedError("Stopped while receiving the model response")
+                live["phase"] = kind
+                live["updated_at"] = now()
+                if kind == "tool":
+                    live["tool"] = value[:200]
+                else:
+                    key = "thinking" if kind == "thinking" else "content"
+                    text = live[key] + value
+                    live["truncated"] |= len(text) > 16000
+                    live[key] = text[:16000]
+                if published is None or time.monotonic() - published >= .5:
+                    task["updated_at"] = now()
+                    self.store.publish(task)
+                    published = time.monotonic()
+            try:
+                message, usage = provider.complete_with_progress(messages, tools, reservation["completion_tokens"], emit, runtime.stop.is_set)
+                completed = True
+            finally:
+                task["stream"] = None
+                if live["thinking"] or not completed and live["content"]:
+                    self.event(task, "generation", "Model thinking" if completed else "Interrupted model output", {"request_id":live["request_id"], "model":config["model"], "role":role, "thinking":live["thinking"], "content":live["content"] if not completed else "", "interrupted":not completed, "truncated":live["truncated"]})
+                self.store.save(task)
+        else:
+            message, usage = provider.complete(messages, tools, reservation["completion_tokens"])
         known = reconcile(task, config, reservation, usage)
         self.store.save(task)
         if not known:
@@ -529,6 +567,7 @@ class Engine:
             self.event(task, "budget", "Task paused at a limit", task["error"])
         except Exception as error:
             task["status"] = "error"
+            task["error_code"] = getattr(error, "code", None)
             task["error"] = str(error)[:1000] if isinstance(error, (ProviderError, ValueError, OSError)) else "Unexpected execution error; saved work is available for inspection."
             self.event(task, "error", "Task stopped with an error", task["error"])
         finally:

@@ -7,10 +7,16 @@ import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+from .streaming import read_chat_stream
+
+
+REQUEST_TIMEOUT_SECONDS = 180
 
 
 class ProviderError(Exception):
-    pass
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 class BudgetError(Exception):
@@ -62,24 +68,45 @@ class ChatProvider:
         self.key = key or os.environ.get(config["key_env"], "")
 
     def complete(self, messages, tools, max_tokens):
-        body = {"model": self.config["model"], "messages": messages, "max_tokens": max_tokens, "stream": False}
+        return self._complete(messages, tools, max_tokens)
+
+    @property
+    def streams_output(self):
+        endpoint = urlsplit(self.config["base_url"])
+        return self.config.get("gateway") != "omniroute" and endpoint.hostname in {"127.0.0.1", "localhost", "::1"} and endpoint.port == 11434
+
+    def complete_with_progress(self, messages, tools, max_tokens, emit, stopped):
+        return self._complete(messages, tools, max_tokens, emit, stopped)
+
+    def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False):
+        body = {"model": self.config["model"], "messages": messages, "max_tokens": max_tokens, "stream": emit is not None}
+        if emit is not None:
+            body["stream_options"] = {"include_usage": True}
         if tools:
             body.update({"tools": tools, "tool_choice": "auto", "parallel_tool_calls": False})
-        headers = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "CheapOS/0.2"}
+        headers = {"Content-Type": "application/json", "Accept": "text/event-stream" if emit is not None else "application/json", "User-Agent": "CheapOS/0.2"}
         if self.key:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
         try:
-            with build_opener(NoRedirects()).open(request, timeout=180) as response:
-                raw = response.read(4_000_001)
-                if len(raw) > 4_000_000:
-                    raise ProviderError("Provider response exceeded 4 MB")
-                data = json.loads(raw)
+            with build_opener(NoRedirects()).open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                if emit is not None and response.headers.get_content_type() == "text/event-stream":
+                    data = read_chat_stream(response, emit, stopped, ProviderError)
+                else:
+                    raw = response.read(4_000_001)
+                    if len(raw) > 4_000_000:
+                        raise ProviderError("Provider response exceeded 4 MB")
+                    data = json.loads(raw)
+        except InterruptedError:
+            raise
         except HTTPError as error:
             reason = {401: "API key was rejected", 402: "Provider credit limit reached", 403: "Provider denied access", 429: "Provider rate limit reached"}.get(error.code, f"Provider returned HTTP {error.code}")
             raise ProviderError(reason + ". The task is paused; no automatic retry was made.") from None
         except (URLError, TimeoutError, OSError) as error:
-            raise ProviderError("Model request did not complete. Its reserved budget remains counted because billing is uncertain.") from None
+            if isinstance(error, TimeoutError) or isinstance(getattr(error, "reason", None), TimeoutError):
+                reason = "The model stopped sending output for 3 minutes" if emit is not None else "The model did not finish within 3 minutes"
+                raise ProviderError(reason + ". The request stopped without an automatic retry; uncertain usage remains counted.", code="model_timeout") from None
+            raise ProviderError("The model connection failed before a complete response arrived. No automatic retry was made; uncertain usage remains counted.", code="model_connection") from None
         except (ValueError, KeyError, TypeError):
             raise ProviderError("Provider returned an invalid JSON response") from None
         try:
@@ -87,7 +114,7 @@ class ChatProvider:
             if not isinstance(message, dict) or not (message.get("content") or message.get("tool_calls")):
                 raise ValueError()
             # Preserve tool IDs and reasoning_details required by some tool-capable providers.
-            message = {key: value for key, value in message.items() if key in {"role", "content", "tool_calls", "reasoning_details"}}
+            message = {key: value for key, value in message.items() if key in {"role", "content", "tool_calls", "reasoning_details", "reasoning"}}
             message["role"] = "assistant"
             return message, data.get("usage") or {}
         except (KeyError, IndexError, TypeError, ValueError):

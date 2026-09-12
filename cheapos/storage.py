@@ -32,6 +32,7 @@ class Store:
                     task["status"] = "interrupted"
                     task["error"] = "The server stopped. Review the saved work before resuming."
                     task["pending_approval"] = None
+                    task["stream"] = None
                     write_json(path, task)
                 self.tasks[task["id"]] = task
             except (OSError, ValueError, KeyError):
@@ -48,6 +49,11 @@ class Store:
             if task_id not in self.tasks:
                 raise ValueError("Task not found")
             return copy.deepcopy(self.tasks[task_id])
+
+    def publish(self, task):
+        """Publish live output without fsyncing the entire task for each token."""
+        with self.lock:
+            self.tasks[task["id"]] = copy.deepcopy(task)
 
     def list(self, summary=False):
         with self.lock:

@@ -40,6 +40,48 @@ const CheapOSGuide = (() => {
     const checks=events.filter(e=>e.kind==='checks').length;
     return [reads?`Explored the project (${reads})`:null,edits?`Made ${edits} edit${edits===1?'':'s'}`:null,checks?`Ran ${checks} check${checks===1?'':'s'}`:null].filter(Boolean).join(' · ')||'Work details';
   }
-  return {taskGuide,projectName,workLabel,isActive:status=>active.has(status)};
+  function duration(seconds) {
+    seconds=Math.max(0,Math.floor(seconds));
+    return seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`;
+  }
+  function progress(task, at=Date.now()) {
+    if(!active.has(task.status))return null;
+    const events=task.events||[],latest=events.at(-1),request=[...events].reverse().find(e=>e.kind==='model');
+    const completed=[...events].reverse().find(e=>e.kind==='checks'||e.kind==='tool'&&e.title!=='Running verification');
+    const args=completed?.detail?.arguments||{};
+    const action=completed?({'read file':`Read ${args.path||'a file'}`,'write file':`Created ${args.path||'a file'}`,'replace text':`Edited ${args.path||'a file'}`,'list files':'Listed project files','search':`Searched for ${args.query||'text'}`}[completed.title]||completed.title):'No tool actions completed yet';
+    const files=(task.changes||[]).length,evidence=files?`${files} changed file${files===1?'':'s'} saved`:'No files changed yet';
+    let stage='working',title='Preparing the next step',detail='',since=latest?.time||task.updated_at;
+    if(task.status==='waiting_approval'){stage='approval';title='Waiting for your approval';detail=(task.pending_approval?.command||[]).join(' ')}
+    else if(task.status==='stopping'){stage='stopping';title='Stop requested';detail='Waiting for the current operation to finish. No new tools will start.'}
+    else if(latest?.kind==='model'){
+      stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':'worker';
+      title=role==='reviewer'?'Waiting for the reviewer’s response':'Waiting for the model’s response';
+      detail=task.providers?.[role]?.model||latest.title.replace(/^Requesting (worker|reviewer): /,'');since=latest.time;
+    }else if(latest?.title==='Running verification'){stage='checks';title='Running checks';detail=(latest.detail?.command||task.check_command||[]).join(' ')}
+    const timestamp=Date.parse(since),seconds=Number.isFinite(timestamp)?Math.max(0,(at-timestamp)/1000):0;
+    const limit=request?.detail?.timeout_seconds||180;
+    let slow=stage==='model'&&seconds>=30;
+    let hint=stage==='model'?(seconds>=limit-30?`Still waiting. The response limit is ${duration(limit)}.`:seconds>=30?'No response has arrived yet. You can stop this request.':'The model’s response will appear when it arrives.'):' ';
+    if(stage==='model'&&task.stream&&task.stream.phase!=='waiting'){
+      const stream=task.stream,phase=stream.phase;
+      title=phase==='thinking'?'Receiving the model’s thinking':phase==='answer'?'Receiving the model’s answer':'The model is preparing a tool call';
+      const updated=Date.parse(stream.updated_at),ago=Number.isFinite(updated)?Math.max(0,(at-updated)/1000):0;
+      slow=ago>=30;
+      detail=stream.model+(phase==='tool'&&stream.tool?' · '+stream.tool:'');
+      hint=ago>=10?`Last output ${duration(ago)} ago. Waiting for the next chunk.`:'Live output is arriving from the model.';
+    }
+    return {stage,title,detail,elapsed:duration(seconds),action,evidence,hint,slow};
+  }
+  function failure(task) {
+    const events=task.events||[],request=[...events].reverse().find(e=>e.kind==='model'),error=[...events].reverse().find(e=>e.kind==='error');
+    const elapsed=request&&error?(Date.parse(error.time)-Date.parse(request.time))/1000:0;
+    const legacyTimeout=task.error?.startsWith('Model request did not complete.')&&Math.round(elapsed)>=(request?.detail?.timeout_seconds||180);
+    const timeout=['model_timeout','stream_timeout'].includes(task.error_code)||legacyTimeout;
+    const files=(task.changes||[]).length;
+    return {timeout,title:timeout?'The model didn’t respond before the time limit.':taskGuide(task).title,
+      description:timeout?`${request?request.title.replace(/^Requesting (worker|reviewer): /,''):'The model'} ${task.error_code==='stream_timeout'?'reached the streaming time limit':request?.detail?.streaming?'stopped sending output before the response completed':`was given ${duration(request?.detail?.timeout_seconds||180)}`}. ${files?`${files} changed file${files===1?' is':'s are'} saved.`:'No files were changed.'} Retry when you’re ready.`:'The request stopped. Your saved work is available; check the details before retrying.'};
+  }
+  return {taskGuide,projectName,workLabel,progress,failure,duration,isActive:status=>active.has(status)};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;

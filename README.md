@@ -72,6 +72,8 @@ References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter 
 
 The spending control below the message box edits the current chat's limits, or defaults for new chats. Saving limits does not run a model. Model settings apply to new chats; existing chats retain their original model pair. An error never silently changes models or retries a request.
 
+Direct local Ollama connections on port `11434` stream output into the conversation. Models that expose reasoning show an expandable **Thinking** panel while the answer appears separately as it arrives. A progress card shows elapsed time, the last completed action, and saved file changes. Thinking is model output, not evidence that a file was edited or a check passed. Completed and interrupted thinking previews are saved locally, capped at 16,000 characters per response; they are excluded from reviewer checkpoints. Other connections currently show progress while waiting for a complete response.
+
 The reviewer can approve, request revisions, or request takeover. Takeover requires your explicit approval and uses the same remaining budget. Its final patch still needs your review. Plain answers and clarification questions do not count as reviewer approval; saved edits remain available in **Changes**.
 
 The source checkout is not modified by file tools. From the original repository, inspect and apply the downloaded patch:
@@ -93,7 +95,7 @@ Dependencies are not installed automatically. This alpha works best with small, 
 - Before dispatch, conservatively reserve prompt/output usage; reconcile with provider-reported tokens and cost. When cost is absent, calculate it from your configured prices.
 - Dollar caps are **estimates**, not guaranteed billing limits. Provider tokenization, pricing, and reported costs can differ. Configure a provider-side spending cap for a billing guarantee.
 - CheapOS does not automatically retry failed or ambiguous requests. An intermediary gateway may have its own retry policy. Uncertain reservations remain counted. Missing token usage pauses the task before tools execute.
-- Pause stops further tool work; an in-flight model request can take up to 3 minutes to return and may still be billed. Slow free or reasoning models may also require a longer queue wait in an intermediary gateway.
+- Stop prevents further tool work. Local streams check for cancellation as output arrives; a stalled connection can take 3 minutes to release. Local streaming also checks a 10-minute generation limit between chunks. Other model requests retain a 3-minute network timeout and may still be billed after stopping. Partial or interrupted tool calls never execute. Slow free or reasoning models may also require a longer queue wait in an intermediary gateway.
 - Tasks, patches, checks, checkpoints, and accounting are saved under `.cheapos/`. Interrupted tasks require an explicit resume and retain their usage. The server never automatically resumes paid work.
 - Compaction and resume preserve a bounded history of completed file observations and worker notes alongside the current patch and review feedback, without replaying old tool calls.
 - One task runs at a time. A process lock prevents two app servers from using the same data directory.
@@ -117,6 +119,7 @@ Node is only needed for the optional JavaScript syntax check. Tests use temporar
 | `cheapos/engine.py` | Worker/checkpoint/reviewer state machine |
 | `cheapos/workspace.py` | Repository copies, constrained file tools, verification |
 | `cheapos/providers.py` | Chat Completions adapter and usage reservations |
+| `cheapos/streaming.py` | Bounded streaming output and complete tool-call assembly |
 | `cheapos/gateways.py` | Gateway interface, model discovery, and adapter selection |
 | `cheapos/omniroute.py` | Optional local gateway startup, reuse, and process ownership |
 | `cheapos/storage.py` | Atomic local task persistence |

@@ -62,3 +62,30 @@ test('collapsed work labels describe observed actions only', () => {
   assert.equal(workLabel([{kind:'tool',title:'read file'},{kind:'model',title:'Requesting worker'},{kind:'checks',title:'Verification failed'}]), 'Explored the project (1) · Ran 1 check');
   assert.equal(workLabel([{kind:'tool_error',title:'replace text'}]), 'Work details');
 });
+
+const {progress,failure}=require('../dist/guidance.js');
+const when=Date.parse('2026-09-12T23:00:00Z');
+const request={id:2,kind:'model',title:'Requesting worker: gemma4:31b',time:new Date(when).toISOString(),detail:{timeout_seconds:180}};
+test('a long wait is visible but is not labelled a timeout while running',()=>{
+  const p=progress(task({status:'running',events:[{kind:'tool',title:'read file',detail:{arguments:{path:'README.md'}}},request]}),when+70000);
+  assert.equal(p.title,'Waiting for the model’s response');assert.equal(p.elapsed,'1m 10s');assert.equal(p.action,'Read README.md');assert.equal(p.evidence,'No files changed yet');assert.equal(p.slow,true);
+  assert.equal(progress(task({status:'error'})),null);
+});
+test('checks and stopping have distinct execution states',()=>{
+  assert.equal(progress(task({status:'running',events:[request,{kind:'tool',title:'Running verification',time:request.time,detail:{command:['python3','-m','unittest']}}]}),when).stage,'checks');
+  assert.equal(progress(task({status:'stopping',events:[request]}),when).title,'Stop requested');
+});
+test('live reasoning and answer chunks replace the generic wait',()=>{
+  const base=task({status:'running',events:[request],stream:{model:'gemma4:31b',phase:'thinking',updated_at:new Date(when+60000).toISOString()}});
+  assert.equal(progress(base,when+60000).title,'Receiving the model’s thinking');
+  assert.equal(progress(base,when+60000).slow,false);
+  assert.equal(progress(base,when+91000).slow,true);
+  base.stream.phase='answer';assert.equal(progress(base,when+60000).title,'Receiving the model’s answer');
+});
+test('only evidence of a timeout produces the timeout explanation',()=>{
+  const failed=task({status:'error',error:'Model request did not complete.',events:[request,{kind:'error',time:new Date(when+180000).toISOString()}]});
+  assert.equal(failure(failed).timeout,true);assert.match(failure(failed).description,/No files were changed/);
+  failed.events[1].time=new Date(when+179980).toISOString();assert.equal(failure(failed).timeout,true);
+  failed.events[1].time=new Date(when+2000).toISOString();assert.equal(failure(failed).timeout,false);
+  failed.error_code='model_timeout';assert.equal(failure(failed).timeout,true);
+});
