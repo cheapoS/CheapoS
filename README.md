@@ -32,6 +32,7 @@ Open **Connections**. The easiest first setup is **OpenRouter for both roles**: 
 
 - **OpenRouter:** `https://openrouter.ai/api/v1`
 - **Local Ollama:** `http://127.0.0.1:11434/v1` with an installed model that supports tool calling; prices can be zero.
+- **Local OmniRoute:** choose the OpenAI-compatible endpoint preset and use `http://127.0.0.1:20128/v1`. Copy the exact provider-prefixed model ID from OmniRoute, such as `openrouter/poolside/laguna-xs-2.1:free`. OmniRoute keeps the upstream provider credentials; if your gateway requires a client API key, enter that in CheapOS. The dashboard password is not an API key. For a free-only test, pin explicit `:free` model IDs for both roles, verify their prices, and set the task's dollar limit to zero.
 - **Other providers:** an HTTPS OpenAI-compatible Chat Completions endpoint supporting tools, `max_tokens`, and token usage in responses.
 
 Keys entered in the interface remain in server memory until it stops. They are not saved in browser storage, configuration, or task history. You can alternatively provide `CHEAPOS_WORKER_API_KEY` and `CHEAPOS_REVIEWER_API_KEY` through the launch environment. Do not commit keys or paste them into tasks. CheapOS does not load `.env` files automatically.
@@ -67,9 +68,10 @@ Dependencies are not installed automatically. This alpha works best with small, 
 - Estimated dollar cap, reviewer token cap, worker model-turn cap, iteration cap, and per-request output cap.
 - Before dispatch, conservatively reserve prompt/output usage; reconcile with provider-reported tokens and cost. When cost is absent, calculate it from your configured prices.
 - Dollar caps are **estimates**, not guaranteed billing limits. Provider tokenization, pricing, and reported costs can differ. Configure a provider-side spending cap for a billing guarantee.
-- Failed or ambiguous requests are not automatically retried. Their reservations remain counted. Missing token usage pauses the task before tools execute.
-- Pause stops further tool work; an in-flight model request can take up to 90 seconds to return and may still be billed.
+- CheapOS does not automatically retry failed or ambiguous requests. An intermediary gateway may have its own retry policy. Uncertain reservations remain counted. Missing token usage pauses the task before tools execute.
+- Pause stops further tool work; an in-flight model request can take up to 3 minutes to return and may still be billed. Slow free or reasoning models may also require a longer queue wait in an intermediary gateway.
 - Tasks, patches, checks, checkpoints, and accounting are saved under `.cheapos/`. Interrupted tasks require an explicit resume and retain their usage. The server never automatically resumes paid work.
+- Compaction and resume preserve a bounded history of completed file observations and worker notes alongside the current patch and review feedback, without replaying old tool calls.
 - One task runs at a time. A process lock prevents two app servers from using the same data directory.
 
 There is no automatic commit, push, dependency installation, merge, arbitrary shell tool, or production sandbox. Keep tasks small: snapshots are limited to 5,000 files / 100 MB, and review checkpoints to a 30,000-character patch. Task history is currently retained until you remove it locally with the app stopped.

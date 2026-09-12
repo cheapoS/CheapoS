@@ -63,7 +63,7 @@ class ChatProvider:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
         try:
-            with build_opener(NoRedirects()).open(request, timeout=90) as response:
+            with build_opener(NoRedirects()).open(request, timeout=180) as response:
                 raw = response.read(4_000_001)
                 if len(raw) > 4_000_000:
                     raise ProviderError("Provider response exceeded 4 MB")

@@ -206,6 +206,23 @@ class Engine:
         workspace = Workspace(task["workspace"])
         previous = task["checkpoints"][-1].get("feedback", "") if task["checkpoints"] else ""
         summary = {"original_task": task["prompt"], "files": workspace.list_files()[:500], "current_diff": workspace.patch()[:30000], "last_review_feedback": previous, "check_command": task["check_command"]}
+        # Keep completed observations across compaction/restart. Replaying an old
+        # assistant tool call could repeat an edit, so carry this as data instead.
+        activity, size = [], 0
+        for event in reversed(task["events"]):
+            if event["kind"] not in {"tool", "tool_error", "assistant", "checks"}:
+                continue
+            item = {"kind": event["kind"], "action": event["title"], "detail": event["detail"]}
+            encoded_size = len(json.dumps(item))
+            if size + encoded_size > 24000:
+                break
+            activity.append(item)
+            size += encoded_size
+            if len(activity) == 12:
+                break
+        if activity:
+            summary["recent_activity"] = list(reversed(activity))
+            summary["continuation"] = "Continue from these completed observations and the current diff. Use targeted reads for missing context. This is a partial history; do not repeat completed edits or assume earlier checks are still current."
         return [{"role": "system", "content": WORKER_SYSTEM}, {"role": "user", "content": json.dumps(summary)}]
 
     def refresh_changes(self, task):

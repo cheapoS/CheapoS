@@ -57,6 +57,31 @@ class LocalCase(unittest.TestCase):
 
 
 class EngineTests(LocalCase):
+    def test_resume_keeps_completed_observations_without_replaying_calls(self):
+        task = self.fixture()
+        self.engine.event(task, 'assistant', 'Worker', 'Next, add a regression test for inverted bounds.')
+        observed = self.engine.file_tool(task, 'read_file', {'path': 'math_utils.py'})
+        task['messages'] = [call('write_file', {'path': 'ambiguous.py', 'content': 'do not replay'})]
+        self.engine.store.save(task)
+        loaded = Store(self.root / 'state').get(task['id'])
+        messages = self.engine.initial_messages(loaded)
+        context = json.loads(messages[1]['content'])
+        self.assertEqual(context['recent_activity'][-1]['detail']['result'], observed)
+        self.assertIn('Next, add a regression test', context['recent_activity'][0]['detail'])
+        self.assertTrue(all(m['role'] in {'system', 'user'} for m in messages))
+        self.assertNotIn('ambiguous.py', json.dumps(messages))
+
+    def test_compaction_keeps_recent_findings_with_bounded_history(self):
+        task = self.fixture()
+        for index in range(8):
+            self.engine.event(task, 'tool', 'read file', {'result': 'x' * 12000, 'index': index})
+        context = json.loads(self.engine.initial_messages(task)[1]['content'])
+        recent = context['recent_activity']
+        self.assertEqual(recent[-1]['detail']['index'], 7)
+        self.assertLess(len(json.dumps(recent)), 24500)
+        self.assertIn('partial history', context['continuation'])
+        self.assertEqual(context['original_task'], task['prompt'])
+
     def test_real_demo_and_patch_apply(self):
         task = self.fixture()
         original = (Path(task['source']) / 'math_utils.py').read_text()

@@ -63,7 +63,7 @@ function renderTask() {
   const sums=patchTotals(task.patch);$('#diff-tally').innerHTML=`<span>+${sums.add}</span><span>−${sums.remove}</span>`;
   $('#compact-cost').textContent=money(task.usage.cost);
   $('#task-actions').innerHTML=activeStatuses.has(task.status)?`<button class="subtle-button" id="pause-task">${icon('x')}Pause</button>`:!['approved','completed'].includes(task.status)?`<button class="primary-button" id="resume-task">${icon('play')}${task.status==='ready'?'Start task':task.status==='takeover_requested'?'Review takeover':'Resume'}</button>`:`<a class="subtle-button" href="/api/tasks/${task.id}/patch" download>${icon('file')}Export patch</a>`;
-  if($('#pause-task'))$('#pause-task').onclick=async()=>{try{await api('/tasks/'+task.id+'/stop',{});toast('Pausing. An in-flight model request may take up to 90 seconds.')}catch(e){toast(e.message)}};
+  if($('#pause-task'))$('#pause-task').onclick=async()=>{try{await api('/tasks/'+task.id+'/stop',{});toast('Pausing. An in-flight model request may take up to 3 minutes.')}catch(e){toast(e.message)}};
   if($('#resume-task'))$('#resume-task').onclick=()=>task.status==='ready'?startTask(task.id):resumeDialog();
   renderView();renderInspector();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
