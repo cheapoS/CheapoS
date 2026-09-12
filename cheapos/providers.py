@@ -13,6 +13,11 @@ from .streaming import read_chat_stream
 REQUEST_TIMEOUT_SECONDS = 180
 
 
+def is_local_ollama(config):
+    endpoint = urlsplit(config.get("base_url", ""))
+    return config.get("gateway") != "omniroute" and endpoint.hostname in {"127.0.0.1", "localhost", "::1"} and endpoint.port == 11434
+
+
 class ProviderError(Exception):
     def __init__(self, message, code=None):
         super().__init__(message)
@@ -72,14 +77,18 @@ class ChatProvider:
 
     @property
     def streams_output(self):
-        endpoint = urlsplit(self.config["base_url"])
-        return self.config.get("gateway") != "omniroute" and endpoint.hostname in {"127.0.0.1", "localhost", "::1"} and endpoint.port == 11434
+        return self.config.get("gateway") == "omniroute" or is_local_ollama(self.config)
 
     def complete_with_progress(self, messages, tools, max_tokens, emit, stopped):
         return self._complete(messages, tools, max_tokens, emit, stopped)
 
-    def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False):
+    def greet(self, messages, emit, stopped):
+        return self._complete(messages, [], 512, emit, stopped, timeout_seconds=30, stream_seconds=60, brief=True)
+
+    def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False, timeout_seconds=REQUEST_TIMEOUT_SECONDS, stream_seconds=600, brief=False):
         body = {"model": self.config["model"], "messages": messages, "max_tokens": max_tokens, "stream": emit is not None}
+        if brief and is_local_ollama(self.config):
+            body.update({"max_tokens":128, "reasoning_effort":"none"})
         if emit is not None:
             body["stream_options"] = {"include_usage": True}
         if tools:
@@ -89,9 +98,9 @@ class ChatProvider:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
         try:
-            with build_opener(NoRedirects()).open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            with build_opener(NoRedirects()).open(request, timeout=timeout_seconds) as response:
                 if emit is not None and response.headers.get_content_type() == "text/event-stream":
-                    data = read_chat_stream(response, emit, stopped, ProviderError)
+                    data = read_chat_stream(response, emit, stopped, ProviderError, max_seconds=stream_seconds)
                 else:
                     raw = response.read(4_000_001)
                     if len(raw) > 4_000_000:
@@ -104,7 +113,8 @@ class ChatProvider:
             raise ProviderError(reason + ". The task is paused; no automatic retry was made.") from None
         except (URLError, TimeoutError, OSError) as error:
             if isinstance(error, TimeoutError) or isinstance(getattr(error, "reason", None), TimeoutError):
-                reason = "The model stopped sending output for 3 minutes" if emit is not None else "The model did not finish within 3 minutes"
+                duration = "3 minutes" if timeout_seconds == 180 else f"{timeout_seconds} seconds"
+                reason = f"The model stopped sending output for {duration}" if emit is not None else f"The model did not finish within {duration}"
                 raise ProviderError(reason + ". The request stopped without an automatic retry; uncertain usage remains counted.", code="model_timeout") from None
             raise ProviderError("The model connection failed before a complete response arrived. No automatic retry was made; uncertain usage remains counted.", code="model_connection") from None
         except (ValueError, KeyError, TypeError):

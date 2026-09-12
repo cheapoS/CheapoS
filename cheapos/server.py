@@ -87,7 +87,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
         engine = self.server.engine
         try:
             if path == "/api/bootstrap":
-                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "tasks": engine.store.list(summary=True), "projects": engine.projects(), "preferences": engine.preferences()})
+                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.list(summary=True), "projects": engine.projects(), "preferences": engine.preferences()})
+            elif path == "/api/startup":
+                self.reply({**engine.startup.snapshot(), "config":engine.configuration()})
             elif path == "/api/projects":
                 self.reply(engine.projects())
             elif path == "/api/gateway":
@@ -134,12 +136,20 @@ class LocalHandler(SimpleHTTPRequestHandler):
             path = urlsplit(self.path).path
             if path == "/api/config":
                 result = engine.configure(values)
+            elif path == "/api/startup/config":
+                result = engine.startup.configure(values)
+            elif path == "/api/startup/start":
+                result = engine.startup.start()
+            elif path == "/api/startup/stop":
+                result = engine.startup.stop()
             elif path == "/api/projects":
                 result = engine.open_project(values)
             elif path == "/api/preferences":
                 result = engine.save_preferences(values)
             elif path == "/api/gateway/config":
                 with engine.lock:
+                    if engine.startup.busy():
+                        raise ValueError("Stop the startup connection check before changing its gateway")
                     if any(r.thread and r.thread.is_alive() for r in engine.runtimes.values()):
                         raise ValueError("Pause the active task before changing its gateway connection")
                     result = engine.gateway.configure(values)
@@ -147,6 +157,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.gateway.refresh(start=path.endswith("/start"))
             elif path == "/api/gateway/stop":
                 with engine.lock:
+                    if engine.startup.busy():
+                        raise ValueError("Stop the startup connection check before stopping its gateway")
                     if any(r.thread and r.thread.is_alive() for r in engine.runtimes.values()):
                         raise ValueError("Pause the active task before stopping OmniRoute")
                     result = engine.gateway.stop_owned()

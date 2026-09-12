@@ -19,6 +19,7 @@ from .workspace import Workspace, git
 from .gateways import gateway_for
 from .omniroute import OmniRouteManager
 from .streaming import STREAM_MAX_SECONDS
+from .startup import StartupManager
 
 
 def now():
@@ -107,6 +108,7 @@ class Engine:
             self.config = json.loads((self.store.root / "config.json").read_text())
         except (OSError, ValueError):
             self.config = {"worker": None, "reviewer": None}
+        self.startup = StartupManager(self)
 
     def configuration(self):
         result = copy.deepcopy(self.config)
@@ -166,11 +168,14 @@ class Engine:
                 if not isinstance(key, str) or len(key) > 4096 or "\n" in key or "\r" in key:
                     raise ValueError("Invalid API key")
         with self.lock:
+            if self.startup.busy():
+                raise ValueError("Stop the startup connection check before changing models")
             for role, config in normalized.items():
                 if "api_key" in values[role]:
                     self.secrets[(role, config["base_url"])] = values[role]["api_key"]
             write_json(self.store.root / "config.json", normalized)
             self.config = normalized
+            self.startup.models_changed()
         return self.configuration()
 
     def event(self, task, kind, title, detail=None):
@@ -216,6 +221,8 @@ class Engine:
 
     def start(self, task_id, changes=None):
         with self.lock:
+            if self.startup.busy():
+                raise ValueError("Wait for the startup greeting or stop its connection check before starting a chat")
             previous = self.runtimes.get(task_id)
             if previous and previous.thread and previous.thread.is_alive():
                 raise ValueError("This task is already running")
@@ -297,6 +304,7 @@ class Engine:
         return {"accepted": True}
 
     def shutdown(self):
+        self.startup.shutdown()
         for runtime in list(self.runtimes.values()):
             runtime.stop.set()
             runtime.approval.set()

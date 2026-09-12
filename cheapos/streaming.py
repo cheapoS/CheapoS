@@ -6,7 +6,7 @@ MAX_RESPONSE_BYTES = 4_000_000
 STREAM_MAX_SECONDS = 600
 
 
-def read_chat_stream(response, emit, stopped, error_type):
+def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX_SECONDS):
     started = time.monotonic()
     content, thinking, calls, usage = [], [], {}, {}
     size, finished, done = 0, False, False
@@ -59,8 +59,8 @@ def read_chat_stream(response, emit, stopped, error_type):
     while not done:
         if stopped():
             raise InterruptedError('Stopped while receiving the model response')
-        if time.monotonic() - started > STREAM_MAX_SECONDS:
-            raise error_type('The model stream exceeded 10 minutes. Partial tool calls were not executed.', code='stream_timeout')
+        if time.monotonic() - started > max_seconds:
+            raise error_type(f'The model stream exceeded {max_seconds} seconds. Partial tool calls were not executed.', code='stream_timeout')
         line = response.readline(MAX_RESPONSE_BYTES + 1)
         if not line:
             if frame:

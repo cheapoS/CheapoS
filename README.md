@@ -4,7 +4,7 @@
 
 CheapOS is an open-source, local coding workspace experimenting with a simple trade: give an inexpensive model time to implement a change, then ask a stronger model to review the evidence at checkpoints.
 
-**CheapOS decides why and when to spend intelligence. OmniRoute decides where to get it.** CheapOS owns task execution, verification, review checkpoints, and budget accounting. Its optional OmniRoute companion owns provider access and routing. Explicit model choices keep those responsibilities separate.
+**CheapOS decides why and when to spend intelligence. OmniRoute decides where to get it.** CheapOS owns task execution, verification, review checkpoints, and budget accounting. Its optional OmniRoute companion owns provider access and routing. Each chat keeps its selected model pair; startup can find a free worker automatically.
 
 This is an early, working alpha for small personal projects. It has real repository tools and an execution engine, a desktop-style browser interface, and no account or hosted project requirement. It is not a packaged native desktop application yet. Cost savings are a hypothesis to measure, not a benchmark claim.
 
@@ -26,7 +26,13 @@ python3 run.py --port 5174
 python3 run.py --data-dir /path/to/local-task-storage
 ```
 
-Click **Try the local demo** first. It creates a tiny Python repository, reproduces a failing test, edits the implementation, requests a revision, adds a regression test, and exports a real Git patch. Model decisions are scripted and clearly labeled. No provider requests or charges occur.
+On launch, CheapOS looks for a free worker and asks it to say hello. Installed local Ollama models with advertised tool support work without a key or a setup form. A saved eligible model takes priority; otherwise, already-loaded local models are preferred. If no local model works, **Use free cloud models** opts into configured free routes through OmniRoute. CheapOS never enrolls providers, downloads models, or falls back to a paid model.
+
+The welcome message is real inference with no project context or tools. One startup check tries at most three distinct candidates, with a 512-token output cap per request (128 for direct Ollama, with thinking disabled for this greeting only), a 30-second network timeout, and a 60-second stream limit checked between chunks. Reloading the page does not repeat it. **Startup preferences** controls automatic connection and free-cloud fallback; **Stop connecting** cancels it. The greeting verifies chat and token reporting, not completion of the coding loop.
+
+An existing reviewer is preserved. On a fresh setup, the same free model fills both roles, with a separate reviewer request at checkpoints; change either role in **Models** later. A saved paid model or automatic combo is not used for a startup greeting. Startup preferences live in `.cheapos/startup.json`, and the latest check and usage in `.cheapos/startup-last.json`.
+
+You can also click **Try the local demo**. It creates a tiny Python repository, reproduces a failing test, edits the implementation, requests a revision, adds a regression test, and exports a real Git patch. Model decisions are scripted and clearly labeled. No provider requests or charges occur.
 
 ## Connect models
 
@@ -44,7 +50,7 @@ On launch, CheapOS checks `http://127.0.0.1:20128/v1/models`. It reuses an ident
 4. For free tests, leave **Show free models only** checked and choose explicit OpenRouter `:free` variants for both roles. Unknown prices stay blank and must be supplied. New chats default to a zero-dollar cap. Change the cap explicitly before using paid models.
 5. Save the connections, open a project, and send a message.
 
-The free filter only filters the catalog; it is not a gateway billing control. CheapOS does not select fallback models. Check OmniRoute's own retries, combos, and fallback policies: `auto/cheap` is not a guarantee of free inference. A zero dollar cap uses configured prices and does not guarantee provider-side billing limits.
+The free filter only filters the catalog; it is not a gateway billing control. Running chats never switch models automatically. Startup connection checks can try other eligible free candidates before a chat begins. Check OmniRoute's own retries, combos, and fallback policies: `auto/cheap` is not a guarantee of free inference. A zero dollar cap uses configured prices and does not guarantee provider-side billing limits.
 
 OmniRoute also supports Ollama, allowing a local worker and a remote reviewer through the same gateway. Configure the local provider in OmniRoute, then refresh the catalog in CheapOS. If the catalog omits prices, disable the free-model filter to find it and enter zero prices only for a model actually running locally. A direct Ollama connection is also available below. Local inference depends on your hardware and the model’s tool support. A local `gemma4:31b` connection has been checked with real file reads, a project question, and a follow-up in the same chat. That verifies conversational use; it is not a completed live edit-and-review experiment.
 
@@ -58,7 +64,7 @@ OmniRoute also supports Ollama, allowing a local worker and a remote reviewer th
 
 Direct API keys entered in the interface remain in server memory until it stops. They are not saved in browser storage, configuration, or task history. You can alternatively supply `CHEAPOS_WORKER_API_KEY` and `CHEAPOS_REVIEWER_API_KEY` through the launch environment. Managed OmniRoute connections use the shared gateway key rather than direct provider keys. CheapOS does not load `.env` files automatically.
 
-Saving, startup, and catalog refresh make no inference requests. Automated tests cover the worker/reviewer workflow through local HTTP fixtures. In the initial live free-model experiment, the worker produced a patch that passed six tests, but the reviewer timed out; the full live loop and cost savings remain unproven. A chat subscription does not automatically provide API credits.
+Saving settings and refreshing the catalog make no inference requests. The separate startup connection check makes the bounded greeting request described above. Automated tests cover the worker/reviewer workflow through local HTTP fixtures. In the initial live free-model experiment, the worker produced a patch that passed six tests, but the reviewer timed out; the full live loop and cost savings remain unproven. A chat subscription does not automatically provide API credits.
 
 References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter tool calling](https://openrouter.ai/docs/guides/features/tool-calling), [OpenRouter limits](https://openrouter.ai/docs/api-reference/limits), [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility).
 
@@ -72,7 +78,7 @@ References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter 
 
 The spending control below the message box edits the current chat's limits, or defaults for new chats. Saving limits does not run a model. Model settings apply to new chats; existing chats retain their original model pair. An error never silently changes models or retries a request.
 
-Direct local Ollama connections on port `11434` stream output into the conversation. Models that expose reasoning show an expandable **Thinking** panel while the answer appears separately as it arrives. A progress card shows elapsed time, the last completed action, and saved file changes. Thinking is model output, not evidence that a file was edited or a check passed. Completed and interrupted thinking previews are saved locally, capped at 16,000 characters per response; they are excluded from reviewer checkpoints. Other connections currently show progress while waiting for a complete response.
+Direct local Ollama connections on port `11434` and OmniRoute connections stream output into the conversation. Models that expose reasoning show an expandable **Thinking** panel while the answer appears separately as it arrives. A progress card shows elapsed time, the last completed action, and saved file changes. Thinking is model output, not evidence that a file was edited or a check passed. Completed and interrupted thinking previews are saved locally, capped at 16,000 characters per response; they are excluded from reviewer checkpoints. Other direct connections currently show progress while waiting for a complete response. Endpoints that return ordinary JSON instead of a stream still work, with output shown on completion.
 
 The reviewer can approve, request revisions, or request takeover. Takeover requires your explicit approval and uses the same remaining budget. Its final patch still needs your review. Plain answers and clarification questions do not count as reviewer approval; saved edits remain available in **Changes**.
 
@@ -94,8 +100,8 @@ Dependencies are not installed automatically. This alpha works best with small, 
 - Estimated dollar cap, reviewer token cap, worker model-turn cap, iteration cap, and per-request output cap.
 - Before dispatch, conservatively reserve prompt/output usage; reconcile with provider-reported tokens and cost. When cost is absent, calculate it from your configured prices.
 - Dollar caps are **estimates**, not guaranteed billing limits. Provider tokenization, pricing, and reported costs can differ. Configure a provider-side spending cap for a billing guarantee.
-- CheapOS does not automatically retry failed or ambiguous requests. An intermediary gateway may have its own retry policy. Uncertain reservations remain counted. Missing token usage pauses the task before tools execute.
-- Stop prevents further tool work. Local streams check for cancellation as output arrives; a stalled connection can take 3 minutes to release. Local streaming also checks a 10-minute generation limit between chunks. Other model requests retain a 3-minute network timeout and may still be billed after stopping. Partial or interrupted tool calls never execute. Slow free or reasoning models may also require a longer queue wait in an intermediary gateway.
+- CheapOS does not automatically retry failed or ambiguous task requests. The separate startup greeting can try up to three distinct free candidates. An intermediary gateway may have its own retry policy. Uncertain reservations remain counted. Missing token usage pauses the task before tools execute.
+- Stop prevents further tool work. Ollama and OmniRoute streams check for cancellation as output arrives; a stalled connection can take 3 minutes to release. Streaming also checks a 10-minute generation limit between chunks. Other model requests retain a 3-minute network timeout and may still be billed after stopping. Partial or interrupted tool calls never execute. Slow free or reasoning models may also require a longer queue wait in an intermediary gateway.
 - Tasks, patches, checks, checkpoints, and accounting are saved under `.cheapos/`. Interrupted tasks require an explicit resume and retain their usage. The server never automatically resumes paid work.
 - Compaction and resume preserve a bounded history of completed file observations and worker notes alongside the current patch and review feedback, without replaying old tool calls.
 - One task runs at a time. A process lock prevents two app servers from using the same data directory.
@@ -120,6 +126,7 @@ Node is only needed for the optional JavaScript syntax check. Tests use temporar
 | `cheapos/workspace.py` | Repository copies, constrained file tools, verification |
 | `cheapos/providers.py` | Chat Completions adapter and usage reservations |
 | `cheapos/streaming.py` | Bounded streaming output and complete tool-call assembly |
+| `cheapos/startup.py` | Free-worker discovery, startup greeting, and connection-check accounting |
 | `cheapos/gateways.py` | Gateway interface, model discovery, and adapter selection |
 | `cheapos/omniroute.py` | Optional local gateway startup, reuse, and process ownership |
 | `cheapos/storage.py` | Atomic local task persistence |

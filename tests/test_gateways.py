@@ -15,6 +15,17 @@ from cheapos.providers import ProviderError
 
 
 class CatalogTests(unittest.TestCase):
+    def test_ollama_routes_are_local_but_paid_prices_and_combos_are_not_overridden(self):
+        entries=normalize_models({'data':[
+            {'id':'ollama/coder','owned_by':'ollama','capabilities':{'tool_calling':True}},
+            {'id':'ollama/paid','owned_by':'ollama','pricing':{'prompt':'.000001','completion':'.000001'}},
+            {'id':'auto/ollama','owned_by':'combo'}]})
+        indexed={m['id']:m for m in entries}
+        self.assertTrue(indexed['ollama/coder']['local'])
+        self.assertTrue(indexed['ollama/coder']['free'])
+        self.assertFalse(indexed['ollama/paid']['free'])
+        self.assertFalse(indexed['auto/ollama']['free'])
+
     def test_free_variants_capabilities_and_unknown_prices(self):
         models = normalize_models({'data': [
             {'id': 'openrouter/coder:free', 'capabilities': {'tool_calling': True}, 'context_length': 32000},

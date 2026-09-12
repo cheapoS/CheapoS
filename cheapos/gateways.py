@@ -43,7 +43,10 @@ def normalize_models(data, openrouter=False):
             supported = item.get("supported_parameters")
             tools = "tools" in supported if isinstance(supported, list) else None
         context = item.get("context_length")
-        models.append({"id": model_id, "name": str(item.get("name") or model_id)[:240],
+        local = item.get("owned_by") == "ollama" and not model_id.startswith("auto/")
+        if local and input_rate is None and output_rate is None:
+            input_rate = output_rate = 0.0
+        models.append({"id": model_id, "name": str(item.get("name") or model_id)[:240], "local":local,
                        "provider": str(item.get("owned_by") or "")[:100],
                        "context_length": context if isinstance(context, int) and not isinstance(context, bool) and context > 0 else None,
                        "tool_calling": tools, "input_rate": input_rate, "output_rate": output_rate,

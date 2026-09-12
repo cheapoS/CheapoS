@@ -9,6 +9,8 @@ from pathlib import Path
 
 from cheapos.engine import Engine
 from cheapos.providers import ChatProvider, ProviderError
+from cheapos.gateways import OmniRouteGateway
+from cheapos.startup import GREETING
 from cheapos.server import LocalServer
 
 
@@ -81,6 +83,16 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post('/api/config', [1, 2])[0], 400)
         self.assertEqual(self.post('/api/tasks', {})[0], 400)
         self.assertEqual(self.post('/api/tasks/missing/approval', {'approved':'yes'})[0], 400)
+
+    def test_startup_status_is_read_only_and_preferences_do_not_dispatch(self):
+        with patch.object(self.engine.startup, 'start') as start:
+            self.assertEqual(self.request('GET', '/api/startup')[0], 200)
+            self.assertEqual(self.request('GET', '/api/bootstrap')[0], 200)
+            self.assertEqual(self.post('/api/startup/config', {'enabled':False})[0], 200)
+            start.assert_not_called()
+            self.assertEqual(self.request('POST', '/api/startup/start', {}, {'Content-Type':'application/json'})[0],403)
+            start.assert_not_called()
+        self.assertEqual(self.post('/api/startup/config', {'allow_cloud':'yes'})[0],400)
 
     def test_project_chat_and_followup_api(self):
         source = self.engine.create_demo()['source']
@@ -226,6 +238,33 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(message['content'],'Ready.')
         self.assertEqual(usage['completion_tokens'],7)
 
+    def test_omniroute_greeting_streams_without_tools_or_repository_context(self):
+        self.server.mode='stream'
+        provider=OmniRouteGateway({**self.provider.config,'gateway':'omniroute'},'gateway-client-key')
+        self.assertTrue(provider.streams_output)
+        seen=[]
+        message,usage=provider.greet(GREETING,lambda kind,text:seen.append((kind,text)),lambda:False)
+        _,headers,body=self.server.requests[-1]
+        self.assertEqual(headers['Authorization'],'Bearer gateway-client-key')
+        self.assertEqual(body['messages'],GREETING)
+        self.assertNotIn('tools',body)
+        self.assertTrue(body['stream'])
+        self.assertEqual(body['max_tokens'],512)
+        self.assertEqual(message['content'],'Ready.')
+        self.assertEqual(seen[0][0],'thinking')
+        self.assertEqual(usage['completion_tokens'],7)
+
+    def test_local_greeting_is_brief_without_disabling_normal_task_thinking(self):
+        self.server.mode='stream'
+        with patch('cheapos.providers.is_local_ollama',return_value=True):
+            self.provider.greet(GREETING,lambda *args:None,lambda:False)
+        body=self.server.requests[-1][2]
+        self.assertEqual(body['max_tokens'],128)
+        self.assertEqual(body['reasoning_effort'],'none')
+        self.server.mode='normal'
+        self.provider.complete([{'role':'user','content':'A normal task'}],[],256)
+        self.assertNotIn('reasoning_effort',self.server.requests[-1][2])
+
     def test_redirect_is_not_followed(self):
         self.server.mode = 'redirect'
         with self.assertRaisesRegex(ProviderError, 'HTTP 302'):
@@ -274,6 +313,7 @@ class ProviderTests(unittest.TestCase):
             self.assertEqual(len(self.server.requests), 9)
             if managed:
                 self.assertTrue(all(headers.get('Authorization') == 'Bearer fixture-client-secret' for _, headers, _ in self.server.requests))
+                self.assertTrue(all(body['stream'] for _, _, body in self.server.requests))
             self.assertEqual(len(reviews), 2)
             self.assertEqual(result['usage']['worker']['tokens'], 7 * 19)
             self.assertEqual(result['usage']['reviewer']['tokens'], 2 * 19)

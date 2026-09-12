@@ -5,7 +5,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const activeStatuses = new Set(['running', 'reviewing', 'waiting_approval', 'stopping']);
 const labels = {awaiting_reply:'Ready for your message',ready:'Ready to start',running:'CheapOS is working',reviewing:'Checking your changes',waiting_approval:'Command approval needed',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
-const state = {token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',run:-1,online:false,loading:false};
+const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',run:-1,online:false,loading:false};
 const money = value => '$' + Number(value || 0).toFixed(Number(value || 0) > 0 && value < .01 ? 4 : 2);
 const date = value => new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
@@ -32,7 +32,7 @@ async function formAction(form, operation) {
 }
 function renderSidebar() {
   $('#task-total').textContent=state.projects.length;
-  $('#connection-indicator').textContent=state.config.worker&&state.config.reviewer?'Configured':'Set up';
+  $('#connection-indicator').textContent=state.startup.busy?'Connecting…':state.startup.status==='ready'?'Ready':state.config.worker&&state.config.reviewer?'Configured':'Set up';
   const groups=state.projects.map(project=>({project,tasks:state.tasks.filter(t=>!t.demo&&t.source===project.path)}));
   const demos=state.tasks.filter(t=>t.demo);if(demos.length)groups.push({project:{path:'demo',name:'Local demo'},tasks:demos});
   $('#task-list').innerHTML=groups.map(({project,tasks})=>`<div class="project-group"><button class="project-label ${state.project?.path===project.path?'selected':''}" data-project="${esc(project.path)}" title="${esc(project.path)}">${icon('folder')}<span>${esc(CheapOSGuide.projectName({source:project.path,demo:project.path==='demo'}))}</span></button>${tasks.slice(0,12).map(t=>`<button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${['approved','awaiting_reply'].includes(t.status)?'done':''} ${activeStatuses.has(t.status)?'pulsing':''}"></span><span class="task-list-title">${esc(t.title)}</span>${['error','budget_paused','waiting_approval'].includes(t.status)?'<span class="task-attention" aria-label="Needs attention">•</span>':''}</button>`).join('')}</div>`).join('')||'<p class="sidebar-empty">Open a project to start.<br>Your chats will appear here.</p>';
@@ -52,15 +52,48 @@ function chooseProject(project) {
   try{localStorage.setItem('cheapos-project',project.path)}catch{}
   $('#chat-input').focus();
 }
+function startupMarkup() {
+  const startup=state.startup||{},ready=startup.status==='ready',busy=startup.busy;
+  const title=ready?'Let’s work on it.':busy?'Getting your model ready…':['unavailable','stopped'].includes(startup.status)?'Let’s get you connected.':state.project?'What would you like to work on?':'Your project. Let’s work on it.';
+  const model=startup.model;
+  const modelText=model?`${model.id} · ${model.transport}${model.local?(model.transport==='Local Ollama'?'':' · Local model'):' · Free route'}`:'';
+  const actions=busy?`<button class="subtle-button" data-startup="stop">Stop connecting</button>`:!ready?`<button class="primary-button" data-startup="start">${icon('play')}${startup.status==='unavailable'?'Try again':'Connect a free model'}</button>${!startup.settings?.allow_cloud?'<button class="outline-button" data-startup="cloud">Use free cloud models</button>':''}<button class="text-link" data-startup="models">Models</button>`:'';
+  return `<div class="welcome-mark">${busy?'<span class="spinner"></span>':icon('code')}</div><h1>${title}</h1>${model?`<div class="startup-model ${ready?'ready':''}"><span class="task-dot ${ready?'done':'pulsing'}"></span>${esc(modelText)}</div>`:''}<p class="welcome-greeting">${esc(ready?startup.content:startup.content||startup.message||'Open a local project, then talk to CheapOS.')}</p>${startup.thinking?thinkingMarkup({thinking:startup.thinking,request_id:'startup',model:model?.id||''},true):''}${ready?'<span class="startup-verified">Greeting received · no API cost reported</span>':''}<div class="startup-actions">${actions}</div>${startup.attempts?.some(a=>a.status==='failed')?`<details class="startup-attempts"><summary>Connection details</summary>${startup.attempts.filter(a=>a.status==='failed').map(a=>`<p><strong>${esc(a.model)}</strong><br>${esc(a.error)}</p>`).join('')}</details>`:''}`;
+}
+function bindStartupActions(root=document) {
+  $$('[data-startup]',root).forEach(button=>button.onclick=async()=>{
+    const action=button.dataset.startup;
+    if(action==='models'){openConnections();return}
+    if(action==='preferences'){startupPreferences();return}
+    button.disabled=true;
+    try{
+      if(action==='cloud')await api('/startup/config',{allow_cloud:true,enabled:true});
+      await api('/startup/'+(action==='stop'?'stop':'start'),{});await loadStartup();
+    }catch(e){toast(e.message);button.disabled=false}
+  });
+}
+function startupPreferences() {
+  const settings=state.startup.settings||{enabled:true,allow_cloud:false};
+  const d=dialog(`<form>${modalHeader('STARTUP','Ready when you open CheapOS')}<p class="modal-description">Start with an installed local model, or a configured free route through OmniRoute. A small greeting checks that it responds.</p><label class="checkbox-field"><input name="enabled" type="checkbox" ${settings.enabled?'checked':''}><span>Connect to a free model on launch</span></label><label class="checkbox-field"><input name="allow_cloud" type="checkbox" ${settings.allow_cloud?'checked':''}><span>Allow free cloud models through OmniRoute<small>Uses providers you have already set up. Project contents are sent only when you start a chat with that model.</small></span></label><p class="small muted">At most three free models are tried per connection check, with a 512-token output cap each. No paid fallback, model downloads, or provider enrollment. A saved model choice takes priority. Saving preferences makes no inference request.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Reviewers remain under Models.</span><button type="submit" class="primary-button">Save preferences</button></div></form>`,'project-modal');
+  const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const values=new FormData(form);await api('/startup/config',{enabled:values.has('enabled'),allow_cloud:values.has('allow_cloud')});d.close();await loadStartup()})};
+}
 function renderHome() {
   $('.task-heading').hidden=true;$('.tabs').hidden=true;$('#compact-session').hidden=true;$('#toggle-inspector').hidden=true;$('#inspector').classList.add('home-hidden');
   $('.main-pane').classList.add('new-conversation');
   $('#project-name').textContent=state.project?CheapOSGuide.projectName({source:state.project.path}):'Your workspace';
   $$('.view').forEach(v=>v.classList.toggle('hidden',v.id!=='chat-view'));
-  $('#chat-view').innerHTML=`<div class="chat-welcome"><div class="welcome-mark">${icon('code')}</div><h1>${state.project?'What would you like to work on?':'Your project. Let’s work on it.'}</h1><p>${state.project?'Ask a question, explore an idea, or describe a change.':'Open a local project, then talk to CheapOS.'}</p>${state.project?`<div class="chat-suggestions"><button data-suggestion="Explain how this project works. Start by reading its README and main entry points.">Explain this project ${icon('chevron')}</button><button data-suggestion="Look through this project and suggest one small improvement. Explain it before making changes.">Find a small improvement ${icon('chevron')}</button></div>`:`<button class="primary-button" id="welcome-open">${icon('folder')}Open project</button>`}</div>`;
+  const opened=new Map($$('#chat-view details[data-event]').map(d=>[d.dataset.event,d.open]));
+  $('#chat-view').innerHTML=`<div class="chat-welcome startup-welcome">${startupMarkup()}${state.project?`<div class="chat-suggestions"><button data-suggestion="Explain how this project works. Start by reading its README and main entry points.">Explain this project ${icon('chevron')}</button><button data-suggestion="Look through this project and suggest one small improvement. Explain it before making changes.">Find a small improvement ${icon('chevron')}</button></div>`:`<button class="primary-button" id="welcome-open">${icon('folder')}Open project</button>`}<button class="text-link startup-preferences" data-startup="preferences">Startup preferences</button></div>`;
+  for(const d of $$('#chat-view details[data-event]'))if(opened.has(d.dataset.event))d.open=opened.get(d.dataset.event);
   if($('#welcome-open'))$('#welcome-open').onclick=()=>openProject();
   $$('[data-suggestion]').forEach(b=>b.onclick=()=>{$('#chat-input').value=b.dataset.suggestion;saveDraft();renderComposer();$('#chat-input').focus()});
-  renderComposer();
+  bindStartupActions();renderComposer();
+}
+async function loadStartup() {
+  const data=await api('/startup'),config=data.config;delete data.config;
+  const changed=JSON.stringify(data)!==JSON.stringify(state.startup)||JSON.stringify(config)!==JSON.stringify(state.config);
+  state.startup=data;state.config=config;
+  if(changed){renderSidebar();renderComposer();if(!state.task)renderHome()}
 }
 function renderComposer() {
   const task=state.task, busy=task&&activeStatuses.has(task.status);
@@ -70,10 +103,10 @@ function renderComposer() {
   $('#chat-input').disabled=state.sending;
   $('#chat-input').placeholder=state.project?'Ask about your project or describe a change…':'Open a project to get started…';
   const other=state.tasks.find(t=>t.id!==task?.id&&activeStatuses.has(t.status));
-  $('#chat-send').disabled=state.sending||busy||Boolean(other)||!$('#chat-input').value.trim();
-  $('#chat-stop').hidden=!busy;
+  $('#chat-send').disabled=state.sending||busy||Boolean(other)||state.startup.busy||!$('#chat-input').value.trim();
+  $('#chat-stop').hidden=!busy&&!state.startup.busy;
   $('#chat-budget').textContent=money((task?.limits||state.preferences.limits).dollars)+' limit';
-  $('#composer-note').textContent=other?'Another chat is running. Open it in the sidebar to continue or pause it.':busy?'CheapOS is working. You can draft your next message.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
+  $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':other?'Another chat is running. Open it in the sidebar to continue or pause it.':busy?'CheapOS is working. You can draft your next message.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
 }
 function openProject(afterOpen) {
   const d=dialog(`<form>${modalHeader('LOCAL PROJECT','Open a project')}<p class="modal-description">Choose your project once, then chat. CheapOS will work in a separate copy when you send your first message.</p><label class="full-field">Project folder<input name="repository" placeholder="/Users/you/projects/my-project" required autocomplete="off" autofocus><small>Use the root folder of a local Git repository.</small></label><p class="form-error" role="alert"></p><div class="modal-footer"><span>Opening a project makes no model request.</span><button type="submit" class="primary-button">Open project ${icon('chevron')}</button></div></form>`,'project-modal');
@@ -255,7 +288,7 @@ function chatLimits() {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const limits=readLimits(new FormData(form));if(task){state.task=await api('/tasks/'+task.id+'/limits',{limits})}else state.preferences=await api('/preferences',{limits});d.close();renderComposer();if(state.task)renderInspector()})};
 }
 async function sendChat() {
-  if(state.sending||state.tasks.some(t=>activeStatuses.has(t.status)))return;
+  if(state.sending||state.startup.busy||state.tasks.some(t=>activeStatuses.has(t.status)))return;
   const message=$('#chat-input').value.trim();if(!message)return;
   if(!state.project){openProject(()=>{$('#chat-input').value=message;saveDraft();renderComposer()});return}
   if(!state.config.worker||!state.config.reviewer){openConnections(()=>{$('#chat-input').focus()});return}
@@ -394,17 +427,17 @@ function openSearch() {
 async function loadTasks() {const tasks=await api('/tasks');const changed=JSON.stringify(tasks)!==JSON.stringify(state.tasks);state.tasks=tasks;if(changed){renderSidebar();renderComposer();if(!state.task)renderHome()}}
 async function refresh() {
   if(state.loading)return;
-  await loadGateway();await loadTasks();const selected=state.task?.id;if(!selected)return;
+  await loadStartup();await loadGateway();await loadTasks();const selected=state.task?.id;if(!selected)return;
   const task=await api('/tasks/'+selected);if(state.task?.id!==selected)return;
   if(task.updated_at!==state.task.updated_at||task.status!==state.task.status){state.task=task;renderTask()}
 }
 async function bootstrap() {
-  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.tasks=data.tasks;state.projects=data.projects||[];state.preferences=data.preferences||state.preferences;try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}if(state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();}
+  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.preferences=data.preferences||state.preferences;try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();}
   catch(e){state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start CheapOS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){toast('Local server disconnected. Restart CheapOS and refresh to reconnect.');state.online=false}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopTask;
+$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=async()=>{if(state.startup.busy){try{await api('/startup/stop',{});await loadStartup()}catch(e){toast(e.message)}}else await stopTask()};
 function toggleInspector() {
   const panel=$('#inspector');
   if(matchMedia('(max-width:1280px)').matches){panel.classList.remove('hidden');panel.classList.toggle('show')}
