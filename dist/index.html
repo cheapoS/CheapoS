@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#151719" />
+  <meta name="description" content="CheapOS — an interactive desktop coding workspace. Cheap models work. Smart models check." />
+  <title>CheapOS — A little patience. A lot less compute cost.</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2398dfbb'/%3E%3Cpath d='m8 10 6 6-6 6m9 0h7' fill='none' stroke='%2317191b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="./app.js" defer></script>
+</head>
+<body>
+<svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+ <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
+ <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+ <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+ <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 7v10m0-4c0-4 12 0 12-6"/></symbol>
+ <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/></symbol>
+ <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9H13a8.5 8.5 0 0 1 8 8v.5Z"/></symbol>
+ <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+ <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M20 4C9 2 3 6 4 13c1 7 11 8 14 1 2-4 0-5 2-10ZM4 20 14 10"/></symbol>
+ <symbol id="i-code" viewBox="0 0 24 24"><path d="m7 7-5 5 5 5m10-10 5 5-5 5M14 4l-4 16"/></symbol>
+ <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H5v20h14V7Zm0 0v6h5M8 13h8m-8 4h5"/></symbol>
+ <symbol id="i-tests" viewBox="0 0 24 24"><path d="M9 3h6M10 3v7L4 19a1 1 0 0 0 1 2h14a1 1 0 0 0 1-2l-6-9V3M8 14h8"/></symbol>
+ <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8Z"/></symbol>
+ <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></symbol>
+ <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+ <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+ <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4 1-4-2-6-2m12 5v-4a3.5 3.5 0 0 0-1-2.5c3-.3 6-1.5 6-6A4.5 4.5 0 0 0 19 6a4 4 0 0 0 0-4s-1 0-4 2a14 14 0 0 0-6 0C6 2 5 2 5 2a4 4 0 0 0 0 4 4.5 4.5 0 0 0-1 3.5c0 4.5 3 5.7 6 6A3.5 3.5 0 0 0 9 18v4"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
+ <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6Zm-4 10 3 3 5-6"/></symbol>
+</svg>
+<div class="desktop-shell">
+ <aside class="sidebar" id="sidebar">
+  <div class="brand-row"><a class="brand" href="./" aria-label="CheapOS home"><span class="brand-mark">›<span>_</span></span>Cheap<span class="brand-os">OS</span></a><button class="icon-btn" id="sidebar-toggle" aria-label="Toggle sidebar"><svg><use href="#i-panel"/></svg></button></div>
+  <button class="new-task" id="new-task"><svg><use href="#i-plus"/></svg>New task<kbd>⌘ N</kbd></button>
+  <button class="search-trigger" id="search-trigger"><svg><use href="#i-search"/></svg>Search tasks<kbd>⌘ K</kbd></button>
+  <div class="section-label">WORKSPACE <span>2</span></div>
+  <button class="project active" data-project="trace-the-failure"><svg><use href="#i-folder"/></svg><span>trace-the-failure</span><svg class="chevron"><use href="#i-down"/></svg></button>
+  <div class="task-list" id="task-list">
+   <div class="day-label">Today</div>
+   <button class="task active" data-task="cache"><span class="task-dot done"></span><span>Cache GitHub repository loader</span></button>
+   <button class="task" data-task="trace"><span class="task-dot"></span><span>Improve stack trace parsing</span></button>
+   <div class="day-label">Yesterday</div>
+   <button class="task" data-task="empty"><span class="task-dot"></span><span>Add empty states to the explorer</span></button>
+   <button class="task" data-task="retry"><span class="task-dot"></span><span>Fix retry logic on rate limits</span></button>
+   <button class="task" data-task="readme"><span class="task-dot"></span><span>Update the getting started guide</span></button>
+  </div>
+  <button class="project second-project" data-project="personal-site"><svg><use href="#i-folder"/></svg><span>personal-site</span><svg class="chevron"><use href="#i-chevron"/></svg></button>
+  <div class="sidebar-bottom"><div class="philosophy"><svg><use href="#i-leaf"/></svg><p>Cheap models work.<br><span>Smart models check.</span></p></div><button class="settings-trigger" id="settings-trigger"><svg><use href="#i-settings"/></svg>Settings<span>⌘ ,</span></button><div class="profile"><div class="avatar">C</div><div>Carlos <span>Local workspace</span></div><span class="version">v0.1</span></div></div>
+ </aside>
+ <div class="workspace">
+  <header class="topbar"><div class="breadcrumbs"><button class="icon-btn mobile-menu" id="mobile-menu" aria-label="Open sidebar"><svg><use href="#i-panel"/></svg></button><svg><use href="#i-folder"/></svg><span id="project-name">trace-the-failure</span><span class="slash">/</span><span class="muted">Tasks</span></div><div class="topbar-right"><span class="prototype-label">INTERACTIVE PREVIEW</span><span class="branch"><svg><use href="#i-branch"/></svg>feat/repo-cache</span><button class="icon-btn" id="toggle-inspector" aria-label="Toggle session panel"><svg><use href="#i-panel"/></svg></button></div></header>
+  <div class="workspace-content">
+   <main class="main-pane">
+    <div class="task-heading"><div class="eyebrow"><span class="status-dot"></span><span id="task-status">Completed</span><span class="small-divider">·</span><span>Today, 10:42 AM</span></div><div class="title-row"><h1 id="task-title">A faster repository loader.</h1><button class="icon-btn" id="replay" aria-label="Replay demo session" title="Replay demo session"><svg><use href="#i-play"/></svg></button></div><div class="task-subtitle">A little patience. A lot less compute cost.</div></div>
+    <nav class="tabs" aria-label="Task views"><button class="tab active" data-view="activity" aria-current="page"><svg><use href="#i-chat"/></svg>Activity</button><button class="tab" data-view="changes"><svg><use href="#i-code"/></svg>Changes<span class="count">3</span></button><button class="tab" data-view="tests"><svg><use href="#i-tests"/></svg>Tests<span class="test-count">24</span></button><span class="diff-tally"><span>+86</span><span>−12</span></span></nav>
+    <button class="compact-session" id="compact-session" aria-label="Open Economy session overview"><span><svg><use href="#i-leaf"/></svg>Free worker <span class="compact-arrow">→</span> premium review</span><strong>$0.04 <small>· 81% saved</small></strong></button>
+    <div class="view-container" id="view-container">
+     <section id="activity-view" class="view activity-view" aria-label="Task activity">
+      <div class="user-message"><div class="message-meta"><span class="mini-avatar">C</span><strong>You</strong><time>10:42 AM</time></div><p id="user-prompt">Add caching to the GitHub repository loader and make sure existing tests still pass.</p></div>
+      <div class="agent-message"><div class="message-meta"><span class="agent-avatar"><svg><use href="#i-code"/></svg></span><strong>Worker</strong><span class="model-label">OpenRouter Free</span></div><p>I’ll trace the loader, add a lightweight cache, and run the test suite before handing it off for review.</p></div>
+      <div class="activity-stack">
+       <details class="activity-card"><summary><span class="activity-icon"><svg><use href="#i-search"/></svg></span><span>Inspected the repository<span class="activity-detail">Read 4 files · searched 6 references</span></span><span class="activity-time">12s</span><svg class="disclosure"><use href="#i-chevron"/></svg></summary><div class="detail-body">Read <code>github_loader.py</code>, <code>repository.py</code>, and existing loader tests. Found repeated network requests for unchanged repository metadata.</div></details>
+       <details class="activity-card"><summary><span class="activity-icon"><svg><use href="#i-code"/></svg></span><span>Added repository caching<span class="activity-detail">github_loader.py <span class="inline-add">+48</span> <span class="inline-remove">−8</span></span></span><span class="activity-time">38s</span><svg class="disclosure"><use href="#i-chevron"/></svg></summary><div class="detail-body">Added a bounded, in-memory cache with a five-minute TTL and tests for cache hits, misses, and expiration.<button class="text-link" data-open-changes>Inspect changes →</button></div></details>
+       <details class="activity-card"><summary><span class="activity-icon"><svg><use href="#i-tests"/></svg></span><span>Ran tests and fixed an edge case<span class="activity-detail"><span class="inline-remove">1 failed</span><span class="tiny-arrow">→</span><span class="inline-add">23 passed</span> · iteration 2</span></span><span class="activity-time">1m 04s</span><svg class="disclosure"><use href="#i-chevron"/></svg></summary><div class="detail-body">The isolation test exposed a shared mutable cache entry. Returned a deep copy to prevent callers from modifying cached data. All 23 tests passed on the second run.</div></details>
+      </div>
+      <details class="review-card requested" open><summary><span class="review-symbol"><svg><use href="#i-spark"/></svg></span><strong>Premium review</strong><span class="checkpoint-label">Checkpoint #1</span><span class="decision revise">Changes requested</span><svg class="disclosure"><use href="#i-chevron"/></svg></summary><div class="review-content"><p>The implementation is sound and the tests cover hits and expiration. One thing to address before this ships:</p><div class="review-concern"><span>↳</span><p>Invalidate the cache when repository metadata changes. The current key can return stale results after a push.</p></div><div class="review-foot"><svg><use href="#i-spark"/></svg>Frontier reviewer<span>1,824 tokens · $0.025</span></div></div></details>
+      <div class="worker-revision"><svg><use href="#i-branch"/></svg><div><strong>Worker addressed the feedback</strong><p>Included <code>pushed_at</code> in the cache key and added a regression test.</p></div><span class="pass-pill"><svg><use href="#i-check"/></svg>24 passed</span></div>
+      <details class="review-card approved"><summary><span class="review-symbol"><svg><use href="#i-check"/></svg></span><strong>Approved to ship</strong><span class="checkpoint-label">Checkpoint #2</span><span class="decision approve">Approved</span><svg class="disclosure"><use href="#i-chevron"/></svg></summary><div class="review-content"><p>✓ Cache invalidates when repository metadata changes.<br>✓ All 24 tests pass, including the new regression test.<br>✓ No obvious regressions in existing behavior.</p><div class="review-foot">Frontier reviewer<span>1,117 tokens · $0.015</span></div></div></details>
+      <div class="completion-note"><span class="status-dot"></span>Ready for your review. <button class="text-link" data-open-changes>Inspect 3 changed files <span>→</span></button><span>2m 48s</span></div>
+      <div id="followups"></div>
+     </section>
+     <section id="changes-view" class="view hidden" aria-label="Code changes"></section>
+     <section id="tests-view" class="view hidden" aria-label="Test results"></section>
+    </div>
+    <div class="composer-area"><form class="composer" id="composer"><textarea id="task-input" rows="2" placeholder="Ask a follow-up, or give the worker something new…" aria-label="Task or follow-up message"></textarea><div class="composer-controls"><button type="button" class="mode-select" id="mode-select"><svg><use href="#i-leaf"/></svg><span>Economy</span><svg class="small-chevron"><use href="#i-down"/></svg></button><span class="composer-models">Free worker <span>+</span> frontier review</span><div class="composer-actions"><button type="button" class="icon-btn" id="composer-settings" aria-label="Task settings"><svg><use href="#i-settings"/></svg></button><button type="submit" class="send-btn" aria-label="Send message"><svg><use href="#i-arrow"/></svg></button></div></div></form><div class="composer-caption"><span><svg><use href="#i-shield"/></svg>Local tools allowed</span><span>Mock session · no models connected</span></div></div>
+   </main>
+   <aside class="inspector" id="inspector"><div class="inspector-heading"><span>Session overview</span><button class="icon-btn" id="session-settings" aria-label="Configure session"><svg><use href="#i-settings"/></svg></button></div><div class="inspector-scroll">
+    <section class="economy-intro"><div class="economy-icon"><svg><use href="#i-leaf"/></svg></div><h2>Let the cheap model cook.</h2><p>The worker does the heavy lifting.<br>The reviewer makes the call.</p><div class="mode-badge"><svg><use href="#i-leaf"/></svg><span>Economy mode</span><span class="status-dot"></span></div></section>
+    <section class="model-roles"><button class="role-row" id="worker-model"><span class="role-icon worker-icon"><svg><use href="#i-code"/></svg></span><span><span class="role-label">WORKER</span><strong>OpenRouter Free</strong></span><svg class="role-edit"><use href="#i-settings"/></svg></button><div class="role-connection"><span></span><small>codes, tests, iterates</small></div><button class="role-row" id="reviewer-model"><span class="role-icon reviewer-icon"><svg><use href="#i-spark"/></svg></span><span><span class="role-label">REVIEWER</span><strong>Frontier Model</strong></span><svg class="role-edit"><use href="#i-settings"/></svg></button></section>
+    <section class="journey"><div class="section-title">A little more time, well spent<button class="icon-btn" id="journey-expand" aria-label="Expand orchestration details"><svg><use href="#i-down"/></svg></button></div><ol class="journey-list"><li class="complete"><span class="journey-dot"><svg><use href="#i-check"/></svg></span><span>Worker iterations</span><strong>3</strong></li><li class="complete"><span class="journey-dot"><svg><use href="#i-check"/></svg></span><span>Tool actions</span><strong>18</strong></li><li class="complete"><span class="journey-dot"><svg><use href="#i-check"/></svg></span><span>Tests passing</span><strong>24 / 24</strong></li><li class="complete"><span class="journey-dot"><svg><use href="#i-check"/></svg></span><span>Premium checkpoints</span><strong>2</strong></li><li class="complete final"><span class="journey-dot"><svg><use href="#i-check"/></svg></span><span>Final review</span><strong>Approved</strong></li></ol><div id="journey-details" class="hidden journey-details">Checkpoint #1 → requested changes<br>Worker revised the cache key<br>Checkpoint #2 → approved<br><span>Only checkpoints reach the reviewer.</span></div></section>
+    <section class="usage"><div class="section-title">Compute, thoughtfully spent<svg><use href="#i-leaf"/></svg></div><div class="cost-total"><strong>$0.04</strong><span>total session cost</span></div><div class="usage-bar"><span class="worker-bar"></span><span class="reviewer-bar"></span></div><div class="usage-table"><div><span><i class="legend-dot worker"></i>Worker</span><span>34,821 <small>tokens</small></span><strong>$0.00</strong></div><div><span><i class="legend-dot reviewer"></i>Reviewer</span><span>2,941 <small>tokens</small></span><strong>$0.04</strong></div></div><div class="savings"><svg><use href="#i-leaf"/></svg><span><strong>81% fewer premium tokens</strong><small>Estimated vs. a frontier-only run</small></span></div></section>
+    <button class="replay-button" id="replay-bottom"><svg><use href="#i-play"/></svg>Replay this session<span>2m 48s ↗</span></button>
+   </div><div class="inspector-footer"><span class="status-dot"></span>Good code doesn’t have to cost a lot.</div></aside>
+  </div>
+ </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<div id="overlay-root"></div>
+</body>
+</html>
