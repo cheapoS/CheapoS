@@ -1261,7 +1261,17 @@ class Engine:
             raise CheckpointTurnLimit(task)
         self.refresh_changes(task)
         progress.observe(task)
-        if progress.state(task)['revision'] <= runtime.interval_revision:
+        recovery = progress.state(task)
+        if recovery['revision'] <= runtime.interval_revision:
+            # A read-loop recovery queued on the final interval turn must get
+            # one actual attempt. Persist the marker so Resume cannot renew it.
+            if (work_policy.active_implementation(task) and task.get('action_pending')
+                    and not runtime.action_context_ready
+                    and recovery.get('action_boundary_revision') != recovery['revision']):
+                recovery['action_boundary_revision'] = recovery['revision']
+                self.event(task, 'guard', 'Trying the next action before pausing',
+                           'One implementation recovery turn remains within the existing hard limits.')
+                return
             raise ProgressPause("No meaningful patch progress was saved during the checkpoint interval. Inspect the existing evidence or clarify the remaining step before resuming.")
         runtime.interval_patch = task['patch']
         runtime.interval_revision = progress.state(task)['revision']

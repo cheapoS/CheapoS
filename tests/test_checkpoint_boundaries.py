@@ -5,6 +5,22 @@ from test_engine import LocalCase, call
 
 
 class CheckpointBoundaryTests(LocalCase):
+    def test_branch_recovery_at_boundary_gets_one_attempt_without_renewing_limits(self):
+        task = self.fixture()
+        task['branch_run']={'id':'run','current_item_id':'one','items':[{'id':'one','status':'working'}]}
+        task.update(action_pending=True,worker_turns=12)
+        runtime=Runtime(task);runtime.step_turns=12
+        self.engine.checkpoint_boundary(runtime)
+        self.assertEqual(runtime.step_turns,12)
+        self.assertEqual(task['worker_turns'],12)
+        # A restart and still-pending flag do not buy another free attempt.
+        restarted=Runtime(task);restarted.step_turns=13
+        with self.assertRaisesRegex(ProgressPause,'No meaningful'):
+            self.engine.checkpoint_boundary(restarted)
+        task['worker_turns']=task['limits']['worker_turns']
+        with self.assertRaises(WorkerTurnLimit):
+            self.engine.checkpoint_boundary(runtime)
+
     def test_thirteen_useful_turns_continue_to_real_check_and_review(self):
         task = self.fixture(paid=True)
         responses = [call('replace_text', {'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'})]
