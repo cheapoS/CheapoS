@@ -29,7 +29,7 @@ The cards are instructions for future work, not authorization to execute the ent
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T41](docs/tasks/T41-current-validation-docs.md) | Align current validation instructions and exporter trial checks | — | S | Not started |
+| [T41](docs/tasks/T41-current-validation-docs.md) | Align current validation instructions and exporter trial checks | — | S | Done |
 | [T42](docs/tasks/T42-report-acceptance-contract.md) | Prepare independent acceptance evidence for report export | T41 | M | Not started |
 | [T43](docs/tasks/T43-actionable-review-disagreement.md) | Make review disagreements concrete before changing passing work | T41 | M | Not started |
 | [T44](docs/tasks/T44-live-report-export.md) | Have cheapoS implement the three-item report exporter | T42, T43 | L | Not started |

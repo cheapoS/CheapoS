@@ -1,6 +1,6 @@
 # T41 — Align current validation instructions
 
-Status: Not started
+Status: Done
 Depends on: none
 Size: S
 
@@ -53,9 +53,24 @@ exact new acceptance-module names; leave them clearly proposed until it lands.
 
 ## Completion record
 
-Behavior delivered: pending
-Acceptance evidence: pending
-Commands and results: pending
-Remaining limitations: pending
+Behavior delivered: Updated CONTRIBUTING to the actual CPU-capped eight-worker
+selector default and explicit --jobs override. Replaced the active exporter full
+gate with focused implementation/frontend checks and visibly pending T42
+acceptance commands. Distinguished development selection from approved argv and
+identity-bound evidence reuse; retained historical measurements and failures.
+Acceptance evidence: Compared docs to scripts/check.py (DEFAULT_JOBS, empty/UI/docs
+selection), scripts/dev_tests.py (entry point, --directory/--pattern/--jobs and
+repository imports), scripts/parallel_tests.py, and branch_evidence.bind_check.
+All edits are Markdown; production behavior and runner policy are unchanged.
+Commands and results: `python3 -B scripts/check.py --plan` selected zero Python
+modules and only `git diff --check` for the four edited Markdown files.
+`python3 -B scripts/check.py --files dist/branch_ui.js --plan` selected JS checks
+and zero Python modules. Local Markdown links resolved; command flags and
+existing JS filenames matched source. `git diff --check` passed. No runtime
+tests were executed.
+Remaining limitations: T42 must supply and validate the proposed independent
+acceptance modules/commands and digest before T44 starts. The exporter feature
+and its implementation test files do not exist yet. No new tests were added;
+new regression runtime is zero. No runtime suite or live inference was run.
 
 Update this card and the T41 status in TASKS.md; commit only scoped changes.

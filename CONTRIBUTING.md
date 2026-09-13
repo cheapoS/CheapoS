@@ -21,13 +21,14 @@ new-test timing at handoff. Preserve meaningful assertions and product safeguard
 
 ```sh
 python3 -B scripts/check.py --plan          # inspect selection from working changes
-python3 -B scripts/check.py                 # run selected checks, up to 4 processes
+python3 -B scripts/check.py                 # run selected checks, up to 8 processes
 python3 -B scripts/check.py --base main     # include committed branch changes
 python3 -B scripts/check.py --files dist/app.js dist/styles.css
 ```
 
 The selector includes staged, unstaged, and untracked changes. Without `--base`,
-a clean working tree runs nothing and says so. `--base main` includes changes
+a clean working tree runs nothing and says so; that is not feature validation.
+Use `--base` or `--files` to check committed changes. `--base main` includes changes
 since the branch's merge base as well as current edits. `--files` overrides Git
 detection. Unknown runtime files and Python files without known test coverage
 select all Python modules visibly; inspect `--plan` before broad changes.
@@ -57,7 +58,8 @@ python3 -B scripts/dev_tests.py --suite fast
 ```
 
 Use `--jobs 1` to debug serially, or reduce the worker count if local resources are
-busy. `check.py` defaults to at most 4 workers; `dev_tests.py` keeps its existing
+busy. `check.py` defaults to `min(8, os.cpu_count() or 1)` workers;
+use `--jobs N` (1–16) to override that maximum. `dev_tests.py` keeps its existing
 serial default and full selection when no selector is supplied, so existing
 verification commands do not silently become weaker. Workers report failures,
 import errors, crashes, skips and counts; empty discovery fails. Parallel timing
@@ -73,6 +75,10 @@ python3 -B scripts/check.py --full --jobs 4
 # Python only, with a reusable timing report:
 python3 -B scripts/dev_tests.py --suite full --jobs 4 --timings --json /tmp/cheapos-full.json
 ```
+
+Reuse saved application check evidence only when its candidate, exact command,
+and environment identities still match. Development selection does not replace
+the exact verification commands captured in an approved cheapoS proposal.
 
 Once relevant checks pass, do not repeat them because work moved to review,
 commit or merge. Recheck when conflicts or subsequent edits change the tested
