@@ -56,8 +56,10 @@ Acceptance criteria:
    credential-bearing fields that must be omitted, invalid/non-run input, and
    unchanged input data after rendering. Use small representative dictionaries.
 
-Required check:
+Required checks:
 `python3 -B scripts/dev_tests.py --pattern test_run_report.py`
+
+`python3 -B scripts/dev_tests.py --directory docs/trials/run-report-acceptance --pattern test_formatter_acceptance.py`
 
 ## Item 2 — read-only Markdown download endpoint
 
@@ -83,6 +85,8 @@ Acceptance criteria:
 Required checks:
 `python3 -B scripts/dev_tests.py --pattern test_run_report.py`
 `python3 -B scripts/dev_tests.py --pattern test_run_report_http.py`
+
+`python3 -B scripts/dev_tests.py --directory docs/trials/run-report-acceptance --pattern test_endpoint_acceptance.py`
 
 ## Item 3 — discoverable export control and documentation
 
@@ -124,14 +128,14 @@ Implementation checks (the named feature tests are created by Items 1–3):
 - `node --check dist/app.js`
 - `node --test tests/test_branch_ui.js tests/test_conversation.js tests/test_guidance.js tests/test_panels.js tests/test_run_report.js`
 
-**T42 acceptance commands are proposed, not yet available or approved.** T42 must
-create and validate its independent pack, finalize the exact filenames/commands
-here and in the item checks, and record its digest before a T44 Start. Do not
-omit these checks, treat missing files as a pass, or start with these placeholders.
-The proposed commands use the existing runner, which adds the real repository
-root to the Python import path:
+**T42 independent acceptance pack is finalized** under
+`docs/trials/run-report-acceptance/`. Its README maps saved fields to checks;
+DIGEST.json fixes the independent tests and runnable example before Start.
+The observing driver must compare that captured manifest and every file afterward.
+Baseline execution currently fails because the exporter/endpoint do not exist;
+that expected failure is not a feature pass.
 
-| Scope | Proposed independent command (pending T42) |
+| Scope | Required independent command |
 | --- | --- |
 | Item 1 and final | `python3 -B scripts/dev_tests.py --directory docs/trials/run-report-acceptance --pattern test_formatter_acceptance.py` |
 | Item 2 and final | `python3 -B scripts/dev_tests.py --directory docs/trials/run-report-acceptance --pattern test_endpoint_acceptance.py` |

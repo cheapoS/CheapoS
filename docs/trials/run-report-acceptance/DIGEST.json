@@ -1,0 +1,12 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    "contract.py": "1009f9393f90d820d7915ade286b660805ee91c53867b6f3a4a4c1403398ca38",
+    "example.py": "99e0d3cb8e80b2b2a7a63aa6d367356d850b21eb4a2ba3675d8e6d69b8deb15a",
+    "test_formatter_acceptance.py": "60271522aa0b3e93707407aa90d79813cd2bfc13c58ae851282179356512aced",
+    "test_endpoint_acceptance.py": "b2559052525c1ef6b40c455de49b03f17caedf75c6dbe649dfb203901fb746ba",
+    "selfcheck.py": "15f686d6972d4b4d74fe34be434e5ffa55236b705058e8583d20a8fceb9024c8",
+    "README.md": "335eb6ba2705a338b8962f11f9c85a5a450c05e2fd72150a3d8a575bc8010f71"
+  },
+  "pack_sha256": "ce21e1075fc06d9f7810ca6a41d5f133cfcb4c6acc38a92de5385169fa473397"
+}
