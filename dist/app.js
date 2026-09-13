@@ -143,11 +143,12 @@ function renderComposer() {
     $('#chat-input').placeholder='Add a detail or change direction…';
     $('#composer-note').innerHTML='Keep talking to CheapOS. Your message will guide the next step.';
   }else{
+    const next=CheapOSConversation.readyForNext(task);
     $('#chat-send').hidden=false;
     if($('#chat-steer'))$('#chat-steer').hidden=true;
     $('#chat-send').disabled=state.sending||Boolean(other)||state.startup.busy||!$('#chat-input').value.trim();
-    $('#chat-input').placeholder=state.project?'Ask about your project or describe a change…':'Open a project to get started…';
-    $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':other?'Another chat is running. Open it in the sidebar to continue or pause it.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
+    $('#chat-input').placeholder=next?'What should we work on next?':state.project?'Ask about your project or describe a change…':'Open a project to get started…';
+    $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':other?'Another chat is running. Open it in the sidebar to continue or pause it.':next?'Ready when you are. We’ll continue from the committed changes.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
   }
   $('#chat-stop').hidden=!busy&&!state.startup.busy;
 }
@@ -451,6 +452,10 @@ function bindCommitDecision(task) {
     try {
       const result=await api('/tasks/'+task.id+'/commit',{approved:true,approval_id:entry.preview.approval_id,message:entry.message});
       commitPreviews.delete(task.id);await refresh();toast('Committed '+result.commit.slice(0,8)+' to '+result.branch);
+      if(state.task?.id===task.id&&CheapOSConversation.readyForNext(state.task)){
+        setView('chat');
+        if(!task.demo)$('#chat-input').focus({preventScroll:true});
+      }
     } catch(error) {entry.submitError=error.message;entry.error=error.message;entry.code=error.code;entry.files=error.files;throw error}
     finally {entry.submitting=false;if(state.task?.id===task.id)renderTask()}
   })};

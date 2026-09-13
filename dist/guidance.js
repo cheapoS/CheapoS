@@ -451,6 +451,11 @@ if(typeof module!=='undefined')module.exports=CheapOSGuide;
 const CheapOSConversation = (() => {
   const guide = CheapOSGuide;
   const last = (events, kind) => events.filter(e => e.kind === kind).at(-1);
+  const finalEvent = events => events.findLast(e => !['generation','state','context'].includes(e.kind));
+  const committed = event => event?.kind === 'commit' && Boolean(event.detail?.commit);
+  function readyForNext(task) {
+    return Boolean(task && !task.demo && task.status === 'awaiting_reply' && !task.commit_pending && !task.changes?.length && committed(finalEvent(task.events || [])));
+  }
   function eventPhase(event, previous = 'work') {
     if (event.kind === 'checks' || event.kind === 'check_reused' || event.kind === 'permission' || event.title === 'Running verification') return 'checks';
     if (event.kind === 'review' || event.kind === 'checkpoint' || event.detail?.role === 'reviewer' || event.title?.startsWith('Requesting reviewer:')) return 'review';
@@ -554,7 +559,7 @@ const CheapOSConversation = (() => {
     }
     const substantive = events.filter(e => !['generation','state','model','context'].includes(e.kind));
     const final = substantive.at(-1);
-    const reply = final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
+    const reply = committed(final) && !task.demo ? 'What would you like to work on next?' : final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
     if (onlyChat || !live && !events.some(e => ['tool','checks','review','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
     let intro = '';
     if (steps.length) {
@@ -581,6 +586,6 @@ const CheapOSConversation = (() => {
     }
     return entries;
   }
-  return {build};
+  return {build,readyForNext};
 })();
 if (typeof module !== 'undefined') module.exports.conversation = CheapOSConversation;

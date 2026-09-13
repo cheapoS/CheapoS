@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {conversation:{build}}=require('../dist/guidance.js');
+const {conversation:{build,readyForNext}}=require('../dist/guidance.js');
 const stamp='2026-09-13T12:00:00Z';
 const event=(id,kind,title,detail)=>({id,kind,title,detail,time:stamp});
 const task=overrides=>({prompt:'Fix the script.',status:'awaiting_reply',active_role:'worker',changes:[],checks:[],checkpoints:[],events:[],providers:{worker:{model:'worker-model'},reviewer:{model:'reviewer-model'}},...overrides});
@@ -68,6 +68,31 @@ test('follow-up user messages keep separate execution histories',()=>{
 test('commit acknowledgement belongs to the same reply and names the real commit',()=>{
  const [reply]=replies(task({events:[event(1,'commit','Changes committed',{branch:'main',commit:'1234567890',message:'Fix script'})]}));
  assert.match(reply.intro,/committed/);assert.equal(reply.steps[0].detail,'main · 12345678');
+ assert.equal(reply.reply,'What would you like to work on next?');
+});
+test('a successful commit invites the next request and retains the invitation after reload',()=>{
+ const t=task({events:[event(1,'commit','Changes committed',{branch:'main',commit:'1234567890'})]});
+ assert.equal(readyForNext(t),true);
+ assert.equal(readyForNext(JSON.parse(JSON.stringify(t))),true);
+ assert.equal(replies(t).filter(r=>r.reply.includes('work on next')).length,1);
+});
+test('approval, commit failures, and saved edits never announce readiness for another task',()=>{
+ const done=event(1,'commit','Changes committed',{branch:'main',commit:'1234567890'});
+ for(const t of [task({status:'approved'}),task({commit_pending:true,events:[done]}),task({changes:[{path:'new.py'}],events:[done]}),task({status:'error',events:[event(1,'commit','Commit needs attention',{error:'Conflict'})]})]){
+  assert.equal(readyForNext(t),false);
+ }
+ assert.equal(replies(task({events:[event(1,'commit','Commit needs attention',{error:'Conflict'})]}))[0].reply,'');
+});
+test('the next user message starts its own reply without repeating the closing question',()=>{
+ const t=task({events:[event(1,'commit','Changes committed',{branch:'main',commit:'1234567890'}),event(2,'user','You','Explain the new script.'),event(3,'assistant','Worker','It formats timestamps.')]});
+ assert.equal(readyForNext(t),false);
+ const answers=replies(t);
+ assert.equal(answers[0].reply,'What would you like to work on next?');
+ assert.equal(answers[1].reply,'It formats timestamps.');
+});
+test('scripted demos do not invite replies into their unavailable composer',()=>{
+ const t=task({demo:true,events:[event(1,'commit','Changes committed',{branch:'main',commit:'1234567890'})]});
+ assert.equal(readyForNext(t),false);assert.equal(replies(t)[0].reply,'');
 });
 test('preparation between checks is folded into the next action without losing output',()=>{
  const [reply]=replies(task({events:[event(1,'checks','Verification passed',{passed:true}),event(2,'model','Requesting worker: worker-model',{}),event(3,'assistant','Worker','Ready to submit.'),event(4,'check_reused','Checks already passed',{command:['python3','-m','unittest']}),event(5,'handoff','Sending for review',{role:'reviewer'})]}));
