@@ -25,12 +25,12 @@ Run compact-edit, output-recovery, tool-argument, and review tests. Browser-chec
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Proactive bounded line edits from observed size/output/error signals, deterministic orientation/implementation/verification/review tool priorities, concise stage instructions, preserved read access during recovery, and bounded repeated-read pauses. No model/price/reasoning-policy changes.
+- Acceptance evidence: Existing compact tests cover chunk bounds, stale versions, two edits per file, malformed calls and handoff evidence. Added A/B fixture: same large-file edits with 5 requests/0 failures proactively versus 6 requests/1 failure reactively. Small ordinary mode and all necessary read/reviewer tools retained.
+- Commands and results: Focused run: 48 tests, initially 2 failures addressed; 46 passed. Corrected work-policy/tool-argument/new-request tests: 9 passed in 8.067s. Review workflow: 2 passed in 9.220s. A/B policy tests: 3 passed in 2.781s.
+- Browser scenarios and results: No presentation changes; existing handoff and small-edit presentation reused. Controller fixtures verify named model selection stays unchanged.
+- Remaining limitations: Thresholds and comparison are documented in docs/development/work-policy.md. This deterministic comparison is not a live quality/speed result. Existing hard limits, exact edit evidence, current checks/review and human commit approval remain required.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

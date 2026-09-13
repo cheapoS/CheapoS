@@ -37,7 +37,8 @@ class ToolArgumentTests(LocalCase):
         self.engine.store.save(task)
         replies=iter([
             malformed(),
-            call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
+            call('read_file',{'path':'math_utils.py'}),
+            call('replace_lines',{'path':'math_utils.py','start_line':2,'end_line':2,'new_text':'    return max(lower, min(value, upper))'}),
             call('checkpoint',{'summary':'Fixed both bounds','uncertainties':''}),
             malformed('review_decision','{"decision":"APPROVE","feedback":"checked"'),
             call('review_decision',{'decision':'APPROVE','feedback':'Both bounds are correct.'}),
@@ -54,14 +55,16 @@ class ToolArgumentTests(LocalCase):
             opener.return_value.open.side_effect=respond
             self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'approved',result['error'])
-        self.assertEqual(len(requests),5)
+        self.assertEqual(len(requests),6)
         self.assertFalse((Path(task['workspace'])/'unsafe.txt').exists())
         self.assertEqual(result['usage']['uncertain_requests'],0)
-        self.assertEqual(result['usage']['worker']['tokens'],45)
+        self.assertEqual(result['usage']['worker']['tokens'],60)
         self.assertEqual(result['usage']['reviewer']['tokens'],30)
         errors=[e for e in result['events'] if e['kind']=='tool_error']
         self.assertEqual([e['detail']['tool'] for e in errors],['write_file','review_decision'])
-        for index in (1,4):
+        self.assertIn('invalid_tool_arguments',json.dumps(requests[1]['messages']))
+        self.assertIn('replace_lines',{t['function']['name'] for t in requests[1]['tools']})
+        for index in (5,):
             feedback=requests[index]['messages'][-1]
             if index==1:  # Action recovery adds controller guidance after feedback.
                 feedback=next(m for m in reversed(requests[index]['messages']) if m['role']=='tool')

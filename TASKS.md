@@ -69,7 +69,7 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 | [T19](docs/tasks/T19-omniroute-onboarding.md) | Guided OmniRoute setup and return to CheapOS | T18 | M | Done |
 | [T20](docs/tasks/T20-local-and-sample-onboarding.md) | Local-only onboarding and an honest sample loop | T19, T10 | M | Done |
 | [T21](docs/tasks/T21-project-context.md) | Compact project brief and durable continuation state | — | M | Done |
-| [T22](docs/tasks/T22-focused-agent-work.md) | Proactive small edits and stage-appropriate tool/context use | T21 | M | Todo |
+| [T22](docs/tasks/T22-focused-agent-work.md) | Proactive small edits and stage-appropriate tool/context use | T21 | M | Done |
 | [T23](docs/tasks/T23-environment-readiness.md) | Detect missing project tools and explain setup | T13, T21 | M | Todo |
 | [T24](docs/tasks/T24-completion-metrics.md) | End-to-end task metrics and trustworthy cost display | — | M | Todo |
 | [T25](docs/tasks/T25-model-selection.md) | Model ranking informed by completed work | T24 | M | Todo |

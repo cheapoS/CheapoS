@@ -27,6 +27,7 @@ from .streaming import STREAM_MAX_SECONDS
 from .startup import StartupManager
 from .readiness import ReadinessManager
 from . import project_context
+from . import work_policy
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
 
@@ -1843,17 +1844,28 @@ class Engine:
                 if task.get("conversational"):
                     task["request_worker_turns"] += 1
                 offered_tools = CHAT_TOOLS if task.get("conversational") else WORKER_TOOLS
+                reason = work_policy.small_edit_reason(task)
+                if reason:
+                    self.prepare_compact_edits(task)
+                    task['small_edit_reason'] = reason
+                    runtime.compact_context_ready = False
                 recovering = task.get("action_pending", False)
                 if recovering:
                     if not runtime.action_context_ready:
                         task["messages"] = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
                         runtime.action_context_ready = True
-                    offered_tools = [t for t in offered_tools if t["function"]["name"] in {"write_file", "replace_text", "run_checks", "checkpoint", "ask_user"}]
+                    # Missing context remains recoverable; repeated unchanged reads
+                    # are bounded by observations, not by removing every read tool.
                     task["messages"].append({"role": "user", "content": task["loop_guidance"]})
                 if task.get("compact_edits"):
                     if not runtime.compact_context_ready:
                         task["messages"] = self.compact_context(runtime)
                     offered_tools = [t for t in offered_tools if t["function"]["name"] not in {"replace_text", "write_file"}] + [LINE_EDIT, COMPACT_WRITE]
+                current_stage = work_policy.stage(task)
+                offered_tools = work_policy.prioritize(offered_tools, current_stage)
+                if task.get('work_stage') != current_stage:
+                    task['work_stage'] = current_stage
+                    task['messages'].append({'role':'user','content':work_policy.instruction(current_stage)})
                 if runtime.steer_queue:
                     while runtime.steer_queue:
                         steer_text = runtime.steer_queue.pop(0)
@@ -1924,6 +1936,8 @@ class Engine:
                                     result = {"observation": result, "guidance": task["loop_guidance"]}
                                     self.event(task, "guard", "Asking the worker to use what it found", "The same read returned unchanged information twice. CheapOS asked for an answer, a relevant web read, or a clear explanation of what is missing.")
                                 elif observations >= 3:
+                                    if recovering:
+                                        raise ProgressPause('Recovery repeated already available file evidence. Saved edits remain intact; provide the missing requirement or change the approach.')
                                     self.refresh_changes(task)
                                     if task.get("conversational"):
                                         self.prepare_loop_recovery(task)

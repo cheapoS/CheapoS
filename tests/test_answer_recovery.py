@@ -31,7 +31,7 @@ class AnswerRecoveryTests(LocalCase):
         tools={item['function']['name'] for item in requests[0][1]}
         self.assertIn('replace_text',tools);self.assertIn('run_checks',tools)
         self.assertIn('checkpoint',tools);self.assertIn('ask_user',tools)
-        self.assertNotIn('read_file',tools);self.assertNotIn('list_files',tools)
+        self.assertIn('read_file',tools);self.assertIn('list_files',tools)
         self.assertEqual(result['status'],'awaiting_reply')
         self.assertFalse(result['answer_pending']);self.assertFalse(result['action_pending'])
         self.assertEqual(result['limits'],t['limits'])
@@ -48,20 +48,26 @@ class AnswerRecoveryTests(LocalCase):
         self.engine.start(t['id']);result=self.finish(t)
         self.assertEqual(result['status'],'approved',result['error'])
         self.assertEqual(len(requests),7)
-        self.assertNotIn('read_file',{tool['function']['name'] for tool in requests[3][1]})
+        self.assertIn('read_file',{tool['function']['name'] for tool in requests[3][1]})
         self.assertEqual(len(result['checks']),1)
         self.assertEqual(result['checkpoints'][-1]['decision'],'APPROVE')
         self.assertEqual(result['limits'],t['limits'])
 
-    def test_recovery_does_not_execute_unoffered_read_tools_or_loop(self):
+    def test_recovery_can_read_missing_context_without_guessing(self):
         t=self.unfinished_patch()
-        requests=self.provider([call('read_file',{'path':'math_utils.py'})])
+        requests=self.provider([call('read_file',{'path':'math_utils.py'}),call('ask_user',{'question':'Should I add an example?'})])
+        self.engine.start(t['id']);result=self.finish(t)
+        self.assertEqual(result['status'],'awaiting_reply')
+        self.assertEqual(len(requests),2)
+        self.assertTrue([e for e in result['events'] if e['title']=='read file'])
+
+    def test_recovery_still_bounds_repeated_unchanged_reads(self):
+        t=self.unfinished_patch()
+        requests=self.provider([call('read_file',{'path':'math_utils.py'})]*5)
         self.engine.start(t['id']);result=self.finish(t)
         self.assertEqual(result['status'],'paused')
         self.assertEqual(result['error_code'],'progress_limit')
-        self.assertEqual(len(requests),1)
-        self.assertTrue(result['action_pending'])
-        self.assertFalse([e for e in result['events'] if e['title']=='read file'])
+        self.assertLessEqual(len(requests),4)
 
     def test_interrupted_action_recovery_survives_restart_without_automatic_retry(self):
         t=self.unfinished_patch()
