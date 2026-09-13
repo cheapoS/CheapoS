@@ -87,6 +87,18 @@ class HTTPTests(unittest.TestCase):
         self.assertTrue(Path(result['source']).is_relative_to(self.engine.store.root/'examples'))
         self.assertEqual(self.engine.runtimes,{})
 
+    def test_environment_recheck_is_read_only_and_task_scoped(self):
+        task=self.engine.create_demo()
+        task['check_command']=['.venv/bin/python','-m','unittest']
+        self.engine.store.save(task)
+        status, _, body=self.post('/api/tasks/'+task['id']+'/environment-recheck',{})
+        self.assertEqual(status,200)
+        result=json.loads(body)
+        self.assertEqual(result['environment_setup']['missing'],'selected_environment')
+        self.assertEqual(result['environment_setup']['workspace'],task['workspace'])
+        self.assertFalse((Path(task['workspace'])/'.venv').exists())
+        self.assertEqual(self.engine.runtimes,{})
+
     def test_bootstrap_and_static_files_without_signin(self):
         status, headers, body = self.request('GET', '/api/bootstrap')
         data = json.loads(body)

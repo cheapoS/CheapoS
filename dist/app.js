@@ -464,6 +464,10 @@ function renderChat() {
   const routeFailures=task.error_code==='routing_unavailable'?(task.route?.failures||[]):[];
   const errorDetails=routeFailures.length?`<details class="chat-error"><summary>Model check results (${routeFailures.length})</summary>${routeFailures.map(f=>`<p><strong>${esc(f.model)}</strong><br>${esc(f.error)}</p>`).join('')}</details>`:task.error&&task.error!==(failure?.description||guide.description)?`<details class="chat-error"><summary>Details</summary><p>${esc(task.error)}</p></details>`:'';
   if(task.status==='waiting_retry')decision=progressMarkup(task);
+  else if(task.environment_setup&&task.status==='paused'){
+    const setup=task.environment_setup;
+    decision=`<section class="chat-decision"><strong>${setup.status==='missing'?'Set up this task’s verification environment':'Task environment is ready to recheck'}</strong><p>${esc(setup.evidence)}</p><p>Task copy: <code>${esc(setup.workspace)}</code></p><p>${esc(setup.next_step)}</p><p>Dependency folders may be omitted from snapshots. Prepare this task copy; your source checkout is separate. Test permissions do not authorize installation.</p><div class="button-row"><button class="outline-button" data-environment="path">Copy task-copy path</button>${(setup.setup_commands||[]).map((command,index)=>`<button class="outline-button" data-environment="${index}">Copy setup command ${index+1}</button>`).join('')}<button class="outline-button" data-environment="recheck">Re-check task environment</button>${setup.status==='ready'?button('resume','Resume saved verification',true):''}</div>${(setup.setup_commands||[]).map((command,index)=>`<p><code>${esc(command)}</code><br><small>From ${esc(setup.sources[index]?.path)}:${esc(setup.sources[index]?.line)} · run manually inside the task copy.</small></p>`).join('')}</section>`;
+  }
   else if(task.pending_approval)decision=permissionMarkup(task);
   else if(task.status==='ready')decision=(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
   else if(CheapOSGuide.canCommit(task))decision=(commitDecisionMarkup(task));
@@ -473,6 +477,7 @@ function renderChat() {
   const lastReply=conversation.findLast(entry=>entry.kind==='assistant');
   $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('');
   if($('[data-sample-diagnostics]'))$('[data-sample-diagnostics]').onclick=()=>openConnections();
+  $$('[data-environment]').forEach(b=>b.onclick=async()=>{try{if(b.dataset.environment==='recheck'){b.disabled=true;await api('/tasks/'+task.id+'/environment-recheck',{});await refresh()}else{await navigator.clipboard.writeText(b.dataset.environment==='path'?task.workspace:task.environment_setup.setup_commands[Number(b.dataset.environment)]);toast('Copied')}}catch(e){toast(e.message)}finally{b.disabled=false}});
   for(const d of $$('#chat-view details[data-event]')){
     const key=detailKey(d.dataset.event);
     if(state.chatDetails.has(key))d.open=state.chatDetails.get(key);

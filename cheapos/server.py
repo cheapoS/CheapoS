@@ -221,6 +221,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     result = engine.prepare_commit(task_id)
                 elif action == "reconcile":
                     result = public_task(engine.reconcile_project(task_id, values))
+                elif action == "environment-recheck":
+                    result = public_task(engine.recheck_environment(task_id))
                 elif action == "commit-decision":
                     result = public_task(engine.commit_decision(task_id, values))
                 elif action == "commit":

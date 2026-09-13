@@ -28,6 +28,7 @@ from .startup import StartupManager
 from .readiness import ReadinessManager
 from . import project_context
 from . import work_policy
+from . import environment
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
 
@@ -113,6 +114,10 @@ def limits_from(value):
 
 
 class ProgressPause(Exception):
+    pass
+
+
+class EnvironmentPause(ProgressPause):
     pass
 
 
@@ -530,6 +535,8 @@ class Engine:
             if task.get("commit_pending"):
                 raise ValueError("Finish the saved commit attempt in Chat before continuing this task")
             followup = (changes or {}).get("message")
+            if followup is None and (task.get('environment_setup') or {}).get('status') == 'missing':
+                raise ValueError('Re-check the task environment after setup before resuming. Saved work is intact.')
             retry_wait = (changes or {}).get('retry_when_available', False)
             if not isinstance(retry_wait, bool):
                 raise ValueError('Retry when available must be true or false')
@@ -576,6 +583,7 @@ class Engine:
                     self.prepare_output_recovery(task, task["providers"]["worker"]["model"])
             if followup is not None:
                 task["conversational"] = True
+                task.pop('pending_verification',None)
                 task["request_worker_turns"] = 0
                 task["answer_pending"] = False
                 task["action_pending"] = False
@@ -1497,10 +1505,36 @@ class Engine:
             raise CheckCommandError("Choose a check from this project's guidance and call run_checks with its command. If none is suitable, use ask_user.")
         return argv
 
+    def recheck_environment(self, task_id):
+        with self.lock:
+            self.require_active_task(task_id)
+            runtime=self.runtimes.get(task_id)
+            if runtime and runtime.thread and runtime.thread.is_alive():
+                raise ValueError('Pause this task before rechecking its environment')
+            task=self.store.get(task_id)
+            previous=task.get('environment_setup') or {}
+            result=environment.inspect(task,self.verification_argv(task))
+            task['environment_setup']=result
+            if previous.get('status')=='missing' and result['status']=='ready':
+                task['workspace_generation']=task.get('workspace_generation',0)+1
+                task.pop('pending_review',None)
+                task.update(status='paused',error=None,error_code=None)
+            self.event(task,'setup','Task environment rechecked',result)
+            return task
+
     def checks(self, runtime, command=None):
         task = runtime.task
         reconciliation.ensure_resolved(task)
         argv = self.verification_argv(task, command)
+        readiness = environment.inspect(task, argv)
+        if readiness['status'] == 'missing':
+            task['environment_setup'] = readiness
+            task['pending_verification'] = True
+            if argv != task['check_command']: task['auto_approve_checks'] = False
+            task['check_command'] = list(argv)
+            self.event(task,'setup','Verification environment needs setup',readiness)
+            raise EnvironmentPause(readiness['evidence'])
+        if task.get('environment_setup'): task['environment_setup']=readiness
         # Session grants match this chat, workspace, and parsed argument vector.
         # They are held in memory, never restored from task history.
         with self.lock:
@@ -1787,6 +1821,11 @@ class Engine:
                 if runtime.stop.is_set():
                     raise InterruptedError("Task stopped")
                 runtime.guard()
+                if task.get('pending_verification'):
+                    result=self.checks(runtime)
+                    task.pop('pending_verification',None)
+                    task['messages']=self.initial_messages(task)
+                    task['messages'].append({'role':'user','content':'Resumed saved verification: '+json.dumps(result)})
                 if task.get("pending_checkpoint") is not None:
                     result = self.checkpoint_feedback(runtime, task["pending_checkpoint"])
                     task["messages"].append({"role": "user", "content": "Resumed checkpoint result: " + json.dumps(result)})
@@ -1963,7 +2002,7 @@ class Engine:
                 self.store.save(task)
         except (ProgressPause, RoutingPause) as error:
             task["status"] = "budget_paused" if isinstance(error, WorkingTimeLimit) else "paused"
-            task["error_code"] = ("working_time_limit" if isinstance(error, WorkingTimeLimit) else "routing_unavailable" if isinstance(error, RoutingPause) else
+            task["error_code"] = ("environment_setup" if isinstance(error, EnvironmentPause) else "working_time_limit" if isinstance(error, WorkingTimeLimit) else "routing_unavailable" if isinstance(error, RoutingPause) else
                                   "checkpoint_turn_limit" if isinstance(error, CheckpointTurnLimit) else "progress_limit")
             task["error"] = str(error)
             if isinstance(error, RoutingPause):
@@ -1972,7 +2011,7 @@ class Engine:
             progress.observe(task)
             task['pause_summary'] = progress.pause_summary(task, error)
             infrastructure = (task.get('checks') or [{}])[-1].get('next_action') == str(error) or 'time limit' in str(error)
-            if isinstance(error, ProgressPause) and not isinstance(error, (CheckpointTurnLimit, WorkingTimeLimit)) and not infrastructure:
+            if isinstance(error, ProgressPause) and not isinstance(error, (CheckpointTurnLimit, WorkingTimeLimit, EnvironmentPause)) and not infrastructure:
                 task['recovery_blocked'] = progress.state(task)['revision']
             self.event(task, "guard", "Paused to avoid repeated work" if isinstance(error, ProgressPause) else "Waiting for a usable route", task["error"])
         except InterruptedError as error:

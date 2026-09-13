@@ -25,12 +25,12 @@ Test readiness with fake executables/manifests and temporary environments. This 
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Read-only prerequisite inspection before verification dispatch; structured missing-executable/environment/declared-pytest setup pause; visible task-copy path and source-attributed safe setup-command copy actions; explicit recheck and saved-verification resume. Recheck invalidates verification generation without discarding edits. No installation runs through test grants.
+- Acceptance evidence: Fixtures cover absent executable/environment, isolated declared pytest absence, custom .pth uncertainty, project ImportError preservation, no repeated model dispatch while blocked, restored environment, unchanged source HEAD and preserved patch.
+- Commands and results: 18 environment/verification/permission tests passed in 27.995s. HTTP recheck contract: 1 passed in 0.279s. Final environment tests: 4 passed in 3.802s. JavaScript syntax and diff whitespace checks passed.
+- Browser scenarios and results: CUA disposable port 51030: setup card named missing .venv interpreter and task path; copied-command affordance cited README.md:2. Unresolved recheck stayed paused. Restored fixture interpreter enabled Resume saved verification, which ran one actual check and separate review, ending at human approval.
+- Remaining limitations: No native Open Folder integration exists, so Copy task-copy path is offered. Dependency detection is deliberately narrow: an isolated declared pytest environment without custom .pth paths. Other dependencies remain unverified; generic ImportError output is not relabeled. Setup commands are copied only from recognized project guidance and run manually.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

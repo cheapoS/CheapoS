@@ -180,3 +180,7 @@ all grants expire on restart. See [execution permissions](docs/EXECUTION.md#sess
 ### Local setup and sample tasks
 
 **Set up connection → Models on this computer** lists eligible installed Ollama models without downloading anything. **Use all local** keeps work and review local, including when the same local model handles both requests. **Try a sample task** distinguishes a scripted demonstration from a real five-minute sample using your selected models. Both use disposable repositories. The real sample authorizes only its exact unittest command for its task copy, keeps your spending cap (at most $0.25), and still requires your final commit approval. A greeting is not a completed coding loop.
+
+### Task-copy environment setup
+
+A missing verification executable or selected virtual environment pauses with its task-copy path and a recheck action. Recognized setup commands are shown only when present in project guidance. Prepare that separate copy manually; source environments and excluded dependency folders are not copied automatically. Rechecking restored prerequisites invalidates old verification evidence, then Resume continues the saved check. Generic import errors remain test failures with their original output. Test permission never authorizes package installation.
