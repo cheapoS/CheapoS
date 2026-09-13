@@ -881,17 +881,17 @@ function openConnections(afterSave, taskContext=null) {
     return `<fieldset class="provider-fields" data-role="${role}"><legend>${role==='worker'?'Worker · does the work':'Reviewer · checks the evidence'}</legend>
       <label class="full-field">Connection<select data-preset="${role}">${[['omniroute','OmniRoute (shared local gateway)'],['openrouter','OpenRouter (direct)'],['ollama','Ollama (local)'],['custom','OpenAI-compatible endpoint']].map(([v,n])=>`<option value="${v}" ${v===preset?'selected':''}>${n}</option>`).join('')}</select></label>
       <div data-direct="${role}"><label class="full-field">API base URL<input type="url" name="${role}_url" value="${esc(p.base_url||settings.base_url)}" required></label><label class="full-field">API key ${p.key_configured?'· configured':''}<input name="${role}_key" type="password" placeholder="Leave blank to keep the current key" autocomplete="new-password"></label></div>
-      <div data-catalog="${role}"><label class="checkbox-field"><input type="checkbox" data-free="${role}" checked><span>Show free models only</span></label><label class="full-field">Available models<select data-model-picker="${role}"><option value="">Loading catalog…</option></select></label></div>
+      <div data-catalog="${role}"><label class="checkbox-field"><input type="checkbox" data-free="${role}" checked><span>Show public-free and included models</span></label><label class="full-field">Catalog models<select data-model-picker="${role}"><option value="">Loading catalog…</option></select></label></div>
       <label class="full-field">Model ID<input name="${role}_model" type="text" value="${esc(p.model||'')}" placeholder="Choose above or enter an exact model ID" required autocomplete="off"></label>
       <p class="model-capabilities small" data-capabilities="${role}"></p>
-      <div class="field-grid">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
-      <p class="small muted">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
+      <label class="checkbox-field" data-included-label="${role}"><input type="checkbox" data-included="${role}" ${p.access==='included'?'checked':''}><span>Use included access for this exact model<small>Authorize its ID in the gateway list above first.</small></span></label><div class="field-grid" data-prices="${role}">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
+      <p class="small muted" data-price-note="${role}">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
   };
   const d=dialog(`${modalHeader('MODEL CONNECTIONS','Choose where the work runs.')}<button class="outline-button" id="models-execution">Execution: ${esc(executionLabel(state.preferences.execution?.mode))} →</button><p class="modal-description">OmniRoute handles provider access. cheapoS handles the work, checks, and review.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>Automatic remote chats check another free model after a recoverable failure when you resume. Manual and local chats keep their selected models; choices below apply to new chats.</p></div>`:''}
     <form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong>OmniRoute</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
       <p id="gateway-message" class="small muted"></p><p id="gateway-instance" class="small muted"></p>
       <details class="advanced"><summary id="free-pool-title">Free model pool</summary><p class="small muted">Refreshes every five minutes, including OpenRouter’s current free models. Failed models cool down for 15–60 minutes. Provider cooldowns follow the gateway’s retry time and do not count as individual model failures. A response or tool check does not prove coding quality.</p><div id="free-model-pool" class="free-model-pool"></div></details>
-      <div class="gateway-actions"><button type="button" class="outline-button" data-gateway-action="start">Connect / start</button><button type="button" class="subtle-button" data-gateway-action="refresh">Refresh models</button><button type="button" class="subtle-button" data-gateway-action="stop" hidden>Stop instance</button></div>
+      <div class="included-access"><label class="full-field">Models included in my account<textarea id="included-model-ids" rows="4" spellcheck="false" placeholder="One exact gateway model ID per line">${esc((settings.included_models||[]).join('\n'))}</textarea></label><p class="small muted">Authorize only models covered by your existing account. This applies to this gateway connection. New models and changed connections need new authorization. Included access uses a $0 marginal estimate; it is not public-free pricing or a billing receipt.</p><button type="button" class="outline-button" id="save-included-models">Save included access</button><p id="included-access-status" class="small" role="status"></p></div><div class="gateway-actions"><button type="button" class="outline-button" data-gateway-action="start">Connect / start</button><button type="button" class="subtle-button" data-gateway-action="refresh">Refresh models</button><button type="button" class="subtle-button" data-gateway-action="stop" hidden>Stop instance</button></div>
       <details class="advanced"><summary>Startup & connection settings</summary><label class="full-field">Local API URL<input name="gateway_url" type="url" value="${esc(settings.base_url)}" required></label>
         <label class="full-field">Gateway client API key · optional<input name="gateway_key" type="password" placeholder="${gateway.key_configured?'Configured · leave blank to keep':'Only if OmniRoute requires a client key'}" autocomplete="new-password"></label>
         <p class="small muted">Manage provider credentials in OmniRoute. This client key is separate from your dashboard password and stays in cheapoS memory.</p>
@@ -899,20 +899,27 @@ function openConnections(afterSave, taskContext=null) {
         <label class="checkbox-field"><input name="keep_running" type="checkbox" ${settings.keep_running?'checked':''}><span>Keep OmniRoute running when cheapoS closes<small>cheapoS only stops an instance it started in this session.</small></span></label>
         <button class="outline-button gateway-save" type="submit">Save gateway settings</button></details><p class="form-error" role="alert"></p></form>
     <form id="models-form"><details class="advanced" ${(state.preferences.execution?.mode||'manual')==='manual'?'open':''}><summary>Explicit model choices · Manual mode and remote preferences</summary><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div>
-      <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. These explicit choices apply in Manual mode. Automatic remote modes prefer eligible choices here, check free candidates, and replace failing models with visible handoffs.</p>
+      <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. These explicit choices apply in Manual mode. Automatic remote modes select only authorized eligible routes. Access labels do not establish remaining quota or successful inference.</p>
       <label class="checkbox-field" id="share-key-field"><input type="checkbox" name="share_key" checked><span>Use the entered worker key for the reviewer when their direct API URLs match</span></label>
       </details><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">${taskContext?'Save & prepare new chat':'Save connections'} ${icon('check')}</button></div></form>`,'connections-modal');
   $('#models-execution',d).onclick=()=>{d.close();executionPreferences()};
   const field=(role,name)=>$(`[name="${role}_${name}"]`,d);
   const usingOmni=role=>$(`[data-preset="${role}"]`,d).value==='omniroute';
+  let includedRevision=settings.connection_revision;
+  const includedSelected=role=>$(`[data-included="${role}"]`,d).checked;
   function capability(role) {
     const model=usingOmni(role)?state.gatewayModels.find(m=>m.id===field(role,'model').value.trim()):null;
-    $(`[data-capabilities="${role}"]`,d).textContent=model?`${model.tool_calling===true?'Tool calling advertised':model.tool_calling===false?'Tool calling not advertised':'Tool support unknown'}${model.context_length?' · '+Intl.NumberFormat().format(model.context_length)+' context':''}${model.free?' · Free variant':''}`:'Use a model that supports tool calling. Availability has not been tested.';
+    const included=usingOmni(role)&&includedSelected(role);
+    $(`[data-prices="${role}"]`,d).hidden=included;
+    for(const name of ['input','output'])field(role,name).disabled=included;
+    $(`[data-included-label="${role}"]`,d).hidden=!usingOmni(role);
+    $(`[data-price-note="${role}"]`,d).textContent=included?'Included account access · $0 marginal estimate, not a provider price. Exact ID must be authorized above.':'Unknown prices need your input. Verify them with the provider.';
+    $(`[data-capabilities="${role}"]`,d).textContent=model?`${CheapOSGuide.modelAccess(model)} · `+`${model.tool_calling===true?'Tool calling advertised':model.tool_calling===false?'Tool calling not advertised':'Tool support unknown'}${model.context_length?' · '+Intl.NumberFormat().format(model.context_length)+' context':''}${model.free?' · Free variant':''}`:'Use a model that supports tool calling. Availability has not been tested.';
   }
   function picker(role) {
     const select=$(`[data-model-picker="${role}"]`,d), free=$(`[data-free="${role}"]`,d).checked, current=field(role,'model').value.trim();
-    const models=state.gatewayModels.filter(m=>!free||m.free);
-    select.innerHTML=`<option value="">${models.length?'Choose from '+models.length+' models':'No matching models · refresh or enter an ID'}</option>`+models.map(m=>`<option value="${esc(m.id)}">${esc(m.id)}${m.tool_calling===true?' · tools':m.tool_calling===false?' · no tools advertised':''}</option>`).join('');
+    const models=state.gatewayModels.filter(m=>!free||m.free||m.access_class==='included');
+    select.innerHTML=`<option value="">${models.length?'Choose from '+models.length+' models':'No matching models · refresh or enter an ID'}</option>`+models.map(m=>`<option value="${esc(m.id)}">${esc(m.id)} · ${esc(CheapOSGuide.modelAccess(m))}${m.tool_calling===true?' · tools':m.tool_calling===false?' · no tools advertised':''}</option>`).join('');
     select.value=models.some(m=>m.id===current)?current:'';
     capability(role);
   }
@@ -928,6 +935,7 @@ function openConnections(afterSave, taskContext=null) {
   function updateGateway() {
     if(!d.open)return;
     const g=state.gateway||{};
+    if(includedRevision!==g.settings?.connection_revision){includedRevision=g.settings?.connection_revision;$('#included-model-ids',d).value=(g.settings?.included_models||[]).join('\n');for(const role of ['worker','reviewer'])$(`[data-included="${role}"]`,d).checked=false;}
     const badge=$('#gateway-status',d);badge.textContent=({ready:'Catalog connected',checking:'Connecting…',starting:'Starting…',offline:'Offline',auth_required:'Client key needed',not_installed:'Not installed',unavailable:'Unavailable',error:'Startup failed'})[g.status]||'Not checked';badge.dataset.status=g.status||'unchecked';
     $('#gateway-message',d).textContent=g.message||'Connect your local gateway to load its model catalog.';
     $('#gateway-instance',d).textContent=g.status==='ready'?`${g.model_count} models · ${g.owned?'Started by cheapoS':'Reusing an existing instance'}`:'';
@@ -943,6 +951,12 @@ function openConnections(afterSave, taskContext=null) {
   state.gatewayListener=updateGateway;
   d.addEventListener('close',()=>{if(state.gatewayListener===updateGateway)state.gatewayListener=null});
   $$('[data-gateway-action]',d).forEach(button=>button.onclick=()=>formAction(gatewayForm,async()=>{state.gateway=await api('/gateway/'+button.dataset.gatewayAction,{});updateGateway();await loadGateway()}));
+  $('#save-included-models',d).onclick=()=>formAction(gatewayForm,async()=>{
+    const included_models=CheapOSGuide.includedScope($('#included-model-ids',d).value);
+    state.gateway=await api('/gateway/config',{included_models,expected_connection_revision:includedRevision});
+    $('#included-access-status',d).textContent='Included access saved for these exact IDs. No model request was made.';
+    updateGateway();await loadGateway();
+  });
   gatewayForm.onsubmit=e=>{e.preventDefault();formAction(gatewayForm,async()=>{
     const f=new FormData(gatewayForm), values={base_url:String(f.get('gateway_url')).trim(),auto_start:f.has('auto_start'),keep_running:f.has('keep_running')},key=String(f.get('gateway_key')).trim();if(key)values.api_key=key;
     state.gateway=await api('/gateway/config',values);$('[name="gateway_key"]',d).value='';
@@ -950,13 +964,15 @@ function openConnections(afterSave, taskContext=null) {
   })};
   for(const role of ['worker','reviewer']) {
     layout(role);
+    $(`[data-included="${role}"]`,d).onchange=()=>capability(role);
     $(`[data-free="${role}"]`,d).onchange=()=>picker(role);
     $(`[data-model-picker="${role}"]`,d).onchange=e=>{
       if(!e.target.value)return;
-      const model=state.gatewayModels.find(m=>m.id===e.target.value);field(role,'model').value=model.id;
+      const model=state.gatewayModels.find(m=>m.id===e.target.value);field(role,'model').value=model.id;$(`[data-included="${role}"]`,d).checked=model.access_class==='included';
       field(role,'input').value=model.input_rate??'';field(role,'output').value=model.output_rate??'';capability(role);
     };
     field(role,'model').oninput=()=>{
+      $(`[data-included="${role}"]`,d).checked=false;
       const model=usingOmni(role)?state.gatewayModels.find(m=>m.id===field(role,'model').value.trim()):null;
       for(const price of ['input','output'])field(role,price).value=model?.[price+'_rate']??'';
       picker(role);
@@ -964,7 +980,7 @@ function openConnections(afterSave, taskContext=null) {
     $(`[data-preset="${role}"]`,d).onchange=e=>{
       const preset=e.target.value, p=c[role]||{};
       field(role,'url').value=preset==='omniroute'?state.gateway.settings.base_url:preset==='ollama'?'http://127.0.0.1:11434/v1':preset==='openrouter'?'https://openrouter.ai/api/v1':'';
-      field(role,'key').value='';field(role,'model').value='';
+      field(role,'key').value='';field(role,'model').value='';$(`[data-included="${role}"]`,d).checked=false;
       for(const price of ['input','output'])field(role,price).value=preset==='ollama'?'0':'';
       if(preset==='omniroute'&&isOmni(p)){field(role,'model').value=p.model||'';field(role,'input').value=p.input_rate??'';field(role,'output').value=p.output_rate??''}
       layout(role);
@@ -977,6 +993,10 @@ function openConnections(afterSave, taskContext=null) {
       const omni=usingOmni(role);
       if(omni&&state.gateway.status!=='ready')throw new Error('Connect OmniRoute before saving its model choices.');
       values[role]={gateway:omni?'omniroute':'openai',base_url:omni?state.gateway.settings.base_url:String(f.get(role+'_url')).trim(),model:String(f.get(role+'_model')).trim(),input_rate:Number(f.get(role+'_input')),output_rate:Number(f.get(role+'_output'))};
+      if(omni&&includedSelected(role)){
+        if(!CheapOSGuide.includedChoice(values[role].model,state.gateway.settings,true))throw new Error('Save included access for this exact model ID first.');
+        values[role].access='included';delete values[role].input_rate;delete values[role].output_rate;
+      }
       const key=omni?'':String(f.get(role+'_key')).trim();if(key)values[role].api_key=key;
     }
     if(!usingOmni('worker')&&!usingOmni('reviewer')&&f.has('share_key')&&values.worker.base_url.replace(/\/$/,'')===values.reviewer.base_url.replace(/\/$/,'')&&values.worker.api_key)values.reviewer.api_key=values.worker.api_key;

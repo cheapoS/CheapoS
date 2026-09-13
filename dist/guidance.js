@@ -166,6 +166,18 @@ const CheapOSGuide = (() => {
     return Boolean(task.changes?.length&&['approved','completed','awaiting_reply'].includes(task.status)&&check?.passed&&check.digest===task.patch_digest&&(check.generation||0)===(task.workspace_generation||0)&&(task.status==='completed'||review?.decision==='APPROVE'&&review.diff===task.patch&&(review.generation||0)===(task.workspace_generation||0)));
   }
   function commitDeferred(task) {return task.human_decision?.decision==='defer'&&task.human_decision.digest===task.patch_digest}
+  function modelAccess(model={}) {
+    const kind=model.access_class||(model.local?'local':model.free?'public_free':Number.isFinite(model.input_rate)&&Number.isFinite(model.output_rate)?'priced':'unknown');
+    return ({public_free:'Public free',included:'Included access',local:'Local',priced:'Priced',unknown:'Unknown pricing'})[kind]||'Unknown pricing';
+  }
+  function includedScope(text) {
+    const ids=String(text).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    if(ids.some(id=>id.length>200||/\s/.test(id)))throw new Error('Enter one exact model ID per line, without spaces.');
+    return [...new Set(ids)];
+  }
+  function includedChoice(model,settings,selected) {
+    return Boolean(selected&&model&&(settings.included_models||[]).includes(model));
+  }
   function modelHealth(model,at=Date.now()) {
     const h=model.health||{},remaining=Math.ceil(((h.retry_at||0)*1000-at)/60000);
     if(remaining>0)return `${h.cooldown_scope==='provider'?'Provider cooling down':'Cooling down'} · ${remaining}m`;
@@ -474,7 +486,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 
