@@ -18,7 +18,7 @@ from .providers import BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reco
 from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
 from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, Workspace, git
-from . import commits, reconciliation, progress
+from . import commits, reconciliation, progress, branch_runs
 from .verification import evidence_identity, matches as evidence_matches
 from .web import WebReader, allowed_urls
 from .gateways import gateway_for
@@ -531,6 +531,18 @@ class Engine:
             self.store.set_trashed(task_id, False)
             return self.store.present(task)
 
+    def update_branch_run(self, task_id, operation):
+        """Controller-only state mutation; never take a replacement record from HTTP."""
+        with self.lock:
+            runtime = self.runtimes.get(task_id)
+            task = runtime.task if runtime and runtime.thread and runtime.thread.is_alive() else self.store.get(task_id)
+            operation(task)
+            if "branch_run" in task:
+                task["status"] = branch_runs.task_status(task["branch_run"])
+            task["updated_at"] = now()
+            self.store.save(task)
+            return self.store.get(task_id)
+
     def start(self, task_id, changes=None):
         with self.lock:
             self.require_active_task(task_id)
@@ -542,6 +554,10 @@ class Engine:
             if any(r.thread and r.thread.is_alive() for r in self.runtimes.values()):
                 raise ValueError("Another task is running. Pause it before starting this one.")
             task = self.store.get(task_id)
+            if "branch_run" in task:
+                compatibility = branch_runs.compatibility(task["branch_run"])
+                raise ValueError(compatibility["message"] if not compatibility["supported"] else
+                                 "Use the authorized Unattended run controls; ordinary chat Start cannot dispatch a branch run.")
             if task.get("commit_pending"):
                 raise ValueError("Finish the saved commit attempt in Chat before continuing this task")
             followup = (changes or {}).get("message")
@@ -892,6 +908,8 @@ class Engine:
         if any(r.thread and r.thread.is_alive() for r in self.runtimes.values()):
             raise ValueError("Wait for the active task to finish or pause it before applying changes")
         task = self.store.get(task_id)
+        if "branch_run" in task:
+            raise ValueError("Use the Unattended run final review; manual apply cannot commit a branch run.")
         if task["status"] in ACTIVE:
             raise ValueError("Pause the task before applying changes")
         return task

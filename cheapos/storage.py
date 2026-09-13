@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .titles import automatic_title
+from . import branch_runs
 
 
 def write_json(path, value):
@@ -47,6 +48,12 @@ class Store:
                     task["check_stream"] = None
                     task["web_read"] = None
                     write_json(path, task)
+                if "branch_run" in task:
+                    branch_runs.recover_restart(task["branch_run"])
+                    task["status"] = branch_runs.task_status(task["branch_run"])
+                    if not branch_runs.compatibility(task["branch_run"])["supported"]:
+                        task["error"] = branch_runs.compatibility(task["branch_run"])["message"]
+                    write_json(path, task)
                 self.tasks[task["id"]] = task
             except (OSError, ValueError, KeyError):
                 # A damaged record cannot prevent other tasks from opening.
@@ -73,7 +80,8 @@ class Store:
             tasks = sorted(self.tasks.values(), key=lambda t: t["created_at"], reverse=True)
             if summary:
                 keys = ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage")
-                return [{key: copy.deepcopy(t[key]) for key in keys} for t in tasks]
+                return [{**{key: copy.deepcopy(t[key]) for key in keys},
+                         **({"branch_run": branch_runs.summary(t["branch_run"])} if "branch_run" in t else {})} for t in tasks]
             return [copy.deepcopy(t) for t in tasks]
 
     def metadata(self, task_id):

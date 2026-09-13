@@ -146,7 +146,7 @@ All cards below start **Todo**. Sizes describe scope, not time. Dependencies mea
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T28](docs/tasks/T28-branch-run-state.md) | Durable run plan, item states, and compatibility | T01–T27 | M | Todo |
+| [T28](docs/tasks/T28-branch-run-state.md) | Durable run plan, item states, and compatibility | T01–T27 | M | Done |
 | [T29](docs/tasks/T29-branch-workspace.md) | Snapshot from a committed base and owned feature ref | T28 | L | Todo |
 | [T30](docs/tasks/T30-branch-authorization.md) | One run authorization and scoped test permissions | T28, T29 | M | Todo |
 | [T31](docs/tasks/T31-branch-evidence.md) | Exact candidate evidence and independent review gate | T28, T29 | M | Todo |

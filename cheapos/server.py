@@ -10,14 +10,17 @@ from urllib.parse import unquote, urlsplit, parse_qs
 from . import __version__
 from .gateways import gateway_for
 from .providers import validate_provider, ProviderError
-from . import metrics, check_output
+from . import metrics, check_output, branch_runs
 
 
 def public_task(task, summary=False, store=None):
     if store is not None:
         task = store.present(task)
     if summary:
-        return {key: task[key] for key in ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage", "custom_title", "pinned", "archived_at", "trashed_at") if key in task}
+        result = {key: task[key] for key in ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage", "custom_title", "pinned", "archived_at", "trashed_at") if key in task}
+        if "branch_run" in task:
+            result["branch_run"] = branch_runs.summary(task["branch_run"])
+        return result
     return {**{key: value for key, value in task.items() if key not in {"messages", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending", "request_metrics", "run_metrics"}}, "metrics":metrics.aggregate(task), "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
 
 

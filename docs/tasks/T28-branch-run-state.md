@@ -29,14 +29,14 @@ Add focused tests, for example `tests/test_branch_runs.py`, and relevant HTTP/st
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: Versioned, strictly bounded plans; stable IDs and event sequences; evidence-gated transitions; controller-owned atomic updates; redacted list summaries; unknown-schema dispatch refusal and restart pause mapping. Original prompts and captured inputs remain separate from item state.
 
-Acceptance evidence:
+Acceptance evidence: Pure lifecycle/invalid-plan tests plus storage round-trip, concurrent metadata updates, list/full consistency, and manual-dispatch guards.
 
-Commands and results:
+Commands and results: `test_branch_runs.py` 10 PASS; `test_branch_state_storage.py` 4 PASS; `test_task_metadata.py` 5 PASS. Agent fast suite 50 PASS.
 
 Browser scenarios and results: Not required for this backend-only card.
 
-Remaining limitations:
+Remaining limitations: No execution/start UI in this card. Check specs are bounded to 12 entries / 4,000 characters each, captured inputs to 256,000 characters; accepted dependency order must already be topological. Later cards validate concrete command/authority/evidence contracts.
