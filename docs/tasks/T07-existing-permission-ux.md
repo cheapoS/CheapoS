@@ -25,12 +25,12 @@ Run `test_permissions.py` and relevant HTTP/JS checks; browser-test the two appr
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Exact-command session approval is primary in Chat/Activity; composer exposes grants and revocation; authorized reruns are visibly labeled; permission refresh is keyed to task/workspace/status/approval changes, not tokens or keystrokes.
+- Acceptance evidence: No identical-command duplicate reproduced. Exact argv survives real pause/resume and follow-up; changed argv/workspace/chat, revocation, and restart ask by design. Approval ID checks remain intact.
+- Commands and results: 7 permission tests and 61 JavaScript tests passed; syntax and diff checks passed. Existing permission HTTP contract passed in T06.
+- Browser scenarios and results: Deterministic local provider; matching Chat/Activity primary labels; granted from Activity; later checks ran visibly without prompts; composer grant control showed exact command and expiry; revocation removed control. No external model requests.
+- Remaining limitations: Scope remains one exact command and task workspace until restart. Project-wide profiles follow in T08–T10.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

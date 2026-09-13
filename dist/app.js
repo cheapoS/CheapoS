@@ -195,6 +195,8 @@ async function loadStartup() {
 }
 function renderComposer() {
   const task=state.task, busy=task&&activeStatuses.has(task.status);
+  $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&state.taskPermissions.commands.length);
+  $('#composer-permissions').title='This chat · until CheapOS restarts';
   const pausing=Boolean(task&&(task.status==='stopping'||state.pausingTask===task.id));
   $('#composer-area').hidden=Boolean(task?.demo||task?.archived_at||task?.trashed_at)||state.view!=='chat';
   $('#composer-project span').textContent=task?CheapOSGuide.projectName(task):state.project?CheapOSGuide.projectName({source:state.project.path}):'Open project';
@@ -259,6 +261,7 @@ function setView(view) {
 }
 function renderTask({resetScroll=false}={}) {
   const task=state.task;if(!task)return;$('.main-pane').classList.remove('new-conversation');
+  loadTaskPermissions(task);
   $('.task-heading').hidden=false;$('.tabs').hidden=false;$('#compact-session').hidden=false;$('#toggle-inspector').hidden=false;$('#inspector').classList.remove('home-hidden');
   const scroller=$('#view-container'), oldScroll=scroller.scrollTop, bottom=scroller.scrollHeight-scroller.clientHeight-oldScroll<60;
   const expanded=new Map((resetScroll?[]:$$('details[data-event]')).map(d=>[d.dataset.event,d.open]));
@@ -393,7 +396,7 @@ function renderChat() {
   const button=(action,label,primary=false)=>`<button class="${primary?'primary-button':'subtle-button'}" data-chat-action="${action}">${label}</button>`;
   const routeFailures=task.error_code==='routing_unavailable'?(task.route?.failures||[]):[];
   const errorDetails=routeFailures.length?`<details class="chat-error"><summary>Model check results (${routeFailures.length})</summary>${routeFailures.map(f=>`<p><strong>${esc(f.model)}</strong><br>${esc(f.error)}</p>`).join('')}</details>`:task.error&&task.error!==(failure?.description||guide.description)?`<details class="chat-error"><summary>Details</summary><p>${esc(task.error)}</p></details>`:'';
-  if(task.pending_approval)decision=(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row">${button('approve','Run once',true)}${button('approve-session','Allow for this session')}${button('decline','Decline')}</div></section>`);
+  if(task.pending_approval)decision=(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row">${button('approve-session','Allow this command for this session',true)}${button('approve','Run once')}${button('decline','Decline')}</div></section>`);
   else if(task.status==='ready')decision=(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
   else if(CheapOSGuide.canCommit(task))decision=(commitDecisionMarkup(task));
   else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))decision=(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, CheapOS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
@@ -421,7 +424,7 @@ function renderChat() {
     if(action==='resume'){await resumeTask(b);return}
     b.disabled=true;
     if(action==='start'){await startTask(task.id);b.disabled=false;return}
-    try{await api('/tasks/'+task.id+'/approval',{approved:action!=='decline',remember:action==='approve-session',approval_id:task.pending_approval.id});await refresh()}catch(e){toast(e.message);b.disabled=false}
+    try{await api('/tasks/'+task.id+'/approval',{approved:action!=='decline',remember:action==='approve-session',approval_id:task.pending_approval.id});await loadTaskPermissions(task,true);await refresh()}catch(e){toast(e.message);b.disabled=false}
   });
 }
 function renderActivity() {
@@ -429,12 +432,12 @@ function renderActivity() {
   const action=(view,label)=>`<button class="outline-button" data-activity-view="${view}">${label}</button>`;
   const timeline=a.items.slice(0,40).map(item=>`<details class="activity-step ${item.failed?'failed':''}" data-event="step-${item.event.id}"><summary><span class="step-icon">${icon(item.icon)}</span><span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span><time>${new Date(item.event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="step-body">${eventDetail(item.event)}${item.path&&task.changes.some(c=>c.path===item.path)?`<button class="text-link" data-activity-file="${esc(item.path)}">View current diff →</button>`:''}</div></details>`).join('');
   const technical=task.events.map(e=>`<details class="activity-card" data-event="raw-${e.id}"><summary><strong>${esc(CheapOSGuide.activityItem(e)?.title||e.title)}</strong>${icon('chevron')}</summary><div class="detail-body">${eventDetail(e)}</div></details>`).join('');
-  const status=task.pending_approval?`<section class="chat-decision"><strong>Waiting for your approval</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row"><button class="primary-button" data-activity-approve="true">Run once</button><button class="outline-button" data-activity-approve="session">Allow for this session</button><button class="subtle-button" data-activity-approve="false">Decline & pause</button></div></section>`:activeStatuses.has(task.status)?progressMarkup(task):`<section class="activity-status"><span class="activity-eyebrow">${['approved','completed'].includes(task.status)?'RESULT':'CURRENT STATUS'}</span><h3>${esc(failure?.title||guide.title)}</h3><p>${esc(failure?.description||guide.description)}</p>${task.error&&task.error!==guide.description?`<p>${esc(task.error)}</p>`:''}<div class="button-row">${['approved','completed'].includes(task.status)?action('changes','Review changes'):''}${action('chat','Back to chat')}${['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)?`<button class="outline-button" id="activity-resume">${task.status==='error'?'Retry':guide.primaryLabel}</button>`:''}${task.error_code==='routing_unavailable'?'<button class="outline-button" id="activity-models">Models</button>':''}</div></section>`;
+  const status=task.pending_approval?`<section class="chat-decision"><strong>Waiting for your approval</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row"><button class="primary-button" data-activity-approve="session">Allow this command for this session</button><button class="outline-button" data-activity-approve="true">Run once</button><button class="subtle-button" data-activity-approve="false">Decline & pause</button></div></section>`:activeStatuses.has(task.status)?progressMarkup(task):`<section class="activity-status"><span class="activity-eyebrow">${['approved','completed'].includes(task.status)?'RESULT':'CURRENT STATUS'}</span><h3>${esc(failure?.title||guide.title)}</h3><p>${esc(failure?.description||guide.description)}</p>${task.error&&task.error!==guide.description?`<p>${esc(task.error)}</p>`:''}<div class="button-row">${['approved','completed'].includes(task.status)?action('changes','Review changes'):''}${action('chat','Back to chat')}${['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)?`<button class="outline-button" id="activity-resume">${task.status==='error'?'Retry':guide.primaryLabel}</button>`:''}${task.error_code==='routing_unavailable'?'<button class="outline-button" id="activity-models">Models</button>':''}</div></section>`;
   $('#activity-view').innerHTML=`<div class="view-title"><div><h2>What’s happening</h2><p>${task.demo?'Scripted demo · real files and checks':'Real actions and saved results from this chat.'}</p></div></div>${status}${task.check_stream?commandMarkup(task.check_stream,{live:true}):''}<div class="activity-facts"><button data-activity-view="changes"><span>Saved changes · whole chat</span><strong>${a.files} file${a.files===1?'':'s'}</strong><small>Inspect the diff →</small></button><button data-activity-view="tests"><span>Checks · this request</span><strong>${esc(a.checks)}</strong><small>View command output →</small></button><button id="activity-review" ${!a.checkpoint?'disabled':''}><span>Review · this request</span><strong>${esc(a.review)}</strong><small>${a.checkpoint?'Inspect the decision →':'A passing check alone is not approval'}</small></button></div><section class="activity-timeline"><h3>Latest request</h3><p class="activity-request">${esc(a.request)}</p><p class="small muted">Newest actions first${a.items.length>40?' · showing the latest 40':''}</p>${timeline||'<p class="activity-empty">No file actions yet. Conversation and live model output are in Chat.</p>'}</section><details class="technical-log" data-event="technical"><summary>${icon('code')}Technical log <span>${task.events.length} events</span>${icon('chevron')}</summary><div>${technical}</div></details>`;
   $$('[data-activity-view]').forEach(b=>b.onclick=()=>setView(b.dataset.activityView));
   $$('[data-chat-action]').forEach(b=>b.onclick=()=>b.dataset.chatAction==='stop'?stopTask():setView('chat'));
   $$('[data-activity-file]').forEach(b=>b.onclick=()=>{state.file=task.changes.findIndex(c=>c.path===b.dataset.activityFile);setView('changes')});
-  $$('[data-activity-approve]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('/tasks/'+task.id+'/approval',{approved:b.dataset.activityApprove!=='false',remember:b.dataset.activityApprove==='session',approval_id:task.pending_approval.id});await refresh()}catch(e){toast(e.message);b.disabled=false}});
+  $$('[data-activity-approve]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('/tasks/'+task.id+'/approval',{approved:b.dataset.activityApprove!=='false',remember:b.dataset.activityApprove==='session',approval_id:task.pending_approval.id});await loadTaskPermissions(task,true);await refresh()}catch(e){toast(e.message);b.disabled=false}});
   $$('[data-checkpoint]').forEach(b=>b.onclick=()=>checkpointDialog(Number(b.dataset.checkpoint)));
   $('#activity-review').onclick=()=>a.checkpoint&&checkpointDialog(a.checkpoint.number);
   if($('#activity-resume'))$('#activity-resume').onclick=e=>resumeTask(e.currentTarget);
@@ -636,6 +639,8 @@ function chatLimits() {
 }
 async function sendChat() {
   const task=state.task, busy=task&&activeStatuses.has(task.status);
+  $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&state.taskPermissions.commands.length);
+  $('#composer-permissions').title='This chat · until CheapOS restarts';
   if(busy){
     await steerTask();
     return;
@@ -696,13 +701,19 @@ async function renameTask(task=state.task) {
   input.focus();input.select();
 }
 
+async function loadTaskPermissions(task, force=false) {
+  const key=[task.id,task.workspace,task.status,task.pending_approval?.id].join('|');
+  if(!force&&state.permissionKey===key)return;
+  state.permissionKey=key;
+  try{const result=await api('/tasks/'+task.id+'/permissions');if(state.task?.id!==task.id)return;state.taskPermissions={id:task.id,...result};renderComposer()}catch{state.permissionKey=null}
+}
 async function sessionPermissions() {
   const task=state.task;if(!task)return;
   try {
     const permissions=await api('/tasks/'+task.id+'/permissions');
     const d=dialog(`${modalHeader('SESSION PERMISSIONS','Commands you’ve allowed')}<p class="modal-description">These exact commands may repeat in this chat’s task copy, including after Pause and Resume. Different commands ask again. Permissions expire when CheapOS restarts.</p>${permissions.commands.length?permissions.commands.map(command=>`<code class="approval-command">${esc(command.join(' '))}</code>`).join(''):'<p>No commands are remembered for this session.</p>'}<p class="small muted">Clearing permissions makes future runs ask again; commands already running continue.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies only to this chat.</span>${permissions.commands.length?'<button class="outline-button" id="clear-session-permissions">Clear permissions</button>':''}</div>`);
     const clear=$('#clear-session-permissions',d);
-    if(clear)clear.onclick=async()=>{clear.disabled=true;try{await api('/tasks/'+task.id+'/permissions',{clear:true});d.close();toast('Session permissions cleared. Future commands will ask again.')}catch(e){$('.form-error',d).textContent=e.message;clear.disabled=false}};
+    if(clear)clear.onclick=async()=>{clear.disabled=true;try{await api('/tasks/'+task.id+'/permissions',{clear:true});d.close();await loadTaskPermissions(task,true);toast('Session permissions cleared. Future commands will ask again.')}catch(e){$('.form-error',d).textContent=e.message;clear.disabled=false}};
   }catch(e){toast(e.message)}
 }
 async function startDemo() {
@@ -857,3 +868,5 @@ document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',',']
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);
 
 $('#rename-task').onclick=()=>renameTask();
+
+$('#composer-permissions').onclick=sessionPermissions;

@@ -503,6 +503,7 @@ const CheapOSConversation = (() => {
     if (live) {
       title = {work:'Working on your request',checks:'Running checks',review:'Getting an independent review',plan:'Preparing the next step',commit:'Committing your changes'}[phase];
       if (task.pending_approval) title = 'Waiting for your permission';
+      else if(task.check_stream?.session_allowed) title = 'Running tests · allowed for this session';
       else if (task.status === 'stopping') title = 'Pausing work';
       outcome = task.pending_approval || task.status === 'stopping' ? 'pending' : 'live';
       if (task.pending_approval) detail = task.pending_approval.command.join(' ');

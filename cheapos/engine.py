@@ -1411,14 +1411,14 @@ class Engine:
                 raise InterruptedError("Verification command was declined")
             task["status"] = "running"
         elif session_allowed:
-            self.event(task, "permission", "Using session permission", {"command": argv, "directory": task["workspace"], "scope": "session"})
+            self.event(task, "permission", "Running tests · allowed for this session", {"command": argv, "directory": task["workspace"], "scope": "session"})
         if argv != task["check_command"]:
             task["auto_approve_checks"] = False
         task["check_command"] = argv
         task["validated_check_command"] = list(argv)
         workspace = Workspace(task["workspace"])
         before = workspace.patch()
-        live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False}
+        live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False, "session_allowed": session_allowed}
         task["check_stream"] = live
         self.event(task, "tool", "Running verification", {"command": argv, "run_id": live["run_id"]})
 

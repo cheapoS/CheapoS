@@ -1,6 +1,7 @@
 """Session approvals reuse exact commands without widening their scope."""
 import shlex
 import sys
+import threading
 from unittest.mock import Mock
 
 from cheapos.engine import Engine
@@ -115,3 +116,22 @@ class SessionPermissionTests(LocalCase):
         self.engine.start(task['id'], {'message': 'Check again.'}); self.waiting(task, checks=1)
         self.engine.approve_check(task['id'], False)
         self.assertEqual(len(self.finish(task)['checks']), 1)
+
+
+    def test_exact_command_grant_survives_actual_pause_and_resume(self):
+        task=self.task();entered=threading.Event();release=threading.Event();calls=[]
+        def complete(*args):
+            calls.append(1)
+            if len(calls)==1:return call('run_checks',{'command':COMMAND}), {'prompt_tokens':1,'completion_tokens':1,'cost':0}
+            entered.set();release.wait(5)
+            return {'content':'Finished.'},{'prompt_tokens':1,'completion_tokens':1,'cost':0}
+        provider=Mock();provider.complete.side_effect=complete
+        self.engine.provider_factory=lambda *args:provider
+        self.engine.start(task['id']);self.remember(task)
+        self.assertTrue(entered.wait(5));self.engine.stop(task['id']);release.set()
+        self.assertEqual(self.finish(task)['status'],'paused')
+        self.replies([call('run_checks',{'command':COMMAND}),{'content':'Checked again.'}])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(len(result['checks']),2)
+        self.assertEqual(sum(e['title']=='Permission needed to run the verification command' for e in result['events']),1)
+        self.assertTrue(any(e['title']=='Running tests · allowed for this session' for e in result['events']))
