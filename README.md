@@ -1,24 +1,136 @@
-# cheapoS
+<div align="center">
+  <a href="#quick-start"><img src="docs/assets/hero.svg" alt="CheapoS. Cheap models work. Smart models check. A local coding workspace with your choice of models, visible budgets, and a final decision that stays yours." width="100%"></a>
+  <br><br>
+  <a href="#quick-start"><strong>Get started</strong></a> &nbsp; · &nbsp;
+  <a href="#the-workspace">See the workspace</a> &nbsp; · &nbsp;
+  <a href="#why-cheapos-exists">The idea</a> &nbsp; · &nbsp;
+  <a href="docs/USER_GUIDE.md">Documentation</a> &nbsp; · &nbsp;
+  <a href="CONTRIBUTING.md">Contribute</a>
+  <br><br>
+  <strong>Working alpha</strong> &nbsp; / &nbsp; Python 3.9+ &nbsp; / &nbsp; macOS &amp; Linux &nbsp; / &nbsp; <a href="LICENSE">MIT</a>
+</div>
 
-**Cheap models work. Smart models check.**
+# CheapoS
 
-cheapoS is an open-source, local coding workspace experimenting with a simple trade: give an inexpensive model time to implement a change, then ask a stronger model to review the evidence at checkpoints.
+**A little patience. A more deliberate way to spend intelligence.**
 
-**cheapoS decides why and when to spend intelligence. OmniRoute decides where to get it.** cheapoS owns task execution, verification, review checkpoints, and budget accounting. Its optional OmniRoute companion owns provider access and routing. Automatic remote chats maintain a pool of free candidates and visibly hand off failed requests; manual and local model choices stay fixed.
+CheapoS is an open-source coding workspace that lets an inexpensive model implement a change, runs real checks, and brings in a reviewer at checkpoints. Work on local Git projects, choose your models, set your limits, and inspect the result before it lands.
 
-This is an early, working alpha for small personal projects. It has real repository tools and an execution engine, a desktop-style browser interface, and no account or hosted project requirement. It is not a packaged native desktop application yet. Cost savings are a hypothesis to measure, not a benchmark claim.
+No CheapoS account. No hosted project. No package installation to launch the app. Just Python, Git, and your browser.
 
-## Run locally
+> **Available today:** a working local alpha for small personal projects. Model providers may require their own setup or credentials. Cost savings are an experiment to measure; they are not yet a benchmark claim.
 
-Requires **Python 3.9+** and **Git**. No Python or JavaScript packages need installing. Development and verification currently target macOS and Linux.
+## The workspace
+
+![CheapoS Activity view showing the scripted clamp demo, two saved files, passing checks, reviewer approval, and separate worker and reviewer accounting.](docs/assets/workspace.png)
+
+<p align="center"><sub>The real app, running its built-in demo. Model responses are scripted; file edits, tests, and the exported Git patch are real. No inference charges.</sub></p>
+
+<details>
+<summary><strong>Look closer at the patch and final decision</strong></summary>
+
+![CheapoS Changes view showing the real clamp patch and the final approval controls in the scripted demo.](docs/assets/changes.png)
+
+The same scripted demo, in **Changes**. Inspect the patch, edit the commit message, and choose whether to approve it.
+
+</details>
+
+## Features
+
+Make expensive compute the exception. Keep the work visible and the decisions yours.
+
+<!-- FEATURE GRID: Duplicate one td (and add a tr after every two cards). Keep the outcome, mechanism, and guide link together. -->
+<table>
+<tr>
+<td width="50%" valign="top">
+<h3>01 · Give every change a second look</h3>
+<p>Choose a worker and a reviewer separately. Review checkpoints include the actual patch, check results, and read-only project tools. Reviewers can approve, request revisions, or propose a takeover.</p>
+<a href="docs/USER_GUIDE.md#open-a-project-and-chat">Explore the review loop →</a>
+</td>
+<td width="50%" valign="top">
+<h3>02 · Run where it makes sense</h3>
+<p>Keep everything local, use free remote models, delegate heavy work from a local conversation, or select your own model pair. OmniRoute, direct OpenRouter, Ollama, and compatible endpoints are supported.</p>
+<a href="docs/EXECUTION.md">Choose your execution setup →</a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h3>03 · Set a job in motion</h3>
+<p>Turn a prompt or project document into a bounded unattended plan. Authorize the proposal once; CheapoS implements, checks, reviews, and commits its items to a feature branch. You decide the final local merge.</p>
+<a href="docs/unattended-runs.md">Meet unattended runs →</a>
+</td>
+<td width="50%" valign="top">
+<h3>04 · See where the budget goes</h3>
+<p>Track worker and reviewer usage, estimated cost, and uncertain requests. Set dollar, token, turn, iteration, and time limits. Automatic remote runs show named model handoffs when a free route fails.</p>
+<a href="docs/USER_GUIDE.md#limits-and-recovery">Inspect limits and recovery →</a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h3>05 · Keep the evidence close</h3>
+<p>Chat, Activity, Changes, and Checks put the conversation beside saved edits and verification results. Passing check evidence is reused only while its patch, command, and environment identity still match.</p>
+<a href="docs/EXECUTION.md#activity-shows-evidence">See what actually happened →</a>
+</td>
+<td width="50%" valign="top">
+<h3>06 · Pick up where you left off</h3>
+<p>Task copies, conversations, patches, reviews, and accounting persist locally. Pause, resume, follow up in the same chat, export a patch, or reconcile saved edits when the source project moves ahead.</p>
+<a href="docs/USER_GUIDE.md#open-a-project-and-chat">Keep work moving →</a>
+</td>
+</tr>
+</table>
+
+<details>
+<summary><strong>Explore the full feature set</strong></summary>
+
+- **Real project tools:** file outlines, numbered reads, local search, edits, diffs, and approved verification commands.
+- **Public-link reading:** ask about an HTTPS page or GitHub README and see the source and lines the model read.
+- **Visible progress:** streaming output and expandable reasoning for supported Ollama and OmniRoute connections.
+- **An adaptable workspace:** resizable panels, keyboard controls, chat search, editable task titles, pinned tasks, archive, and restorable Trash. Hide or reopen a project without deleting its files.
+- **Explicit permissions:** allow a check once or for the session; inspect and revoke remembered grants.
+- **A gentle first run:** discover eligible installed local models, use guided OmniRoute setup, or try the scripted demo without connecting a provider.
+- **Project context that carries forward:** a compact project brief and durable continuation record retain requirements, steering, file observations, and verification evidence.
+- **Small edits before trouble starts:** large files and tight output allowances trigger focused edits; stale file versions are rejected and refreshed.
+- **Model selection informed by outcomes:** automatic free routes use observed role compatibility, checkpoint completions, and failures while keeping availability and human acceptance separate.
+- **Less repeated approval:** authorize supported project unittest variants for a session, with visible scope and revocation.
+- **Simple time and spending controls:** choose Free only or an explicit budget, use a working-time preset, and adjust advanced limits when needed.
+- **Bounded recovery:** recover from check failures and reviewer revisions, wait cancelably for a free route, and pause with a specific next action when limits or prerequisites block progress.
+- **Environment readiness:** detect missing verification tools or a selected virtual environment, show the task-copy location, and recheck after manual setup.
+- **Inspectable task metrics:** separate model time, cooldowns, approval waits, usage provenance, and completion outcomes; export local reports without prompts or credentials.
+- **Optional output filtering:** opt in to concise unittest output on supported direct local connections while retaining original check output for inspection. [Read the experiment](docs/experiments/output-filtering.md).
+- **A real sample task:** try your selected models on a disposable repository with bounded time and spending.
+
+[Read the complete user guide →](docs/USER_GUIDE.md)
+
+</details>
+
+## From a request to a reviewed change
+
+![Describe a task, let the worker build in a separate copy, run checks, get a reviewer decision, then approve a commit or local merge. Revisions return to the worker.](docs/assets/workflow.svg)
+
+**Interactive:** stay in the conversation, approve commands, inspect the diff, then choose **Approve & commit**. Follow-ups keep the same task copy and history.
+
+**Unattended:** inspect a finite plan and choose **Start run**. Reviewed items become feature-branch commits within the authorized scope and cumulative limits. The completed branch comes back for your explicit merge decision. The local server must stay running.
+
+Automatic remote selection uses different worker and reviewer model IDs. All local and manual setups can use the same model in separate requests; that is not an independent model review. Unattended runs require a distinct reviewer.
+
+## Quick start
+
+Requires **Python 3.9+** and **Git**. Development and verification target **macOS and Linux**. No Python or JavaScript packages are required to run CheapoS.
 
 ```sh
-git clone git@github.com:carlosa8c/CheapOS.git
+git clone https://github.com/carlosa8c/CheapOS.git
 cd CheapOS
 python3 run.py
 ```
 
-On macOS, you can also double-click **Start CheapOS.command**. The app opens at **http://127.0.0.1:5173/**. It binds only to the loopback interface. There is no sign-in, telemetry, remote asset loading, or cloud deployment dependency.
+The app opens at **http://127.0.0.1:5173/**. On macOS, you can also double-click **Start CheapOS.command**.
+
+**Start with the demo:** choose **Try a sample task → Run scripted demonstration**. Watch a failing test become a corrected implementation, a reviewer request a regression test, and the final patch pass review. No model setup needed.
+
+**Start with your project:** connect models, open a local Git repository, and describe your task. New chats default to a $0 estimated spending cap; explicitly change it before choosing paid models. Startup can make a bounded greeting request to an eligible installed local model; free-cloud startup is opt-in.
+
+<details>
+<summary><strong>Launch options and task storage</strong></summary>
 
 ```sh
 python3 run.py --no-open
@@ -26,183 +138,57 @@ python3 run.py --port 5174
 python3 run.py --data-dir /path/to/local-task-storage
 ```
 
-On launch, cheapoS looks for a free worker and asks it to say hello. Installed local Ollama models with advertised tool support work without a key or a setup form. A saved eligible model takes priority; otherwise, already-loaded local models are preferred. If no local model works, **Use free cloud models** opts into configured free routes through OmniRoute. cheapoS never enrolls providers, downloads models, or falls back to a paid model.
+Task data defaults to `.cheapos/` beside the launcher. When asking CheapoS to work on its own repository, use `--data-dir` with a location outside that repository. Task storage must not overlap the project being edited.
 
-The welcome message is real inference with no project context or tools. One startup check tries at most three distinct candidates, with a 512-token output cap per request (128 for direct Ollama, with thinking disabled for this greeting only), a 30-second network timeout, and a 60-second stream limit checked between chunks. Reloading the page does not repeat it. **Startup preferences** controls automatic connection and free-cloud fallback; **Stop connecting** cancels it. The greeting verifies chat and token reporting, not completion of the coding loop.
+[Setup and startup behavior →](docs/USER_GUIDE.md#run-locally)
 
-An existing reviewer is preserved. On a fresh setup, the same free model fills both roles, with a separate reviewer request at checkpoints; change either role in **Models** later. A saved paid model or automatic combo is not used for a startup greeting. Startup preferences live in `.cheapos/startup.json`, and the latest check and usage in `.cheapos/startup-last.json`.
+</details>
 
-You can also click **Try the local demo**. It creates a tiny Python repository, reproduces a failing test, edits the implementation, requests a revision, adds a regression test, and exports a real Git patch. Model decisions are scripted and clearly labeled. No provider requests or charges occur.
+## Your models. Your mix.
 
-## Arrange your workspace
+**CheapoS decides why and when to spend intelligence. OmniRoute decides where to get it.**
 
-Drag either panel’s inner boundary to resize it. Drag toward the outer window edge
-to hide it; use the panel buttons in the top bar to reopen it at its remembered
-width. Desktop widths are capped at 28.5% for the sidebar and 25% for session
-details. Narrow screens use one overlay panel at a time. Widths and visibility
-are saved in this browser. Keyboard users can focus a divider and use arrow keys
-to resize, Home to hide, or End to maximize.
+| Connection | What it gives you | Get connected |
+| :--- | :--- | :--- |
+| **OmniRoute** | A first-class local gateway, provider management, model discovery, and eligible free-model routing. | [Companion setup](docs/USER_GUIDE.md#omniroute-companion) |
+| **OpenRouter** | A direct connection with an explicit worker and reviewer model selection. | [Direct connections](docs/USER_GUIDE.md#direct-connections) |
+| **Ollama** | Installed tool-capable models running on your own hardware; use directly or through OmniRoute. | [Local setup](docs/USER_GUIDE.md#local-setup-and-sample-tasks) |
+| **Compatible endpoints** | Bring an HTTPS Chat Completions endpoint supporting tools, output limits, and token usage. | [Endpoint requirements](docs/USER_GUIDE.md#direct-connections) |
 
-## Choose how to supervise work
+Provider access, availability, and costs depend on your configuration. A free-model filter or estimated $0 cap does not override gateway fallbacks or establish a provider billing limit.
 
-Use **Work mode** beside the composer: **Interactive** keeps conversational approvals; **Unattended** plans a bounded job from a prompt, project document, or both, then works on an authorized feature branch. You make the final local merge decision. See [work modes, triggers, and unattended runs](docs/unattended-runs.md).
+## Built in the open. Measured in the open.
 
-## Choose where work runs
+The current evidence includes a **completed live delegation loop**: a local Gemma coordinator handed off a small Python fix to a free remote worker, tests passed, and a different free reviewer approved the patch in **30.73 seconds**. It was one small fixture, with $0.00 accounted using configured prices—not a provider billing receipt or a savings benchmark. [Read the experiment and its limits →](docs/experiments/2026-09-13-delegation.md)
 
-Use the execution button beside the chat spending limit to choose **Delegate heavy work**, **All local**, **All remote**, or **Manual model pair**. Local chat can delegate project work to free OmniRoute models and go idle. Automatic remote selection checks tool support and chooses a different reviewer. Existing chats keep their saved setup.
+The implementation is documented feature by feature: [**workspace, permissions, onboarding, recovery, context, and model selection**](TASKS.md) · [**planning, feature-branch commits, final review, and local merge**](BRANCH_RUNS.md). Each card records its scope and validation. [Task metrics](docs/development/task-metrics.md) and [optimization experiments](docs/experiments/context-compression.md) make the underlying measurements inspectable.
 
-The **Activity** tab shows current status, saved file changes, checks, review decisions, and named model handoffs. Runs pause at progress limits instead of indefinitely rereading files. See [execution choices, free routing, and progress limits](docs/EXECUTION.md).
+**Know the boundaries:** checks execute project code on your computer; a separate task copy is not an operating-system sandbox. Remote models receive the context sent to them. Budget caps are estimates. One task runs at a time, and dependencies are prepared manually. Read the [user guide](docs/USER_GUIDE.md) and [security notes](SECURITY.md) before using an unfamiliar repository.
 
-## Connect models
+## Why CheapoS exists
 
-Open **Models**. OmniRoute is the first-class local gateway, with separate model choices for the worker and reviewer. Direct OpenRouter, Ollama, and other OpenAI-compatible endpoints remain available per role.
+> “I’d happily trade speed for more usage.”
+>
+> — [Irushi (@Im_IrushiK), in the X post that inspired this project](https://x.com/Im_IrushiK/status/2098809262302720347)
 
-### OmniRoute companion
+The post imagined a slower coding mode: give a task more time, let it work while you are away, and make a limited compute budget go further. That question started CheapoS.
 
-Use **Set up connection** on the welcome screen for guided setup. It reuses an identified gateway, explains missing prerequisites, and re-checks while the dialog is open. Install and provider login steps stay in your terminal and OmniRoute dashboard. **Use this connection** opens project selection; project work starts only after you send a request. Existing explicit model pairs are preserved.
+Our experiment is to give inexpensive models the implementation work and spend stronger-model attention at review checkpoints. The aim is useful, reviewed changes at a cost worth waiting for. The alpha makes that workflow tangible; the next step is measuring when the trade actually pays off.
 
-Install OmniRoute with these two simple commands:
+## Build with us
 
-```sh
-npm install -g omniroute
-omniroute
-```
+Try a small task. Share a reproducible failure. Help measure which model pairs produce a correct patch at a sensible cost.
 
-This boots the local gateway on `localhost:20128` with zero‑config keyless operation. cheapoS uses your installed `omniroute` command and existing provider configuration; it does not bundle, install, or update it. The integration was checked against OmniRoute 3.8.49.
+- [**Contribute**](CONTRIBUTING.md) — development setup, focused checks, and project principles.
+- [**Report an issue**](https://github.com/carlosa8c/CheapOS/issues) — bugs, model compatibility, and feature ideas.
+- [**Read the docs**](docs/USER_GUIDE.md) — setup, project workflows, permissions, and recovery.
+- [**Explore the engine**](docs/USER_GUIDE.md#development) — source map and development commands.
+- [**Extend this presentation**](docs/presentation/README.md) — theme tokens, SVG templates, and feature-block recipes.
 
-On launch, cheapoS checks `http://127.0.0.1:20128/v1/models`. It reuses an identified OmniRoute instance or starts the installed CLI on loopback when **Start installed OmniRoute when cheapoS launches** is enabled (the default). Startup runs in the background, so your local task history and patches stay accessible if the gateway fails. An occupied port or rejected client key does not trigger another server.
+---
 
-1. In **Models**, use **Open OmniRoute** to manage providers and their credentials.
-2. Use **Connect / start** or **Refresh models** to load the catalog. If required, enter a gateway client API key under **Startup & connection settings**; this is separate from the dashboard password.
-3. Choose **OmniRoute (shared local gateway)** for each role, then pick an explicit model. The picker shows advertised tool support and context size. Catalog access does not prove that a model can complete a task.
-4. For free tests, leave **Show free models only** checked and choose explicit OpenRouter `:free` variants for both roles. Unknown prices stay blank and must be supplied. New chats default to a zero-dollar cap. Change the cap explicitly before using paid models.
-5. Save the connections, open a project, and send a message.
-
-The free pool refreshes every five minutes. For a connected OpenRouter provider, cheapoS checks its public catalog for current named free models and tool support. Provider cooldowns respect OmniRoute's retry time without marking every model as broken. Delegate and All remote chats can replace a failing model with another named free model, with at most two handoffs per run. Manual and All local chats keep their models. Startup connection checks can try other eligible free candidates before a chat begins. The free filter is not a gateway billing control: check OmniRoute's own retries, combos, and fallback policies. `auto/cheap` and a zero dollar cap do not guarantee provider-side billing limits.
-
-OmniRoute also supports Ollama, allowing a local worker and a remote reviewer through the same gateway. Configure the local provider in OmniRoute, then refresh the catalog in cheapoS. If the catalog omits prices, disable the free-model filter to find it and enter zero prices only for a model actually running locally. A direct Ollama connection is also available below. Local inference depends on your hardware and the model’s tool support. A local `gemma4:31b` connection has been checked with real file reads, a project question, and a follow-up in the same chat. That check verified conversational use. A later [31-second live delegation experiment](docs/experiments/2026-09-13-delegation.md) used Gemma for a short handoff, a free remote worker for edits, and a different free reviewer; verification passed and the reviewer approved the small patch.
-
-**Keep OmniRoute running when cheapoS closes** is enabled by default, allowing other clients to keep using it. Disable it to stop a process started by the current cheapoS session on exit. cheapoS never stops an instance it merely reused. Startup preferences are saved in `.cheapos/gateway.json`; gateway client keys remain in memory, or can be supplied with `CHEAPOS_GATEWAY_API_KEY` in the launch environment.
-
-### Direct connections
-
-- **OpenRouter:** `https://openrouter.ai/api/v1`. Enter exact model IDs and current input/output prices from the provider.
-- **Ollama:** `http://127.0.0.1:11434/v1`, with an installed model supporting tool calling. Local model prices can be zero.
-- **Other endpoints:** HTTPS OpenAI-compatible Chat Completions APIs supporting tools, `max_tokens`, and response token usage. Plain HTTP is allowed only on loopback.
-
-Direct API keys entered in the interface remain in server memory until it stops. They are not saved in browser storage, configuration, or task history. You can alternatively supply `CHEAPOS_WORKER_API_KEY` and `CHEAPOS_REVIEWER_API_KEY` through the launch environment. Managed OmniRoute connections use the shared gateway key rather than direct provider keys. cheapoS does not load `.env` files automatically.
-
-Saving settings and refreshing the catalog make no inference requests. The separate startup connection check makes the bounded greeting request described above. Automated tests cover the worker/reviewer workflow through local HTTP fixtures. The initial live free-model experiment reached passing checks but timed out at review. A later [small live delegation test](docs/experiments/2026-09-13-delegation.md) completed edits, verification, and a separate reviewer approval. Cost savings and reliability on larger tasks remain unproven. A chat subscription does not automatically provide API credits.
-
-References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter tool calling](https://openrouter.ai/docs/guides/features/tool-calling), [OpenRouter limits](https://openrouter.ai/docs/api-reference/limits), [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility).
-
-## Open a project and chat
-
-1. Click **Open project** and enter the root folder of a local Git repository. It is remembered on this computer; opening it makes no model request.
-2. Type a question or describe a change, then send. cheapoS creates a separate task copy and uses your saved model choices and limits.
-3. Questions can finish with an answer. For changes, the worker inspects the project, proposes a verification command, and asks for approval in the conversation. The controller requests a reviewer decision using passing checks for the current patch and command, running them first if needed.
-4. Keep talking in the same chat. Follow-ups retain the task copy, current model pair, accumulated usage, and prior requests—even after a completed review. **New chat** starts a fresh copy of the source project.
-5. After tests and model review finish, Chat presents the final diff and editable commit message. Choose **Approve & commit** to apply the reviewed patch and create its local commit, **Request changes** to keep working, or **Decline** to leave it saved without committing. You can keep chatting after reviewer approval; questions preserve the approval, while further edits need verification and review again. **Changes** also lets you inspect each file. **Checks** shows verification output. **Activity** summarizes current work and results; model accounting lives under **Details**.
-
-In Interactive mode, your approval is required for each commit; a model's approval cannot authorize it. Approving does not call a model or rerun tests. The controller reuses its passing check only while the patch and command match; an explicit request to rerun tests still runs them. A worker's final response after editing automatically enters checkpoint review when a verification command is configured.
-
-The preview expires after ten minutes; the patch and destination are rechecked before applying. Declining persists across restarts, and **Reopen decision** brings the same patch back without a new model review.
-
-Your source checkout must be clean, on a branch, and have a configured Git author identity. The exact patch must apply cleanly; unrelated committed changes are preserved. Checks describe the task copy, while the preview identifies the current destination commit. Conflicts or unrelated uncommitted work stop the operation without discarding edits. Git hooks and signing are disabled for this action; repositories with content filters or sparse index flags use the exported patch workflow. A takeover can be committed after passing checks and your explicit review, with its lack of independent approval shown in the preview.
-
-After committing, cheapoS confirms the result, asks what you want to work on next, and focuses the chat input. The chat advances its task baseline so follow-up changes create a new patch. The commit hash and original patch stay in history. An interrupted commit attempt is saved for an explicit retry, and a repeated request cannot create a duplicate commit. Pushing remains separate. **Export patch** is available for manual Git workflows.
-
-If another chat or commit changed the same files, choose **Reconcile in this chat**. cheapoS creates a fresh task copy from the current project and merges the saved edits into it. The worker resolves any overlapping text, then runs checks and requests a new review before your next commit approval. The previous task copy and history stay saved, and the source project is untouched until you approve. Changes already present in the project need no duplicate commit.
-
-The spending control below the message box edits the current chat's limits, or defaults for new chats. Saving limits does not run a model. Model settings apply to new chats. Automatic remote chats can replace failing models, with the reason and both model names visible in Chat. Manual and local chats retain their model choices.
-
-Direct local Ollama connections on port `11434` and OmniRoute connections stream output into the conversation. Models that expose reasoning show an expandable **Thinking** panel while the answer appears separately as it arrives. A progress card shows elapsed time, the last completed action, and saved file changes. Thinking is model output, not evidence that a file was edited or a check passed. Completed and interrupted thinking previews are saved locally, capped at 16,000 characters per response; they are excluded from reviewer checkpoints. Other direct connections currently show progress while waiting for a complete response. Endpoints that return ordinary JSON instead of a stream still work, with output shown on completion.
-
-The reviewer can approve, request revisions, or request takeover. Takeover requires your explicit approval and uses the same remaining budget. Its final patch still needs your review. Plain answers and clarification questions do not count as reviewer approval; saved edits remain available in **Changes**.
-
-### Read a public link
-
-Paste an HTTPS link into Chat and ask about it. The worker and reviewer can use `read_url` to read public text pages; GitHub repository links open the repository's README through [GitHub's contents API](https://docs.github.com/en/rest/repos/contents#get-a-repository-readme). Chat shows the page being opened, the source, and the lines read. Longer documents can be read in sections. **Search project** searches local files only.
-
-The reader can follow links returned by a page. It makes GET requests without cookies, credentials, or project contents, and blocks private/local addresses and redirects to them. Each run can fetch up to eight documents, with a 1 MB response limit and bounded text excerpts; repeated sections use an in-memory cache. It does not provide search-engine results, sign-in, JavaScript interaction, or PDF reading. If a page cannot be read, the worker should explain the error or ask for the relevant text. Retrieved text is untrusted source material, not permission to run commands.
-
-The source checkout is not modified by file tools. From the original repository, inspect and apply the downloaded patch:
-
-```sh
-git apply --check /path/to/cheapos-TASK_ID.patch
-git apply /path/to/cheapos-TASK_ID.patch
-```
-
-Snapshots omit common secret filenames, symlinks, dependency directories, and ignored files. This is not comprehensive secret detection. Inspect your repository before sending its contents to a remote provider.
-
-Dependencies are not installed automatically. This alpha works best with small, dependency-light projects. For other projects, pause the chat, find its copy under **Details → Workspace details**, prepare dependencies there yourself, then resume. Commands are split into arguments without a shell; pipes, shell expansion, and redirection are not interpreted.
-
-**Verification runs repository code on your host computer. A separate copy is not an operating-system sandbox.** Commands require approval by default. Choose **Run once** or **Allow for this session** to remember an exact command for the current chat's task copy, including checkpoint reruns. Different commands still ask. Session grants expire when cheapoS restarts and can be cleared under **Details → Session permissions**. Legacy tasks may separately have a saved permission for their exact configured command. Use repositories you trust. Checks have a 90-second timeout and output limits; child processes are stopped as a group on macOS/Linux. Model API keys are removed from their environment.
-
-## Limits and recovery
-
-- Estimated dollar cap, reviewer token cap, worker model-turn cap, iteration cap, and per-request output cap. In chats, each user message gets its own worker-turn allowance; Resume preserves turns already used on that message. Spending, token usage, and review iterations remain cumulative.
-- Before dispatch, conservatively reserve prompt/output usage; reconcile with provider-reported tokens and cost. When cost is absent, calculate it from your configured prices.
-- Dollar caps are **estimates**, not guaranteed billing limits. Provider tokenization, pricing, and reported costs can differ. Configure a provider-side spending cap for a billing guarantee.
-- Delegate and All remote can make up to two automatic handoffs to different free models per run after transient errors, broken JSON, or incomplete streams. Authentication, credit errors, output limits, refusals, missing usage, user stops, and exhausted task limits do not trigger fallback. Manual and All local do not switch. The separate startup greeting can try up to three distinct free candidates. An intermediary gateway may have its own retry policy. Uncertain reservations remain counted. Missing token usage pauses the task before tools execute.
-- A completed response with malformed tool arguments is accounted, then returned to the model as tool feedback without executing the invalid call. Correction turns use the same model and limits; three consecutive malformed calls pause the task. Broken response JSON or an incomplete stream never executes partial tools; automatic remote chats can hand the request to another free model.
-- Stop prevents further tool work. Ollama and OmniRoute streams check for cancellation as output arrives; a stalled connection can take 3 minutes to release. Streaming also checks a 10-minute generation limit between chunks. Other model requests retain a 3-minute network timeout and may still be billed after stopping. Partial or interrupted tool calls never execute. Slow free or reasoning models may also require a longer queue wait in an intermediary gateway.
-- Tasks, patches, checks, checkpoints, and accounting are saved under `.cheapos/`. Interrupted tasks require an explicit resume and retain their usage. The server never automatically resumes paid work.
-- Compaction and resume preserve a bounded history of completed file observations and worker notes alongside the current patch and review feedback, without replaying old tool calls.
-- Research keeps a compact record of the sources and sections already read. When no patch still needs review, cheapoS reserves the final available research turn for an answer with tools disabled; repeated reads can trigger this earlier. If saved edits still need work, recovery supplies fresh file contents (up to four files and 24,000 characters, with incomplete snapshots labeled), the latest request, and check results. It offers editing, verification, checkpoint, and clarification tools for the next step, with reading tools disabled. Automatic remote routes reject calls to unavailable tools before executing any calls in that response, then use the same bounded free-model handoff policy. It uses the remaining limits; automatic remote routing can replace a failing worker. Retry preserves the appropriate recovery step, including after a provider interruption; recovery cannot approve edits or bypass command permission.
-- One task runs at a time. A process lock prevents two app servers from using the same data directory.
-
-Unattended runs can create reviewed commits on the feature branch authorized by Start run. Final local merge requires a separate explicit decision. There is no automatic push, dependency installation, unrestricted shell tool, or production sandbox. Keep tasks small: snapshots are limited to 5,000 files / 100 MB, and review checkpoints to a 30,000-character patch. Task history is currently retained until you remove it locally with the app stopped.
-
-## Development
-
-```sh
-python3 -B -m unittest discover -s tests -v
-node --check dist/app.js
-node --test tests/test_guidance.js
-```
-
-Node is only needed for the optional JavaScript syntax check. Tests use temporary local repositories and HTTP servers; they require no API keys and make no external inference calls.
-
-| Path | Responsibility |
-| --- | --- |
-| `run.py` | Local launcher and single-process storage lock |
-| `cheapos/server.py` | Loopback HTTP API, origin/token checks, static assets |
-| `cheapos/engine.py` | Worker/checkpoint/reviewer state machine |
-| `cheapos/workspace.py` | Repository copies, constrained file tools, verification |
-| `cheapos/providers.py` | Chat Completions adapter and usage reservations |
-| `cheapos/streaming.py` | Bounded streaming output and complete tool-call assembly |
-| `cheapos/routing.py` | Execution placement, lightweight local delegation, and bounded free-route checks |
-| `cheapos/model_pool.py` | Persistent model cooldowns and observed role compatibility |
-| `cheapos/startup.py` | Free-worker discovery, startup greeting, and connection-check accounting |
-| `cheapos/gateways.py` | Gateway interface, model discovery, and adapter selection |
-| `cheapos/omniroute.py` | Optional local gateway startup, reuse, and process ownership |
-| `cheapos/storage.py` | Atomic local task persistence |
-| `dist/` | Dependency-free graphical workspace |
-| `tests/` | Execution, accounting, isolation, recovery, and API tests |
-
-Next experiments: compare successful task cost against a single-model baseline, validate provider/model pairs, add stronger process isolation, and package the desktop app. Contributions should improve measured correctness and cost—not merely lower the displayed token count.
-
-MIT licensed. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
-
-Routine unittest checks can use an explicit project-session grant covering the
-shown executable, test roots, and supported variants. Inspect or revoke it next
-to the composer. Other commands retain exact-command or one-time approval;
-all grants expire on restart. See [execution permissions](docs/EXECUTION.md#session-test-authorization).
-
-### Local setup and sample tasks
-
-**Set up connection → Models on this computer** lists eligible installed Ollama models without downloading anything. **Use all local** keeps work and review local, including when the same local model handles both requests. **Try a sample task** distinguishes a scripted demonstration from a real five-minute sample using your selected models. Both use disposable repositories. The real sample authorizes only its exact unittest command for its task copy, keeps your spending cap (at most $0.25), and still requires your final commit approval. A greeting is not a completed coding loop.
-
-### Task-copy environment setup
-
-A missing verification executable or selected virtual environment pauses with its task-copy path and a recheck action. Recognized setup commands are shown only when present in project guidance. Prepare that separate copy manually; source environments and excluded dependency folders are not copied automatically. Rechecking restored prerequisites invalidates old verification evidence, then Resume continues the saved check. Generic import errors remain test failures with their original output. Test permission never authorizes package installation.
-
-### Brand spelling
-
-The display name is **cheapoS**: lowercase `cheapo`, with a capital `S` leaning
-into the `o` in the wordmark and icon. The reusable icon is
-[`dist/brand-icon.svg`](dist/brand-icon.svg).
-Existing `cheapos` imports, `.cheapos` data folders, `CHEAPOS_*` environment
-variables, API identifiers, and the `Start CheapOS.command` launcher remain
-compatible; no migration is needed.
+<p align="center">
+  <img src="dist/brand-icon.svg" width="32" alt="CheapoS Relay icon"><br>
+  <strong>Take your time. Keep your change.</strong><br>
+  <sub>CheapoS · Local-first · Open source · <a href="LICENSE">MIT licensed</a></sub>
+</p>

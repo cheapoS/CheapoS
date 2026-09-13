@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="580" viewBox="0 0 1280 580" role="img" aria-labelledby="title desc">
+  <title id="title">${brand} — ${headline_one} ${headline_two}</title>
+  <desc id="desc">${description_one} ${description_two} A Relay diagram connects a worker to verification, a reviewer, and your final decision. Working alpha.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="${surface}"/><stop offset="1" stop-color="${background}"/></linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="${mint}" stroke-opacity=".045"/></pattern>
+    <linearGradient id="line"><stop stop-color="${mint}"/><stop offset="1" stop-color="${lavender}"/></linearGradient>
+  </defs>
+  <rect width="1280" height="580" rx="20" fill="url(#bg)"/>
+  <rect width="1280" height="580" rx="20" fill="url(#grid)"/>
+  <g fill="none" stroke="${border}"><path d="M0 500H1280"/><circle cx="1075" cy="262" r="290" opacity=".35"/><circle cx="1075" cy="262" r="220" opacity=".35"/></g>
+  <g transform="translate(54 44) scale(.75)">${relay_icon}</g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif">
+    <text x="116" y="78" fill="${foreground}" font-size="32" font-weight="700" letter-spacing="-1">${brand}</text>
+    <text x="1224" y="73" fill="${muted}" font-size="13" text-anchor="end" letter-spacing="2">${status}</text>
+    <text x="56" y="155" fill="${mint}" font-size="13" font-weight="600" letter-spacing="2.5">${eyebrow}</text>
+    <text x="52" y="230" fill="${foreground}" font-size="57" font-weight="700" letter-spacing="-2.4">${headline_one}</text>
+    <text x="52" y="301" fill="${mint}" font-size="57" font-weight="700" letter-spacing="-2.4">${headline_two}</text>
+    <text x="56" y="361" fill="${muted}" font-size="19">${description_one}</text>
+    <text x="56" y="393" fill="${muted}" font-size="19">${description_two}</text>
+    <rect x="56" y="429" width="126" height="29" rx="14" fill="${mint}"/>
+    <text x="119" y="449" fill="${background}" font-size="12" font-weight="700" text-anchor="middle" letter-spacing="1">YOUR REPO</text>
+    <text x="200" y="449" fill="${muted}" font-size="14">Your pace. Your call.</text>
+    <text x="56" y="545" fill="${muted}" font-size="13" font-weight="500" letter-spacing="1.4">${footer}</text>
+    <text x="1224" y="545" fill="${mint}" text-anchor="end" font-size="13" letter-spacing="1.6">BUILT TO BE INSPECTED ↗</text>
+    <g transform="translate(786 142)">
+      <path d="M155 85V116H335V151M277 193H257" fill="none" stroke="url(#line)" stroke-width="2"/>
+      <path d="M137 236V266" fill="none" stroke="${lavender}" stroke-width="2"/>
+      <path d="M21 193H-8V38H21" fill="none" stroke="${border}" stroke-width="2" stroke-dasharray="5 7"/>
+      <rect x="18" y="0" width="274" height="85" rx="12" fill="${surface}" stroke="${border}"/>
+      <circle cx="46" cy="27" r="4" fill="${mint}"/>
+      <text x="60" y="32" fill="${mint}" font-size="12" font-weight="600" letter-spacing="1.4">01 / WORKER</text>
+      <text x="38" y="62" fill="${foreground}" font-size="22" font-weight="600">Build the change.</text>
+      <rect x="277" y="151" width="117" height="85" rx="12" fill="${background}" stroke="${border}"/>
+      <path d="m319 177 10 10 19-20" stroke="${mint}" stroke-width="3" fill="none"/>
+      <text x="335" y="215" fill="${muted}" font-size="13" text-anchor="middle">Run checks</text>
+      <rect x="18" y="151" width="239" height="85" rx="12" fill="${surface}" stroke="${border}"/>
+      <circle cx="46" cy="178" r="4" fill="${lavender}"/>
+      <text x="60" y="183" fill="${lavender}" font-size="12" font-weight="600" letter-spacing="1.4">02 / REVIEWER</text>
+      <text x="38" y="213" fill="${foreground}" font-size="22" font-weight="600">Question the result.</text>
+      <rect x="18" y="266" width="218" height="42" rx="21" fill="${mint}"/>
+      <text x="127" y="292" fill="${background}" font-size="14" font-weight="700" text-anchor="middle">03 / YOU DECIDE</text>
+      <circle cx="155" cy="116" r="5" fill="${mint}"/>
+      <path d="m330 144 5 7 5-7m-76 44-7 5 7 5m-132 62 5 6 5-6" fill="none" stroke="${mint}" stroke-width="2"/>
+    </g>
+  </g>
+</svg>

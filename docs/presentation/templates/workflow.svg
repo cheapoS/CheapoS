@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="300" viewBox="0 0 1280 300" role="img" aria-labelledby="title desc">
+  <title id="title">${workflow_title}</title>
+  <desc id="desc">Describe a task. A worker edits a separate copy. Checks verify the patch. A reviewer inspects the evidence. You approve the final commit or merge. ${workflow_note}</desc>
+  <rect width="1280" height="300" rx="18" fill="${background}"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif">
+    <text x="42" y="51" fill="${foreground}" font-size="26" font-weight="600" letter-spacing="-.5">${workflow_title}</text>
+    <text x="1238" y="49" fill="${muted}" text-anchor="end" font-size="12" letter-spacing="2">THE RELAY / 01—05</text>
+    <path d="M90 102H1160" stroke="${border}" stroke-width="2"/>
+    <g fill="${surface}" stroke="${border}">
+      <rect x="42" y="82" width="216" height="126" rx="10"/>
+      <rect x="282" y="82" width="216" height="126" rx="10"/>
+      <rect x="522" y="82" width="216" height="126" rx="10"/>
+      <rect x="762" y="82" width="216" height="126" rx="10"/>
+      <rect x="1002" y="82" width="236" height="126" rx="10"/>
+    </g>
+    <g font-size="12" letter-spacing="1.5" font-weight="600">
+      <text x="60" y="108" fill="${muted}">01 / INTENT</text>
+      <text x="300" y="108" fill="${mint}">02 / WORKER</text>
+      <text x="540" y="108" fill="${mint}">03 / VERIFICATION</text>
+      <text x="780" y="108" fill="${lavender}">04 / REVIEWER</text>
+      <text x="1020" y="108" fill="${amber}">05 / YOUR CALL</text>
+    </g>
+    <g font-size="22" font-weight="600" fill="${foreground}">
+      <text x="60" y="148">Describe it.</text>
+      <text x="300" y="148">Build it.</text>
+      <text x="540" y="148">Check it.</text>
+      <text x="780" y="148">Review it.</text>
+      <text x="1020" y="148">Land it.</text>
+    </g>
+    <g font-size="15" fill="${muted}">
+      <text x="60" y="181">A prompt or a plan</text>
+      <text x="300" y="181">A separate task copy</text>
+      <text x="540" y="181">Evidence for this patch</text>
+      <text x="780" y="181">A second perspective</text>
+      <text x="1020" y="181">Approve commit / merge</text>
+    </g>
+    <path d="M870 220v14H390v-14m-5 5 5-5 5 5" fill="none" stroke="${lavender}" stroke-width="1.5"/>
+    <text x="640" y="272" fill="${muted}" font-size="16" text-anchor="middle">${workflow_note}</text>
+  </g>
+</svg>

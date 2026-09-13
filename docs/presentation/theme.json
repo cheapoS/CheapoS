@@ -1,0 +1,23 @@
+{
+  "name": "Relay",
+  "tokens": {
+    "background": "#111816",
+    "surface": "#1B2420",
+    "border": "#35463E",
+    "foreground": "#F1F5EF",
+    "muted": "#B3C4B8",
+    "mint": "#A1DFBE",
+    "lavender": "#C2B2E7",
+    "amber": "#E7C38D",
+    "brand": "CheapoS",
+    "eyebrow": "THE LOCAL CODING WORKSPACE",
+    "headline_one": "Cheap models work.",
+    "headline_two": "Smart models check.",
+    "description_one": "Give the work time. Give the result a second opinion.",
+    "description_two": "Keep the models, the budget, and the final decision yours.",
+    "status": "OPEN SOURCE / WORKING ALPHA",
+    "footer": "LOCAL OR REMOTE  ·  VISIBLE BUDGETS  ·  REVIEWED CHANGES",
+    "workflow_title": "A second opinion, built into the loop.",
+    "workflow_note": "Revisions return to the worker. You decide what lands."
+  }
+}
