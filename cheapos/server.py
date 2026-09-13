@@ -205,11 +205,14 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 elif action == "approval":
                     if not isinstance(values.get("approved"), bool):
                         raise ValueError("Provide an approval decision")
-                    result = engine.approve_check(task_id, values["approved"], values.get("remember", False), values.get("approval_id"))
+                    result = engine.approve_check(task_id, values["approved"], values.get("remember", False), values.get("approval_id"), values.get("scope"))
                 elif action == "permissions":
-                    if values != {"clear": True}:
-                        raise ValueError("Session permissions can only be cleared here")
-                    result = engine.clear_session_permissions(task_id)
+                    if set(values) == {"revoke_project_grant"} and isinstance(values["revoke_project_grant"], str):
+                        result = engine.revoke_project_permission(task_id, values["revoke_project_grant"])
+                    elif values == {"clear": True}:
+                        result = engine.clear_session_permissions(task_id)
+                    else:
+                        raise ValueError("Choose a grant to revoke or clear task commands")
                 elif action == "commit-preview":
                     result = engine.prepare_commit(task_id)
                 elif action == "reconcile":

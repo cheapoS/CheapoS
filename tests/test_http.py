@@ -148,6 +148,19 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(len(json.loads(self.request('GET','/api/projects')[2])),1)
         self.assertEqual(len(self.engine.store.list()),1)
 
+    def test_project_test_grant_scope_and_revocation_api(self):
+        task=self.engine.create_demo();runtime=Runtime(task)
+        argv=task['check_command'];profile=self.engine.project_test_grants.proposal(task,argv)
+        task['pending_approval']={'id':'proposal','command':argv,'directory':task['workspace'],'profile':profile}
+        self.engine.runtimes[task['id']]=runtime
+        path='/api/tasks/'+task['id']
+        self.assertEqual(self.post(path+'/approval',{'approved':True,'scope':'project_tests_session'})[0],400)
+        self.assertEqual(self.post(path+'/approval',{'approved':True,'scope':'project_tests_session','approval_id':'proposal'})[0],200)
+        grants=json.loads(self.request('GET',path+'/permissions')[2])['project_grants']
+        self.assertEqual(len(grants),1)
+        self.assertEqual(self.post(path+'/permissions',{'revoke_project_grant':grants[0]['id']})[0],200)
+        self.assertEqual(json.loads(self.request('GET',path+'/permissions')[2])['project_grants'],[])
+
     def test_private_paths_are_not_served(self):
         for path in ['/README.md', '/.git/config', '/.cheapos/config.json', '/../run.py', '/%2e%2e/run.py', '/api/tasks/../../config']:
             self.assertEqual(self.request('GET', path)[0], 404, path)

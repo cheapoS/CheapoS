@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .providers import BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider
 from .storage import Store, write_json
+from .project_permissions import ProjectTestGrants
 from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, Workspace, git
 from . import commits, reconciliation
 from .web import WebReader, allowed_urls
@@ -278,6 +279,7 @@ class Engine:
         self.lock = threading.RLock()
         self.runtimes = {}
         self.command_permissions = {}
+        self.project_test_grants = ProjectTestGrants(self.store)
         self.commit_previews = {}
         self.secrets = {}
         self.provider_factory = provider_factory
@@ -424,6 +426,7 @@ class Engine:
         if conversational:
             task["request_worker_turns"] = 0
         setup_task(task, execution, self.config, self.gateway)
+        self.project_test_grants.register(task)
         self.event(task, "snapshot", "Created an isolated repository snapshot", snapshot)
         return task
 
@@ -600,7 +603,13 @@ class Engine:
         with self.lock:
             task = self.store.get(task_id)
             commands = [list(argv) for directory, argv in self.command_permissions.get(task_id, set()) if directory == task["workspace"]]
-            return {"commands": sorted(commands), "directory": task["workspace"], "expires": "server_restart"}
+            return {"commands": sorted(commands), "directory": task["workspace"], "expires": "server_restart", "project_grants": self.project_test_grants.visible(task)}
+
+    def revoke_project_permission(self, task_id, grant_id):
+        with self.lock:
+            task = self.store.get(task_id)
+            self.project_test_grants.revoke(task, grant_id)
+            return self.session_permissions(task_id)
 
     def clear_session_permissions(self, task_id):
         with self.lock:
@@ -608,7 +617,13 @@ class Engine:
             self.command_permissions.pop(task_id, None)
             return self.session_permissions(task_id)
 
-    def approve_check(self, task_id, approved, remember=False, approval_id=None):
+    def approve_check(self, task_id, approved, remember=False, approval_id=None, scope=None):
+        if scope is not None and scope not in {"once", "task_exact", "project_tests_session"}:
+            raise ValueError("Choose a supported command approval scope")
+        if scope is not None and (remember or not approved and scope != "once"):
+            raise ValueError("Approval scope conflicts with the decision")
+        if scope == "task_exact":
+            remember = True
         if not isinstance(approved, bool) or not isinstance(remember, bool) or remember and not approved:
             raise ValueError("Provide a valid command approval")
         with self.lock:
@@ -617,11 +632,15 @@ class Engine:
             if not runtime or not runtime.task.get("pending_approval") or runtime.approval.is_set() or runtime.stop.is_set():
                 raise ValueError("No command is waiting for approval")
             pending = runtime.task["pending_approval"]
-            if (remember or approval_id is not None) and approval_id != pending["id"]:
+            if pending["directory"] != runtime.task["workspace"]:
+                raise ValueError("Task copy changed. Request fresh command approval")
+            if (scope is not None or remember or approval_id is not None) and approval_id != pending["id"]:
                 raise ValueError("This approval request changed. Refresh the chat before approving.")
+            if scope == "project_tests_session":
+                self.project_test_grants.approve(runtime.task, pending)
             if remember:
                 self.command_permissions.setdefault(task_id, set()).add((pending["directory"], tuple(pending["command"])))
-            self.event(runtime.task, "permission", "Command allowed for this session" if remember else "Command allowed once" if approved else "Command declined", {"command": pending["command"], "directory": pending["directory"], "scope": "session" if remember else "once"})
+            self.event(runtime.task, "permission", "Project tests allowed for this session" if scope == "project_tests_session" else "Command allowed for this session" if remember else "Command allowed once" if approved else "Command declined", {"command": pending["command"], "directory": pending["directory"], "scope": scope or ("task_exact" if remember else "once")})
             runtime.approved = approved is True
             runtime.approval.set()
         return {"accepted": True}
@@ -849,6 +868,7 @@ class Engine:
             if not task["patch"]:
                 task.update(status="awaiting_reply", error=None, error_code=None)
             self.event(task, "user", "You", "Reconcile the saved changes with the current project in this chat.")
+            self.project_test_grants.register(task)
             self.event(task, "snapshot", "Reconciled task copy with current project", info)
             self.event(task, "assistant", "CheapOS", "I’ve brought the current project into this chat and kept your saved edits. I’ll resolve the overlapping changes, then run checks and request a fresh review." if task["patch"] else "These changes are already in your project. I’ve updated this chat’s task copy; there’s nothing left to commit.")
             self.command_permissions.pop(task_id, None)
@@ -1394,11 +1414,13 @@ class Engine:
         # Session grants match this chat, workspace, and parsed argument vector.
         # They are held in memory, never restored from task history.
         with self.lock:
-            session_allowed = (task["workspace"], tuple(argv)) in self.command_permissions.get(task["id"], set())
+            exact_allowed = (task["workspace"], tuple(argv)) in self.command_permissions.get(task["id"], set())
+            project_grant, scope_reason = self.project_test_grants.authorize(task, argv)
+            session_allowed = exact_allowed or bool(project_grant)
         if not session_allowed and (not task["auto_approve_checks"] or argv != task["check_command"]):
             runtime.approved = False
             runtime.approval.clear()
-            task["pending_approval"] = {"id": uuid.uuid4().hex, "command": argv, "directory": task["workspace"]}
+            task["pending_approval"] = {"id": uuid.uuid4().hex, "command": argv, "directory": task["workspace"], "profile": self.project_test_grants.proposal(task, argv), "scope_reason": scope_reason}
             task["status"] = "waiting_approval"
             self.event(task, "permission", "Permission needed to run the verification command", task["pending_approval"])
             waiting_since = time.monotonic()
@@ -1411,7 +1433,7 @@ class Engine:
                 raise InterruptedError("Verification command was declined")
             task["status"] = "running"
         elif session_allowed:
-            self.event(task, "permission", "Running tests · allowed for this session", {"command": argv, "directory": task["workspace"], "scope": "session"})
+            self.event(task, "permission", "Running tests · allowed for this session", {"command": argv, "directory": task["workspace"], "scope": "project_tests_session" if project_grant else "task_exact", "grant_id": project_grant})
         if argv != task["check_command"]:
             task["auto_approve_checks"] = False
         task["check_command"] = argv

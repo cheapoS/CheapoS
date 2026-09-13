@@ -27,12 +27,12 @@ Expand permission, HTTP, reconciliation, and review-workflow regressions using a
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Ephemeral project grant registry; server-generated profiles; explicit once/task_exact/project_tests_session scopes; read/revoke API; legacy remember compatibility; current profile revalidation and recorded execution scope.
+- Acceptance evidence: Six project-grant regressions cover selector/follow-up/new-copy reuse, stale profiles, configuration changes, source/copy replacement, revocation/restart, and reconciliation. Source and .git device/inode identity (plus worktree git-file content) detect repository replacement; only registered task/reconciliation destinations qualify. Executable stat and runner/startup configuration hashes form the fingerprint; ordinary test content does not. Revocation invalidates older proposals.
+- Commands and results: 6 project-grant tests, 7 legacy permission tests, 29 HTTP tests, 2 review workflow tests, and 61 JavaScript tests passed; syntax/diff checks passed.
+- Browser scenarios and results: UI remains compatible with legacy clients; broader scope UI is T10.
+- Remaining limitations: Grants are server-session only, unittest only, and not a sandbox. External file changes after authorization remain subject to the normal local execution model.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
