@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shlex
 import sys
 import threading
@@ -108,6 +109,13 @@ class ProgressPause(Exception):
     pass
 
 
+class CheckpointTurnLimit(ProgressPause):
+    def __init__(self, task):
+        super().__init__(f"The {task['limits'].get('checkpoint_turns', 12)}-turn checkpoint limit was reached before verification and review. "
+                         f"This request has used {request_worker_turns(task)} of {task['limits']['worker_turns']} worker turns overall. "
+                         "Saved edits are intact. Resume starts another checkpoint interval; increasing the overall allowance does not change this interval.")
+
+
 class WorkerTurnLimit(BudgetError):
     pass
 
@@ -158,6 +166,41 @@ def observation_key(name, args, result):
     return hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
 
 
+def observed_file_lines(result):
+    content = result.get("content", "")
+    # A clipped final line is not evidence of the complete source line.
+    rows = content.splitlines()
+    if result.get("truncated") or len(content) >= 20000:
+        rows = rows[:-1]
+    return {int(m.group(1)) for row in rows if (m := re.match(r"^(\d+): ", row))}
+
+
+def record_observation(runtime, name, args, result):
+    lines = observed_file_lines(result) if name == "read_file" and isinstance(result, dict) else set()
+    if lines and result.get("hash"):
+        key = (args.get("path"), result["hash"])
+        seen = runtime.file_observations.setdefault(key, {"lines": set(), "repeats": 0})
+        if lines <= seen["lines"]:
+            seen["repeats"] += 1
+            return seen["repeats"] + 1
+        seen["lines"].update(lines)
+        seen["repeats"] = 0
+        return 1
+    fingerprint = observation_key(name, args, result)
+    runtime.observations[fingerprint] = runtime.observations.get(fingerprint, 0) + 1
+    return runtime.observations[fingerprint]
+
+
+def check_argv(command):
+    """Reject shell syntax instead of passing it as bogus test-runner arguments."""
+    lexer = shlex.shlex(command, posix=False, punctuation_chars="|&;<>()")
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    if any(token and all(c in "|&;<>()" for c in token) for token in lexer):
+        raise ValueError("Verification runs one program directly, without shell pipes, redirects, or chaining. Send only the test command; CheapOS captures its output automatically.")
+    return shlex.split(command)
+
+
 def needs_patch_review(task):
     patch = task.get("patch", "")
     if not patch:
@@ -202,12 +245,14 @@ class Runtime:
         self.argument_failures = 0
         self.step_turns = 0
         self.observations = {}
+        self.file_observations = {}
         self.web = WebReader()
         self.verified_local = set()
         self.failed_models = set()
         self.handoffs = 0
         self.review_requests = 0
         self.action_context_ready = False
+        self.compact_context_ready = False
 
     def guard(self):
         if time.monotonic() - self.started >= self.task["limits"].get("run_minutes", 15) * 60:
@@ -699,13 +744,25 @@ class Engine:
                 break
             try:
                 if compact:
-                    # Keep the most recently requested range, including a section
-                    # beyond the default snapshot, with the hash of current bytes.
+                    # Small files fit in full. A narrow follow-up read must never
+                    # replace already available whole-file evidence.
+                    data = workspace.text_bytes(path)
+                    lines = data.decode("utf-8").splitlines()
+                    content = "\n".join(f"{i}: {line}" for i, line in enumerate(lines, 1))
+                    if len(content) <= maximum:
+                        files.append({"path": path, "hash": hashlib.sha256(data).hexdigest(),
+                                      "content": content, "total_lines": len(lines), "start_line": 1,
+                                      "end_line": len(lines), "complete": True})
+                        remaining -= len(content)
+                        continue
+                    # For a larger file, retain the latest requested section;
+                    # subsequent completed tool exchanges stay in the context.
                     args = next((e["detail"]["arguments"] for e in reversed(task["events"][boundary + 1:])
                                  if e["kind"] == "tool" and e["title"] == "read file"
                                  and e.get("detail", {}).get("arguments", {}).get("path") == path), {})
                     file = workspace.read_file(path, args.get("start_line", 1), args.get("end_line", 300))
                     file["complete"] = file["complete"] and len(file["content"]) <= maximum
+                    file["truncated"] = len(file["content"]) > maximum or len(file["content"]) >= 20000
                     file["content"] = file["content"][:maximum]
                     files.append(file)
                     remaining -= len(file["content"])
@@ -738,6 +795,12 @@ class Engine:
                 if isinstance(detail, dict) and event["kind"] == "tool":
                     detail["arguments"] = {k: v for k, v in detail.get("arguments", {}).items()
                                            if k not in {"old_text", "new_text", "content"}}
+                    # Historical hashes and file bodies can conflict with the
+                    # authoritative current snapshot. Keep the action metadata.
+                    if event["title"] in {"read file", "replace lines", "replace text", "write file"}:
+                        detail["arguments"].pop("expected_hash", None)
+                        detail["result"] = {k: v for k, v in (detail.get("result") or {}).items()
+                                            if k not in {"content", "hash"}}
                 activity.append({"action": event["title"], "result_excerpt": excerpt(json.dumps(detail), 2500)})
                 if len(activity) >= 6:
                     break
@@ -752,6 +815,17 @@ class Engine:
         if not task.get("compact_edits"):
             task["compact_edits"] = True
             self.event(task, "guard", "Switching to smaller line edits", "The worker will send short replacement lines using the current file version. Saved edits, verification requirements, and limits are kept across model handoffs.")
+
+    def compact_context(self, runtime):
+        messages = self.action_messages(runtime.task)
+        # The supplied numbered snapshot counts as evidence already available to
+        # the worker. Slightly changing a read range is not new information.
+        runtime.file_observations.clear()
+        for file in json.loads(messages[1]["content"])["current_files"]:
+            if file.get("hash"):
+                runtime.file_observations[(file["path"], file["hash"])] = {"lines": observed_file_lines(file), "repeats": 0}
+        runtime.compact_context_ready = True
+        return messages
 
     def prepare_loop_recovery(self, task):
         if needs_patch_review(task):
@@ -814,7 +888,7 @@ class Engine:
         if request_worker_turns(task) >= task["limits"]["worker_turns"]:
             raise WorkerTurnLimit("Worker model-turn limit reached during free-model recovery. Saved work is kept.")
         if runtime.step_turns >= task["limits"].get("checkpoint_turns", 12):
-            raise ProgressPause("The checkpoint turn limit was reached during free-model recovery. Saved work is kept.")
+            raise CheckpointTurnLimit(task)
         task["worker_turns"] += 1
         task["request_worker_turns"] += 1
         runtime.step_turns += 1
@@ -844,7 +918,7 @@ class Engine:
                     "from": recovery["from"], "to": task["providers"][role]["model"], "role": role,
                     "summary": "Continuing with the same chat, saved files, checks, and limits. " + recovery["reason"]})
                 if (task.get("action_pending") or task.get("compact_edits")) and task["status"] != "reviewing":
-                    messages[:] = self.action_messages(task)
+                    messages[:] = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
             cfg = task["providers"][role]
             # Revalidate pinned choices against the refreshed catalog, including prices.
             catalog = self.gateway.catalog(fresh=True)
@@ -1047,7 +1121,12 @@ class Engine:
         if command is not None:
             if not task.get("conversational") or not isinstance(command, str) or len(command) > 2000:
                 raise ValueError("Provide a verification command of up to 2,000 characters")
-            argv = shlex.split(command)
+            argv = check_argv(command)
+        elif argv and task.get("validated_check_command") != argv:
+            # Old chats may have saved a malformed command before validation was
+            # added. Resume must not execute it again, even with a session grant.
+            if any(re.fullmatch(r"\d*[|&;<>]+\d*", arg) for arg in argv):
+                raise ValueError("The saved verification command contains shell syntax. Call run_checks with only the test command; CheapOS captures output automatically.")
         if not argv:
             raise ValueError("Choose a check from this project's guidance and call run_checks with its command. If none is suitable, use ask_user.")
         # Session grants match this chat, workspace, and parsed argument vector.
@@ -1074,6 +1153,7 @@ class Engine:
         if argv != task["check_command"]:
             task["auto_approve_checks"] = False
         task["check_command"] = argv
+        task["validated_check_command"] = list(argv)
         workspace = Workspace(task["workspace"])
         before = workspace.patch()
         live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False}
@@ -1222,6 +1302,7 @@ class Engine:
         if (automatic(runtime.task, runtime.task["active_role"]) and runtime.task["active_role"] == "worker"
                 and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines"}):
             self.prepare_compact_edits(runtime.task)
+            runtime.compact_context_ready = False
         if runtime.argument_failures >= 3:
             raise ProgressPause("The model returned malformed tool arguments three times in a row. These calls were not executed. Saved work is intact; check the model before retrying.")
         return result
@@ -1278,14 +1359,14 @@ class Engine:
                         self.finish_answer(runtime)
                         continue
                 if runtime.step_turns >= task["limits"].get("checkpoint_turns", 12):
-                    raise ProgressPause("The worker reached its turn limit without a checkpoint or answer. Review the saved changes, then resume if more work is needed.")
+                    raise CheckpointTurnLimit(task)
                 runtime.step_turns += 1
                 if not task.get("action_pending") and runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
                     task["loop_guidance"] = "You are near the checkpoint turn limit. For a question, give your answer now without editing files. For a requested change, finish only that scope and submit checkpoint; it verifies the patch and requests review. If no command is selected yet, use run_checks to choose one first. If blocked, ask_user. Avoid further polishing or repeated reads."
                     task["messages"].append({"role": "user", "content": task["loop_guidance"]})
                     self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint turn limit.")
                 if len(json.dumps(task["messages"])) > 60000:
-                    task["messages"] = self.initial_messages(task)
+                    task["messages"] = self.compact_context(runtime) if task.get("compact_edits") else self.initial_messages(task)
                     self.event(task, "context", "Compacted worker context using current files, diff, and review feedback")
                 task["worker_turns"] += 1
                 if task.get("conversational"):
@@ -1294,12 +1375,13 @@ class Engine:
                 recovering = task.get("action_pending", False)
                 if recovering:
                     if not runtime.action_context_ready:
-                        task["messages"] = self.action_messages(task)
+                        task["messages"] = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
                         runtime.action_context_ready = True
                     offered_tools = [t for t in offered_tools if t["function"]["name"] in {"write_file", "replace_text", "run_checks", "checkpoint", "ask_user"}]
                     task["messages"].append({"role": "user", "content": task["loop_guidance"]})
                 if task.get("compact_edits"):
-                    task["messages"] = self.action_messages(task)
+                    if not runtime.compact_context_ready:
+                        task["messages"] = self.compact_context(runtime)
                     offered_tools = [t for t in offered_tools if t["function"]["name"] not in {"replace_text", "write_file"}] + [LINE_EDIT, COMPACT_WRITE]
                 message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
                 task["messages"].append(message)
@@ -1350,14 +1432,14 @@ class Engine:
                             result = self.read_url(runtime, args) if name == "read_url" else self.file_tool(task, name, args)
                             if name in {"write_file", "replace_text", "replace_lines"}:
                                 runtime.observations.clear()
+                                runtime.file_observations.clear()
                             else:
-                                fingerprint = observation_key(name, args, result)
-                                runtime.observations[fingerprint] = runtime.observations.get(fingerprint, 0) + 1
-                                if runtime.observations[fingerprint] == 2:
+                                observations = record_observation(runtime, name, args, result)
+                                if observations == 2:
                                     task["loop_guidance"] = "This read returned the same information twice. Answer the user's question from the evidence, use read_url for a supplied web link, or ask_user to explain what is missing. Do not edit just to reset the loop guard. Another identical read ends research for this run."
                                     result = {"observation": result, "guidance": task["loop_guidance"]}
                                     self.event(task, "guard", "Asking the worker to use what it found", "The same read returned unchanged information twice. CheapOS asked for an answer, a relevant web read, or a clear explanation of what is missing.")
-                                elif runtime.observations[fingerprint] >= 3:
+                                elif observations >= 3:
                                     self.refresh_changes(task)
                                     if task.get("conversational"):
                                         self.prepare_loop_recovery(task)
@@ -1378,7 +1460,8 @@ class Engine:
                 self.store.save(task)
         except (ProgressPause, RoutingPause) as error:
             task["status"] = "paused"
-            task["error_code"] = "routing_unavailable" if isinstance(error, RoutingPause) else "progress_limit"
+            task["error_code"] = ("routing_unavailable" if isinstance(error, RoutingPause) else
+                                  "checkpoint_turn_limit" if isinstance(error, CheckpointTurnLimit) else "progress_limit")
             task["error"] = str(error)
             self.refresh_changes(task)
             self.event(task, "guard", "Paused to avoid repeated work" if isinstance(error, ProgressPause) else "Waiting for a usable route", task["error"])

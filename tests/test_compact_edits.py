@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from cheapos.engine import COMPACT_GUIDANCE
+from cheapos.engine import COMPACT_GUIDANCE, Runtime, check_argv, record_observation
 from cheapos.providers import ProviderError
 from cheapos.routing import PROBE_MESSAGES
 from cheapos.workspace import MAX_EDIT_BYTES, Workspace
@@ -161,11 +161,11 @@ class CompactRecoveryTests(LocalCase):
 
     def test_compact_snapshot_keeps_requested_range_and_rejects_stale_hash(self):
         task = self.chat('remote'); task['compact_edits'] = True
-        path = Path(task['workspace']) / 'math_utils.py'; path.write_text('line\n' * 600)
+        path = Path(task['workspace']) / 'math_utils.py'; path.write_text(('line' * 12 + '\n') * 600)
         self.engine.file_tool(task, 'read_file', {'path': 'math_utils.py', 'start_line': 500, 'end_line': 510})
         summary = json.loads(self.engine.action_messages(task)[1]['content'])
         current = summary['current_files'][0]
-        self.assertTrue(current['content'].startswith('500: line\n'))
+        self.assertTrue(current['content'].startswith('500: ' + 'line' * 12 + '\n'))
         self.assertFalse(current['complete'])
         path.write_text('changed\n' * 600)
         with self.assertRaisesRegex(ValueError, 'changed since inspection'):
@@ -181,3 +181,71 @@ class CompactRecoveryTests(LocalCase):
         self.assertEqual(result['error_code'], 'worker_turn_limit')
         self.assertEqual(len(requests), 1)
         self.assertFalse(result['changes'])
+
+    def test_narrow_reads_cannot_shrink_complete_snapshot_or_restore_historical_hashes(self):
+        task = self.chat('remote'); task['compact_edits'] = True
+        path = Path(task['workspace']) / 'math_utils.py'
+        path.write_text('line\n' * 253)
+        self.engine.file_tool(task, 'read_file', {'path': 'math_utils.py', 'start_line': 1, 'end_line': 253})
+        old_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        path.write_text('current\n' * 253)
+        self.engine.file_tool(task, 'read_file', {'path': 'math_utils.py', 'start_line': 1, 'end_line': 20})
+        messages = self.engine.action_messages(task)
+        current = json.loads(messages[1]['content'])['current_files'][0]
+        self.assertTrue(current['complete'])
+        self.assertTrue(current['content'].endswith('253: current'))
+        self.assertNotIn(old_hash, json.dumps(messages))
+
+    def test_completed_tool_exchange_and_error_feedback_remain_in_next_turn(self):
+        task = self.chat('remote'); task['compact_edits'] = True
+        self.engine.store.save(task)
+        first = call('read_file', {'path': 'math_utils.py'})
+        first['content'] = 'I have inspected the function; next I will fix its lower bound.'
+        requests = self.responses([first, call('replace_lines', {'path':'math_utils.py', 'start_line':2,
+                                  'end_line':2, 'new_text':'small edit', 'expected_hash':'stale'}),
+                                  call('ask_user', {'question': 'Which behavior do you want?'})])
+        self.engine.start(task['id']); self.finish(task)
+        self.assertIn(first, requests[1]['messages'])
+        feedback = [m for m in requests[2]['messages'] if m['role'] == 'tool']
+        self.assertTrue(any('changed since inspection' in m['content'] for m in feedback))
+        self.assertIn(first, requests[2]['messages'])
+
+    def test_changing_read_ranges_only_counts_as_progress_when_new_lines_are_returned(self):
+        runtime = Runtime(self.chat('remote'))
+        def observe(start, end, digest='same'):
+            return record_observation(runtime, 'read_file', {'path':'example.py'},
+                                      {'hash':digest, 'content':'\n'.join(f'{i}: data' for i in range(start,end+1))})
+        self.assertEqual(observe(1, 200), 1)
+        self.assertEqual(observe(1, 30), 2)
+        self.assertEqual(observe(1, 80), 3)
+        self.assertEqual(observe(201, 253), 1)
+        self.assertEqual(observe(1, 253), 2)
+        self.assertEqual(observe(1, 200, 'edited'), 1)
+        self.assertEqual([observe(1, 0, 'empty') for _ in range(3)], [1, 2, 3])
+
+    def test_clipped_snapshot_line_can_be_read_without_a_false_repeat(self):
+        task = self.chat('remote'); task['compact_edits'] = True
+        path = Path(task['workspace']) / 'math_utils.py'; path.write_text(('x' * 100 + '\n') * 500)
+        self.engine.file_tool(task, 'read_file', {'path':'math_utils.py'})
+        runtime = Runtime(task)
+        snapshot = json.loads(self.engine.compact_context(runtime)[1]['content'])['current_files'][0]
+        self.assertTrue(snapshot['truncated'])
+        line = int(snapshot['content'].splitlines()[-1].split(':')[0])
+        result = Workspace(task['workspace']).read_file('math_utils.py', line, line)
+        self.assertEqual(record_observation(runtime,'read_file',{'path':'math_utils.py'},result),1)
+
+    def test_shell_syntax_is_rejected_before_approval_or_execution_and_quoted_data_is_preserved(self):
+        task = self.fixture(paid=True); task['conversational'] = True
+        runtime = Runtime(task)
+        for command in ('python3 -m unittest discover -s tests -v 2>&1 | head -100',
+                        'python3 -m unittest > test.log', 'python3 -m unittest && echo done'):
+            with self.subTest(command=command), self.assertRaisesRegex(ValueError, 'without shell'):
+                self.engine.checks(runtime, command)
+        self.assertFalse(task['checks'])
+        self.assertIsNone(task.get('pending_approval'))
+        self.assertFalse(any(e['kind']=='permission' for e in task['events']))
+        task['check_command'] = ['python3', '-m', 'unittest', '2>&1', '|', 'tail', '-50']
+        with self.assertRaisesRegex(ValueError, 'saved verification'):
+            self.engine.checks(runtime)
+        self.assertEqual(check_argv('python3 -c "print(1 > 0)"'), ['python3','-c','print(1 > 0)'])
+        self.assertEqual(check_argv('python3 example.py "|"'), ['python3','example.py','|'])

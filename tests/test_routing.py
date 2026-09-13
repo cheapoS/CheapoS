@@ -182,11 +182,13 @@ class RoutingTests(LocalCase):
         self.assertEqual(sum(e['title']=='read file' for e in result['events']),3)
 
     def test_checkpoint_turn_limit_bounds_even_changing_edits(self):
-        task=self.chat('local');task['limits']['checkpoint_turns']=2;self.engine.store.save(task)
+        task=self.chat('local');task['limits'].update(checkpoint_turns=2,worker_turns=100);self.engine.store.save(task)
         requests=self.responses([call('write_file',{'path':'new1.py','content':'one'}),call('write_file',{'path':'new2.py','content':'two'}),{'content':'Never called'}])
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'paused');self.assertEqual(len(result['changes']),2);self.assertEqual(len(requests),2)
-        self.assertIn('turn limit',result['error'])
+        self.assertIn('2-turn checkpoint limit',result['error'])
+        self.assertIn('2 of 100 worker turns',result['error'])
+        self.assertEqual(result['error_code'],'checkpoint_turn_limit')
 
     def test_expired_run_stops_before_inference(self):
         task=self.chat('local');runtime=Runtime(task);runtime.started-=10000

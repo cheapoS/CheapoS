@@ -53,15 +53,17 @@ Open **Details → Session permissions** to inspect or clear remembered commands
 
 New runs default to:
 
-- **12 worker turns between checkpoints:** a reminder two turns before the limit asks the worker to verify and wrap up. At the limit it pauses, preserving edits.
+- **12 worker turns between checkpoints:** a reminder two turns before the limit asks the worker to verify and wrap up. At the limit it pauses, preserving edits. This interval is independent of the overall worker-turn allowance: raising that allowance to 100 still leaves 12 turns per checkpoint interval. The pause names both counts; Resume starts a new interval within the remaining overall allowance.
 - **15 minutes per run:** approval waits do not count. Increase this under **Spending & limits → Advanced limits** for longer work, up to 12 hours.
-- **Three identical reads without an intervening edit:** Conversations with unfinished edits switch to a bounded next action: edit, verify, submit a checkpoint, or explain a blocker. Reading tools are unavailable for that step. Research without a pending patch gets one answer step. Existing turn, time, and spending limits still apply, and an interrupted response requires Retry.
+- **Repeated reads without new evidence:** rereading covered lines at the same file version counts as repetition even when the requested range changes. New lines and changed file versions remain readable. A compact recovery snapshot counts as supplied evidence. After a warning and another repeat, conversations with unfinished edits switch to a bounded next action: edit, verify, submit a checkpoint, or explain a blocker. Reading tools are unavailable for that step. Research without a pending patch gets one answer step. Existing turn, time, and spending limits still apply, and an interrupted response requires Retry.
 - **40 worker/coordinator calls per user request:** a follow-up gets a fresh allowance. Resume and server restarts preserve the calls used on that unfinished request. The chat's total call count remains visible in Details. Older chats recover request counts from saved events, conservatively including attempts without a model event.
 - Dollar, reviewer-token, and iteration limits remain cumulative across the chat. Single-task non-chat runs retain their task-wide worker-turn cap.
 
 The run timer is checked before inference, as stream chunks arrive, and before executing returned tools. A stalled network call can take its request timeout to return. Resuming starts a fresh progress window and preserves cumulative usage. A progress pause is not completion or approval.
 
 Related edits can be batched in one model response. Context compaction retains the latest distinct reads, shortens large previews, and uses the saved diff instead of replaying full edit arguments.
+
+Small-edit recovery retains completed assistant/tool exchanges between turns. When rebuilding context after interruption or compaction, files that fit the excerpt allowance are included in full; a narrow read cannot shrink that snapshot. Old hashes are omitted from historical summaries so the current file version is unambiguous. Verification commands containing unquoted shell pipes, redirection, or chaining are rejected before permission prompts or execution. CheapOS captures command output itself.
 
 ## Activity shows evidence
 
