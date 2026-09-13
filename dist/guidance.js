@@ -336,6 +336,49 @@ const CheapOSGuide = (() => {
       };
     });
   }
-  return {modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns};
+  function formatTerminalOutput(raw) {
+    if (!raw) return '<span class="term-dim">(No output)</span>';
+    let safe = String(raw).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const ansiMap = {
+      1: 'ansi-bold', 2: 'ansi-dim', 3: 'ansi-italic', 4: 'ansi-underline',
+      30: 'ansi-black', 31: 'ansi-red', 32: 'ansi-green', 33: 'ansi-yellow',
+      34: 'ansi-blue', 35: 'ansi-magenta', 36: 'ansi-cyan', 37: 'ansi-white',
+      90: 'ansi-gray', 91: 'ansi-bright-red', 92: 'ansi-bright-green', 93: 'ansi-bright-yellow',
+      94: 'ansi-bright-blue', 95: 'ansi-bright-magenta', 96: 'ansi-bright-cyan', 97: 'ansi-bright-white'
+    };
+    let openSpans = 0;
+    safe = safe.replace(/\x1b\[([0-9;]*)m/g, (match, codes) => {
+      if (!codes || codes === '0') {
+        const close = '</span>'.repeat(openSpans);
+        openSpans = 0;
+        return close;
+      }
+      const classes = codes.split(';').map(c => ansiMap[c]).filter(Boolean);
+      if (!classes.length) return '';
+      openSpans++;
+      return `<span class="${classes.join(' ')}">`;
+    });
+    if (openSpans > 0) safe += '</span>'.repeat(openSpans);
+
+    const lines = safe.split('\n');
+    return lines.map(line => {
+      const plain = line.replace(/<[^>]+>/g, '').trim();
+      if (!plain) return line;
+      if (/^(FAIL(ED)?:|ERROR:|AssertionError:|SyntaxError:|Exception:)/.test(plain) || plain.includes('FAILED (failures=') || plain.includes('FAILED (errors=')) {
+        return `<span class="term-line term-error-line">${line}</span>`;
+      }
+      if (/(\.\.\. ok$|^PASSED$|^OK$|^\d+ passed)/.test(plain)) {
+        return `<span class="term-line term-success-line">${line}</span>`;
+      }
+      if (/^Traceback \(most recent call last\):/.test(plain) || /^File ".*", line \d+/.test(plain)) {
+        return `<span class="term-line term-trace-line">${line}</span>`;
+      }
+      if (/^[-=]{10,}$/.test(plain)) {
+        return `<span class="term-line term-divider-line">${line}</span>`;
+      }
+      return line;
+    }).join('\n');
+  }
+  return {modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;

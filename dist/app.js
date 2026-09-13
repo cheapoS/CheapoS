@@ -158,7 +158,7 @@ function renderTask({resetScroll=false}={}) {
   $('#task-actions').innerHTML=activeStatuses.has(task.status)?`<button class="subtle-button" id="pause-task">${icon('x')}Pause</button>`:'<button class="subtle-button" id="task-overview">Details</button>';
   if($('#pause-task'))$('#pause-task').onclick=stopTask;
   if($('#task-overview'))$('#task-overview').onclick=toggleInspector;
-  renderView();renderInspector();renderComposer();
+  renderView();renderInspector();renderComposer();bindTerminalCopy();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
   for(const el of $$('[data-thinking], [data-command-output]')){const saved=outputScroll.get(el.dataset.thinking||el.dataset.commandOutput);el.scrollTop=!saved||saved.bottom?el.scrollHeight:saved.top}
   scroller.scrollTop=resetScroll?scroller.scrollHeight:state.view==='chat'&&bottom?scroller.scrollHeight:oldScroll;
@@ -237,7 +237,10 @@ function thinkingMarkup(detail,live=false) {
 }
 function commandMarkup(check,{live=false,open=false,key=check.run_id}={}) {
   const status=live?'Running check':check.passed?'Check passed':check.reason==='cancelled'?'Check stopped':'Check failed';
-  return `<details class="command-panel ${live?'is-live':check.passed?'passed':'failed'}" data-event="command-${esc(key)}" ${live||open?'open':''}><summary>${live?'<span class="spinner"></span>':icon(check.passed?'check':'x')}<strong>${status}</strong><span>${live?'Live output':`Exit ${check.exit_code??'—'} · ${Number(check.duration||0).toFixed(1)}s`}</span>${icon('chevron')}</summary><code class="command-line">${esc(check.command.join(' '))}</code><div class="command-body"><pre class="command-output" tabindex="0" data-command-output="command-${esc(key)}" aria-label="${live?'Live command output':'Command output'}">${esc(check.output||(live?'Waiting for command output…':'(No output)'))}</pre>${check.truncated?'<p class="command-note">Showing the first 32 KB of output.</p>':''}${check.reason?`<p class="command-note">${esc(check.reason)}</p>`:''}</div></details>`;
+  const rawOutput=check.output||(live?'Waiting for command output…':'');
+  const formatted=CheapOSGuide.formatTerminalOutput(rawOutput);
+  const exitPill=live?'<span class="term-status-pill live"><span class="pulse-dot"></span>Live</span>':check.passed?`<span class="term-status-pill pass">Exit 0 · ${Number(check.duration||0).toFixed(1)}s</span>`:`<span class="term-status-pill fail">Exit ${check.exit_code??'1'} · ${Number(check.duration||0).toFixed(1)}s</span>`;
+  return `<details class="command-panel ${live?'is-live':check.passed?'passed':'failed'}" data-event="command-${esc(key)}" ${live||open?'open':''}><summary>${live?'<span class="spinner"></span>':icon(check.passed?'check':'x')}<strong>${status}</strong><span>${live?'Live output':`Exit ${check.exit_code??'—'} · ${Number(check.duration||0).toFixed(1)}s`}</span>${icon('chevron')}</summary><code class="command-line">${esc(check.command.join(' '))}</code><div class="command-body"><div class="terminal-window ${live?'is-live':check.passed?'passed':'failed'}"><div class="terminal-header"><div class="traffic-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div><span class="terminal-title"><code>${esc(check.command.join(' '))}</code></span><div class="terminal-actions">${exitPill}<button type="button" class="terminal-copy-btn" data-copy-terminal="command-${esc(key)}" title="Copy output">${icon('file')} Copy</button></div></div><div class="terminal-viewport"><pre class="command-output terminal-body" tabindex="0" data-command-output="command-${esc(key)}" aria-label="${live?'Live command output':'Command output'}">${formatted}</pre></div>${check.truncated?'<p class="command-note">Showing the first 32 KB of output.</p>':''}${check.reason?`<p class="command-note error">${esc(check.reason)}</p>`:''}</div></div></details>`;
 }
 function renderTurnActivityCard(turn, task) {
   const isLive=turn.isLive,p=CheapOSGuide.progress(task);
@@ -256,7 +259,8 @@ function renderTurnActivityCard(turn, task) {
     }
     if(item.type==='checks'){
       const exitNote=`Exit ${item.exit_code??'0'} · ${Number(item.duration||0).toFixed(1)}s`;
-      return `<div class="timeline-item">✓ <strong>Verification:</strong> <code>${esc(item.command.join(' '))}</code> <small class="muted">(${exitNote})</small>${item.output?`<pre class="timeline-command-preview">${esc(item.output.slice(-800))}</pre>`:''}</div>`;
+      const formattedCheck=CheapOSGuide.formatTerminalOutput(item.output?.slice(-1200));
+      return `<div class="timeline-item">✓ <strong>Verification:</strong> <code>${esc(item.command.join(' '))}</code> <small class="muted">(${exitNote})</small>${item.output?`<div class="terminal-window ${item.exit_code===0?'passed':'failed'}" style="margin-top:6px"><div class="terminal-header"><div class="traffic-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div><span class="terminal-title"><code>${esc(item.command.join(' '))}</code></span><div class="terminal-actions"><span class="term-status-pill ${item.exit_code===0?'pass':'fail'}">${exitNote}</span><button type="button" class="terminal-copy-btn" data-copy-terminal="item-${item.event?.id||'chk'}" title="Copy output">${icon('file')} Copy</button></div></div><div class="terminal-viewport"><pre class="command-output terminal-body" tabindex="0" data-command-output="item-${item.event?.id||'chk'}">${formattedCheck}</pre></div></div>`:''}</div>`;
     }
     if(item.type==='handoff')return `<div class="timeline-item">◆ <strong>${esc(item.title)}:</strong> <span class="muted">${esc(item.from)} → ${esc(item.to)}</span></div>`;
     if(item.type==='review')return `<div class="timeline-item">✓ <strong>${esc(item.title)}:</strong> <span class="muted">${esc(item.feedback)}</span></div>`;
@@ -265,7 +269,7 @@ function renderTurnActivityCard(turn, task) {
     if(item.type==='error')return `<div class="timeline-item stalled">✕ <strong>${esc(item.title)}:</strong> ${esc(item.note)}</div>`;
     return `<div class="timeline-item">${esc(item.title||'Tool action')}</div>`;
   }).join('');
-  const liveCheckStream=(isLive&&task.check_stream)?`<div class="timeline-item"><strong>Live check output:</strong><pre class="timeline-command-preview">${esc(task.check_stream.output||'Waiting for output…')}</pre></div>`:'';
+  const liveCheckStream=(isLive&&task.check_stream)?`<div class="timeline-item"><div class="terminal-window is-live" style="margin-top:6px"><div class="terminal-header"><div class="traffic-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div><span class="terminal-title"><code>${esc((task.check_stream.command||[]).join(' '))}</code></span><div class="terminal-actions"><span class="term-status-pill live"><span class="pulse-dot"></span>Live</span></div></div><div class="terminal-viewport"><pre class="command-output terminal-body" tabindex="0" data-command-output="live-check-stream">${CheapOSGuide.formatTerminalOutput(task.check_stream.output||'Waiting for output…')}</pre></div></div></div>`:'';
   const liveThinkingStream=(isLive&&task.stream&&task.stream.phase==='thinking'&&task.stream.thinking)?`<details class="timeline-item"><summary>Live reasoning</summary><pre class="timeline-command-preview">${esc(task.stream.thinking)}</pre></details>`:'';
   const drawerContent=(timelineItems||liveCheckStream||liveThinkingStream)?`<div class="activity-drawer" id="drawer-${turn.index}" hidden><div class="subordinate-timeline">${timelineItems}${liveCheckStream}${liveThinkingStream}</div></div>`:'';
   return `<div class="activity-card-container"><div class="evolving-activity-card ${isLive?'is-live':'collapsed-summary'}" id="activity-card-${turn.index}"><div class="activity-card-header">${indicator}<div class="activity-header-text"><strong id="turn-title-${turn.index}">${esc(turn.title)}</strong><span class="activity-subtitle" id="turn-subtitle-${turn.index}">${esc(turn.subtitle)}</span></div>${routingPill}${isLive?`<span class="activity-elapsed" id="turn-elapsed-${turn.index}">${elapsed}</span>`:''}${drawerContent?`<button type="button" class="details-toggle" data-toggle="drawer-${turn.index}" aria-expanded="false">Details ▾</button>`:''}</div>${drawerContent}</div></div>`;
@@ -453,8 +457,26 @@ function renderTests() {
   const checks=state.task.checks;
   if(!checks.length){$('#tests-view').innerHTML='<div class="empty-state">'+icon('tests')+'<h2>No checks run yet.</h2><p>The configured verification command will run in the task copy. Results appear here.</p></div>';return}
   const index=state.run<0?checks.length-1:Math.min(state.run,checks.length-1),check=checks[index];
-  $('#tests-view').innerHTML=`<div class="view-title"><div><h2>Evidence, before approval.</h2><p>Actual output from your configured command</p></div></div><div class="test-run-picker"><span>Verification history</span><select id="run-picker" aria-label="Verification run">${checks.map((c,i)=>`<option value="${i}" ${i===index?'selected':''}>Run ${i+1} · ${c.passed?'Passed':'Failed'}</option>`).join('')}</select></div><div class="test-summary ${check.passed?'':'failure'}">${icon(check.passed?'check':'x')}<strong>${check.passed?'Command passed':'Command failed'}</strong><span>Exit ${check.exit_code} · ${check.duration.toFixed(2)}s</span></div><code class="check-command">${esc(check.command.join(' '))}</code>${check.reason?`<p class="form-error">${esc(check.reason)}</p>`:''}<pre class="output test-output">${esc(check.output||'(No output)')}</pre><p class="muted small">Passed means this command exited successfully. The reviewer still checks whether the implementation satisfies the task.</p>`;
+  const formattedOutput=CheapOSGuide.formatTerminalOutput(check.output);
+  const exitPill=check.passed?`<span class="term-status-pill pass">Exit 0 · ${check.duration.toFixed(2)}s</span>`:`<span class="term-status-pill fail">Exit ${check.exit_code} · ${check.duration.toFixed(2)}s</span>`;
+  $('#tests-view').innerHTML=`<div class="view-title"><div><h2>Evidence, before approval.</h2><p>Actual output from your configured command</p></div></div><div class="test-run-picker"><span>Verification history</span><select id="run-picker" aria-label="Verification run">${checks.map((c,i)=>`<option value="${i}" ${i===index?'selected':''}>Run ${i+1} · ${c.passed?'Passed':'Failed'}</option>`).join('')}</select></div><div class="test-summary ${check.passed?'':'failure'}">${icon(check.passed?'check':'x')}<strong>${check.passed?'Command passed':'Command failed'}</strong><span>Exit ${check.exit_code} · ${check.duration.toFixed(2)}s</span></div><code class="check-command">${esc(check.command.join(' '))}</code>${check.reason?`<p class="form-error">${esc(check.reason)}</p>`:''}<div class="terminal-window ${check.passed?'passed':'failed'}"><div class="terminal-header"><div class="traffic-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div><span class="terminal-title"><code>${esc(check.command.join(' '))}</code></span><div class="terminal-actions">${exitPill}<button type="button" class="terminal-copy-btn" data-copy-terminal="tests-run-output" title="Copy output">${icon('file')} Copy</button></div></div><div class="terminal-viewport"><pre class="command-output terminal-body" tabindex="0" data-command-output="tests-run-output">${formattedOutput}</pre></div></div><p class="muted small" style="margin-top:14px">Passed means this command exited successfully. The reviewer still checks whether the implementation satisfies the task.</p>`;
   $('#run-picker').onchange=e=>{state.run=Number(e.target.value);renderTests()};
+}
+function bindTerminalCopy() {
+  $$('[data-copy-terminal]').forEach(btn=>{
+    btn.onclick=async()=>{
+      const key=btn.dataset.copyTerminal;
+      const pre=$(`[data-command-output="${key}"]`);
+      if(!pre)return;
+      const text=pre.innerText||pre.textContent||'';
+      try{
+        await navigator.clipboard.writeText(text);
+        toast('Command output copied to clipboard');
+      }catch{
+        toast('Could not copy to clipboard');
+      }
+    };
+  });
 }
 function renderInspector() {
   const t=state.task,config=t&&!t.demo?t.providers:state.config;

@@ -367,3 +367,34 @@ test('groupActivityItems and turns handle outline file events',()=>{
   assert.equal(turnList[0].totalActions,2);
 });
 
+test('formatTerminalOutput parses ANSI escape codes and test runner markers',()=>{
+  const {formatTerminalOutput}=require('../dist/guidance.js');
+  assert.match(formatTerminalOutput(''), /No output/);
+
+  // ANSI color
+  const ansiText = '\x1b[31mFAIL:\x1b[0m test_add';
+  const formattedAnsi = formatTerminalOutput(ansiText);
+  assert.match(formattedAnsi, /ansi-red/);
+  assert.match(formattedAnsi, /term-error-line/);
+
+  // Python unittest success and failure
+  const passLine = 'test_basic (tests.test_math.MathTests) ... ok';
+  assert.match(formatTerminalOutput(passLine), /term-success-line/);
+
+  const failLine = 'FAIL: test_something (tests.test_math.MathTests)';
+  assert.match(formatTerminalOutput(failLine), /term-error-line/);
+
+  const traceLine = 'Traceback (most recent call last):';
+  assert.match(formatTerminalOutput(traceLine), /term-trace-line/);
+
+  const divider = '----------------------------------------------------------------------';
+  assert.match(formatTerminalOutput(divider), /term-divider-line/);
+
+  // HTML escaping safety
+  const unsafe = '<script>alert("xss")</script>';
+  const safe = formatTerminalOutput(unsafe);
+  assert.ok(!safe.includes('<script>'));
+  assert.ok(safe.includes('&lt;script&gt;'));
+});
+
+
