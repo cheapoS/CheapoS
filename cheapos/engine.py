@@ -1440,6 +1440,8 @@ class Engine:
         except Exception as error:
             record['status']='cancelled' if runtime.stop.is_set() or isinstance(error,InterruptedError) else 'failed'
             record['error_code']=getattr(error,'code',None)
+            from .route_health import classify
+            record['failure_category']=classify(InterruptedError() if record['status']=='cancelled' else error)['category']
             raise
         finally:
             record['seconds']=time.monotonic()-started
@@ -1936,6 +1938,11 @@ class Engine:
 
     def tool_argument_feedback(self, runtime, error):
         runtime.argument_failures += 1
+        if runtime.task.get('request_metrics'):
+            from .routing_trace import request as trace_request
+            record=runtime.task['request_metrics'][-1]
+            record['failure_category']='invalid_response'
+            trace_request(runtime.task,record)
         recovery = progress.state(runtime.task)
         recovery["malformed_attempts"] += 1
         result = {"error": str(error), "code": error.code, "tool": error.name}

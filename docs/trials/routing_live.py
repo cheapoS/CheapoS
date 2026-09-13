@@ -39,7 +39,10 @@ def safe_result(task):
             'models': {r: sorted({q['model'] for q in requests if q.get('role')==r and isinstance(q.get('model'),str)})
                        for r in ('worker','reviewer')},
             'request_count': sum(q.get('dispatched') is True for q in requests),
-            'accounting': accounting(task), 'route_events': events, 'dispatch_scopes': sorted(scopes.values(),key=lambda s:s['scope_hash'])}
+            'accounting': accounting(task), 'route_events': events, 'dispatch_scopes': sorted(scopes.values(),key=lambda s:s['scope_hash']),
+            'routing_traces': task.get('routing_traces', []),
+            'request_metrics': [{k:q[k] for k in ('id','role','model','purpose','status','dispatched','seconds',
+                'input_tokens','output_tokens','cost_provenance','served_model','identity_provenance','failure_category') if k in q} for q in requests]}
 
 
 def main():
