@@ -67,6 +67,7 @@ Respond naturally to the latest user message. Decide whether to explain, inspect
 Use read tools to ground answers in the project. For a question or discussion, finish with a useful plain-text answer; no checkpoint or reviewer is needed when you have not changed the patch during this turn.
 When the user supplies a web link, use read_url first. A GitHub repository link returns its README; read further line ranges or follow returned links when needed. Search only searches LOCAL files, never the internet. Cite source_url in your answer. If a page cannot be read, explain the actual error and answer from available evidence or ask for the relevant text; do not loop through local files trying to browse. No web search, sign-in, or interactive browser is available.
 For requested code changes, inspect project guidance, make focused edits, choose an appropriate verification command from the actual project, and call run_checks. The controller asks the user to approve the exact command. No shell tool exists. Do not install dependencies, access secrets, or alter Git internals.
+Use the project's existing test framework and the user's dependency constraints. For an isolated script, run its focused tests before a broader suite. A timed-out check is inconclusive: fix reported failures and choose appropriate focused coverage or ask for guidance instead of repeating the same timed-out command unchanged.
 If asked to commit, direct the user to Approve & commit on the final reviewed diff once the patch is ready. The app applies and commits only after the user approves the preview. Never use run_checks to apply patches, commit, or push, and never claim the source project was committed without a saved commit result.
 When changes are ready, call checkpoint with a concise user-facing summary and uncertainties. The controller uses its passing checks for the same patch and command, or runs checks if needed, then routes the patch to the configured reviewer. Follow actionable review feedback. Only the controller declares approval. Reviewer approval keeps this chat open: answer questions without rerunning checks, and make requested follow-up edits before returning the updated patch for verification and review.
 Batch related edits in one response when practical. Do not repeatedly reread unchanged files or polish beyond the request. After the requested changes, move to verification and checkpoint review promptly.
@@ -120,6 +121,16 @@ def observation_key(name, args, result):
     else:
         evidence = [name, args, result]
     return hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
+
+
+def needs_patch_review(task):
+    patch = task.get("patch", "")
+    if not patch:
+        return False
+    check = (task.get("checks") or [{}])[-1]
+    review = (task.get("checkpoints") or [{}])[-1]
+    return not (check.get("passed") and check.get("digest") == hashlib.sha256(patch.encode()).hexdigest()
+                and review.get("decision") == "APPROVE" and review.get("diff") == patch)
 
 
 def request_worker_turns(task):
@@ -335,6 +346,7 @@ class Engine:
                 task["conversational"] = True
                 task["request_worker_turns"] = 0
                 task["answer_pending"] = False
+                task["action_pending"] = False
                 task["loop_guidance"] = None
                 task.pop("pending_checkpoint", None)
                 task["requests"] = task.get("requests", [task["prompt"]]) + [followup.strip()]
@@ -343,8 +355,9 @@ class Engine:
                 self.event(task, "user", "You", followup.strip())
             elif task.get("conversational"):
                 task["request_worker_turns"] = request_worker_turns(task)
-                if task.get("error_code") == "progress_limit" and Workspace(task["workspace"]).patch() == task.get("turn_start_patch", ""):
-                    task["answer_pending"] = True
+                self.refresh_changes(task)
+                if (task.get("answer_pending") and needs_patch_review(task)) or (task.get("error_code") == "progress_limit" and task["patch"] == task.get("turn_start_patch", "")):
+                    self.prepare_loop_recovery(task)
             task["status"] = "running"
             task["error"] = None
             task["error_code"] = None
@@ -602,6 +615,16 @@ class Engine:
             self.event(task, "commit", "Changes committed to your project", result)
             return result
 
+    def prepare_loop_recovery(self, task):
+        if needs_patch_review(task):
+            task["answer_pending"] = False
+            task["action_pending"] = True
+            task["loop_guidance"] = "Repeated inspection has stopped, and the saved patch still needs verification and review. Use the current diff, completed reads, and test output to take the next implementation step: make a requested edit, run an appropriate focused check, submit checkpoint, or ask_user with a specific blocker. Reading tools are unavailable for this recovery step. Do not repeat the failed command unchanged or claim that unfinished work is complete. All existing limits and command permissions still apply."
+            self.event(task, "guard", "Moving from repeated reads to the next action", "The saved patch still needs work. The worker can edit, run checks, request review, or explain a blocker; repeated inspection is stopped.")
+        else:
+            task["answer_pending"] = True
+            task["action_pending"] = False
+
     def finish_answer(self, runtime):
         """One accounted response without tools; never a substitute for patch review."""
         task = runtime.task
@@ -609,6 +632,9 @@ class Engine:
         if task["patch"] != task.get("turn_start_patch", ""):
             task["answer_pending"] = False
             raise ProgressPause("This request has edits that still need verification and review. Inspect the saved changes before resuming.")
+        if needs_patch_review(task):
+            self.prepare_loop_recovery(task)
+            return
         if request_worker_turns(task) >= task["limits"]["worker_turns"]:
             raise WorkerTurnLimit("The worker-turn allowance is exhausted. The gathered evidence is saved; an answer needs one remaining worker turn.")
         task["answer_pending"] = True
@@ -918,7 +944,7 @@ class Engine:
                     self.event(task, "handoff", "Local chat delegated the work", {"from": task["providers"]["coordinator"]["model"], "to": task["providers"]["worker"]["model"], "role": "worker", "summary": task.pop("delegation")})
                     task["messages"] = self.initial_messages(task)
                 near_end = runtime.step_turns >= task["limits"].get("checkpoint_turns", 12) - 1 or request_worker_turns(task) >= task["limits"]["worker_turns"] - 1
-                if task.get("conversational") and runtime.step_turns and near_end:
+                if task.get("conversational") and runtime.step_turns and near_end and not task.get("action_pending"):
                     self.refresh_changes(task)
                     if task["patch"] == task.get("turn_start_patch", ""):
                         self.finish_answer(runtime)
@@ -926,7 +952,7 @@ class Engine:
                 if runtime.step_turns >= task["limits"].get("checkpoint_turns", 12):
                     raise ProgressPause("The worker reached its turn limit without a checkpoint or answer. Review the saved changes, then resume if more work is needed.")
                 runtime.step_turns += 1
-                if runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
+                if not task.get("action_pending") and runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
                     task["loop_guidance"] = "You are near the checkpoint turn limit. For a question, give your answer now without editing files. For a requested change, finish only that scope and submit checkpoint; it verifies the patch and requests review. If no command is selected yet, use run_checks to choose one first. If blocked, ask_user. Avoid further polishing or repeated reads."
                     task["messages"].append({"role": "user", "content": task["loop_guidance"]})
                     self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint turn limit.")
@@ -936,7 +962,12 @@ class Engine:
                 task["worker_turns"] += 1
                 if task.get("conversational"):
                     task["request_worker_turns"] += 1
-                message = self.request(runtime, task["messages"], CHAT_TOOLS if task.get("conversational") else WORKER_TOOLS, task["active_role"])
+                offered_tools = CHAT_TOOLS if task.get("conversational") else WORKER_TOOLS
+                recovering = task.get("action_pending", False)
+                if recovering:
+                    offered_tools = [t for t in offered_tools if t["function"]["name"] in {"write_file", "replace_text", "run_checks", "checkpoint", "ask_user"}]
+                    task["messages"].append({"role": "user", "content": task["loop_guidance"]})
+                message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
                 task["messages"].append(message)
                 if message.get("content"):
                     self.event(task, "assistant", "Worker" if task["active_role"] == "worker" else "Frontier takeover", str(message["content"])[:12000])
@@ -947,6 +978,7 @@ class Engine:
                     self.refresh_changes(task)
                     if task.get("conversational") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
                         task["status"] = "awaiting_reply"
+                        task["action_pending"] = False
                     elif task.get("conversational") and message.get("content") and task["patch"] and task["check_command"]:
                         # A completed editing response must reach review even if
                         # the worker forgets the checkpoint tool. Questions and
@@ -961,6 +993,8 @@ class Engine:
                         raise InterruptedError("Task stopped")
                     name, args = self.parse_call(call)
                     try:
+                        if recovering and name not in {t["function"]["name"] for t in offered_tools}:
+                            raise ProgressPause("The worker tried to repeat inspection after the read loop stopped. Saved edits are intact. Retry the next action or provide a specific correction.")
                         if name == "checkpoint":
                             result = self.checkpoint(runtime, args)
                         elif name == "run_checks":
@@ -985,17 +1019,20 @@ class Engine:
                                     self.event(task, "guard", "Asking the worker to use what it found", "The same read returned unchanged information twice. CheapOS asked for an answer, a relevant web read, or a clear explanation of what is missing.")
                                 elif runtime.observations[fingerprint] >= 3:
                                     self.refresh_changes(task)
-                                    if task.get("conversational") and task["patch"] == task.get("turn_start_patch", ""):
-                                        task["answer_pending"] = True
+                                    if task.get("conversational"):
+                                        self.prepare_loop_recovery(task)
                                     else:
                                         raise ProgressPause("The worker repeated an unchanged read after being asked to answer or explain the blocker. No new information was found. Your work is saved; give it a more specific instruction or resume to try again.")
+                        if recovering:
+                            task["action_pending"] = False
+                            task["loop_guidance"] = None
                     except InterruptedError:
                         raise
                     except (ValueError, OSError, TypeError, UnicodeError) as error:
                         result = {"error": str(error)[:1000]}
                         self.event(task, "tool_error", "Tool could not complete: " + name, result)
                     task["messages"].append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)})
-                    if task["status"] not in ACTIVE or task.get("answer_pending"):
+                    if task["status"] not in ACTIVE or task.get("answer_pending") or task.get("action_pending") and not recovering:
                         break
                 self.store.save(task)
         except (ProgressPause, RoutingPause) as error:

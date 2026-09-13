@@ -40,6 +40,15 @@ class StreamingTests(LocalCase):
         for suffix in [b'',chunk(finish='stop'),chunk(finish='length')+b'data: [DONE]\n\n']:
             with self.assertRaises(ProviderError):self.parse(tool+suffix)
 
+    def test_unsuccessful_finish_reason_is_visible_and_partial_tools_never_return(self):
+        tool=chunk({'tool_calls':[{'index':0,'id':'edit','function':{'name':'write_file','arguments':'{"path":"unsafe.py","content":"x"}'}}]})
+        for reason,label in [('error','error'),('content_filter','content_filter'),('unknown_native_reason','unknown_native_reason'),('unsafe\nvalue','unrecognized'),({'invalid':'shape'},'unrecognized')]:
+            with self.subTest(reason=reason),self.assertRaises(ProviderError) as caught:
+                self.parse(tool+chunk(finish=reason)+b'data: [DONE]\n\n')
+            self.assertEqual(caught.exception.code,'stream_error')
+            self.assertIn('finish_reason='+label,str(caught.exception))
+            self.assertIn('Partial tool calls were not executed',str(caught.exception))
+
     def test_stream_cancellation_stops_before_completion(self):
         stopped=threading.Event()
         def emit(kind,text):stopped.set()

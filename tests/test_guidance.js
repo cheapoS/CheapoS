@@ -134,6 +134,12 @@ test('only evidence of a timeout produces the timeout explanation',()=>{
 });
 
 const {activity,activityItem}=require('../dist/guidance.js');
+test('interrupted responses show saved work and the recovery step',()=>{
+  const result=failure(task({status:'error',error_code:'stream_error',answer_pending:true,changes:[{path:'script.py'}]}));
+  assert.equal(result.timeout,false);assert.equal(result.title,'The model response ended early.');
+  assert.match(result.description,/1 changed file is saved/);assert.match(result.description,/Retry returns to the saved work/);
+  assert.equal(failure(task({status:'error',error_code:'output_limit'})).title,'The response reached its output limit.');
+});
 test('route failures expose the model and reason',()=>{
   const item=activityItem({kind:'routing',title:'Free model check failed',detail:{model:'free-model',error:'Output limit reached'}});
   assert.equal(item.note,'free-model · Output limit reached');

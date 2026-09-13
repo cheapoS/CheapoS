@@ -5,12 +5,84 @@ from unittest.mock import Mock
 
 import test_chat
 from cheapos.engine import Engine, observation_key
+from cheapos.providers import ProviderError
 from test_engine import LocalCase, call
 
 
 class AnswerRecoveryTests(LocalCase):
     chat = test_chat.ChatTests.chat
     provider = test_chat.ChatTests.provider
+
+    def unfinished_patch(self):
+        t=self.fixture(paid=True)
+        t['conversational']=True
+        self.engine.file_tool(t,'write_file',{'path':'notes.txt','content':'Needs a correction\n'})
+        t.update(status='error',error_code='stream_error',answer_pending=True,turn_start_patch=t['patch'])
+        self.engine.store.save(t)
+        return t
+
+    def test_retry_of_old_answer_recovery_keeps_edit_tools_and_existing_limits(self):
+        t=self.unfinished_patch()
+        requests=self.provider([
+            call('replace_text',{'path':'notes.txt','old_text':'Needs a correction','new_text':'Corrected notes'}),
+            call('ask_user',{'question':'Should the notes include an example?'}),
+        ])
+        self.engine.start(t['id']);result=self.finish(t)
+        tools={item['function']['name'] for item in requests[0][1]}
+        self.assertIn('replace_text',tools);self.assertIn('run_checks',tools)
+        self.assertIn('checkpoint',tools);self.assertIn('ask_user',tools)
+        self.assertNotIn('read_file',tools);self.assertNotIn('list_files',tools)
+        self.assertEqual(result['status'],'awaiting_reply')
+        self.assertFalse(result['answer_pending']);self.assertFalse(result['action_pending'])
+        self.assertEqual(result['limits'],t['limits'])
+        self.assertEqual(result['request_worker_turns'],2)
+        self.assertIn('Corrected notes',result['patch']);self.assertFalse(result['checkpoints'])
+
+    def test_repeated_reads_of_unfinished_patch_can_recover_through_checks_and_review(self):
+        t=self.unfinished_patch();t['answer_pending']=False;self.engine.store.save(t)
+        requests=self.provider([call('read_file',{'path':'math_utils.py'})]*3+[
+            call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
+            call('run_checks'),call('checkpoint',{'summary':'Fixed bounds','uncertainties':''}),
+            call('review_decision',{'decision':'APPROVE','feedback':'Both bounds work.'}),
+        ])
+        self.engine.start(t['id']);result=self.finish(t)
+        self.assertEqual(result['status'],'approved',result['error'])
+        self.assertEqual(len(requests),7)
+        self.assertNotIn('read_file',{tool['function']['name'] for tool in requests[3][1]})
+        self.assertEqual(len(result['checks']),1)
+        self.assertEqual(result['checkpoints'][-1]['decision'],'APPROVE')
+        self.assertEqual(result['limits'],t['limits'])
+
+    def test_recovery_does_not_execute_unoffered_read_tools_or_loop(self):
+        t=self.unfinished_patch()
+        requests=self.provider([call('read_file',{'path':'math_utils.py'})])
+        self.engine.start(t['id']);result=self.finish(t)
+        self.assertEqual(result['status'],'paused')
+        self.assertEqual(result['error_code'],'progress_limit')
+        self.assertEqual(len(requests),1)
+        self.assertTrue(result['action_pending'])
+        self.assertFalse([e for e in result['events'] if e['title']=='read file'])
+
+    def test_interrupted_action_recovery_survives_restart_without_automatic_retry(self):
+        t=self.unfinished_patch()
+        provider=Mock();provider.complete.side_effect=ProviderError('Interrupted',code='stream_error')
+        self.engine.provider_factory=lambda *args:provider
+        self.engine.start(t['id']);first=self.finish(t)
+        self.assertEqual(first['status'],'error');provider.complete.assert_called_once()
+        self.assertTrue(first['action_pending']);self.assertFalse(first['answer_pending'])
+        self.engine.shutdown();self.engine=Engine(self.engine.store.root)
+        requests=self.provider([call('ask_user',{'question':'Which example should I add?'})])
+        self.engine.start(t['id']);result=self.finish(t)
+        self.assertEqual(result['status'],'awaiting_reply')
+        self.assertTrue(requests[0][1]);self.assertEqual(len(requests),1)
+        self.assertEqual(result['request_worker_turns'],2)
+        self.assertEqual(result['usage']['uncertain_requests'],1)
+
+    def test_action_recovery_still_respects_the_worker_turn_limit(self):
+        t=self.unfinished_patch();t['request_worker_turns']=t['limits']['worker_turns'];self.engine.store.save(t)
+        factory=Mock();self.engine.provider_factory=factory
+        self.engine.start(t['id']);result=self.finish(t)
+        self.assertEqual(result['status'],'budget_paused');factory.assert_not_called()
 
     def test_compaction_keeps_multiple_web_sources_local_context_and_direction(self):
         t=self.chat('Recommend setup instructions from https://example.org/docs')

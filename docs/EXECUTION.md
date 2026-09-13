@@ -45,7 +45,7 @@ New runs default to:
 
 - **12 worker turns between checkpoints:** a reminder two turns before the limit asks the worker to verify and wrap up. At the limit it pauses, preserving edits.
 - **15 minutes per run:** approval waits do not count. Increase this under **Spending & limits → Advanced limits** for longer work, up to 12 hours.
-- **Three identical reads without an intervening edit:** CheapOS pauses with the repeated-work explanation.
+- **Three identical reads without an intervening edit:** Conversations with unfinished edits switch to a bounded next action: edit, verify, submit a checkpoint, or explain a blocker. Reading tools are unavailable for that step. Research without a pending patch gets one answer step. Existing turn, time, and spending limits still apply, and an interrupted response requires Retry.
 - **40 worker/coordinator calls per user request:** a follow-up gets a fresh allowance. Resume and server restarts preserve the calls used on that unfinished request. The chat's total call count remains visible in Details. Older chats recover request counts from saved events, conservatively including attempts without a model event.
 - Dollar, reviewer-token, and iteration limits remain cumulative across the chat. Single-task non-chat runs retain their task-wide worker-turn cap.
 
