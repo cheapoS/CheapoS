@@ -317,6 +317,7 @@ class Engine:
             task["error_code"] = None
             task["pending_approval"] = None
             task["stream"] = None
+            task["check_stream"] = None
             # Resume from durable evidence, not by replaying an ambiguous model/tool call.
             task["messages"] = self.initial_messages(task)
             runtime = Runtime(task)
@@ -547,8 +548,22 @@ class Engine:
         task["check_command"] = argv
         workspace = Workspace(task["workspace"])
         before = workspace.patch()
-        self.event(task, "tool", "Running verification", {"command": task["check_command"]})
-        result = workspace.run_checks(task["check_command"], runtime.stop)
+        live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False}
+        task["check_stream"] = live
+        self.event(task, "tool", "Running verification", {"command": argv, "run_id": live["run_id"]})
+
+        def emit(output, truncated):
+            live.update(output=output, truncated=truncated, updated_at=now())
+            task["updated_at"] = now()
+            self.store.publish(task)
+
+        try:
+            result = workspace.run_checks(argv, runtime.stop, on_output=emit)
+        finally:
+            task["check_stream"] = None
+            task["updated_at"] = now()
+            self.store.publish(task)
+        result["run_id"] = live["run_id"]
         self.refresh_changes(task)
         if before != task["patch"]:
             result["passed"] = False

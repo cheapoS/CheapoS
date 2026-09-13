@@ -55,6 +55,7 @@ const CheapOSGuide = (() => {
     let stage='working',title='Preparing the next step',detail='',since=latest?.time||task.updated_at;
     if(task.status==='waiting_approval'){stage='approval';title='Waiting for your approval';detail=(task.pending_approval?.command||[]).join(' ')}
     else if(task.status==='stopping'){stage='stopping';title='Stop requested';detail='Waiting for the current operation to finish. No new tools will start.'}
+    else if(task.check_stream){stage='checks';title='Running checks';detail=task.check_stream.command.join(' ');since=task.check_stream.started_at}
     else if(latest?.kind==='model'){
       stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':latest.title.startsWith('Requesting coordinator:')?'coordinator':'worker';
       title=role==='reviewer'?'Waiting for the reviewer’s response':'Waiting for the model’s response';
@@ -64,6 +65,7 @@ const CheapOSGuide = (() => {
     const limit=request?.detail?.timeout_seconds||180;
     let slow=stage==='model'&&seconds>=30;
     let hint=stage==='model'?(seconds>=limit-30?`Still waiting. The response limit is ${duration(limit)}.`:seconds>=30?'No response has arrived yet. You can stop this request.':'The model’s response will appear when it arrives.'):' ';
+    if(stage==='checks')hint=task.check_stream?.output?'Command output is shown below as it arrives.':'The command is running. Some programs buffer their output until they finish.';
     if(stage==='model'&&task.stream&&task.stream.phase!=='waiting'){
       const stream=task.stream,phase=stream.phase;
       title=phase==='thinking'?'Receiving the model’s thinking':phase==='answer'?'Receiving the model’s answer':'The model is preparing a tool call';

@@ -123,13 +123,14 @@ function setView(view) {
   state.view=view;renderView();renderComposer();
   const scroller=$('#view-container');
   scroller.scrollTo({top:view==='chat'?scroller.scrollHeight:0,behavior:'instant'});
+  for(const output of $$('[data-command-output]'))output.scrollTop=output.scrollHeight;
 }
 function renderTask({resetScroll=false}={}) {
   const task=state.task;if(!task)return;$('.main-pane').classList.remove('new-conversation');
   $('.task-heading').hidden=false;$('.tabs').hidden=false;$('#compact-session').hidden=false;$('#toggle-inspector').hidden=false;$('#inspector').classList.remove('home-hidden');
   const scroller=$('#view-container'), oldScroll=scroller.scrollTop, bottom=scroller.scrollHeight-scroller.clientHeight-oldScroll<60;
   const expanded=new Map((resetScroll?[]:$$('details[data-event]')).map(d=>[d.dataset.event,d.open]));
-  const thoughtScroll=new Map((resetScroll?[]:$$('[data-thinking]')).map(el=>[el.dataset.thinking,{top:el.scrollTop,bottom:el.scrollHeight-el.clientHeight-el.scrollTop<30}]));
+  const outputScroll=new Map((resetScroll?[]:$$('[data-thinking], [data-command-output]')).map(el=>[el.dataset.thinking||el.dataset.commandOutput,{top:el.scrollTop,bottom:el.scrollHeight-el.clientHeight-el.scrollTop<30}]));
   $('#task-title').textContent=task.title;$('#task-title').title=task.title;
   $('#project-name').textContent=CheapOSGuide.projectName(task);
   $('#task-status').textContent=labels[task.status]||task.status;
@@ -144,7 +145,7 @@ function renderTask({resetScroll=false}={}) {
   if($('#task-overview'))$('#task-overview').onclick=toggleInspector;
   renderView();renderInspector();renderComposer();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
-  for(const el of $$('[data-thinking]')){const saved=thoughtScroll.get(el.dataset.thinking);el.scrollTop=!saved||saved.bottom?el.scrollHeight:saved.top}
+  for(const el of $$('[data-thinking], [data-command-output]')){const saved=outputScroll.get(el.dataset.thinking||el.dataset.commandOutput);el.scrollTop=!saved||saved.bottom?el.scrollHeight:saved.top}
   scroller.scrollTop=resetScroll?scroller.scrollHeight:state.view==='chat'&&activeStatuses.has(task.status)&&bottom?scroller.scrollHeight:oldScroll;
 }
 function renderView() {
@@ -193,15 +194,28 @@ function thinkingMarkup(detail,live=false) {
   const key='generation-'+detail.request_id;
   return `<details class="thinking-panel ${live?'is-live':''}" data-event="${key}" ${live?'open':''}><summary>${icon('spark')}<strong>${detail.interrupted?'Thinking · interrupted':'Thinking'}</strong><span>${live?'Live':esc(detail.model)}</span>${icon('chevron')}</summary><div class="thinking-output" data-thinking="${key}">${esc(detail.thinking)}</div>${detail.truncated?'<p class="thinking-note">Showing the first 16,000 characters.</p>':''}</details>`;
 }
+function commandMarkup(check,{live=false,open=false,key=check.run_id}={}) {
+  const status=live?'Running check':check.passed?'Check passed':check.reason==='cancelled'?'Check stopped':'Check failed';
+  return `<details class="command-panel ${live?'is-live':check.passed?'passed':'failed'}" data-event="command-${esc(key)}" ${live||open?'open':''}><summary>${live?'<span class="spinner"></span>':icon(check.passed?'check':'x')}<strong>${status}</strong><span>${live?'Live output':`Exit ${check.exit_code??'—'} · ${Number(check.duration||0).toFixed(1)}s`}</span>${icon('chevron')}</summary><code class="command-line">${esc(check.command.join(' '))}</code><div class="command-body"><pre class="command-output" tabindex="0" data-command-output="command-${esc(key)}" aria-label="${live?'Live command output':'Command output'}">${esc(check.output||(live?'Waiting for command output…':'(No output)'))}</pre>${check.truncated?'<p class="command-note">Showing the first 32 KB of output.</p>':''}${check.reason?`<p class="command-note">${esc(check.reason)}</p>`:''}</div></details>`;
+}
 function renderChat() {
   const task=state.task,guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
   const message=(role,text)=>`<article class="chat-message ${role==='You'?'from-user':'from-agent'}"><div class="chat-author">${role==='You'?'<span class="mini-avatar">Y</span>':icon(role==='Review'?'spark':'code')}<strong>${role}</strong></div><div class="chat-message-body">${messageText(text)}</div></article>`;
   const parts=[task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':'',message('You',task.prompt)];
+  const lastUser=task.events.reduce((index,e,i)=>e.kind==='user'?i:index,-1);
+  const latestCheck=task.events.slice(lastUser+1).filter(e=>e.kind==='checks').at(-1);
+  const visibleRuns=new Set(task.events.filter(e=>e.kind==='checks').map(e=>e.detail.run_id).filter(Boolean));
+  if(task.check_stream)visibleRuns.add(task.check_stream.run_id);
   let work=[];
   const flush=()=>{
     if(!work.length)return;
     const actions=work.filter(e=>['tool','checks','tool_error'].includes(e.kind));
-    if(actions.length)parts.push(`<details class="chat-work" data-event="work-${work[0].id}"><summary>${icon('code')}<span>${CheapOSGuide.workLabel(actions)}</span>${icon('chevron')}</summary><div>${actions.map(e=>`<details class="activity-card" data-event="${e.id}"><summary><strong>${esc(CheapOSGuide.activityItem(e)?.title||e.title)}</strong>${icon('chevron')}</summary><div class="detail-body">${eventDetail(e)}</div></details>`).join('')}</div></details>`);
+    for(const event of actions){
+      if(event.kind==='checks'){parts.push(commandMarkup(event.detail,{key:event.detail.run_id||event.id,open:event===latestCheck}));continue}
+      if(event.title==='Running verification'&&visibleRuns.has(event.detail?.run_id))continue;
+      const item=CheapOSGuide.activityItem(event)||{title:'Started check',icon:'tests',note:(event.detail?.command||[]).join(' ')};
+      parts.push(`<details class="chat-action ${item.failed?'failed':''}" data-event="action-${event.id}"><summary>${icon(item.icon)}<span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span>${icon('chevron')}</summary><div class="detail-body">${eventDetail(event)}</div></details>`);
+    }
     work=[];
   };
   for(const event of task.events){
@@ -220,7 +234,7 @@ function renderChat() {
   const routeFailures=task.error_code==='routing_unavailable'?(task.route?.failures||[]):[];
   const errorDetails=routeFailures.length?`<details class="chat-error"><summary>Model check results (${routeFailures.length})</summary>${routeFailures.map(f=>`<p><strong>${esc(f.model)}</strong><br>${esc(f.error)}</p>`).join('')}</details>`:task.error&&task.error!==(failure?.description||guide.description)?`<details class="chat-error"><summary>Details</summary><p>${esc(task.error)}</p></details>`:'';
   if(task.pending_approval)parts.push(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row">${button('approve','Run once',true)}${button('approve-session','Allow for this session')}${button('decline','Decline')}</div></section>`);
-  else if(activeStatuses.has(task.status))parts.push(progressMarkup(task),streamedOutput);
+  else if(activeStatuses.has(task.status))parts.push(progressMarkup(task),streamedOutput,task.check_stream?commandMarkup(task.check_stream,{live:true}):'');
   else if(task.status==='ready')parts.push(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
   else if(['approved','completed'].includes(task.status))parts.push(`<section class="chat-result">${icon('check')}<div><strong>${task.status==='approved'?'Changes are ready to review.':'Implementation finished. Your review is next.'}</strong><p>${task.changes.length} changed files · ${task.checks.at(-1)?.passed?'Latest checks passed':'Check the verification output'}</p><div class="button-row">${button('changes','Review changes',true)}<a class="subtle-button" href="/api/tasks/${task.id}/patch" download>Export patch</a></div></div></section>`);
   else if(task.status==='awaiting_reply'&&task.changes.length)parts.push(`<div class="chat-saved">${icon('file')}<span>${task.changes.length} changed files saved in this chat.</span>${button('changes','View changes')}</div>`);
@@ -243,7 +257,7 @@ function renderActivity() {
   const timeline=a.items.slice(0,40).map(item=>`<details class="activity-step ${item.failed?'failed':''}" data-event="step-${item.event.id}"><summary><span class="step-icon">${icon(item.icon)}</span><span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span><time>${new Date(item.event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="step-body">${eventDetail(item.event)}${item.path&&task.changes.some(c=>c.path===item.path)?`<button class="text-link" data-activity-file="${esc(item.path)}">View current diff →</button>`:''}</div></details>`).join('');
   const technical=task.events.map(e=>`<details class="activity-card" data-event="raw-${e.id}"><summary><strong>${esc(CheapOSGuide.activityItem(e)?.title||e.title)}</strong>${icon('chevron')}</summary><div class="detail-body">${eventDetail(e)}</div></details>`).join('');
   const status=task.pending_approval?`<section class="chat-decision"><strong>Waiting for your approval</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row"><button class="primary-button" data-activity-approve="true">Run once</button><button class="outline-button" data-activity-approve="session">Allow for this session</button><button class="subtle-button" data-activity-approve="false">Decline & pause</button></div></section>`:activeStatuses.has(task.status)?progressMarkup(task):`<section class="activity-status"><span class="activity-eyebrow">${['approved','completed'].includes(task.status)?'RESULT':'CURRENT STATUS'}</span><h3>${esc(failure?.title||guide.title)}</h3><p>${esc(failure?.description||guide.description)}</p>${task.error&&task.error!==guide.description?`<p>${esc(task.error)}</p>`:''}<div class="button-row">${['approved','completed'].includes(task.status)?action('changes','Review changes'):''}${action('chat','Back to chat')}${['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)?`<button class="outline-button" id="activity-resume">${task.status==='error'?'Retry':guide.primaryLabel}</button>`:''}${task.error_code==='routing_unavailable'?'<button class="outline-button" id="activity-models">Models</button>':''}</div></section>`;
-  $('#activity-view').innerHTML=`<div class="view-title"><div><h2>What’s happening</h2><p>${task.demo?'Scripted demo · real files and checks':'Real actions and saved results from this chat.'}</p></div></div>${status}<div class="activity-facts"><button data-activity-view="changes"><span>Saved changes · whole chat</span><strong>${a.files} file${a.files===1?'':'s'}</strong><small>Inspect the diff →</small></button><button data-activity-view="tests"><span>Checks · this request</span><strong>${esc(a.checks)}</strong><small>View command output →</small></button><button id="activity-review" ${!a.checkpoint?'disabled':''}><span>Review · this request</span><strong>${esc(a.review)}</strong><small>${a.checkpoint?'Inspect the decision →':'A passing check alone is not approval'}</small></button></div><section class="activity-timeline"><h3>Latest request</h3><p class="activity-request">${esc(a.request)}</p><p class="small muted">Newest actions first${a.items.length>40?' · showing the latest 40':''}</p>${timeline||'<p class="activity-empty">No file actions yet. Conversation and live model output are in Chat.</p>'}</section><details class="technical-log" data-event="technical"><summary>${icon('code')}Technical log <span>${task.events.length} events</span>${icon('chevron')}</summary><div>${technical}</div></details>`;
+  $('#activity-view').innerHTML=`<div class="view-title"><div><h2>What’s happening</h2><p>${task.demo?'Scripted demo · real files and checks':'Real actions and saved results from this chat.'}</p></div></div>${status}${task.check_stream?commandMarkup(task.check_stream,{live:true}):''}<div class="activity-facts"><button data-activity-view="changes"><span>Saved changes · whole chat</span><strong>${a.files} file${a.files===1?'':'s'}</strong><small>Inspect the diff →</small></button><button data-activity-view="tests"><span>Checks · this request</span><strong>${esc(a.checks)}</strong><small>View command output →</small></button><button id="activity-review" ${!a.checkpoint?'disabled':''}><span>Review · this request</span><strong>${esc(a.review)}</strong><small>${a.checkpoint?'Inspect the decision →':'A passing check alone is not approval'}</small></button></div><section class="activity-timeline"><h3>Latest request</h3><p class="activity-request">${esc(a.request)}</p><p class="small muted">Newest actions first${a.items.length>40?' · showing the latest 40':''}</p>${timeline||'<p class="activity-empty">No file actions yet. Conversation and live model output are in Chat.</p>'}</section><details class="technical-log" data-event="technical"><summary>${icon('code')}Technical log <span>${task.events.length} events</span>${icon('chevron')}</summary><div>${technical}</div></details>`;
   $$('[data-activity-view]').forEach(b=>b.onclick=()=>setView(b.dataset.activityView));
   $$('[data-chat-action]').forEach(b=>b.onclick=()=>b.dataset.chatAction==='stop'?stopTask():setView('chat'));
   $$('[data-activity-file]').forEach(b=>b.onclick=()=>{state.file=task.changes.findIndex(c=>c.path===b.dataset.activityFile);setView('changes')});

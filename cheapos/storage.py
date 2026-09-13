@@ -33,6 +33,7 @@ class Store:
                     task["error"] = "The server stopped. Review the saved work before resuming."
                     task["pending_approval"] = None
                     task["stream"] = None
+                    task["check_stream"] = None
                     write_json(path, task)
                 self.tasks[task["id"]] = task
             except (OSError, ValueError, KeyError):

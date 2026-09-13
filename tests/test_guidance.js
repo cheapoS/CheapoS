@@ -3,6 +3,15 @@ const assert=require('node:assert/strict');
 const {taskGuide,projectName,workLabel}=require('../dist/guidance.js');
 const task=overrides=>({status:'ready',worker_turns:0,changes:[],checks:[],checkpoints:[],events:[],...overrides});
 
+test('live checks keep their command and elapsed time while output updates',()=>{
+  const {progress}=require('../dist/guidance.js');
+  const t=task({status:'running',updated_at:'2026-09-13T00:00:09Z',check_stream:{command:['python3','-m','unittest'],started_at:'2026-09-13T00:00:00Z',updated_at:'2026-09-13T00:00:09Z',output:'test_bounds ... ok'}});
+  const p=progress(t,Date.parse('2026-09-13T00:00:10Z'));
+  assert.equal(p.stage,'checks');assert.equal(p.elapsed,'10s');
+  assert.equal(p.detail,'python3 -m unittest');assert.match(p.hint,/output is shown below/);
+  assert.equal(progress({...t,status:'stopping'}).stage,'stopping');
+});
+
 test('a saved task asks for an explicit start',()=>{
   const g=taskGuide(task());
   assert.equal(g.primary,'start');

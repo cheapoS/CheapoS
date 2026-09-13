@@ -1,5 +1,6 @@
 """Repository snapshots and constrained file tools. Check commands are NOT OS-sandboxed."""
 
+import codecs
 import os
 import signal
 import subprocess
@@ -203,34 +204,55 @@ class Workspace:
         self.changes()
         return git(self.root, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--binary", "HEAD", "--", ".")
 
-    def run_checks(self, argv, stop_event, timeout=90):
+    def run_checks(self, argv, stop_event, timeout=90, on_output=None):
         if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a and "\x00" not in a for a in argv):
             raise ValueError("Check command must be an argument list")
         started = time.monotonic()
         home = self.root.parent / "process-home"
         home.mkdir(exist_ok=True)
         env = {k: v for k, v in os.environ.items() if k in {"PATH", "SystemRoot", "WINDIR", "LANG", "LC_ALL"}}
-        env.update({"HOME": str(home), "TMPDIR": str(home), "PYTHONDONTWRITEBYTECODE": "1", "CI": "1", "NO_COLOR": "1", "GIT_TERMINAL_PROMPT": "0"})
-        with tempfile.TemporaryFile() as output:
-            process = subprocess.Popen(argv, cwd=str(self.root), env=env, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
-            reason = None
-            while process.poll() is None:
-                if stop_event.wait(0.05):
-                    reason = "cancelled"
-                elif time.monotonic() - started > timeout:
-                    reason = "timed out"
-                elif output.tell() > 2_000_000:
+        env.update({"HOME": str(home), "TMPDIR": str(home), "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1", "CI": "1", "NO_COLOR": "1", "GIT_TERMINAL_PROMPT": "0"})
+        # Independent handles keep preview reads from moving the child's write
+        # position. A disk spool avoids blocking a noisy child on a full pipe.
+        with tempfile.TemporaryDirectory(prefix="cheapos-check-") as spool:
+            path = Path(spool) / "output"
+            with path.open("wb") as output, path.open("rb") as reader:
+                process = subprocess.Popen(argv, cwd=str(self.root), env=env, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
+                reason, text, published, last_publish = None, "", None, 0
+                decoder = codecs.getincrementaldecoder("utf-8")("replace")
+
+                def preview(final=False):
+                    nonlocal text, published, last_publish
+                    text += decoder.decode(reader.read(max(0, 32_000 - reader.tell())), final=final)
+                    truncated = os.fstat(output.fileno()).st_size > 32_000
+                    if on_output and (text, truncated) != published and (final or time.monotonic() - last_publish >= .25):
+                        on_output(text, truncated)
+                        published, last_publish = (text, truncated), time.monotonic()
+                    return truncated
+
+                try:
+                    while process.poll() is None:
+                        preview()
+                        if stop_event.wait(0.05):
+                            reason = "cancelled"
+                        elif time.monotonic() - started > timeout:
+                            reason = "timed out"
+                        elif os.fstat(output.fileno()).st_size > 2_000_000:
+                            reason = "output limit exceeded"
+                        if reason:
+                            break
+                finally:
+                    # Also reap the process if publishing the preview fails.
+                    if process.poll() is None:
+                        try:
+                            if os.name != "nt":
+                                os.killpg(process.pid, signal.SIGKILL)
+                            else:
+                                process.kill()
+                        except ProcessLookupError:
+                            pass
+                    process.wait()
+                if os.fstat(output.fileno()).st_size > 2_000_000 and not reason:
                     reason = "output limit exceeded"
-                if reason:
-                    try:
-                        if os.name != "nt":
-                            os.killpg(process.pid, signal.SIGKILL)
-                        else:
-                            process.kill()
-                    except ProcessLookupError:
-                        pass
-                    break
-            process.wait()
-            output.seek(0)
-            text = output.read(32_000).decode("utf-8", errors="replace")
-        return {"command": argv, "exit_code": process.returncode, "passed": process.returncode == 0 and reason is None, "output": text, "duration": round(time.monotonic() - started, 2), "reason": reason}
+                truncated = preview(final=True)
+        return {"command": argv, "exit_code": process.returncode, "passed": process.returncode == 0 and reason is None, "output": text, "truncated": truncated, "duration": round(time.monotonic() - started, 2), "reason": reason}
