@@ -648,6 +648,14 @@ class Engine:
                        and e["detail"].get("tool") in {"write_file", "replace_text", "replace_lines"}
                        for e in task["events"][boundary + 1:]):
                     self.prepare_compact_edits(task)
+            if work_policy.read_only(task):
+                # Old starter chats may contain unsolicited edits or a saved
+                # checkpoint. Preserve those files without executing that work.
+                task["turn_start_patch"] = Workspace(task["workspace"]).patch()
+                for key in ("pending_verification", "pending_checkpoint", "pending_review", "compact_edits"):
+                    task.pop(key, None)
+                task["action_pending"] = False
+                task["loop_guidance"] = None
             task.pop("pause_summary", None)
             task["status"] = "running"
             task["error"] = None
@@ -1180,7 +1188,7 @@ class Engine:
         return messages
 
     def prepare_loop_recovery(self, task):
-        if needs_patch_review(task):
+        if needs_patch_review(task) and not work_policy.read_only(task):
             task["answer_pending"] = False
             task["action_pending"] = True
             task["loop_guidance"] = ACTION_GUIDANCE
@@ -1196,7 +1204,7 @@ class Engine:
         if task["patch"] != task.get("turn_start_patch", ""):
             task["answer_pending"] = False
             raise ProgressPause("This request has edits that still need verification and review. Inspect the saved changes before resuming.")
-        if needs_patch_review(task):
+        if needs_patch_review(task) and not work_policy.read_only(task):
             self.prepare_loop_recovery(task)
             return
         if request_worker_turns(task) >= task["limits"]["worker_turns"]:
@@ -1381,6 +1389,8 @@ class Engine:
         record['output_filter']={**filter_info,'before_bytes':original_bytes,'after_bytes':len(json.dumps(messages).encode()),'seconds':time.monotonic()-started}
         try:
             result=self._perform_request(runtime,messages,tools,role,config_override,purpose)
+            if role != 'coordinator' and not purpose:
+                work_policy.validate_response(task, result)
             record['status']='responded'
             return result
         except Exception as error:
@@ -1396,6 +1406,9 @@ class Engine:
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
         runtime.guard()
+        if work_policy.read_only(task) and role != 'coordinator' and not purpose:
+            messages = copy.deepcopy(messages)
+            messages[0]['content'] += '\n' + work_policy.instruction('explanation')
         if role == "worker" and task.get("branch_run",{}).get("current_item_id"):
             run=task['branch_run'];item=next(i for i in run['items'] if i['id']==run['current_item_id'])
             messages=copy.deepcopy(messages)
@@ -2037,7 +2050,7 @@ class Engine:
                         task["messages"] = self.compact_context(runtime)
                     offered_tools = [t for t in offered_tools if t["function"]["name"] not in {"replace_text", "write_file"}] + [LINE_EDIT, COMPACT_WRITE]
                 current_stage = work_policy.stage(task)
-                offered_tools = work_policy.prioritize(offered_tools, current_stage)
+                offered_tools = work_policy.prioritize(work_policy.offered_tools(task, offered_tools), current_stage)
                 if task.get('work_stage') != current_stage:
                     task['work_stage'] = current_stage
                     task['messages'].append({'role':'user','content':work_policy.instruction(current_stage)})
@@ -2050,7 +2063,14 @@ class Engine:
                         })
                         self.event(task, "guard", "Applied User Guidance", steer_text)
                     self.store.save(task)
-                message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
+                try:
+                    message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
+                except work_policy.ReadOnlyViolation as error:
+                    self.event(task, "guard", "Keeping this request read-only", str(error))
+                    # One bounded, accounted answer attempt. Do not execute any
+                    # part of a mixed batch or switch models to obtain an edit.
+                    self.finish_answer(runtime)
+                    continue
                 # request() may refresh evidence during a model handoff. Freeze
                 # that version map for the entire returned batch: a first edit
                 # must not authorize a second edit using stale line numbers.
