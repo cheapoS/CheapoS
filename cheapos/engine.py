@@ -90,7 +90,7 @@ Call review_decision with APPROVE only when the change satisfies the task, check
 REQUEST_CHANGES with specific actionable feedback when the worker can fix the issue.
 TAKE_OVER if the task needs stronger implementation reasoning. This pauses for explicit user approval and retains the same budget.
 Never fabricate verification, and don't approve incomplete or truncated evidence."""
-DEFAULT_LIMITS = {"dollars": 1.0, "reviewer_tokens": 50000, "worker_turns": 40, "iterations": 5, "output_tokens": 2048, "checkpoint_turns": 12, "run_minutes": 15}
+DEFAULT_LIMITS = {"dollars": 1.0, "reviewer_tokens": 200000, "worker_turns": 40, "iterations": 5, "output_tokens": 2048, "checkpoint_turns": 12, "run_minutes": 15}
 ACTIVE = {"running", "reviewing", "waiting_approval", "stopping"}
 
 
@@ -260,6 +260,7 @@ class Runtime:
         self.action_context_ready = False
         self.compact_context_ready = False
         self.edit_versions = {}
+        self.steer_queue = []
 
     def guard(self):
         if time.monotonic() - self.started >= self.task["limits"].get("run_minutes", 15) * 60:
@@ -456,6 +457,7 @@ class Engine:
                 task.pop("compact_edits", None)
                 task.pop("pending_checkpoint", None)
                 task.pop("pending_review", None)
+                task.pop("steer_guidance", None)
                 task["requests"] = task.get("requests", [task["prompt"]]) + [followup.strip()]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
                 task["turn_start_patch"] = Workspace(task["workspace"]).patch()
@@ -576,6 +578,46 @@ class Engine:
             self.store.save(task)
             return task
 
+    def steer(self, task_id, message):
+        if not isinstance(message, str) or not 1 <= len(message.strip()) <= 4000:
+            raise ValueError("Enter a steering guidance message of up to 4,000 characters")
+        cleaned = message.strip()
+        with self.lock:
+            task = self.store.get(task_id)
+            if task.get("demo"):
+                raise ValueError("The demo uses scripted responses. Open a project to steer real tasks.")
+            self.event(task, "steer", "User Guidance", cleaned)
+            task["steer_guidance"] = cleaned
+            runtime = self.runtimes.get(task_id)
+            if runtime and runtime.thread and runtime.thread.is_alive():
+                runtime.steer_queue.append(cleaned)
+                self.store.save(task)
+                return {"steered": True, "running": True, "task": task}
+            else:
+                guidance_prompt = f"USER COURSE CORRECTION: {cleaned}\nPrioritize this guidance immediately over any conflicting previous plans."
+                task.setdefault("messages", []).append({"role": "user", "content": guidance_prompt})
+                if task.get("error_code") in {"checkpoint_turn_limit", "progress_limit", "stalled", "worker_turn_limit"}:
+                    task["error"] = None
+                    task["error_code"] = None
+                self.store.save(task)
+                return {"steered": True, "running": False, "task": task}
+
+    def boost_headroom(self, task_id, additional_tokens=100000, additional_turns=10):
+        with self.lock:
+            task = self.store.get(task_id)
+            limits = task.setdefault("limits", dict(DEFAULT_LIMITS))
+            limits["reviewer_tokens"] = min(1000000, limits.get("reviewer_tokens", 200000) + additional_tokens)
+            limits["worker_turns"] = min(200, limits.get("worker_turns", 40) + additional_turns)
+            if task.get("error_code") in {"worker_turn_limit", "reviewer_token_limit", "budget_error", "cost_limit", "checkpoint_turn_limit"}:
+                task["error"] = None
+                task["error_code"] = None
+            self.event(task, "guard", "Boosted Task Headroom", {
+                "reviewer_tokens": limits["reviewer_tokens"],
+                "worker_turns": limits["worker_turns"]
+            })
+            self.store.save(task)
+            return task
+
     def shutdown(self):
         self.startup.shutdown()
         for runtime in list(self.runtimes.values()):
@@ -607,7 +649,7 @@ class Engine:
         if sources:
             summary["web_reads_this_request"] = list(reversed(sources))
         for event in reversed(task["events"]):
-            if event["kind"] not in {"tool", "tool_error", "assistant", "checks"}:
+            if event["kind"] not in {"tool", "tool_error", "assistant", "checks", "steer"}:
                 continue
             detail = copy.deepcopy(event["detail"])
             if event["kind"] == "tool" and isinstance(detail, dict):
@@ -636,6 +678,8 @@ class Engine:
                 detail = excerpt(detail, 4000)
             elif event["kind"] == "checks" and isinstance(detail, dict):
                 detail["output"] = excerpt(detail.get("output", ""), 4000)
+            elif event["kind"] == "steer":
+                detail = excerpt(str(detail), 4000)
             item = {"kind": event["kind"], "action": event["title"], "detail": detail}
             encoded_size = len(json.dumps(item))
             if size + encoded_size > 24000:
@@ -650,6 +694,8 @@ class Engine:
         messages = [{"role": "system", "content": CHAT_SYSTEM if task.get("conversational") else WORKER_SYSTEM}, {"role": "user", "content": json.dumps(summary)}]
         if task.get("loop_guidance"):
             messages.append({"role": "user", "content": "Controller direction: " + task["loop_guidance"]})
+        if task.get("steer_guidance"):
+            messages.append({"role": "user", "content": "User direction: " + task["steer_guidance"]})
         return messages
 
     def refresh_changes(self, task):
@@ -1478,6 +1524,15 @@ class Engine:
                     if not runtime.compact_context_ready:
                         task["messages"] = self.compact_context(runtime)
                     offered_tools = [t for t in offered_tools if t["function"]["name"] not in {"replace_text", "write_file"}] + [LINE_EDIT, COMPACT_WRITE]
+                if runtime.steer_queue:
+                    while runtime.steer_queue:
+                        steer_text = runtime.steer_queue.pop(0)
+                        task["messages"].append({
+                            "role": "user",
+                            "content": f"USER COURSE CORRECTION: {steer_text}\nPrioritize this guidance immediately over any conflicting previous plans."
+                        })
+                        self.event(task, "guard", "Applied User Guidance", steer_text)
+                    self.store.save(task)
                 message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
                 # request() may refresh evidence during a model handoff. Freeze
                 # that version map for the entire returned batch: a first edit

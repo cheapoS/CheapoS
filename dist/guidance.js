@@ -115,6 +115,7 @@ const CheapOSGuide = (() => {
     else if(event.kind==='permission'){icon='shield';note=(d.command||[]).join(' ')}
     else if(event.kind==='web'){icon='search';title='Requested web page';note=d.url||''}
     else if(event.kind==='commit'){icon='branch';note=d.commit?`${d.commit.slice(0,8)} · ${d.branch} · ${d.message}`:d.error||d.branch||''}
+    else if(event.kind==='steer'){icon='compass';title='User course correction';note=typeof d==='string'?d:(d.message||d.detail||'')}
     else return null;
     return {event,title,icon,note,path,failed:event.kind==='tool_error'||event.kind==='checks'&&!d.passed};
   }
@@ -216,6 +217,11 @@ const CheapOSGuide = (() => {
       }
       if (e.kind === 'commit') {
         items.push({ type: 'commit', commit: d.commit, branch: d.branch, message: d.message, event: e });
+        continue;
+      }
+      if (e.kind === 'steer') {
+        const text = typeof d === 'string' ? d : (d.message || d.detail || '');
+        items.push({ type: 'steer', title: 'User course correction', note: text, event: e });
         continue;
       }
       if (e.kind === 'tool_error') {

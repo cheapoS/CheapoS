@@ -103,12 +103,22 @@ function renderComposer() {
   $('#chat-input').disabled=state.sending;
   $('#chat-input').placeholder=state.project?'Ask about your project or describe a change…':'Open a project to get started…';
   const other=state.tasks.find(t=>t.id!==task?.id&&activeStatuses.has(t.status));
-  $('#chat-send').disabled=state.sending||busy||Boolean(other)||state.startup.busy||!$('#chat-input').value.trim();
+  if(busy){
+    $('#chat-send').hidden=true;
+    if($('#chat-steer')){
+      $('#chat-steer').hidden=false;
+      $('#chat-steer').disabled=state.sending||Boolean(other)||!$('#chat-input').value.trim();
+    }
+    $('#chat-input').placeholder='🧭 Steer worker (inject guidance mid-flight)…';
+    $('#composer-note').innerHTML='<strong>🧭 Live Steering Active:</strong> Type guidance and press Enter or Steer to course-correct the worker on its next turn.';
+  }else{
+    $('#chat-send').hidden=false;
+    if($('#chat-steer'))$('#chat-steer').hidden=true;
+    $('#chat-send').disabled=state.sending||Boolean(other)||state.startup.busy||!$('#chat-input').value.trim();
+    $('#chat-input').placeholder=state.project?'Ask about your project or describe a change…':'Open a project to get started…';
+    $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':other?'Another chat is running. Open it in the sidebar to continue or pause it.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
+  }
   $('#chat-stop').hidden=!busy&&!state.startup.busy;
-  $('#execution-choice').textContent=executionLabel(task?(task.execution?.mode||'manual'):state.preferences.execution?.mode);
-  $('#execution-choice').title=task?'This chat keeps its saved execution choice':'Choose where new chats run';
-  $('#chat-budget').textContent=money((task?.limits||state.preferences.limits).dollars)+' limit';
-  $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':other?'Another chat is running. Open it in the sidebar to continue or pause it.':busy?'CheapOS is working. You can draft your next message.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
 }
 function openProject(afterOpen) {
   const d=dialog(`<form>${modalHeader('LOCAL PROJECT','Open a project')}<p class="modal-description">Choose your project once, then chat. CheapOS will work in a separate copy when you send your first message.</p><label class="full-field">Project folder<input name="repository" placeholder="/Users/you/projects/my-project" required autocomplete="off" autofocus><small>Use the root folder of a local Git repository.</small></label><p class="form-error" role="alert"></p><div class="modal-footer"><span>Opening a project makes no model request.</span><button type="submit" class="primary-button">Open project ${icon('chevron')}</button></div></form>`,'project-modal');
@@ -266,6 +276,7 @@ function renderTurnActivityCard(turn, task) {
     if(item.type==='review')return `<div class="timeline-item">✓ <strong>${esc(item.title)}:</strong> <span class="muted">${esc(item.feedback)}</span></div>`;
     if(item.type==='commit')return `<div class="timeline-item">✓ <strong>Committed to ${esc(item.branch)}:</strong> <code>${esc(item.commit?.slice(0,8))}</code> <small class="muted">· ${esc(item.message)}</small></div>`;
     if(item.type==='guard')return `<div class="timeline-item ${item.stalled?'stalled':''}">⚠ <strong>${esc(item.title)}:</strong> ${esc(item.note)}</div>`;
+    if(item.type==='steer')return `<div class="timeline-item steer-item">${icon('compass')} <strong>User course correction:</strong> <span>${esc(item.note||item.title)}</span></div>`;
     if(item.type==='error')return `<div class="timeline-item stalled">✕ <strong>${esc(item.title)}:</strong> ${esc(item.note)}</div>`;
     return `<div class="timeline-item">${esc(item.title||'Tool action')}</div>`;
   }).join('');
@@ -309,7 +320,7 @@ function renderChat() {
   else if(task.status==='ready')parts.push(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
   else if(CheapOSGuide.canCommit(task))parts.push(commitDecisionMarkup(task));
   else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))parts.push(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, CheapOS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
-  else if(!activeStatuses.has(task.status)&&task.status!=='awaiting_reply')parts.push(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
+  else if(!activeStatuses.has(task.status)&&task.status!=='awaiting_reply')parts.push(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='budget_paused'?`<button class="primary-button btn-boost-headroom" data-chat-action="boost-headroom">${icon('spark')} Boost Headroom & Resume</button>`:''}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
   $('#chat-view').innerHTML=parts.join('');
   for(const drawerId of openDrawers){
     const drawer=$('#'+drawerId),btn=$(`[data-toggle="${drawerId}"]`);
@@ -322,6 +333,7 @@ function renderChat() {
     if(action==='stop'){await stopTask();return}
     if(action==='connections'){openConnections(undefined,task);return}
     if(action==='request-review'){await requestCommitReview(b);return}
+    if(action==='boost-headroom'){await boostHeadroom(b);return}
     if(action==='resume'){await resumeTask(b);return}
     b.disabled=true;
     if(action==='start'){await startTask(task.id);b.disabled=false;return}
@@ -520,6 +532,11 @@ function chatLimits() {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const limits=readLimits(new FormData(form));if(task){state.task=await api('/tasks/'+task.id+'/limits',{limits})}else state.preferences=await api('/preferences',{limits});d.close();renderComposer();if(state.task)renderInspector()})};
 }
 async function sendChat() {
+  const task=state.task, busy=task&&activeStatuses.has(task.status);
+  if(busy){
+    await steerTask();
+    return;
+  }
   if(state.sending||state.startup.busy||state.tasks.some(t=>activeStatuses.has(t.status)))return;
   const message=$('#chat-input').value.trim();if(!message)return;
   if(!state.project){openProject(()=>{$('#chat-input').value=message;saveDraft();renderComposer()});return}
@@ -530,6 +547,27 @@ async function sendChat() {
     else {const task=await api('/tasks',{repository:state.project.path,prompt:message,conversational:true,limits:state.preferences.limits});state.drafts.delete(key);$('#chat-input').value='';await loadTasks();await selectTask(task.id);await startTask(task.id)}
     $('#view-container').scrollTop=$('#view-container').scrollHeight;
   }catch(e){toast(e.message)}finally{state.sending=false;renderComposer();$('#chat-input').focus()}
+}
+async function steerTask(text) {
+  const message=text||$('#chat-input').value.trim();
+  if(!state.task||!message||state.sending)return;
+  const key=draftKey();state.sending=true;renderComposer();
+  try {
+    await api('/tasks/'+state.task.id+'/steer',{message});
+    state.drafts.delete(key);$('#chat-input').value='';
+    toast('🧭 Course correction sent to worker');
+    await refresh();
+    $('#view-container').scrollTop=$('#view-container').scrollHeight;
+  }catch(e){toast(e.message)}finally{state.sending=false;renderComposer();$('#chat-input').focus()}
+}
+async function boostHeadroom(button) {
+  const task=state.task;if(!task)return;
+  if(button)button.disabled=true;
+  try {
+    await api('/tasks/'+task.id+'/headroom',{reviewer_tokens:100000,worker_turns:10});
+    toast('⚡ Headroom boosted (+100k reviewer tokens, +10 turns)');
+    await startTask(task.id);
+  }catch(e){toast(e.message);if(button)button.disabled=false}
 }
 async function startTask(id,changes={}) {try{await api('/tasks/'+id+'/start',changes);await refresh()}catch(e){toast(e.message)}}
 async function resumeTask(button) {
@@ -692,7 +730,7 @@ async function bootstrap() {
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){toast('Local server disconnected. Restart CheapOS and refresh to reconnect.');state.online=false}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=async()=>{if(state.startup.busy){try{await api('/startup/stop',{});await loadStartup()}catch(e){toast(e.message)}}else await stopTask()};
+$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=async()=>{if(state.startup.busy){try{await api('/startup/stop',{});await loadStartup()}catch(e){toast(e.message)}}else await stopTask()};
 function toggleInspector() {
   const panel=$('#inspector');
   if(matchMedia('(max-width:1280px)').matches){panel.classList.remove('hidden');panel.classList.toggle('show')}

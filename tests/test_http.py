@@ -258,6 +258,28 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post(f'/api/tasks/{task["id"]}/rollback', {'checkpoint': 'invalid'})[0], 400)
         self.assertEqual(self.post(f'/api/tasks/{task["id"]}/rollback', {})[0], 400)
 
+    def test_steer_and_headroom_endpoints(self):
+        task = self.engine.create_demo()
+        task['demo'] = False
+        self.engine.store.save(task)
+
+        # Steer endpoint
+        status, _, body = self.post(f'/api/tasks/{task["id"]}/steer', {'message': 'Steer guidance from test'})
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue(data['steered'])
+        self.assertEqual(data['task']['steer_guidance'], 'Steer guidance from test')
+
+        # Steer validation
+        self.assertEqual(self.post(f'/api/tasks/{task["id"]}/steer', {'message': ''})[0], 400)
+        self.assertEqual(self.post(f'/api/tasks/{task["id"]}/steer', {})[0], 400)
+
+        # Headroom endpoint
+        status, _, body = self.post(f'/api/tasks/{task["id"]}/headroom', {'reviewer_tokens': 50000, 'worker_turns': 5})
+        self.assertEqual(status, 200)
+        headroom_task = json.loads(body)
+        self.assertGreaterEqual(headroom_task['limits']['reviewer_tokens'], 250000)
+
 
 class FakeModelHandler(BaseHTTPRequestHandler):
     def log_message(self, *args):

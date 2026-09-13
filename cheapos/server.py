@@ -209,6 +209,17 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     if not isinstance(checkpoint, int):
                         raise ValueError("Provide a checkpoint number to rollback to")
                     result = public_task(engine.rollback_checkpoint(task_id, checkpoint))
+                elif action == "steer":
+                    message = values.get("message")
+                    if not message or not isinstance(message, str):
+                        raise ValueError("Provide a steering message")
+                    result = engine.steer(task_id, message)
+                    if isinstance(result, dict) and "task" in result:
+                        result["task"] = public_task(result["task"])
+                elif action == "headroom":
+                    additional_tokens = values.get("reviewer_tokens", 100000)
+                    additional_turns = values.get("worker_turns", 10)
+                    result = public_task(engine.boost_headroom(task_id, additional_tokens=additional_tokens, additional_turns=additional_turns))
                 else:
                     raise ValueError("Unknown task action")
             else:

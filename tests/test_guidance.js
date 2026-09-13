@@ -397,4 +397,19 @@ test('formatTerminalOutput parses ANSI escape codes and test runner markers',()=
   assert.ok(safe.includes('&lt;script&gt;'));
 });
 
+test('activityItem and groupActivityItems format steer events',()=>{
+  const item=activityItem({kind:'steer',title:'User Guidance',detail:'Focus on scripts/calc.py'});
+  assert.equal(item.title,'User course correction');
+  assert.equal(item.icon,'compass');
+  assert.equal(item.note,'Focus on scripts/calc.py');
+
+  const grouped=groupActivityItems([
+    {kind:'steer',title:'User Guidance',detail:'Do not modify helper.py'}
+  ]);
+  assert.equal(grouped.length,1);
+  assert.equal(grouped[0].type,'steer');
+  assert.equal(grouped[0].title,'User course correction');
+  assert.equal(grouped[0].note,'Do not modify helper.py');
+});
+
 

@@ -37,6 +37,7 @@
  <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4 1-4-2-6-2m12 5v-4a3.5 3.5 0 0 0-1-2.5c3-.3 6-1.5 6-6A4.5 4.5 0 0 0 19 6a4 4 0 0 0 0-4s-1 0-4 2a14 14 0 0 0-6 0C6 2 5 2 5 2a4 4 0 0 0 0 4 4.5 4.5 0 0 0-1 3.5c0 4.5 3 5.7 6 6A3.5 3.5 0 0 0 9 18v4"/></symbol>
  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
  <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6Zm-4 10 3 3 5-6"/></symbol>
+ <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></symbol>
 </svg>
 <div class="desktop-shell">
  <aside class="sidebar" id="sidebar">
@@ -61,7 +62,7 @@
     <button class="compact-session" id="compact-session"><span>Worker → checks → review</span><strong id="compact-cost">$0.00</strong></button>
     <div class="view-container" id="view-container"><section class="view" id="chat-view" role="tabpanel"></section><section class="view hidden" id="activity-view" role="tabpanel"></section><section class="view hidden" id="changes-view" role="tabpanel"></section><section class="view hidden" id="tests-view" role="tabpanel"></section></div>
     <div class="composer-area" id="composer-area">
-     <form class="composer" id="chat-form"><textarea id="chat-input" aria-label="Message CheapOS" placeholder="Ask about your project or describe a change…" rows="3" maxlength="8000"></textarea><div class="composer-controls"><button class="composer-project" type="button" id="composer-project"><svg><use href="#i-folder"/></svg><span>Open project</span></button><button class="composer-budget" type="button" id="execution-choice">Where work runs</button><button class="composer-budget" type="button" id="chat-budget">$0.00 limit</button><button type="button" class="icon-btn" id="chat-stop" aria-label="Stop working" hidden><svg><use href="#i-x"/></svg></button><button type="submit" class="send-chat" id="chat-send" aria-label="Send message"><svg><use href="#i-up"/></svg></button></div></form>
+     <form class="composer" id="chat-form"><textarea id="chat-input" aria-label="Message CheapOS" placeholder="Ask about your project or describe a change…" rows="3" maxlength="8000"></textarea><div class="composer-controls"><button class="composer-project" type="button" id="composer-project"><svg><use href="#i-folder"/></svg><span>Open project</span></button><button class="composer-budget" type="button" id="execution-choice">Where work runs</button><button class="composer-budget" type="button" id="chat-budget">$0.00 limit</button><button type="button" class="icon-btn" id="chat-stop" aria-label="Stop working" hidden><svg><use href="#i-x"/></svg></button><button type="button" class="steer-chat" id="chat-steer" title="Inject guidance into the worker's next turn" hidden><svg><use href="#i-compass"/></svg><span>Steer</span></button><button type="submit" class="send-chat" id="chat-send" aria-label="Send message"><svg><use href="#i-up"/></svg></button></div></form>
      <p class="composer-note" id="composer-note">Edits stay in a separate copy. You review the result.</p>
     </div>
    </main>

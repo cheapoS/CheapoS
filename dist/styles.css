@@ -188,4 +188,72 @@ svg, svg * {
 .term-divider-line { color: #3b4941; opacity: 0.85; }
 .term-dim { color: #5a6b61; font-style: italic; }
 
+/* Mid-flight steering & headroom styling */
+.steer-chat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(82, 168, 255, 0.18), rgba(64, 120, 255, 0.28));
+  color: #79b8ff;
+  border: 1px solid rgba(82, 168, 255, 0.4);
+  border-radius: 9999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.steer-chat svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+.steer-chat:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(82, 168, 255, 0.28), rgba(64, 120, 255, 0.4));
+  border-color: #79b8ff;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(82, 168, 255, 0.3);
+}
+.steer-chat:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.timeline-item.steer-item {
+  background: rgba(82, 168, 255, 0.08);
+  border-left: 3px solid #52a8ff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: #d1e4ff;
+  font-size: 13px;
+  margin: 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.timeline-item.steer-item svg {
+  width: 15px;
+  height: 15px;
+  stroke: #52a8ff;
+  stroke-width: 2;
+  fill: none;
+  flex-shrink: 0;
+}
+
+.btn-boost-headroom {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  color: #ffffff !important;
+  border: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
+}
+.btn-boost-headroom:hover:not(:disabled) {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b) !important;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4) !important;
+}
+
 
