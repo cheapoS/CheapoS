@@ -6,7 +6,7 @@ import shlex
 import sys
 from pathlib import Path
 
-from cheapos.engine import COMPACT_GUIDANCE, Runtime, check_argv, record_observation
+from cheapos.engine import COMPACT_GUIDANCE, MAX_CREATE_BYTES, Runtime, check_argv, record_observation
 from cheapos.providers import ProviderError
 from cheapos.routing import PROBE_MESSAGES
 from cheapos.workspace import MAX_EDIT_BYTES, Workspace
@@ -137,12 +137,31 @@ class CompactRecoveryTests(LocalCase):
         task = self.chat('remote')
         before = (Path(task['workspace']) / 'math_utils.py').read_bytes()
         for name, args in [('replace_text', {'path': 'math_utils.py', 'old_text': before.decode(), 'new_text': 'x' * 10000}),
-                           ('write_file', {'path': 'large.py', 'content': 'x' * 10000})]:
+                           ('write_file', {'path': 'large.py', 'content': 'x' * (MAX_CREATE_BYTES + 1)})]:
             with self.subTest(name=name), self.assertRaises(ValueError):
                 self.engine.file_tool(task, name, args)
         self.assertTrue(task['compact_edits'])
         self.assertEqual((Path(task['workspace']) / 'math_utils.py').read_bytes(), before)
         self.assertFalse((Path(task['workspace']) / 'large.py').exists())
+
+    def test_complete_new_file_over_chunk_size_is_saved_once(self):
+        task=self.chat('remote');task['compact_edits']=True
+        content=''.join(f'# Item {i}: a complete generated line\n' for i in range(117))
+        self.assertGreater(len(content.encode()),MAX_EDIT_BYTES)
+        requests=self.responses([call('write_file',{'path':'report.py','content':content}),
+                                 call('ask_user',{'question':'Ready for the next step?'})])
+        self.engine.store.save(task);self.engine.start(task['id']);result=self.finish(task)
+        path=Path(task['workspace'])/'report.py'
+        self.assertEqual(path.read_text(),content)
+        self.assertFalse(any(e['kind']=='tool_error' for e in result['events']))
+        self.assertEqual(len(requests),2)
+        with self.assertRaisesRegex(ValueError,'already exists'):
+            self.engine.file_tool(result,'write_file',{'path':'report.py','content':'replacement'})
+        self.assertEqual(path.read_text(),content)
+        for name,text in [('too_large.py','é'*(MAX_CREATE_BYTES//2+1)),('../outside.py','small')]:
+            with self.assertRaises(ValueError):
+                self.engine.file_tool(result,'write_file',{'path':name,'content':text})
+        self.assertFalse((Path(task['workspace'])/'too_large.py').exists())
 
     def test_saved_failure_activates_on_resume_and_new_message_resets_mode(self):
         task = self.chat('remote')
