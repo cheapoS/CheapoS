@@ -160,3 +160,27 @@ class AnswerRecoveryTests(LocalCase):
         self.engine.start(fresh['id']);result=self.finish(fresh)
         self.assertEqual(result['status'],'budget_paused')
         factory.assert_not_called()
+
+    def test_action_snapshot_keeps_current_file_middle_and_latest_request_without_old_read_noise(self):
+        t=self.unfinished_patch()
+        body='start\n'+'padding\n'*700+'CURRENT MIDDLE\n'+'padding\n'*400+'end\n'
+        self.engine.file_tool(t,'write_file',{'path':'current.py','content':body})
+        self.engine.event(t,'tool','read file',{'arguments':{'path':'current.py'},'result':{'content':'OLD STALE TEXT'}})
+        t.update(action_pending=True,requests=[t['prompt'],'Convert only these tests to unittest.'])
+        messages=self.engine.initial_messages(t);summary=json.loads(messages[1]['content'])
+        current=next(f for f in summary['current_files'] if f['path']=='current.py')
+        self.assertTrue(current['complete']);self.assertEqual(current['content'],body)
+        self.assertEqual(summary['latest_message'],'Convert only these tests to unittest.')
+        self.assertNotIn('OLD STALE TEXT',json.dumps(messages));self.assertNotIn('recent_activity',summary)
+
+    def test_action_snapshot_limits_content_and_keeps_workspace_boundaries(self):
+        t=self.unfinished_patch()
+        self.engine.file_tool(t,'write_file',{'path':'large.py','content':'x'*13000})
+        # An old/malformed observation cannot make context read outside the workspace.
+        self.engine.event(t,'tool','read file',{'arguments':{'path':'../outside.txt'},'result':{}})
+        t['action_pending']=True
+        summary=json.loads(self.engine.initial_messages(t)[1]['content'])
+        files=summary['current_files']
+        self.assertLessEqual(sum(len(f.get('content','')) for f in files),24000)
+        self.assertFalse(next(f for f in files if f['path']=='large.py')['complete'])
+        self.assertIn('error',next(f for f in files if f['path']=='../outside.txt'))

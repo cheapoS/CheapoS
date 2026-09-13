@@ -12,7 +12,7 @@ from .storage import write_json
 
 RECOVERABLE_CODES = {"stream_error", "stream_interrupted", "stream_timeout", "model_timeout",
                      "model_connection", "invalid_response_json", "invalid_stream_json",
-                     "invalid_response_shape", "invalid_tool_envelope", "empty_response",
+                     "invalid_response_shape", "invalid_tool_envelope", "empty_response", "unsupported_tool",
                      "http_408", "http_429", "http_500", "http_502", "http_503", "http_504"}
 MAX_HANDOFFS = 2
 

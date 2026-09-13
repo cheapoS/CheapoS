@@ -193,3 +193,40 @@ class FailoverTests(LocalCase):
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'paused')
         self.assertFalse(any(e['kind']=='handoff' for e in result['events']))
+
+    def test_unavailable_read_during_action_recovery_hands_off_without_executing_any_calls(self):
+        from cheapos.engine import ACTION_GUIDANCE
+        task=self.chat('remote')
+        self.engine.file_tool(task,'write_file',{'path':'notes.txt','content':'Saved work'})
+        task.update(action_pending=True,loop_guidance=ACTION_GUIDANCE)
+        self.engine.store.save(task)
+        mixed=call('write_file',{'path':'unwanted.txt','content':'Must not execute'})
+        mixed['tool_calls']+=call('read_file',{'path':'notes.txt'})['tool_calls']
+        requests=self.responding([mixed,call('replace_text',{'path':'notes.txt','old_text':'Saved work','new_text':'Corrected work'}),call('ask_user',{'question':'Which example next?'})])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'awaiting_reply',result['error'])
+        self.assertEqual(result['providers']['worker']['model'],'b')
+        self.assertFalse((Path(task['workspace'])/'unwanted.txt').exists())
+        self.assertFalse(any(e['kind']=='tool' and e['title']=='read file' for e in result['events']))
+        self.assertIn('Corrected work',result['patch'])
+        self.assertEqual(result['usage']['uncertain_requests'],0)
+        actual=[r for r in requests if r['messages']!=PROBE_MESSAGES]
+        self.assertEqual([r['model'] for r in actual],['a','b','b'])
+        import json
+        evidence=json.loads(actual[1]['messages'][1]['content'])
+        self.assertEqual(evidence['current_files'][0]['content'],'Saved work')
+        self.assertEqual(result['request_worker_turns'],3)
+
+    def test_legacy_unavailable_read_pause_switches_model_on_resume(self):
+        from cheapos.engine import ACTION_GUIDANCE
+        task=self.chat('remote');self.responding([{'content':'Hi'}]);self.engine.start(task['id']);task=self.finish(task)
+        self.engine.file_tool(task,'write_file',{'path':'notes.txt','content':'Saved work'})
+        task.update(status='paused',error_code='progress_limit',action_pending=True,
+                    error='The worker tried to repeat inspection after the read loop stopped. Saved edits are intact.',
+                    loop_guidance='Old guidance')
+        self.engine.store.save(task)
+        requests=self.responding([call('ask_user',{'question':'Which example next?'})])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'awaiting_reply',result['error'])
+        self.assertEqual({r['model'] for r in requests},{'b'})
+        self.assertIn(ACTION_GUIDANCE,[m['content'] for m in requests[-1]['messages']])
