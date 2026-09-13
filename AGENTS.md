@@ -14,3 +14,13 @@ say to run every test before every integration do not override this policy.
 Use the full suite only for an explicit comprehensive check, a release, or broad
 backend risk that focused tests cannot cover; explain that choice. Preserve
 meaningful assertions and product verification/permission safeguards.
+
+# Live unattended trial policy
+
+Use explicit measurement mode for future live qualification/feature trials so
+arbitrary cumulative work caps and check deadlines do not censor the baseline.
+Set `measurement: true` on planning requests (or `plan.measurement: true` for an
+operator-prepared proposal). Keep the authorized model/spending policy, including
+free-only placement when selected. Track all usage, failures and interventions;
+do not substitute huge numeric caps or silently renew a failed run's allowance.
+Choose future bounded defaults from comparable measured runs, not guesses.

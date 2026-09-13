@@ -18,3 +18,10 @@ test('actual event renderer accepts branch review and checkpoint metadata withou
 test('active duration shows seconds for short runs and minutes with remaining seconds',()=>{assert.equal(ui.duration(12.9),'12s');assert.equal(ui.duration(65),'1m 5s');assert.equal(ui.duration(0),'0s');});
 test('saved unattended proposals retain their mode before authorization',()=>{assert.equal(ui.hasRun(null),false);assert.equal(ui.hasRun({id:'ordinary'}),false);assert.equal(ui.hasRun({branch_run:{status:'awaiting_authorization',authorization_ref:null}}),true);assert.equal(ui.hasRun({branch_run:{status:'running',authorization_ref:'approved'}}),true);});
 test('saved terminal previews remain readonly after leave or merge',()=>{assert.equal(ui.terminalRun({branch_run:{status:'left_on_branch'}}),true);assert.equal(ui.terminalRun({branch_run:{status:'merged'}}),true);assert.equal(ui.terminalRun({branch_run:{status:'ready_for_merge'}}),false);assert.equal(ui.terminalRun(null),false);});
+
+test("measurement status requires explicit plan opt-in", () => {
+ const base={branch_run:{schema_version:1,id:"run",status:"running",items:[],plan:{measurement:true}}};
+ assert.equal(ui.projectRun(base).measurement,true);
+ base.branch_run.plan.measurement=false;
+ assert.equal(ui.projectRun(base).measurement,false);
+});

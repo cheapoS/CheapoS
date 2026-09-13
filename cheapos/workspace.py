@@ -359,7 +359,7 @@ class Workspace:
         return self.changes()
 
     def run_checks(self, argv, stop_event, timeout=90, on_output=None, on_raw=None):
-        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 1800:
+        if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 1800):
             raise ValueError("Verification timeout must be positive and at most 1800 seconds")
         if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a and "\x00" not in a for a in argv):
             raise ValueError("Check command must be an argument list")
@@ -391,7 +391,7 @@ class Workspace:
                         preview()
                         if stop_event.wait(0.05):
                             reason = "cancelled"
-                        elif time.monotonic() - started > timeout:
+                        elif timeout is not None and time.monotonic() - started > timeout:
                             reason = "timed out"
                         elif os.fstat(output.fileno()).st_size > 2_000_000:
                             reason = "output limit exceeded"

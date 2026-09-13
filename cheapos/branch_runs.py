@@ -55,8 +55,10 @@ def _id(value):
 
 
 def validate_plan(plan):
-    if not isinstance(plan, dict) or set(plan) - {'items', 'limits', 'final_checks'}:
+    if not isinstance(plan, dict) or set(plan) - {'items', 'limits', 'final_checks', 'measurement'}:
         raise ValueError('Plan must contain items, limits and optional final_checks')
+    if 'measurement' in plan and type(plan['measurement']) is not bool:
+        raise ValueError('Measurement mode must be explicitly true or false')
     items = plan.get('items')
     if not isinstance(items, list) or not 1 <= len(items) <= 50:
         raise ValueError('A plan requires 1–50 items; no subset will be executed')
@@ -68,6 +70,7 @@ def validate_plan(plan):
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value > 10 ** 15 or (isinstance(value, float) and not math.isfinite(value)):
             raise ValueError('Limits must be finite nonnegative numbers')
     output = {'items': [], 'limits': copy.deepcopy(limits), 'final_checks': _checks(plan.get('final_checks', []))}
+    if 'measurement' in plan: output['measurement'] = plan['measurement']
     seen = set()
     for item in items:
         allowed = {'id', 'title', 'instructions', 'dependencies', 'acceptance_criteria', 'required_checks', 'revision_of'}

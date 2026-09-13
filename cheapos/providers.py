@@ -1,6 +1,7 @@
 """OpenAI-compatible chat completions, with explicit accounting before dispatch."""
 
 import json
+from .measurement import enabled as measuring
 import math
 import os
 import re
@@ -185,7 +186,7 @@ def reserve(task, config, messages, tools, role):
     # A deliberately conservative preflight estimate; provider tokenizers/billing can differ.
     prompt_bound = len(json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False).encode("utf-8")) + 1024
     output = int(task["limits"]["output_tokens"])
-    if role == "reviewer":
+    if role == "reviewer" and not measuring(task):
         remaining = task["limits"]["reviewer_tokens"] - task["usage"]["reviewer"]["tokens"]
         output = min(output, remaining - prompt_bound)
     token_blocked = output < 128

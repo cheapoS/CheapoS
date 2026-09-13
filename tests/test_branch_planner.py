@@ -148,6 +148,11 @@ class PlannerTests(unittest.TestCase):
             self.assertIn('items[one].required_checks[0]' if field == 'item' else 'final_checks[0]', feedback)
             self.assertIn('List' if field == 'item' else 'shell', feedback.lower() if field != 'item' else feedback)
 
+    def test_model_cannot_enable_measurement(self):
+        proposed = dict(self.valid, measurement=True)
+        with self.assertRaisesRegex(ValueError, 'Only the operator'):
+            planner._parse(self.reply(proposed), self.limits)
+
     def test_cancellation_never_creates_or_authorizes_work(self):
         captured = planner.capture_inputs(self.root, 'Work')
         self.runtime.stop.set()

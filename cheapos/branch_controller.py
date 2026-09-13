@@ -293,6 +293,8 @@ class BranchController:
             if len(task['run_metrics'])>500:
                 task['run_metrics'].pop(0);task['metrics_history_truncated']=True
             task['metrics_cancelled']=runtime.stop.is_set()
+            from .model_pool import observe_task
+            observe_task(self.engine.gateway.pool,task,metric_id)
             task['stream']=None;task['check_stream']=None;task['updated_at']=now()
             self.engine.store.save(task)
 
@@ -323,6 +325,8 @@ class BranchController:
         task=None;runtime=None;prepared=False;ledger_ended=False;registration_error=None
         try:
             inputs=capture_inputs(values.get('repository',''),values.get('prompt',''),values.get('document'))
+            measurement=values.get('measurement',False)
+            if type(measurement) is not bool:raise ValueError('Measurement mode must be a boolean')
             limits=run_limits(values.get('limits',{}),3)
             task_id=uuid.uuid4().hex;source=inputs['source']
             directory=self.engine.store.root/'tasks'/task_id/'workspace'
@@ -330,7 +334,7 @@ class BranchController:
                                       'limits':{'dollars':limits['dollars'],'run_minutes':max(1,(limits['working_seconds']+59)//60),'reviewer_tokens':limits['reviewer_tokens'],'output_tokens':limits['output_tokens']}},
                                      task_id=task_id,snapshot_override=(Workspace(directory),{'source':source,'files':0,'skipped':[]}))
             task['planning_limits']=limits;task['planning_policy']=self.model_policy()
-            task['branch_run']=state.new_run({'items':[{'id':'planning','title':'Prepare run proposal','instructions':'Prepare a bounded plan','acceptance_criteria':['A complete proposal is ready']}],'limits':limits},original_request=inputs['prompt'],inputs=inputs)
+            task['branch_run']=state.new_run({'items':[{'id':'planning','title':'Prepare run proposal','instructions':'Prepare a bounded plan','acceptance_criteria':['A complete proposal is ready']}],'limits':limits,**({'measurement':True} if measurement else {})},original_request=inputs['prompt'],inputs=inputs)
             runtime=Runtime(task);runtime.thread=threading.current_thread()
             runtime.branch_ledger=Ledger(runtime,lambda:self.engine.store.save(task),lock=self.engine.lock)
             with self.engine.lock:
@@ -343,6 +347,7 @@ class BranchController:
             runtime.branch_ledger.begin()
             task['status']='running';self.engine.event(task,'planning','Preparing your Unattended run proposal')
             proposed=plan(self.engine,runtime,inputs)
+            if measurement:proposed['measurement']=True
             if runtime.stop.is_set():raise InterruptedError('Planning cancelled')
             runtime.branch_ledger.end();ledger_ended=True
             with self.engine.lock:self.engine.runtimes.pop(task_id,None)

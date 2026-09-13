@@ -126,6 +126,8 @@ def _parse(message, limits, source=None):
     if value['status'] != 'plan' or question.strip():
         raise ValueError('Conflicting or incomplete proposal response')
     result = branch_runs.validate_plan(value['plan'])
+    if result.get('measurement'):
+        raise ValueError('Only the operator can select measurement mode')
     if result['limits'] != limits:
         raise ValueError('Retain the displayed finite proposal limits exactly')
     from .engine import check_argv

@@ -111,6 +111,17 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
         self.assertFalse(self.engine.runtimes)
 
+    def test_measurement_selected_by_operator_is_bound_to_proposal(self):
+        values = self.request_values()
+        values['measurement'] = True
+        status, proposal = self.post('/api/branch-runs/plan', values)
+        self.assertEqual(status, 200, proposal)
+        self.assertIs(proposal['contract']['plan']['measurement'], True)
+        task = self.engine.store.get(proposal['task_id'])
+        self.assertIs(task['branch_run']['plan']['measurement'], True)
+        self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
+        self.assertGreater(task['usage']['worker']['tokens'], 0)
+
     def test_missing_runner_retains_complete_plan_and_identifies_executable(self):
         self.provider.command = 'cheapos-missing-test-runner --verify'
         status, result = self.post('/api/branch-runs/plan', self.request_values())

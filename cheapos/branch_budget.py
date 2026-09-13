@@ -11,6 +11,7 @@ import json
 import threading
 import time
 import uuid
+from .measurement import enabled as measuring
 
 
 class LimitExceeded(ValueError):
@@ -71,6 +72,8 @@ class Ledger:
             prior = observed.get(name)
             consumed[name] = max(_number(consumed.get(name, 0)), current) if prior is None else max(0, _number(consumed.get(name, 0)) + current - prior)
             observed[name] = current
+        consumed['worker_tokens'] = _number(usage.get('worker', {}).get('tokens', 0))
+        consumed['check_seconds'] = sum(_number(check.get('duration', 0)) for check in self.task.get('checks', []))
         self.data['usage'] = {role: dict(usage.get(role, {})) for role in ('worker', 'reviewer')}
         self.data['uncertain_requests'] = usage.get('uncertain_requests', 0)
         return before != json.dumps([consumed, self.data], sort_keys=True)
@@ -86,15 +89,16 @@ class Ledger:
         additions = {'requests': int(next_request), 'tool_actions': int(next_action), 'worker_turns': int(next_worker_turn)}
         for key in ('dollars', 'requests', 'worker_turns', 'tool_actions', 'reviewer_tokens'):
             used = self.run['consumption'].get(key, 0) + additions.get(key, 0)
-            if key in limits and used > limits[key]:
+            if key in limits and used > limits[key] and (key == 'dollars' or not measuring(self.task)):
                 raise LimitExceeded(key, used, limits[key])
         actual = self.base + self._elapsed() if self.active else self.run['consumption'].get('working_seconds', 0)
-        if actual >= limits['working_seconds']:
+        if not measuring(self.task) and actual >= limits['working_seconds']:
             raise LimitExceeded('working_seconds', actual, limits['working_seconds'])
 
     def _reserve(self):
         elapsed = self._elapsed()
-        amount = min(self.run['limits']['working_seconds'], self.base + elapsed + self.segment)
+        amount = self.base + elapsed + self.segment
+        if not measuring(self.task): amount = min(self.run['limits']['working_seconds'], amount)
         self.run['consumption']['working_seconds'] = amount
         self.data['active_segment'] = {'owner': self.token, 'reserved_through_seconds': amount, 'measured_seconds': self.base + elapsed}
         self.last_saved = elapsed

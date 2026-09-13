@@ -61,3 +61,37 @@ The final view offers **Request changes**, **Leave on feature branch**, and **Ap
 Integration supports local fast-forward only. A checked-out target must be clean and in the selected source checkout. External branch movement, another worktree holding the target, or divergence prevents integration; cheapoS does not force-update, rebase, resolve conflicts, push, or open a pull request. After success, it reports the target and SHA and asks what to work on next.
 
 Unattended does not schedule wakeups or keep executing after the server stops. Deterministic fixtures test controller behavior and interruption recovery; they do not establish real-model quality, reliability, or savings. A subsequent live trial is a separate operator action with selected models and a known budget.
+
+## Measurement runs for live trials
+
+When gathering baseline evidence, select **Measurement run · track usage without
+work limits** in the planning dialog. This applies during planning and execution
+and is displayed again before Start. The run summary identifies measurement runs.
+For operator-driven trials through the API, pass `measurement: true` to
+`POST /api/branch-runs/plan`; a directly prepared plan uses
+`plan.measurement: true`. Both prompts and selected documents are supported.
+Models cannot select this option themselves. Start binds the choice into the
+proposal's authorization; it cannot silently change on Resume or final review.
+
+Measurement mode disables cumulative worker-turn, request, tool-action,
+reviewer-token and working-time caps, and check execution deadlines. Checkpoint
+intervals do not interrupt implementation. Accounting continues: worker and
+reviewer tokens (including pending reservations), estimated/reported costs,
+requests, tool actions, working time, check durations, per-request model IDs,
+provider time and outcomes remain recorded across pauses and restarts. Completed
+checks record `allowed_seconds: null` when there was no deadline. These are
+actual uncapped work counters, not arbitrarily large numeric budgets.
+
+The spending cap and model-placement policy remain active: use the existing
+$0/free-remote policy for these trials. Measurement is not permission for a paid
+fallback. Per-response token/context capacities, provider connection timeouts,
+output-size protections and finite malformed-response/non-progress/review repair
+attempts remain technical boundaries. A genuine error or missing user input may
+still pause a run. Pause continues to cancel a running check without a deadline.
+Normal bounded runs retain their existing limits.
+
+Record successful and failed attempts separately, including interventions,
+completion status, model IDs, request counts, tokens, elapsed working time and
+check durations. Use distributions across comparable completed tasks to choose
+later limits; do not infer a cap from one small success or hide retries by
+resetting counters. No default limits have been inferred from the first trial.
