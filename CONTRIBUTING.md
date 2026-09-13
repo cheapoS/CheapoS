@@ -2,7 +2,9 @@
 
 Small, reviewable changes are welcome. For significant behavior changes, open an issue describing the problem and your proposed approach first.
 
-Run `python3 -B -m unittest discover -s tests -v` and `node --check dist/app.js`. Exercise relevant UI flows with `python3 run.py`. Model execution tests should use deterministic providers and temporary repositories, with no external inference calls or personal API credentials.
+Run `python3 -B -m unittest discover -s tests -v`, `node --check dist/app.js`, and `node --test tests/test_*.js`. Exercise relevant UI flows with `python3 run.py`. Model execution tests should use deterministic providers and temporary repositories, with no external inference calls or personal API credentials.
+
+For conversation changes, check live worker and reviewer output inside the CheapOS reply, command permission, reviewer revisions, and the final approval controls. Details should stay open through updates and tab switches; returning to Chat should show the latest message. Keep course corrections in chronological order and avoid presenting a failed or unfinished check/review as a success.
 
 Preserve these properties:
 

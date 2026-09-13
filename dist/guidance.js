@@ -445,3 +445,142 @@ const CheapOSGuide = (() => {
   return {modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
+
+/* Ordered conversation: execution is part of a CheapOS response. */
+'use strict';
+const CheapOSConversation = (() => {
+  const guide = CheapOSGuide;
+  const last = (events, kind) => events.filter(e => e.kind === kind).at(-1);
+  function eventPhase(event, previous = 'work') {
+    if (event.kind === 'checks' || event.kind === 'check_reused' || event.kind === 'permission' || event.title === 'Running verification') return 'checks';
+    if (event.kind === 'review' || event.kind === 'checkpoint' || event.detail?.role === 'reviewer' || event.title?.startsWith('Requesting reviewer:')) return 'review';
+    if (event.kind === 'commit') return 'commit';
+    if (event.detail?.role === 'coordinator' || event.title?.startsWith('Requesting coordinator:')) return 'plan';
+    if (event.kind === 'tool' || event.title?.startsWith('Requesting worker:') || event.kind === 'handoff' && event.detail?.role === 'worker') return 'work';
+    return previous;
+  }
+  function currentPhase(task, fallback) {
+    if (task.check_stream || task.pending_approval) return 'checks';
+    if (task.status === 'reviewing' || task.stream?.role === 'reviewer') return 'review';
+    if (task.active_role === 'coordinator') return 'plan';
+    return fallback || 'work';
+  }
+  function stepView(step, task, at) {
+    const {events, phase, live} = step;
+    const check = last(events, 'checks')?.detail;
+    const review = last(events, 'review')?.detail;
+    const commit = events.findLast(e => e.kind === 'commit' && e.detail?.commit)?.detail;
+    const toolEvents = events.filter(e => e.kind === 'tool' && e.detail?.arguments);
+    const edits = new Set(toolEvents.filter(e => ['write file','replace text','replace lines'].includes(e.title)).map(e => e.detail.arguments.path));
+    const request = events.findLast(e => e.kind === 'model');
+    const role = phase === 'review' ? 'reviewer' : phase === 'plan' ? 'coordinator' : 'worker';
+    const model = (live && task.stream?.model) || request?.title?.replace(/^Requesting (worker|reviewer|coordinator): /,'') || events.findLast(e => e.detail?.model)?.detail.model || task.providers?.[role]?.model || '';
+    const elapsed = live ? guide.progress(task, at)?.elapsed || '0s' : '';
+    let title = {work:'Worked on your request',checks:'Ran checks',review:'Requested independent review',plan:'Prepared the next step',commit:'Commit needs attention'}[phase];
+    let detail = edits.size ? `${edits.size} file${edits.size === 1 ? '' : 's'} updated` : `${toolEvents.length} action${toolEvents.length === 1 ? '' : 's'}`;
+    let outcome = 'done';
+    const finalAction=events.findLast(e=>['tool','tool_error'].includes(e.kind));
+    if (phase==='work' && finalAction?.kind==='tool_error') {
+      outcome='failed';title='Work needs attention';detail=finalAction.detail?.error||'The last action did not finish.';
+    }
+    if (phase === 'checks') {
+      outcome = check ? check.passed ? 'passed' : 'failed' : events.some(e => e.kind === 'check_reused') ? 'passed' : 'pending';
+      title = outcome === 'passed' ? 'Checks passed' : outcome === 'failed' ? 'Checks found something to fix' : 'Checks pending';
+      detail = (check?.command || last(events, 'check_reused')?.detail?.command || []).join(' ');
+    }
+    if (phase === 'review') {
+      outcome = review?.decision === 'APPROVE' ? 'passed' : review?.decision === 'REQUEST_CHANGES' ? 'revision' : 'pending';
+      title = outcome === 'passed' ? 'Independent review passed' : outcome === 'revision' ? 'Review requested changes' : 'Review is not finished';
+      detail = review?.feedback || 'Checking the changes against your request and test results.';
+    }
+    if (phase === 'commit') { title = commit ? 'Committed to your project' : title; detail = commit ? `${commit.branch} · ${commit.commit.slice(0,8)}` : ''; outcome = commit ? 'passed' : 'pending'; }
+    if (live) {
+      title = {work:'Working on your request',checks:'Running checks',review:'Getting an independent review',plan:'Preparing the next step',commit:'Committing your changes'}[phase];
+      if (task.pending_approval) title = 'Waiting for your permission';
+      else if (task.status === 'stopping') title = 'Pausing work';
+      outcome = task.pending_approval || task.status === 'stopping' ? 'pending' : 'live';
+      if (task.pending_approval) detail = task.pending_approval.command.join(' ');
+      else if (task.check_stream) detail = task.check_stream.command.join(' ');
+      else if (task.stream?.phase === 'thinking') detail = 'Thinking through the next step';
+      else if (task.stream?.phase === 'tool') detail = `Preparing ${String(task.stream.tool || 'the next action').replaceAll('_',' ')}`;
+      else if (task.stream?.phase === 'answer') detail = 'Writing a response';
+      else if (task.web_read) detail = `Reading ${task.web_read.url}`;
+      else if (request) detail = 'Waiting for the model to respond';
+    }
+    const lastAction = toolEvents.at(-1);
+    const activity = lastAction ? guide.activityItem(lastAction)?.title || lastAction.title : '';
+    const controller = ['checks','commit'].includes(phase);
+    return {...step, title, detail, outcome, model:controller?(phase==='checks'?'Local verification':'Local Git'):model, role:controller?'controller':role, elapsed, activity};
+  }
+  function response(events, key, task, latest, at) {
+    const steps = [];
+    let phase = 'work';
+    for (const event of events) {
+      if (event.kind === 'assistant' || event.kind === 'generation') {
+        if (steps.length) steps.at(-1).events.push(event);
+        continue;
+      }
+      if (!['tool','model','checks','check_reused','checkpoint','review','handoff','routing','tool_error','guard','permission','commit','web'].includes(event.kind)) continue;
+      if (event.kind === 'guard' && event.title === 'Applied User Guidance') continue;
+      phase = eventPhase(event, phase);
+      if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-${event.id ?? events.indexOf(event)}`,phase,events:[],live:false});
+      steps.at(-1).events.push(event);
+    }
+    const live = latest && guide.isActive(task.status);
+    const stream = latest ? task.stream : null;
+    // A simple streamed chat answer needs no execution row.
+    const onlyChat = stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','tool_error'].includes(e.kind));
+    if (live && !onlyChat) {
+      phase = currentPhase(task, steps.at(-1)?.phase);
+      if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-live-${phase}`,phase,events:[],live:false});
+      steps.at(-1).live = true;
+    }
+    // A model preparing the next tool is not a separate completed work step.
+    // Keep its output with the next action instead of showing “0 actions”.
+    for (let i=0; i<steps.length; i++) {
+      const step=steps[i];
+      if (!step.live && ['work','plan'].includes(step.phase) && !step.events.some(e=>['tool','tool_error','web'].includes(e.kind)) && steps.length>1) {
+        if (steps[i+1]) steps[i+1].events.unshift(...step.events);
+        else steps[i-1].events.push(...step.events);
+        steps.splice(i--,1);
+      }
+    }
+    for (let i=1; i<steps.length; i++) {
+      if (steps[i-1].phase===steps[i].phase) {
+        steps[i-1].events.push(...steps[i].events);
+        steps[i-1].live=steps[i].live;
+        steps.splice(i--,1);
+      }
+    }
+    const substantive = events.filter(e => !['generation','state','model','context'].includes(e.kind));
+    const final = substantive.at(-1);
+    const reply = final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
+    if (onlyChat || !live && !events.some(e => ['tool','checks','review','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
+    let intro = '';
+    if (steps.length) {
+      intro = live ? {work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';
+      if (live && phase === 'work' && last(events, 'review')?.detail?.decision === 'REQUEST_CHANGES') intro = 'The review found something to improve. I’m addressing that feedback.';
+      if (latest && task.pending_approval) intro = 'I need your permission to run this check.';
+      else if (latest && ['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)) intro = 'I’ve saved the work so far. I need your attention before continuing.';
+      else if (latest && guide.canCommit(task)) intro = task.status === 'completed' ? 'Checks have passed. The changes are ready for your review.' : 'The changes have passed checks and review. They’re ready for your decision.';
+      else if (steps.at(-1).phase === 'commit' && steps.at(-1).events.some(e => e.detail?.commit)) intro = 'Your approved changes are committed to the project.';
+    }
+    return {kind:'assistant',id:key,latest,live,intro,reply:onlyChat ? stream.content || reply : reply,stream:live && !onlyChat ? stream : null,steps:steps.map(s => stepView(s,task,at))};
+  }
+  function build(task, at = Date.now()) {
+    const entries = [];
+    for (const turn of guide.turns(task, at)) {
+      entries.push({kind:'user',id:`user-${turn.index}`,text:turn.userPrompt});
+      let start = 0, part = 0;
+      for (const steer of turn.steerMessages) {
+        if (steer.eventIndex > start) entries.push(response(turn.events.slice(start,steer.eventIndex),`reply-${turn.index}-${part++}`,task,false,at));
+        entries.push({kind:'user',id:`steer-${turn.index}-${steer.id ?? steer.eventIndex}`,text:steer.text,steer:true});
+        start = steer.eventIndex + 1;
+      }
+      entries.push(response(turn.events.slice(start),`reply-${turn.index}-${part}`,task,turn.isLatest,at));
+    }
+    return entries;
+  }
+  return {build};
+})();
+if (typeof module !== 'undefined') module.exports.conversation = CheapOSConversation;

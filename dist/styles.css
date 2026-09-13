@@ -93,7 +93,7 @@ svg, svg * {
   pointer-events: none;
 }
 
-/* --- Turn & Activity Card Architecture --- */
+/* Legacy detail views */
 .chat-turn { margin: 24px 0 32px; }
 .chat-turn:first-child { margin-top: 12px; }
 
@@ -270,3 +270,76 @@ svg, svg * {
 }
 
 
+/* One conversation: CheapOS owns every work step and decision. */
+.view#chat-view { max-width: 980px; padding: 28px 32px 20px; }
+.composer-area { max-width: 980px; }
+#chat-view .chat-message { margin: 0 0 28px; min-width: 0; }
+#chat-view .from-user { width: fit-content; max-width: 88%; padding: 16px 20px; border-radius: 16px 16px 4px 16px; background: #202723; border-color: #313b35; }
+#chat-view .from-user .chat-message-body { padding: 0; }
+#chat-view .chat-author { font-size: 14px; gap: 10px; }
+#chat-view .chat-author > span:not(.cheapos-avatar) { font-size: 12px; font-weight: 400; color: #9baaa1; }
+#chat-view .cheapos-response { max-width: 100%; width: 100%; padding: 0; background: transparent; border: 0; gap: 6px; }
+.cheapos-avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: var(--mint); background: #24372c; flex-shrink: 0; }
+.cheapos-avatar svg { width: 18px; height: 18px; }
+#chat-view .cheapos-response .chat-message-body { min-width: 0; padding: 0 0 0 40px; }
+#chat-view .chat-message-body p { font-size: 16px; line-height: 1.7; margin: 8px 0 14px; }
+#chat-view .orchestration-intro { color: #e3eae6; }
+.response-live { margin-left: auto; }
+.workflow { margin: 14px 0 18px; border: 1px solid #303a34; border-radius: 12px; background: #1b201d; overflow: hidden; }
+.workflow-step { margin: 0; border: 0; }
+.workflow-step + .workflow-step, .workflow-history + .workflow-step { border-top: 1px solid #2c342f; }
+.workflow-step > summary { display: flex; align-items: center; gap: 12px; padding: 15px 16px; cursor: pointer; list-style: none; }
+.workflow-step > summary::-webkit-details-marker, .workflow-history > summary::-webkit-details-marker, .workflow-event > summary::-webkit-details-marker { display: none; }
+.workflow-step > summary:hover { background: #222a25; }
+.workflow-step > summary:focus-visible, .workflow-history > summary:focus-visible { outline: 2px solid var(--mint); outline-offset: -3px; border-radius: 8px; }
+.workflow-symbol { display: grid; place-items: center; width: 18px; flex-shrink: 0; color: #8ecaa6; }
+.workflow-symbol svg, .workflow-symbol .spinner { width: 16px; height: 16px; }
+.outcome-failed .workflow-symbol, .outcome-revision .workflow-symbol, .outcome-pending .workflow-symbol { color: var(--amber); }
+.workflow-heading { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.workflow-heading strong { font-size: 14px; line-height: 1.5; font-weight: 550; color: #d9e3dd; }
+.workflow-step.is-live .workflow-heading strong { color: var(--mint); }
+.workflow-status { font-size: 13px; line-height: 1.5; color: #a3b0a8; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.workflow-last-action { font-size: 12px; line-height: 1.5; color: #94a29a; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.workflow-elapsed { color: #aebeb4; font: 12px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.workflow-toggle { display: flex; align-items: center; gap: 5px; color: #b4c4ba; font-size: 13px; white-space: nowrap; }
+.workflow-toggle svg { width: 12px; height: 12px; transition: transform .15s; }
+.workflow-step[open] > summary .workflow-toggle svg { transform: rotate(90deg); }
+.workflow-details { border-top: 1px solid #303a34; padding: 16px; background: #151a17; }
+.workflow-model { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding-bottom: 12px; font-size: 12px; color: #a4b1a9; }
+.workflow-model strong { font-weight: 500; overflow-wrap: anywhere; color: #c6d2ca; }
+.workflow-stream { border: 1px solid #344339; background: #101612; border-radius: 8px; margin-bottom: 14px; overflow: hidden; }
+.stream-label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #b2cfbe; padding: 10px 14px; border-bottom: 1px solid #28372e; }
+.stream-label > span:last-child { margin-left: auto; }
+#chat-view .workflow-stream pre { background: transparent; border: 0; border-radius: 0; padding: 14px; margin: 0; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--font-mono); color: #c1cfc6; }
+.workflow-event { border-bottom: 1px solid #28322c; }
+.workflow-event:last-child { border-bottom: 0; }
+.workflow-event > summary { display: flex; align-items: center; gap: 8px; padding: 10px 0; list-style: none; cursor: pointer; color: #c0cfc5; font-size: 13px; }
+.workflow-event > summary svg { width: 12px; height: 12px; color: #91b29f; }
+.workflow-event > summary span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.workflow-event time { color: #8a9b90; font-size: 11px; white-space: nowrap; }
+.workflow-event .output { max-height: 260px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
+#chat-view .workflow-note p, #chat-view .workflow-event p { font-size: 14px; color: #b9c7bf; }
+.workflow-note { padding: 6px 0; }
+.workflow-details .thinking-panel, .workflow-details .command-panel { margin: 10px 0; }
+.workflow-details .command-panel > summary { padding: 10px; }
+.workflow-details .terminal-viewport { max-height: 280px; }
+.workflow-details .terminal-body { font-size: 12px; }
+.workflow-history > summary { display: flex; gap: 8px; align-items: center; padding: 12px 16px; font-size: 13px; color: #a5b5ab; cursor: pointer; list-style: none; }
+.workflow-history > summary svg { width: 14px; height: 14px; }
+.workflow-history > summary svg:last-child { margin-left: auto; }
+.workflow-history[open] > summary { border-bottom: 1px solid #303a34; }
+#chat-view .chat-decision, #chat-view .chat-result, #chat-view .chat-checkpoint-card { margin: 16px 0 0; padding: 18px; border: 1px solid #394b3f; border-radius: 10px; box-shadow: none; background: #1d2720; }
+#chat-view .chat-decision p, #chat-view .chat-result p { font-size: 14px; }
+#chat-view .steer-bubble { border-left: 1px solid #45604f; }
+@media (min-width:1800px) { .view#chat-view, .composer-area { max-width: 1040px; } }
+@media (max-width:700px) {
+  .view#chat-view { padding: 22px 16px 12px; }
+  #chat-view .from-user { max-width: 94%; padding: 12px 16px; }
+  #chat-view .cheapos-response .chat-message-body { padding-left: 0; }
+  .workflow-step > summary { padding: 12px; gap: 8px; }
+  .workflow-details { padding: 12px; }
+  .workflow-toggle { font-size: 12px; }
+  .workflow-elapsed { display: none; }
+  #chat-view .chat-message-body p { font-size: 15px; }
+}
+@media (prefers-reduced-motion:reduce) { .workflow .spinner, .workflow .pulsing { animation: none; } }

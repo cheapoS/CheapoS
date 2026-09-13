@@ -1,3 +1,34 @@
+/* The conversation owns its execution details, streams, and approval controls. */
+'use strict';
+const CheapOSChatView = (() => {
+  function detailEvent(event) {
+    const d=event.detail||{};
+    if(event.kind==='generation') return thinkingMarkup(d);
+    if(event.kind==='assistant') return `<div class="workflow-note">${messageText(typeof d==='string'?d:'')}</div>`;
+    if(event.kind==='checks') return commandMarkup(d,{key:d.run_id||event.id});
+    if(event.kind==='model'||event.kind==='checkpoint'||event.kind==='permission') return '';
+    const action=CheapOSGuide.activityItem(event);
+    const title=action?.title||event.title||'Action';
+    return `<details class="workflow-event" data-event="work-event-${event.id}"><summary>${icon(event.kind==='tool_error'?'x':'chevron')}<span>${esc(title)}</span>${event.time?`<time>${new Date(event.time).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</time>`:''}</summary>${eventDetail(event)}</details>`;
+  }
+  function stepMarkup(step,task,stream) {
+    const live=step.live;
+    const symbol=step.outcome==='live'?'<span class="spinner"></span>':icon(['failed','revision','pending'].includes(step.outcome)?'clock':'check');
+    const role={worker:'Worker',reviewer:'Reviewer',coordinator:'Chat model',controller:'CheapOS'}[step.role];
+    const events=step.events.filter(e=>e.kind!=='model');
+    const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span>${stream.phase==='thinking'?'Thinking':stream.phase==='answer'?'Writing':'Waiting for output'}<span>Live</span></div><pre data-thinking="workflow-stream-${stream.request_id||step.id}">${esc(stream.thinking||stream.content||'Waiting for the next chunk…')}</pre>${stream.thinking&&stream.content?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
+    return `<details class="workflow-step ${live?'is-live':''} outcome-${step.outcome}" data-event="workflow-${step.id}" data-step="${step.id}"><summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(step.title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(step.detail)}</span>${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary><div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||'Scripted local model')}</strong></div>${liveOutput}${events.length>80?'<p class="small muted">Showing the latest 80 events in this step. The full history is in Activity.</p>':''}<div class="workflow-events">${events.slice(-80).map(detailEvent).join('')||(!liveOutput?'<p class="small muted">Waiting for the first action…</p>':'')}</div></div></details>`;
+  }
+  function message(entry,task,decision='') {
+    if(entry.kind==='user') return `<article class="chat-message from-user ${entry.steer?'steer-bubble':''}" data-message="${entry.id}"><div class="chat-author"><strong>You</strong>${entry.steer?'<span>Follow-up while working</span>':''}</div><div class="chat-message-body">${messageText(entry.text)}</div></article>`;
+    const steps=entry.steps, older=steps.length>4?steps.slice(0,-3):[], visible=older.length?steps.slice(-3):steps;
+    if(!steps.length&&!entry.reply&&!decision&&!entry.live)return '';
+    const history=older.length?`<details class="workflow-history" data-event="history-${entry.id}"><summary>${icon('clock')}Earlier steps <span>${older.length}</span>${icon('chevron')}</summary>${older.map(s=>stepMarkup(s,task,null)).join('')}</details>`:'';
+    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar">${icon('code')}</span><strong>CheapOS</strong>${entry.live?`<span class="response-live">${task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':'Working'}</span>`:''}</div><div class="chat-message-body">${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${steps.length?`<div class="workflow" aria-label="CheapOS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream)).join('')}</div>`:''}${entry.reply?`<div class="cheapos-answer">${messageText(entry.reply)}</div>`:''}${decision}</div></article>`;
+  }
+  return {message};
+})();
+
 'use strict';
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -109,8 +140,8 @@ function renderComposer() {
       $('#chat-steer').hidden=false;
       $('#chat-steer').disabled=state.sending||Boolean(other)||!$('#chat-input').value.trim();
     }
-    $('#chat-input').placeholder='🧭 Steer worker (inject guidance mid-flight)…';
-    $('#composer-note').innerHTML='<strong>🧭 Live Steering Active:</strong> Type guidance and press Enter or Steer to course-correct the worker on its next turn.';
+    $('#chat-input').placeholder='Add a detail or change direction…';
+    $('#composer-note').innerHTML='Keep talking to CheapOS. Your message will guide the next step.';
   }else{
     $('#chat-send').hidden=false;
     if($('#chat-steer'))$('#chat-steer').hidden=true;
@@ -216,17 +247,8 @@ function progressMarkup(task) {
 }
 function updateProgressClock() {
   if(!state.task)return;
-  const turns=CheapOSGuide.turns(state.task);
-  const liveTurn=turns.find(t=>t.isLive);
-  if(liveTurn){
-    const titleEl=$('#turn-title-'+liveTurn.index);
-    const subtitleEl=$('#turn-subtitle-'+liveTurn.index);
-    const elapsedEl=$('#turn-elapsed-'+liveTurn.index);
-    const p=CheapOSGuide.progress(state.task);
-    if(titleEl)titleEl.textContent=liveTurn.title;
-    if(subtitleEl)subtitleEl.textContent=liveTurn.subtitle;
-    if(elapsedEl&&p)elapsedEl.textContent=p.elapsed;
-  }
+  const elapsed=CheapOSGuide.progress(state.task)?.elapsed;
+  for(const el of $$('[data-work-elapsed]'))if(elapsed)el.textContent=elapsed;
   if($('#request-elapsed')){
     const p=CheapOSGuide.progress(state.task);
     if(p){
@@ -252,101 +274,35 @@ function commandMarkup(check,{live=false,open=false,key=check.run_id}={}) {
   const exitPill=live?'<span class="term-status-pill live"><span class="pulse-dot"></span>Live</span>':check.passed?`<span class="term-status-pill pass">Exit 0 · ${Number(check.duration||0).toFixed(1)}s</span>`:`<span class="term-status-pill fail">Exit ${check.exit_code??'1'} · ${Number(check.duration||0).toFixed(1)}s</span>`;
   return `<details class="command-panel ${live?'is-live':check.passed?'passed':'failed'}" data-event="command-${esc(key)}" ${live||open?'open':''}><summary>${live?'<span class="spinner"></span>':icon(check.passed?'check':'x')}<strong>${status}</strong><span>${live?'Live output':`Exit ${check.exit_code??'—'} · ${Number(check.duration||0).toFixed(1)}s`}</span>${icon('chevron')}</summary><code class="command-line">${esc(check.command.join(' '))}</code><div class="command-body"><div class="terminal-window ${live?'is-live':check.passed?'passed':'failed'}"><div class="terminal-header"><div class="traffic-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div><span class="terminal-title"><code>${esc(check.command.join(' '))}</code></span><div class="terminal-actions">${exitPill}<button type="button" class="terminal-copy-btn" data-copy-terminal="command-${esc(key)}" title="Copy output">${icon('file')} Copy</button></div></div><div class="terminal-viewport"><pre class="command-output terminal-body" tabindex="0" data-command-output="command-${esc(key)}" aria-label="${live?'Live command output':'Command output'}">${formatted}</pre></div>${check.truncated?'<p class="command-note">Showing the first 32 KB of output.</p>':''}${check.reason?`<p class="command-note error">${esc(check.reason)}</p>`:''}</div></div></details>`;
 }
-function renderTurnActivityCard(turn, task) {
-  const isLive=turn.isLive,p=CheapOSGuide.progress(task);
-  const elapsed=isLive&&p?p.elapsed:'';
-  const indicator=isLive?'<span class="phase-indicator pulse">◆</span>':`<span class="phase-indicator ${turn.statusIcon==='check'?'done':turn.statusIcon==='attention'?'warn':''}">${icon(turn.statusIcon==='check'?'check':turn.statusIcon==='failed'?'x':'spark')}</span>`;
-  const modelPill=(turn.worker&&turn.worker!=='Worker')?`<span class="model-pill">${esc(turn.worker)}</span>`:'';
-  const routingPill=(isLive&&turn.phase==='delegating'&&turn.coordinator)?`<span class="model-pill">${esc(turn.coordinator)} → ${esc(turn.worker)}</span>`:modelPill;
-  const timelineItems=turn.groupedItems.map(item=>{
-    if(item.type==='read')return `<div class="timeline-item">Read <code>${esc(item.path)}</code>${item.count>1?`<span class="count-badge">×${item.count}</span>`:''}${item.lines?`<small class="muted"> · ${item.lines} lines</small>`:''}</div>`;
-    if(item.type==='outline')return `<div class="timeline-item">Outlined symbols in <code>${esc(item.path)}</code></div>`;
-    if(item.type==='search')return `<div class="timeline-item">Searched project for <em>“${esc(item.query)}”</em> <small class="muted">· ${item.results} results</small>${item.count>1?`<span class="count-badge">×${item.count}</span>`:''}</div>`;
-    if(item.type==='web')return `<div class="timeline-item">Read web page: ${sourceLink(item.url,item.title)} ${item.range?`<small class="muted">· ${esc(item.range)}</small>`:''}</div>`;
-    if(item.type==='edit'){
-      const warn=item.event?.detail?.result?.syntax_warning;
-      return `<div class="timeline-item"><strong>Edited</strong> <code>${esc(item.path)}</code> <small class="muted">· saved in task copy</small>${warn?`<div class="timeline-item stalled" style="margin-top:4px">⚠ ${esc(warn)}</div>`:''}</div>`;
-    }
-    if(item.type==='checks'){
-      const exitNote=`Exit ${item.exit_code??'0'} · ${Number(item.duration||0).toFixed(1)}s`;
-      const formattedCheck=CheapOSGuide.formatTerminalOutput(item.output?.slice(-1200));
-      return `<div class="timeline-item">✓ <strong>Verification:</strong> <code>${esc(item.command.join(' '))}</code> <small class="muted">(${exitNote})</small>${item.output?`<div class="terminal-window ${item.exit_code===0?'passed':'failed'}" style="margin-top:6px"><div class="terminal-header"><div class="traffic-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div><span class="terminal-title"><code>${esc(item.command.join(' '))}</code></span><div class="terminal-actions"><span class="term-status-pill ${item.exit_code===0?'pass':'fail'}">${exitNote}</span><button type="button" class="terminal-copy-btn" data-copy-terminal="item-${item.event?.id||'chk'}" title="Copy output">${icon('file')} Copy</button></div></div><div class="terminal-viewport"><pre class="command-output terminal-body" tabindex="0" data-command-output="item-${item.event?.id||'chk'}">${formattedCheck}</pre></div></div>`:''}</div>`;
-    }
-    if(item.type==='handoff')return `<div class="timeline-item">◆ <strong>${esc(item.title)}:</strong> <span class="muted">${esc(item.from)} → ${esc(item.to)}</span></div>`;
-    if(item.type==='review')return `<div class="timeline-item">✓ <strong>${esc(item.title)}:</strong> <span class="muted">${esc(item.feedback)}</span></div>`;
-    if(item.type==='commit')return `<div class="timeline-item">✓ <strong>Committed to ${esc(item.branch)}:</strong> <code>${esc(item.commit?.slice(0,8))}</code> <small class="muted">· ${esc(item.message)}</small></div>`;
-    if(item.type==='guard')return `<div class="timeline-item ${item.stalled?'stalled':''}">⚠ <strong>${esc(item.title)}:</strong> ${esc(item.note)}</div>`;
-    if(item.type==='steer')return `<div class="timeline-item steer-item">${icon('compass')} <strong>User course correction:</strong> <span>${esc(item.note||item.title)}</span></div>`;
-    if(item.type==='error')return `<div class="timeline-item stalled">✕ <strong>${esc(item.title)}:</strong> ${esc(item.note)}</div>`;
-    return `<div class="timeline-item">${esc(item.title||'Tool action')}</div>`;
-  }).join('');
-  const liveCheckStream=(isLive&&task.check_stream)?`<div class="timeline-item"><div class="terminal-window is-live" style="margin-top:6px"><div class="terminal-header"><div class="traffic-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div><span class="terminal-title"><code>${esc((task.check_stream.command||[]).join(' '))}</code></span><div class="terminal-actions"><span class="term-status-pill live"><span class="pulse-dot"></span>Live</span></div></div><div class="terminal-viewport"><pre class="command-output terminal-body" tabindex="0" data-command-output="live-check-stream">${CheapOSGuide.formatTerminalOutput(task.check_stream.output||'Waiting for output…')}</pre></div></div></div>`:'';
-  const liveThinkingStream=(isLive&&task.stream&&task.stream.phase==='thinking'&&task.stream.thinking)?`<details class="timeline-item"><summary>Live reasoning</summary><pre class="timeline-command-preview">${esc(task.stream.thinking)}</pre></details>`:'';
-  const drawerContent=(timelineItems||liveCheckStream||liveThinkingStream)?`<div class="activity-drawer" id="drawer-${turn.index}" hidden><div class="subordinate-timeline">${timelineItems}${liveCheckStream}${liveThinkingStream}</div></div>`:'';
-  return `<div class="activity-card-container"><div class="evolving-activity-card ${isLive?'is-live':'collapsed-summary'}" id="activity-card-${turn.index}"><div class="activity-card-header">${indicator}<div class="activity-header-text"><strong id="turn-title-${turn.index}">${esc(turn.title)}</strong><span class="activity-subtitle" id="turn-subtitle-${turn.index}">${esc(turn.subtitle)}</span></div>${routingPill}${isLive?`<span class="activity-elapsed" id="turn-elapsed-${turn.index}">${elapsed}</span>`:''}${drawerContent?`<button type="button" class="details-toggle" data-toggle="drawer-${turn.index}" aria-expanded="false">Details ▾</button>`:''}</div>${drawerContent}</div></div>`;
-}
-function bindTurnDetails() {
-  $$('.details-toggle').forEach(btn=>{
-    btn.onclick=()=>{
-      const drawer=$('#'+btn.dataset.toggle);
-      if(!drawer)return;
-      drawer.hidden=!drawer.hidden;
-      btn.setAttribute('aria-expanded',String(!drawer.hidden));
-      btn.textContent=drawer.hidden?'Details ▾':'Details ▴';
-    };
-  });
-}
 function renderChat() {
   const task=state.task;if(!task)return;
   const guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
-  const turns=CheapOSGuide.turns(task);
-  const openDrawers=new Set($$('.details-toggle[aria-expanded="true"]').map(b=>b.dataset.toggle));
-  const message=(role,text)=>`<article class="chat-message ${role==='You'?'from-user':role==='Steer'?'from-user steer-bubble':'from-agent'}"><div class="chat-author">${role==='Steer'?'<span class="mini-avatar steer-avatar">🧭</span>':role==='You'?'<span class="mini-avatar">Y</span>':icon(role==='Review'?'spark':'code')}<strong>${role==='Steer'?'You (Course correction)':esc(role)}</strong></div><div class="chat-message-body">${messageText(text)}</div></article>`;
-  const parts=[task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':''];
-  turns.forEach(turn=>{
-    parts.push(`<div class="chat-turn" data-turn="${turn.index}">`);
-    parts.push(message('You',turn.userPrompt));
-    const items = turn.chatItems || [];
-    if (items.length === 0) {
-      if (turn.hasActivity) parts.push(renderTurnActivityCard(turn, task));
-      if (turn.assistantReply) parts.push(message('CheapOS', turn.assistantReply));
-    } else {
-      let activityCardRendered = false;
-      const postSteerReply = items.find(it => it.kind === 'assistant' && turn.steerMessages?.length && it.eventIndex > turn.steerMessages.at(-1).eventIndex);
-      items.forEach(it => {
-        if (!turn.isLive && turn.hasActivity && !activityCardRendered && it === postSteerReply) {
-          parts.push(renderTurnActivityCard(turn, task));
-          activityCardRendered = true;
-        }
-        if (it.kind === 'steer') {
-          parts.push(message('Steer', it.text));
-        } else if (it.kind === 'assistant') {
-          parts.push(message('CheapOS', it.text));
-        }
-      });
-      if (turn.hasActivity && !activityCardRendered) {
-        parts.push(renderTurnActivityCard(turn, task));
-      }
-    }
-    parts.push(`</div>`);
-  });
-  if(task.stream&&task.stream.phase==='answer'&&task.stream.content){
-    parts.push(`<article class="chat-message from-agent streaming-answer"><div class="chat-author">${icon('code')}<strong>CheapOS</strong><span>Writing…</span></div><div class="chat-message-body">${messageText(task.stream.content)}</div></article>`);
-  }
+  const conversation=CheapOSConversation.build(task);
+  state.chatDetails ||= new Map();
+  const detailKey=key=>task.id+':'+key;
+  for(const d of $$('#chat-view details[data-event]'))state.chatDetails.set(detailKey(d.dataset.event),d.open);
+  const focused=document.activeElement?.tagName==='SUMMARY'?document.activeElement.closest('#chat-view details')?.dataset.event:null;
+  let decision='';
   const button=(action,label,primary=false)=>`<button class="${primary?'primary-button':'subtle-button'}" data-chat-action="${action}">${label}</button>`;
   const routeFailures=task.error_code==='routing_unavailable'?(task.route?.failures||[]):[];
   const errorDetails=routeFailures.length?`<details class="chat-error"><summary>Model check results (${routeFailures.length})</summary>${routeFailures.map(f=>`<p><strong>${esc(f.model)}</strong><br>${esc(f.error)}</p>`).join('')}</details>`:task.error&&task.error!==(failure?.description||guide.description)?`<details class="chat-error"><summary>Details</summary><p>${esc(task.error)}</p></details>`:'';
-  if(task.pending_approval)parts.push(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row">${button('approve','Run once',true)}${button('approve-session','Allow for this session')}${button('decline','Decline')}</div></section>`);
-  else if(task.status==='ready')parts.push(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
-  else if(CheapOSGuide.canCommit(task))parts.push(commitDecisionMarkup(task));
-  else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))parts.push(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, CheapOS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
-  else if(!activeStatuses.has(task.status)&&task.status!=='awaiting_reply')parts.push(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='budget_paused'?`<button class="primary-button btn-boost-headroom" data-chat-action="boost-headroom">${icon('spark')} Boost Headroom & Resume</button>`:''}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
-  $('#chat-view').innerHTML=parts.join('');
-  for(const drawerId of openDrawers){
-    const drawer=$('#'+drawerId),btn=$(`[data-toggle="${drawerId}"]`);
-    if(drawer&&btn){drawer.hidden=false;btn.setAttribute('aria-expanded','true');btn.textContent='Details ▴';}
+  if(task.pending_approval)decision=(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row">${button('approve','Run once',true)}${button('approve-session','Allow for this session')}${button('decline','Decline')}</div></section>`);
+  else if(task.status==='ready')decision=(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
+  else if(CheapOSGuide.canCommit(task))decision=(commitDecisionMarkup(task));
+  else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))decision=(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, CheapOS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
+  else if(!activeStatuses.has(task.status)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='budget_paused'?`<button class="primary-button btn-boost-headroom" data-chat-action="boost-headroom">${icon('spark')} Boost Headroom & Resume</button>`:''}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
+  const lastReply=conversation.findLast(entry=>entry.kind==='assistant');
+  $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('');
+  for(const d of $$('#chat-view details[data-event]')){
+    const key=detailKey(d.dataset.event);
+    if(state.chatDetails.has(key))d.open=state.chatDetails.get(key);
+    d.ontoggle=()=>state.chatDetails.set(key,d.open);
+    if(d.classList.contains('workflow-step'))$('summary',d).onclick=()=>{
+      if(!d.open)requestAnimationFrame(()=>$('.workflow-stream,.command-panel',d)?.scrollIntoView({block:'nearest',behavior:'instant'}));
+    };
+    if(d.dataset.event===focused)$('summary',d)?.focus({preventScroll:true});
   }
-  updateProgressClock();bindCommitDecision(task);bindTurnDetails();
+  updateProgressClock();bindCommitDecision(task);bindTerminalCopy();
   $$('[data-chat-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.chatAction;
     if(action==='changes'||action==='activity'){setView(action);return}
@@ -575,7 +531,7 @@ async function steerTask(text) {
   try {
     await api('/tasks/'+state.task.id+'/steer',{message});
     state.drafts.delete(key);$('#chat-input').value='';
-    toast('🧭 Course correction sent to worker');
+    toast('CheapOS will use your update on the next step.');
     await refresh();
     $('#view-container').scrollTop=$('#view-container').scrollHeight;
   }catch(e){toast(e.message)}finally{state.sending=false;renderComposer();$('#chat-input').focus()}
