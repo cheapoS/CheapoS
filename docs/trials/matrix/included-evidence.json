@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "collected_at": "2026-09-13T22:25:55.401752+00:00",
+  "collected_at": "2026-09-13T22:36:21.766684+00:00",
   "scope": "Supplemental independently collected trial evidence. Historical controller approvals are retained; supplemental failures prevent qualification. No credentials, provider configuration, or live task logs are included.",
   "qualification_overrides": [
     {
@@ -22,6 +22,17 @@
       "basis": "Supplemental acceptance: 7 of 8 tests pass. The parser accepts 1.230 despite the literal two-decimal-place requirement. The original approval used an earlier acceptance suite.",
       "evidence_sources": [
         "/tmp/cheapos-matrix-kiro-20260913/medium-1/supplemental-acceptance.json"
+      ]
+    },
+    {
+      "trial_family": "kiro",
+      "trial": "medium-2",
+      "controller_status": "ready_for_merge",
+      "qualified": false,
+      "acceptance_passed": true,
+      "basis": "Updated 8-test acceptance and large exact-money probe pass, but literal README Python example fails because a comma-containing category is not CSV-quoted. Documentation completeness fails independently of implementation acceptance.",
+      "evidence_sources": [
+        "/tmp/cheapos-matrix-kiro-20260913/medium-2/independent-verification.json"
       ]
     }
   ],
@@ -1008,6 +1019,781 @@
           "commits_verified": true
         },
         "autonomous_execution_success": true
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/medium-2/result.json",
+      "source_sha256": "99d94faea1cfe58fe8141a38816a77a13abffd594e5320ddb8f72903b2f7df89",
+      "trial_family": "kiro",
+      "trial": "medium-2",
+      "kind": "result",
+      "evidence": {
+        "app_commit": "59fc08cdb9339d132e9bd5cb4c56cbb0721456ac",
+        "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+        "level": "medium",
+        "attempt": 2,
+        "run_id": "4cedecb8b9a841d3bffabb2c99ef58c8",
+        "status": "ready_for_merge",
+        "error": null,
+        "error_code": null,
+        "measurement": true,
+        "operator_prepared_plan": true,
+        "interventions_after_start": 0,
+        "models": {
+          "worker": "kiro/claude-sonnet-4.5",
+          "reviewer": "kiro/claude-haiku-4.5"
+        },
+        "models_used": {
+          "worker": [
+            "kiro/claude-sonnet-4.5"
+          ],
+          "reviewer": [
+            "kiro/claude-haiku-4.5"
+          ]
+        },
+        "handoffs": 0,
+        "review_revisions": 0,
+        "request_count": 14,
+        "usage": {
+          "worker": {
+            "tokens": 87039,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 59587,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 14
+        },
+        "consumption": {
+          "dollars": 0,
+          "working_seconds": 87.84828291699999,
+          "worker_turns": 8,
+          "requests": 14,
+          "tool_actions": 15,
+          "reviewer_tokens": 59587,
+          "check_seconds": 0.33,
+          "output_tokens": 0,
+          "worker_tokens": 87039
+        },
+        "run_metrics": [
+          {
+            "id": "9481844c778a4cf1b411e1f4dd7db50f",
+            "elapsed_seconds": 87.852875708,
+            "provider_request_seconds": 80.18300970899999,
+            "operator_wait_seconds": 0,
+            "provider_cooldown_seconds": 0,
+            "controller_work_seconds": 7.6698659990000095,
+            "outcome": "approved"
+          }
+        ],
+        "checks": [
+          {
+            "passed": false,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... test_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nERROR: test_invalid_rows (test_acceptance.Acceptance) (row='food,NaN')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-2/state/tasks/4cedecb8b9a841d3bffabb2c99ef58c8/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-2/state/tasks/4cedecb8b9a841d3bffabb2c99ef58c8/workspace/ledger.py\", line 52, in parse_expenses\n    if amount < 0:\ndecimal.InvalidOperation: [<class 'decimal.InvalidOperation'>]\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-2/state/tasks/4cedecb8b9a841d3bffabb2c99ef58c8/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=1, errors=1)\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+          }
+        ],
+        "commits": [
+          "36c99b4fab6e0de896292e271bf4d4c2a01e3f0c"
+        ],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true,
+          "merge_available": true,
+          "commits_verified": true
+        },
+        "driver_seconds": 90.73026075,
+        "autonomous_execution_success": true
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/medium-2/independent-verification.json",
+      "source_sha256": "0ab34ce3b2611885a37f91ba9b902001a16b04f27690fbcad5debc07a6b07635",
+      "trial_family": "kiro",
+      "trial": "medium-2",
+      "kind": "independent-verification",
+      "evidence": {
+        "trial_family": "kiro",
+        "trial": "medium-2",
+        "original_trial_status": "ready_for_merge",
+        "task_id": "4cedecb8b9a841d3bffabb2c99ef58c8",
+        "passed": false,
+        "acceptance_passed": true,
+        "tests_run": 8,
+        "supplemental_suite_source": "/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+        "acceptance": {
+          "arguments": [
+            "-m",
+            "unittest",
+            "-v",
+            "supplemental_acceptance"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "test_bad_header (supplemental_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (supplemental_acceptance.Acceptance) ... ok\ntest_empty (supplemental_acceptance.Acceptance) ... ok\ntest_invalid_rows (supplemental_acceptance.Acceptance) ... ok\ntest_large_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_quoted_newline (supplemental_acceptance.Acceptance) ... ok\ntest_trim (supplemental_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+        },
+        "probes": [
+          {
+            "kind": "literal_readme_python_example",
+            "arguments": [
+              "readme_example.py"
+            ],
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "Traceback (most recent call last):\n  File \"/private/var/folders/k6/smm5sp4n3kgcnn7xhw302knm0000gn/T/cheapos-final-evidence-ucf1t1vz/readme_example.py\", line 11, in <module>\n    rows = parse_expenses(csv_data)\n  File \"/private/var/folders/k6/smm5sp4n3kgcnn7xhw302knm0000gn/T/cheapos-final-evidence-ucf1t1vz/ledger.py\", line 35, in parse_expenses\n    raise ValueError(f\"Expected 2 columns, got {len(row)}\")\nValueError: Expected 2 columns, got 3\n"
+          },
+          {
+            "kind": "exact_money",
+            "arguments": [
+              "-c",
+              "from ledger import parse_expenses; from report import summarize; print(summarize(parse_expenses('category,amount\\nlarge,9007199254740993.01\\n')),end='')"
+            ],
+            "returncode": 0,
+            "stdout": "large: 9007199254740993.01\nTOTAL: 9007199254740993.01\n",
+            "stderr": ""
+          }
+        ],
+        "workspace_hashes": {
+          "ledger.py": "fe893a2ffa0d4a78d6351e983af144deb8f88549db98de912974b35995c53664",
+          "README.md": "061d1b8de7cb08a308d59e5ee35cdd5fde32a4eb1bb66c22cec5b9811d36e5fc",
+          "test_acceptance.py": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+          "report.py": "294075248c9907d797e1cd8df5c479457d6d75f6e2289d7321b97dfe1cc4eb10"
+        },
+        "workspace_preserved": true,
+        "method": "Executed updated acceptance and literal README examples in a temporary file copy. Original workspace and supplied tests unchanged. No live inference."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/very-hard-2/result.json",
+      "source_sha256": "abbfa0c87a7fb9db2726d971b660ce50242d228001a1bc92c611337c30a836ba",
+      "trial_family": "kiro",
+      "trial": "very-hard-2",
+      "kind": "result",
+      "evidence": {
+        "app_commit": "60de65efc6439114b60bde3e0d1e6aa350b7dda0",
+        "app_code_hash": "d5bb7c008ae6a375f4d136cc22820b73703666c885cc791f9a6964cab8925d82",
+        "level": "very-hard",
+        "attempt": 2,
+        "run_id": "a7f8ba53931e40a79c3a9c699818aa84",
+        "status": "paused",
+        "error": "The three-repair or 50-item allowance is exhausted; retain the branch and revise the scope",
+        "error_code": null,
+        "measurement": true,
+        "operator_prepared_plan": true,
+        "interventions_after_start": 0,
+        "models": {
+          "worker": "kiro/claude-sonnet-4.5",
+          "reviewer": "kiro/claude-haiku-4.5"
+        },
+        "models_used": {
+          "worker": [
+            "kiro/claude-sonnet-4.5"
+          ],
+          "reviewer": [
+            "kiro/claude-haiku-4.5"
+          ]
+        },
+        "handoffs": 0,
+        "review_revisions": 4,
+        "request_count": 53,
+        "usage": {
+          "worker": {
+            "tokens": 430713,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 301654,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 53
+        },
+        "consumption": {
+          "dollars": 0,
+          "working_seconds": 327.942075,
+          "worker_turns": 28,
+          "requests": 53,
+          "tool_actions": 51,
+          "reviewer_tokens": 301654,
+          "check_seconds": 4.51,
+          "output_tokens": 0,
+          "worker_tokens": 430713
+        },
+        "run_metrics": [
+          {
+            "id": "9796c11049a440c8a46be3f29feafaa5",
+            "elapsed_seconds": 327.95085324999997,
+            "provider_request_seconds": 299.31818304300015,
+            "operator_wait_seconds": 0,
+            "provider_cooldown_seconds": 0,
+            "controller_work_seconds": 28.63267020699982,
+            "outcome": "paused"
+          }
+        ],
+        "checks": [
+          {
+            "passed": true,
+            "duration": 0.17,
+            "allowed_seconds": null,
+            "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.009s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.17,
+            "allowed_seconds": null,
+            "output": "test_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.006s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.67,
+            "allowed_seconds": null,
+            "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.538s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.76,
+            "allowed_seconds": null,
+            "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.603s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.66,
+            "allowed_seconds": null,
+            "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.531s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.66,
+            "allowed_seconds": null,
+            "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.539s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.71,
+            "allowed_seconds": null,
+            "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.550s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.71,
+            "allowed_seconds": null,
+            "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.569s\n\nOK\n"
+          }
+        ],
+        "commits": [
+          "2888c104f199c220604a4660aa04dce0cafcb157",
+          "2888c104f199c220604a4660aa04dce0cafcb157",
+          "8dbb9703a68af0024d5216fdaf68ac150df4390e",
+          "8dbb9703a68af0024d5216fdaf68ac150df4390e",
+          "8dbb9703a68af0024d5216fdaf68ac150df4390e",
+          "8dbb9703a68af0024d5216fdaf68ac150df4390e"
+        ],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true
+        },
+        "driver_seconds": 329.62469758400005,
+        "autonomous_execution_success": false
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/very-hard-3/result.json",
+      "source_sha256": "f4c01cea9d0e488595d62e49283da6ba7586307a3a2ccede1efd1acfe0baee26",
+      "trial_family": "kiro",
+      "trial": "very-hard-3",
+      "kind": "result",
+      "evidence": {
+        "app_commit": "59fc08cdb9339d132e9bd5cb4c56cbb0721456ac",
+        "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+        "level": "very-hard",
+        "attempt": 3,
+        "run_id": "b704aa78c8354cc397431928e6180174",
+        "status": "ready_for_merge",
+        "error": null,
+        "error_code": null,
+        "measurement": true,
+        "operator_prepared_plan": true,
+        "interventions_after_start": 0,
+        "models": {
+          "worker": "kiro/claude-sonnet-4.5",
+          "reviewer": "kiro/claude-haiku-4.5"
+        },
+        "models_used": {
+          "worker": [
+            "kiro/claude-sonnet-4.5"
+          ],
+          "reviewer": [
+            "kiro/claude-haiku-4.5"
+          ]
+        },
+        "handoffs": 0,
+        "review_revisions": 0,
+        "request_count": 31,
+        "usage": {
+          "worker": {
+            "tokens": 287578,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 122403,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 31
+        },
+        "consumption": {
+          "dollars": 0,
+          "working_seconds": 186.154415792,
+          "worker_turns": 20,
+          "requests": 31,
+          "tool_actions": 27,
+          "reviewer_tokens": 122403,
+          "check_seconds": 2.26,
+          "output_tokens": 0,
+          "worker_tokens": 287578
+        },
+        "run_metrics": [
+          {
+            "id": "9dc27e0f2ba047c891c27de08e86fe38",
+            "elapsed_seconds": 186.160899625,
+            "provider_request_seconds": 169.04971946099994,
+            "operator_wait_seconds": 0,
+            "provider_cooldown_seconds": 0,
+            "controller_work_seconds": 17.111180164000075,
+            "outcome": "approved"
+          }
+        ],
+        "checks": [
+          {
+            "passed": true,
+            "duration": 0.17,
+            "allowed_seconds": null,
+            "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.007s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.17,
+            "allowed_seconds": null,
+            "output": "test_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.006s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.17,
+            "allowed_seconds": null,
+            "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.008s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.6,
+            "allowed_seconds": null,
+            "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.425s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.6,
+            "allowed_seconds": null,
+            "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.441s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.55,
+            "allowed_seconds": null,
+            "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.430s\n\nOK\n"
+          }
+        ],
+        "commits": [
+          "756560ce7910826f32ab144e2bc0b4f31a03e593",
+          "3d48c6b89d6bfcaebf7acc872fa901cb04d4cd20",
+          "3d41cb9962b8de6bd7159c47bede81b55962456d"
+        ],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true,
+          "merge_available": true,
+          "commits_verified": true
+        },
+        "driver_seconds": 188.997674375,
+        "autonomous_execution_success": true
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/very-hard-3/independent-verification.json",
+      "source_sha256": "05bff097df2598e27bd235db3d78601b8ce5f2a2c69eaef5dc5adea871a910fa",
+      "trial_family": "kiro",
+      "trial": "very-hard-3",
+      "kind": "independent-verification",
+      "evidence": {
+        "trial_family": "kiro",
+        "trial": "very-hard-3",
+        "original_trial_status": "ready_for_merge",
+        "task_id": "b704aa78c8354cc397431928e6180174",
+        "passed": true,
+        "acceptance_passed": true,
+        "tests_run": 8,
+        "supplemental_suite_source": "/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "00718f59509cc3386542b34dd4f2da5289a325dedc1e04d6918a7f2fc5942afa",
+        "acceptance": {
+          "arguments": [
+            "-m",
+            "unittest",
+            "-v",
+            "supplemental_acceptance"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "test_missing_import_has_no_traceback (supplemental_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (supplemental_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (supplemental_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (supplemental_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (supplemental_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (supplemental_acceptance.StoreTests) ... ok\ntest_legacy_migration (supplemental_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (supplemental_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.158s\n\nOK\n"
+        },
+        "probes": [
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "add",
+              "Buy groceries"
+            ],
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "list"
+            ],
+            "returncode": 0,
+            "stdout": "[{\"id\": 1, \"title\": \"Buy groceries\", \"done\": false}]\n",
+            "stderr": ""
+          },
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "complete",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "import",
+              "input.csv"
+            ],
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "export"
+            ],
+            "returncode": 0,
+            "stdout": "[{\"id\":1,\"title\":\"Buy groceries\",\"done\":true},{\"id\":2,\"title\":\"caf\u00e9, \u6771\u4eac\",\"done\":false},{\"id\":3,\"title\":\"Task B\",\"done\":true}]\n",
+            "stderr": ""
+          }
+        ],
+        "workspace_hashes": {
+          "store.py": "bd9c3adc5866c7ea0d2918264876cb350cd98e2ebb56fce401d4718b8b038129",
+          "README.md": "40a561b7663089919e900fdd7f03af757e4da482f9116ca4ebe85e9a8003e5d4",
+          "test_acceptance.py": "00718f59509cc3386542b34dd4f2da5289a325dedc1e04d6918a7f2fc5942afa",
+          "cli.py": "9d888e7d45a6486884fd359abd15ca4ab429b122b37779f653a18f6dab2906e2"
+        },
+        "workspace_preserved": true,
+        "method": "Executed updated acceptance and literal README examples in a temporary file copy. Original workspace and supplied tests unchanged. No live inference."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/result.json",
+      "source_sha256": "ee01db2de63444e3165f9bb8e808037fe27fdc141e3ac5b07568af00afe59b27",
+      "trial_family": "nvidia-kiro",
+      "trial": "medium-2",
+      "kind": "result",
+      "evidence": {
+        "app_commit": "c559aa821cbfcabb8c11a4941353b8089b1cf10b",
+        "app_code_hash": "d5bb7c008ae6a375f4d136cc22820b73703666c885cc791f9a6964cab8925d82",
+        "level": "medium",
+        "attempt": 2,
+        "run_id": "db61a8538cf84886a438806532d82289",
+        "status": "ready_for_merge",
+        "error": null,
+        "error_code": null,
+        "measurement": true,
+        "operator_prepared_plan": true,
+        "interventions_after_start": 0,
+        "models": {
+          "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+          "reviewer": "kiro/claude-haiku-4.5"
+        },
+        "models_used": {
+          "worker": [
+            "nvidia/nvidia/nemotron-3-super-120b-a12b"
+          ],
+          "reviewer": [
+            "kiro/claude-haiku-4.5"
+          ]
+        },
+        "handoffs": 0,
+        "review_revisions": 0,
+        "request_count": 27,
+        "usage": {
+          "worker": {
+            "tokens": 208381,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 56420,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 27
+        },
+        "consumption": {
+          "dollars": 0,
+          "working_seconds": 276.380496833,
+          "worker_turns": 21,
+          "requests": 27,
+          "tool_actions": 25,
+          "reviewer_tokens": 56420,
+          "check_seconds": 0.5599999999999999,
+          "output_tokens": 0,
+          "worker_tokens": 208381
+        },
+        "run_metrics": [
+          {
+            "id": "de2daf8988af4fa48fd2f641990d6393",
+            "elapsed_seconds": 276.38597383300004,
+            "provider_request_seconds": 266.869017416,
+            "operator_wait_seconds": 0,
+            "provider_cooldown_seconds": 0,
+            "controller_work_seconds": 9.516956417000017,
+            "outcome": "approved"
+          }
+        ],
+        "checks": [
+          {
+            "passed": false,
+            "duration": 0.12,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... FAIL\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ERROR\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... FAIL\ntest_empty (test_acceptance.Acceptance) ... FAIL\ntest_invalid_rows (test_acceptance.Acceptance) ... test_large_exact_money (test_acceptance.Acceptance) ... FAIL\ntest_quoted_newline (test_acceptance.Acceptance) ... ERROR\ntest_trim (test_acceptance.Acceptance) ... FAIL\n\n======================================================================\nERROR: test_csv_quotes_and_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 7, in test_csv_quotes_and_exact_money\n    rows=parse_expenses('category,amount\\n\"food, groceries\",0.10\\n\"food, groceries\",0.20\\nTravel,2.50\\n')\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/ledger.py\", line 2, in parse_expenses\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/ledger.py\", line 2, in <listcomp>\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\nValueError: could not convert string to float: ' groceries\"'\n\n======================================================================\nERROR: test_quoted_newline (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 14, in test_quoted_newline\n    self.assertEqual(parse_expenses('category,amount\\n\"food\\ntravel\",1.20\\n'),[('food\\ntravel',Decimal('1.20'))])\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/ledger.py\", line 2, in parse_expenses\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/ledger.py\", line 2, in <listcomp>\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\nIndexError: list index out of range\n\n======================================================================\nFAIL: test_bad_header (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 18, in test_bad_header\n    with self.assertRaises(ValueError):parse_expenses('name,cost\\nfood,1\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_determinism_and_no_mutation (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 24, in test_determinism_and_no_mutation\n    self.assertEqual(summarize(rows),'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n');self.assertEqual(rows,before)\nAssertionError: '3' != 'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n'\n- 3\n+ a: 2.00\nb: 1.00\nTOTAL: 3.00\n\n\n\n======================================================================\nFAIL: test_empty (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 15, in test_empty\n    def test_empty(self): self.assertEqual(summarize(parse_expenses('category,amount\\n')),'TOTAL: 0.00\\n')\nAssertionError: '0' != 'TOTAL: 0.00\\n'\n- 0\n+ TOTAL: 0.00\n\n\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,-1')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,NaN')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,Infinity')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row=',1')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1,extra')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1.001')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_large_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 12, in test_large_exact_money\n    self.assertEqual(summarize(rows),'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n')\nAssertionError: '9007199254740994.0' != 'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n'\n- 9007199254740994.0\n+ A: 9007199254740993.01\nTOTAL: 9007199254740993.01\n\n\n\n======================================================================\nFAIL: test_trim (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 16, in test_trim\n    def test_trim(self): self.assertEqual(parse_expenses('category,amount\\n  food  , 1.20 \\n'),[('food',Decimal('1.20'))])\nAssertionError: Lists differ: [('  food  ', 1.2)] != [('food', Decimal('1.20'))]\n\nFirst differing element 0:\n('  food  ', 1.2)\n('food', Decimal('1.20'))\n\n- [('  food  ', 1.2)]\n+ [('food', Decimal('1.20'))]\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=12, errors=2)\n"
+          },
+          {
+            "passed": false,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... FAIL\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... FAIL\ntest_empty (test_acceptance.Acceptance) ... FAIL\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... FAIL\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nFAIL: test_csv_quotes_and_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 9, in test_csv_quotes_and_exact_money\n    self.assertEqual(summarize(rows),'Travel: 2.50\\nfood, groceries: 0.30\\nTOTAL: 2.80\\n')\nAssertionError: '2.80' != 'Travel: 2.50\\nfood, groceries: 0.30\\nTOTAL: 2.80\\n'\n- 2.80\n+ Travel: 2.50\nfood, groceries: 0.30\nTOTAL: 2.80\n\n\n\n======================================================================\nFAIL: test_determinism_and_no_mutation (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 24, in test_determinism_and_no_mutation\n    self.assertEqual(summarize(rows),'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n');self.assertEqual(rows,before)\nAssertionError: '3' != 'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n'\n- 3\n+ a: 2.00\nb: 1.00\nTOTAL: 3.00\n\n\n\n======================================================================\nFAIL: test_empty (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 15, in test_empty\n    def test_empty(self): self.assertEqual(summarize(parse_expenses('category,amount\\n')),'TOTAL: 0.00\\n')\nAssertionError: '0' != 'TOTAL: 0.00\\n'\n- 0\n+ TOTAL: 0.00\n\n\n\n======================================================================\nFAIL: test_large_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 12, in test_large_exact_money\n    self.assertEqual(summarize(rows),'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n')\nAssertionError: '9007199254740993.01' != 'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n'\n- 9007199254740993.01\n+ A: 9007199254740993.01\nTOTAL: 9007199254740993.01\n\n\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=4)\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+          }
+        ],
+        "commits": [
+          "aa19bcddeeaf1f1d7af3a11aee312443ed24ff17"
+        ],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true,
+          "merge_available": true,
+          "commits_verified": true
+        },
+        "driver_seconds": 279.120745375,
+        "autonomous_execution_success": true
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/independent-verification.json",
+      "source_sha256": "1c63bf2e30ea2b01812db168a5caf0a321bb0796a0b1213beb767d2aff2f069b",
+      "trial_family": "nvidia-kiro",
+      "trial": "medium-2",
+      "kind": "independent-verification",
+      "evidence": {
+        "acceptance_exit_code": 0,
+        "acceptance_output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n",
+        "exact_money_regression": true,
+        "exact_money_actual": "A: 9007199254740993.10\nTOTAL: 9007199254740993.10\n",
+        "readme_example_runs": true,
+        "readme_example_output": "food: 10.00\ntravel: 5.50\nTOTAL: 15.50\n\n",
+        "tests_unchanged": true,
+        "workspace_clean": true
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-antigravity-20260913/medium-2/result.json",
+      "source_sha256": "c20807c4c8ce267b071551bc9cbf6e5176b215aa16466b62b90599deedf90ef0",
+      "trial_family": "antigravity",
+      "trial": "medium-2",
+      "kind": "result",
+      "evidence": {
+        "app_commit": "60de65efc6439114b60bde3e0d1e6aa350b7dda0",
+        "app_code_hash": "d5bb7c008ae6a375f4d136cc22820b73703666c885cc791f9a6964cab8925d82",
+        "level": "medium",
+        "attempt": 2,
+        "run_id": "dbf995c52ba64b2497605a65b5f3fed7",
+        "status": "ready_for_merge",
+        "error": null,
+        "error_code": null,
+        "measurement": true,
+        "operator_prepared_plan": true,
+        "interventions_after_start": 0,
+        "models": {
+          "worker": "antigravity/claude-sonnet-4-6",
+          "reviewer": "antigravity/claude-opus-4-6-thinking"
+        },
+        "models_used": {
+          "worker": [
+            "antigravity/claude-sonnet-4-6"
+          ],
+          "reviewer": [
+            "antigravity/claude-opus-4-6-thinking"
+          ]
+        },
+        "handoffs": 0,
+        "review_revisions": 0,
+        "request_count": 21,
+        "usage": {
+          "worker": {
+            "tokens": 94874,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 43325,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 21
+        },
+        "consumption": {
+          "dollars": 0,
+          "working_seconds": 166.711327375,
+          "worker_turns": 13,
+          "requests": 21,
+          "tool_actions": 19,
+          "reviewer_tokens": 43325,
+          "check_seconds": 0.33999999999999997,
+          "output_tokens": 0,
+          "worker_tokens": 94874
+        },
+        "run_metrics": [
+          {
+            "id": "21caa02d5de24a03a6d91b4181daedf5",
+            "elapsed_seconds": 166.71589516699999,
+            "provider_request_seconds": 158.612823503,
+            "operator_wait_seconds": 0,
+            "provider_cooldown_seconds": 0,
+            "controller_work_seconds": 8.103071663999998,
+            "outcome": "approved"
+          }
+        ],
+        "checks": [
+          {
+            "passed": false,
+            "duration": 0.12,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... test_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-antigravity-20260913/medium-2/state/tasks/dbf995c52ba64b2497605a65b5f3fed7/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=1)\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+          }
+        ],
+        "commits": [
+          "b0b76d3131859dcad3449be90925a2565a1abaf9"
+        ],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true,
+          "merge_available": true,
+          "commits_verified": true
+        },
+        "driver_seconds": 169.27589141599998,
+        "autonomous_execution_success": true
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-nvidia-sonnet-20260913/hard-1/route-diagnosis.json",
+      "source_sha256": "ad66e211575c01439b3113d676e2cc34c795c6e74351eaa58b4dfaad37930ff8",
+      "trial_family": "nvidia-sonnet",
+      "trial": "hard-1",
+      "kind": "route-diagnosis",
+      "evidence": {
+        "status": "model_unavailable",
+        "upstream_status": 400,
+        "requested_reviewer": "kiro/claude-sonnet-5",
+        "upstream_error": "Invalid model. Please select a different model to continue.",
+        "gateway_attempted_fallback": "claude-sonnet-4-6",
+        "gateway_fallback_status": 400,
+        "observed_at": "2026-09-13T22:32:47Z",
+        "reviewer_decision_obtained": false,
+        "note": "Catalog availability did not prove model inference availability. Reserved reviewer tokens remain uncertain; no retry was performed for this model."
       }
     }
   ]
