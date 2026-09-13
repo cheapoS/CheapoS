@@ -1,3 +1,4 @@
+from cheapos.verification import evidence_identity
 import http.client
 import io
 import json
@@ -228,8 +229,8 @@ class HTTPTests(unittest.TestCase):
         Workspace(task['workspace']).write_file('new.txt', 'saved task\n')
         self.engine.refresh_changes(task)
         digest = hashlib.sha256(task['patch'].encode()).hexdigest()
-        task.update(status='approved', checks=[{'passed': True, 'digest': digest}],
-                    checkpoints=[{'decision': 'APPROVE', 'diff': task['patch']}])
+        task.update(status='approved', checks=[{'passed': True, 'digest': digest, 'verification_identity': evidence_identity(task)}],
+                    checkpoints=[{'decision': 'APPROVE', 'diff': task['patch'], 'verification_identity': evidence_identity(task)}])
         self.engine.store.save(task)
         (source / 'new.txt').write_text('current project\n')
         git(source, 'add', 'new.txt')

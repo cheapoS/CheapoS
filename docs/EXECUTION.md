@@ -104,3 +104,28 @@ exact commands separately. Revoke a project grant or clear this chat's exact
 commands there. Grants expire on server restart; revocation does not terminate
 an already running command. Command permission never implies passing checks or
 approval to commit. Run once and Decline remain available.
+
+### Verification time and evidence
+
+New tasks allow 360 seconds per verification command (the measured CheapOS full
+suite took 267 seconds). Advanced limits exposes `check_seconds`, from 1 to 1800.
+Old tasks without this field keep 90 seconds until their limits are explicitly
+updated. The effective command allowance is always capped by the current run's
+remaining working time; it does not change spending, token, or turn caps.
+Process timeout, task deadline, output limit, user pause, and a failing test
+process have separate outcomes. Infrastructure limits pause with a next action.
+
+Checkpoints and commit readiness share a versioned identity covering the task
+copy, baseline, generation, patch, exact argv, executable, virtual environment
+configuration, known dependency configuration and installed-package file stats.
+A renamed/pinned task does not change that identity. Explicit run_checks always
+executes; checkpoint reuse requires matching passing evidence. A focused command
+verifies only that command, not the full suite. For documentation work, choose an
+appropriate documented check (for example a formatting/link check); a successful
+command is not presented as invented code-test coverage.
+
+Old check records remain visible, but lack the new identity and need fresh
+verification/review before commit. Rollback still uses workspace generation to
+locate historical patches, independently of their current verification validity.
+No arbitrary environment values are persisted. Unknown executable/environment
+identity is conservatively untrusted; this is evidence tracking, not an OS sandbox.

@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cheapos import commits, reconciliation
+from cheapos.verification import evidence_identity
 from cheapos.engine import Engine, Runtime, needs_patch_review
 from cheapos.workspace import Workspace, git
 
@@ -31,8 +32,8 @@ class CommitTests(unittest.TestCase):
         self.engine.refresh_changes(self.task)
         self.task['status'] = status
         generation = self.task.get('workspace_generation', 0)
-        self.task['checks'].append({'passed': True, 'digest': hashlib.sha256(self.task['patch'].encode()).hexdigest(), 'generation': generation})
-        self.task['checkpoints'].append({'decision': 'APPROVE', 'diff': self.task['patch'], 'worker_summary': 'Add approved example', 'generation': generation})
+        self.task['checks'].append({'passed': True, 'digest': hashlib.sha256(self.task['patch'].encode()).hexdigest(), 'generation': generation, 'verification_identity': evidence_identity(self.task)})
+        self.task['checkpoints'].append({'decision': 'APPROVE', 'diff': self.task['patch'], 'worker_summary': 'Add approved example', 'generation': generation, 'verification_identity': evidence_identity(self.task)})
         self.engine.store.save(self.task)
 
     def preview(self):
@@ -217,11 +218,13 @@ class CommitTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'verification'):
             self.preview()
         self.task['checks'][-1]['generation'] = 1
+        self.task['checks'][-1]['verification_identity'] = evidence_identity(self.task)
         self.engine.store.save(self.task)
         with self.assertRaisesRegex(ValueError, 'review'):
             self.preview()
         self.assertTrue(needs_patch_review(self.task))
         self.task['checkpoints'][-1]['generation'] = 1
+        self.task['checkpoints'][-1]['verification_identity'] = evidence_identity(self.task)
         self.assertFalse(needs_patch_review(self.task))
 
     def test_reconciliation_merges_nonoverlapping_edits_and_preserves_source_deletion(self):

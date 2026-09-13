@@ -19,6 +19,7 @@ from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
 from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, Workspace, git
 from . import commits, reconciliation
+from .verification import evidence_identity, matches as evidence_matches
 from .web import WebReader, allowed_urls
 from .gateways import gateway_for
 from .omniroute import OmniRouteManager
@@ -91,14 +92,14 @@ Call review_decision with APPROVE only when the change satisfies the task, check
 REQUEST_CHANGES with specific actionable feedback when the worker can fix the issue.
 TAKE_OVER if the task needs stronger implementation reasoning. This pauses for explicit user approval and retains the same budget.
 Never fabricate verification, and don't approve incomplete or truncated evidence."""
-DEFAULT_LIMITS = {"dollars": 1.0, "reviewer_tokens": 200000, "worker_turns": 40, "iterations": 5, "output_tokens": 2048, "checkpoint_turns": 12, "run_minutes": 15}
+DEFAULT_LIMITS = {"dollars": 1.0, "reviewer_tokens": 200000, "worker_turns": 40, "iterations": 5, "output_tokens": 2048, "checkpoint_turns": 12, "run_minutes": 15, "check_seconds": 360}
 ACTIVE = {"running", "reviewing", "waiting_approval", "stopping"}
 
 
 def limits_from(value):
     result = dict(DEFAULT_LIMITS)
     result.update(value or {})
-    for key, minimum, maximum in [("dollars", 0, 100), ("reviewer_tokens", 512, 1000000), ("worker_turns", 1, 200), ("iterations", 1, 20), ("output_tokens", 128, 16384), ("checkpoint_turns", 2, 200), ("run_minutes", 1, 720)]:
+    for key, minimum, maximum in [("dollars", 0, 100), ("reviewer_tokens", 512, 1000000), ("worker_turns", 1, 200), ("iterations", 1, 20), ("output_tokens", 128, 16384), ("checkpoint_turns", 2, 200), ("run_minutes", 1, 720), ("check_seconds", 1, 1800)]:
         number = result[key]
         if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number) or not minimum <= number <= maximum:
             raise ValueError("Invalid limit: " + key)
@@ -205,7 +206,7 @@ def check_argv(command):
 
 
 def current_evidence(task, evidence):
-    return evidence.get("generation", 0) == task.get("workspace_generation", 0)
+    return evidence.get("generation", 0) == task.get("workspace_generation", 0) and evidence_matches(task, evidence)
 
 
 def needs_patch_review(task):
@@ -670,7 +671,7 @@ class Engine:
             checkpoint = next((c for c in task.get("checkpoints", []) if c.get("number") == checkpoint_number), None)
             if not checkpoint:
                 raise ValueError(f"Checkpoint #{checkpoint_number} not found")
-            if not current_evidence(task, checkpoint):
+            if checkpoint.get("generation", 0) != task.get("workspace_generation", 0):
                 raise ValueError("This checkpoint belongs to the previous task copy. That copy is preserved; choose a checkpoint from the current project version.")
             ws = Workspace(task["workspace"])
             ws.rollback_to_patch(checkpoint.get("diff", ""))
@@ -1443,9 +1444,14 @@ class Engine:
         task["validated_check_command"] = list(argv)
         workspace = Workspace(task["workspace"])
         before = workspace.patch()
-        live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False, "session_allowed": session_allowed}
+        before_identity = evidence_identity(task)
+        allowed = task['limits'].get('check_seconds', 90)
+        remaining = task['limits'].get('run_minutes', 15) * 60 - (time.monotonic() - runtime.started)
+        runtime.guard()
+        effective = min(allowed, remaining)
+        live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False, "session_allowed": session_allowed, "timeout_seconds": effective}
         task["check_stream"] = live
-        self.event(task, "tool", "Running verification", {"command": argv, "run_id": live["run_id"]})
+        self.event(task, "tool", "Running verification", {"command": argv, "run_id": live["run_id"], "timeout_seconds": effective})
 
         def emit(output, truncated):
             live.update(output=output, truncated=truncated, updated_at=now())
@@ -1453,16 +1459,24 @@ class Engine:
             self.store.publish(task)
 
         try:
-            result = workspace.run_checks(argv, runtime.stop, on_output=emit)
+            result = workspace.run_checks(argv, runtime.stop, timeout=effective, on_output=emit)
         finally:
             task["check_stream"] = None
             task["updated_at"] = now()
             self.store.publish(task)
         result["run_id"] = live["run_id"]
+        result['allowed_seconds'] = effective
+        result['outcome'] = {'cancelled': 'user_paused', 'timed out': 'task_deadline' if remaining <= allowed else 'process_timeout', 'output limit exceeded': 'output_limit'}.get(result.get('reason'), 'passed' if result['passed'] else 'test_failure')
+        result['next_action'] = {'user_paused': 'Resume when ready.', 'task_deadline': 'Review saved work or increase the task time limit before resuming.', 'process_timeout': 'Inspect output; choose a focused check or increase the verification timeout.', 'output_limit': 'Reduce test verbosity or select a focused command.', 'test_failure': 'Inspect the failing assertion or process error before changing code.', 'passed': 'Only this command was verified.'}[result['outcome']]
         self.refresh_changes(task)
-        if before != task["patch"]:
+        after_identity = evidence_identity(task)
+        if before != task["patch"] or before_identity != after_identity or after_identity is None:
             result["passed"] = False
-            result["reason"] = "Verification changed workspace files. Inspect the changes and rerun checks."
+            result["reason"] = "Verification inputs changed or the environment could not be identified. Inspect the changes and rerun checks."
+            if result["outcome"] == "passed":
+                result["outcome"] = "inputs_changed"
+                result["next_action"] = "Inspect the workspace and environment before requesting fresh verification."
+        result["verification_identity"] = after_identity if result["passed"] else None
         result["digest"] = hashlib.sha256(task["patch"].encode()).hexdigest()
         result["generation"] = task.get("workspace_generation", 0)
         result["time"] = now()
@@ -1471,6 +1485,8 @@ class Engine:
         self.event(task, "checks", "Verification passed" if result["passed"] else "Verification failed", result)
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
+        if result["outcome"] in {"task_deadline", "process_timeout", "output_limit", "inputs_changed"}:
+            raise ProgressPause(result["next_action"])
         return result
 
     def checkpoint_feedback(self, runtime, args):
@@ -1513,13 +1529,16 @@ class Engine:
         runtime.observations.clear()
         task["loop_guidance"] = None
         if not checks["passed"]:
-            return {"decision": "REQUEST_CHANGES", "feedback": "The configured verification command failed. Fix the failure before review.", "checks": checks}
+            if checks.get('outcome') in {'task_deadline', 'process_timeout', 'output_limit'}:
+                raise ProgressPause(checks['next_action'])
+            return {"decision": "REQUEST_CHANGES", "feedback": checks.get('next_action', 'Inspect the failed verification before review.'), "checks": checks}
         if task["active_role"] == "reviewer":
             task["status"] = "completed"
             self.event(task, "complete", "Frontier takeover finished; ready for your review", args)
             return {"decision": "COMPLETE", "feedback": "Takeover finished; human review required."}
         checkpoint = saved_review or {"number": len(task["checkpoints"]) + 1, "original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "files_changed": [f["path"] for f in task["changes"]], "diff": task["patch"], "checks": checks, "worker_summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000], "decision": "PENDING", "feedback": ""}
         checkpoint["generation"] = task.get("workspace_generation", 0)
+        checkpoint["verification_identity"] = checks.get("verification_identity")
         if not saved_review:
             task["checkpoints"].append(checkpoint)
         if automatic(task, "reviewer"):

@@ -26,12 +26,12 @@ Add short deterministic timeout simulations and evidence invalidation tests, not
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Bounded 1–1800 second verification setting; new tasks default to 360 seconds from T12 measurements, old tasks without the setting retain 90. Effective command time is capped by remaining task time. Structured failure outcomes and actionable infrastructure pauses. Shared content/baseline/command/runner/dependency evidence identity gates checkpoint reuse and commit readiness. Virtualenv executables retain their environment identity.
+- Acceptance evidence: Seven deterministic tests cover real short process/task deadlines, a longer successful command, setting bounds and legacy fallback, metadata stability, test/config/command/generation/environment invalidation, legacy evidence rejection, and honest docs-only command results. Existing workflow confirms one check through worker/reviewer/human preview; explicit checks execute again.
+- Commands and results: 80 check-output/permission/profile/review/commit/reconciliation/rollback/HTTP tests passed (200.833s). After configuration fingerprint expansion, 14 identity/profile/project-grant tests passed (20.965s). Final verification module: 7 passed (9.070s). JavaScript syntax and 62 presentation tests passed; git diff --check passed. Logs: /tmp/cheapos-t13-*.log.
+- Browser scenarios and results: Isolated scripted local demo reached actual checks, independent review and human approval preview. Expanded check output displayed exact argv, individual test output and Allowed: 360.0 seconds. No source commit was approved in the fixture.
+- Remaining limitations: Legacy checks stay readable but require fresh checks/review before commit. Environment tracking covers known configuration and installed-package file metadata, not an OS sandbox or arbitrary external services. Unidentifiable environments are conservatively untrusted. Focused and documentation commands prove only their recorded command, not full-suite coverage.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

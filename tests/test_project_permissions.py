@@ -1,3 +1,4 @@
+from cheapos.verification import evidence_identity
 import shlex
 from pathlib import Path
 from unittest.mock import Mock
@@ -90,8 +91,8 @@ class ProjectPermissionTests(LocalCase):
         Workspace(task['workspace']).write_file('saved.txt','Task edit\n')
         self.engine.refresh_changes(task)
         digest=hashlib.sha256(task['patch'].encode()).hexdigest()
-        task.update(status='approved', checks=[{'passed':True,'digest':digest}],
-                    checkpoints=[{'decision':'APPROVE','diff':task['patch']}])
+        task.update(status='approved', checks=[{'passed':True,'digest':digest, 'verification_identity': evidence_identity(task)}],
+                    checkpoints=[{'decision':'APPROVE','diff':task['patch'], 'verification_identity': evidence_identity(task)}])
         self.engine.store.save(task)
         source=Path(task['source']);(source/'other.txt').write_text('Concurrent edit\n')
         git(source,'add','other.txt')

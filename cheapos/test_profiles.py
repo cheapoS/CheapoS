@@ -22,7 +22,8 @@ def executable_identity(value, workspace):
     if not candidate:
         return None
     try:
-        path = Path(candidate).resolve(strict=True)
+        invoked = Path(candidate).absolute()
+        path = invoked if (invoked.parent.parent / 'pyvenv.cfg').is_file() else invoked.resolve(strict=True)
         return str(path) if path.is_file() else None
     except (OSError, ValueError):
         return None

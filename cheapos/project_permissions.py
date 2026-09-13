@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from .test_profiles import executable_identity, match_unittest
 
-CONFIG_FILES = ('pyproject.toml', 'setup.cfg', 'tox.ini', 'unittest.cfg', '.python-version', 'sitecustomize.py', 'usercustomize.py')
+CONFIG_FILES = ('pyproject.toml', 'setup.cfg', 'tox.ini', 'unittest.cfg', '.python-version', 'sitecustomize.py', 'usercustomize.py', 'pyvenv.cfg', 'requirements.txt', 'requirements-dev.txt', 'poetry.lock', 'uv.lock', 'Pipfile.lock', 'package.json', 'package-lock.json')
 
 
 def identity(path):
@@ -59,7 +59,8 @@ class ProjectTestGrants:
         exe = Path(profile['executable']).stat()
         value = {'source': binding['source'], 'executable': [profile['executable'], exe.st_dev, exe.st_ino, exe.st_size, exe.st_mtime_ns],
                  'source_config': config_identity(task['source']), 'workspace_config': config_identity(task['workspace']),
-                 'roots': profile['roots'], 'runner': profile['runner']}
+                 'roots': profile['roots'], 'runner': profile['runner'],
+                 'venv': config_identity(Path(profile['executable']).parent.parent)}
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
     def proposal(self, task, argv):
