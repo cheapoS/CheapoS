@@ -86,24 +86,31 @@ def setup_task(task, execution, config, gateway):
                      "preferred": {r: (config.get(r) or {}).get("model") for r in ("worker", "reviewer")}}
 
 
-def select_remote(engine, runtime, role="worker"):
+def select_remote(engine, runtime, role="worker", replace=False):
     """Find one needed role, with at most four probes. Pin each successful selection."""
     task, gateway = runtime.task, engine.gateway
     route = task["route"]
-    if task["providers"].get(role):
+    if task["providers"].get(role) and not replace:
         return
     route["waiting_for"] = role
     route["failures"] = []
     if not gateway.matches(route["base_url"]):
         raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Local work will not start as a fallback.")
-    catalog = gateway.catalog()
+    catalog = gateway.catalog(fresh=True)
     if catalog["status"] != "ready":
         raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Your saved work is kept.")
     used = {cfg["model"] for cfg in task["providers"].values() if cfg}
+    if role == "reviewer":
+        # A previous worker may have authored part of the patch before a handoff.
+        used.update(e["detail"]["model"] for e in task["events"] if e["kind"] == "tool"
+                    and e["title"] in {"write file", "replace text"} and isinstance(e.get("detail"), dict)
+                    and e["detail"].get("model"))
+    used.update(runtime.failed_models)
     candidates = [m for m in catalog["models"] if m.get("free") and m.get("tool_calling") is True
-                  and not m.get("local") and not m["id"].startswith("auto/") and m["id"] not in used]
+                  and not m.get("local") and not m["id"].startswith("auto/") and m["id"] not in used
+                  and not gateway.pool.observation(route["base_url"], m["id"])["cooling_down"]]
     preferred = route.get("preferred", {})
-    candidates.sort(key=lambda m: (m["id"] != preferred.get(role), m["id"]))
+    candidates.sort(key=lambda m: gateway.pool.rank(route["base_url"], m, role, preferred.get(role)))
     tried = set()
     for model in candidates:
         if model["id"] in tried or len(tried) >= 4:
@@ -120,6 +127,7 @@ def select_remote(engine, runtime, role="worker"):
             name, args = engine.parse_call(calls[0])
             if name != "routing_ready" or args != {}:
                 raise ProviderError("The model did not return the expected tool call")
+            gateway.pool.record(route["base_url"], model["id"], role, probe=True)
             task["providers"][role] = cfg
             route["ready"] = bool(task["providers"].get("worker"))
             route.pop("waiting_for", None)
@@ -127,9 +135,13 @@ def select_remote(engine, runtime, role="worker"):
             engine.store.save(task)
             return
         except (ProviderError, ValueError, TypeError, KeyError) as error:
+            runtime.failed_models.add(model["id"])
+            gateway.pool.record(route["base_url"], model["id"], role, error=error)
             failure = {"model": model["id"], "role": role, "error": str(error)[:500]}
             route["failures"].append(failure)
             engine.event(task, "routing", "Free model check failed", failure)
+    if replace:
+        raise RoutingPause("No different free " + role + " passed the tool check. Failed models are temporarily cooling down. Your chat, files, checks, and usage are saved; resume to check availability again or inspect Models.")
     if role == "reviewer":
         raise RoutingPause("Your changes are saved, but a different free reviewer is not available yet. Check the model results below or enabled providers in OmniRoute, then resume to retry review without repeating the edits.")
     raise RoutingPause("No free worker passed the tool check. Check the model results below or enabled providers in OmniRoute, then resume. No project work was dispatched and no local or paid fallback was used.")

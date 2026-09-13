@@ -69,7 +69,7 @@ def local_candidates(saved=None):
 def catalog_candidates(models, base_url, gateway):
     result = []
     for model in models:
-        if not model.get("free") or model.get("tool_calling") is not True:
+        if not model.get("free") or model.get("tool_calling") is not True or model.get("health", {}).get("cooling_down"):
             continue
         config = validate_provider({"base_url":base_url, "gateway":gateway, "model":model["id"], "input_rate":0, "output_rate":0}, "worker")
         result.append({"config":config, "local":bool(model.get("local")), "transport":"OmniRoute" if gateway == "omniroute" else "Direct provider"})

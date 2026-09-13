@@ -81,3 +81,7 @@
 .commit-patch pre, .commit-success pre { max-height: 35vh; overflow: auto; padding: 16px; background: #121615; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; line-height: 1.65; white-space: pre; }
 .commit-success { max-width: 960px; margin: 40px auto; }
 .commit-success > svg { width: 32px; height: 32px; color: var(--mint); }
+.free-model-pool { max-height: 320px; overflow: auto; }
+.pool-model { display: grid; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.pool-model strong { font-size: 14px; font-weight: 500; }
+.pool-model span, .pool-model small { color: var(--muted); font-size: 13px; line-height: 1.5; }

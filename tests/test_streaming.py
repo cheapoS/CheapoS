@@ -45,7 +45,7 @@ class StreamingTests(LocalCase):
         for reason,label in [('error','error'),('content_filter','content_filter'),('unknown_native_reason','unknown_native_reason'),('unsafe\nvalue','unrecognized'),({'invalid':'shape'},'unrecognized')]:
             with self.subTest(reason=reason),self.assertRaises(ProviderError) as caught:
                 self.parse(tool+chunk(finish=reason)+b'data: [DONE]\n\n')
-            self.assertEqual(caught.exception.code,'stream_error')
+            self.assertEqual(caught.exception.code,'stream_error' if reason=='error' else 'model_refusal')
             self.assertIn('finish_reason='+label,str(caught.exception))
             self.assertIn('Partial tool calls were not executed',str(caught.exception))
 

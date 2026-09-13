@@ -35,7 +35,7 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
                     raise error_type('The model reached its output limit before finishing. Partial tool calls were not executed.', code='output_limit')
                 if not isinstance(reason, str) or reason not in {'stop', 'tool_calls', 'function_call'}:
                     label = reason if isinstance(reason, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', reason) else 'unrecognized'
-                    raise error_type(f'The provider ended the response with finish_reason={label}. Partial tool calls were not executed; saved files are unchanged by this response.', code='stream_error')
+                    raise error_type(f'The provider ended the response with finish_reason={label}. Partial tool calls were not executed; saved files are unchanged by this response.', code='stream_error' if label == 'error' else 'model_refusal')
                 finished = True
             delta = choice.get('delta') or {}
             thought = delta.get('reasoning') or delta.get('reasoning_content') or delta.get('thinking')

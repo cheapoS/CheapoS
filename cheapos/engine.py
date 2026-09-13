@@ -23,6 +23,7 @@ from .omniroute import OmniRouteManager
 from .streaming import STREAM_MAX_SECONDS
 from .startup import StartupManager
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
+from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
 
 
 def now():
@@ -176,6 +177,9 @@ class Runtime:
         self.observations = {}
         self.web = WebReader()
         self.verified_local = set()
+        self.failed_models = set()
+        self.handoffs = 0
+        self.review_requests = 0
 
     def guard(self):
         if time.monotonic() - self.started >= self.task["limits"].get("run_minutes", 15) * 60:
@@ -350,6 +354,14 @@ class Engine:
                 if not changes or changes.get("approve_takeover") is not True:
                     raise ValueError("Approve the reviewer takeover explicitly before resuming")
                 task["active_role"] = "reviewer"
+            # Migrate an already-failed automatic chat on its next explicit resume.
+            # Starting the server alone never dispatches saved work.
+            if task.get("error_code") in RECOVERABLE_CODES:
+                last_request = next((e for e in reversed(task["events"]) if e["kind"] == "model"), {})
+                failed_role = "reviewer" if last_request.get("title", "").startswith("Requesting reviewer:") else task["active_role"]
+                cfg = task["providers"].get(failed_role)
+                if automatic(task, failed_role) and cfg:
+                    self.defer_route(task, failed_role, task["error"])
             if followup is not None:
                 task["conversational"] = True
                 task["request_worker_turns"] = 0
@@ -357,6 +369,7 @@ class Engine:
                 task["action_pending"] = False
                 task["loop_guidance"] = None
                 task.pop("pending_checkpoint", None)
+                task.pop("pending_review", None)
                 task["requests"] = task.get("requests", [task["prompt"]]) + [followup.strip()]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
                 task["turn_start_patch"] = Workspace(task["workspace"]).patch()
@@ -662,7 +675,73 @@ class Engine:
         task["status"] = "awaiting_reply"
         self.event(task, "assistant", "CheapOS", message["content"][:12000])
 
+    def defer_route(self, task, role, reason):
+        cfg = task["providers"][role]
+        self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=reason)
+        task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": str(reason)[:500]}
+        # reserve() already added this request to the totals. Do not refund or replay it.
+        task["in_flight"] = None
+        self.store.save(task)
+
     def request(self, runtime, messages, tools, role, config_override=None, purpose=None):
+        task = runtime.task
+        if config_override is not None or purpose or not automatic(task, role):
+            return self._request(runtime, messages, tools, role, config_override, purpose)
+        attempted = False
+        while True:
+            runtime.guard()
+            if runtime.stop.is_set():
+                raise InterruptedError("Task stopped")
+            recovery = task["route"].get("recovery", {}).get(role)
+            if recovery:
+                if runtime.handoffs >= MAX_HANDOFFS:
+                    raise RoutingPause("Two automatic model handoffs were tried in this run. Saved work and usage are kept. Resume to check free availability again, or inspect Models.")
+                if attempted and task["status"] != "reviewing":
+                    if request_worker_turns(task) >= task["limits"]["worker_turns"]:
+                        raise WorkerTurnLimit("Worker model-turn limit reached during free-model recovery. Saved work is kept.")
+                    if runtime.step_turns >= task["limits"].get("checkpoint_turns", 12):
+                        raise ProgressPause("The checkpoint turn limit was reached during free-model recovery. Saved work is kept.")
+                    task["worker_turns"] += 1
+                    task["request_worker_turns"] += 1
+                    runtime.step_turns += 1
+                runtime.failed_models.add(recovery["from"])
+                self.event(task, "routing", "Finding another free " + role, {"model": recovery["from"], "error": recovery["reason"], "role": role})
+                select_remote(self, runtime, role, replace=True)
+                runtime.handoffs += 1
+                task["route"]["recovery"].pop(role, None)
+                self.event(task, "handoff", "Switching to another free " + role, {
+                    "from": recovery["from"], "to": task["providers"][role]["model"], "role": role,
+                    "summary": "Continuing with the same chat, saved files, checks, and limits. " + recovery["reason"]})
+            cfg = task["providers"][role]
+            # Revalidate pinned choices against the refreshed catalog, including prices.
+            catalog = self.gateway.catalog(fresh=True)
+            if catalog["status"] != "ready":
+                raise RoutingPause("The free model catalog is unavailable. Saved work is kept; reconnect OmniRoute and resume.")
+            model = next((m for m in catalog["models"] if m["id"] == cfg["model"]), None)
+            if (not model or not model.get("free") or model.get("local") or model.get("tool_calling") is not True
+                    or model["id"].startswith("auto/")):
+                self.defer_route(task, role, "This model is no longer advertised as a free remote model with tool support.")
+                continue
+            if self.gateway.pool.observation(cfg["base_url"], cfg["model"])["cooling_down"]:
+                task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": "This model is cooling down after a recent failure."}
+                continue
+            started = time.monotonic()
+            if task["status"] == "reviewing":
+                if runtime.review_requests >= 8:
+                    raise BudgetError("Reviewer reached the eight-turn checkpoint limit, including failed requests. Saved review work is kept.")
+                runtime.review_requests += 1
+            try:
+                message = self._request(runtime, messages, tools, role)
+            except ProviderError as error:
+                if error.code not in RECOVERABLE_CODES:
+                    raise
+                attempted = True
+                self.defer_route(task, role, error)
+                continue
+            self.gateway.pool.record(cfg["base_url"], cfg["model"], role, seconds=time.monotonic() - started)
+            return message
+
+    def _request(self, runtime, messages, tools, role, config_override=None, purpose=None):
         task = runtime.task
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
@@ -832,14 +911,19 @@ class Engine:
         self.refresh_changes(task)
         if len(task["patch"]) > 30000:
             raise BudgetError("Checkpoint exceeds 30,000 characters. Split the change before requesting review.")
-        if task["iterations"] >= task["limits"]["iterations"]:
+        saved_review = task.get("pending_review")
+        if saved_review and (saved_review["diff"] != task["patch"] or saved_review["checks"]["command"] != task["check_command"]):
+            saved_review = None
+            task.pop("pending_review", None)
+        if not saved_review and task["iterations"] >= task["limits"]["iterations"]:
             raise BudgetError("Worker iteration limit reached")
         if task.get("route") and not task["providers"].get("reviewer"):
             task["pending_checkpoint"] = {"summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000]}
             self.store.save(task)
             select_remote(self, runtime, "reviewer")
         task.pop("pending_checkpoint", None)
-        task["iterations"] += 1
+        if not saved_review:
+            task["iterations"] += 1
         checks = task["checks"][-1] if task["checks"] else {}
         if checks.get("passed") and checks.get("digest") == hashlib.sha256(task["patch"].encode()).hexdigest() and checks.get("command") == task["check_command"]:
             self.event(task, "check_reused", "Checks already passed for this patch", {"command": checks["command"], "digest": checks["digest"], "run_id": checks.get("run_id")})
@@ -854,12 +938,17 @@ class Engine:
             task["status"] = "completed"
             self.event(task, "complete", "Frontier takeover finished; ready for your review", args)
             return {"decision": "COMPLETE", "feedback": "Takeover finished; human review required."}
-        checkpoint = {"number": len(task["checkpoints"]) + 1, "original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "files_changed": [f["path"] for f in task["changes"]], "diff": task["patch"], "checks": checks, "worker_summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000], "decision": "PENDING", "feedback": ""}
-        task["checkpoints"].append(checkpoint)
+        checkpoint = saved_review or {"number": len(task["checkpoints"]) + 1, "original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "files_changed": [f["path"] for f in task["changes"]], "diff": task["patch"], "checks": checks, "worker_summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000], "decision": "PENDING", "feedback": ""}
+        if not saved_review:
+            task["checkpoints"].append(checkpoint)
+        if automatic(task, "reviewer"):
+            task["pending_review"] = checkpoint
+            task["pending_checkpoint"] = {"summary": checkpoint["worker_summary"], "uncertainties": checkpoint["uncertainties"]}
         task["status"] = "reviewing"
         self.event(task, "handoff", "Sending changes for review", {"from": task["providers"].get("worker", {}).get("model", "Scripted worker"), "to": task["providers"].get("reviewer", {}).get("model", "Scripted reviewer"), "role": "reviewer", "summary": "The controller collected verification output. The reviewer will inspect the patch and evidence."})
         self.event(task, "checkpoint", f"Checkpoint #{checkpoint['number']} ready for review", checkpoint)
         messages = [{"role": "system", "content": REVIEW_SYSTEM}, {"role": "user", "content": json.dumps(checkpoint)}]
+        runtime.review_requests = 0
         for _ in range(8):
             message = self.request(runtime, messages, REVIEW_TOOLS, "reviewer")
             task["review_count"] += 1
@@ -886,6 +975,10 @@ class Engine:
                         result = {"error": "Return a valid decision and feedback"}
                     else:
                         checkpoint.update({"decision": decision, "feedback": params["feedback"][:8000]})
+                        if saved_review:
+                            task["checkpoints"][checkpoint["number"] - 1] = checkpoint
+                        task.pop("pending_review", None)
+                        task.pop("pending_checkpoint", None)
                         task["status"] = {"APPROVE": "approved", "REQUEST_CHANGES": "running", "TAKE_OVER": "takeover_requested"}[decision]
                         self.event(task, "review", f"Reviewer: {decision.replace('_', ' ').lower()}", {"checkpoint": checkpoint["number"], "decision": decision, "feedback": checkpoint["feedback"]})
                         return {"decision": decision, "feedback": checkpoint["feedback"]}

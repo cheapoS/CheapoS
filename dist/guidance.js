@@ -23,7 +23,7 @@ const CheapOSGuide = (() => {
       case 'stopping': return {...result,eyebrow:'PAUSING',title:'Waiting for the current request to finish.',description:'No new tool work will start. An in-flight model request can take up to three minutes to return.',primary:'activity',primaryLabel:'View activity',secondary:null};
       case 'error': return {...result,tone:'attention',title:reviewerStopped?'The reviewer didn’t finish.':'This task stopped before it finished.',description:reviewerStopped?'The worker’s changes are saved, but the latest checkpoint has no reviewer decision. Check the model connection before trying again.':'Your saved work is still available. Read the failure below and check the model connection before retrying.',primary:'connections',primaryLabel:'Check model connection',retry:true};
       case 'budget_paused': return {...result,tone:'attention',title:task.error_code==='worker_turn_limit'?'This request used its worker turns.':'This task reached a limit.',description:task.error_code==='worker_turn_limit'?`Used ${task.request_worker_turns??task.worker_turns} of ${task.limits.worker_turns} worker turns for this request. Your work is saved. Increase that allowance to continue; spending limits stay the same.`:'CheapOS paused to respect your limits. Inspect what it produced, then review the remaining budget before continuing.',primary:'resume',primaryLabel:task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits & resume'};
-      case 'paused': case 'interrupted': return {...result,title:task.error_code==='progress_limit'?'Paused to avoid repeated work.':task.error_code==='routing_unavailable'?'A working free route is needed.':task.status==='interrupted'?'This task was interrupted.':'Your work is paused.',description:task.error_code?task.error:'The task copy and usage are saved. Resume with the same models and limits.',primary:'resume',primaryLabel:'Resume'};
+      case 'paused': case 'interrupted': return {...result,title:task.error_code==='progress_limit'?'Paused to avoid repeated work.':task.error_code==='routing_unavailable'?'A working free route is needed.':task.status==='interrupted'?'This task was interrupted.':'Your work is paused.',description:task.error_code?task.error:'The task copy and usage are saved. Resume from saved work with the same limits.',primary:'resume',primaryLabel:'Resume'};
       case 'takeover_requested': return {...result,tone:'attention',title:'The reviewer wants to take over.',description:'Read the reviewer’s feedback below. You decide whether it can implement changes using the remaining task budget.',primary:'resume',primaryLabel:'Review takeover request'};
       case 'approved': return {...result,tone:'success',eyebrow:'YOUR REVIEW',title:'The reviewer approved this patch.',description:'The final diff and commit message are ready in Chat. Approve and commit, request changes, or keep chatting.',primary:'changes',primaryLabel:'Review the patch',secondary:'export',secondaryLabel:'Export patch'};
       case 'completed': return {...result,tone:'attention',eyebrow:'YOUR REVIEW',title:'Takeover finished. Your review is next.',description:'The implementing model finished, but this is not an independent reviewer approval. Inspect the patch before applying it to your project.',primary:'changes',primaryLabel:'Review the patch',secondary:'export',secondaryLabel:'Export patch'};
@@ -61,8 +61,9 @@ const CheapOSGuide = (() => {
       stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':latest.title.startsWith('Requesting coordinator:')?'coordinator':'worker';
       title=role==='reviewer'?'Waiting for the reviewer’s response':'Waiting for the model’s response';
       if(task.answer_pending)title='Preparing an answer from gathered evidence';
-      detail=task.providers?.[role]?.model||latest.title.replace(/^Requesting (worker|reviewer|coordinator): /,'');since=latest.time;
-    }else if(latest?.title==='Running verification'){stage='checks';title='Running checks';detail=(latest.detail?.command||task.check_command||[]).join(' ')}
+      detail=latest.title.replace(/^Requesting (worker|reviewer|coordinator): /,'');since=latest.time;
+    }else if(latest?.kind==='routing'||latest?.kind==='handoff'){stage='routing';title=latest.title;detail=latest.detail?.summary||latest.detail?.error||latest.detail?.model||''}
+    else if(latest?.title==='Running verification'){stage='checks';title='Running checks';detail=(latest.detail?.command||task.check_command||[]).join(' ')}
     const timestamp=Date.parse(since),seconds=Number.isFinite(timestamp)?Math.max(0,(at-timestamp)/1000):0;
     const limit=request?.detail?.timeout_seconds||180;
     let slow=stage==='model'&&seconds>=30;
@@ -135,6 +136,12 @@ const CheapOSGuide = (() => {
     return Boolean(task.changes?.length&&['approved','completed','awaiting_reply'].includes(task.status)&&check?.passed&&check.digest===task.patch_digest&&(task.status==='completed'||review?.decision==='APPROVE'&&review.diff===task.patch));
   }
   function commitDeferred(task) {return task.human_decision?.decision==='defer'&&task.human_decision.digest===task.patch_digest}
-  return {commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status)};
+  function modelHealth(model,at=Date.now()) {
+    const h=model.health||{},remaining=Math.ceil(((h.retry_at||0)*1000-at)/60000);
+    if(remaining>0)return `Cooling down · ${remaining}m`;
+    if((h.worker_responses||0)+(h.reviewer_responses||0)>0)return 'Responded in a task';
+    return h.tool_check_passed?'Tool check passed':'Not tested yet';
+  }
+  return {modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status)};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;

@@ -175,3 +175,18 @@ test('Activity shows handoffs and verified review evidence newest first',()=>{
   const a=activity(task({patch:'p',patch_digest:'digest',events:[{kind:'handoff',title:'Delegated',detail:{from:'Local',to:'Remote'}},{kind:'checks',title:'Passed',detail:{passed:true,digest:'digest'}},{kind:'review',title:'Approved',detail:{checkpoint:1,decision:'APPROVE'}}],checkpoints:[{number:1,diff:'p'}]}));
   assert.equal(a.checks,'Passed');assert.equal(a.review,'Approved');assert.equal(a.items[0].title,'Approved');assert.equal(a.items[2].note,'Local → Remote');
 });
+
+test('free pool distinguishes untested models, observed responses, and expiring cooldowns',()=>{
+  const {modelHealth}=require('../dist/guidance.js');
+  assert.equal(modelHealth({}), 'Not tested yet');
+  assert.equal(modelHealth({health:{tool_check_passed:true}}), 'Tool check passed');
+  assert.equal(modelHealth({health:{worker_responses:2}}), 'Responded in a task');
+  assert.equal(modelHealth({health:{retry_at:160}},100000), 'Cooling down · 1m');
+  assert.equal(modelHealth({health:{retry_at:160,tool_check_passed:true}},161000), 'Tool check passed');
+});
+
+test('progress names the candidate being probed instead of the failed pinned model',()=>{
+  const {progress}=require('../dist/guidance.js');
+  const result=progress(task({status:'running',providers:{worker:{model:'old'}},events:[{kind:'model',title:'Requesting worker: replacement',time:new Date().toISOString()}]}));
+  assert.equal(result.detail,'replacement');
+});

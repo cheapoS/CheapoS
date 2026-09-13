@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .gateways import OmniRouteGateway
+from .model_pool import FreeModelPool
 from .providers import ProviderError
 from .storage import write_json
 
@@ -59,6 +60,7 @@ def find_executable():
 class OmniRouteManager:
     def __init__(self, directory):
         self.path = Path(directory) / "gateway.json"
+        self.pool = FreeModelPool(directory)
         try:
             self.settings = validate_settings(json.loads(self.path.read_text()))
         except (OSError, ValueError, TypeError):
@@ -81,12 +83,16 @@ class OmniRouteManager:
         return identity(url) == identity(self.settings["base_url"])
 
     def snapshot(self):
+        # The UI polls this endpoint. Refresh metadata only; never run inference here.
+        if not self.closed.is_set() and self.state == "ready" and time.monotonic() - self.checked_at >= 300 and not (self.thread and self.thread.is_alive()):
+            self.refresh()
         with self.lock:
             owned = self.process is not None and self.process.poll() is None
             return {"settings": dict(self.settings), "status": self.state, "message": self.message,
                     "busy": self.thread is not None and self.thread.is_alive(), "owned": owned,
                     "pid": self.process.pid if owned else None, "model_count": len(self.models),
-                    "revision": self.revision, "key_configured": bool(self.api_key),
+                    "revision": self.revision + self.pool.revision, "key_configured": bool(self.api_key),
+                    "free_count": sum(m.get("free") and m.get("tool_calling") is True and not m.get("local") for m in self.models),
                     "dashboard_url": self.settings["base_url"][:-3]}
 
     def configure(self, values):
@@ -241,6 +247,13 @@ class OmniRouteManager:
             if not self.settings["keep_running"] and self.process is not None:
                 self._terminate(self.process)
 
-    def catalog(self):
+    def catalog(self, fresh=False):
+        if fresh and (self.state != "ready" or time.monotonic() - self.checked_at >= 300):
+            self.refresh()
+            if self.thread:
+                self.thread.join(5)
         with self.lock:
-            return {"models": copy.deepcopy(self.models), "revision": self.revision, "status": self.state}
+            models = copy.deepcopy(self.models)
+            for model in models:
+                model["health"] = self.pool.observation(self.settings["base_url"], model["id"])
+            return {"models": models, "revision": self.revision + self.pool.revision, "status": self.state}

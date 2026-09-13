@@ -240,3 +240,15 @@ class LifecycleTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class PoolMetadataTests(unittest.TestCase):
+    def test_invalid_explicit_free_prices_are_not_treated_as_zero(self):
+        m=normalize_models({'data':[{'id':'openrouter/free:free','pricing':{'prompt':'NaN','completion':'-1'},'capabilities':{'reasoning':True}}]})[0]
+        self.assertFalse(m['free']);self.assertTrue(m['reasoning'])
+
+    def test_startup_skips_models_cooling_down_in_the_shared_pool(self):
+        from cheapos.startup import catalog_candidates
+        entries=[{'id':'bad','free':True,'tool_calling':True,'health':{'cooling_down':True}},
+                 {'id':'new','free':True,'tool_calling':True}]
+        result=catalog_candidates(entries,'http://127.0.0.1:20128/v1','omniroute')
+        self.assertEqual([r['config']['model'] for r in result],['new'])

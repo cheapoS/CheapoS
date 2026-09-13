@@ -117,13 +117,13 @@ class ChatProvider:
             raise
         except HTTPError as error:
             reason = {401: "API key was rejected", 402: "Provider credit limit reached", 403: "Provider denied access", 429: "Provider rate limit reached"}.get(error.code, f"Provider returned HTTP {error.code}")
-            raise ProviderError(reason + ". The task is paused; no automatic retry was made.") from None
+            raise ProviderError(reason + ". This request did not complete.", code=f"http_{error.code}") from None
         except (URLError, TimeoutError, OSError) as error:
             if isinstance(error, TimeoutError) or isinstance(getattr(error, "reason", None), TimeoutError):
                 duration = "3 minutes" if timeout_seconds == 180 else f"{timeout_seconds} seconds"
                 reason = f"The model stopped sending output for {duration}" if emit is not None else f"The model did not finish within {duration}"
-                raise ProviderError(reason + ". The request stopped without an automatic retry; uncertain usage remains counted.", code="model_timeout") from None
-            raise ProviderError("The model connection failed before a complete response arrived. No automatic retry was made; uncertain usage remains counted.", code="model_connection") from None
+                raise ProviderError(reason + ". Uncertain usage remains counted.", code="model_timeout") from None
+            raise ProviderError("The model connection failed before a complete response arrived. Uncertain usage remains counted.", code="model_connection") from None
         except (ValueError, KeyError, TypeError, AttributeError):
             raise ProviderError("Provider returned an invalid response structure. No tool calls from this response were executed.", code="invalid_response_shape") from None
         try:
@@ -135,7 +135,7 @@ class ChatProvider:
             message["role"] = "assistant"
             return message, data.get("usage") or {}
         except (KeyError, IndexError, TypeError, ValueError):
-            raise ProviderError("Provider returned no usable message or tool calls") from None
+            raise ProviderError("Provider returned no usable message or tool calls", code="empty_response") from None
 
 
 def reserve(task, config, messages, tools, role):
