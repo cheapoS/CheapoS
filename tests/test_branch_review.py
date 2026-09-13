@@ -80,3 +80,12 @@ class BranchReviewTests(LocalCase):
             self.engine.checks(Runtime(task),json.dumps(previous))
         self.assertEqual(task['check_command'],previous)
         self.assertNotIn('environment_setup',task)
+        runtime=Runtime(task)
+        runtime.approval.wait=Mock()  # Decline immediately; never a real wait.
+        from cheapos.workspace import Workspace
+        from unittest.mock import patch
+        with patch.object(Workspace,'run_checks') as execute:
+            with self.assertRaisesRegex(InterruptedError,'declined'):
+                self.engine.checks(runtime, 'python3 -c \"print(123)\"')
+            execute.assert_not_called()
+        self.assertTrue(any(e['kind']=='permission' for e in task['events']))

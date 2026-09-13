@@ -5,7 +5,7 @@ import shlex
 import hashlib
 
 from . import branch_evidence as evidence
-from . import branch_runs
+from . import branch_runs, branch_disagreement as disagreement
 from .measurement import enabled as measuring
 
 
@@ -48,8 +48,9 @@ def checkpoint(engine, runtime, args):
     decision = next(t for t in tools if t['function']['name'] == 'review_decision')['function']['parameters']
     outcome = {'type':'object','properties':{'passed':{'type':'boolean'},'evidence':{'type':'string'}},'required':['passed','evidence'],'additionalProperties':False}
     decision['properties'].update(candidate_id={'type':'string','enum':[current['id']]}, criteria_outcomes={'type':'object', 'description':'Use every exact criterion key. passed is a JSON boolean, evidence is a nonempty string.', 'properties':{c:copy.deepcopy(outcome) for c in criteria},'required':list(criteria),'additionalProperties':False})
+    decision['properties']['defects'] = disagreement.schema()
     decision['required'] += ['candidate_id','criteria_outcomes']
-    messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.'}, {'role':'user','content':json.dumps(packet)}]
+    messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.' + disagreement.REVIEW_INSTRUCTION}, {'role':'user','content':json.dumps(packet)}]
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
         task['pending_review']={'branch_candidate_id':current['id'],'review_requests':0}
     task['status'] = 'reviewing'
@@ -57,6 +58,7 @@ def checkpoint(engine, runtime, args):
     rounds = 0
     while measuring(task) or rounds < 8:
         rounds += 1
+        disagreement.ensure_available(task, current['id'])
         runtime.guard()
         message = engine.request(runtime, messages, tools, 'reviewer')
         task['review_count'] += 1
@@ -88,11 +90,27 @@ def checkpoint(engine, runtime, args):
                         engine.event(task,'review','Independent item review passed',{'item_id':item['id'],'candidate_id':current['id'],'decision':'APPROVE','feedback':item['outcome_summary']})
                         return {'decision':'APPROVE','feedback':item['outcome_summary']}
                 elif choice in {'REQUEST_CHANGES', 'TAKE_OVER'} and isinstance(params.get('feedback'),str):
-                    task.pop('pending_review',None)
-                    task['status'] = 'running' if choice == 'REQUEST_CHANGES' else 'takeover_requested'
-                    branch_runs.transition_item(run, item['id'], 'working')
-                    engine.event(task,'review','Item needs revision',{'item_id':item['id'],'decision':choice,'feedback':params['feedback'][:4000]})
-                    return {'decision':choice,'feedback':params['feedback'][:4000]}
+                    try:
+                        if params.get('candidate_id') != current['id']:
+                            raise ValueError('Review disagreement belongs to a stale candidate.')
+                        if choice == 'REQUEST_CHANGES':
+                            disagreement.validate(params, criteria)
+                            # A reviewer read tool cannot silently change the reviewed inputs.
+                            if evidence.candidate(task, ctx, specs, criteria) != current:
+                                raise ValueError('Candidate changed during review disagreement.')
+                    except ValueError as error:
+                        result = disagreement.unsupported(engine, task, current['id'], params, error)
+                    else:
+                        task.pop('pending_review',None)
+                        task['status'] = 'running' if choice == 'REQUEST_CHANGES' else 'takeover_requested'
+                        branch_runs.transition_item(run, item['id'], 'working')
+                        result = disagreement.repair(params, current['id'], checks)
+                        if choice == 'REQUEST_CHANGES': disagreement.attach(task, item, result)
+                        engine.event(task,'review','Actionable item review claim' if choice == 'REQUEST_CHANGES' else 'Item needs takeover',
+                                     {'item_id':item['id'],'decision':choice,'feedback':params['feedback'][:4000],
+                                      'defects':params.get('defects'), 'candidate_id':current['id']})
+                        engine.store.save(task)
+                        return result
                 else: result = {'error':'Return a valid independent review decision.'}
             elif name in {'read_file','outline_file','search','list_files','get_diff','read_check_output'}:
                 try: result = engine.file_tool(task,name,params)

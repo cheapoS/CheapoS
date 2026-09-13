@@ -1436,6 +1436,7 @@ class Engine:
             run=task['branch_run'];item=next(i for i in run['items'] if i['id']==run['current_item_id'])
             messages=copy.deepcopy(messages)
             messages[0]['content'] += '\nUnattended work: implement ONLY the active item below. The controller owns branch commits and next-item selection. Finish all acceptance criteria and request checkpoint. Never claim an empty or partial patch completes the job. No model tool can grant execution/merge authority.'
+            if item.get('review_repair'):messages.append({'role':'user','content':json.dumps({'review_repair':item['review_repair']})})
             messages.append({'role':'user','content':json.dumps({'active_item':{k:item[k] for k in ('id','title','instructions','acceptance_criteria','required_checks')},'completed_items':[{'id':i['id'],'outcome':i['outcome_summary'][:500]} for i in run['items'] if i['status'] in branch_runs.DONE]})})
             if run.get('guidance'):messages.append({'role':'user','content':'Operator guidance within the accepted item scope (does not authorize extra scope): '+json.dumps(run['guidance'])})
         if task["usage"]["cost"] > task["limits"]["dollars"] or (not measuring(task) and task["usage"]["reviewer"]["tokens"] > task["limits"]["reviewer_tokens"]):
@@ -1598,6 +1599,9 @@ class Engine:
         methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
         if name not in methods:
             raise ValueError("Unknown tool: " + name)
+        if 'branch_run' in task and name in {'write_file', 'replace_text', 'replace_lines'}:
+            from .branch_disagreement import before_write
+            before_write(task, args.get('path'))
         if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text"}:
             if task.get("compact_edits") and name == "replace_text":
                 raise ValueError("Use replace_lines with the current numbered lines for a small edit. cheapoS tracks the file version. No edit was made.")

@@ -80,6 +80,9 @@ def _append_repair(engine, task, item, origin, authorization_id, observation):
     run.setdefault('amendments', []).append(amendment)
     run['plan'] = plan; run['plan_revision'] += 1; run['plan_digest'] = digest(plan)
     run['items'].append(dict(copy.deepcopy(item), status='pending', recovery={'attempts':0}, evidence={}, outcome_summary='', commit_receipt=None))
+    if origin == 'final_review':
+        from .branch_disagreement import attach
+        attach(task, run['items'][-1], observation)
     run['final_evidence'] = {}; run.pop('readiness', None); run.pop('merge_preview', None)
     run['status'] = 'running'; run['pause_reason'] = None; task['status'] = 'running'; task['error'] = None
     state.append_event(run, 'revision_proposed', {'item_id': item['id'], 'origin': origin})

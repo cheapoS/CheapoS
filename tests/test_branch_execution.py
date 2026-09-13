@@ -16,7 +16,7 @@ class ScriptedRun:
             packet=json.loads(messages[1]['content']);item=packet['item'];identity=item['id']
             if identity=='two' and not self.revisions:
                 self.revisions+=1
-                message=call('review_decision',{'decision':'REQUEST_CHANGES','feedback':'Add notes_two.txt explaining the second utility.'})
+                message=call('review_decision',{'decision':'REQUEST_CHANGES','feedback':'Add notes_two.txt explaining the second utility.', 'candidate_id':packet['candidate_id'], 'defects':[{'criterion':item['acceptance_criteria'][0], 'location':'notes_two.txt', 'kind':'static', 'expected':'Second utility explanation', 'observed':'Explanation absent', 'support':'The item documentation is missing from the supplied file list.', 'reproduction':''}]})
             else:
                 message=call('review_decision',{'decision':'APPROVE','feedback':'Read implementation and passing tests','candidate_id':packet['candidate_id'], 'criteria_outcomes':{c:{'passed':True,'evidence':'Implementation and its actual tests cover this criterion'} for c in item['acceptance_criteria']}})
         else:
