@@ -2,6 +2,7 @@
 import json
 import re
 import time
+from .served_identity import safe_model
 
 MAX_RESPONSE_BYTES = 4_000_000
 STREAM_MAX_SECONDS = 600
@@ -12,9 +13,11 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
     content, thinking, calls, usage = [], [], {}, {}
     size, finished, done, limited = 0, False, False, False
     frame = []
+    reported_model = None
+    identity_conflict = False
 
     def consume(payload):
-        nonlocal usage, finished, done, limited
+        nonlocal usage, finished, done, limited, reported_model, identity_conflict
         if payload.strip() == '[DONE]':
             done = True
             return
@@ -35,6 +38,10 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
                 # explicit provider-wide signal, do not exclude every model.
                 raise error_type('The model route reported a rate limit or exhausted quota. Retry when its allowance resets; the stream supplied no reset time. Partial tool calls were not executed.', code='gateway_cooldown', scope='model')
             raise error_type('The model reported an error while streaming.', code='stream_error')
+        if 'model' in data:
+            model=safe_model(data['model'])
+            if model is None or reported_model is not None and model!=reported_model:identity_conflict=True
+            elif reported_model is None:reported_model=model
         if isinstance(data.get('usage'), dict):
             usage = data['usage']
         for choice in data.get('choices', []):
@@ -108,4 +115,4 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
                 raise error_type('The model streamed a tool call without a valid ID or name.', code='invalid_tool_envelope')
             # The complete response is accounted before the controller validates
             # argument JSON. Invalid arguments become tool feedback, never edits.
-    return {'choices':[{'message':message}], 'usage':usage}
+    return {'choices':[{'message':message}], 'usage':usage, 'model':None if identity_conflict else reported_model}

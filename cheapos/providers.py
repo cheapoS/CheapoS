@@ -11,6 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from .streaming import read_chat_stream
+from .served_identity import metadata
 
 
 REQUEST_TIMEOUT_SECONDS = 180
@@ -189,7 +190,9 @@ class ChatProvider:
             # Preserve tool IDs and reasoning_details required by some tool-capable providers.
             message = {key: value for key, value in message.items() if key in {"role", "content", "tool_calls", "reasoning_details", "reasoning"}}
             message["role"] = "assistant"
-            return message, data.get("usage") or {}
+            usage=dict(data.get("usage") or {})
+            usage["_served_identity"]=metadata(self.config["model"],data.get("model"))
+            return message, usage
         except (KeyError, IndexError, TypeError, ValueError):
             raise ProviderError("Provider returned no usable message or tool calls", code="empty_response") from None
 

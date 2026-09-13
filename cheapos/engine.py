@@ -468,7 +468,7 @@ class Engine:
         task_id = task_id or uuid.uuid4().hex
         directory = self.store.root / "tasks" / task_id
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
-        task = {"id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
+        task = {"served_identity_version":1, "id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
         task['check_output_filter'] = 'unittest' if os.environ.get('CHEAPOS_CHECK_OUTPUT_FILTER')=='unittest' else 'off'
@@ -1415,6 +1415,8 @@ class Engine:
         config=config_override or task['providers'][role]
         record={'id':uuid.uuid4().hex,'run_id':task.get('metric_run_id'),'role':role,'model':config['model'],
                 'purpose':purpose or 'work','dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation'}
+        from .served_identity import metadata
+        record.update(metadata(config['model']))
         if task.get('branch_run'):
             record['branch_item_id'] = task['branch_run'].get('current_item_id')
         binding = config.get('access_binding')
@@ -1441,6 +1443,8 @@ class Engine:
             raise
         finally:
             record['seconds']=time.monotonic()-started
+            from .routing_trace import request as trace_request
+            trace_request(task,record)
             self.store.save(task)
 
     def _perform_request(self, runtime, messages, tools, role, config_override=None, purpose=None):
@@ -1540,9 +1544,12 @@ class Engine:
             except ProviderError as error:
                 self.account_failed_response(task, config, reservation, error)
                 raise
+        from .served_identity import apply, ensure_independent
+        apply(record,usage)
         known = reconcile(task, config, reservation, usage)
         metrics.record_usage(record,usage,known)
         self.store.save(task)
+        ensure_independent(task,record)
         if task.get("execution", {}).get("mode") in {"delegate", "remote"} and task["usage"]["cost"] > 0:
             raise BudgetError("An automatic free route reported a charge. Work stopped before executing any returned tools. Check the gateway's billing and fallback settings.")
         if not known:
