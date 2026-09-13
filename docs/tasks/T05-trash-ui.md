@@ -25,12 +25,12 @@ Use T04's API tests plus targeted presentation tests. Do not add permanent delet
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Recoverable Delete confirmation with saved-change count; pause-before-trash; ID-bound Undo; Trash listing, inspection, and restore to prior state; read-only archived/trashed views avoid commit-preview requests.
+- Acceptance evidence: Backend retains source/patch/history. Failed deletion keeps the dialog and task visible. Restore navigates to Active or Archived based on the server response.
+- Commands and results: 3 Trash regressions and 61 JavaScript tests passed; app syntax and diff checks passed; existing 27 HTTP tests passed in T04.
+- Browser scenarios and results: Delete/Undo with 2 saved edits; archived-to-Trash; reload and Trash inspection; restore returns to Archived; Pause & move to Trash stops a scripted permission wait; expired token after test-server restart shows inline error and leaves task intact; narrow 390px dialog and Escape checked.
+- Remaining limitations: Undo toast lasts 15 seconds; Trash remains available afterward. No permanent deletion or cleanup.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

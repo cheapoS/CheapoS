@@ -358,3 +358,5 @@ svg, svg * {
 @media(max-width:600px){.topbar-right .prototype-label,.topbar-right .branch{display:none}.header-title-row h1{font-size:16px}.header-title-row{gap:6px}}
 
 .history-filter{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;font-size:12px}.history-filter select{width:auto;max-width:130px}.project-group-heading{display:flex;align-items:center;min-width:0}.project-group-heading .project-label{flex:1;min-width:0}.task-row{display:flex;align-items:center;gap:2px}.task-row .task{flex:1;min-width:0}.task-menu-button{background:transparent;border:0;color:inherit;padding:8px;cursor:pointer;font-size:20px}.task-menu-actions{display:grid;gap:8px}.task-menu-actions button{text-align:left;padding:12px;background:var(--surface);color:inherit;border:1px solid var(--border);border-radius:6px}.show-more{padding:8px 12px}
+
+.task-list-title small{display:block;font-size:10px;font-weight:400;opacity:.7;white-space:normal}.task-menu-actions button:focus-visible,.task-menu-button:focus-visible{outline:2px solid currentColor;outline-offset:2px}

@@ -68,9 +68,9 @@ function renderSidebar() {
   $('#connection-indicator').textContent=state.startup.busy?'Connecting…':state.startup.status==='ready'?'Ready':state.config.worker&&state.config.reviewer?'Configured':'Set up';
   const groups=state.projects.map(project=>({project,tasks:state.tasks.filter(t=>!t.demo&&t.source===project.path)}));
   const demos=state.tasks.filter(t=>t.demo);if(demos.length)groups.push({project:{path:'demo',name:'Local demo'},tasks:demos});
-  const html=`<label class="history-filter">History<select id="history-filter"><option value="active" ${state.historyView!=='archived'?'selected':''}>Active</option><option value="archived" ${state.historyView==='archived'?'selected':''}>Archived</option></select></label>`+groups.map(({project,tasks})=>{
+  const html=`<label class="history-filter">History<select id="history-filter"><option value="active" ${!state.historyView||state.historyView==='active'?'selected':''}>Active</option><option value="archived" ${state.historyView==='archived'?'selected':''}>Archived</option><option value="trash" ${state.historyView==='trash'?'selected':''}>Trash</option></select></label>`+groups.map(({project,tasks})=>{
     const pref=sidebarPrefs[project.path]||{}, sorted=CheapOSGuide.sidebarOrder(tasks), shown=pref.more?sorted:sorted.slice(0,12);
-    return `<div class="project-group"><div class="project-group-heading"><button class="icon-btn" data-collapse="${esc(project.path)}" aria-label="${pref.collapsed?'Expand':'Collapse'} ${esc(project.name||project.path)}" aria-expanded="${!pref.collapsed}">${icon('chevron')}</button><button class="project-label ${state.project?.path===project.path?'selected':''}" data-project="${esc(project.path)}" title="${esc(project.path)}">${icon('folder')}<span>${esc(CheapOSGuide.projectName({source:project.path,demo:project.path==='demo'}))}</span></button></div>${pref.collapsed?'':shown.map(t=>`<div class="task-row"><button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${['approved','awaiting_reply'].includes(t.status)?'done':''} ${activeStatuses.has(t.status)?'pulsing':''}"></span><span class="task-list-title">${t.pinned?'★ ':''}${esc(t.title)}</span>${['error','budget_paused','waiting_approval'].includes(t.status)?'<span class="task-attention" aria-label="Needs attention">•</span>':''}</button><button class="task-menu-button" data-task-menu="${t.id}" aria-label="Options for ${esc(t.title)}" aria-haspopup="dialog">⋯</button></div>`).join('')+(sorted.length>12?`<button class="text-link show-more" data-more="${esc(project.path)}">${pref.more?'Show fewer':`Show more (${sorted.length-12})`}</button>`:'')}</div>`;
+    return `<div class="project-group"><div class="project-group-heading"><button class="icon-btn" data-collapse="${esc(project.path)}" aria-label="${pref.collapsed?'Expand':'Collapse'} ${esc(project.name||project.path)}" aria-expanded="${!pref.collapsed}">${icon('chevron')}</button><button class="project-label ${state.project?.path===project.path?'selected':''}" data-project="${esc(project.path)}" title="${esc(project.path)}">${icon('folder')}<span>${esc(CheapOSGuide.projectName({source:project.path,demo:project.path==='demo'}))}</span></button></div>${pref.collapsed?'':shown.map(t=>`<div class="task-row"><button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${['approved','awaiting_reply'].includes(t.status)?'done':''} ${activeStatuses.has(t.status)?'pulsing':''}"></span><span class="task-list-title">${t.pinned?'★ ':''}${esc(t.title)}${t.trashed_at?`<small>Deleted ${esc(date(t.trashed_at))} · ${t.saved_change_count||0} saved changes${t.trash_archived_at?' · from Archived':''}</small>`:''}</span>${['error','budget_paused','waiting_approval'].includes(t.status)?'<span class="task-attention" aria-label="Needs attention">•</span>':''}</button><button class="task-menu-button" data-task-menu="${t.id}" aria-label="Options for ${esc(t.title)}" aria-haspopup="dialog">⋯</button></div>`).join('')+(sorted.length>12?`<button class="text-link show-more" data-more="${esc(project.path)}">${pref.more?'Show fewer':`Show more (${sorted.length-12})`}</button>`:'')}</div>`;
   }).join('');
   const list=$('#task-list');
   // Keep the existing DOM (and keyboard focus) when only live usage changed.
@@ -85,8 +85,8 @@ function renderSidebar() {
   for(const [attr,key] of [['collapse','collapsed'],['more','more']])$$('[data-'+attr+']').forEach(b=>b.onclick=()=>{const path=b.dataset[attr];sidebarPrefs[path]||={};sidebarPrefs[path][key]=!sidebarPrefs[path][key];saveSidebarPrefs();renderSidebar();$$("[data-"+attr+"]").find(el=>el.dataset[attr]===path)?.focus()});
   if(focusKey)$$(wasMenu?'[data-task-menu]':'[data-task]').find(el=>(wasMenu?el.dataset.taskMenu:el.dataset.task)===focusKey)?.focus({preventScroll:true});
 }
-async function archiveTask(task, archived) {
-  if(archived&&activeStatuses.has(task.status)){
+async function pauseForLifecycle(task) {
+  if(activeStatuses.has(task.status)){
     await api('/tasks/'+task.id+'/stop',{});
     const deadline=Date.now()+190000;
     while(Date.now()<deadline){
@@ -95,6 +95,9 @@ async function archiveTask(task, archived) {
       await new Promise(resolve=>setTimeout(resolve,300));
     }
   }
+ }
+async function archiveTask(task, archived) {
+  if(archived)await pauseForLifecycle(task);
   await api('/tasks/'+task.id+'/metadata',{archived});
   if(!archived)state.historyView='active';
   if(archived&&state.task?.id===task.id)home();
@@ -102,11 +105,35 @@ async function archiveTask(task, archived) {
 }
 function taskMenu(task) {
   if(!task)return;
-  const d=dialog(`${modalHeader('CHAT OPTIONS',esc(task.title))}<div class="task-menu-actions"><button data-rename>Rename</button><button data-pin>${task.pinned?'Unpin':'Pin'}</button><button data-archive>${task.archived_at?'Restore':activeStatuses.has(task.status)?'Pause & archive':'Archive'}</button></div><p class="form-error" role="alert"></p>`);
+  if(task.trashed_at){trashMenu(task);return;}
+  const d=dialog(`${modalHeader('CHAT OPTIONS',esc(task.title))}<div class="task-menu-actions"><button data-rename>Rename</button><button data-pin>${task.pinned?'Unpin':'Pin'}</button><button data-archive>${task.archived_at?'Restore':activeStatuses.has(task.status)?'Pause & archive':'Archive'}</button><button data-trash>Delete</button></div><p class="form-error" role="alert"></p>`);
   $('[data-rename]',d).onclick=()=>{d.close();renameTask(task)};
+  $('[data-trash]',d).onclick=()=>{d.close();deleteTask(task)};
   const act=operation=>async()=>{const buttons=$$('button',d);buttons.forEach(b=>b.disabled=true);try{await operation();d.close()}catch(e){$('.form-error',d).textContent=e.message}finally{buttons.forEach(b=>b.disabled=false)}};
   $('[data-pin]',d).onclick=act(async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()});
   $('[data-archive]',d).onclick=act(async()=>{if(activeStatuses.has(task.status))$('.form-error',d).textContent='Waiting for this task to stop…';await archiveTask(task,!task.archived_at)});
+}
+async function restoreTrash(task) {
+  const restored=await api('/tasks/'+task.id+'/restore',{});
+  state.historyView=restored.archived_at?'archived':'active';
+  await refresh();toast(restored.archived_at?'Restored to Archived.':'Restored to active history.');
+}
+function trashMenu(task) {
+  const d=dialog(`${modalHeader('TRASH',esc(task.title))}<p>${task.saved_change_count||0} saved changes. Files remain on disk.</p><div class="button-row"><button data-inspect>Inspect</button><button data-restore>Restore</button></div><p class="form-error" role="alert"></p>`);
+  $('[data-inspect]',d).onclick=()=>{d.close();selectTask(task.id)};
+  $('[data-restore]',d).onclick=async e=>{e.target.disabled=true;try{await restoreTrash(task);d.close()}catch(error){$('.form-error',d).textContent=error.message;e.target.disabled=false}};
+}
+function deleteTask(task) {
+  const d=dialog(`<form>${modalHeader('DELETE CHAT','Move to Trash?')}<p>Move this chat and its saved task work to Trash? Your source project and commits stay unchanged.</p><p>${task.saved_change_count||task.changes?.length||0} saved changes. You can restore this chat later.</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" class="subtle-button" data-close>Cancel</button><button type="submit" class="primary-button">${activeStatuses.has(task.status)?'Pause & move to Trash':'Move to Trash'}</button></div></form>`);
+  const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{
+    if(activeStatuses.has(task.status))$('.form-error',d).textContent='Waiting for this task to stop…';
+    await pauseForLifecycle(task);await api('/tasks/'+task.id+'/trash',{});
+    if(state.task?.id===task.id)home();await loadTasks();d.close();
+    toast('Moved to Trash.');clearTimeout(toastTimer);
+    const undo=document.createElement('button');undo.className='text-link';undo.textContent='Undo';
+    undo.onclick=async()=>{undo.disabled=true;try{await restoreTrash(task)}catch(error){toast(error.message)}};
+    $('#toast').append(' ',undo);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),15000);
+  })};
 }
 const draftKey=()=>state.task?.id||state.project?.path||'new';
 function saveDraft(){state.drafts.set(draftKey(),$('#chat-input').value)}
@@ -222,7 +249,7 @@ function renderTask({resetScroll=false}={}) {
   const scroller=$('#view-container'), oldScroll=scroller.scrollTop, bottom=scroller.scrollHeight-scroller.clientHeight-oldScroll<60;
   const expanded=new Map((resetScroll?[]:$$('details[data-event]')).map(d=>[d.dataset.event,d.open]));
   const outputScroll=new Map((resetScroll?[]:$$('[data-thinking], [data-command-output]')).map(el=>[el.dataset.thinking||el.dataset.commandOutput,{top:el.scrollTop,bottom:el.scrollHeight-el.clientHeight-el.scrollTop<30}]));
-  $('#task-title').textContent=task.title;$('#task-title').title=task.title;$('#rename-task').hidden=false;document.title=task.title+' — CheapOS';
+  $('#task-title').textContent=task.title;$('#task-title').title=task.title;$('#rename-task').hidden=Boolean(task.trashed_at);document.title=task.title+' — CheapOS';
   $('#project-name').textContent=CheapOSGuide.projectName(task);
   $('#task-status').textContent=labels[task.status]||task.status;
   $('#task-date').textContent=date(task.created_at);
@@ -260,8 +287,8 @@ function renderView() {
   if(state.task.archived_at||state.task.trashed_at){
     const view=$('#'+state.view+'-view');
     for(const el of $$('button,input,textarea',view))el.disabled=true;
-    const banner=document.createElement('section');banner.className='chat-decision';banner.innerHTML='<p>Archived conversation · restore before continuing.</p><button class="primary-button">Restore</button>';
-    $('button',banner).onclick=async()=>{try{await archiveTask(state.task,false)}catch(e){toast(e.message)}};view.prepend(banner);
+    const banner=document.createElement('section');banner.className='chat-decision';banner.innerHTML=`<p>${state.task.trashed_at?'Trash · saved files retained':'Archived conversation'} · restore before continuing.</p><button class="primary-button">Restore</button>`;
+    $('button',banner).onclick=async()=>{try{if(state.task.trashed_at)await restoreTrash(state.task);else await archiveTask(state.task,false)}catch(e){toast(e.message)}};view.prepend(banner);
   }
 }
 function eventDetail(event) {
@@ -357,6 +384,7 @@ function renderChat() {
   else if(CheapOSGuide.canCommit(task))decision=(commitDecisionMarkup(task));
   else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))decision=(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, CheapOS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
   else if(!activeStatuses.has(task.status)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='budget_paused'?`<button class="primary-button btn-boost-headroom" data-chat-action="boost-headroom">${icon('spark')} Boost Headroom & Resume</button>`:''}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
+  if(task.archived_at||task.trashed_at)decision='';
   const lastReply=conversation.findLast(entry=>entry.kind==='assistant');
   $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('');
   for(const d of $$('#chat-view details[data-event]')){
@@ -487,6 +515,7 @@ function requestChanges() {
   setView('chat');const input=$('#chat-input');input.placeholder='Tell CheapOS what to change, or ask a question…';input.focus();input.scrollIntoView({block:'nearest'});
 }
 function bindCommitDecision(task) {
+  if(task.archived_at||task.trashed_at)return;
   $$('[data-commit-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.commitAction;
     if(action==='change'){requestChanges();return}
