@@ -44,3 +44,39 @@ class BranchReviewTests(LocalCase):
         self.engine.request=Mock(side_effect=review)
         with self.assertRaises(ProgressPause): checkpoint(self.engine,Runtime(task),{})
         self.assertNotIn('ready_receipt',task['branch_run']['items'][0])
+
+    def test_measurement_review_can_gather_more_than_eight_distinct_results(self):
+        task=self.task(); task['branch_run']['plan']['measurement']=True
+        attempts=[]
+        def review(runtime,messages,tools,role):
+            attempts.append(1)
+            schema=tools[-1]['function']['parameters']['properties']['criteria_outcomes']
+            self.assertEqual(schema['required'],['Both bounds work'])
+            if len(attempts)<=9:
+                return call('read_file',{'path':'math_utils.py','start_line':len(attempts),'end_line':len(attempts)})
+            packet=json.loads(messages[1]['content'])
+            return call('review_decision',{'decision':'APPROVE','feedback':'Inspected implementation','candidate_id':packet['candidate_id'],'criteria_outcomes':{'Both bounds work':{'passed':True,'evidence':'Read code and passing tests'}}})
+        self.engine.request=Mock(side_effect=review)
+        self.assertEqual(checkpoint(self.engine,Runtime(task),{})['decision'],'APPROVE')
+        self.assertEqual(len(attempts),10)
+
+    def test_measurement_repeated_invalid_review_stays_bounded_across_resume(self):
+        task=self.task();task['branch_run']['plan']['measurement']=True
+        def review(runtime,messages,tools,role):
+            packet=json.loads(messages[1]['content'])
+            return call('review_decision',{'decision':'APPROVE','feedback':'done','candidate_id':packet['candidate_id'],'criteria_outcomes':{'wrong key':{'passed':True,'evidence':'Tests'}}})
+        self.engine.request=Mock(side_effect=review)
+        with self.assertRaisesRegex(ProgressPause,'repeated'):checkpoint(self.engine,Runtime(task),{})
+        self.assertEqual(self.engine.request.call_count,3)
+        feedback=[e['detail']['error'] for e in task['events'] if e['kind']=='review_feedback']
+        self.assertIn('Both bounds work',feedback[0]);self.assertIn('wrong key',feedback[0])
+        with self.assertRaisesRegex(ProgressPause,'repeated'):checkpoint(self.engine,Runtime(task),{})
+        self.assertEqual(self.engine.request.call_count,4)
+        self.assertNotIn('ready_receipt',task['branch_run']['items'][0])
+
+    def test_serialized_check_command_does_not_poison_saved_environment(self):
+        task=self.task();previous=list(task['check_command'])
+        with self.assertRaisesRegex(ValueError,'plain command string'):
+            self.engine.checks(Runtime(task),json.dumps(previous))
+        self.assertEqual(task['check_command'],previous)
+        self.assertNotIn('environment_setup',task)

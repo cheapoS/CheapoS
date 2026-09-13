@@ -215,6 +215,8 @@ def record_observation(runtime, name, args, result):
 
 def check_argv(command):
     """Reject shell syntax instead of passing it as bogus test-runner arguments."""
+    if command.lstrip().startswith('['):
+        raise ValueError('Send command as a plain command string, not a serialized argument list. For example: python3 -B -m unittest. Omit command to reuse the selected check.')
     lexer = shlex.shlex(command, posix=False, punctuation_chars="|&;<>()")
     lexer.whitespace_split = True
     lexer.commenters = ""
@@ -1449,7 +1451,7 @@ class Engine:
         account = {**task, "limits": {**task["limits"], "output_tokens": min(task["limits"]["output_tokens"], 1024 if purpose == "probe" else 512)}} if purpose == "probe" or role == "coordinator" else task
         if role == 'reviewer' and task['status'] == 'reviewing' and not purpose:
             checkpoint = task.get('pending_review') or (task.get('checkpoints') or [{}])[-1]
-            if checkpoint.get('review_requests', 0) >= 8:
+            if not measuring(task) and checkpoint.get('review_requests', 0) >= 8:
                 raise BudgetError("Reviewer reached the eight-turn checkpoint limit, including failed requests and resumed attempts. Saved review work is kept.")
             checkpoint['review_requests'] = checkpoint.get('review_requests', 0) + 1
             runtime.review_requests = checkpoint['review_requests']
