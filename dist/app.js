@@ -88,7 +88,7 @@ function renderSidebar() {
   $$('[data-project-menu]').forEach(b=>b.onclick=()=>projectMenu(b.dataset.projectMenu,b));
   $$('[data-task]').forEach(b=>b.onclick=()=>selectTask(b.dataset.task));
   $$('[data-task-menu]').forEach(b=>b.onclick=()=>taskMenu(state.tasks.find(t=>t.id===b.dataset.taskMenu),b));
-  $$('[data-project]').forEach(b=>b.onclick=()=>b.dataset.project==='demo'?selectTask(demos[0].id):chooseProject(state.projects.find(p=>p.path===b.dataset.project)));
+  $$('[data-project]').forEach(b=>b.onclick=()=>b.dataset.project==='demo'?selectTask(demos[0].id):chooseProject(state.projects.find(p=>p.path===b.dataset.project),true));
   for(const [attr,key] of [['collapse','collapsed'],['more','more']])$$('[data-'+attr+']').forEach(b=>b.onclick=()=>{const path=b.dataset[attr];sidebarPrefs[path]||={};sidebarPrefs[path][key]=!sidebarPrefs[path][key];saveSidebarPrefs();renderSidebar();$$("[data-"+attr+"]").find(el=>el.dataset[attr]===path)?.focus()});
   if(sidebarMenu){const anchor=findMenuAnchor(sidebarMenu.key);if(anchor)anchor.setAttribute('aria-expanded','true');else sidebarMenu.close(false)}
   if(focusKey)$$(wasMenu?'[data-task-menu]':'[data-task]').find(el=>(wasMenu?el.dataset.taskMenu:el.dataset.task)===focusKey)?.focus({preventScroll:true});
@@ -171,8 +171,9 @@ function home() {
   try{localStorage.removeItem('cheapos-selected')}catch{}
   renderHome();restoreDraft();renderSidebar();panelLayout.closeMobileSidebar();$('#view-container').scrollTop=0;
 }
-function chooseProject(project) {
-  sidebarPrefs[project.path]={...sidebarPrefs[project.path],collapsed:false,more:true};saveSidebarPrefs();
+function chooseProject(project,toggle=false) {
+  const collapsed=toggle&&state.project?.path===project.path&&!sidebarPrefs[project.path]?.collapsed;
+  sidebarPrefs[project.path]={...sidebarPrefs[project.path],collapsed,more:true};saveSidebarPrefs();
   saveDraft();home();state.project=project;renderHome();restoreDraft();renderSidebar();
   try{localStorage.setItem('cheapos-project',project.path)}catch{}
   $('#chat-input').focus();
