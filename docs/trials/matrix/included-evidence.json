@@ -1,0 +1,476 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-09-13T22:22:25.950021+00:00",
+  "scope": "Supplemental independently collected trial evidence. Historical controller approvals are retained; supplemental failures prevent qualification. No credentials, provider configuration, or live task logs are included.",
+  "qualification_overrides": [
+    {
+      "trial_family": "nvidia-kiro",
+      "trial": "medium-1",
+      "controller_status": "ready_for_merge",
+      "qualified": false,
+      "basis": "Supplemental acceptance: 5 of 8 tests pass. Exact large money, rejection of 1.230, and quoted embedded newlines fail. Independent Decimal probes document a reviewer-induced float conversion regression in the terminal code.",
+      "evidence_sources": [
+        "/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/independent-decimal-evidence.json",
+        "/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/supplemental-acceptance.json"
+      ]
+    },
+    {
+      "trial_family": "kiro",
+      "trial": "medium-1",
+      "controller_status": "ready_for_merge",
+      "qualified": false,
+      "basis": "Supplemental acceptance: 7 of 8 tests pass. The parser accepts 1.230 despite the literal two-decimal-place requirement. The original approval used an earlier acceptance suite.",
+      "evidence_sources": [
+        "/tmp/cheapos-matrix-kiro-20260913/medium-1/supplemental-acceptance.json"
+      ]
+    }
+  ],
+  "limitations": [
+    "Supplemental checks do not rewrite original trial histories or establish correctness beyond their coverage.",
+    "Empty tool-argument evidence does not identify whether the upstream model or gateway omitted arguments; original SSE frames were not retained.",
+    "Provider quota observations are account-wide, may include concurrent activity, and are not per-trial billing statements."
+  ],
+  "artifacts": [
+    {
+      "source_path": "/tmp/cheapos-matrix-antigravity-20260913/hard-1/browser-verification.json",
+      "source_sha256": "7bfb6fa0d75218fdd95334bed64a3375a03a8c0d9772a6b73065d5d1a3fde150",
+      "trial_family": "antigravity",
+      "trial": "hard-1",
+      "kind": "browser-verification",
+      "evidence": {
+        "passed": true,
+        "checks": [
+          "Added task through browser",
+          "HTML-looking title displayed literally",
+          "Complete action changed button to Done",
+          "Reload preserved completed task",
+          "README includes runnable startup and tests"
+        ],
+        "interventions_during_run": 0
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-antigravity-20260913/medium-1/supplemental-acceptance.json",
+      "source_sha256": "b3b0480ede4d5af8381885762385f79f946cf5664517fdbe7952e21c08ede751",
+      "trial_family": "antigravity",
+      "trial": "medium-1",
+      "kind": "supplemental-acceptance",
+      "evidence": {
+        "trial_family": "antigravity",
+        "task_id": "3844758b8a4f4a78b82bf38c4f08239a",
+        "original_trial_status": "ready_for_merge",
+        "original_checks_passed": [
+          true,
+          true
+        ],
+        "supplemental_suite_source": "/private/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+        "tests_run": 8,
+        "passed": true,
+        "failures": [],
+        "errors": [],
+        "output": "test_bad_header (supplemental_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (supplemental_acceptance.Acceptance) ... ok\ntest_empty (supplemental_acceptance.Acceptance) ... ok\ntest_invalid_rows (supplemental_acceptance.Acceptance) ... ok\ntest_large_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_quoted_newline (supplemental_acceptance.Acceptance) ... ok\ntest_trim (supplemental_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nOK\n",
+        "workspace_hashes": {
+          "ledger.py": "5f87dbe7300973aca6657080baaa173b968f232568c6285fb4cb18db276721dd",
+          "README.md": "240909054c9562c8b22cf199b860f65aa33021acdf73ffc9b585037938e6e41a",
+          "test_acceptance.py": "1b1caf85f28c6fffa6e94869185b0a7691b211d8cd5c5009e5ed8b68c18f7018",
+          "report.py": "90a691e714c01af8c4311a852e118f2e6ec663e609d101bea5574e8cfad8c7a6"
+        },
+        "workspace_preserved": true,
+        "method": "Executed current MEDIUM_TEST with copied retained ledger/report source in in-memory modules; original acceptance files/workspaces untouched; no live inference calls. Original approvals are historical and are not rewritten."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/hard-1/browser-verification.json",
+      "source_sha256": "286a19cb777e847ba10d561348ffbef3528cd318a3e16259f5ce9f9581f61a35",
+      "trial_family": "kiro",
+      "trial": "hard-1",
+      "kind": "browser-verification",
+      "evidence": {
+        "passed": true,
+        "add": true,
+        "literal_html_unicode": true,
+        "complete_persists_after_reload": true,
+        "blank_input_created_no_task": true,
+        "startup_documentation_present": true,
+        "api_done_encoding": "SQLite integer 0/1, not JSON boolean; UI correctly handles it",
+        "database": "/tmp/cheapos-kiro-browser-check.sqlite"
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/medium-1/supplemental-acceptance.json",
+      "source_sha256": "224f8dabae9ce1b4e997edc1bc0712f41539d00d49c22d79bfc7dd95a2595d62",
+      "trial_family": "kiro",
+      "trial": "medium-1",
+      "kind": "supplemental-acceptance",
+      "evidence": {
+        "trial_family": "kiro",
+        "task_id": "558da3a5c18443e4bda632e87b640a94",
+        "original_trial_status": "ready_for_merge",
+        "original_checks_passed": [
+          false,
+          true,
+          true
+        ],
+        "supplemental_suite_source": "/private/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+        "tests_run": 8,
+        "passed": false,
+        "failures": [
+          [
+            "test_invalid_rows (supplemental_acceptance.Acceptance) (row='food,1.230')",
+            "Traceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 21, in test_invalid_rows\nAssertionError: ValueError not raised\n"
+          ]
+        ],
+        "errors": [],
+        "output": "test_bad_header (supplemental_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (supplemental_acceptance.Acceptance) ... ok\ntest_empty (supplemental_acceptance.Acceptance) ... ok\ntest_invalid_rows (supplemental_acceptance.Acceptance) ... test_large_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_quoted_newline (supplemental_acceptance.Acceptance) ... ok\ntest_trim (supplemental_acceptance.Acceptance) ... ok\n\n======================================================================\nFAIL: test_invalid_rows (supplemental_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 21, in test_invalid_rows\nAssertionError: ValueError not raised\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nFAILED (failures=1)\n",
+        "workspace_hashes": {
+          "ledger.py": "d987090029662a3449663e0d31c3e5ee94d90ef31dcb58b94673df482cecb616",
+          "README.md": "63c93abba9fedc7900b6305b5178db0cca4d43ff7f0c0025cbd7b396f761bcb1",
+          "test_acceptance.py": "1b1caf85f28c6fffa6e94869185b0a7691b211d8cd5c5009e5ed8b68c18f7018",
+          "report.py": "a878bfc5aa90ee74db227a9696f046f85eb4e6de632637b12f1606191124ae61"
+        },
+        "workspace_preserved": true,
+        "method": "Executed current MEDIUM_TEST with copied retained ledger/report source in in-memory modules; original acceptance files/workspaces untouched; no live inference calls. Original approvals are historical and are not rewritten."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/very-hard-1/independent-tool-protocol.json",
+      "source_sha256": "689df1feb00e3f34e937c1723debee396909343145032fed51b3ea5e46da4af9",
+      "trial_family": "kiro",
+      "trial": "very-hard-1",
+      "kind": "independent-tool-protocol",
+      "evidence": {
+        "task_id": "f389a78e29394d1ea2b3dea5caafdccd",
+        "task_snapshot_sha256": "38b7ee80d172e3b405f6d11633b83fb55116a55d36e34fa781875ca932057f53",
+        "status": "paused",
+        "saved_calls": [
+          {
+            "saved_call": {
+              "id": "tooluse_9OLcmiR7mO9NXJPWyzNUnY",
+              "type": "function",
+              "function": {
+                "name": "get_diff",
+                "arguments": ""
+              }
+            },
+            "parse_error": "Invalid arguments for get_diff: Expecting value at line 1, column 1. Send this tool call again with a valid JSON object; escape quotes, backslashes, and newlines inside strings. For large edits, use smaller exact replacements. This call was not executed.",
+            "empty_object_parses_as": [
+              "get_diff",
+              {}
+            ]
+          },
+          {
+            "saved_call": {
+              "id": "tooluse_TqCnP2Xv1PrKg9TKwlMXF6",
+              "type": "function",
+              "function": {
+                "name": "get_diff",
+                "arguments": ""
+              }
+            },
+            "parse_error": "Invalid arguments for get_diff: Expecting value at line 1, column 1. Send this tool call again with a valid JSON object; escape quotes, backslashes, and newlines inside strings. For large edits, use smaller exact replacements. This call was not executed.",
+            "empty_object_parses_as": [
+              "get_diff",
+              {}
+            ]
+          },
+          {
+            "saved_call": {
+              "id": "tooluse_H2Sp4ujhptcJCgHmOkkXL9",
+              "type": "function",
+              "function": {
+                "name": "list_files",
+                "arguments": ""
+              }
+            },
+            "parse_error": "Invalid arguments for list_files: Expecting value at line 1, column 1. Send this tool call again with a valid JSON object; escape quotes, backslashes, and newlines inside strings. For large edits, use smaller exact replacements. This call was not executed.",
+            "empty_object_parses_as": [
+              "list_files",
+              {}
+            ]
+          }
+        ],
+        "tool_schemas": {
+          "list_files": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative directory. Omit or use '.' to list the whole project."
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "get_diff": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "offline_stream_assembly": [
+          {
+            "upstream_arguments": null,
+            "assembled_arguments": ""
+          },
+          {
+            "upstream_arguments": "",
+            "assembled_arguments": ""
+          },
+          {
+            "upstream_arguments": "{}",
+            "assembled_arguments": "{}"
+          }
+        ],
+        "classification": "Empty-argument tool protocol incompatibility at the provider/gateway/controller boundary; not malformed coding/edit content. Attribution to upstream model vs gateway is undetermined because original SSE frames are not retained.",
+        "execution": "Read saved data and replayed synthetic SSE in memory; no tools executed and no live requests."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/independent-decimal-evidence.json",
+      "source_sha256": "3645c55c7a80faac5033d3e7e6a35aba6761e3c91c6dea4c2e6c824d746c9d92",
+      "trial_family": "nvidia-kiro",
+      "trial": "medium-1",
+      "kind": "independent-decimal-evidence",
+      "evidence": {
+        "task_id": "628696e43e3d4dc5952487364add5310",
+        "run_status": "ready_for_merge",
+        "run_terminal": true,
+        "source_hashes": {
+          "ledger.py": "0818dc6c40ec1122ec4b0edfec09ff1328dd7f618b9e0ff52dab1c9dc219682e",
+          "report.py": "01338f66ae0612b9a063d125df0e18464f0d2046bf7782a97316eaaaa68de40b"
+        },
+        "workspace_preserved": true,
+        "decimal_context_precision": 28,
+        "probes": [
+          {
+            "name": "Decimal supports fixed-point format directly",
+            "expected": "9007199254740993.01",
+            "actual": "9007199254740993.01",
+            "error": null,
+            "passed": true
+          },
+          {
+            "name": "Exact category report above binary-float integer precision",
+            "expected": "large: 9007199254740993.01\nTOTAL: 9007199254740993.01\n",
+            "actual": "large: 9007199254740994.00\nTOTAL: 9007199254740994.00\n",
+            "error": null,
+            "passed": false
+          },
+          {
+            "name": "Exact 22-significant-digit category report",
+            "expected": "large: 12345678901234567890.12\nTOTAL: 12345678901234567890.12\n",
+            "actual": "large: 12345678901234567168.00\nTOTAL: 12345678901234567168.00\n",
+            "error": null,
+            "passed": false
+          },
+          {
+            "name": "More than two literal decimal places rejected",
+            "expected": true,
+            "actual": false,
+            "error": null,
+            "passed": false
+          },
+          {
+            "name": "Embedded newline in quoted CSV category preserved",
+            "expected": [
+              [
+                "food\nhome",
+                "1.20"
+              ]
+            ],
+            "actual": [
+              [
+                "foodhome",
+                "1.20"
+              ]
+            ],
+            "error": null,
+            "passed": false
+          },
+          {
+            "name": "Large exact input parse without undocumented precision ceiling",
+            "expected": [
+              [
+                "large",
+                "12345678901234567890123456789.01"
+              ]
+            ],
+            "actual": null,
+            "error": {
+              "type": "InvalidOperation",
+              "message": "[<class 'decimal.InvalidOperation'>]"
+            },
+            "passed": false
+          }
+        ],
+        "method": "Executed copied source bytes in memory with Python Decimal and independently chosen expected values; no live calls and no workspace writes.",
+        "scope_notes": "High precision report examples fit default Decimal precision28 and directly isolate float conversion. Extra literal scale/newline/arbitrary-precision probes cover requirements absent from supplied acceptance suite.",
+        "original_approved_commit": {
+          "sha": "93539cee5f9746cae96180d72da06b9db6b72a2c",
+          "report_sha256": "69ddf7b397500db90f141f29066ec96f82bb3c0470a3d8fa8bd64f96d40730b1",
+          "same_high_precision_probe_output": "large: 9007199254740993.01\nTOTAL: 9007199254740993.01\n"
+        },
+        "reviewer_regression_instruction": [
+          {
+            "event_id": 112,
+            "feedback": "Critical: String formatting in report.py uses f-string format specifiers (.2f) on Decimal objects, which will fail or produce incorrect output. Fix by converting to float: f\\\"{float(amount):.2f}\\\" or use Decimal's quantize method. Minor: README example shows output without trailing newline, but code adds one—clarify intended behavior. Recommend testing the updated validation logic (non-finite amounts, negative amounts, decimal precision checks) to ensure all error paths work correctly."
+          }
+        ],
+        "passed": false,
+        "initial_running_snapshot": {
+          "run_status": "running",
+          "source_hashes": {
+            "ledger.py": "0818dc6c40ec1122ec4b0edfec09ff1328dd7f618b9e0ff52dab1c9dc219682e",
+            "report.py": "518bc1274645eb1afd5040562e1b456ebe7951c45e21e5fbc39cda9f2e69592c"
+          },
+          "probes": [
+            {
+              "name": "Decimal supports fixed-point format directly",
+              "expected": "9007199254740993.01",
+              "actual": "9007199254740993.01",
+              "error": null,
+              "passed": true
+            },
+            {
+              "name": "Exact category report above binary-float integer precision",
+              "expected": "large: 9007199254740993.01\nTOTAL: 9007199254740993.01\n",
+              "actual": "large: 9007199254740994.00\nTOTAL: 9007199254740993.01\n",
+              "error": null,
+              "passed": false
+            },
+            {
+              "name": "Exact 22-significant-digit category report",
+              "expected": "large: 12345678901234567890.12\nTOTAL: 12345678901234567890.12\n",
+              "actual": "large: 12345678901234567168.00\nTOTAL: 12345678901234567890.12\n",
+              "error": null,
+              "passed": false
+            },
+            {
+              "name": "More than two literal decimal places rejected",
+              "expected": true,
+              "actual": false,
+              "error": null,
+              "passed": false
+            },
+            {
+              "name": "Embedded newline in quoted CSV category preserved",
+              "expected": [
+                [
+                  "food\nhome",
+                  "1.20"
+                ]
+              ],
+              "actual": [
+                [
+                  "foodhome",
+                  "1.20"
+                ]
+              ],
+              "error": null,
+              "passed": false
+            },
+            {
+              "name": "Large exact input parse without undocumented precision ceiling",
+              "expected": [
+                [
+                  "large",
+                  "12345678901234567890123456789.01"
+                ]
+              ],
+              "actual": null,
+              "error": {
+                "type": "InvalidOperation",
+                "message": "[<class 'decimal.InvalidOperation'>]"
+              },
+              "passed": false
+            }
+          ]
+        },
+        "inspected_at": "2026-09-13T22:21:19.928958+00:00",
+        "task_snapshot_sha256": "6c185032d178982abf35e5098efb4bfe5d7f15d45bdbea905baee6e719cbac09"
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/supplemental-acceptance.json",
+      "source_sha256": "c2a10d2446ed48646cff1e3d6a3db034c551800c4ead0b60001ef40ad11f122e",
+      "trial_family": "nvidia-kiro",
+      "trial": "medium-1",
+      "kind": "supplemental-acceptance",
+      "evidence": {
+        "task_id": "628696e43e3d4dc5952487364add5310",
+        "original_trial_status": "ready_for_merge",
+        "supplemental_suite_sha256": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+        "tests_run": 8,
+        "passed": false,
+        "failures": [
+          [
+            "test_invalid_rows (supplemental_acceptance.Acceptance) (row='food,1.230')",
+            "Traceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 21, in test_invalid_rows\nAssertionError: ValueError not raised\n"
+          ],
+          [
+            "test_large_exact_money (supplemental_acceptance.Acceptance)",
+            "Traceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 12, in test_large_exact_money\nAssertionError: 'A: 9007199254740994.00\\nTOTAL: 9007199254740994.00\\n' != 'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n'\n- A: 9007199254740994.00\n?                   ^  ^\n+ A: 9007199254740993.01\n?                   ^  ^\n- TOTAL: 9007199254740994.00\n?                       ^  ^\n+ TOTAL: 9007199254740993.01\n?                       ^  ^\n\n"
+          ],
+          [
+            "test_quoted_newline (supplemental_acceptance.Acceptance)",
+            "Traceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 14, in test_quoted_newline\nAssertionError: Lists differ: [('foodtravel', Decimal('1.20'))] != [('food\\ntravel', Decimal('1.20'))]\n\nFirst differing element 0:\n('foodtravel', Decimal('1.20'))\n('food\\ntravel', Decimal('1.20'))\n\n- [('foodtravel', Decimal('1.20'))]\n+ [('food\\ntravel', Decimal('1.20'))]\n?        ++\n\n"
+          ]
+        ],
+        "errors": [],
+        "output": "test_bad_header (supplemental_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (supplemental_acceptance.Acceptance) ... ok\ntest_empty (supplemental_acceptance.Acceptance) ... ok\ntest_invalid_rows (supplemental_acceptance.Acceptance) ... test_large_exact_money (supplemental_acceptance.Acceptance) ... FAIL\ntest_quoted_newline (supplemental_acceptance.Acceptance) ... FAIL\ntest_trim (supplemental_acceptance.Acceptance) ... ok\n\n======================================================================\nFAIL: test_invalid_rows (supplemental_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 21, in test_invalid_rows\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_large_exact_money (supplemental_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 12, in test_large_exact_money\nAssertionError: 'A: 9007199254740994.00\\nTOTAL: 9007199254740994.00\\n' != 'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n'\n- A: 9007199254740994.00\n?                   ^  ^\n+ A: 9007199254740993.01\n?                   ^  ^\n- TOTAL: 9007199254740994.00\n?                       ^  ^\n+ TOTAL: 9007199254740993.01\n?                       ^  ^\n\n\n======================================================================\nFAIL: test_quoted_newline (supplemental_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 14, in test_quoted_newline\nAssertionError: Lists differ: [('foodtravel', Decimal('1.20'))] != [('food\\ntravel', Decimal('1.20'))]\n\nFirst differing element 0:\n('foodtravel', Decimal('1.20'))\n('food\\ntravel', Decimal('1.20'))\n\n- [('foodtravel', Decimal('1.20'))]\n+ [('food\\ntravel', Decimal('1.20'))]\n?        ++\n\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=3)\n",
+        "workspace_hashes": {
+          "ledger.py": "0818dc6c40ec1122ec4b0edfec09ff1328dd7f618b9e0ff52dab1c9dc219682e",
+          "report.py": "01338f66ae0612b9a063d125df0e18464f0d2046bf7782a97316eaaaa68de40b"
+        },
+        "workspace_preserved": true,
+        "method": "Current MEDIUM_TEST executed entirely from copied source bytes/in-memory modules; no original test/code edits or live calls."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-connection-quota-observations.json",
+      "source_sha256": "2526ef18fee957b102d3353f2a3b2a78044fb6e71e65a4d2f81291495a31cc2e",
+      "kind": "connection-quota-observations",
+      "evidence": {
+        "source": "OmniRoute authenticated Provider Quota dashboard, manually refreshed",
+        "attribution": "Account-wide; concurrent user activity may contribute. Not a per-trial billing statement.",
+        "observations": [
+          {
+            "local_time": "2026-09-13 17:55",
+            "antigravity": {
+              "plan": "Ultra",
+              "claude_group_remaining_percent": 100
+            },
+            "kiro": {
+              "plan": "Free",
+              "used_credits": 0,
+              "total_credits": 50
+            }
+          },
+          {
+            "local_time": "2026-09-13 18:03",
+            "antigravity": {
+              "plan": "Ultra",
+              "claude_group_remaining_percent": 86,
+              "gemini_group_remaining_percent": 93
+            },
+            "kiro": {
+              "plan": "Free",
+              "used_credits": 0.88,
+              "total_credits": 50
+            }
+          },
+          {
+            "observed_at": "2026-09-13T18:15:34-04:00",
+            "antigravity_claude_remaining_percent": 52,
+            "kiro_used_credits": 6.38,
+            "kiro_total_credits": 50,
+            "basis": "Authenticated OmniRoute quota UI; account-wide, includes possible concurrent activity"
+          }
+        ]
+      }
+    }
+  ]
+}
