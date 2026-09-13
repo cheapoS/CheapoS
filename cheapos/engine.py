@@ -295,7 +295,7 @@ class Engine:
                 result[role]["key_configured"] = bool(self.provider_key(role, result[role]))
         return result
 
-    def projects(self):
+    def projects(self, include_hidden=False):
         try:
             saved = json.loads((self.store.root / "projects.json").read_text())
             if not isinstance(saved, list):
@@ -304,13 +304,44 @@ class Engine:
         except (OSError, ValueError):
             saved = []
         sources = list(dict.fromkeys(saved + [t["source"] for t in self.store.list(summary=True) if not t["demo"]]))
-        return [{"path": path, "name": Path(path).name} for path in sources]
+        return [{"path": path, "name": Path(path).name} for path in sources if include_hidden or path not in self.hidden_project_paths()]
+
+    def hidden_project_paths(self):
+        try:
+            paths = json.loads((self.store.root / "hidden-projects.json").read_text())
+            return {path for path in paths if isinstance(path, str)} if isinstance(paths, list) else set()
+        except (OSError, ValueError):
+            return set()
+
+    def hide_project(self, values):
+        with self.lock:
+            value = values.get("repository")
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("Choose a known project")
+            source = str(Path(value).expanduser().resolve())
+            if source not in {p["path"] for p in self.projects(include_hidden=True)}:
+                raise ValueError("Project not found")
+            for task in self.store.list():
+                if task["source"] != source:
+                    continue
+                runtime = self.runtimes.get(task["id"])
+                if runtime and runtime.thread and runtime.thread.is_alive():
+                    raise ValueError("Pause the running chat first")
+                if task.get("commit_pending"):
+                    raise ValueError("Finish the saved commit attempt before hiding this project")
+            hidden = self.hidden_project_paths() | {source}
+            write_json(self.store.root / "hidden-projects.json", sorted(hidden))
+            return {"path": source, "hidden": True}
 
     def open_project(self, values):
-        source = str(Workspace.project_root(values.get("repository", "")))
+        try:
+            source = str(Workspace.project_root(values.get("repository", "")))
+        except OSError as error:
+            raise ValueError("Project folder is unavailable. Locate the repository and open its current folder.") from error
         with self.lock:
-            paths = [p["path"] for p in self.projects() if p["path"] != source]
+            paths = [p["path"] for p in self.projects(include_hidden=True) if p["path"] != source]
             write_json(self.store.root / "projects.json", [source] + paths[:49])
+            write_json(self.store.root / "hidden-projects.json", sorted(self.hidden_project_paths() - {source}))
         return {"path": source, "name": Path(source).name}
 
     def preferences(self):

@@ -137,6 +137,17 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(json.loads(self.request('GET',path)[2])['status'],'ready')
         self.assertEqual(self.post('/api/tasks/missing/trash',{})[0],400)
 
+    def test_project_hide_and_reopen_are_token_protected_and_nondestructive(self):
+        task=self.engine.create_demo();task['demo']=False;self.engine.store.save(task)
+        values={'repository':task['source']}
+        self.assertEqual(self.request('POST','/api/projects/hide',values,{'Content-Type':'application/json'})[0],403)
+        self.assertEqual(self.post('/api/projects/hide',values)[0],200)
+        self.assertEqual(json.loads(self.request('GET','/api/projects')[2]),[])
+        self.assertEqual(len(json.loads(self.request('GET','/api/projects/hidden')[2])),1)
+        self.assertEqual(self.post('/api/projects',values)[0],200)
+        self.assertEqual(len(json.loads(self.request('GET','/api/projects')[2])),1)
+        self.assertEqual(len(self.engine.store.list()),1)
+
     def test_private_paths_are_not_served(self):
         for path in ['/README.md', '/.git/config', '/.cheapos/config.json', '/../run.py', '/%2e%2e/run.py', '/api/tasks/../../config']:
             self.assertEqual(self.request('GET', path)[0], 404, path)

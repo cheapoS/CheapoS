@@ -29,12 +29,12 @@ Add project discovery/hide/reopen API tests and a browser scenario. No project d
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Persistent hidden-project identities, token-protected hide endpoint, explicit reopen, sidebar project menu, Hidden projects recovery, and labeled hidden-project search results with explicit reopen.
+- Acceptance evidence: Hide/restart/reopen retains task records and repository HEAD; normalized full paths distinguish identical basenames; missing repositories remain hidden with actionable errors; active tasks/pending commits block removal.
+- Commands and results: 3 project visibility tests, 28 HTTP tests, and 61 JavaScript tests passed; app syntax and diff checks passed.
+- Browser scenarios and results: Remove project; reload keeps group absent; Open project exposes Hidden projects; explicit reopen returns original pinned/history entries. Recovery entries include full paths.
+- Remaining limitations: Moved repositories require opening their current path; automatic path migration is out of scope.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

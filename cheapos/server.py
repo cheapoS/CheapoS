@@ -90,9 +90,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
         engine = self.server.engine
         try:
             if path == "/api/bootstrap":
-                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.visible(), "projects": engine.projects(), "preferences": engine.preferences()})
+                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.visible(), "projects": engine.projects(), "hidden_projects": [p for p in engine.projects(include_hidden=True) if p["path"] in engine.hidden_project_paths()], "preferences": engine.preferences()})
             elif path == "/api/startup":
                 self.reply({**engine.startup.snapshot(), "config":engine.configuration()})
+            elif path == "/api/projects/hidden":
+                self.reply([p for p in engine.projects(include_hidden=True) if p["path"] in engine.hidden_project_paths()])
             elif path == "/api/projects":
                 self.reply(engine.projects())
             elif path == "/api/gateway":
@@ -147,6 +149,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.startup.start()
             elif path == "/api/startup/stop":
                 result = engine.startup.stop()
+            elif path == "/api/projects/hide":
+                result = engine.hide_project(values)
             elif path == "/api/projects":
                 result = engine.open_project(values)
             elif path == "/api/preferences":

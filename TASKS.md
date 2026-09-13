@@ -53,7 +53,7 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 | [T03](docs/tasks/T03-sidebar.md) | Sidebar menus, pin/archive, collapse, and full history | T01, T02 | M | Done |
 | [T04](docs/tasks/T04-trash-backend.md) | Recoverable Delete/Restore backend | T01 | M | Done |
 | [T05](docs/tasks/T05-trash-ui.md) | Delete, Undo, Trash, and Restore UI | T03, T04 | M | Done |
-| [T06](docs/tasks/T06-project-visibility.md) | Remove/reopen a project without deleting its files | T03 | M | Todo |
+| [T06](docs/tasks/T06-project-visibility.md) | Remove/reopen a project without deleting its files | T03 | M | Done |
 | [T07](docs/tasks/T07-existing-permission-ux.md) | Make existing session approval obvious; diagnose repeats | — | S | Todo |
 | [T08](docs/tasks/T08-test-profile-matcher.md) | Pure, explicit unittest command-profile matcher | — | M | Todo |
 | [T09](docs/tasks/T09-project-session-grants.md) | Project-session test grants in the controller | T08 | L | Todo |
