@@ -1186,11 +1186,14 @@ class Engine:
         messages = self.action_messages(runtime.task)
         # The supplied numbered snapshot counts as evidence already available to
         # the worker. Slightly changing a read range is not new information.
-        runtime.file_observations.clear()
+        # Compaction is not progress: retain prior reads of unchanged versions,
+        # including files omitted from this bounded snapshot. Real edits and new
+        # work reset observations at their existing lifecycle boundaries.
         runtime.edit_versions.clear()
         for file in json.loads(messages[1]["content"])["current_files"]:
             if file.get("hash"):
-                runtime.file_observations[(file["path"], file["hash"])] = {"lines": observed_file_lines(file), "repeats": 0}
+                seen = runtime.file_observations.setdefault((file["path"], file["hash"]), {"lines": set(), "repeats": 0})
+                seen["lines"].update(observed_file_lines(file))
                 self.remember_file_version(runtime, file)
         runtime.compact_context_ready = True
         return messages
