@@ -406,8 +406,26 @@ class Engine:
         git(root, "-c", "user.name=CheapOS", "-c", "user.email=local@cheapos.invalid", "commit", "-qm", "Self-test fixture")
         return self.create({"prompt": "Fix clamp so it handles both bounds and rejects an inverted range.", "repository": str(root), "check_command": shlex.join([sys.executable, "-m", "unittest", "discover", "-v"]), "auto_approve_checks": True}, demo=True)
 
+    def require_active_task(self, task_id):
+        metadata = self.store.metadata(task_id)
+        if metadata["archived_at"] or metadata["trashed_at"]:
+            raise ValueError("Restore this task from history before continuing its work")
+
+    def update_task_metadata(self, task_id, values):
+        with self.lock:
+            task = self.store.get(task_id)
+            runtime = self.runtimes.get(task_id)
+            if values.get("archived") is True:
+                if runtime and runtime.thread and runtime.thread.is_alive():
+                    raise ValueError("Pause this task and wait for it to stop before archiving")
+                if task.get("commit_pending"):
+                    raise ValueError("Finish the saved commit attempt before archiving")
+            self.store.update_metadata(task_id, values)
+            return self.store.present(task)
+
     def start(self, task_id, changes=None):
         with self.lock:
+            self.require_active_task(task_id)
             if self.startup.busy():
                 raise ValueError("Wait for the startup greeting or stop its connection check before starting a chat")
             previous = self.runtimes.get(task_id)
@@ -553,6 +571,7 @@ class Engine:
 
     def rollback_checkpoint(self, task_id, checkpoint_number):
         with self.lock:
+            self.require_active_task(task_id)
             runtime = self.runtimes.get(task_id)
             if runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError("Pause this chat before rolling back to a checkpoint")
@@ -590,6 +609,7 @@ class Engine:
             raise ValueError("Enter a steering guidance message of up to 4,000 characters")
         cleaned = message.strip()
         with self.lock:
+            self.require_active_task(task_id)
             runtime = self.runtimes.get(task_id)
             if runtime and runtime.thread and runtime.thread.is_alive():
                 task = runtime.task
@@ -614,6 +634,7 @@ class Engine:
 
     def boost_headroom(self, task_id, additional_tokens=100000, additional_turns=10):
         with self.lock:
+            self.require_active_task(task_id)
             task = self.store.get(task_id)
             limits = task.setdefault("limits", dict(DEFAULT_LIMITS))
             limits["reviewer_tokens"] = min(1000000, limits.get("reviewer_tokens", 200000) + additional_tokens)
@@ -745,6 +766,7 @@ class Engine:
 
     def reconcile_project(self, task_id, values):
         with self.lock:
+            self.require_active_task(task_id)
             task = self.commit_task(task_id)
             if task.get("commit_pending"):
                 raise ValueError("Finish the saved commit attempt before reconciling the project")
@@ -778,6 +800,7 @@ class Engine:
 
     def commit_decision(self, task_id, values):
         with self.lock:
+            self.require_active_task(task_id)
             task = self.commit_task(task_id)
             if task.get("commit_pending"):
                 raise ValueError("This commit was already approved and started. Finish the saved commit attempt before making a new decision.")
@@ -794,6 +817,7 @@ class Engine:
 
     def prepare_commit(self, task_id):
         with self.lock:
+            self.require_active_task(task_id)
             task = self.commit_task(task_id)
             pending = task.get("commit_pending")
             if pending:
@@ -814,6 +838,7 @@ class Engine:
 
     def apply_commit(self, task_id, values):
         with self.lock:
+            self.require_active_task(task_id)
             if values.get("approved") is not True:
                 raise ValueError("Approve the displayed patch and commit message before committing")
             task = self.commit_task(task_id)

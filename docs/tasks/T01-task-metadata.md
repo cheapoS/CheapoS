@@ -35,12 +35,12 @@ Add `tests/test_task_metadata.py` for persistence and concurrent-save behavior; 
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Independently persisted metadata, shared presentation, active/archived/trash filters, token-protected metadata mutation, and controller archive guards.
+- Acceptance evidence: Concurrent publish/save and restart retain both metadata and events; invalid updates are atomic; active runtime and pending commit block archive; restore does not dispatch.
+- Commands and results: `test_task_metadata.py`: 4 passed; `test_http.py`: 26 passed with loopback access; JavaScript: 60 passed; `node --check dist/app.js` and `git diff --check` passed. Full integration suite is running separately and will be recorded before branch handoff.
+- Browser scenarios and results: Disposable local fixture opens the existing task through the metadata-aware API. Rename/archive UI belongs to later cards.
+- Remaining limitations: No Trash mutation or automatic naming yet, as scoped. HTTP tests require permission to bind loopback sockets in this environment.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

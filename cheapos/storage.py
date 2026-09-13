@@ -4,6 +4,8 @@ import copy
 import json
 import os
 import threading
+import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -64,3 +66,60 @@ class Store:
                 keys = ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage")
                 return [{key: copy.deepcopy(t[key]) for key in keys} for t in tasks]
             return [copy.deepcopy(t) for t in tasks]
+
+    def metadata(self, task_id):
+        """UI state is independent of worker-owned execution records."""
+        with self.lock:
+            self.get(task_id)
+            defaults = dict(custom_title=None, pinned=False, archived_at=None, trashed_at=None)
+            try:
+                value = json.loads((self.root / "tasks" / task_id / "metadata.json").read_text())
+                if not isinstance(value, dict):
+                    return defaults
+                for key, default in defaults.items():
+                    item = value.get(key, default)
+                    if key == "pinned":
+                        if isinstance(item, bool):
+                            defaults[key] = item
+                    elif item is None or isinstance(item, str):
+                        defaults[key] = item
+            except (OSError, ValueError):
+                pass
+            return defaults
+
+    def update_metadata(self, task_id, values):
+        with self.lock:
+            current = self.metadata(task_id)
+            if not isinstance(values, dict) or set(values) - {"custom_title", "pinned", "archived"}:
+                raise ValueError("Unknown task metadata field")
+            if "custom_title" in values:
+                title = values["custom_title"]
+                if title is not None:
+                    if not isinstance(title, str) or any(unicodedata.category(c) == "Cc" for c in title):
+                        raise ValueError("Use a plain text title without control characters")
+                    title = title.strip()
+                    if not 1 <= len(title) <= 120:
+                        raise ValueError("Enter a title of 1–120 characters")
+                current["custom_title"] = title
+            for key in ("pinned", "archived"):
+                if key in values and not isinstance(values[key], bool):
+                    raise ValueError(key + " must be true or false")
+            if "pinned" in values:
+                current["pinned"] = values["pinned"]
+            if "archived" in values:
+                current["archived_at"] = (current["archived_at"] or datetime.now(timezone.utc).isoformat()) if values["archived"] else None
+            write_json(self.root / "tasks" / task_id / "metadata.json", current)
+            return current
+
+    def present(self, task):
+        metadata = self.metadata(task["id"])
+        return {**task, **metadata, "title": metadata["custom_title"] or task["title"]}
+
+    def visible(self, view="active"):
+        if view not in {"active", "archived", "trash"}:
+            raise ValueError("Choose active, archived, or trash history")
+        with self.lock:
+            tasks = [self.present(task) for task in self.list(summary=True)]
+            return [task for task in tasks if (
+                bool(task["trashed_at"]) if view == "trash" else
+                not task["trashed_at"] and bool(task["archived_at"]) == (view == "archived"))]

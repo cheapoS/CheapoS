@@ -99,6 +99,31 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post(path + '/permissions', {'clear': True})[0], 200)
         self.assertEqual(json.loads(self.request('GET', path + '/permissions')[2])['commands'], [])
 
+    def test_metadata_routes_share_titles_and_filter_history(self):
+        task = self.engine.create_demo()
+        path = '/api/tasks/' + task['id']
+        values = {'custom_title': 'Useful task', 'pinned': True}
+        self.assertEqual(self.request('POST', path + '/metadata', values, {'Content-Type': 'application/json'})[0], 403)
+        self.assertEqual(self.post(path + '/metadata', values)[0], 200)
+        for route in [path, '/api/tasks', '/api/bootstrap']:
+            result = json.loads(self.request('GET', route)[2])
+            if route == '/api/bootstrap':
+                result = result['tasks']
+            if isinstance(result, list):
+                result = result[0]
+            self.assertEqual(result['title'], 'Useful task')
+            self.assertTrue(result['pinned'])
+        self.assertEqual(self.post(path + '/metadata', {'archived': True})[0], 200)
+        self.assertEqual(json.loads(self.request('GET', '/api/tasks')[2]), [])
+        self.assertEqual(json.loads(self.request('GET', '/api/bootstrap')[2])['tasks'], [])
+        self.assertEqual(len(json.loads(self.request('GET', '/api/tasks?view=archived')[2])), 1)
+        self.assertEqual(self.request('GET', path)[0], 200)
+        self.assertEqual(self.post(path + '/start', {})[0], 400)
+        self.assertEqual(self.post(path + '/metadata', {'archived': False})[0], 200)
+        self.assertEqual(self.post(path + '/metadata', {'custom_title': ''})[0], 400)
+        self.assertEqual(self.post('/api/tasks/missing/metadata', values)[0], 400)
+        self.assertEqual(self.post(path + '/metadata', {'status': 'running'})[0], 400)
+
     def test_private_paths_are_not_served(self):
         for path in ['/README.md', '/.git/config', '/.cheapos/config.json', '/../run.py', '/%2e%2e/run.py', '/api/tasks/../../config']:
             self.assertEqual(self.request('GET', path)[0], 404, path)

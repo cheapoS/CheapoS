@@ -5,16 +5,18 @@ import hashlib
 import secrets
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlsplit, parse_qs
 
 from . import __version__
 from .gateways import gateway_for
 from .providers import validate_provider, ProviderError
 
 
-def public_task(task, summary=False):
+def public_task(task, summary=False, store=None):
+    if store is not None:
+        task = store.present(task)
     if summary:
-        return {key: task[key] for key in ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage")}
+        return {key: task[key] for key in ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage", "custom_title", "pinned", "archived_at", "trashed_at") if key in task}
     return {**{key: value for key, value in task.items() if key not in {"messages", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending"}}, "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
 
 
@@ -88,7 +90,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         engine = self.server.engine
         try:
             if path == "/api/bootstrap":
-                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.list(summary=True), "projects": engine.projects(), "preferences": engine.preferences()})
+                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.visible(), "projects": engine.projects(), "preferences": engine.preferences()})
             elif path == "/api/startup":
                 self.reply({**engine.startup.snapshot(), "config":engine.configuration()})
             elif path == "/api/projects":
@@ -98,12 +100,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
             elif path == "/api/gateway/models":
                 self.reply(engine.gateway.catalog())
             elif path == "/api/tasks":
-                self.reply(engine.store.list(summary=True))
+                self.reply(engine.store.visible(parse_qs(urlsplit(self.path).query).get("view", ["active"])[0]))
             elif path.startswith("/api/tasks/"):
                 parts = path.strip("/").split("/")
                 task = engine.store.get(parts[2])
                 if len(parts) == 3:
-                    self.reply(public_task(task))
+                    self.reply(public_task(task, store=engine.store))
                 elif len(parts) == 4 and parts[3] == "permissions":
                     self.reply(engine.session_permissions(task["id"]))
                 elif len(parts) == 4 and parts[3] == "patch":
@@ -180,7 +182,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 if len(parts) != 4:
                     raise ValueError("Unknown task action")
                 task_id, action = parts[2:]
-                if action == "start":
+                if action == "metadata":
+                    result = public_task(engine.update_task_metadata(task_id, values))
+                elif action == "start":
                     result = public_task(engine.start(task_id, values))
                 elif action == "message":
                     if not isinstance(values.get("message"), str):
@@ -227,6 +231,10 @@ class LocalHandler(SimpleHTTPRequestHandler):
             else:
                 self.reply({"error": "Route not found"}, 404)
                 return
+            if isinstance(result, dict) and "id" in result and "title" in result:
+                result = engine.store.present(result)
+            if isinstance(result, dict) and isinstance(result.get("task"), dict):
+                result["task"] = engine.store.present(result["task"])
             self.reply(result)
         except (ValueError, TypeError, KeyError, OSError, ProviderError) as error:
             self.reply({"error": str(error)[:1000], "code": getattr(error, "code", None), "files": getattr(error, "files", [])}, 400)
