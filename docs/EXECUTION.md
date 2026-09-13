@@ -46,7 +46,8 @@ New runs default to:
 - **12 worker turns between checkpoints:** a reminder two turns before the limit asks the worker to verify and wrap up. At the limit it pauses, preserving edits.
 - **15 minutes per run:** approval waits do not count. Increase this under **Spending & limits → Advanced limits** for longer work, up to 12 hours.
 - **Three identical reads without an intervening edit:** CheapOS pauses with the repeated-work explanation.
-- Existing cumulative dollar, token, worker-turn, and iteration limits still apply.
+- **40 worker/coordinator calls per user request:** a follow-up gets a fresh allowance. Resume and server restarts preserve the calls used on that unfinished request. The chat's total call count remains visible in Details. Older chats recover request counts from saved events, conservatively including attempts without a model event.
+- Dollar, reviewer-token, and iteration limits remain cumulative across the chat. Single-task non-chat runs retain their task-wide worker-turn cap.
 
 The run timer is checked before inference, as stream chunks arrive, and before executing returned tools. A stalled network call can take its request timeout to return. Resuming starts a fresh progress window and preserves cumulative usage. A progress pause is not completion or approval.
 

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock
 
-from cheapos.engine import Engine
+from cheapos.engine import Engine, request_worker_turns
 from cheapos.storage import Store
 from cheapos.workspace import Workspace
 from test_engine import LocalCase, call, wait_for
@@ -125,6 +125,7 @@ class ChatTests(LocalCase):
         task=self.chat()
         task['status']='takeover_requested'
         task['worker_turns']=task['limits']['worker_turns']
+        task['usage']['cost']=.01
         self.engine.store.save(task)
         factory=Mock()
         self.engine.provider_factory=factory
@@ -133,6 +134,44 @@ class ChatTests(LocalCase):
         self.assertEqual(result['status'],'budget_paused')
         self.assertEqual(result['active_role'],'worker')
         factory.assert_not_called()
+
+    def test_followup_gets_own_worker_turns_but_resume_and_restart_do_not_reset_them(self):
+        task=self.chat();task['limits']['worker_turns']=1;self.engine.store.save(task)
+        self.provider([call('read_file',{'path':'math_utils.py'})])
+        self.engine.start(task['id']);first=self.finish(task)
+        self.assertEqual(first['error_code'],'worker_turn_limit')
+        self.assertEqual(first['request_worker_turns'],1)
+        self.engine.shutdown();self.engine=Engine(self.engine.store.root)
+        factory=Mock();self.engine.provider_factory=factory
+        self.engine.start(task['id']);resumed=self.finish(task)
+        self.assertEqual(resumed['error_code'],'worker_turn_limit');factory.assert_not_called()
+        self.provider([{'content':'The function caps values at the upper bound.'}])
+        self.engine.start(task['id'],{'message':'Explain briefly.'});second=self.finish(task)
+        self.assertEqual(second['status'],'awaiting_reply')
+        self.assertEqual(second['request_worker_turns'],1)
+        self.assertEqual(second['worker_turns'],2)
+        self.assertEqual(second['usage']['worker']['tokens'],first['usage']['worker']['tokens']+15)
+        self.assertEqual(second['limits'],first['limits'])
+
+    def test_legacy_chat_recovers_request_turns_without_counting_route_probes(self):
+        task=self.chat();task.pop('request_worker_turns')
+        task['worker_turns']=8
+        task['events']=[{'kind':'model','title':'Requesting worker: old'}]*5+[
+            {'kind':'user','title':'You'},
+            {'kind':'routing','title':'Checking a free worker'},
+            {'kind':'model','title':'Requesting worker: probe'},
+            {'kind':'model','title':'Requesting coordinator: local'},
+            {'kind':'model','title':'Requesting worker: new'},
+            {'kind':'model','title':'Requesting worker: new'}]
+        self.assertEqual(request_worker_turns(task),3)
+        task['worker_turns']=9
+        self.assertEqual(request_worker_turns(task),4)
+
+    def test_followup_does_not_reset_reviewer_token_budget(self):
+        task=self.chat();task['usage']['reviewer']['tokens']=task['limits']['reviewer_tokens']+1
+        self.engine.store.save(task);factory=Mock();self.engine.provider_factory=factory
+        self.engine.start(task['id'],{'message':'A new request.'});result=self.finish(task)
+        self.assertEqual(result['status'],'budget_paused');factory.assert_not_called()
 
     def test_new_chat_defaults_to_zero_spend_and_limit_edits_do_not_run_models(self):
         task=self.chat()

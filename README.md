@@ -103,7 +103,7 @@ Dependencies are not installed automatically. This alpha works best with small, 
 
 ## Limits and recovery
 
-- Estimated dollar cap, reviewer token cap, worker model-turn cap, iteration cap, and per-request output cap.
+- Estimated dollar cap, reviewer token cap, worker model-turn cap, iteration cap, and per-request output cap. In chats, each user message gets its own worker-turn allowance; Resume preserves turns already used on that message. Spending, token usage, and review iterations remain cumulative.
 - Before dispatch, conservatively reserve prompt/output usage; reconcile with provider-reported tokens and cost. When cost is absent, calculate it from your configured prices.
 - Dollar caps are **estimates**, not guaranteed billing limits. Provider tokenization, pricing, and reported costs can differ. Configure a provider-side spending cap for a billing guarantee.
 - CheapOS does not automatically retry failed or ambiguous task requests. The separate startup greeting can try up to three distinct free candidates. An intermediary gateway may have its own retry policy. Uncertain reservations remain counted. Missing token usage pauses the task before tools execute.

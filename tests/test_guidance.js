@@ -9,6 +9,13 @@ test('a saved task asks for an explicit start',()=>{
   assert.equal(g.facts.checks,'Not run yet');
   assert.equal(g.facts.reviewer,'Not reached yet');
 });
+test('a worker-turn stop identifies the request allowance separately from spending',()=>{
+  const g=taskGuide(task({status:'budget_paused',error_code:'worker_turn_limit',worker_turns:85,request_worker_turns:40,limits:{worker_turns:40}}));
+  assert.equal(g.title,'This request used its worker turns.');
+  assert.match(g.description,/40 of 40/);
+  assert.match(g.description,/spending limits stay the same/);
+  assert.equal(g.primaryLabel,'Review turn limit');
+});
 test('a reviewer failure preserves the passing check without implying approval',()=>{
   const g=taskGuide(task({status:'error',worker_turns:12,changes:[{},{}],checks:[{passed:true}],checkpoints:[{decision:'PENDING'}],events:[{kind:'model',title:'Requesting reviewer: fixture'}]}));
   assert.equal(g.title,'The reviewer didn’t finish.');

@@ -93,6 +93,33 @@ class ProgressPause(Exception):
     pass
 
 
+class WorkerTurnLimit(BudgetError):
+    pass
+
+
+def request_worker_turns(task):
+    if not task.get("conversational"):
+        return task["worker_turns"]
+    if "request_worker_turns" in task:
+        return task["request_worker_turns"]
+    # Older chats only saved a lifetime counter. Recover the current request
+    # from model events, excluding route probes. Unrecorded attempts (including
+    # legacy takeovers) conservatively count against the current request.
+    total = current = 0
+    probe = False
+    for event in task["events"]:
+        if event["kind"] == "user":
+            current = 0
+        if event["kind"] == "routing":
+            probe = event["title"].startswith("Checking a free ")
+        if event["kind"] == "model":
+            if not probe and event["title"].startswith(("Requesting worker:", "Requesting coordinator:")):
+                total += 1
+                current += 1
+            probe = False
+    return min(task["worker_turns"], current + max(0, task["worker_turns"] - total))
+
+
 class Runtime:
     def __init__(self, task):
         self.task = task
@@ -227,6 +254,8 @@ class Engine:
         workspace, snapshot = Workspace.snapshot(values.get("repository", ""), directory / "workspace")
         task = {"id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         task.update({"conversational": conversational, "requests": [prompt.strip()], "turn_start_patch": ""})
+        if conversational:
+            task["request_worker_turns"] = 0
         setup_task(task, execution, self.config, self.gateway)
         self.event(task, "snapshot", "Created an isolated repository snapshot", snapshot)
         return task
@@ -275,11 +304,14 @@ class Engine:
                 task["active_role"] = "reviewer"
             if followup is not None:
                 task["conversational"] = True
+                task["request_worker_turns"] = 0
                 task.pop("pending_checkpoint", None)
                 task["requests"] = task.get("requests", [task["prompt"]]) + [followup.strip()]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
                 task["turn_start_patch"] = Workspace(task["workspace"]).patch()
                 self.event(task, "user", "You", followup.strip())
+            elif task.get("conversational"):
+                task["request_worker_turns"] = request_worker_turns(task)
             task["status"] = "running"
             task["error"] = None
             task["error_code"] = None
@@ -614,10 +646,11 @@ class Engine:
                     task["messages"].append({"role": "user", "content": "Resumed checkpoint result: " + json.dumps(result)})
                     self.store.save(task)
                     continue
-                if task["worker_turns"] >= task["limits"]["worker_turns"]:
-                    raise BudgetError("Worker model-turn limit reached")
+                if request_worker_turns(task) >= task["limits"]["worker_turns"]:
+                    raise WorkerTurnLimit("Worker model-turn limit reached for this request. Saved work is kept; increase the worker-turn allowance to continue.")
                 if task["active_role"] == "coordinator":
                     task["worker_turns"] += 1
+                    task["request_worker_turns"] = task.get("request_worker_turns", 0) + 1
                     message = self.request(runtime, coordinator_messages(task), [DELEGATE_TOOL], "coordinator")
                     calls = message.get("tool_calls", [])
                     if calls:
@@ -636,8 +669,8 @@ class Engine:
                         continue
                     else:
                         raise RoutingPause("The local assistant did not answer or delegate. Resume to try again.")
-                if task["worker_turns"] >= task["limits"]["worker_turns"]:
-                    raise BudgetError("Worker model-turn limit reached after local chat. No remote work was started.")
+                if request_worker_turns(task) >= task["limits"]["worker_turns"]:
+                    raise WorkerTurnLimit("Worker model-turn limit reached after local chat. No remote work was started for this request.")
                 if task.get("route") and not task["route"]["ready"]:
                     select_remote(self, runtime)
                 if task.get("delegation"):
@@ -647,12 +680,14 @@ class Engine:
                     raise ProgressPause("The worker reached its turn limit without a checkpoint or answer. Review the saved changes, then resume if more work is needed.")
                 runtime.step_turns += 1
                 if runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
-                    task["messages"].append({"role": "user", "content": "You are near the checkpoint turn limit. Finish the requested scope, run appropriate checks, and submit checkpoint. If blocked, ask_user. Avoid further cosmetic polishing or repeated reads."})
+                    task["messages"].append({"role": "user", "content": "You are near the checkpoint turn limit. For a question, give your answer now without editing files. For a requested change, finish only that scope and submit checkpoint; it reruns the saved verification command. If no command is selected yet, use run_checks to choose one first. If blocked, ask_user. Avoid further polishing or repeated reads."})
                     self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint turn limit.")
                 if len(json.dumps(task["messages"])) > 60000:
                     task["messages"] = self.initial_messages(task)
                     self.event(task, "context", "Compacted worker context using current files, diff, and review feedback")
                 task["worker_turns"] += 1
+                if task.get("conversational"):
+                    task["request_worker_turns"] += 1
                 message = self.request(runtime, task["messages"], CHAT_TOOLS if task.get("conversational") else WORKER_TOOLS, task["active_role"])
                 task["messages"].append(message)
                 if message.get("content"):
@@ -712,6 +747,7 @@ class Engine:
             self.event(task, "state", "Task paused", task["error"])
         except BudgetError as error:
             task["status"] = "budget_paused"
+            task["error_code"] = "worker_turn_limit" if isinstance(error, WorkerTurnLimit) else None
             task["error"] = str(error)
             self.event(task, "budget", "Task paused at a limit", task["error"])
         except Exception as error:
