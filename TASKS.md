@@ -55,7 +55,7 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 | [T05](docs/tasks/T05-trash-ui.md) | Delete, Undo, Trash, and Restore UI | T03, T04 | M | Done |
 | [T06](docs/tasks/T06-project-visibility.md) | Remove/reopen a project without deleting its files | T03 | M | Done |
 | [T07](docs/tasks/T07-existing-permission-ux.md) | Make existing session approval obvious; diagnose repeats | — | S | Done |
-| [T08](docs/tasks/T08-test-profile-matcher.md) | Pure, explicit unittest command-profile matcher | — | M | Todo |
+| [T08](docs/tasks/T08-test-profile-matcher.md) | Pure, explicit unittest command-profile matcher | — | M | Done |
 | [T09](docs/tasks/T09-project-session-grants.md) | Project-session test grants in the controller | T08 | L | Todo |
 | [T10](docs/tasks/T10-project-permission-ui.md) | One clear project-test approval and revocation UI | T07, T09 | M | Todo |
 | [T11](docs/tasks/T11-test-timings.md) | Measure the app's test bottlenecks | — | S | Todo |

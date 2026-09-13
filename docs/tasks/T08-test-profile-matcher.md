@@ -33,12 +33,12 @@ Add `tests/test_test_profiles.py` with table-driven positive/negative examples a
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Pure unittest argv matcher with resolved executable identity, optional -B, explicit discovery options, enumerated runner flags, dotted selectors, and root/symlink checks. Module docstring specifies schema_version/runner/project/executable/roots.
+- Acceptance evidence: Table-driven supported variants and rejection matrix; unknown flags, scripts, pip, shell tokens, traversal, missing arguments, NUL, alternate executable, outside selectors, and symlink escapes rejected. No authorization path changed.
+- Commands and results: 3 table-driven profile tests passed; diff whitespace check passed.
+- Browser scenarios and results: Not applicable: pure matcher, no UI or authorization changes.
+- Remaining limitations: Unittest only; unknown forms require ordinary command approval. No shell normalization or execution.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
