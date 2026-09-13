@@ -106,9 +106,15 @@ class Workspace:
             raise ValueError("Path is outside the workspace")
         return target
 
-    def list_files(self):
+    def list_files(self, path="."):
+        if not isinstance(path, str) or not path or "\x00" in path or "\\" in path:
+            raise ValueError("Provide a relative directory path, or '.' for the whole project")
+        target = self.root if PurePosixPath(path) == PurePosixPath(".") else self.path(path)
+        if not target.is_dir():
+            raise ValueError("Directory not found. Use '.' to list the project; write_file creates parent directories for new files.")
+        prefix = "" if target == self.root else target.relative_to(self.root).as_posix() + "/"
         names = git(self.root, "ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0")
-        return sorted(n for n in set(names) if n and allowed_name(n) and not (self.root / n).is_symlink())[:MAX_FILES]
+        return sorted(n for n in set(names) if n and n.startswith(prefix) and allowed_name(n) and not (self.root / n).is_symlink())[:MAX_FILES]
 
     def read_file(self, path, start_line=1, end_line=200):
         target = self.path(path)

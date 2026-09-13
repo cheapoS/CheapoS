@@ -35,7 +35,7 @@ def tool(name, description, properties=None, required=None):
 
 TEXT = {"type": "string"}
 READ_TOOLS = [
-    tool("list_files", "List eligible files in the isolated task workspace."),
+    tool("list_files", "Recursively list eligible files in the isolated task workspace, optionally within a directory. Returned paths are relative to the workspace root.", {"path": {"type": "string", "description": "Workspace-relative directory. Omit or use '.' to list the whole project."}}),
     tool("read_file", "Read a text file with line numbers.", {"path": TEXT, "start_line": {"type": "integer"}, "end_line": {"type": "integer"}}, ["path"]),
     tool("search", "Search LOCAL repository files for a literal string. This is not internet search; use read_url for web links.", {"query": TEXT}, ["query"]),
     tool("read_url", "Read a public HTTPS page supplied in chat, or a link returned by this tool. GitHub repository links open the README. Returns numbered lines and links. To continue, set start_line to the previous end_line + 1; omitting end_line reads the next 120 lines. No internet search, sign-in, or JavaScript. If unavailable, explain the limitation rather than repeatedly searching local files.", {"url": TEXT, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 1}}, ["url"]),
