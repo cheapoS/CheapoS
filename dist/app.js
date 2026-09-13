@@ -50,6 +50,7 @@ async function api(path, body) {
   return data;
 }
 function dialog(html, cls='') {
+  sidebarMenu?.close(false);
   const previous=document.activeElement, d=document.createElement('dialog'); d.className='modal '+cls; d.innerHTML=html; $('#overlay-root').append(d);
   d.addEventListener('close',()=>{d.remove();if(previous?.isConnected)previous.focus();else if(previous?.dataset.taskMenu)$$('[data-task-menu]').find(b=>b.dataset.taskMenu===previous.dataset.taskMenu)?.focus();else $('#rename-task')?.focus()});
   d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close()}});
@@ -69,9 +70,14 @@ function renderSidebar() {
   $('#connection-indicator').textContent=state.startup.busy?'Connecting…':state.startup.status==='ready'?'Ready':state.config.worker&&state.config.reviewer?'Configured':'Set up';
   const groups=state.projects.map(project=>({project,tasks:state.tasks.filter(t=>!t.demo&&t.source===project.path)}));
   const demos=state.tasks.filter(t=>t.demo);if(demos.length)groups.push({project:{path:'demo',name:'Local demo'},tasks:demos});
-  const html=`<label class="history-filter">History<select id="history-filter"><option value="active" ${!state.historyView||state.historyView==='active'?'selected':''}>Active</option><option value="archived" ${state.historyView==='archived'?'selected':''}>Archived</option><option value="trash" ${state.historyView==='trash'?'selected':''}>Trash</option></select></label>`+groups.map(({project,tasks})=>{
+  const filter=$('#history-menu');
+  const view=state.historyView||'active';
+  filter.innerHTML=icon(view==='trash'?'x':view==='archived'?'folder':'chat')+`<span>${{active:'Chats',archived:'Archived chats',trash:'Trash'}[view]}</span>`;
+  filter.setAttribute('aria-label','Show chats: '+{active:'Active',archived:'Archived',trash:'Trash'}[view]);
+  filter.onclick=()=>historyMenu(filter);
+  const html=groups.map(({project,tasks})=>{
     const pref=sidebarPrefs[project.path]||{}, sorted=CheapOSGuide.sidebarOrder(tasks), shown=pref.more?sorted:sorted.slice(0,12);
-    return `<div class="project-group"><div class="project-group-heading"><button class="icon-btn" data-collapse="${esc(project.path)}" aria-label="${pref.collapsed?'Expand':'Collapse'} ${esc(project.name||project.path)}" aria-expanded="${!pref.collapsed}">${icon('chevron')}</button><button class="project-label ${state.project?.path===project.path?'selected':''}" data-project="${esc(project.path)}" title="${esc(project.path)}">${icon('folder')}<span>${esc(CheapOSGuide.projectName({source:project.path,demo:project.path==='demo'}))}</span></button>${project.path!=='demo'?`<button class="task-menu-button" data-project-menu="${esc(project.path)}" aria-label="Project options for ${esc(project.name)}">⋯</button>`:''}</div>${pref.collapsed?'':shown.map(t=>`<div class="task-row"><button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${['approved','awaiting_reply'].includes(t.status)?'done':''} ${taskBusy(t)?'pulsing':''}"></span><span class="task-list-title">${t.pinned?'★ ':''}${esc(t.title)}${t.trashed_at?`<small>Deleted ${esc(date(t.trashed_at))} · ${t.saved_change_count||0} saved changes${t.trash_archived_at?' · from Archived':''}</small>`:''}</span>${['error','budget_paused','waiting_approval'].includes(t.status)?'<span class="task-attention" aria-label="Needs attention">•</span>':''}</button><button class="task-menu-button" data-task-menu="${t.id}" aria-label="Options for ${esc(t.title)}" aria-haspopup="dialog">⋯</button></div>`).join('')+(sorted.length>12?`<button class="text-link show-more" data-more="${esc(project.path)}">${pref.more?'Show fewer':`Show more (${sorted.length-12})`}</button>`:'')}</div>`;
+    return `<div class="project-group"><div class="project-group-heading"><button class="icon-btn" data-collapse="${esc(project.path)}" aria-label="${pref.collapsed?'Expand':'Collapse'} ${esc(project.name||project.path)}" aria-expanded="${!pref.collapsed}">${icon('chevron')}</button><button class="project-label ${state.project?.path===project.path?'selected':''}" data-project="${esc(project.path)}" title="${esc(project.path)}">${icon('folder')}<span>${esc(CheapOSGuide.projectName({source:project.path,demo:project.path==='demo'}))}</span></button>${project.path!=='demo'?`<button class="task-menu-button" data-project-menu="${esc(project.path)}" aria-label="Project options for ${esc(project.name)}" aria-haspopup="menu" aria-expanded="false">⋯</button>`:''}</div>${pref.collapsed?'':shown.map(t=>`<div class="task-row"><button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${['approved','awaiting_reply'].includes(t.status)?'done':''} ${taskBusy(t)?'pulsing':''}"></span><span class="task-list-title">${t.pinned?'★ ':''}${esc(t.title)}${t.trashed_at?`<small>Deleted ${esc(date(t.trashed_at))} · ${t.saved_change_count||0} saved changes${t.trash_archived_at?' · from Archived':''}</small>`:''}</span>${['error','budget_paused','waiting_approval'].includes(t.status)?'<span class="task-attention" aria-label="Needs attention">•</span>':''}</button><button class="task-menu-button" data-task-menu="${t.id}" aria-label="Options for ${esc(t.title)}" aria-haspopup="menu" aria-expanded="false">⋯</button></div>`).join('')+(!sorted.length?`<p class="project-empty">${view==='trash'?'No trashed chats':view==='archived'?'No archived chats':'No chats yet'}</p>`:'')+(sorted.length>12?`<button class="text-link show-more" data-more="${esc(project.path)}">${pref.more?'Show fewer':`Show more (${sorted.length-12})`}</button>`:'')}</div>`;
   }).join('');
   const list=$('#task-list');
   // Keep the existing DOM (and keyboard focus) when only live usage changed.
@@ -79,12 +85,12 @@ function renderSidebar() {
   const focused=document.activeElement, focusKey=focused?.getAttribute('data-task-menu')||focused?.getAttribute('data-task');
   const wasMenu=focused?.hasAttribute('data-task-menu');
   list.innerHTML=html;list.dataset.rendered=html;
-  $('#history-filter').onchange=async e=>{const previous=state.historyView;state.historyView=e.target.value;try{await loadTasks()}catch(error){state.historyView=previous;renderSidebar();toast(error.message)}};
-  $$('[data-project-menu]').forEach(b=>b.onclick=()=>projectMenu(b.dataset.projectMenu));
+  $$('[data-project-menu]').forEach(b=>b.onclick=()=>projectMenu(b.dataset.projectMenu,b));
   $$('[data-task]').forEach(b=>b.onclick=()=>selectTask(b.dataset.task));
-  $$('[data-task-menu]').forEach(b=>b.onclick=()=>taskMenu(state.tasks.find(t=>t.id===b.dataset.taskMenu)));
+  $$('[data-task-menu]').forEach(b=>b.onclick=()=>taskMenu(state.tasks.find(t=>t.id===b.dataset.taskMenu),b));
   $$('[data-project]').forEach(b=>b.onclick=()=>b.dataset.project==='demo'?selectTask(demos[0].id):chooseProject(state.projects.find(p=>p.path===b.dataset.project)));
   for(const [attr,key] of [['collapse','collapsed'],['more','more']])$$('[data-'+attr+']').forEach(b=>b.onclick=()=>{const path=b.dataset[attr];sidebarPrefs[path]||={};sidebarPrefs[path][key]=!sidebarPrefs[path][key];saveSidebarPrefs();renderSidebar();$$("[data-"+attr+"]").find(el=>el.dataset[attr]===path)?.focus()});
+  if(sidebarMenu){const anchor=findMenuAnchor(sidebarMenu.key);if(anchor)anchor.setAttribute('aria-expanded','true');else sidebarMenu.close(false)}
   if(focusKey)$$(wasMenu?'[data-task-menu]':'[data-task]').find(el=>(wasMenu?el.dataset.taskMenu:el.dataset.task)===focusKey)?.focus({preventScroll:true});
 }
 async function pauseForLifecycle(task) {
@@ -105,47 +111,68 @@ async function archiveTask(task, archived) {
   if(archived&&state.task?.id===task.id)home();
   await loadTasks();await refresh();
 }
-function taskMenu(task) {
+let sidebarMenu=null;
+const menuAnchorKey=button=>button?.id|| (button?.dataset.taskMenu?'task:'+button.dataset.taskMenu:button?.dataset.projectMenu?'project:'+button.dataset.projectMenu:'');
+const findMenuAnchor=key=>$$('[data-task-menu],[data-project-menu],#history-menu').find(button=>menuAnchorKey(button)===key);
+function compactMenu(anchor,label,actions) {
+  const key=menuAnchorKey(anchor);
+  if(sidebarMenu?.key===key){sidebarMenu.close();return;}
+  sidebarMenu?.close(false);
+  const menu=document.createElement('div');menu.className='sidebar-menu';menu.setAttribute('role','menu');menu.setAttribute('aria-label',label);
+  menu.innerHTML=actions.map((a,i)=>`<button role="${a.checked===undefined?'menuitem':'menuitemradio'}" ${a.checked===undefined?'':`aria-checked="${a.checked}"`} data-option="${i}" class="${a.danger?'danger':''}">${a.checked===undefined?'':`<span class="menu-check">${a.checked?'✓':''}</span>`}${esc(a.label)}</button>`).join('');
+  $('#overlay-root').append(menu);anchor.setAttribute('aria-expanded','true');
+  const rect=anchor.getBoundingClientRect(),box=menu.getBoundingClientRect();
+  menu.style.left=Math.max(8,Math.min(rect.right-box.width,innerWidth-box.width-8))+'px';
+  menu.style.top=Math.max(8,Math.min(rect.bottom+4,innerHeight-box.height-8))+'px';
+  const close=(restore=true)=>{const current=findMenuAnchor(key)||anchor;menu.remove();current.setAttribute('aria-expanded','false');document.removeEventListener('pointerdown',outside,true);window.removeEventListener('resize',dismiss);document.removeEventListener('scroll',scroll,true);if(sidebarMenu?.menu===menu)sidebarMenu=null;if(restore&&current.isConnected)current.focus({preventScroll:true});};
+  const outside=e=>{if(!menu.contains(e.target)&&!(findMenuAnchor(key)||anchor).contains(e.target))close(false)};
+  const dismiss=()=>close(false),scroll=e=>{if(!menu.contains(e.target))close(false)};
+  document.addEventListener('pointerdown',outside,true);window.addEventListener('resize',dismiss);document.addEventListener('scroll',scroll,true);
+  menu.onkeydown=e=>{const buttons=$$('button',menu),i=buttons.indexOf(document.activeElement);if(e.key==='Escape'){e.preventDefault();close()}else if(e.key==='Tab'){close()}else if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();buttons[e.key==='Home'?0:e.key==='End'?buttons.length-1:(i+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length].focus()}};
+  $$('button',menu).forEach((button,i)=>button.onclick=async()=>{close();try{await actions[i].run()}catch(error){toast(error.message)}});
+  sidebarMenu={key,menu,close};$('button',menu)?.focus();
+}
+function historyMenu(anchor) {
+  compactMenu(anchor,'Show chats',[['active','Active chats'],['archived','Archived chats'],['trash','Trash']].map(([view,label])=>({label,checked:(state.historyView||'active')===view,run:async()=>{const previous=state.historyView;state.historyView=view;try{await loadTasks();renderSidebar()}catch(error){state.historyView=previous;renderSidebar();throw error}}})));
+}
+function taskMenu(task,anchor) {
   if(!task)return;
-  if(task.trashed_at){trashMenu(task);return;}
-  const d=dialog(`${modalHeader('CHAT OPTIONS',esc(task.title))}<div class="task-menu-actions"><button data-rename>Rename</button><button data-pin>${task.pinned?'Unpin':'Pin'}</button><button data-archive>${task.archived_at?'Restore':taskBusy(task)?'Pause & archive':'Archive'}</button><button data-trash>Delete</button></div><p class="form-error" role="alert"></p>`);
-  $('[data-rename]',d).onclick=()=>{d.close();renameTask(task)};
-  $('[data-trash]',d).onclick=()=>{d.close();deleteTask(task)};
-  const act=operation=>async()=>{const buttons=$$('button',d);buttons.forEach(b=>b.disabled=true);try{await operation();d.close()}catch(e){$('.form-error',d).textContent=e.message}finally{buttons.forEach(b=>b.disabled=false)}};
-  $('[data-pin]',d).onclick=act(async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()});
-  $('[data-archive]',d).onclick=act(async()=>{if(taskBusy(task))$('.form-error',d).textContent='Waiting for this task to stop…';await archiveTask(task,!task.archived_at)});
+  const actions=task.trashed_at?[
+    {label:'Inspect saved chat',run:()=>selectTask(task.id)},
+    {label:'Restore chat',run:()=>restoreTrash(task)}
+  ]:[
+    {label:'Rename…',run:()=>renameTask(task)},
+    {label:task.pinned?'Unpin':'Pin',run:async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()}},
+    {label:task.archived_at?'Restore to active chats':taskBusy(task)?'Pause & archive':'Archive',run:()=>archiveTask(task,!task.archived_at)},
+    {label:taskBusy(task)?'Pause & move to trash':'Move to trash',danger:true,run:()=>moveToTrash(task)}
+  ];
+  compactMenu(anchor,'Chat options',actions);
+}
+async function moveToTrash(task) {
+  if(taskBusy(task))toast('Pausing before moving to Trash…');
+  await pauseForLifecycle(task);await api('/tasks/'+task.id+'/trash',{});
+  if(state.task?.id===task.id)home();await loadTasks();
+  toast('Moved to Trash.');clearTimeout(toastTimer);
+  const undo=document.createElement('button');undo.className='text-link';undo.textContent='Undo';
+  undo.onclick=async()=>{undo.disabled=true;try{await restoreTrash(task)}catch(error){toast(error.message)}};
+  $('#toast').append(' ',undo);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),15000);
 }
 async function restoreTrash(task) {
   const restored=await api('/tasks/'+task.id+'/restore',{});
   state.historyView=restored.archived_at?'archived':'active';
   await refresh();toast(restored.archived_at?'Restored to Archived.':'Restored to active history.');
 }
-function trashMenu(task) {
-  const d=dialog(`${modalHeader('TRASH',esc(task.title))}<p>${task.saved_change_count||0} saved changes. Files remain on disk.</p><div class="button-row"><button data-inspect>Inspect</button><button data-restore>Restore</button></div><p class="form-error" role="alert"></p>`);
-  $('[data-inspect]',d).onclick=()=>{d.close();selectTask(task.id)};
-  $('[data-restore]',d).onclick=async e=>{e.target.disabled=true;try{await restoreTrash(task);d.close()}catch(error){$('.form-error',d).textContent=error.message;e.target.disabled=false}};
-}
-function deleteTask(task) {
-  const d=dialog(`<form>${modalHeader('DELETE CHAT','Move to Trash?')}<p>Move this chat and its saved task work to Trash? Your source project and commits stay unchanged.</p><p>${task.saved_change_count||task.changes?.length||0} saved changes. You can restore this chat later.</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" class="subtle-button" data-close>Cancel</button><button type="submit" class="primary-button">${taskBusy(task)?'Pause & move to Trash':'Move to Trash'}</button></div></form>`);
-  const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{
-    if(taskBusy(task))$('.form-error',d).textContent='Waiting for this task to stop…';
-    await pauseForLifecycle(task);await api('/tasks/'+task.id+'/trash',{});
-    if(state.task?.id===task.id)home();await loadTasks();d.close();
-    toast('Moved to Trash.');clearTimeout(toastTimer);
-    const undo=document.createElement('button');undo.className='text-link';undo.textContent='Undo';
-    undo.onclick=async()=>{undo.disabled=true;try{await restoreTrash(task)}catch(error){toast(error.message)}};
-    $('#toast').append(' ',undo);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),15000);
-  })};
-}
 const draftKey=()=>state.task?.id||state.project?.path||'new';
 function saveDraft(){state.drafts.set(draftKey(),$('#chat-input').value)}
 function restoreDraft(){$('#chat-input').value=state.drafts.get(draftKey())||'';branchUI?.restoreDraft();renderComposer()}
 function home() {
+  sidebarMenu?.close(false);
   saveDraft();state.selection++;state.loading=false;state.task=null;state.view='chat';
   try{localStorage.removeItem('cheapos-selected')}catch{}
   renderHome();restoreDraft();renderSidebar();panelLayout.closeMobileSidebar();$('#view-container').scrollTop=0;
 }
 function chooseProject(project) {
+  sidebarPrefs[project.path]={...sidebarPrefs[project.path],collapsed:false,more:true};saveSidebarPrefs();
   saveDraft();home();state.project=project;renderHome();restoreDraft();renderSidebar();
   try{localStorage.setItem('cheapos-project',project.path)}catch{}
   $('#chat-input').focus();
@@ -288,8 +315,14 @@ function renderComposer() {
   if($('#pause-task'))$('#pause-task').onclick=stopTask;
   if($('#task-overview'))$('#task-overview').onclick=toggleInspector;
 }
-function projectMenu(path) {
-  const d=dialog(`<form>${modalHeader('PROJECT','Remove from sidebar?')}<p>Repository files and chats are kept. Reopen this project from Hidden projects.</p><p class="small">${esc(path)}</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit">Remove from sidebar</button></div></form>`);
+function projectMenu(path,anchor) {
+  compactMenu(anchor,'Project options',[
+    {label:'New chat',run:()=>chooseProject(state.projects.find(p=>p.path===path))},
+    {label:'Project settings…',run:()=>editProject(path)}
+  ]);
+}
+function editProject(path) {
+  const d=dialog(`<form>${modalHeader('PROJECT','Project settings')}<p>Removing this project hides its sidebar shortcut. Repository files and chats are kept; you can reopen it from Hidden projects.</p><p class="small">${esc(path)}</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit">Remove from sidebar</button></div></form>`);
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{
     await api('/projects/hide',{repository:path});
     if(state.project?.path===path){home();state.project=null;try{localStorage.removeItem('cheapos-project')}catch{}renderHome();restoreDraft()}
