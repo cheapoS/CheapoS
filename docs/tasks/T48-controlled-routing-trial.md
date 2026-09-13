@@ -1,6 +1,6 @@
-# T48 — Qualify automatic selection on a fixed small task
+# T48 — Qualify selection through the actual gateway path
 
-Status: Done — controlled attempt recorded; selection failed
+Status: In progress — expanded requirements
 Depends on: T47
 Size: M (a small live experiment, not a new broad benchmark suite)
 
@@ -8,6 +8,14 @@ Size: M (a small live experiment, not a new broad benchmark suite)
 
 Determine whether automatic choice across authorized available routes can finish
 a known task. Earlier successful pinned pairs do not establish this behavior.
+Prove the path used by the app, not merely a successful direct provider request.
+
+## Design reference
+
+FCM's [pinned router tests](https://github.com/vava-nessa/free-coding-models/blob/536af716263e514723594dd13e755fb06fcdec2d/docs/router-v2.md)
+exercise request normalization and the real routing chain with fallback disabled.
+Adapt that principle to CheapOS -> OmniRoute -> provider. Do not install FCM or
+add a new backend as part of this trial.
 
 ## Work
 
@@ -33,6 +41,31 @@ a known task. Earlier successful pinned pairs do not establish this behavior.
    unchanged app/fixture versions. Do not infer production success rates or causal
    improvements from mixed models, revised tests, and retries.
 
+### Minimal path qualification before the automatic run
+
+- Inspect existing readiness evidence first. Reuse fresh compatible observations
+  where they establish the required contract. If a new check is needed, target
+  only the intended worker/reviewer routes and record its request cost/count.
+  This preflight is separate from the automatic execution outcome.
+- Use the app's real gateway adapter, serialization, stream parser, and tool-call
+  validation. A direct curl to a provider or a one-token greeting does not prove
+  this path. A minimal non-mutating structured tool response is sufficient here;
+  do not add a second coding benchmark before the actual task.
+- Pin each route and disable fallback for that targeted diagnostic where the
+  gateway supports it. Record the requested and served identity/provenance.
+  If fallback cannot be disabled or the identity cannot be established, disclose
+  the limitation and do not label the diagnostic a qualified pinned-model test.
+- The subsequent real task must use the automatic selection policy being tested,
+  not accidentally inherit those diagnostic pins. Keep both phases' accounting
+  separate and include all probes in the combined experiment cost.
+- Inspect T47 traces for skip reasons, dispatch order, gateway fallback visibility,
+  and reviewer identity. User-visible explanations must agree with recorded events.
+  Demonstrate only naturally occurring live failures; use cheap offline fixtures
+  for forced quota/auth/malformed-response cases instead of exhausting an account.
+- Use the same prompt, tools, and gateway path relevant to the task. If a direct
+  provider call succeeds but the app path fails, record a compatibility failure;
+  do not quietly switch to the direct provider and claim the integration passed.
+
 ## Acceptance
 
 - A dated report identifies whether automatic selection was exercised and whether
@@ -46,6 +79,11 @@ a known task. Earlier successful pinned pairs do not establish this behavior.
   not a promise that every free model works.
 - Identify the next concrete bottleneck from evidence. Do not set restrictive
   default budgets from one sample or merely recommend raising limits again.
+- Distinguish endpoint reachability, structured tool support, observed model
+  identity, and independently verified task completion. Passing one stage does
+  not imply the later stages passed.
+- The report separates targeted pinned diagnostics from automatic task execution,
+  retains all probe usage, and reports any hidden gateway attempt chain as unknown.
 
 ## Validation and test-cost boundary
 
@@ -54,8 +92,11 @@ Keep it outside automatic regression discovery and reuse existing focused
 acceptance. No new heavy regression, full-suite gate, or live inference in normal
 developer checks. Disclose costly proposed follow-up tests before adding them,
 under AGENTS.md; do not silently grow another expensive matrix.
+Preflight must not become an all-model sweep, recurring background benchmark, or
+per-chat full test. Tests for diagnostic routing should use fake transports/clocks
+and complete quickly; real model latency belongs only to this selected trial.
 
-## Completion record
+## Previous completion record (before expanded requirements)
 
 The single planned run is recorded in [the dated report](../trials/routing-20260913/RESULTS.md)
 and [sanitized machine evidence](../trials/routing-20260913/attempt-1.json).
@@ -79,3 +120,7 @@ unproven. No live retry or new heavy regression added. Observer syntax/help and
 diff checks pass; failure-report completion does not qualify automatic delivery.
 
 Update this card and TASKS.md; commit only the sanitized experiment record.
+
+## Expanded requirements completion
+
+Pending implementation and qualification.

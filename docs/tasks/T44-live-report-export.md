@@ -1,6 +1,6 @@
 # T44 — CheapOS implements its report exporter
 
-Status: Blocked (two incomplete live attempts)
+Status: Deferred by operator (two incomplete live attempts)
 Depends on: T42, T43
 Size: L (one three-item feature run, not a controller rewrite)
 

@@ -40,3 +40,26 @@ stays only in mode-0600 private artifacts; never commit those artifacts or copie
 configuration. Accounted cost is not a billing receipt. The observer must retain
 attempts and explicitly describe interruptions and independent correctness gaps.
 No live call occurs for `--help`, syntax checks or helper inspection.
+
+## Targeted path diagnostics (expanded T48)
+
+After Prepare and before Start, run the two configured-role diagnostics once:
+
+```sh
+python3 -B docs/trials/routing_diagnostic.py --root /tmp/routing-trial-1
+```
+
+This uses the frozen app's gateway adapter, serialization, stream parser and
+`Engine.parse_call`, with the exact versioned structured readiness tool. It
+executes no returned tools. Matching fresh cache entries avoid additional calls;
+otherwise at most one call per configured role is sent. A diagnostic success
+populates the same connection/contract-scoped capability cache used by selection.
+Usage remains separate in `diagnostic.json`; combine it with execution accounting
+in the final experiment report. Incomplete requests have unknown usage, not zero.
+
+Application fallback is disabled by targeting one configured route. The current
+adapter cannot disable or observe OmniRoute's internal fallback chain. Reported
+served model metadata is retained when exposed, but these must not be described
+as qualified pinned-model tests when gateway fallback control is unavailable.
+The subsequent Start still invokes automatic selection; diagnostics do not inject
+providers into the task. No global profile, account scraping or extra router.
