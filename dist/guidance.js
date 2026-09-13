@@ -178,6 +178,24 @@ const CheapOSGuide = (() => {
   function includedChoice(model,settings,selected) {
     return Boolean(selected&&model&&(settings.included_models||[]).includes(model));
   }
+  function metadataEvidence(model={}) {
+    const e=model.metadata_evidence;
+    if(!e)return 'Metadata observation time unavailable';
+    const at=typeof e.observed_at==='number'?new Date(e.observed_at*1000):new Date(e.observed_at);
+    const stamp=Number.isFinite(at.getTime())?at.toISOString():'time unavailable';
+    const changes=Array.isArray(e.changes)?e.changes.slice(0,8).map(x=>String(x).slice(0,80)).join(', '):'';
+    return `${e.stale?'Stale metadata':'Observed metadata'} · ${String(e.source||'source unavailable').slice(0,80)} · ${stamp}${changes?' · Changed: '+changes:''}. Catalog metadata does not verify current availability.`;
+  }
+  function routingTraceView(task={}) {
+    const traces=Array.isArray(task.routing_traces)?task.routing_traces.slice(-20):[];
+    const reason=value=>String(value||'reason unavailable').replaceAll('_',' ').slice(0,120);
+    const rows=traces.map(t=>({id:String(t.id||'trace').slice(0,100),role:String(t.role||'role unavailable'),requested:String(t.requested_route||'unknown'),selected:t.selected_model?String(t.selected_model):null,
+      candidates:(t.candidates||[]).slice(0,40).map(c=>`${c.model||'Unknown candidate'}: ${reason(c.reason)}`),
+      attempts:(t.attempts||[]).slice(0,40).map(a=>`${a.purpose==='probe'?'Dispatched probe':a.purpose==='cached'?'Cached observation':'Request'} ${a.request_id||'ID unavailable'} · requested ${a.model||'unknown'} · ${reason(a.status)}${Number.isFinite(a.seconds)?' · '+a.seconds.toFixed(2)+'s':''}${a.failure_category?' · '+reason(a.failure_category):''} · served ${a.served_model||'unknown'} (${a.served_model?a.identity_provenance||'provenance unavailable':'identity not exposed'})`),
+      gateway:'Gateway internal attempts unavailable'}));
+    const last=rows.at(-1);
+    return {rows,summary:last?(last.selected?`${last.role}: selected ${last.selected}.`:`${last.role}: no route selected. Inspect Models or wait for an eligible route; saved work is retained.`):''};
+  }
   function modelHealth(model,at=Date.now()) {
     const h=model.health||{},remaining=Math.ceil(((h.retry_at||0)*1000-at)/60000);
     if(remaining>0)return `${h.cooldown_scope==='provider'?'Provider cooling down':'Cooling down'} · ${h.retry_known===false?'reset time unknown':`${remaining}m`}`;
@@ -496,7 +514,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 
