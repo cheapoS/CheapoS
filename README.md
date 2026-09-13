@@ -155,6 +155,8 @@ Task data defaults to `.cheapos/` beside the launcher. When asking CheapoS to wo
 | **Ollama** | Installed tool-capable models running on your own hardware; use directly or through OmniRoute. | [Local setup](docs/USER_GUIDE.md#local-setup-and-sample-tasks) |
 | **Compatible endpoints** | Bring an HTTPS Chat Completions endpoint supporting tools, output limits, and token usage. | [Endpoint requirements](docs/USER_GUIDE.md#direct-connections) |
 
+**Recommended for OpenRouter free-model use:** buy at least **$10 in OpenRouter credits** to raise the free-model allowance from **50 to 1,000 requests per day**. You **do not need to spend those credits** on inference to qualify. This optional purchase also helps when accessing OpenRouter through OmniRoute. [OpenRouter's policy](https://openrouter.ai/docs/faq) · [Setup details](docs/USER_GUIDE.md#openrouter-free-request-allowance)
+
 Provider access, availability, and costs depend on your configuration. A free-model filter or estimated $0 cap does not override gateway fallbacks or establish a provider billing limit.
 
 ## Built in the open. Measured in the open.

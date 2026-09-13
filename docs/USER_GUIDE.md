@@ -98,6 +98,29 @@ Saving settings and refreshing the catalog make no inference requests. The separ
 
 References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter tool calling](https://openrouter.ai/docs/guides/features/tool-calling), [OpenRouter limits](https://openrouter.ai/docs/api-reference/limits), [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility).
 
+### OpenRouter free-request allowance
+
+For regular free-model use, we recommend **purchasing at least $10 in OpenRouter
+credits and leaving them unspent**. Buying credits qualifies you for the larger
+allowance; spending them on paid inference is not required. This is optional,
+and applies whether you connect directly or through OmniRoute.
+
+| Total OpenRouter credits purchased (all time) | Free-model requests per day | Requests per minute |
+| --- | --- | --- |
+| Less than $10 | 50 | 20 |
+| At least $10 | 1,000 | 20 |
+
+These are account-level limits shared across OpenRouter `:free` models, not
+1,000 requests per model or per API key. Worker, reviewer, and probe requests
+consume the allowance; one CheapOS task can make many requests. Upstream
+availability and rate limits still apply. [OpenRouter limits](https://openrouter.ai/docs/api_reference/limits)
+
+Keep using explicit `:free` variants for both roles and the $0 task cap; review
+OmniRoute's fallback settings so paid routes do not consume the purchased credits.
+OpenRouter charges a credit-purchase fee, so the checkout total may exceed $10.
+Policy checked September 13, 2026; check the current
+[OpenRouter FAQ](https://openrouter.ai/docs/faq) before purchasing.
+
 ## Open a project and chat
 
 1. Click **Open project** and enter the root folder of a local Git repository. It is remembered on this computer; opening it makes no model request.
