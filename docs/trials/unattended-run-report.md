@@ -117,14 +117,13 @@ Run the complete existing gate once on the final combined candidate:
 
 - `python3 -B scripts/dev_tests.py --suite full --timings`
 - `node --check dist/app.js`
-- `node --test tests/test_*.js`
+- `node --test tests/test_branch_ui.js tests/test_conversation.js tests/test_guidance.js tests/test_panels.js tests/test_run_report.js`
 
-The app runs a program directly, without a shell. For the final Node command,
-use a suitable exact argv that runs all test files (for example `node --test tests`
-if supported by the installed Node version), or explicitly enumerate the actual
-Node test paths in the proposal. Do not rely on shell wildcard expansion, pipes,
-command chaining, redirects, or a wrapper that bypasses command consent. Inspect
-and preserve the accepted check commands rather than silently changing them.
+The app runs a program directly, without a shell. The final Node command above
+explicitly lists the current Node test files plus this feature's new test file.
+`node --test tests` does not work on the installed Node version, and shell
+wildcards are not expanded by CheapOS. Preserve the explicit command in the
+proposal; do not use pipes, chaining, redirects, or a consent-bypassing wrapper.
 The last full Python gate took about 18.5 minutes; a 30-minute per-check allowance
 is intentional. During implementation run the listed focused checks, not the
 full suite for every item or again merely because an approval screen is opened.
