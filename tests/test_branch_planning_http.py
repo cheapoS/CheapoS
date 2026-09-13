@@ -111,6 +111,21 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
         self.assertFalse(self.engine.runtimes)
 
+    def test_missing_runner_retains_complete_plan_and_identifies_executable(self):
+        self.provider.command = 'cheapos-missing-test-runner --verify'
+        status, result = self.post('/api/branch-runs/plan', self.request_values())
+        self.assertEqual(status, 400, result)
+        self.assertIn('cheapos-missing-test-runner', result['error'])
+        task = next(iter(self.engine.store.tasks.values()))
+        self.assertEqual(task['branch_run']['status'], 'blocked')
+        self.assertEqual(task['branch_run']['pause_reason'], 'missing_setup')
+        self.assertEqual(task['branch_run']['plan']['items'][0]['id'], 'utility')
+        self.assertEqual(task['branch_run']['plan']['final_checks'], [self.provider.command])
+        self.assertIn('cheapos-missing-test-runner', task['error'])
+        self.assertEqual(task['usage']['worker']['tokens'], 30)
+        self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
+        self.assertFalse(self.engine.runtimes)
+
     def test_conflict_is_clarification_with_preserved_captured_request(self):
         (self.source / 'scope.md').write_text('Remove the original utility.')
         self.provider.clarify = True

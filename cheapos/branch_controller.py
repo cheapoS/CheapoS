@@ -360,9 +360,15 @@ class BranchController:
                 if not ledger_ended:runtime.branch_ledger.end()
                 with self.engine.lock:self.engine.runtimes.pop(task['id'],None)
             if task and not prepared:
-                task['status']='paused';task['branch_run']['status']='paused';task['branch_run']['pause_reason']='operator' if runtime and runtime.stop.is_set() else 'missing_information'
-                task['error']=registration_error or 'Planning stopped or needs clarification; submit an updated request to prepare a proposal.'
-                self.engine.store.save(task)
+                saved = self.engine.store.get(task['id'])
+                saved_run = saved.get('branch_run') or {}
+                # prepare() may already have saved the complete plan and its
+                # concrete setup failure. Do not replace it with the earlier
+                # placeholder used to account for proposal generation.
+                if not (saved_run.get('workspace_mapping') and saved_run.get('status') == 'blocked' and saved_run.get('pause_reason') == 'missing_setup'):
+                    task['status']='paused';task['branch_run']['status']='paused';task['branch_run']['pause_reason']='operator' if runtime and runtime.stop.is_set() else 'missing_information'
+                    task['error']=registration_error or 'Planning stopped or needs clarification; submit an updated request to prepare a proposal.'
+                    self.engine.store.save(task)
             with self.engine.lock:self.planning.pop(identity,None)
 
     def stop_plan(self, values):
