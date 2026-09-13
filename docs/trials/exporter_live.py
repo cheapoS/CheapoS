@@ -232,10 +232,10 @@ def main():
                 def difference(after, before):
                     return {k: difference(v, before.get(k, {})) if isinstance(v, dict) else v - before.get(k, 0) for k, v in after.items() if isinstance(v, dict) or (isinstance(v, (int, float)) and not isinstance(v, bool))}
                 result['execution_accounting_delta'] = difference(result['accounting'], result['planning_accounting'])
-            result['candidate_acceptance_unchanged'] = fingerprint(Path(task['workspace']), [PACK]) == frozen['acceptance']
+            result['candidate_acceptance_unchanged'] = bool(task.get('workspace')) and fingerprint(Path(task['workspace']), [PACK]) == frozen['acceptance']
             receipts = []
             for item in task.get('branch_run', {}).get('items', []):
-                receipt = item.get('commit_receipt', {})
+                receipt = item.get('commit_receipt') or {}
                 if receipt.get('stage') == 'completed' and receipt.get('run_id') == task['id'] and receipt.get('item_id') == item['id']:
                     sha = receipt['new_tip']
                     receipts.append({'item_id': item['id'], 'sha': sha, 'object_exists': git(source, 'cat-file', '-t', sha) == 'commit', 'tree': git(source, 'rev-parse', sha + '^{tree}'), 'parent': git(source, 'rev-parse', sha + '^')})
