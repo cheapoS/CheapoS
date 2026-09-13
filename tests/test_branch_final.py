@@ -30,7 +30,7 @@ class BranchFinalTests(unittest.TestCase):
         self.omit_coverage = False
         self.request_changes = False
         self.events = []
-        self.engine = SimpleNamespace(event=lambda *args:self.events.append(args), checks=self.checks, request=self.request, parse_call=lambda call: (call['function']['name'], json.loads(call['function']['arguments'])))
+        self.engine = SimpleNamespace(store=SimpleNamespace(save=lambda task:None), event=lambda *args:self.events.append(args), checks=self.checks, request=self.request, parse_call=lambda call: (call['function']['name'], json.loads(call['function']['arguments'])))
 
     authorize = fixtures.BranchCommitTests.authorize
     receipt = fixtures.BranchCommitTests.receipt
@@ -47,7 +47,7 @@ class BranchFinalTests(unittest.TestCase):
         return record
 
     def request(self, runtime, messages, tools, role, **kwargs):
-        packet = json.loads(messages[-1]['content']); self.requests.append(packet)
+        packet = json.loads(messages[1]['content']); self.requests.append(packet)
         result = {'decision':'REQUEST_CHANGES' if self.request_changes else 'APPROVE', 'manifest_id':packet['manifest_id'],
                   'chunk_ids':[] if self.omit_coverage else packet['chunk_ids'], 'criteria_ids':packet['criteria_ids'], 'feedback':'Read all supplied contents and checked the evidence.'}
         return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
@@ -85,10 +85,33 @@ class BranchFinalTests(unittest.TestCase):
     def test_missing_coverage_or_review_revision_never_ready(self):
         self.omit_coverage = True
         with self.assertRaisesRegex(ValueError,'coverage'): final.final_check_review(self.engine,self.runtime)
+        self.assertEqual(len(self.requests),3)
+        with self.assertRaisesRegex(ValueError,'coverage'): final.final_check_review(self.engine,self.runtime)
+        self.assertEqual(len(self.requests),3)
+        self.run.pop('final_review_corrections',None)  # A separate review scenario.
         self.omit_coverage = False; self.request_changes = True
         result=final.final_check_review(self.engine,self.runtime)
         self.assertEqual(result['decision'],'REQUEST_CHANGES')
         self.assertNotIn('readiness',result)
+
+    def test_invalid_final_coverage_gets_specific_feedback_and_can_be_repaired(self):
+        original=self.engine.request;seen=[]
+        def request(runtime,messages,tools,role,**kwargs):
+            if not seen:
+                self.omit_coverage=True
+            else:
+                self.omit_coverage=False
+                if len(seen)==1:
+                    feedback=json.loads(messages[-1]['content'])
+                    self.assertIn('chunk_ids',feedback['error'])
+                    self.assertEqual(messages[-1]['tool_call_id'],'review')
+            seen.append(1)
+            return original(runtime,messages,tools,role,**kwargs)
+        self.engine.request=request
+        result=final.final_check_review(self.engine,self.runtime)
+        self.assertEqual(result['decision'],'APPROVE')
+        self.assertTrue(final.validate(result['readiness'],self.task))
+        self.assertEqual(sum(self.run['final_review_corrections'].values()),1)
 
     def test_multichunk_exhaustive_content_and_digest(self):
         # A small chunk ceiling exercises the same deterministic splitting path.
