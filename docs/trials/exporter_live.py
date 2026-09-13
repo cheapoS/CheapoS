@@ -96,7 +96,7 @@ def verify_plan(proposal):
         # Item 3 explicitly depends on both preceding implementation items.
         if item.get('dependencies') != wanted or commands(item.get('required_checks', [])) != [shlex.split(c) for c in expected[i]]:
             raise ValueError('Inspect/correct item dependencies and exact check list before Start')
-    if commands(plan['final_checks']) != [shlex.split(c) for c in final]:
+    if sorted(commands(plan['final_checks'])) != sorted(shlex.split(c) for c in final):
         raise ValueError('Inspect/correct the exact final check list before Start')
 
 

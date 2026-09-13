@@ -40,3 +40,7 @@ recorded; the private workspace may use different SHAs. A Git bundle of the
 source feature ref and base, or a fetch into a dedicated review ref, preserves the
 actual feature commits for later inspection. Do not merge them to main merely to
 retain them. Verify any imported tip/tree against the saved receipts.
+
+Final-check order is immaterial: the driver requires the exact command/argv multiset,
+including duplicates, and binds the original order in the reviewed proposal digest.
+A reordered but otherwise identical list does not require assisted planning.
