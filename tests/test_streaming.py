@@ -77,6 +77,20 @@ class StreamingTests(LocalCase):
             self.assertIn('daily free-model quota',str(caught.exception))
             self.assertNotIn('secret-account',str(caught.exception))
 
+    def test_structured_rate_limit_is_model_scoped_and_never_returns_partial_tools(self):
+        partial=chunk({'tool_calls':[{'index':0,'id':'edit','function':{'name':'write_file','arguments':'{"path":"unsafe.py"'}}]})
+        for failure in ({'type':'rate_limit_error','message':'secret-account'}, {'code':'rate_limit_exceeded','message':'secret-account'}):
+            with self.subTest(failure=failure),self.assertRaises(ProviderError) as caught:
+                self.parse(partial+('data: '+json.dumps({'error':failure})+'\n\n').encode())
+            self.assertEqual(caught.exception.code,'gateway_cooldown')
+            self.assertEqual(caught.exception.scope,'model')
+            self.assertIsNone(caught.exception.retry_after)
+            self.assertIn('Partial tool calls were not executed',str(caught.exception))
+            self.assertNotIn('secret-account',str(caught.exception))
+        with self.assertRaises(ProviderError) as caught:
+            self.parse(b'data: {"error":{"type":"server_error","code":"unknown","message":"secret-account"}}\n\n')
+        self.assertEqual(caught.exception.code,'stream_error')
+
     def test_timeout_and_connection_errors_have_distinct_codes(self):
         provider=ChatProvider({'base_url':'http://127.0.0.1:11434/v1','model':'fixture','key_env':'CHEAPOS_TEST_KEY'})
         for error,code in [(TimeoutError(),'model_timeout'),(URLError(TimeoutError()),'model_timeout'),(URLError(ConnectionRefusedError()),'model_connection')]:

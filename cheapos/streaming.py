@@ -30,6 +30,10 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
             detail = failure.get('message', '') if isinstance(failure, dict) else failure
             if isinstance(detail, str) and 'free-models-per-day' in detail.lower():
                 raise error_type('The provider daily free-model quota is exhausted. Retry after the provider resets it; no reset time was supplied.', code='gateway_cooldown', scope='provider')
+            if isinstance(failure, dict) and (failure.get('type') == 'rate_limit_error' or failure.get('code') == 'rate_limit_exceeded'):
+                # A connection can have separate model quota pools. Without an
+                # explicit provider-wide signal, do not exclude every model.
+                raise error_type('The model route reported a rate limit or exhausted quota. Retry when its allowance resets; the stream supplied no reset time. Partial tool calls were not executed.', code='gateway_cooldown', scope='model')
             raise error_type('The model reported an error while streaming.', code='stream_error')
         if isinstance(data.get('usage'), dict):
             usage = data['usage']
