@@ -78,7 +78,10 @@ def python_tests(root, changed):
     return tests, []
 
 
-def plan(root, files, jobs=4, full=False):
+DEFAULT_JOBS = min(8, os.cpu_count() or 1)
+
+
+def plan(root, files, jobs=DEFAULT_JOBS, full=False):
     files = sorted(set(files))
     commands, notes = [], []
     frontend = full or any(path.startswith('dist/') or path.startswith('tests/') and path.endswith('.js') for path in files)
@@ -117,7 +120,7 @@ def main(argv=None):
     parser.add_argument('--files', nargs='+', help='Explicit repository-relative changed files instead of Git detection')
     parser.add_argument('--plan', action='store_true', help='Show checks without executing them')
     parser.add_argument('--full', action='store_true', help='Explicit complete Python and JavaScript regression')
-    parser.add_argument('--jobs', type=int, default=min(4, os.cpu_count() or 1))
+    parser.add_argument('--jobs', type=int, default=DEFAULT_JOBS)
     args = parser.parse_args(argv)
     if not 1 <= args.jobs <= 16: parser.error('--jobs must be between 1 and 16')
     try:

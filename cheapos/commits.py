@@ -40,8 +40,10 @@ def source_state(source):
         head = source_git(source, "rev-parse", "HEAD")
     except ValueError:
         raise ValueError("Check out a branch with an initial commit before applying changes") from None
-    for marker in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply", "sequencer"):
-        path = Path(source_git(source, "rev-parse", "--git-path", marker))
+    markers = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply", "sequencer")
+    args = [arg for marker in markers for arg in ("--git-path", marker)]
+    for raw in source_git(source, "rev-parse", *args).splitlines():
+        path = Path(raw)
         if (path if path.is_absolute() else Path(source) / path).exists():
             raise ValueError("Finish the Git operation already in progress before applying changes")
     keys = source_git(source, "config", "--list", "--name-only").splitlines()
