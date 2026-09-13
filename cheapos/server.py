@@ -190,6 +190,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     raise ValueError("Choose a worker or reviewer connection")
                 config = validate_provider(values.get("config"), role)
                 result = {"models": gateway_for(config, engine.provider_key(role, config)).list_models()}
+            elif path == "/api/branch-runs/prepare":
+                result = engine.branch.prepare(values)
             elif path == "/api/tasks":
                 result = public_task(engine.create(values))
             elif path == "/api/demo":
@@ -207,6 +209,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     result = public_task(engine.trash_task(task_id) if action == "trash" else engine.restore_task(task_id))
                 elif action == "metadata":
                     result = public_task(engine.update_task_metadata(task_id, values))
+                elif action == "branch-start":
+                    result = public_task(engine.branch.authorize(task_id, values))
+                elif action == "branch-leave":
+                    if values: raise ValueError("Leave accepts no fields")
+                    result = public_task(engine.branch.revoke(task_id))
                 elif action == "start":
                     result = public_task(engine.start(task_id, values))
                 elif action == "message":

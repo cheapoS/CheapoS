@@ -26,14 +26,14 @@ Confirm source changes do not occur before authorization and ordinary manual com
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: `/api/branch-runs/prepare`, protected `/api/tasks/<id>/branch-start`, and `branch-leave` actions; five-minute server-held proposals bound to captured plan/inputs, private workspace, project/base/ref, model policy, limits and concrete check scope. Authority is durable; command grants are session-only.
 
-Acceptance evidence:
+Acceptance evidence: Explicit decisions, expiry, tampering and cross-task replay rejection; idempotent Start; unchanged dirty source/index; exact/profile command grants; restart expiry and revoked authority; manual action guards. Preparation materializes only a private copy and runs no checks or models.
 
-Commands and results:
+Commands and results: `test_branch_authorization.py` 8 PASS; `test_branch_start.py` 3 PASS (12.840s); `test_branch_http.py` 5 PASS (13.496s).
 
 Browser scenarios and results: UI coverage belongs to T35; API authorization must be tested here.
 
-Remaining limitations:
+Remaining limitations: Execution is connected in T33 and the UI in T35. This card authorizes then pauses. Scope-changing work requires a fresh proposal; later revision controls retain the same rule. Missing verification setup saves an inspectable blocked draft.

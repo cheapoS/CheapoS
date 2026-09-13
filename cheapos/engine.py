@@ -313,6 +313,8 @@ class Engine:
             self.config = {"worker": None, "reviewer": None}
         self.startup = StartupManager(self)
         self.readiness = ReadinessManager(self)
+        from .branch_controller import BranchController
+        self.branch = BranchController(self)
 
     def configuration(self):
         result = copy.deepcopy(self.config)
@@ -428,7 +430,7 @@ class Engine:
         task["updated_at"] = now()
         self.store.save(task)
 
-    def create(self, values, demo=False):
+    def create(self, values, demo=False, snapshot_override=None, task_id=None):
         prompt = values.get("prompt", "")
         conversational = values.get("conversational", False)
         if not isinstance(conversational, bool):
@@ -447,9 +449,9 @@ class Engine:
             raise ValueError("A verification command is required for this release")
         if not isinstance(values.get("auto_approve_checks", False), bool):
             raise ValueError("Command approval preference must be true or false")
-        task_id = uuid.uuid4().hex
+        task_id = task_id or uuid.uuid4().hex
         directory = self.store.root / "tasks" / task_id
-        workspace, snapshot = Workspace.snapshot(values.get("repository", ""), directory / "workspace")
+        workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
         task = {"id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
