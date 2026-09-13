@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "collected_at": "2026-09-13T22:40:11.518566+00:00",
+  "collected_at": "2026-09-13T22:41:52.788876+00:00",
   "scope": "Supplemental independently collected trial evidence. Historical controller approvals are retained; supplemental failures prevent qualification. No credentials, provider configuration, or live task logs are included.",
   "qualification_overrides": [
     {
@@ -1951,6 +1951,392 @@
             "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
           }
         ]
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-antigravity-20260913/very-hard-1/documentation-verification.json",
+      "source_sha256": "4d0a56dba58e424ee96c72d53275a44cea34547ac8aae0c01ee337b4e533a825",
+      "trial_family": "antigravity",
+      "trial": "very-hard-1",
+      "kind": "documentation-verification",
+      "evidence": {
+        "trial_family": "antigravity",
+        "trial": "very-hard-1",
+        "passed": true,
+        "original_trial_status": "ready_for_merge",
+        "probes": [
+          {
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "add",
+              "Buy milk"
+            ],
+            "returncode": 0,
+            "stdout": "{\"id\": 1, \"title\": \"Buy milk\", \"done\": false}\n",
+            "stderr": ""
+          },
+          {
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "list"
+            ],
+            "returncode": 0,
+            "stdout": "[{\"id\": 1, \"title\": \"Buy milk\", \"done\": false}]\n",
+            "stderr": ""
+          },
+          {
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "complete",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "import",
+              "input.csv"
+            ],
+            "returncode": 0,
+            "stdout": "Imported 2 task(s)\n",
+            "stderr": ""
+          },
+          {
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "export"
+            ],
+            "returncode": 0,
+            "stdout": "[{\"id\": 1, \"title\": \"Buy milk\", \"done\": true}, {\"id\": 2, \"title\": \"Buy eggs\", \"done\": false}, {\"id\": 3, \"title\": \"Read book\", \"done\": true}]\n",
+            "stderr": ""
+          }
+        ],
+        "workspace_hashes": {
+          "store.py": "994f324292e0f7d2ca7b537e3fa84298799debc2adae612069afc41de2fa4bb9",
+          "README.md": "5226757209e0052738847f35ad41c501598657dc052ea08cfe7b037a83207da9",
+          "test_acceptance.py": "ba0e61af3e6b7865eb831c603b311a6eb196eb832b036148f2452efafac4dcab",
+          "cli.py": "642172e1c94eb569cf3e12a61d63049410733907cfbfb0ffcdde8f7a583f448e"
+        },
+        "workspace_preserved": true,
+        "method": "README examples checked in temporary source copy. Antigravity easy explicitly documented TypeError is caught and asserted, not treated as unintended error; NVIDIA easy uses doctest. CLI uses temporary database and documented CSV. Original files unchanged; no live inference."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-antigravity-20260913/easy-1/documentation-verification.json",
+      "source_sha256": "3ecbd79d5b17bad9d98c512f2f9265234949d25b3643f4f7138bfdf5cf509a97",
+      "trial_family": "antigravity",
+      "trial": "easy-1",
+      "kind": "documentation-verification",
+      "evidence": {
+        "trial_family": "antigravity",
+        "trial": "easy-1",
+        "passed": true,
+        "original_trial_status": "ready_for_merge",
+        "probes": [
+          {
+            "arguments": [
+              "readme_example.py"
+            ],
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "workspace_hashes": {
+          "labels.py": "5fccbe908e918148eeb5f008a2d2a6b2048d5fc030c37e9c15d428e344bba1ff",
+          "README.md": "a89816bf70197c8e1ff479de7730466b05130038644cebbe42b07ed89042558a",
+          "test_acceptance.py": "34f20cd33ee8d992b75f5d939e796a13a56e462f03593c281112dcbd4cdc4ea8"
+        },
+        "workspace_preserved": true,
+        "method": "README examples checked in temporary source copy. Antigravity easy explicitly documented TypeError is caught and asserted, not treated as unintended error; NVIDIA easy uses doctest. CLI uses temporary database and documented CSV. Original files unchanged; no live inference."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/easy-2/documentation-verification.json",
+      "source_sha256": "d0136cfc4a72a85fcc896c414a1e799886c530f210084508439931da47c75b4c",
+      "trial_family": "kiro",
+      "trial": "easy-2",
+      "kind": "documentation-verification",
+      "evidence": {
+        "trial_family": "kiro",
+        "trial": "easy-2",
+        "passed": true,
+        "original_trial_status": "ready_for_merge",
+        "probes": [
+          {
+            "arguments": [
+              "readme_example.py"
+            ],
+            "returncode": 0,
+            "stdout": "hello\nhello world\ncaf\u00e9 \u6771\u4eac\n\nError: Expected str, got NoneType\n",
+            "stderr": ""
+          }
+        ],
+        "workspace_hashes": {
+          "labels.py": "74216430f020fb54f19f97475e13f12c97e1d1c6f170e4f4ac6f6127efa813b1",
+          "README.md": "9f4ce44c5ec7f2ccf61b43273d2c4313d97c37cd7f7b8591ea2ab678139bec93",
+          "test_acceptance.py": "34f20cd33ee8d992b75f5d939e796a13a56e462f03593c281112dcbd4cdc4ea8"
+        },
+        "workspace_preserved": true,
+        "method": "README examples checked in temporary source copy. Antigravity easy explicitly documented TypeError is caught and asserted, not treated as unintended error; NVIDIA easy uses doctest. CLI uses temporary database and documented CSV. Original files unchanged; no live inference."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/easy-1/documentation-verification.json",
+      "source_sha256": "db52a1b13f219c5637d71c5445bec79804d748cccc6a54de03ef2d02807b8228",
+      "trial_family": "nvidia-kiro",
+      "trial": "easy-1",
+      "kind": "documentation-verification",
+      "evidence": {
+        "trial_family": "nvidia-kiro",
+        "trial": "easy-1",
+        "passed": true,
+        "original_trial_status": "ready_for_merge",
+        "probes": [
+          {
+            "arguments": [
+              "-m",
+              "doctest",
+              "-v",
+              "README.md"
+            ],
+            "returncode": 1,
+            "stdout": "Trying:\n    from labels import normalize_label\nExpecting nothing\nok\nTrying:\n    normalize_label('  hello\\t world\\n')\nExpecting:\n    'hello world'\nok\nTrying:\n    normalize_label('  caf\\u00e9  \\u6771\\u4eac  ')\nExpecting:\n    'caf\\u00e9 \\u6771\\u4eac'\n**********************************************************************\nFile \"README.md\", line 9, in README.md\nFailed example:\n    normalize_label('  caf\\u00e9  \\u6771\\u4eac  ')\nExpected:\n    'caf\\u00e9 \\u6771\\u4eac'\nGot:\n    'caf\u00e9 \u6771\u4eac'\nTrying:\n    normalize_label(' \\t\\n')\nExpecting:\n    ''\nok\n**********************************************************************\n1 items had failures:\n   1 of   4 in README.md\n4 tests in 1 items.\n3 passed and 1 failed.\n***Test Failed*** 1 failures.\n",
+            "stderr": "",
+            "qualification_note": "Literal doctest fails Unicode repr spelling; escaped expected string and actual value are semantically identical."
+          },
+          {
+            "arguments": [
+              "-c",
+              "from labels import normalize_label; assert normalize_label('  hello\\t world\\n') == 'hello world'; assert normalize_label('  caf\u00e9  \u6771\u4eac  ') == 'caf\u00e9 \u6771\u4eac'; assert normalize_label(' \\t\\n') == ''"
+            ],
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "workspace_hashes": {
+          "labels.py": "4862ed2cbff53d112e4fb389c89a91743064d972f0b93418ae5a551c813ffa17",
+          "README.md": "2ad1c258cb62b021979ebb791a62bcf1ffa913d4d01319ecfcd8910d0337e5ba",
+          "test_acceptance.py": "34f20cd33ee8d992b75f5d939e796a13a56e462f03593c281112dcbd4cdc4ea8"
+        },
+        "workspace_preserved": true,
+        "method": "README examples checked in temporary source copy. Antigravity easy explicitly documented TypeError is caught and asserted, not treated as unintended error; NVIDIA easy uses doctest. CLI uses temporary database and documented CSV. Original files unchanged; no live inference."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/result.json",
+      "source_sha256": "637bab40f702e724f61ea74b83e6903077132c140ff82f9d89b9b34395fe612a",
+      "trial_family": "nvidia-kiro",
+      "trial": "hard-1",
+      "kind": "result",
+      "evidence": {
+        "app_commit": "59fc08cdb9339d132e9bd5cb4c56cbb0721456ac",
+        "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+        "level": "hard",
+        "attempt": 1,
+        "run_id": "6e99c0f24e2c4f5f965132692cbd9668",
+        "status": "paused",
+        "error": "Could you please provide the full current content of app.py so I can fix the indentation error?",
+        "error_code": null,
+        "measurement": true,
+        "operator_prepared_plan": true,
+        "interventions_after_start": 0,
+        "models": {
+          "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+          "reviewer": "kiro/claude-haiku-4.5"
+        },
+        "models_used": {
+          "worker": [
+            "nvidia/nvidia/nemotron-3-super-120b-a12b"
+          ],
+          "reviewer": []
+        },
+        "handoffs": 0,
+        "review_revisions": 0,
+        "request_count": 13,
+        "usage": {
+          "worker": {
+            "tokens": 122192,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 0,
+            "cost": 0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 13
+        },
+        "consumption": {
+          "dollars": 0,
+          "working_seconds": 211.214388042,
+          "worker_turns": 13,
+          "requests": 13,
+          "tool_actions": 8,
+          "reviewer_tokens": 0,
+          "check_seconds": 0.17,
+          "output_tokens": 0,
+          "worker_tokens": 122192
+        },
+        "run_metrics": [
+          {
+            "id": "c5af16352e154875b9c9165aa9082136",
+            "elapsed_seconds": 211.218380958,
+            "provider_request_seconds": 209.664187753,
+            "operator_wait_seconds": 0,
+            "provider_cooldown_seconds": 0,
+            "controller_work_seconds": 1.5541932050000185,
+            "outcome": "paused"
+          }
+        ],
+        "checks": [
+          {
+            "passed": false,
+            "duration": 0.17,
+            "allowed_seconds": null,
+            "output": "test_complete_and_missing (test_acceptance.APITests) ... ERROR\ntest_create_list_and_restart (test_acceptance.APITests) ... ERROR\ntest_validation_has_no_writes (test_acceptance.APITests) ... ERROR\n\n======================================================================\nERROR: test_complete_and_missing (test_acceptance.APITests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/test_acceptance.py\", line 5, in setUp\n    from app import create_server\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/app.py\", line 14\n    self.send_error_json(404, 'Not Found')\n                                          ^\nIndentationError: unindent does not match any outer indentation level\n\n======================================================================\nERROR: test_create_list_and_restart (test_acceptance.APITests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/test_acceptance.py\", line 5, in setUp\n    from app import create_server\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/app.py\", line 14\n    self.send_error_json(404, 'Not Found')\n                                          ^\nIndentationError: unindent does not match any outer indentation level\n\n======================================================================\nERROR: test_validation_has_no_writes (test_acceptance.APITests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/test_acceptance.py\", line 5, in setUp\n    from app import create_server\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/app.py\", line 14\n    self.send_error_json(404, 'Not Found')\n                                          ^\nIndentationError: unindent does not match any outer indentation level\n\n----------------------------------------------------------------------\nRan 3 tests in 0.001s\n\nFAILED (errors=3)\n"
+          }
+        ],
+        "commits": [],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true
+        },
+        "driver_seconds": 212.834070333,
+        "autonomous_execution_success": false
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/independent-verification.json",
+      "source_sha256": "936a642e857ecb71045f6465c1f4a3f65274550dc0f4795b98d5277e14ca5e5a",
+      "trial_family": "nvidia-kiro",
+      "trial": "hard-1",
+      "kind": "independent-verification",
+      "evidence": {
+        "outcome": "worker_requested_information",
+        "message": "Could you please provide the full current content of app.py so I can fix the indentation error?",
+        "app_syntax_error": {
+          "type": "IndentationError",
+          "line": 14,
+          "message": "unindent does not match any outer indentation level"
+        },
+        "checks_passed": [
+          false
+        ],
+        "reviewer_reached": false,
+        "commits": [],
+        "ui_complete": false,
+        "browser_verification": "Not run: API item unfinished and app.py has a syntax error. No complete UI candidate exists.",
+        "core_and_source_preserved": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true
+        },
+        "interventions_after_start": 0
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-nvidia-sonnet-20260913/hard-1/result.json",
+      "source_sha256": "babc55fbffc69b646baa7b8111b4b05777263a44e2663d1c77aaca014b357ef5",
+      "trial_family": "nvidia-sonnet",
+      "trial": "hard-1",
+      "kind": "result",
+      "evidence": {
+        "app_commit": "59fc08cdb9339d132e9bd5cb4c56cbb0721456ac",
+        "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+        "level": "hard",
+        "attempt": 1,
+        "run_id": "3e582cf486864c708e2a623388d523fe",
+        "status": "paused",
+        "error": "Provider returned HTTP 400. This request did not complete.",
+        "error_code": "http_400",
+        "measurement": true,
+        "operator_prepared_plan": true,
+        "interventions_after_start": 0,
+        "models": {
+          "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+          "reviewer": "kiro/claude-sonnet-5"
+        },
+        "models_used": {
+          "worker": [
+            "nvidia/nvidia/nemotron-3-super-120b-a12b"
+          ],
+          "reviewer": [
+            "kiro/claude-sonnet-5"
+          ]
+        },
+        "handoffs": 0,
+        "review_revisions": 0,
+        "request_count": 5,
+        "usage": {
+          "worker": {
+            "tokens": 22491,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 19391,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 1,
+          "estimated_requests": 4
+        },
+        "consumption": {
+          "dollars": 0,
+          "working_seconds": 28.082713708,
+          "worker_turns": 4,
+          "requests": 5,
+          "tool_actions": 3,
+          "reviewer_tokens": 19391,
+          "check_seconds": 2.28,
+          "output_tokens": 0,
+          "worker_tokens": 22491
+        },
+        "run_metrics": [
+          {
+            "id": "25e687f95b0044a29b28199f33ca92b8",
+            "elapsed_seconds": 28.086167458,
+            "provider_request_seconds": 24.427079082,
+            "operator_wait_seconds": 0,
+            "provider_cooldown_seconds": 0,
+            "controller_work_seconds": 3.6590883759999997,
+            "outcome": "paused"
+          }
+        ],
+        "checks": [
+          {
+            "passed": true,
+            "duration": 2.28,
+            "allowed_seconds": null,
+            "output": "test_complete_and_missing (test_acceptance.APITests) ... ok\ntest_create_list_and_restart (test_acceptance.APITests) ... ok\ntest_validation_has_no_writes (test_acceptance.APITests) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 2.048s\n\nOK\n"
+          }
+        ],
+        "commits": [],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true
+        },
+        "driver_seconds": 29.783260833,
+        "autonomous_execution_success": false
       }
     }
   ]
