@@ -184,10 +184,11 @@ const CheapOSGuide = (() => {
     const evidence=Object.entries(h.role_evidence||{}).filter(([,e])=>e.samples>0||e.completion_samples>0);
     if(evidence.length)return evidence.map(([role,e])=>{
       const parts=[`${role}: ${e.completed||0} observed completions`];
-      if(!e.completed)parts.push('no prior completion evidence');
+      if(!e.completed&&!e.completion_samples)parts.push('no prior completion evidence');
       if(e.independently_validated)parts.push(`${e.independently_validated} independently confirmed`);
       if(e.independently_disproved)parts.push(`${e.independently_disproved} independently disproved`);
       if(e.human_integrated)parts.push(`${e.human_integrated} human integrated`);
+      if(e.accepted)parts.push(`${e.accepted} human accepted`);
       if(e.samples)parts.push(`${e.samples} activity samples`);
       if(e.invalid_output)parts.push(`${e.invalid_output} invalid outputs`);
       return parts.join(' · ');
