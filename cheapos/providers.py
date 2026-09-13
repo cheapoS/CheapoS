@@ -108,7 +108,11 @@ class ChatProvider:
                     raw = response.read(4_000_001)
                     if len(raw) > 4_000_000:
                         raise ProviderError("Provider response exceeded 4 MB")
-                    data = json.loads(raw)
+                    try:
+                        data = json.loads(raw)
+                    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+                        detail = f'{error.msg}, line {error.lineno}, column {error.colno}' if isinstance(error, json.JSONDecodeError) else 'invalid text encoding'
+                        raise ProviderError(f'Provider returned malformed response JSON ({detail}). No tool calls from this response were executed.', code='invalid_response_json') from None
         except InterruptedError:
             raise
         except HTTPError as error:
@@ -120,8 +124,8 @@ class ChatProvider:
                 reason = f"The model stopped sending output for {duration}" if emit is not None else f"The model did not finish within {duration}"
                 raise ProviderError(reason + ". The request stopped without an automatic retry; uncertain usage remains counted.", code="model_timeout") from None
             raise ProviderError("The model connection failed before a complete response arrived. No automatic retry was made; uncertain usage remains counted.", code="model_connection") from None
-        except (ValueError, KeyError, TypeError):
-            raise ProviderError("Provider returned an invalid JSON response") from None
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise ProviderError("Provider returned an invalid response structure. No tool calls from this response were executed.", code="invalid_response_shape") from None
         try:
             message = data["choices"][0]["message"]
             if not isinstance(message, dict) or not (message.get("content") or message.get("tool_calls")):

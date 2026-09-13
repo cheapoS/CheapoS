@@ -18,7 +18,10 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
         if payload.strip() == '[DONE]':
             done = True
             return
-        data = json.loads(payload)
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError as error:
+            raise error_type(f'The provider sent malformed JSON in a stream event ({error.msg}, line {error.lineno}, column {error.colno}). No tool calls from this response were executed.', code='invalid_stream_json') from None
         if not isinstance(data, dict) or data.get('error'):
             raise error_type('The model reported an error while streaming.', code='stream_error')
         if isinstance(data.get('usage'), dict):
@@ -86,6 +89,8 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
     if calls:
         message['tool_calls'] = [calls[index] for index in sorted(calls)]
         for call in message['tool_calls']:
-            if not call['id'] or not call['function']['name'] or not isinstance(json.loads(call['function']['arguments']), dict):
-                raise error_type('The model streamed an incomplete tool call.')
+            if not isinstance(call['id'], str) or not call['id'] or not call['function']['name']:
+                raise error_type('The model streamed a tool call without a valid ID or name.', code='invalid_tool_envelope')
+            # The complete response is accounted before the controller validates
+            # argument JSON. Invalid arguments become tool feedback, never edits.
     return {'choices':[{'message':message}], 'usage':usage}

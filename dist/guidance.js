@@ -85,6 +85,7 @@ const CheapOSGuide = (() => {
     const legacyTimeout=task.error?.startsWith('Model request did not complete.')&&Math.round(elapsed)>=(request?.detail?.timeout_seconds||180);
     const timeout=['model_timeout','stream_timeout'].includes(task.error_code)||legacyTimeout;
     const files=(task.changes||[]).length;
+    if(['invalid_response_json','invalid_stream_json','invalid_response_shape','invalid_tool_envelope'].includes(task.error_code)||task.error==='Provider returned an invalid JSON response')return {timeout:false,title:'The model response could not be read.',description:`${files?`${files} changed file${files===1?' is':'s are'} saved.`:'Your task is saved.'} No tool calls from this response were executed. Details identify the response problem.`};
     if(['stream_error','stream_interrupted','output_limit'].includes(task.error_code))return {timeout:false,title:task.error_code==='output_limit'?'The response reached its output limit.':'The model response ended early.',description:`${files?`${files} changed file${files===1?' is':'s are'} saved.`:'Your task is saved.'} Incomplete tool calls were not executed. ${task.action_pending||task.answer_pending&&files?'Retry returns to the saved work; verification and review are still required.':'Check the response details before retrying.'}`};
     return {timeout,title:timeout?'The model didn’t respond before the time limit.':taskGuide(task).title,
       description:timeout?`${request?request.title.replace(/^Requesting (worker|reviewer): /,''):'The model'} ${task.error_code==='stream_timeout'?'reached the streaming time limit':request?.detail?.streaming?'stopped sending output before the response completed':`was given ${duration(request?.detail?.timeout_seconds||180)}`}. ${files?`${files} changed file${files===1?' is':'s are'} saved.`:'No files were changed.'} Retry when you’re ready.`:'The request stopped. Your saved work is available; check the details before retrying.'};
@@ -106,7 +107,7 @@ const CheapOSGuide = (() => {
     else if(event.kind==='review'){icon='shield';note=d.feedback||''}
     else if(event.kind==='handoff'){icon='branch';note=`${d.from} → ${d.to}`}
     else if(event.kind==='checkpoint'){icon='shield';note=d.worker_summary||''}
-    else if(event.kind==='tool_error'){icon='x';title='Action could not finish';note=d.error||''}
+    else if(event.kind==='tool_error'){icon='x';title=d.code==='invalid_tool_arguments'?'Asking the model to correct its tool call':'Action could not finish';note=d.error||''}
     else if(event.kind==='guard'){icon='clock';note=typeof d==='string'?d:''}
     else if(event.kind==='routing'){icon='branch';note=[d.model,d.error].filter(Boolean).join(' · ')||d.summary||''}
     else if(event.kind==='permission'){icon='shield';note=(d.command||[]).join(' ')}

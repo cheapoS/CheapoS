@@ -140,6 +140,11 @@ test('interrupted responses show saved work and the recovery step',()=>{
   assert.match(result.description,/1 changed file is saved/);assert.match(result.description,/Retry returns to the saved work/);
   assert.equal(failure(task({status:'error',error_code:'output_limit'})).title,'The response reached its output limit.');
 });
+test('tool argument corrections are distinct from unreadable provider responses',()=>{
+  const item=activityItem({kind:'tool_error',detail:{code:'invalid_tool_arguments',error:'Invalid arguments'}});
+  assert.equal(item.title,'Asking the model to correct its tool call');
+  assert.equal(failure(task({status:'error',error_code:'invalid_stream_json'})).title,'The model response could not be read.');
+});
 test('route failures expose the model and reason',()=>{
   const item=activityItem({kind:'routing',title:'Free model check failed',detail:{model:'free-model',error:'Output limit reached'}});
   assert.equal(item.note,'free-model · Output limit reached');

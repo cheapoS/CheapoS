@@ -105,6 +105,13 @@ class WorkerTurnLimit(BudgetError):
     pass
 
 
+class ToolArgumentsError(ProviderError):
+    def __init__(self, name, call_id, detail):
+        self.name = name
+        self.call_id = call_id
+        super().__init__(f"Invalid arguments for {name}: {detail}. Send this tool call again with a valid JSON object; escape quotes, backslashes, and newlines inside strings. For large edits, use smaller exact replacements. This call was not executed.", code="invalid_tool_arguments")
+
+
 def excerpt(text, maximum):
     if not isinstance(text, str) or len(text) <= maximum:
         return text
@@ -164,6 +171,7 @@ class Runtime:
         self.approved = False
         self.thread = None
         self.started = time.monotonic()
+        self.argument_failures = 0
         self.step_turns = 0
         self.observations = {}
         self.web = WebReader()
@@ -865,7 +873,13 @@ class Engine:
             for call in calls[:8]:
                 if runtime.stop.is_set():
                     raise InterruptedError("Task stopped")
-                name, params = self.parse_call(call)
+                try:
+                    name, params = self.parse_call(call)
+                except ToolArgumentsError as error:
+                    result = self.tool_argument_feedback(runtime, error)
+                    messages.append({"role": "tool", "tool_call_id": error.call_id, "content": json.dumps(result)})
+                    continue
+                runtime.argument_failures = 0
                 if name == "review_decision":
                     decision = params.get("decision")
                     if decision not in {"APPROVE", "REQUEST_CHANGES", "TAKE_OVER"} or not isinstance(params.get("feedback"), str):
@@ -891,12 +905,29 @@ class Engine:
     def parse_call(call):
         try:
             name = call["function"]["name"]
-            params = json.loads(call["function"]["arguments"])
-            if not isinstance(name, str) or not isinstance(params, dict) or not isinstance(call["id"], str):
+            call_id = call["id"]
+            arguments = call["function"].get("arguments")
+            if not isinstance(name, str) or not name or not isinstance(call_id, str) or not call_id:
                 raise ValueError()
-            return name, params
-        except (KeyError, TypeError, ValueError):
-            raise ProviderError("The model returned a malformed tool call") from None
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise ProviderError("The model returned a tool call without a valid ID or name", code="invalid_tool_envelope") from None
+        if not isinstance(arguments, str):
+            raise ToolArgumentsError(name, call_id, "arguments must be a JSON-encoded string")
+        try:
+            params = json.loads(arguments)
+        except json.JSONDecodeError as error:
+            raise ToolArgumentsError(name, call_id, f"{error.msg} at line {error.lineno}, column {error.colno}") from None
+        if not isinstance(params, dict):
+            raise ToolArgumentsError(name, call_id, "arguments must contain an object")
+        return name, params
+
+    def tool_argument_feedback(self, runtime, error):
+        runtime.argument_failures += 1
+        result = {"error": str(error), "code": error.code, "tool": error.name}
+        self.event(runtime.task, "tool_error", "Model needs to correct tool arguments", result)
+        if runtime.argument_failures >= 3:
+            raise ProgressPause("The model returned malformed tool arguments three times in a row. These calls were not executed. Saved work is intact; check the model before retrying.")
+        return result
 
     def _run(self, runtime):
         task = runtime.task
@@ -991,7 +1022,13 @@ class Engine:
                 for call in calls:
                     if runtime.stop.is_set():
                         raise InterruptedError("Task stopped")
-                    name, args = self.parse_call(call)
+                    try:
+                        name, args = self.parse_call(call)
+                    except ToolArgumentsError as error:
+                        result = self.tool_argument_feedback(runtime, error)
+                        task["messages"].append({"role": "tool", "tool_call_id": error.call_id, "content": json.dumps(result)})
+                        continue
+                    runtime.argument_failures = 0
                     try:
                         if recovering and name not in {t["function"]["name"] for t in offered_tools}:
                             raise ProgressPause("The worker tried to repeat inspection after the read loop stopped. Saved edits are intact. Retry the next action or provide a specific correction.")
