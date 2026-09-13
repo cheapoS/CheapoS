@@ -517,6 +517,2702 @@
       "autonomous_execution_success": false,
       "phase": "isolated-v1",
       "evidence_path": "/tmp/cheapos-matrix-isolated-20260913/easy-3/result.json"
+    },
+    {
+      "app_commit": "2ed8fe7b81869b6bd097a09d43af153e4ed276f6",
+      "app_code_hash": "9e5fa15fe372e66ce97681d64e4ee34ba9a077a96cf4975e4837ce152a961929",
+      "level": "easy",
+      "attempt": 1,
+      "run_id": "d7ca34ee45bc49798931c7c5b88ccd4e",
+      "status": "paused",
+      "error": "The model reached its output limit before finishing. Partial tool calls were not executed.",
+      "error_code": "output_limit",
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+        "reviewer": "nvidia/google/gemma-4-31b-it"
+      },
+      "models_used": {
+        "worker": [
+          "nvidia/nvidia/nemotron-3-super-120b-a12b"
+        ],
+        "reviewer": []
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 9,
+      "usage": {
+        "worker": {
+          "tokens": 40588,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 0,
+          "cost": 0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 9
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 112.38002225,
+        "worker_turns": 9,
+        "requests": 9,
+        "tool_actions": 8,
+        "reviewer_tokens": 0,
+        "check_seconds": 0.11,
+        "output_tokens": 0,
+        "worker_tokens": 40588
+      },
+      "run_metrics": [
+        {
+          "id": "744c34ee20d1423e942727a17cd3ed3b",
+          "elapsed_seconds": 112.384012833,
+          "provider_request_seconds": 111.07279891699999,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 1.311213916000014,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 114.000824417,
+      "autonomous_execution_success": false,
+      "phase": "included-connections",
+      "profile": "nvidia",
+      "evidence_path": "/tmp/cheapos-matrix-nvidia-20260913/easy-1/result.json"
+    },
+    {
+      "app_commit": "0cb00fe1521ee3e145c6c03ed3a055e9d7d3085c",
+      "app_code_hash": "2423b38f480d047c309bb845566d1e5dfb9516d91d3dc2c0b9235169dfb91edc",
+      "level": "easy",
+      "attempt": 1,
+      "run_id": "404c843b066f4278b160724e0336540a",
+      "status": "paused",
+      "error": "Independent review repeated the same evidence or invalid response three times. Saved review evidence is retained.",
+      "error_code": "progress_limit",
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+        "reviewer": "nvidia/google/gemma-4-31b-it"
+      },
+      "models_used": {
+        "worker": [
+          "nvidia/nvidia/nemotron-3-super-120b-a12b"
+        ],
+        "reviewer": [
+          "nvidia/google/gemma-4-31b-it"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 18,
+      "usage": {
+        "worker": {
+          "tokens": 55746,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 26687,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 18
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 521.915450458,
+        "worker_turns": 11,
+        "requests": 18,
+        "tool_actions": 13,
+        "reviewer_tokens": 26687,
+        "check_seconds": 0.22,
+        "output_tokens": 0,
+        "worker_tokens": 55746
+      },
+      "run_metrics": [
+        {
+          "id": "54ab6f6d39694483b443ff13c6508957",
+          "elapsed_seconds": 521.9190679999999,
+          "provider_request_seconds": 518.8405578769999,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 3.078510123000001,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 523.642342625,
+      "autonomous_execution_success": false,
+      "phase": "included-connections",
+      "profile": "nvidia-v2",
+      "evidence_path": "/tmp/cheapos-matrix-nvidia-v2-20260913/easy-1/result.json"
+    },
+    {
+      "app_commit": "0cb00fe1521ee3e145c6c03ed3a055e9d7d3085c",
+      "app_code_hash": "2423b38f480d047c309bb845566d1e5dfb9516d91d3dc2c0b9235169dfb91edc",
+      "level": "easy",
+      "attempt": 1,
+      "run_id": "5af90ff63d96427cbb02313440a85bd2",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "antigravity/claude-sonnet-4-6",
+        "reviewer": "antigravity/claude-opus-4-6-thinking"
+      },
+      "models_used": {
+        "worker": [
+          "antigravity/claude-sonnet-4-6"
+        ],
+        "reviewer": [
+          "antigravity/claude-opus-4-6-thinking"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 13,
+      "usage": {
+        "worker": {
+          "tokens": 26692,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 29606,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 13
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 102.42146295799999,
+        "worker_turns": 6,
+        "requests": 13,
+        "tool_actions": 9,
+        "reviewer_tokens": 29606,
+        "check_seconds": 0.22,
+        "output_tokens": 0,
+        "worker_tokens": 26692
+      },
+      "run_metrics": [
+        {
+          "id": "662bdf03b39a4f2a9ca54f0a457635ef",
+          "elapsed_seconds": 102.425171417,
+          "provider_request_seconds": 96.05971191700002,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 6.365459499999986,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "623a5dbe41664c8fda4b2a02acc7c40f25318299"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 105.091627167,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "antigravity",
+      "evidence_path": "/tmp/cheapos-matrix-antigravity-20260913/easy-1/result.json"
+    },
+    {
+      "app_commit": "1aec09c38d3bdf771e6ff340e806eb819b4930d3",
+      "app_code_hash": "e2bcdab693896f9bdc9a98c034e02ffe976fde232766d2fe400b8ff048997768",
+      "level": "hard",
+      "attempt": 1,
+      "run_id": "1acc6b2e51e44e289740993278257269",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "antigravity/claude-sonnet-4-6",
+        "reviewer": "antigravity/claude-opus-4-6-thinking"
+      },
+      "models_used": {
+        "worker": [
+          "antigravity/claude-sonnet-4-6"
+        ],
+        "reviewer": [
+          "antigravity/claude-opus-4-6-thinking"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 1,
+      "request_count": 66,
+      "usage": {
+        "worker": {
+          "tokens": 590392,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 240760,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 66
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 466.344501625,
+        "worker_turns": 40,
+        "requests": 66,
+        "tool_actions": 58,
+        "reviewer_tokens": 240760,
+        "check_seconds": 11.88,
+        "output_tokens": 0,
+        "worker_tokens": 590392
+      },
+      "run_metrics": [
+        {
+          "id": "514285a4d2fa473da175fff3b1d08356",
+          "elapsed_seconds": 466.354139041,
+          "provider_request_seconds": 430.07673458100004,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 36.27740445999996,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 2.23,
+          "allowed_seconds": null,
+          "output": "test_complete_and_missing (test_acceptance.APITests) ... ok\ntest_create_list_and_restart (test_acceptance.APITests) ... ok\ntest_validation_has_no_writes (test_acceptance.APITests) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 2.045s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.046s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.046s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.049s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.048s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.050s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.045s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.050s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.049s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 2.28,
+          "allowed_seconds": null,
+          "output": "test_complete_and_missing (test_acceptance.APITests) ... ok\ntest_create_list_and_restart (test_acceptance.APITests) ... ok\ntest_validation_has_no_writes (test_acceptance.APITests) ... ok\ntest_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 2.091s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.046s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.048s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.047s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.049s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 2.22,
+          "allowed_seconds": null,
+          "output": "test_complete_and_missing (test_acceptance.APITests) ... ok\ntest_create_list_and_restart (test_acceptance.APITests) ... ok\ntest_validation_has_no_writes (test_acceptance.APITests) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 2.038s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.23,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.048s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 2.28,
+          "allowed_seconds": null,
+          "output": "test_complete_and_missing (test_acceptance.APITests) ... ok\ntest_create_list_and_restart (test_acceptance.APITests) ... ok\ntest_validation_has_no_writes (test_acceptance.APITests) ... ok\ntest_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 2.106s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "cdd0dc3a5723886d2f0bd9830127e5b6adfebc2f",
+        "5d9205ddd0f93d36458c20c73350b6af395d3c7e"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 469.044619458,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "antigravity",
+      "evidence_path": "/tmp/cheapos-matrix-antigravity-20260913/hard-1/result.json",
+      "browser_verification": {
+        "passed": true,
+        "checks": [
+          "Added task through browser",
+          "HTML-looking title displayed literally",
+          "Complete action changed button to Done",
+          "Reload preserved completed task",
+          "README includes runnable startup and tests"
+        ],
+        "interventions_during_run": 0
+      }
+    },
+    {
+      "app_commit": "1aec09c38d3bdf771e6ff340e806eb819b4930d3",
+      "app_code_hash": "e2bcdab693896f9bdc9a98c034e02ffe976fde232766d2fe400b8ff048997768",
+      "level": "medium",
+      "attempt": 1,
+      "run_id": "3844758b8a4f4a78b82bf38c4f08239a",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "antigravity/claude-sonnet-4-6",
+        "reviewer": "antigravity/claude-opus-4-6-thinking"
+      },
+      "models_used": {
+        "worker": [
+          "antigravity/claude-sonnet-4-6"
+        ],
+        "reviewer": [
+          "antigravity/claude-opus-4-6-thinking"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 18,
+      "usage": {
+        "worker": {
+          "tokens": 67248,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 40161,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 18
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 150.617345291,
+        "worker_turns": 10,
+        "requests": 18,
+        "tool_actions": 16,
+        "reviewer_tokens": 40161,
+        "check_seconds": 0.22,
+        "output_tokens": 0,
+        "worker_tokens": 67248
+      },
+      "run_metrics": [
+        {
+          "id": "7013624f7a044badbd3aea02368cfe0f",
+          "elapsed_seconds": 150.6215595,
+          "provider_request_seconds": 144.179930874,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 6.441628625999982,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "921bb4a84f98af2e045c840fadfd4480d891ccfc"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 152.97990679199998,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "antigravity",
+      "evidence_path": "/tmp/cheapos-matrix-antigravity-20260913/medium-1/result.json",
+      "supplemental_acceptance": {
+        "trial_family": "antigravity",
+        "task_id": "3844758b8a4f4a78b82bf38c4f08239a",
+        "original_trial_status": "ready_for_merge",
+        "original_checks_passed": [
+          true,
+          true
+        ],
+        "supplemental_suite_source": "/private/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+        "tests_run": 8,
+        "passed": true,
+        "failures": [],
+        "errors": [],
+        "output": "test_bad_header (supplemental_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (supplemental_acceptance.Acceptance) ... ok\ntest_empty (supplemental_acceptance.Acceptance) ... ok\ntest_invalid_rows (supplemental_acceptance.Acceptance) ... ok\ntest_large_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_quoted_newline (supplemental_acceptance.Acceptance) ... ok\ntest_trim (supplemental_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nOK\n",
+        "workspace_hashes": {
+          "ledger.py": "5f87dbe7300973aca6657080baaa173b968f232568c6285fb4cb18db276721dd",
+          "README.md": "240909054c9562c8b22cf199b860f65aa33021acdf73ffc9b585037938e6e41a",
+          "test_acceptance.py": "1b1caf85f28c6fffa6e94869185b0a7691b211d8cd5c5009e5ed8b68c18f7018",
+          "report.py": "90a691e714c01af8c4311a852e118f2e6ec663e609d101bea5574e8cfad8c7a6"
+        },
+        "workspace_preserved": true,
+        "method": "Executed current MEDIUM_TEST with copied retained ledger/report source in in-memory modules; original acceptance files/workspaces untouched; no live inference calls. Original approvals are historical and are not rewritten."
+      }
+    },
+    {
+      "app_commit": "60de65efc6439114b60bde3e0d1e6aa350b7dda0",
+      "app_code_hash": "d5bb7c008ae6a375f4d136cc22820b73703666c885cc791f9a6964cab8925d82",
+      "level": "medium",
+      "attempt": 2,
+      "run_id": "dbf995c52ba64b2497605a65b5f3fed7",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "antigravity/claude-sonnet-4-6",
+        "reviewer": "antigravity/claude-opus-4-6-thinking"
+      },
+      "models_used": {
+        "worker": [
+          "antigravity/claude-sonnet-4-6"
+        ],
+        "reviewer": [
+          "antigravity/claude-opus-4-6-thinking"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 21,
+      "usage": {
+        "worker": {
+          "tokens": 94874,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 43325,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 21
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 166.711327375,
+        "worker_turns": 13,
+        "requests": 21,
+        "tool_actions": 19,
+        "reviewer_tokens": 43325,
+        "check_seconds": 0.33999999999999997,
+        "output_tokens": 0,
+        "worker_tokens": 94874
+      },
+      "run_metrics": [
+        {
+          "id": "21caa02d5de24a03a6d91b4181daedf5",
+          "elapsed_seconds": 166.71589516699999,
+          "provider_request_seconds": 158.612823503,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 8.103071663999998,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": false,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... test_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-antigravity-20260913/medium-2/state/tasks/dbf995c52ba64b2497605a65b5f3fed7/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=1)\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "b0b76d3131859dcad3449be90925a2565a1abaf9"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 169.27589141599998,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "antigravity",
+      "evidence_path": "/tmp/cheapos-matrix-antigravity-20260913/medium-2/result.json"
+    },
+    {
+      "app_commit": "347f78ca7af83193e1be8acf8ee3282026dde7fa",
+      "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+      "level": "medium",
+      "attempt": 3,
+      "run_id": "8979a11e0f9341a8ae50b2f41a52e599",
+      "status": "paused",
+      "error": "The model reported an error while streaming.",
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "antigravity/claude-sonnet-4-6",
+        "reviewer": "antigravity/claude-opus-4-6-thinking"
+      },
+      "models_used": {
+        "worker": [
+          "antigravity/claude-sonnet-4-6"
+        ],
+        "reviewer": [
+          "antigravity/claude-opus-4-6-thinking"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 16,
+      "usage": {
+        "worker": {
+          "tokens": 65676,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 38726,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 1,
+        "estimated_requests": 15
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 205.800527125,
+        "worker_turns": 10,
+        "requests": 16,
+        "tool_actions": 16,
+        "reviewer_tokens": 38726,
+        "check_seconds": 0.22,
+        "output_tokens": 0,
+        "worker_tokens": 65676
+      },
+      "run_metrics": [
+        {
+          "id": "d86d9e8c92e840bbb5b62b8b44ddf74e",
+          "elapsed_seconds": 205.804697583,
+          "provider_request_seconds": 199.47436433299998,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 6.330333250000024,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 0.007s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 0.007s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "f07994f4a7e8e1cb32b845d291fe89076dbf99b6"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 207.574438416,
+      "autonomous_execution_success": false,
+      "phase": "included-connections",
+      "profile": "antigravity",
+      "evidence_path": "/tmp/cheapos-matrix-antigravity-20260913/medium-3/result.json",
+      "quota_diagnosis": {
+        "trial": "antigravity-medium-3",
+        "live_calls_during_diagnosis": 0,
+        "observed_failure": {
+          "timestamp_utc": "2026-09-13T22:41:38.493Z",
+          "provider": "antigravity",
+          "model": "claude-opus-4-6-thinking",
+          "role": "reviewer",
+          "upstream_http_status": 429,
+          "gateway_error": "Antigravity upstream error (429)",
+          "gateway_reset_after_seconds": 15293,
+          "gateway_reset_after_display": "4h 14m 53s",
+          "application_error_code": "stream_error",
+          "application_message": "The model reported an error while streaming."
+        },
+        "evidence": {
+          "gateway_log": "application/app.log, 2026-09-13T22:41:38.493Z and 22:41:38.498Z",
+          "call_log": "2026-09-13T22-41-38.497Z_1789339280317-b9897e.json",
+          "call_log_response_body": null,
+          "raw_sse_frame_retained": false,
+          "quota_ui_reported_by_parent": "Antigravity Claude 0% at 18:42:19 local"
+        },
+        "conclusion": "Upstream 429 with a multi-hour cooldown is confirmed by gateway logs. Quota exhaustion is corroborated by the contemporaneous Claude 0% UI; the original upstream body and client SSE frame were not retained, so the exact quota subtype cannot be independently extracted.",
+        "classifier_gap": {
+          "installed_gateway_429_serializer": {
+            "error": {
+              "message": "<sanitized upstream message>",
+              "type": "rate_limit_error",
+              "code": "rate_limit_exceeded"
+            }
+          },
+          "shape_evidence": "Installed gateway buildErrorBody/writeStreamError code; not a captured frame from this request.",
+          "minimal_fix": "Recognize structured SSE rate_limit_error/rate_limit_exceeded and model_cooldown as a safe cooldown classification; retain only validated bounded retry metadata when explicitly present. Do not infer retry time from the generic frame or expose upstream raw messages. Keep unknown failures classified as stream_error."
+        }
+      }
+    },
+    {
+      "app_commit": "1aec09c38d3bdf771e6ff340e806eb819b4930d3",
+      "app_code_hash": "e2bcdab693896f9bdc9a98c034e02ffe976fde232766d2fe400b8ff048997768",
+      "level": "very-hard",
+      "attempt": 1,
+      "run_id": "fca421ea15d2415da27f86dbac3f0cfc",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "antigravity/claude-sonnet-4-6",
+        "reviewer": "antigravity/claude-opus-4-6-thinking"
+      },
+      "models_used": {
+        "worker": [
+          "antigravity/claude-sonnet-4-6"
+        ],
+        "reviewer": [
+          "antigravity/claude-opus-4-6-thinking"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 1,
+      "request_count": 65,
+      "usage": {
+        "worker": {
+          "tokens": 321024,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 285143,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 65
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 562.9953895,
+        "worker_turns": 28,
+        "requests": 65,
+        "tool_actions": 48,
+        "reviewer_tokens": 285143,
+        "check_seconds": 3.47,
+        "output_tokens": 0,
+        "worker_tokens": 321024
+      },
+      "run_metrics": [
+        {
+          "id": "4e91e8501b1246cb843093a0f4ba1eac",
+          "elapsed_seconds": 563.005688042,
+          "provider_request_seconds": 538.7973501190002,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 24.208337922999817,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.17,
+          "allowed_seconds": null,
+          "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.007s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.16,
+          "allowed_seconds": null,
+          "output": "test_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.006s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.6,
+          "allowed_seconds": null,
+          "output": "test_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 1 test in 0.469s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.61,
+          "allowed_seconds": null,
+          "output": "test_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 1 test in 0.459s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.61,
+          "allowed_seconds": null,
+          "output": "test_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 0.481s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.66,
+          "allowed_seconds": null,
+          "output": "test_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 0.522s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.66,
+          "allowed_seconds": null,
+          "output": "test_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 0.509s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "cd7a3bffa369e502991106611cf35c5c04340112",
+        "e72f34ce4cd75562bcd2b37b2a2586205e6ba85c",
+        "0004062cc73d9bb467a5679037135932b26fa197",
+        "b0cf7a4da81adde752c4a22369380de8845fa235"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 565.7217892499999,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "antigravity",
+      "evidence_path": "/tmp/cheapos-matrix-antigravity-20260913/very-hard-1/result.json",
+      "supplemental_acceptance": {
+        "trial_family": "antigravity",
+        "trial": "very-hard-1",
+        "task_id": "fca421ea15d2415da27f86dbac3f0cfc",
+        "original_trial_status": "ready_for_merge",
+        "supplemental_suite_source": "/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "00718f59509cc3386542b34dd4f2da5289a325dedc1e04d6918a7f2fc5942afa",
+        "tests_run": 8,
+        "passed": true,
+        "output": "test_missing_import_has_no_traceback (supplemental_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (supplemental_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (supplemental_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (supplemental_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (supplemental_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (supplemental_acceptance.StoreTests) ... ok\ntest_legacy_migration (supplemental_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (supplemental_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.196s\n\nOK\n",
+        "missing_file_probe": {
+          "returncode": 1,
+          "stdout": "",
+          "stderr": "error: [Errno 2] No such file or directory: '/var/folders/k6/smm5sp4n3kgcnn7xhw302knm0000gn/T/cheapos-independent-cli-rpo68qd9/missing.csv'\n",
+          "passed": true
+        },
+        "workspace_hashes": {
+          "store.py": "994f324292e0f7d2ca7b537e3fa84298799debc2adae612069afc41de2fa4bb9",
+          "README.md": "5226757209e0052738847f35ad41c501598657dc052ea08cfe7b037a83207da9",
+          "test_acceptance.py": "ba0e61af3e6b7865eb831c603b311a6eb196eb832b036148f2452efafac4dcab",
+          "cli.py": "642172e1c94eb569cf3e12a61d63049410733907cfbfb0ffcdde8f7a583f448e"
+        },
+        "workspace_preserved": true,
+        "method": "Copied Python and README files into temporary directory; executed updated VERY_HARD_TEST and explicit missing import probe. Original supplied tests and workspace untouched; no live inference."
+      }
+    },
+    {
+      "app_commit": "0cb00fe1521ee3e145c6c03ed3a055e9d7d3085c",
+      "app_code_hash": "2423b38f480d047c309bb845566d1e5dfb9516d91d3dc2c0b9235169dfb91edc",
+      "level": "easy",
+      "attempt": 1,
+      "run_id": "1ec910314e1c492cbd8413a9ed7ba29a",
+      "status": "paused",
+      "error": "Final review omitted or altered required coverage",
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 9,
+      "usage": {
+        "worker": {
+          "tokens": 42682,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 37430,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 9
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 41.159792291,
+        "worker_turns": 5,
+        "requests": 9,
+        "tool_actions": 10,
+        "reviewer_tokens": 37430,
+        "check_seconds": 0.22,
+        "output_tokens": 0,
+        "worker_tokens": 42682
+      },
+      "run_metrics": [
+        {
+          "id": "1889e80c12a94bb7a806cf849cae2e04",
+          "elapsed_seconds": 41.163292958,
+          "provider_request_seconds": 36.089231041999994,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 5.074061916000005,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "441e2a987b7515c945d2c9d6ffd303f5bfb636f6"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 42.724137333,
+      "autonomous_execution_success": false,
+      "phase": "included-connections",
+      "profile": "kiro",
+      "evidence_path": "/tmp/cheapos-matrix-kiro-20260913/easy-1/result.json"
+    },
+    {
+      "app_commit": "1aec09c38d3bdf771e6ff340e806eb819b4930d3",
+      "app_code_hash": "e2bcdab693896f9bdc9a98c034e02ffe976fde232766d2fe400b8ff048997768",
+      "level": "easy",
+      "attempt": 2,
+      "run_id": "4140792d4fc843a08e371d72dae9fb0c",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 11,
+      "usage": {
+        "worker": {
+          "tokens": 42709,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 49553,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 11
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 46.610319708,
+        "worker_turns": 5,
+        "requests": 11,
+        "tool_actions": 10,
+        "reviewer_tokens": 49553,
+        "check_seconds": 0.22,
+        "output_tokens": 0,
+        "worker_tokens": 42709
+      },
+      "run_metrics": [
+        {
+          "id": "0293cced8a9f4050934cb586160454dc",
+          "elapsed_seconds": 46.613770583,
+          "provider_request_seconds": 41.368326126,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 5.245444456999998,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "5cd4264fd8bad139c59cfcb917ab8d7450700ac5"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 48.932635,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "kiro",
+      "evidence_path": "/tmp/cheapos-matrix-kiro-20260913/easy-2/result.json"
+    },
+    {
+      "app_commit": "1aec09c38d3bdf771e6ff340e806eb819b4930d3",
+      "app_code_hash": "e2bcdab693896f9bdc9a98c034e02ffe976fde232766d2fe400b8ff048997768",
+      "level": "hard",
+      "attempt": 1,
+      "run_id": "3af6bad9f0114310b31a82f9be4ec0ab",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 1,
+      "request_count": 39,
+      "usage": {
+        "worker": {
+          "tokens": 474511,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 176330,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 39
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 244.62762208299998,
+        "worker_turns": 25,
+        "requests": 39,
+        "tool_actions": 37,
+        "reviewer_tokens": 176330,
+        "check_seconds": 6.92,
+        "output_tokens": 0,
+        "worker_tokens": 474511
+      },
+      "run_metrics": [
+        {
+          "id": "9b2d6861fd3d40f397fdb8f15c48efe8",
+          "elapsed_seconds": 244.634747542,
+          "provider_request_seconds": 222.13955482899996,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 22.49519271300005,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 2.22,
+          "allowed_seconds": null,
+          "output": "test_complete_and_missing (test_acceptance.APITests) ... ok\ntest_create_list_and_restart (test_acceptance.APITests) ... ok\ntest_validation_has_no_writes (test_acceptance.APITests) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 2.045s\n\nOK\n"
+        },
+        {
+          "passed": false,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... FAIL\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n======================================================================\nFAIL: test_page_uses_text_nodes (test_acceptance.UITests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/hard-1/state/tasks/3af6bad9f0114310b31a82f9be4ec0ab/workspace/test_acceptance.py\", line 34, in test_page_uses_text_nodes\n    source=Path('ui.js').read_text();self.assertNotIn('.innerHTML',source);self.assertIn('textContent',source)\nAssertionError: 'textContent' not found in \"/**\\n * Task board API client.\\n * Works in both browser and Node.js (CommonJS).\\n */\\n\\nfunction createClient(fetchFn) {\\n  // Use provided fetch or global fetch\\n  const fetch = fetchFn || (typeof window !== 'undefined' ? window.fetch.bind(window) : null);\\n  \\n  if (!fetch) {\\n    throw new Error('No fetch function available');\\n  }\\n  \\n  async function handleResponse(response) {\\n    const data = await response.json();\\n    if (!response.ok) {\\n      throw new Error(data.error || 'Request failed');\\n    }\\n    return data;\\n  }\\n  \\n  return {\\n    async list() {\\n      const response = await fetch('/tasks');\\n      return handleResponse(response);\\n    },\\n    \\n    async add(title) {\\n      const response = await fetch('/tasks', {\\n        method: 'POST',\\n        headers: { 'Content-Type': 'application/json' },\\n        body: JSON.stringify({ title })\\n      });\\n      return handleResponse(response);\\n    },\\n    \\n    async complete(id) {\\n      const response = await fetch(`/tasks/${id}/complete`, {\\n        method: 'POST',\\n        headers: { 'Content-Type': 'application/json' },\\n        body: '{}'\\n      });\\n      return handleResponse(response);\\n    }\\n  };\\n}\\n\\n// Export for Node.js\\nif (typeof module !== 'undefined' && module.exports) {\\n  module.exports = { createClient };\\n}\\n\"\n\n----------------------------------------------------------------------\nRan 2 tests in 0.052s\n\nFAILED (failures=1)\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.047s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 1.76,
+          "allowed_seconds": null,
+          "output": "test_complete_and_missing (test_acceptance.APITests) ... ok\ntest_create_list_and_restart (test_acceptance.APITests) ... ok\ntest_validation_has_no_writes (test_acceptance.APITests) ... ok\ntest_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 1.602s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.22,
+          "allowed_seconds": null,
+          "output": "test_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.045s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 2.28,
+          "allowed_seconds": null,
+          "output": "test_complete_and_missing (test_acceptance.APITests) ... ok\ntest_create_list_and_restart (test_acceptance.APITests) ... ok\ntest_validation_has_no_writes (test_acceptance.APITests) ... ok\ntest_page_uses_text_nodes (test_acceptance.UITests) ... ok\ntest_real_javascript_client (test_acceptance.UITests) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 2.097s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "5a6f717720859d8199dd3f907d0fcbb9dc988978",
+        "4eb759d3e1b5d152d842bac8d09b6adf101c9ad9"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 247.38398487499998,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "kiro",
+      "evidence_path": "/tmp/cheapos-matrix-kiro-20260913/hard-1/result.json",
+      "browser_verification": {
+        "passed": true,
+        "add": true,
+        "literal_html_unicode": true,
+        "complete_persists_after_reload": true,
+        "blank_input_created_no_task": true,
+        "startup_documentation_present": true,
+        "api_done_encoding": "SQLite integer 0/1, not JSON boolean; UI correctly handles it",
+        "database": "/tmp/cheapos-kiro-browser-check.sqlite"
+      }
+    },
+    {
+      "app_commit": "1aec09c38d3bdf771e6ff340e806eb819b4930d3",
+      "app_code_hash": "e2bcdab693896f9bdc9a98c034e02ffe976fde232766d2fe400b8ff048997768",
+      "level": "medium",
+      "attempt": 1,
+      "run_id": "558da3a5c18443e4bda632e87b640a94",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 12,
+      "usage": {
+        "worker": {
+          "tokens": 64233,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 58486,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 12
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 78.53012333299999,
+        "worker_turns": 6,
+        "requests": 12,
+        "tool_actions": 16,
+        "reviewer_tokens": 58486,
+        "check_seconds": 0.33,
+        "output_tokens": 0,
+        "worker_tokens": 64233
+      },
+      "run_metrics": [
+        {
+          "id": "edbd5c7493564fbaa39d969ab1d4776f",
+          "elapsed_seconds": 78.533767792,
+          "provider_request_seconds": 70.89604029099999,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 7.637727501000015,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": false,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... test_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nERROR: test_invalid_rows (test_acceptance.Acceptance) (row='food,NaN')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-1/state/tasks/558da3a5c18443e4bda632e87b640a94/workspace/test_acceptance.py\", line 16, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-1/state/tasks/558da3a5c18443e4bda632e87b640a94/workspace/ledger.py\", line 44, in parse_expenses\n    if amount < 0:\ndecimal.InvalidOperation: [<class 'decimal.InvalidOperation'>]\n\n----------------------------------------------------------------------\nRan 6 tests in 0.001s\n\nFAILED (errors=1)\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "3a5367788d10404e965cd58f17740297175b801d"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 81.04304525,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "kiro",
+      "evidence_path": "/tmp/cheapos-matrix-kiro-20260913/medium-1/result.json",
+      "supplemental_acceptance": {
+        "trial_family": "kiro",
+        "task_id": "558da3a5c18443e4bda632e87b640a94",
+        "original_trial_status": "ready_for_merge",
+        "original_checks_passed": [
+          false,
+          true,
+          true
+        ],
+        "supplemental_suite_source": "/private/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+        "tests_run": 8,
+        "passed": false,
+        "failures": [
+          [
+            "test_invalid_rows (supplemental_acceptance.Acceptance) (row='food,1.230')",
+            "Traceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 21, in test_invalid_rows\nAssertionError: ValueError not raised\n"
+          ]
+        ],
+        "errors": [],
+        "output": "test_bad_header (supplemental_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (supplemental_acceptance.Acceptance) ... ok\ntest_empty (supplemental_acceptance.Acceptance) ... ok\ntest_invalid_rows (supplemental_acceptance.Acceptance) ... test_large_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_quoted_newline (supplemental_acceptance.Acceptance) ... ok\ntest_trim (supplemental_acceptance.Acceptance) ... ok\n\n======================================================================\nFAIL: test_invalid_rows (supplemental_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 21, in test_invalid_rows\nAssertionError: ValueError not raised\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nFAILED (failures=1)\n",
+        "workspace_hashes": {
+          "ledger.py": "d987090029662a3449663e0d31c3e5ee94d90ef31dcb58b94673df482cecb616",
+          "README.md": "63c93abba9fedc7900b6305b5178db0cca4d43ff7f0c0025cbd7b396f761bcb1",
+          "test_acceptance.py": "1b1caf85f28c6fffa6e94869185b0a7691b211d8cd5c5009e5ed8b68c18f7018",
+          "report.py": "a878bfc5aa90ee74db227a9696f046f85eb4e6de632637b12f1606191124ae61"
+        },
+        "workspace_preserved": true,
+        "method": "Executed current MEDIUM_TEST with copied retained ledger/report source in in-memory modules; original acceptance files/workspaces untouched; no live inference calls. Original approvals are historical and are not rewritten."
+      },
+      "independently_qualified": false,
+      "qualification_note": "Incorrect fractional-place validation"
+    },
+    {
+      "app_commit": "59fc08cdb9339d132e9bd5cb4c56cbb0721456ac",
+      "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+      "level": "medium",
+      "attempt": 2,
+      "run_id": "4cedecb8b9a841d3bffabb2c99ef58c8",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 14,
+      "usage": {
+        "worker": {
+          "tokens": 87039,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 59587,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 14
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 87.84828291699999,
+        "worker_turns": 8,
+        "requests": 14,
+        "tool_actions": 15,
+        "reviewer_tokens": 59587,
+        "check_seconds": 0.33,
+        "output_tokens": 0,
+        "worker_tokens": 87039
+      },
+      "run_metrics": [
+        {
+          "id": "9481844c778a4cf1b411e1f4dd7db50f",
+          "elapsed_seconds": 87.852875708,
+          "provider_request_seconds": 80.18300970899999,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 7.6698659990000095,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": false,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... test_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nERROR: test_invalid_rows (test_acceptance.Acceptance) (row='food,NaN')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-2/state/tasks/4cedecb8b9a841d3bffabb2c99ef58c8/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-2/state/tasks/4cedecb8b9a841d3bffabb2c99ef58c8/workspace/ledger.py\", line 52, in parse_expenses\n    if amount < 0:\ndecimal.InvalidOperation: [<class 'decimal.InvalidOperation'>]\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-2/state/tasks/4cedecb8b9a841d3bffabb2c99ef58c8/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=1, errors=1)\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "36c99b4fab6e0de896292e271bf4d4c2a01e3f0c"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 90.73026075,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "kiro",
+      "evidence_path": "/tmp/cheapos-matrix-kiro-20260913/medium-2/result.json",
+      "independent_verification": {
+        "trial_family": "kiro",
+        "trial": "medium-2",
+        "original_trial_status": "ready_for_merge",
+        "task_id": "4cedecb8b9a841d3bffabb2c99ef58c8",
+        "passed": false,
+        "acceptance_passed": true,
+        "tests_run": 8,
+        "supplemental_suite_source": "/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+        "acceptance": {
+          "arguments": [
+            "-m",
+            "unittest",
+            "-v",
+            "supplemental_acceptance"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "test_bad_header (supplemental_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (supplemental_acceptance.Acceptance) ... ok\ntest_empty (supplemental_acceptance.Acceptance) ... ok\ntest_invalid_rows (supplemental_acceptance.Acceptance) ... ok\ntest_large_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_quoted_newline (supplemental_acceptance.Acceptance) ... ok\ntest_trim (supplemental_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+        },
+        "probes": [
+          {
+            "kind": "literal_readme_python_example",
+            "arguments": [
+              "readme_example.py"
+            ],
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "Traceback (most recent call last):\n  File \"/private/var/folders/k6/smm5sp4n3kgcnn7xhw302knm0000gn/T/cheapos-final-evidence-ucf1t1vz/readme_example.py\", line 11, in <module>\n    rows = parse_expenses(csv_data)\n  File \"/private/var/folders/k6/smm5sp4n3kgcnn7xhw302knm0000gn/T/cheapos-final-evidence-ucf1t1vz/ledger.py\", line 35, in parse_expenses\n    raise ValueError(f\"Expected 2 columns, got {len(row)}\")\nValueError: Expected 2 columns, got 3\n"
+          },
+          {
+            "kind": "exact_money",
+            "arguments": [
+              "-c",
+              "from ledger import parse_expenses; from report import summarize; print(summarize(parse_expenses('category,amount\\nlarge,9007199254740993.01\\n')),end='')"
+            ],
+            "returncode": 0,
+            "stdout": "large: 9007199254740993.01\nTOTAL: 9007199254740993.01\n",
+            "stderr": ""
+          }
+        ],
+        "workspace_hashes": {
+          "ledger.py": "fe893a2ffa0d4a78d6351e983af144deb8f88549db98de912974b35995c53664",
+          "README.md": "061d1b8de7cb08a308d59e5ee35cdd5fde32a4eb1bb66c22cec5b9811d36e5fc",
+          "test_acceptance.py": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+          "report.py": "294075248c9907d797e1cd8df5c479457d6d75f6e2289d7321b97dfe1cc4eb10"
+        },
+        "workspace_preserved": true,
+        "method": "Executed updated acceptance and literal README examples in a temporary file copy. Original workspace and supplied tests unchanged. No live inference."
+      },
+      "independently_qualified": false,
+      "qualification_note": "README usage example fails"
+    },
+    {
+      "app_commit": "347f78ca7af83193e1be8acf8ee3282026dde7fa",
+      "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+      "level": "medium",
+      "attempt": 3,
+      "run_id": "9f9953bfbe484bfcbbdc7533637753e0",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 12,
+      "usage": {
+        "worker": {
+          "tokens": 64557,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 58394,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 12
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 74.732818917,
+        "worker_turns": 6,
+        "requests": 12,
+        "tool_actions": 16,
+        "reviewer_tokens": 58394,
+        "check_seconds": 0.33,
+        "output_tokens": 0,
+        "worker_tokens": 64557
+      },
+      "run_metrics": [
+        {
+          "id": "b4e58a08895a45f08205d02e6ad5457d",
+          "elapsed_seconds": 74.736752334,
+          "provider_request_seconds": 66.51337920900002,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 8.22337312499998,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": false,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... test_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nERROR: test_invalid_rows (test_acceptance.Acceptance) (row='food,NaN')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-3/state/tasks/9f9953bfbe484bfcbbdc7533637753e0/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-3/state/tasks/9f9953bfbe484bfcbbdc7533637753e0/workspace/ledger.py\", line 49, in parse_expenses\n    if amount < 0:\ndecimal.InvalidOperation: [<class 'decimal.InvalidOperation'>]\n\n----------------------------------------------------------------------\nRan 9 tests in 0.008s\n\nFAILED (errors=1)\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 0.007s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 0.008s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "828f6ce030c01b1559f8569f979330095360f99c"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 77.615525917,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "kiro",
+      "evidence_path": "/tmp/cheapos-matrix-kiro-20260913/medium-3/result.json",
+      "independent_verification": {
+        "trial_family": "kiro",
+        "trial": "medium-3",
+        "task_id": "9f9953bfbe484bfcbbdc7533637753e0",
+        "original_trial_status": "ready_for_merge",
+        "passed": true,
+        "probes": [
+          {
+            "kind": "literal_readme_example",
+            "returncode": 0,
+            "stdout": "Food: 20.00\nTravel: 25.00\nTOTAL: 45.00\n\n",
+            "stderr": "",
+            "expected_stdout": "Food: 20.00\nTravel: 25.00\nTOTAL: 45.00\n\n",
+            "passed": true
+          },
+          {
+            "kind": "large_exact_money",
+            "returncode": 0,
+            "stdout": "large: 9007199254740993.01\nTOTAL: 9007199254740993.01\n",
+            "stderr": "",
+            "expected_stdout": "large: 9007199254740993.01\nTOTAL: 9007199254740993.01\n",
+            "passed": true
+          }
+        ],
+        "workspace_hashes": {
+          "ledger.py": "e39f32a81b307aecbaba4e00f163341ed5d8894eecc7647647cc698be0ee08c9",
+          "README.md": "946b4f34db8c83799a418fb70bf9e82b3606b5321e8f11e18e2af303cac379d4",
+          "test_acceptance.py": "01b11b990899a92e6a0ee1268ff1b649bcd5ea41e7db57e90b99956353cc4a41",
+          "report.py": "523fb920d5a5e8f764199a21dbc776351e8be043d3f9d3c1c4b170318a63aef7"
+        },
+        "workspace_preserved": true,
+        "method": "Executed literal terminal README fenced Python and independent >2^53 money probe in temporary source copy. Does not rerun the nine checks retained in result.json. Original workspace unchanged; no live inference."
+      }
+    },
+    {
+      "app_commit": "1aec09c38d3bdf771e6ff340e806eb819b4930d3",
+      "app_code_hash": "e2bcdab693896f9bdc9a98c034e02ffe976fde232766d2fe400b8ff048997768",
+      "level": "very-hard",
+      "attempt": 1,
+      "run_id": "f389a78e29394d1ea2b3dea5caafdccd",
+      "status": "paused",
+      "error": "The model returned malformed tool arguments three times for this request. These calls were not executed. Saved work is intact; send a specific correction or check the model before starting a new request.",
+      "error_code": "progress_limit",
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": []
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 6,
+      "usage": {
+        "worker": {
+          "tokens": 62586,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 0,
+          "cost": 0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 6
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 30.372013208,
+        "worker_turns": 6,
+        "requests": 6,
+        "tool_actions": 4,
+        "reviewer_tokens": 0,
+        "check_seconds": 0.17,
+        "output_tokens": 0,
+        "worker_tokens": 62586
+      },
+      "run_metrics": [
+        {
+          "id": "a29e9d6d34d5440988d5cd2bea956e08",
+          "elapsed_seconds": 30.374793041999997,
+          "provider_request_seconds": 28.974222041000004,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 1.4005710009999923,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.17,
+          "allowed_seconds": null,
+          "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.009s\n\nOK\n"
+        }
+      ],
+      "commits": [],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 32.158692125,
+      "autonomous_execution_success": false,
+      "phase": "included-connections",
+      "profile": "kiro",
+      "evidence_path": "/tmp/cheapos-matrix-kiro-20260913/very-hard-1/result.json"
+    },
+    {
+      "app_commit": "60de65efc6439114b60bde3e0d1e6aa350b7dda0",
+      "app_code_hash": "d5bb7c008ae6a375f4d136cc22820b73703666c885cc791f9a6964cab8925d82",
+      "level": "very-hard",
+      "attempt": 2,
+      "run_id": "a7f8ba53931e40a79c3a9c699818aa84",
+      "status": "paused",
+      "error": "The three-repair or 50-item allowance is exhausted; retain the branch and revise the scope",
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 4,
+      "request_count": 53,
+      "usage": {
+        "worker": {
+          "tokens": 430713,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 301654,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 53
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 327.942075,
+        "worker_turns": 28,
+        "requests": 53,
+        "tool_actions": 51,
+        "reviewer_tokens": 301654,
+        "check_seconds": 4.51,
+        "output_tokens": 0,
+        "worker_tokens": 430713
+      },
+      "run_metrics": [
+        {
+          "id": "9796c11049a440c8a46be3f29feafaa5",
+          "elapsed_seconds": 327.95085324999997,
+          "provider_request_seconds": 299.31818304300015,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 28.63267020699982,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.17,
+          "allowed_seconds": null,
+          "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.009s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.17,
+          "allowed_seconds": null,
+          "output": "test_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.006s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.67,
+          "allowed_seconds": null,
+          "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.538s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.76,
+          "allowed_seconds": null,
+          "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.603s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.66,
+          "allowed_seconds": null,
+          "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.531s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.66,
+          "allowed_seconds": null,
+          "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.539s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.71,
+          "allowed_seconds": null,
+          "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.550s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.71,
+          "allowed_seconds": null,
+          "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.569s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "2888c104f199c220604a4660aa04dce0cafcb157",
+        "2888c104f199c220604a4660aa04dce0cafcb157",
+        "8dbb9703a68af0024d5216fdaf68ac150df4390e",
+        "8dbb9703a68af0024d5216fdaf68ac150df4390e",
+        "8dbb9703a68af0024d5216fdaf68ac150df4390e",
+        "8dbb9703a68af0024d5216fdaf68ac150df4390e"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 329.62469758400005,
+      "autonomous_execution_success": false,
+      "phase": "included-connections",
+      "profile": "kiro",
+      "evidence_path": "/tmp/cheapos-matrix-kiro-20260913/very-hard-2/result.json"
+    },
+    {
+      "app_commit": "59fc08cdb9339d132e9bd5cb4c56cbb0721456ac",
+      "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+      "level": "very-hard",
+      "attempt": 3,
+      "run_id": "b704aa78c8354cc397431928e6180174",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 31,
+      "usage": {
+        "worker": {
+          "tokens": 287578,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 122403,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 31
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 186.154415792,
+        "worker_turns": 20,
+        "requests": 31,
+        "tool_actions": 27,
+        "reviewer_tokens": 122403,
+        "check_seconds": 2.26,
+        "output_tokens": 0,
+        "worker_tokens": 287578
+      },
+      "run_metrics": [
+        {
+          "id": "9dc27e0f2ba047c891c27de08e86fe38",
+          "elapsed_seconds": 186.160899625,
+          "provider_request_seconds": 169.04971946099994,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 17.111180164000075,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.17,
+          "allowed_seconds": null,
+          "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.007s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.17,
+          "allowed_seconds": null,
+          "output": "test_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.006s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.17,
+          "allowed_seconds": null,
+          "output": "test_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.008s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.6,
+          "allowed_seconds": null,
+          "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.425s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.6,
+          "allowed_seconds": null,
+          "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.441s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.55,
+          "allowed_seconds": null,
+          "output": "test_missing_import_has_no_traceback (test_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (test_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (test_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (test_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (test_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (test_acceptance.StoreTests) ... ok\ntest_legacy_migration (test_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (test_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.430s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "756560ce7910826f32ab144e2bc0b4f31a03e593",
+        "3d48c6b89d6bfcaebf7acc872fa901cb04d4cd20",
+        "3d41cb9962b8de6bd7159c47bede81b55962456d"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 188.997674375,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "kiro",
+      "evidence_path": "/tmp/cheapos-matrix-kiro-20260913/very-hard-3/result.json",
+      "independent_verification": {
+        "trial_family": "kiro",
+        "trial": "very-hard-3",
+        "original_trial_status": "ready_for_merge",
+        "task_id": "b704aa78c8354cc397431928e6180174",
+        "passed": true,
+        "acceptance_passed": true,
+        "tests_run": 8,
+        "supplemental_suite_source": "/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "00718f59509cc3386542b34dd4f2da5289a325dedc1e04d6918a7f2fc5942afa",
+        "acceptance": {
+          "arguments": [
+            "-m",
+            "unittest",
+            "-v",
+            "supplemental_acceptance"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "test_missing_import_has_no_traceback (supplemental_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (supplemental_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (supplemental_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (supplemental_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (supplemental_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (supplemental_acceptance.StoreTests) ... ok\ntest_legacy_migration (supplemental_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (supplemental_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.158s\n\nOK\n"
+        },
+        "probes": [
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "add",
+              "Buy groceries"
+            ],
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "list"
+            ],
+            "returncode": 0,
+            "stdout": "[{\"id\": 1, \"title\": \"Buy groceries\", \"done\": false}]\n",
+            "stderr": ""
+          },
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "complete",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "import",
+              "input.csv"
+            ],
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "kind": "readme_cli",
+            "arguments": [
+              "cli.py",
+              "--db",
+              "tasks.db",
+              "export"
+            ],
+            "returncode": 0,
+            "stdout": "[{\"id\":1,\"title\":\"Buy groceries\",\"done\":true},{\"id\":2,\"title\":\"caf\u00e9, \u6771\u4eac\",\"done\":false},{\"id\":3,\"title\":\"Task B\",\"done\":true}]\n",
+            "stderr": ""
+          }
+        ],
+        "workspace_hashes": {
+          "store.py": "bd9c3adc5866c7ea0d2918264876cb350cd98e2ebb56fce401d4718b8b038129",
+          "README.md": "40a561b7663089919e900fdd7f03af757e4da482f9116ca4ebe85e9a8003e5d4",
+          "test_acceptance.py": "00718f59509cc3386542b34dd4f2da5289a325dedc1e04d6918a7f2fc5942afa",
+          "cli.py": "9d888e7d45a6486884fd359abd15ca4ab429b122b37779f653a18f6dab2906e2"
+        },
+        "workspace_preserved": true,
+        "method": "Executed updated acceptance and literal README examples in a temporary file copy. Original workspace and supplied tests unchanged. No live inference."
+      }
+    },
+    {
+      "app_commit": "1aec09c38d3bdf771e6ff340e806eb819b4930d3",
+      "app_code_hash": "e2bcdab693896f9bdc9a98c034e02ffe976fde232766d2fe400b8ff048997768",
+      "level": "easy",
+      "attempt": 1,
+      "run_id": "17a07fdfe5dc4b1599c2d9d6bd49bb31",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "nvidia/nvidia/nemotron-3-super-120b-a12b"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 17,
+      "usage": {
+        "worker": {
+          "tokens": 60241,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 50900,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 17
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 192.483795625,
+        "worker_turns": 11,
+        "requests": 17,
+        "tool_actions": 16,
+        "reviewer_tokens": 50900,
+        "check_seconds": 0.33,
+        "output_tokens": 0,
+        "worker_tokens": 60241
+      },
+      "run_metrics": [
+        {
+          "id": "ac04c5d412e24816b24d39436adad592",
+          "elapsed_seconds": 192.488084916,
+          "provider_request_seconds": 185.41120899999999,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 7.076875916000006,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "5087f131393d6ffea2a008fd859605128f4c4c38"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 194.90016270799998,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "nvidia-kiro",
+      "evidence_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/easy-1/result.json"
+    },
+    {
+      "app_commit": "59fc08cdb9339d132e9bd5cb4c56cbb0721456ac",
+      "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+      "level": "hard",
+      "attempt": 1,
+      "run_id": "6e99c0f24e2c4f5f965132692cbd9668",
+      "status": "paused",
+      "error": "Could you please provide the full current content of app.py so I can fix the indentation error?",
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "nvidia/nvidia/nemotron-3-super-120b-a12b"
+        ],
+        "reviewer": []
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 13,
+      "usage": {
+        "worker": {
+          "tokens": 122192,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 0,
+          "cost": 0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 13
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 211.214388042,
+        "worker_turns": 13,
+        "requests": 13,
+        "tool_actions": 8,
+        "reviewer_tokens": 0,
+        "check_seconds": 0.17,
+        "output_tokens": 0,
+        "worker_tokens": 122192
+      },
+      "run_metrics": [
+        {
+          "id": "c5af16352e154875b9c9165aa9082136",
+          "elapsed_seconds": 211.218380958,
+          "provider_request_seconds": 209.664187753,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 1.5541932050000185,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": false,
+          "duration": 0.17,
+          "allowed_seconds": null,
+          "output": "test_complete_and_missing (test_acceptance.APITests) ... ERROR\ntest_create_list_and_restart (test_acceptance.APITests) ... ERROR\ntest_validation_has_no_writes (test_acceptance.APITests) ... ERROR\n\n======================================================================\nERROR: test_complete_and_missing (test_acceptance.APITests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/test_acceptance.py\", line 5, in setUp\n    from app import create_server\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/app.py\", line 14\n    self.send_error_json(404, 'Not Found')\n                                          ^\nIndentationError: unindent does not match any outer indentation level\n\n======================================================================\nERROR: test_create_list_and_restart (test_acceptance.APITests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/test_acceptance.py\", line 5, in setUp\n    from app import create_server\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/app.py\", line 14\n    self.send_error_json(404, 'Not Found')\n                                          ^\nIndentationError: unindent does not match any outer indentation level\n\n======================================================================\nERROR: test_validation_has_no_writes (test_acceptance.APITests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/test_acceptance.py\", line 5, in setUp\n    from app import create_server\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/state/tasks/6e99c0f24e2c4f5f965132692cbd9668/workspace/app.py\", line 14\n    self.send_error_json(404, 'Not Found')\n                                          ^\nIndentationError: unindent does not match any outer indentation level\n\n----------------------------------------------------------------------\nRan 3 tests in 0.001s\n\nFAILED (errors=3)\n"
+        }
+      ],
+      "commits": [],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 212.834070333,
+      "autonomous_execution_success": false,
+      "phase": "included-connections",
+      "profile": "nvidia-kiro",
+      "evidence_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/hard-1/result.json",
+      "independent_verification": {
+        "outcome": "worker_requested_information",
+        "message": "Could you please provide the full current content of app.py so I can fix the indentation error?",
+        "app_syntax_error": {
+          "type": "IndentationError",
+          "line": 14,
+          "message": "unindent does not match any outer indentation level"
+        },
+        "checks_passed": [
+          false
+        ],
+        "reviewer_reached": false,
+        "commits": [],
+        "ui_complete": false,
+        "browser_verification": "Not run: API item unfinished and app.py has a syntax error. No complete UI candidate exists.",
+        "core_and_source_preserved": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true
+        },
+        "interventions_after_start": 0
+      }
+    },
+    {
+      "app_commit": "1aec09c38d3bdf771e6ff340e806eb819b4930d3",
+      "app_code_hash": "e2bcdab693896f9bdc9a98c034e02ffe976fde232766d2fe400b8ff048997768",
+      "level": "medium",
+      "attempt": 1,
+      "run_id": "628696e43e3d4dc5952487364add5310",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "nvidia/nvidia/nemotron-3-super-120b-a12b"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 3,
+      "request_count": 60,
+      "usage": {
+        "worker": {
+          "tokens": 445066,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 188174,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 60
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 880.866105167,
+        "worker_turns": 41,
+        "requests": 60,
+        "tool_actions": 60,
+        "reviewer_tokens": 188174,
+        "check_seconds": 1.1400000000000001,
+        "output_tokens": 0,
+        "worker_tokens": 445066
+      },
+      "run_metrics": [
+        {
+          "id": "67d499afd28643d380ac4f8b328db9bb",
+          "elapsed_seconds": 880.8750575409999,
+          "provider_request_seconds": 860.8898848749998,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 19.985172666000153,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": false,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... FAIL\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ERROR\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... FAIL\ntest_empty (test_acceptance.Acceptance) ... FAIL\ntest_invalid_rows (test_acceptance.Acceptance) ... test_trim (test_acceptance.Acceptance) ... FAIL\n\n======================================================================\nERROR: test_csv_quotes_and_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 7, in test_csv_quotes_and_exact_money\n    rows=parse_expenses('category,amount\\n\"food, groceries\",0.10\\n\"food, groceries\",0.20\\nTravel,2.50\\n')\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/ledger.py\", line 2, in parse_expenses\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/ledger.py\", line 2, in <listcomp>\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\nValueError: could not convert string to float: ' groceries\"'\n\n======================================================================\nFAIL: test_bad_header (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 13, in test_bad_header\n    with self.assertRaises(ValueError):parse_expenses('name,cost\\nfood,1\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_determinism_and_no_mutation (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 19, in test_determinism_and_no_mutation\n    self.assertEqual(summarize(rows),'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n');self.assertEqual(rows,before)\nAssertionError: '3' != 'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n'\n- 3\n+ a: 2.00\nb: 1.00\nTOTAL: 3.00\n\n\n\n======================================================================\nFAIL: test_empty (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 10, in test_empty\n    def test_empty(self): self.assertEqual(summarize(parse_expenses('category,amount\\n')),'TOTAL: 0.00\\n')\nAssertionError: '0' != 'TOTAL: 0.00\\n'\n- 0\n+ TOTAL: 0.00\n\n\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,-1')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 16, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,NaN')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 16, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,Infinity')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 16, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row=',1')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 16, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1,extra')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 16, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1.001')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 16, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_trim (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 11, in test_trim\n    def test_trim(self): self.assertEqual(parse_expenses('category,amount\\n  food  , 1.20 \\n'),[('food',Decimal('1.20'))])\nAssertionError: Lists differ: [('  food  ', 1.2)] != [('food', Decimal('1.20'))]\n\nFirst differing element 0:\n('  food  ', 1.2)\n('food', Decimal('1.20'))\n\n- [('  food  ', 1.2)]\n+ [('food', Decimal('1.20'))]\n\n----------------------------------------------------------------------\nRan 6 tests in 0.001s\n\nFAILED (failures=10, errors=1)\n"
+        },
+        {
+          "passed": false,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ERROR\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ERROR\ntest_empty (test_acceptance.Acceptance) ... ERROR\ntest_invalid_rows (test_acceptance.Acceptance) ... test_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nERROR: test_csv_quotes_and_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 9, in test_csv_quotes_and_exact_money\n    self.assertEqual(summarize(rows),'Travel: 2.50\\nfood, groceries: 0.30\\nTOTAL: 2.80\\n')\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/report.py\", line 3, in summarize\n    totals = defaultdict(Decimal)\nNameError: name 'Decimal' is not defined\n\n======================================================================\nERROR: test_determinism_and_no_mutation (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 19, in test_determinism_and_no_mutation\n    self.assertEqual(summarize(rows),'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n');self.assertEqual(rows,before)\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/report.py\", line 3, in summarize\n    totals = defaultdict(Decimal)\nNameError: name 'Decimal' is not defined\n\n======================================================================\nERROR: test_empty (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 10, in test_empty\n    def test_empty(self): self.assertEqual(summarize(parse_expenses('category,amount\\n')),'TOTAL: 0.00\\n')\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/report.py\", line 3, in summarize\n    totals = defaultdict(Decimal)\nNameError: name 'Decimal' is not defined\n\n======================================================================\nERROR: test_invalid_rows (test_acceptance.Acceptance) (row='food,NaN')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/test_acceptance.py\", line 16, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/state/tasks/628696e43e3d4dc5952487364add5310/workspace/ledger.py\", line 35, in parse_expenses\n    if amount < 0:\ndecimal.InvalidOperation: [<class 'decimal.InvalidOperation'>]\n\n----------------------------------------------------------------------\nRan 6 tests in 0.002s\n\nFAILED (errors=4)\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 6 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "93539cee5f9746cae96180d72da06b9db6b72a2c",
+        "9d4758ae30d1815ea532599458110aebb5878be3"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 883.575424125,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "nvidia-kiro",
+      "evidence_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-1/result.json",
+      "supplemental_acceptance": {
+        "task_id": "628696e43e3d4dc5952487364add5310",
+        "original_trial_status": "ready_for_merge",
+        "supplemental_suite_sha256": "06dfcea131ceb2999dfeb3586dce14fb4afaedc2ab28725acc1beaffbd9d48ee",
+        "tests_run": 8,
+        "passed": false,
+        "failures": [
+          [
+            "test_invalid_rows (supplemental_acceptance.Acceptance) (row='food,1.230')",
+            "Traceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 21, in test_invalid_rows\nAssertionError: ValueError not raised\n"
+          ],
+          [
+            "test_large_exact_money (supplemental_acceptance.Acceptance)",
+            "Traceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 12, in test_large_exact_money\nAssertionError: 'A: 9007199254740994.00\\nTOTAL: 9007199254740994.00\\n' != 'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n'\n- A: 9007199254740994.00\n?                   ^  ^\n+ A: 9007199254740993.01\n?                   ^  ^\n- TOTAL: 9007199254740994.00\n?                       ^  ^\n+ TOTAL: 9007199254740993.01\n?                       ^  ^\n\n"
+          ],
+          [
+            "test_quoted_newline (supplemental_acceptance.Acceptance)",
+            "Traceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 14, in test_quoted_newline\nAssertionError: Lists differ: [('foodtravel', Decimal('1.20'))] != [('food\\ntravel', Decimal('1.20'))]\n\nFirst differing element 0:\n('foodtravel', Decimal('1.20'))\n('food\\ntravel', Decimal('1.20'))\n\n- [('foodtravel', Decimal('1.20'))]\n+ [('food\\ntravel', Decimal('1.20'))]\n?        ++\n\n"
+          ]
+        ],
+        "errors": [],
+        "output": "test_bad_header (supplemental_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (supplemental_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (supplemental_acceptance.Acceptance) ... ok\ntest_empty (supplemental_acceptance.Acceptance) ... ok\ntest_invalid_rows (supplemental_acceptance.Acceptance) ... test_large_exact_money (supplemental_acceptance.Acceptance) ... FAIL\ntest_quoted_newline (supplemental_acceptance.Acceptance) ... FAIL\ntest_trim (supplemental_acceptance.Acceptance) ... ok\n\n======================================================================\nFAIL: test_invalid_rows (supplemental_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 21, in test_invalid_rows\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_large_exact_money (supplemental_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 12, in test_large_exact_money\nAssertionError: 'A: 9007199254740994.00\\nTOTAL: 9007199254740994.00\\n' != 'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n'\n- A: 9007199254740994.00\n?                   ^  ^\n+ A: 9007199254740993.01\n?                   ^  ^\n- TOTAL: 9007199254740994.00\n?                       ^  ^\n+ TOTAL: 9007199254740993.01\n?                       ^  ^\n\n\n======================================================================\nFAIL: test_quoted_newline (supplemental_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"current_MEDIUM_TEST\", line 14, in test_quoted_newline\nAssertionError: Lists differ: [('foodtravel', Decimal('1.20'))] != [('food\\ntravel', Decimal('1.20'))]\n\nFirst differing element 0:\n('foodtravel', Decimal('1.20'))\n('food\\ntravel', Decimal('1.20'))\n\n- [('foodtravel', Decimal('1.20'))]\n+ [('food\\ntravel', Decimal('1.20'))]\n?        ++\n\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=3)\n",
+        "workspace_hashes": {
+          "ledger.py": "0818dc6c40ec1122ec4b0edfec09ff1328dd7f618b9e0ff52dab1c9dc219682e",
+          "report.py": "01338f66ae0612b9a063d125df0e18464f0d2046bf7782a97316eaaaa68de40b"
+        },
+        "workspace_preserved": true,
+        "method": "Current MEDIUM_TEST executed entirely from copied source bytes/in-memory modules; no original test/code edits or live calls."
+      },
+      "independently_qualified": false,
+      "qualification_note": "Reviewer-induced float precision regression and CSV gaps"
+    },
+    {
+      "app_commit": "c559aa821cbfcabb8c11a4941353b8089b1cf10b",
+      "app_code_hash": "d5bb7c008ae6a375f4d136cc22820b73703666c885cc791f9a6964cab8925d82",
+      "level": "medium",
+      "attempt": 2,
+      "run_id": "db61a8538cf84886a438806532d82289",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "models_used": {
+        "worker": [
+          "nvidia/nvidia/nemotron-3-super-120b-a12b"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 27,
+      "usage": {
+        "worker": {
+          "tokens": 208381,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 56420,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 27
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 276.380496833,
+        "worker_turns": 21,
+        "requests": 27,
+        "tool_actions": 25,
+        "reviewer_tokens": 56420,
+        "check_seconds": 0.5599999999999999,
+        "output_tokens": 0,
+        "worker_tokens": 208381
+      },
+      "run_metrics": [
+        {
+          "id": "de2daf8988af4fa48fd2f641990d6393",
+          "elapsed_seconds": 276.38597383300004,
+          "provider_request_seconds": 266.869017416,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 9.516956417000017,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": false,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... FAIL\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ERROR\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... FAIL\ntest_empty (test_acceptance.Acceptance) ... FAIL\ntest_invalid_rows (test_acceptance.Acceptance) ... test_large_exact_money (test_acceptance.Acceptance) ... FAIL\ntest_quoted_newline (test_acceptance.Acceptance) ... ERROR\ntest_trim (test_acceptance.Acceptance) ... FAIL\n\n======================================================================\nERROR: test_csv_quotes_and_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 7, in test_csv_quotes_and_exact_money\n    rows=parse_expenses('category,amount\\n\"food, groceries\",0.10\\n\"food, groceries\",0.20\\nTravel,2.50\\n')\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/ledger.py\", line 2, in parse_expenses\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/ledger.py\", line 2, in <listcomp>\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\nValueError: could not convert string to float: ' groceries\"'\n\n======================================================================\nERROR: test_quoted_newline (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 14, in test_quoted_newline\n    self.assertEqual(parse_expenses('category,amount\\n\"food\\ntravel\",1.20\\n'),[('food\\ntravel',Decimal('1.20'))])\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/ledger.py\", line 2, in parse_expenses\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/ledger.py\", line 2, in <listcomp>\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\nIndexError: list index out of range\n\n======================================================================\nFAIL: test_bad_header (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 18, in test_bad_header\n    with self.assertRaises(ValueError):parse_expenses('name,cost\\nfood,1\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_determinism_and_no_mutation (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 24, in test_determinism_and_no_mutation\n    self.assertEqual(summarize(rows),'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n');self.assertEqual(rows,before)\nAssertionError: '3' != 'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n'\n- 3\n+ a: 2.00\nb: 1.00\nTOTAL: 3.00\n\n\n\n======================================================================\nFAIL: test_empty (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 15, in test_empty\n    def test_empty(self): self.assertEqual(summarize(parse_expenses('category,amount\\n')),'TOTAL: 0.00\\n')\nAssertionError: '0' != 'TOTAL: 0.00\\n'\n- 0\n+ TOTAL: 0.00\n\n\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,-1')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,NaN')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,Infinity')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row=',1')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1,extra')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1.001')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_invalid_rows (test_acceptance.Acceptance) (row='food,1.230')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_large_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 12, in test_large_exact_money\n    self.assertEqual(summarize(rows),'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n')\nAssertionError: '9007199254740994.0' != 'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n'\n- 9007199254740994.0\n+ A: 9007199254740993.01\nTOTAL: 9007199254740993.01\n\n\n\n======================================================================\nFAIL: test_trim (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 16, in test_trim\n    def test_trim(self): self.assertEqual(parse_expenses('category,amount\\n  food  , 1.20 \\n'),[('food',Decimal('1.20'))])\nAssertionError: Lists differ: [('  food  ', 1.2)] != [('food', Decimal('1.20'))]\n\nFirst differing element 0:\n('  food  ', 1.2)\n('food', Decimal('1.20'))\n\n- [('  food  ', 1.2)]\n+ [('food', Decimal('1.20'))]\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=12, errors=2)\n"
+        },
+        {
+          "passed": false,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... FAIL\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... FAIL\ntest_empty (test_acceptance.Acceptance) ... FAIL\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... FAIL\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nFAIL: test_csv_quotes_and_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 9, in test_csv_quotes_and_exact_money\n    self.assertEqual(summarize(rows),'Travel: 2.50\\nfood, groceries: 0.30\\nTOTAL: 2.80\\n')\nAssertionError: '2.80' != 'Travel: 2.50\\nfood, groceries: 0.30\\nTOTAL: 2.80\\n'\n- 2.80\n+ Travel: 2.50\nfood, groceries: 0.30\nTOTAL: 2.80\n\n\n\n======================================================================\nFAIL: test_determinism_and_no_mutation (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 24, in test_determinism_and_no_mutation\n    self.assertEqual(summarize(rows),'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n');self.assertEqual(rows,before)\nAssertionError: '3' != 'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n'\n- 3\n+ a: 2.00\nb: 1.00\nTOTAL: 3.00\n\n\n\n======================================================================\nFAIL: test_empty (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 15, in test_empty\n    def test_empty(self): self.assertEqual(summarize(parse_expenses('category,amount\\n')),'TOTAL: 0.00\\n')\nAssertionError: '0' != 'TOTAL: 0.00\\n'\n- 0\n+ TOTAL: 0.00\n\n\n\n======================================================================\nFAIL: test_large_exact_money (test_acceptance.Acceptance)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/state/tasks/db61a8538cf84886a438806532d82289/workspace/test_acceptance.py\", line 12, in test_large_exact_money\n    self.assertEqual(summarize(rows),'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n')\nAssertionError: '9007199254740993.01' != 'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n'\n- 9007199254740993.01\n+ A: 9007199254740993.01\nTOTAL: 9007199254740993.01\n\n\n\n----------------------------------------------------------------------\nRan 8 tests in 0.001s\n\nFAILED (failures=4)\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "aa19bcddeeaf1f1d7af3a11aee312443ed24ff17"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 279.120745375,
+      "autonomous_execution_success": true,
+      "phase": "included-connections",
+      "profile": "nvidia-kiro",
+      "evidence_path": "/tmp/cheapos-matrix-nvidia-kiro-20260913/medium-2/result.json",
+      "independent_verification": {
+        "acceptance_exit_code": 0,
+        "acceptance_output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.000s\n\nOK\n",
+        "exact_money_regression": true,
+        "exact_money_actual": "A: 9007199254740993.10\nTOTAL: 9007199254740993.10\n",
+        "readme_example_runs": true,
+        "readme_example_output": "food: 10.00\ntravel: 5.50\nTOTAL: 15.50\n\n",
+        "tests_unchanged": true,
+        "workspace_clean": true
+      }
+    },
+    {
+      "app_commit": "59fc08cdb9339d132e9bd5cb4c56cbb0721456ac",
+      "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+      "level": "hard",
+      "attempt": 1,
+      "run_id": "3e582cf486864c708e2a623388d523fe",
+      "status": "paused",
+      "error": "Provider returned HTTP 400. This request did not complete.",
+      "error_code": "http_400",
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+        "reviewer": "kiro/claude-sonnet-5"
+      },
+      "models_used": {
+        "worker": [
+          "nvidia/nvidia/nemotron-3-super-120b-a12b"
+        ],
+        "reviewer": [
+          "kiro/claude-sonnet-5"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 0,
+      "request_count": 5,
+      "usage": {
+        "worker": {
+          "tokens": 22491,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 19391,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 1,
+        "estimated_requests": 4
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 28.082713708,
+        "worker_turns": 4,
+        "requests": 5,
+        "tool_actions": 3,
+        "reviewer_tokens": 19391,
+        "check_seconds": 2.28,
+        "output_tokens": 0,
+        "worker_tokens": 22491
+      },
+      "run_metrics": [
+        {
+          "id": "25e687f95b0044a29b28199f33ca92b8",
+          "elapsed_seconds": 28.086167458,
+          "provider_request_seconds": 24.427079082,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 3.6590883759999997,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 2.28,
+          "allowed_seconds": null,
+          "output": "test_complete_and_missing (test_acceptance.APITests) ... ok\ntest_create_list_and_restart (test_acceptance.APITests) ... ok\ntest_validation_has_no_writes (test_acceptance.APITests) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 2.048s\n\nOK\n"
+        }
+      ],
+      "commits": [],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 29.783260833,
+      "autonomous_execution_success": false,
+      "phase": "included-connections",
+      "profile": "nvidia-sonnet",
+      "evidence_path": "/tmp/cheapos-matrix-nvidia-sonnet-20260913/hard-1/result.json",
+      "route_diagnosis": {
+        "status": "model_unavailable",
+        "upstream_status": 400,
+        "requested_reviewer": "kiro/claude-sonnet-5",
+        "upstream_error": "Invalid model. Please select a different model to continue.",
+        "gateway_attempted_fallback": "claude-sonnet-4-6",
+        "gateway_fallback_status": 400,
+        "observed_at": "2026-09-13T22:32:47Z",
+        "reviewer_decision_obtained": false,
+        "note": "Catalog availability did not prove model inference availability. Reserved reviewer tokens remain uncertain; no retry was performed for this model."
+      }
     }
   ],
   "planning": {
@@ -543,10 +3239,588 @@
       }
     ]
   },
-  "status": "blocked_provider_daily_quota",
-  "unrun_levels": [
-    "medium",
-    "hard",
-    "very-hard"
-  ]
+  "status": "batch_complete_with_failures",
+  "unrun_levels": [],
+  "conditions": {
+    "placement": "Included-connection profiles are pinned model pairs, not automatic free-route recovery.",
+    "billing": "Zero marginal estimated token rates for included access; no provider invoice verified.",
+    "output_limit": "From 0cb00fe, zero-rate measurement omits max_tokens; provider defaults remain.",
+    "concurrency": "Different profiles can overlap, so elapsed times are not isolated latency benchmarks."
+  },
+  "planned_input_execution": [
+    {
+      "kind": "planned_input_execution",
+      "level": "easy",
+      "attempt": 1,
+      "input": "document",
+      "profile_name": "cheapos-kiro-trial-config",
+      "run_id": "87eae7004c5349c78d7805d8ca8f7909",
+      "app_commit": "604237af431bbf5c5701920f411760cc1f3be211",
+      "app_code_hash": "5142d2563b6cff2812957288c856ad5e07871b8dc19c9081733eecb718ec4972",
+      "reviewed_digest": "43e3c4182618ab96335868983477c8354a27a093fa364acc7b00e00b00842aea",
+      "planning_seconds": 7.590065416,
+      "operator_prepared_plan": false,
+      "replanned": false,
+      "interventions_after_start": 0,
+      "intervention_reasons": [],
+      "status": "ready_for_merge",
+      "driver_seconds": 50.594471875,
+      "start_authorized": true,
+      "error_code": null,
+      "measurement": true,
+      "planning_usage": {
+        "worker": {
+          "tokens": 6456,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 0,
+          "cost": 0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 1
+      },
+      "execution_usage_delta": {
+        "worker": {
+          "tokens": 44070,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 50599,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 11
+      },
+      "cumulative_usage": {
+        "worker": {
+          "tokens": 50526,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 50599,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 12
+      },
+      "planning_consumption": {
+        "dollars": 0,
+        "working_seconds": 7.132944416,
+        "worker_turns": 0,
+        "requests": 1,
+        "tool_actions": 0,
+        "reviewer_tokens": 0,
+        "check_seconds": 0,
+        "output_tokens": 0,
+        "worker_tokens": 6456
+      },
+      "execution_consumption_delta": {
+        "dollars": 0,
+        "working_seconds": 49.378198291,
+        "worker_turns": 5,
+        "requests": 11,
+        "tool_actions": 11,
+        "reviewer_tokens": 50599,
+        "check_seconds": 0.22999999999999998,
+        "output_tokens": 0,
+        "worker_tokens": 44070
+      },
+      "cumulative_consumption": {
+        "dollars": 0,
+        "working_seconds": 56.511142707,
+        "worker_turns": 5,
+        "requests": 12,
+        "tool_actions": 11,
+        "reviewer_tokens": 50599,
+        "check_seconds": 0.22999999999999998,
+        "output_tokens": 0,
+        "worker_tokens": 50526
+      },
+      "planning_metrics": {
+        "schema_version": 1,
+        "coverage": "complete_instrumented",
+        "outcome": "ready",
+        "human_accepted_commits": 0,
+        "commit_conflict_observed": false,
+        "checks": {
+          "runs": 0,
+          "passed": 0,
+          "outcomes": []
+        },
+        "reviews": {
+          "requests": 0,
+          "decisions": []
+        },
+        "calls": {
+          "worker": 1,
+          "reviewer": 0,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "repeated_read_warnings": 0,
+        "handoffs": 0,
+        "recovery_attempts": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 6424,
+          "output_tokens": 32,
+          "reasoning_tokens": null,
+          "cached_tokens": null,
+          "accounted_total": 6456
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "estimated",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": null,
+          "provider_request_seconds": null,
+          "provider_cooldown_seconds": null,
+          "operator_wait_seconds": null,
+          "controller_work_seconds": null
+        },
+        "model_failure": null,
+        "limitations": "Request time includes provider generation and network latency. Controller time excludes measured request/cooldown/operator waits. Historical or unreported fields are unknown; reviewer approval is not human acceptance."
+      },
+      "cumulative_metrics": {
+        "schema_version": 1,
+        "coverage": "complete_instrumented",
+        "outcome": "reviewer_approved",
+        "human_accepted_commits": 0,
+        "commit_conflict_observed": false,
+        "checks": {
+          "runs": 2,
+          "passed": 2,
+          "outcomes": [
+            "passed",
+            "passed"
+          ]
+        },
+        "reviews": {
+          "requests": 6,
+          "decisions": [
+            "APPROVE"
+          ]
+        },
+        "calls": {
+          "worker": 6,
+          "reviewer": 6,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "repeated_read_warnings": 0,
+        "handoffs": 0,
+        "recovery_attempts": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 99508,
+          "output_tokens": 1617,
+          "reasoning_tokens": null,
+          "cached_tokens": null,
+          "accounted_total": 101125
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "estimated",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 49.381908833,
+          "provider_request_seconds": 43.635601209,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 5.746307623999996
+        },
+        "model_failure": null,
+        "limitations": "Request time includes provider generation and network latency. Controller time excludes measured request/cooldown/operator waits. Historical or unreported fields are unknown; reviewer approval is not human acceptance."
+      },
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "execution_models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "retained_execution_request_count": 11,
+      "request_history_truncated": false,
+      "execution_request_count": 11,
+      "handoffs": 0,
+      "review_revisions": 0,
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "outcome": "passed"
+        },
+        {
+          "passed": true,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "outcome": "passed"
+        }
+      ],
+      "commits": [
+        "2362677b495d8e57d75a4c04183592906461f436"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "source_tests_unchanged": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "autonomous_execution_success": true
+    },
+    {
+      "kind": "planned_input_execution",
+      "level": "easy",
+      "attempt": 1,
+      "input": "prompt",
+      "profile_name": "cheapos-kiro-trial-config",
+      "run_id": "ae821c19aa264ba39dc0ec5d7805f633",
+      "app_commit": "604237af431bbf5c5701920f411760cc1f3be211",
+      "app_code_hash": "5142d2563b6cff2812957288c856ad5e07871b8dc19c9081733eecb718ec4972",
+      "reviewed_digest": "8120352db233a16c63b8a436716e1bf1816188bded94fac0351c07ecf61d5ff6",
+      "planning_seconds": 7.960180334,
+      "operator_prepared_plan": false,
+      "replanned": false,
+      "interventions_after_start": 0,
+      "intervention_reasons": [],
+      "status": "ready_for_merge",
+      "driver_seconds": 50.103908209,
+      "start_authorized": true,
+      "error_code": null,
+      "measurement": true,
+      "planning_usage": {
+        "worker": {
+          "tokens": 6413,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 0,
+          "cost": 0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 1
+      },
+      "execution_usage_delta": {
+        "worker": {
+          "tokens": 48477,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 41673,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 10
+      },
+      "cumulative_usage": {
+        "worker": {
+          "tokens": 54890,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 41673,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 11
+      },
+      "planning_consumption": {
+        "dollars": 0,
+        "working_seconds": 7.413581959,
+        "worker_turns": 0,
+        "requests": 1,
+        "tool_actions": 0,
+        "reviewer_tokens": 0,
+        "check_seconds": 0,
+        "output_tokens": 0,
+        "worker_tokens": 6413
+      },
+      "execution_consumption_delta": {
+        "dollars": 0,
+        "working_seconds": 48.899850916000005,
+        "worker_turns": 5,
+        "requests": 10,
+        "tool_actions": 9,
+        "reviewer_tokens": 41673,
+        "check_seconds": 0.22999999999999998,
+        "output_tokens": 0,
+        "worker_tokens": 48477
+      },
+      "cumulative_consumption": {
+        "dollars": 0,
+        "working_seconds": 56.313432875000004,
+        "worker_turns": 5,
+        "requests": 11,
+        "tool_actions": 9,
+        "reviewer_tokens": 41673,
+        "check_seconds": 0.22999999999999998,
+        "output_tokens": 0,
+        "worker_tokens": 54890
+      },
+      "planning_metrics": {
+        "schema_version": 1,
+        "coverage": "complete_instrumented",
+        "outcome": "ready",
+        "human_accepted_commits": 0,
+        "commit_conflict_observed": false,
+        "checks": {
+          "runs": 0,
+          "passed": 0,
+          "outcomes": []
+        },
+        "reviews": {
+          "requests": 0,
+          "decisions": []
+        },
+        "calls": {
+          "worker": 1,
+          "reviewer": 0,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "repeated_read_warnings": 0,
+        "handoffs": 0,
+        "recovery_attempts": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 6381,
+          "output_tokens": 32,
+          "reasoning_tokens": null,
+          "cached_tokens": null,
+          "accounted_total": 6413
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "estimated",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": null,
+          "provider_request_seconds": null,
+          "provider_cooldown_seconds": null,
+          "operator_wait_seconds": null,
+          "controller_work_seconds": null
+        },
+        "model_failure": null,
+        "limitations": "Request time includes provider generation and network latency. Controller time excludes measured request/cooldown/operator waits. Historical or unreported fields are unknown; reviewer approval is not human acceptance."
+      },
+      "cumulative_metrics": {
+        "schema_version": 1,
+        "coverage": "complete_instrumented",
+        "outcome": "reviewer_approved",
+        "human_accepted_commits": 0,
+        "commit_conflict_observed": false,
+        "checks": {
+          "runs": 2,
+          "passed": 2,
+          "outcomes": [
+            "passed",
+            "passed"
+          ]
+        },
+        "reviews": {
+          "requests": 5,
+          "decisions": [
+            "APPROVE"
+          ]
+        },
+        "calls": {
+          "worker": 6,
+          "reviewer": 5,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "repeated_read_warnings": 0,
+        "handoffs": 0,
+        "recovery_attempts": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 95030,
+          "output_tokens": 1533,
+          "reasoning_tokens": null,
+          "cached_tokens": null,
+          "accounted_total": 96563
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "estimated",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 48.903569084000004,
+          "provider_request_seconds": 42.91102775,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 5.992541334000002
+        },
+        "model_failure": null,
+        "limitations": "Request time includes provider generation and network latency. Controller time excludes measured request/cooldown/operator waits. Historical or unreported fields are unknown; reviewer approval is not human acceptance."
+      },
+      "models": {
+        "worker": "kiro/claude-sonnet-4.5",
+        "reviewer": "kiro/claude-haiku-4.5"
+      },
+      "execution_models_used": {
+        "worker": [
+          "kiro/claude-sonnet-4.5"
+        ],
+        "reviewer": [
+          "kiro/claude-haiku-4.5"
+        ]
+      },
+      "retained_execution_request_count": 10,
+      "request_history_truncated": false,
+      "execution_request_count": 10,
+      "handoffs": 0,
+      "review_revisions": 0,
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "outcome": "passed"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "outcome": "passed"
+        }
+      ],
+      "commits": [
+        "e5af2f673037d5e4f28e2d232c724178cf55d72b"
+      ],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "source_tests_unchanged": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "autonomous_execution_success": true
+    }
+  ],
+  "unrun_profile_levels": {
+    "nvidia_gemma": [
+      "medium",
+      "hard",
+      "very-hard"
+    ],
+    "nvidia_kiro": [
+      "very-hard"
+    ]
+  },
+  "quota_observations": {
+    "source": "OmniRoute authenticated Provider Quota dashboard, manually refreshed",
+    "attribution": "Account-wide; concurrent user activity may contribute. Not a per-trial billing statement.",
+    "observations": [
+      {
+        "local_time": "2026-09-13 17:55",
+        "antigravity": {
+          "plan": "Ultra",
+          "claude_group_remaining_percent": 100
+        },
+        "kiro": {
+          "plan": "Free",
+          "used_credits": 0,
+          "total_credits": 50
+        }
+      },
+      {
+        "local_time": "2026-09-13 18:03",
+        "antigravity": {
+          "plan": "Ultra",
+          "claude_group_remaining_percent": 86,
+          "gemini_group_remaining_percent": 93
+        },
+        "kiro": {
+          "plan": "Free",
+          "used_credits": 0.88,
+          "total_credits": 50
+        }
+      },
+      {
+        "observed_at": "2026-09-13T18:15:34-04:00",
+        "antigravity_claude_remaining_percent": 52,
+        "kiro_used_credits": 6.38,
+        "kiro_total_credits": 50,
+        "basis": "Authenticated OmniRoute quota UI; account-wide, includes possible concurrent activity"
+      },
+      {
+        "observed_at": "2026-09-13T18:25:27-04:00",
+        "antigravity_claude_remaining_percent": 14,
+        "kiro_used_credits": 7.91,
+        "kiro_total_credits": 50,
+        "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
+      },
+      {
+        "observed_at": "2026-09-13T18:35:57-04:00",
+        "antigravity_claude_remaining_percent": 6,
+        "kiro_used_credits": 15.17,
+        "kiro_total_credits": 50,
+        "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
+      },
+      {
+        "observed_at": "2026-09-13T18:42:19-04:00",
+        "antigravity_claude_remaining_percent": 0,
+        "antigravity_gemini_remaining_percent": 93,
+        "kiro_used_credits": 15.93,
+        "kiro_total_credits": 50,
+        "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
+      }
+    ]
+  },
+  "summary": {
+    "execution_attempts": 30,
+    "app_ready_attempts": 18,
+    "independently_disqualified_ready_attempts": 3,
+    "operator_interventions_after_start": 0
+  },
+  "final_reporting_fix": {
+    "commit": "b27bd46",
+    "offline_tests": 2,
+    "offline_seconds": 0.006,
+    "live_requalified": false
+  }
 }
