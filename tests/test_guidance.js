@@ -194,3 +194,137 @@ test('progress names the candidate being probed instead of the failed pinned mod
   const result=progress(task({status:'running',providers:{worker:{model:'old'}},events:[{kind:'model',title:'Requesting worker: replacement',time:new Date().toISOString()}]}));
   assert.equal(result.detail,'replacement');
 });
+
+const {turns,friendlyModel,groupActivityItems}=require('../dist/guidance.js');
+
+test('friendlyModel formats model IDs and preserves free badges',()=>{
+  assert.equal(friendlyModel('openrouter/cohere/north-mini-code:free'),'North Mini Code · free');
+  assert.equal(friendlyModel('openrouter/dots-studio/dots-3-note-preview:free'),'Dots 3 Note · free');
+  assert.equal(friendlyModel('gemma4:31b'),'Gemma 4');
+  assert.equal(friendlyModel(''),'');
+});
+
+test('groupActivityItems groups repeated reads of the same file',()=>{
+  const events=[
+    {kind:'tool',title:'read file',detail:{arguments:{path:'README.md'},result:{total_lines:145}}},
+    {kind:'tool',title:'read file',detail:{arguments:{path:'README.md'},result:{total_lines:145}}},
+    {kind:'tool',title:'read file',detail:{arguments:{path:'README.md'},result:{total_lines:145}}},
+    {kind:'tool',title:'read file',detail:{arguments:{path:'CONTRIBUTING.md'},result:{total_lines:20}}}
+  ];
+  const items=groupActivityItems(events);
+  assert.equal(items.length,2);
+  assert.equal(items[0].type,'read');
+  assert.equal(items[0].path,'README.md');
+  assert.equal(items[0].count,3);
+  assert.equal(items[0].lines,145);
+  assert.equal(items[1].path,'CONTRIBUTING.md');
+  assert.equal(items[1].count,1);
+});
+
+test('groupActivityItems identifies stall guards as helpful worker redirects',()=>{
+  const events=[
+    {kind:'guard',title:'Asking the worker to use what it found',detail:'The same read returned unchanged information twice.'}
+  ];
+  const items=groupActivityItems(events);
+  assert.equal(items.length,1);
+  assert.equal(items[0].stalled,true);
+  assert.equal(items[0].title,'Worker redirected');
+  assert.match(items[0].note,/Repeated read detected/);
+});
+
+test('turns partitions multi-turn chat sessions and computes turn status',()=>{
+  const t=task({
+    prompt:'First message',
+    status:'awaiting_reply',
+    events:[
+      {kind:'tool',title:'read file',detail:{arguments:{path:'README.md'},result:{total_lines:100}}},
+      {kind:'assistant',detail:'Here is the explanation.'},
+      {kind:'user',detail:'Second message'},
+      {kind:'tool',title:'replace text',detail:{arguments:{path:'README.md'}}},
+      {kind:'checks',detail:{passed:true,command:['pytest']}},
+      {kind:'commit',detail:{commit:'12345678abcdef',branch:'main',message:'Update README'}}
+    ]
+  });
+  const turnList=turns(t);
+  assert.equal(turnList.length,2);
+  assert.equal(turnList[0].userPrompt,'First message');
+  assert.equal(turnList[0].phase,'answered');
+  assert.equal(turnList[0].assistantReply,'Here is the explanation.');
+  assert.equal(turnList[0].readCount,1);
+
+  assert.equal(turnList[1].userPrompt,'Second message');
+  assert.equal(turnList[1].phase,'committed');
+  assert.match(turnList[1].title,/README\.md updated & committed/);
+  assert.match(turnList[1].subtitle,/tests passed · reviewed · main · 12345678/);
+});
+
+test('turns generates live momentum indicators during slow worker reasoning and checks',()=>{
+  const now=Date.parse('2026-09-13T00:00:20Z');
+  const t=task({
+    prompt:'Fix bug',
+    status:'running',
+    updated_at:'2026-09-13T00:00:00Z',
+    stream:{
+      model:'openrouter/cohere/north-mini-code:free',
+      phase:'thinking',
+      thinking:'A'.repeat(800),
+      updated_at:'2026-09-13T00:00:18Z'
+    },
+    events:[
+      {kind:'handoff',title:'Local chat delegated',detail:{to:'openrouter/cohere/north-mini-code:free',role:'worker'}}
+    ]
+  });
+  const turnList=turns(t,now);
+  assert.equal(turnList.length,1);
+  assert.equal(turnList[0].isLive,true);
+  assert.equal(turnList[0].phase,'working');
+  assert.match(turnList[0].title,/North Mini Code · free is reasoning/);
+  assert.match(turnList[0].subtitle,/200 tokens generated/);
+});
+
+test('turns suppresses activity card for completed pure conversational turns (no tool actions)',()=>{
+  const t=task({
+    prompt:'oh hey one last thing',
+    status:'awaiting_reply',
+    events:[
+      {kind:'assistant',detail:"I'm listening! What's on your mind?"}
+    ]
+  });
+  const turnList=turns(t);
+  assert.equal(turnList.length,1);
+  assert.equal(turnList[0].phase,'answered');
+  assert.equal(turnList[0].assistantReply,"I'm listening! What's on your mind?");
+  assert.equal(turnList[0].totalActions,0);
+  assert.equal(turnList[0].hasActivity,false);
+});
+
+test('turns shows activity card when answered after repository research (tools used)',()=>{
+  const t=task({
+    prompt:'explain how run.py works',
+    status:'awaiting_reply',
+    events:[
+      {kind:'tool',title:'read file',detail:{arguments:{path:'run.py'},result:{total_lines:80}}},
+      {kind:'assistant',detail:'run.py starts the local server.'}
+    ]
+  });
+  const turnList=turns(t);
+  assert.equal(turnList.length,1);
+  assert.equal(turnList[0].phase,'answered');
+  assert.equal(turnList[0].hasActivity,true);
+  assert.equal(turnList[0].title,'Researched repository');
+  assert.equal(turnList[0].subtitle,'1 file inspected');
+});
+
+test('turns suppresses live activity card while actively streaming answer when no tools were used',()=>{
+  const t=task({
+    prompt:'hello',
+    status:'running',
+    stream:{phase:'answer',content:'Hello there! How can I help?'},
+    events:[]
+  });
+  const turnList=turns(t);
+  assert.equal(turnList.length,1);
+  assert.equal(turnList[0].isLive,true);
+  assert.equal(turnList[0].hasActivity,false);
+});
+

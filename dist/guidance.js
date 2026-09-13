@@ -37,7 +37,7 @@ const CheapOSGuide = (() => {
   }
   function workLabel(events) {
     const reads=events.filter(e=>e.kind==='tool'&&['read file','search','list files'].includes(e.title)).length;
-    const edits=events.filter(e=>e.kind==='tool'&&['write file','replace text'].includes(e.title)).length;
+    const edits=events.filter(e=>e.kind==='tool'&&['write file','replace text','replace lines'].includes(e.title)).length;
     const checks=events.filter(e=>e.kind==='checks').length;
     return [reads?`Explored the project (${reads})`:null,edits?`Made ${edits} edit${edits===1?'':'s'}`:null,checks?`Ran ${checks} check${checks===1?'':'s'}`:null].filter(Boolean).join(' · ')||'Work details';
   }
@@ -50,7 +50,7 @@ const CheapOSGuide = (() => {
     const events=task.events||[],latest=events.at(-1),request=[...events].reverse().find(e=>e.kind==='model');
     const completed=[...events].reverse().find(e=>e.kind==='checks'||e.kind==='tool'&&e.title!=='Running verification');
     const args=completed?.detail?.arguments||{};
-    const action=completed?({'read file':`Read ${args.path||'a file'}`,'read url':`Read ${args.url||'web page'}`,'write file':`Created ${args.path||'a file'}`,'replace text':`Edited ${args.path||'a file'}`,'list files':'Listed project files','search':`Searched project for ${args.query||'text'}`}[completed.title]||completed.title):'No tool actions completed yet';
+    const action=completed?({'read file':`Read ${args.path||'a file'}`,'read url':`Read ${args.url||'web page'}`,'write file':`Created ${args.path||'a file'}`,'replace text':`Edited ${args.path||'a file'}`,'replace lines':`Edited ${args.path||'a file'}`,'list files':'Listed project files','search':`Searched project for ${args.query||'text'}`}[completed.title]||completed.title):'No tool actions completed yet';
     const files=(task.changes||[]).length,evidence=files?`${files} changed file${files===1?'':'s'} saved`:'No files changed yet';
     let stage='working',title='Preparing the next step',detail='',since=latest?.time||task.updated_at;
     if(task.status==='waiting_approval'){stage='approval';title='Waiting for your approval';detail=(task.pending_approval?.command||[]).join(' ')}
@@ -98,9 +98,9 @@ const CheapOSGuide = (() => {
     if(event.kind==='tool'){
       path=args.path||null;
       if(title==='Running verification')return null;
-      const names={'read file':`Read ${path||'a file'}`,'read url':`Read web page · ${result?.title||args.url||''}`,'write file':`Created ${path||'a file'}`,'replace text':`Edited ${path||'a file'}`,'list files':'Listed project files','search':`Searched project for “${args.query||''}”`,'get diff':'Inspected the saved changes'};
+      const names={'read file':`Read ${path||'a file'}`,'read url':`Read web page · ${result?.title||args.url||''}`,'write file':`Created ${path||'a file'}`,'replace text':`Edited ${path||'a file'}`,'replace lines':`Edited ${path||'a file'}`,'list files':'Listed project files','search':`Searched project for “${args.query||''}”`,'get diff':'Inspected the saved changes'};
       title=names[title]||title;icon=path?'file':'search';
-      note=Array.isArray(result)?`${result.length} results`:result?.total_lines?`${result.total_lines} lines in file`:['write file','replace text'].includes(event.title)?'Saved in the task copy':'';
+      note=Array.isArray(result)?`${result.length} results`:result?.total_lines?`${result.total_lines} lines in file`:['write file','replace text','replace lines'].includes(event.title)?'Saved in the task copy':'';
       if(event.title==='read url')note=`${result?.source_url||args.url} · lines ${result?.start_line}–${result?.end_line}${result?.has_more?' · more available':''}`;
       if(d.model)note=[d.model,note].filter(Boolean).join(' · ');
     }else if(event.kind==='check_reused'){icon='tests';note='The same patch and command already passed; no test rerun.'}
@@ -143,6 +143,194 @@ const CheapOSGuide = (() => {
     if((h.worker_responses||0)+(h.reviewer_responses||0)>0)return 'Responded in a task';
     return h.tool_check_passed?'Tool check passed':'Not tested yet';
   }
-  return {modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status)};
+  function friendlyModel(id) {
+    if (!id) return '';
+    const isFree = id.endsWith(':free');
+    let name = id.replace(/:free$/, '').split('/').pop() || id;
+    const map = {
+      'north-mini-code': 'North Mini Code',
+      'dots-3-note-preview': 'Dots 3 Note',
+      'gemma4:31b': 'Gemma 4',
+      'gemma4': 'Gemma 4'
+    };
+    if (map[name.toLowerCase()]) return map[name.toLowerCase()] + (isFree ? ' · free' : '');
+    name = name.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return name + (isFree ? ' · free' : '');
+  }
+  function groupActivityItems(events) {
+    const reads = new Map(), searches = new Map(), items = [];
+    for (const e of events) {
+      const d = e.detail || {}, args = d.arguments || {};
+      if (e.kind === 'tool') {
+        if (e.title === 'read file') {
+          const path = args.path || 'file';
+          const existing = reads.get(path), lines = d.result?.total_lines;
+          if (existing) { existing.count++; if (lines) existing.lines = lines; }
+          else { const entry = { type: 'read', path, count: 1, lines, event: e }; reads.set(path, entry); items.push(entry); }
+          continue;
+        }
+        if (e.title === 'search') {
+          const query = args.query || '';
+          const existing = searches.get(query), results = Array.isArray(d.result) ? d.result.length : 0;
+          if (existing) { existing.count++; }
+          else { const entry = { type: 'search', query, count: 1, results, event: e }; searches.set(query, entry); items.push(entry); }
+          continue;
+        }
+        if (e.title === 'read url') {
+          const res = d.result || {};
+          items.push({ type: 'web', url: args.url || res.source_url || '', title: res.title || args.url || 'Web page', range: res.start_line && res.end_line ? `lines ${res.start_line}–${res.end_line}` : '', event: e });
+          continue;
+        }
+        if (['write file', 'replace text', 'replace lines'].includes(e.title)) {
+          items.push({ type: 'edit', path: args.path || 'file', event: e });
+          continue;
+        }
+        if (e.title !== 'Running verification') items.push({ type: 'tool', title: e.title, event: e });
+        continue;
+      }
+      if (e.kind === 'guard') {
+        const text = typeof d === 'string' ? d : '';
+        const isStall = e.title.includes('what it found') || text.includes('twice') || text.includes('stopped');
+        items.push({ type: 'guard', title: isStall ? 'Worker redirected' : e.title, note: isStall ? 'Repeated read detected; CheapOS redirected worker to continue from existing evidence.' : text, stalled: isStall, event: e });
+        continue;
+      }
+      if (e.kind === 'checks') {
+        items.push({ type: 'checks', passed: d.passed, command: d.command || [], exit_code: d.exit_code, duration: d.duration, output: d.output || '', event: e });
+        continue;
+      }
+      if (e.kind === 'check_reused') {
+        items.push({ type: 'check_reused', passed: true, note: 'The same patch and command already passed; no test rerun.', event: e });
+        continue;
+      }
+      if (e.kind === 'handoff') {
+        items.push({ type: 'handoff', from: friendlyModel(d.from), to: friendlyModel(d.to), role: d.role, title: d.role === 'reviewer' ? 'Sent for independent review' : 'Delegated to worker', event: e });
+        continue;
+      }
+      if (e.kind === 'review') {
+        items.push({ type: 'review', decision: d.decision, feedback: d.feedback, title: d.decision === 'APPROVE' ? 'Approved by reviewer' : 'Changes requested by reviewer', event: e });
+        continue;
+      }
+      if (e.kind === 'commit') {
+        items.push({ type: 'commit', commit: d.commit, branch: d.branch, message: d.message, event: e });
+        continue;
+      }
+      if (e.kind === 'tool_error') {
+        items.push({ type: 'error', title: d.code === 'invalid_tool_arguments' ? 'Model corrected tool call' : 'Action could not finish', note: d.error || '', event: e });
+        continue;
+      }
+    }
+    return items;
+  }
+  function turns(task, at = Date.now()) {
+    if (!task) return [];
+    const events = task.events || [], userIndices = [];
+    events.forEach((e, i) => { if (e.kind === 'user') userIndices.push(i); });
+    const segments = [];
+    const firstEnd = userIndices.length > 0 ? userIndices[0] : events.length;
+    segments.push({ index: 0, userPrompt: task.prompt, events: events.slice(0, firstEnd), isLatest: userIndices.length === 0 });
+    userIndices.forEach((userIndex, i) => {
+      const nextEnd = i + 1 < userIndices.length ? userIndices[i + 1] : events.length;
+      segments.push({ index: i + 1, userPrompt: events[userIndex].detail, events: events.slice(userIndex + 1, nextEnd), isLatest: i === userIndices.length - 1 });
+    });
+    return segments.map(seg => {
+      const turnEvents = seg.events, isLive = seg.isLatest && active.has(task.status);
+      const grouped = groupActivityItems(turnEvents);
+      const assistantEvent = turnEvents.filter(e => e.kind === 'assistant').at(-1);
+      const assistantReply = assistantEvent ? assistantEvent.detail : null;
+      const coordinatorModel = task.providers?.coordinator?.model;
+      const workerModel = task.providers?.worker?.model;
+      const reviewerModel = task.providers?.reviewer?.model;
+      const handoffWorker = turnEvents.find(e => e.kind === 'handoff' && e.detail?.role === 'worker')?.detail?.to;
+      const handoffReviewer = turnEvents.find(e => e.kind === 'handoff' && e.detail?.role === 'reviewer')?.detail?.to;
+      const effectiveWorker = friendlyModel(handoffWorker || workerModel || 'Worker');
+      const effectiveReviewer = friendlyModel(handoffReviewer || reviewerModel || 'Reviewer');
+      const effectiveCoordinator = friendlyModel(coordinatorModel);
+      const latestCheck = turnEvents.filter(e => e.kind === 'checks').at(-1)?.detail;
+      const checkPassed = latestCheck?.passed;
+      const latestReview = turnEvents.filter(e => e.kind === 'review').at(-1)?.detail;
+      const latestCommit = turnEvents.filter(e => e.kind === 'commit' && e.detail?.commit).at(-1)?.detail;
+      const editedFiles = [...new Set(turnEvents.filter(e => e.kind === 'tool' && ['write file', 'replace text', 'replace lines'].includes(e.title)).map(e => e.detail?.arguments?.path).filter(Boolean))];
+      const readCount = grouped.filter(g => g.type === 'read').reduce((sum, g) => sum + g.count, 0);
+      const webCount = grouped.filter(g => g.type === 'web').length;
+      const searchCount = grouped.filter(g => g.type === 'search').reduce((sum, g) => sum + g.count, 0);
+      const totalActions = readCount + webCount + searchCount + editedFiles.length;
+      let phase = 'completed', title = 'Work completed', subtitle = '', statusIcon = 'check';
+      if (isLive) {
+        statusIcon = 'working';
+        const p = progress(task, at), elapsed = p?.elapsed || '0s';
+        if (task.status === 'waiting_approval') {
+          phase = 'approval'; title = 'Command approval needed'; subtitle = (task.pending_approval?.command || []).join(' '); statusIcon = 'attention';
+        } else if (task.check_stream || p?.stage === 'checks') {
+          phase = 'verifying'; title = 'Running verification…'; subtitle = (task.check_stream?.command || latestCheck?.command || []).join(' ') + (elapsed ? ` · ${elapsed}` : '');
+        } else if (task.status === 'reviewing' || p?.stage === 'reviewer' || (turnEvents.some(e => e.kind === 'handoff' && e.detail?.role === 'reviewer') && !latestReview)) {
+          phase = 'reviewing'; title = 'Independent review in progress'; subtitle = `${effectiveReviewer} is checking patch and test evidence · ${elapsed}`;
+        } else if (!task.stream && turnEvents.some(e => e.kind === 'routing' || e.kind === 'handoff') && !turnEvents.some(e => e.kind === 'tool') && task.active_role === 'coordinator') {
+          phase = 'delegating'; title = 'Delegating task'; subtitle = effectiveCoordinator ? `${effectiveCoordinator} → ${effectiveWorker}` : `Routing to ${effectiveWorker}`;
+        } else {
+          phase = 'working';
+          if (task.stream && task.stream.phase === 'thinking') {
+            const tokenEstimate = Math.round((task.stream.thinking || '').length / 4);
+            title = `${effectiveWorker} is reasoning`; subtitle = tokenEstimate > 0 ? `${tokenEstimate.toLocaleString()} tokens generated · ${elapsed}` : `Reasoning · ${elapsed}`;
+          } else if (task.stream && task.stream.phase === 'tool') {
+            title = `${effectiveWorker} is preparing tool`; subtitle = `Preparing ${task.stream.tool || 'action'} · ${elapsed}`;
+          } else if (task.web_read) {
+            title = 'Reading web page'; subtitle = `${task.web_read.url} · ${elapsed}`;
+          } else {
+            const seconds = parseInt(elapsed) || 0;
+            title = `${effectiveWorker} is working`;
+            if (totalActions > 0) {
+              const fileDesc = editedFiles.length ? `${editedFiles.length} file edited` : `${readCount} file${readCount === 1 ? '' : 's'} inspected`;
+              subtitle = `${fileDesc} · ${elapsed} elapsed`;
+            } else if (seconds < 6) subtitle = `Connecting to ${effectiveWorker}… · ${elapsed}`;
+            else if (seconds < 16) subtitle = `Inspecting project structure & preparing plan… · ${elapsed}`;
+            else subtitle = `Working on implementation… · ${elapsed}`;
+          }
+        }
+      } else {
+        if (latestCommit) {
+          phase = 'committed'; statusIcon = 'check';
+          const commitShort = latestCommit.commit ? latestCommit.commit.slice(0, 8) : '';
+          title = editedFiles.length ? `${editedFiles[0]} updated & committed` : 'Changes committed';
+          subtitle = [editedFiles.length ? `${editedFiles.length} file${editedFiles.length === 1 ? '' : 's'} changed` : null, latestCheck?.passed ? 'tests passed' : null, 'reviewed', latestCommit.branch ? `${latestCommit.branch} · ${commitShort}` : commitShort].filter(Boolean).join(' · ');
+        } else if (seg.isLatest && canCommit(task)) {
+          phase = 'ready_to_apply'; statusIcon = 'check'; title = 'Ready to apply';
+          subtitle = [editedFiles.length ? `${editedFiles.length} file${editedFiles.length === 1 ? '' : 's'} changed` : null, latestCheck?.passed ? 'tests passed' : null, latestReview?.decision === 'APPROVE' ? `approved by ${effectiveReviewer}` : 'reviewed'].filter(Boolean).join(' · ');
+        } else if (task.changes?.length && ['approved', 'completed'].includes(task.status)) {
+          phase = 'ready_to_apply'; statusIcon = 'check'; title = 'Ready for your decision';
+          subtitle = `${task.changes.length} file${task.changes.length === 1 ? '' : 's'} changed · review complete`;
+        } else if (editedFiles.length > 0) {
+          phase = 'edited'; statusIcon = checkPassed ? 'check' : 'attention'; title = `${editedFiles[0]} updated`;
+          subtitle = `${editedFiles.length} file${editedFiles.length === 1 ? '' : 's'} changed` + (latestCheck ? ` · ${latestCheck.passed ? 'checks passed' : 'checks failed'}` : '');
+        } else if (assistantReply) {
+          phase = 'answered'; statusIcon = 'check';
+          const inspectNotes = [];
+          if (readCount) inspectNotes.push(`${readCount} file${readCount === 1 ? '' : 's'} inspected`);
+          if (webCount) inspectNotes.push(`${webCount} web source${webCount === 1 ? '' : 's'} read`);
+          if (searchCount) inspectNotes.push(`${searchCount} search${searchCount === 1 ? '' : 'es'}`);
+          title = inspectNotes.length ? 'Researched repository' : '';
+          subtitle = inspectNotes.join(' · ');
+        } else if (['budget_paused', 'paused', 'interrupted'].includes(task.status) && seg.isLatest) {
+          phase = 'paused'; statusIcon = 'attention'; title = task.error_code === 'worker_turn_limit' ? 'Paused at turn limit' : 'Task paused';
+          subtitle = task.error || 'Saved work is available to resume.';
+        } else if (task.status === 'error' && seg.isLatest) {
+          phase = 'error'; statusIcon = 'failed'; title = 'Task stopped'; subtitle = task.error || 'Encountered an error before finishing.';
+        } else {
+          phase = 'completed'; statusIcon = 'check'; title = 'Step finished'; subtitle = `${totalActions} action${totalActions === 1 ? '' : 's'} completed`;
+        }
+      }
+      const canCommitNow = seg.isLatest && canCommit(task);
+      const thinkingBlocks = turnEvents.filter(e => e.kind === 'generation' && e.detail?.thinking).map(e => e.detail);
+      const hasMeaningfulWork = totalActions > 0 || editedFiles.length > 0 || latestCheck != null || latestCommit != null || ['paused', 'error', 'ready_to_apply', 'committed'].includes(phase);
+      const isStreamingAnswerWithoutTools = isLive && task.stream?.phase === 'answer' && totalActions === 0;
+      const hasActivity = isLive ? (!isStreamingAnswerWithoutTools && (turnEvents.length > 0 || isLive)) : hasMeaningfulWork;
+      return {
+        index: seg.index, userPrompt: seg.userPrompt, isLatest: seg.isLatest, isLive, phase, title, subtitle, statusIcon,
+        worker: effectiveWorker, reviewer: effectiveReviewer, coordinator: effectiveCoordinator, hasActivity,
+        totalActions, editedFiles, readCount, webCount, searchCount, groupedItems: grouped, latestCheck, latestReview, latestCommit,
+        canCommit: canCommitNow, assistantReply, thinkingBlocks, events: turnEvents
+      };
+    });
+  }
+  return {modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;

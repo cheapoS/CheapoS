@@ -2,7 +2,7 @@
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const icon = name => `<svg aria-hidden="true" focusable="false" tabindex="-1"><use href="#i-${name}"/></svg>`;
 const activeStatuses = new Set(['running', 'reviewing', 'waiting_approval', 'stopping']);
 const labels = {awaiting_reply:'Ready for your message',ready:'Ready to start',running:'CheapOS is working',reviewing:'Checking your changes',waiting_approval:'Command approval needed',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
 const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',run:-1,online:false,loading:false};
@@ -161,7 +161,7 @@ function eventDetail(event) {
     const result=detail?.result,args=detail?.arguments||{};
     if(event.title==='read url')return `<p>${sourceLink(result.source_url,'Open source page')} · Read ${esc(result.fetched_at)}</p><pre class="output">${esc(result.content)}</pre><p class="muted">${result.has_more?'More lines are available. ':''}${result.truncated||result.excerpt_truncated?'Document preview was shortened. ':''}External source text.</p>`;
     if(event.title==='read file')return `<pre class="output">${esc(result?.content||'No content returned.')}</pre>`;
-    if(['write file','replace text'].includes(event.title))return `<p>Saved ${esc(args.path)} in the task copy.</p>`;
+    if(['write file','replace text','replace lines'].includes(event.title))return `<p>Saved ${esc(args.path)} in the task copy.</p>`;
     if(Array.isArray(result))return `<pre class="output">${esc(result.map(r=>typeof r==='string'?r:JSON.stringify(r)).join('\n'))}</pre>`;
     if(typeof result==='string')return `<pre class="output">${esc(result)}</pre>`;
   }
@@ -190,10 +190,27 @@ function progressMarkup(task) {
   return `<section class="request-progress ${task.stream&&task.stream.phase!=='waiting'?'is-streaming':''}" aria-label="Current activity"><div class="request-progress-heading"><span class="spinner"></span><strong id="request-stage">${esc(p.title)}</strong><span id="request-elapsed" aria-label="Time in current step">${p.elapsed}</span></div><div class="request-model" id="request-detail">${esc(p.detail)}</div><p class="request-hint" id="request-hint">${esc(p.hint)}</p><div class="request-evidence"><span>${icon('code')}${esc(p.action)}</span><span>${icon('file')}${esc(p.evidence)}</span></div><div class="request-actions"><button class="text-link" data-chat-action="activity">${state.view==='activity'?'View live chat':'View activity'}</button><button class="subtle-button" data-chat-action="stop" ${p.stage==='stopping'?'disabled':''}>${p.stage==='stopping'?'Stopping…':'Stop'}</button></div></section>`;
 }
 function updateProgressClock() {
-  if(!state.task||!$('#request-elapsed'))return;
-  const p=CheapOSGuide.progress(state.task);if(!p)return;
-  $('#request-stage').textContent=p.title;$('#request-detail').textContent=p.detail;$('#request-elapsed').textContent=p.elapsed;$('#request-hint').textContent=p.hint;
-  $('.request-progress').classList.toggle('slow',p.slow);
+  if(!state.task)return;
+  const turns=CheapOSGuide.turns(state.task);
+  const liveTurn=turns.find(t=>t.isLive);
+  if(liveTurn){
+    const titleEl=$('#turn-title-'+liveTurn.index);
+    const subtitleEl=$('#turn-subtitle-'+liveTurn.index);
+    const elapsedEl=$('#turn-elapsed-'+liveTurn.index);
+    const p=CheapOSGuide.progress(state.task);
+    if(titleEl)titleEl.textContent=liveTurn.title;
+    if(subtitleEl)subtitleEl.textContent=liveTurn.subtitle;
+    if(elapsedEl&&p)elapsedEl.textContent=p.elapsed;
+  }
+  if($('#request-elapsed')){
+    const p=CheapOSGuide.progress(state.task);
+    if(p){
+      if($('#request-stage'))$('#request-stage').textContent=p.title;
+      if($('#request-detail'))$('#request-detail').textContent=p.detail;
+      $('#request-elapsed').textContent=p.elapsed;
+      if($('#request-hint'))$('#request-hint').textContent=p.hint;
+    }
+  }
 }
 async function stopTask() {
   try{await api('/tasks/'+state.task.id+'/stop',{});await refresh()}catch(e){toast(e.message)}
@@ -207,49 +224,75 @@ function commandMarkup(check,{live=false,open=false,key=check.run_id}={}) {
   const status=live?'Running check':check.passed?'Check passed':check.reason==='cancelled'?'Check stopped':'Check failed';
   return `<details class="command-panel ${live?'is-live':check.passed?'passed':'failed'}" data-event="command-${esc(key)}" ${live||open?'open':''}><summary>${live?'<span class="spinner"></span>':icon(check.passed?'check':'x')}<strong>${status}</strong><span>${live?'Live output':`Exit ${check.exit_code??'—'} · ${Number(check.duration||0).toFixed(1)}s`}</span>${icon('chevron')}</summary><code class="command-line">${esc(check.command.join(' '))}</code><div class="command-body"><pre class="command-output" tabindex="0" data-command-output="command-${esc(key)}" aria-label="${live?'Live command output':'Command output'}">${esc(check.output||(live?'Waiting for command output…':'(No output)'))}</pre>${check.truncated?'<p class="command-note">Showing the first 32 KB of output.</p>':''}${check.reason?`<p class="command-note">${esc(check.reason)}</p>`:''}</div></details>`;
 }
-function renderChat() {
-  const task=state.task,guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
-  const message=(role,text)=>`<article class="chat-message ${role==='You'?'from-user':'from-agent'}"><div class="chat-author">${role==='You'?'<span class="mini-avatar">Y</span>':icon(role==='Review'?'spark':'code')}<strong>${role}</strong></div><div class="chat-message-body">${messageText(text)}</div></article>`;
-  const parts=[task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':'',message('You',task.prompt)];
-  const lastUser=task.events.reduce((index,e,i)=>e.kind==='user'?i:index,-1);
-  const latestCheck=task.events.slice(lastUser+1).filter(e=>e.kind==='checks').at(-1);
-  const visibleRuns=new Set(task.events.filter(e=>e.kind==='checks').map(e=>e.detail.run_id).filter(Boolean));
-  if(task.check_stream)visibleRuns.add(task.check_stream.run_id);
-  let work=[];
-  const flush=()=>{
-    if(!work.length)return;
-    const actions=work.filter(e=>['tool','checks','check_reused','tool_error','web'].includes(e.kind));
-    for(const event of actions){
-      if(event.kind==='checks'){parts.push(commandMarkup(event.detail,{key:event.detail.run_id||event.id,open:event===latestCheck}));continue}
-      if(event.title==='Running verification'&&visibleRuns.has(event.detail?.run_id))continue;
-      const item=CheapOSGuide.activityItem(event)||{title:'Started check',icon:'tests',note:(event.detail?.command||[]).join(' ')};
-      parts.push(`<details class="chat-action ${item.failed?'failed':''}" data-event="action-${event.id}"><summary>${icon(item.icon)}<span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span>${icon('chevron')}</summary><div class="detail-body">${eventDetail(event)}</div></details>`);
+function renderTurnActivityCard(turn, task) {
+  const isLive=turn.isLive,p=CheapOSGuide.progress(task);
+  const elapsed=isLive&&p?p.elapsed:'';
+  const indicator=isLive?'<span class="phase-indicator pulse">◆</span>':`<span class="phase-indicator ${turn.statusIcon==='check'?'done':turn.statusIcon==='attention'?'warn':''}">${icon(turn.statusIcon==='check'?'check':turn.statusIcon==='failed'?'x':'spark')}</span>`;
+  const modelPill=(turn.worker&&turn.worker!=='Worker')?`<span class="model-pill">${esc(turn.worker)}</span>`:'';
+  const routingPill=(isLive&&turn.phase==='delegating'&&turn.coordinator)?`<span class="model-pill">${esc(turn.coordinator)} → ${esc(turn.worker)}</span>`:modelPill;
+  const timelineItems=turn.groupedItems.map(item=>{
+    if(item.type==='read')return `<div class="timeline-item">Read <code>${esc(item.path)}</code>${item.count>1?`<span class="count-badge">×${item.count}</span>`:''}${item.lines?`<small class="muted"> · ${item.lines} lines</small>`:''}</div>`;
+    if(item.type==='search')return `<div class="timeline-item">Searched project for <em>“${esc(item.query)}”</em> <small class="muted">· ${item.results} results</small>${item.count>1?`<span class="count-badge">×${item.count}</span>`:''}</div>`;
+    if(item.type==='web')return `<div class="timeline-item">Read web page: ${sourceLink(item.url,item.title)} ${item.range?`<small class="muted">· ${esc(item.range)}</small>`:''}</div>`;
+    if(item.type==='edit')return `<div class="timeline-item"><strong>Edited</strong> <code>${esc(item.path)}</code> <small class="muted">· saved in task copy</small></div>`;
+    if(item.type==='checks'){
+      const exitNote=`Exit ${item.exit_code??'0'} · ${Number(item.duration||0).toFixed(1)}s`;
+      return `<div class="timeline-item">✓ <strong>Verification:</strong> <code>${esc(item.command.join(' '))}</code> <small class="muted">(${exitNote})</small>${item.output?`<pre class="timeline-command-preview">${esc(item.output.slice(-800))}</pre>`:''}</div>`;
     }
-    work=[];
-  };
-  for(const event of task.events){
-    if(event.kind==='guard'&&task.status==='paused'&&event.detail===task.error)continue;
-    if(['user','assistant','review','checkpoint','generation','handoff','guard','routing','commit','human_decision'].includes(event.kind)){
-      flush();
-      if(['handoff','guard','routing','commit','human_decision'].includes(event.kind)){const item=CheapOSGuide.activityItem(event);parts.push(`<aside class="chat-handoff">${icon(item.icon)}<div><strong>${esc(item.title)}</strong><p>${esc(item.note)}</p>${event.kind==='handoff'?`<small>${esc(event.detail.summary)}</small>`:''}</div></aside>`)}
-      else if(event.kind==='user'||event.kind==='assistant')parts.push(message(event.kind==='user'?'You':'CheapOS',event.detail));
-      else if(event.kind==='generation'){parts.push(thinkingMarkup(event.detail));if(event.detail.interrupted&&event.detail.content)parts.push(`<div class="partial-response"><span>Partial response · interrupted</span>${messageText(event.detail.content)}</div>`)}
-      else if(event.kind==='checkpoint')parts.push(message('CheapOS',event.detail.worker_summary));
-      else parts.push(message('Review',event.detail.feedback));
-    }else work.push(event);
+    if(item.type==='handoff')return `<div class="timeline-item">◆ <strong>${esc(item.title)}:</strong> <span class="muted">${esc(item.from)} → ${esc(item.to)}</span></div>`;
+    if(item.type==='review')return `<div class="timeline-item">✓ <strong>${esc(item.title)}:</strong> <span class="muted">${esc(item.feedback)}</span></div>`;
+    if(item.type==='commit')return `<div class="timeline-item">✓ <strong>Committed to ${esc(item.branch)}:</strong> <code>${esc(item.commit?.slice(0,8))}</code> <small class="muted">· ${esc(item.message)}</small></div>`;
+    if(item.type==='guard')return `<div class="timeline-item ${item.stalled?'stalled':''}">⚠ <strong>${esc(item.title)}:</strong> ${esc(item.note)}</div>`;
+    if(item.type==='error')return `<div class="timeline-item stalled">✕ <strong>${esc(item.title)}:</strong> ${esc(item.note)}</div>`;
+    return `<div class="timeline-item">${esc(item.title||'Tool action')}</div>`;
+  }).join('');
+  const liveCheckStream=(isLive&&task.check_stream)?`<div class="timeline-item"><strong>Live check output:</strong><pre class="timeline-command-preview">${esc(task.check_stream.output||'Waiting for output…')}</pre></div>`:'';
+  const liveThinkingStream=(isLive&&task.stream&&task.stream.phase==='thinking'&&task.stream.thinking)?`<details class="timeline-item"><summary>Live reasoning</summary><pre class="timeline-command-preview">${esc(task.stream.thinking)}</pre></details>`:'';
+  const drawerContent=(timelineItems||liveCheckStream||liveThinkingStream)?`<div class="activity-drawer" id="drawer-${turn.index}" hidden><div class="subordinate-timeline">${timelineItems}${liveCheckStream}${liveThinkingStream}</div></div>`:'';
+  return `<div class="activity-card-container"><div class="evolving-activity-card ${isLive?'is-live':'collapsed-summary'}" id="activity-card-${turn.index}"><div class="activity-card-header">${indicator}<div class="activity-header-text"><strong id="turn-title-${turn.index}">${esc(turn.title)}</strong><span class="activity-subtitle" id="turn-subtitle-${turn.index}">${esc(turn.subtitle)}</span></div>${routingPill}${isLive?`<span class="activity-elapsed" id="turn-elapsed-${turn.index}">${elapsed}</span>`:''}${drawerContent?`<button type="button" class="details-toggle" data-toggle="drawer-${turn.index}" aria-expanded="false">Details ▾</button>`:''}</div>${drawerContent}</div></div>`;
+}
+function bindTurnDetails() {
+  $$('.details-toggle').forEach(btn=>{
+    btn.onclick=()=>{
+      const drawer=$('#'+btn.dataset.toggle);
+      if(!drawer)return;
+      drawer.hidden=!drawer.hidden;
+      btn.setAttribute('aria-expanded',String(!drawer.hidden));
+      btn.textContent=drawer.hidden?'Details ▾':'Details ▴';
+    };
+  });
+}
+function renderChat() {
+  const task=state.task;if(!task)return;
+  const guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
+  const turns=CheapOSGuide.turns(task);
+  const openDrawers=new Set($$('.details-toggle[aria-expanded="true"]').map(b=>b.dataset.toggle));
+  const message=(role,text)=>`<article class="chat-message ${role==='You'?'from-user':'from-agent'}"><div class="chat-author">${role==='You'?'<span class="mini-avatar">Y</span>':icon(role==='Review'?'spark':'code')}<strong>${esc(role)}</strong></div><div class="chat-message-body">${messageText(text)}</div></article>`;
+  const parts=[task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':''];
+  turns.forEach(turn=>{
+    parts.push(`<div class="chat-turn" data-turn="${turn.index}">`);
+    parts.push(message('You',turn.userPrompt));
+    if(turn.hasActivity)parts.push(renderTurnActivityCard(turn,task));
+    if(turn.assistantReply)parts.push(message('CheapOS',turn.assistantReply));
+    parts.push(`</div>`);
+  });
+  if(task.stream&&task.stream.phase==='answer'&&task.stream.content){
+    parts.push(`<article class="chat-message from-agent streaming-answer"><div class="chat-author">${icon('code')}<strong>CheapOS</strong><span>Writing…</span></div><div class="chat-message-body">${messageText(task.stream.content)}</div></article>`);
   }
-  flush();
-  const streamedOutput=task.stream?thinkingMarkup(task.stream,true)+(task.stream.content?`<article class="chat-message from-agent streaming-answer"><div class="chat-author">${icon('code')}<strong>CheapOS</strong><span>Writing…</span></div><div class="chat-message-body">${messageText(task.stream.content)}</div></article>`:''):'';
   const button=(action,label,primary=false)=>`<button class="${primary?'primary-button':'subtle-button'}" data-chat-action="${action}">${label}</button>`;
   const routeFailures=task.error_code==='routing_unavailable'?(task.route?.failures||[]):[];
   const errorDetails=routeFailures.length?`<details class="chat-error"><summary>Model check results (${routeFailures.length})</summary>${routeFailures.map(f=>`<p><strong>${esc(f.model)}</strong><br>${esc(f.error)}</p>`).join('')}</details>`:task.error&&task.error!==(failure?.description||guide.description)?`<details class="chat-error"><summary>Details</summary><p>${esc(task.error)}</p></details>`:'';
   if(task.pending_approval)parts.push(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row">${button('approve','Run once',true)}${button('approve-session','Allow for this session')}${button('decline','Decline')}</div></section>`);
-  else if(activeStatuses.has(task.status))parts.push(progressMarkup(task),streamedOutput,task.check_stream?commandMarkup(task.check_stream,{live:true}):'');
   else if(task.status==='ready')parts.push(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
   else if(CheapOSGuide.canCommit(task))parts.push(commitDecisionMarkup(task));
   else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))parts.push(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, CheapOS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
-  else if(task.status!=='awaiting_reply')parts.push(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
-  $('#chat-view').innerHTML=parts.join('');updateProgressClock();bindCommitDecision(task);
+  else if(!activeStatuses.has(task.status)&&task.status!=='awaiting_reply')parts.push(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
+  $('#chat-view').innerHTML=parts.join('');
+  for(const drawerId of openDrawers){
+    const drawer=$('#'+drawerId),btn=$(`[data-toggle="${drawerId}"]`);
+    if(drawer&&btn){drawer.hidden=false;btn.setAttribute('aria-expanded','true');btn.textContent='Details ▴';}
+  }
+  updateProgressClock();bindCommitDecision(task);bindTurnDetails();
   $$('[data-chat-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.chatAction;
     if(action==='changes'||action==='activity'){setView(action);return}
