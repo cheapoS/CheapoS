@@ -31,6 +31,10 @@ class RoutingTraceTests(unittest.TestCase):
         self.assertEqual(len(t['attempts']),64)
         self.assertIsNone(t['attempts'][-1]['served_model'])
         self.assertEqual(t['attempts'][-1]['identity_provenance'],'unknown')
+        task['metric_run_id']='new-turn'
+        trace.request(task,{'id':'next','role':'reviewer','model':'route/b','dispatched':True})
+        self.assertEqual(task['routing_traces'][-1]['run_id'],'new-turn')
+        self.assertEqual(len(task['routing_traces'][-1]['attempts']),1)
 
     def test_context_fit_does_not_mistake_old_usage_for_current_need(self):
         model={'tool_calling':True,'context_length':1024}

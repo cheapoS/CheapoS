@@ -54,6 +54,9 @@ def main():
                 engine.gateway.pool.record(cfg['base_url'],cfg['model'],role,probe=True,connection_revision=policy['connection_revision'],probe_identity=identity)
             except Exception as error:
                 result['status']='failed';result['failure_category']=route_health.classify(error)['category']
+                usage=getattr(error,'usage',None)
+                if result['usage'] is None and isinstance(usage,dict):
+                    result['usage']={k:v for k,v in usage.items() if k in ('prompt_tokens','completion_tokens','total_tokens','cost') and isinstance(v,(int,float))}
                 result['usage_uncertain']=result['usage'] is None
                 engine.gateway.pool.record(cfg['base_url'],cfg['model'],role,error=error,connection_revision=policy['connection_revision'])
             finally:result['seconds']=time.monotonic()-begin

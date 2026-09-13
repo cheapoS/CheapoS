@@ -23,6 +23,8 @@ def begin(task, role, requested_route=None):
     trace={'id':str(sequence),'role':role if role in ('worker','reviewer','coordinator') else 'unknown',
            'requested_route':model_label(requested_route),'candidates':[],'attempts':[],
            'selected_model':None,'gateway_attempts':'unavailable'}
+    run_id=task.get('metric_run_id')
+    trace['run_id']=run_id if isinstance(run_id,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,80}',run_id) else None
     traces.append(trace)
     if len(traces)>LIMIT:del traces[:-LIMIT];task['routing_traces_truncated']=True
     return trace
@@ -43,10 +45,12 @@ def request(task, metric):
     role=metric.get('role');request_id=metric.get('id')
     if not isinstance(request_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}',request_id):return
     traces=task.setdefault('routing_traces',[])
-    trace=next((t for t in reversed(traces) if t['role']==role),None)
-    if trace is None:trace=begin(task,role,metric.get('model'))
+    trace=next((t for t in reversed(traces) if t['role']==role and t.get('run_id')==task.get('metric_run_id')),None)
+    if trace is None:
+        trace=begin(task,role,metric.get('model'))
+        if metric.get('purpose')!='probe':selected(trace,metric.get('model'))
     row={'request_id':request_id,'model':model_label(metric.get('model')),
-         'purpose':metric.get('purpose') if metric.get('purpose') in ('probe','planning','work','review') else 'work',
+         'purpose':metric.get('purpose') if metric.get('purpose') in ('probe','branch_planning','branch_final','work','review') else 'work',
          'status':metric.get('status') if metric.get('status') in ('pending','responded','failed','cancelled') else 'unknown',
          'served_model':model_label(metric.get('served_model')) if metric.get('served_model') else None,
          'identity_provenance':'response_model' if metric.get('identity_provenance')=='response_model' else 'unknown',
