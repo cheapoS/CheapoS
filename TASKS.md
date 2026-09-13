@@ -2,7 +2,7 @@
 
 **North star:** open a project, explain the job, see CheapOS working, authorize routine tests once, approve a finished commit, and keep chatting.
 
-This is the implementation companion to [the September 13 check-in](CHECK_IN_2026-09-13.md). Start with **sidebar cleanup, clearer task titles, and fewer approval interruptions**. The cards below are specifications for future work; creating these documents did not implement their features.
+This is the implementation companion to [the September 13 check-in](CHECK_IN_2026-09-13.md). Start with **sidebar cleanup, clearer task titles, and fewer approval interruptions**. All 27 cards are now completed on `work/check-in-tasks`; each card records its implementation, validation, and limitations. The branch remains unmerged.
 
 Baseline inspected: `6f22bf6` (application code `e5bddde`). Re-read current code before editing; earlier cards may already have changed it. All cards initially have status **Todo**. A dependency means its acceptance checks have passed and its commit is available, not merely that someone started it.
 
@@ -75,6 +75,22 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 | [T25](docs/tasks/T25-model-selection.md) | Model ranking informed by completed work | T24 | M | Done |
 | [T26](docs/tasks/T26-output-filtering.md) | Benchmark optional test-output filtering | T13, T24 | M | Done |
 | [T27](docs/tasks/T27-context-compression.md) | Evaluate one optional context-compression layer | T21, T22, T26 | M | Done |
+
+### Final integration gate
+
+Validated after T27 on `work/check-in-tasks`:
+
+- Python full suite: **387 PASS**, 0 failures/errors/skips, **428.861 seconds**.
+- JavaScript: **70 PASS**; application syntax check and `git diff --check` pass.
+- T26: 24 controlled fixture runs verified; filtering stays off by default.
+- T27: eight fixture runs and 28-payload offline replay passed; additional
+  context compression is **deferred**, as permitted by the research card.
+- Browser scenarios and focused checks are recorded in each task card.
+- Temporary UI fixture servers were stopped. No merge to main was performed.
+
+The full gate takes about seven minutes on this machine; select at least a
+600-second verification allowance when running it through CheapOS. The fast
+suite covers a deliberately smaller contract and does not replace this gate.
 
 ### Milestone exits
 

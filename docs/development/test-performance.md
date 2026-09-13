@@ -107,3 +107,14 @@ patterns and the full integration gate remain necessary for controller and Git
 changes. Treat the measured 267s full duration as evidence that a 90s agent check
 timeout is insufficient; T13 must provide a bounded larger allowance when the
 full suite is deliberately selected.
+
+## Final T01–T27 integration gate
+
+The completed branch passed **387 tests in 428.861 seconds**, with no failures,
+errors or skips, on the same macOS arm64/Python 3.9.6 environment. The enlarged
+suite includes benchmark, verification-identity, continuation, readiness and
+recovery coverage. This run is not directly comparable to T12's smaller suite.
+The full-suite two-minute target remains unmet; use a 600-second check allowance
+for this gate. The slowest scenario was the seven-fixture benchmark (25.859s).
+JavaScript: 70 tests passed. No unchanged passing gate was repeated after the
+final documentation update.
