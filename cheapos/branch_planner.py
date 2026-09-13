@@ -79,7 +79,7 @@ TOOLS = [{'type': 'function', 'function': {'name': 'propose_branch_plan',
           'description': 'Propose all requested work, or request clarification. This grants no execution authority.',
           'parameters': {'type': 'object', 'additionalProperties': False, 'required': ['status', 'plan', 'clarification'],
                          'properties': {'status': {'type': 'string', 'enum': ['plan', 'clarification']},
-                                        'clarification': {'type': 'string', 'maxLength': 2000},
+                                        'clarification': {'type': ['string', 'null'], 'maxLength': 2000},
                                         'plan': {'type': ['object', 'null'], 'additionalProperties': False,
                                                  'required': ['items', 'limits', 'final_checks'],
                                                  'properties': {'items': {'type': 'array', 'minItems': 1, 'maxItems': 50, 'items': _ITEM},
@@ -102,6 +102,11 @@ def _parse(message, limits):
     if not isinstance(raw, str) or len(raw) > 128000:
         raise ValueError('Plan tool arguments exceed the complete proposal limit')
     value = json.loads(raw)
+    # Some compatible providers omit empty optional text or serialize it as
+    # null. This field carries no scope when an explicit plan is supplied;
+    # normalize only that absence, never a missing status/plan or a question.
+    if isinstance(value, dict) and value.get('status') == 'plan' and isinstance(value.get('plan'), dict) and value.get('clarification') is None:
+        value['clarification'] = ''
     if not isinstance(value, dict) or set(value) != {'status', 'plan', 'clarification'}:
         missing = sorted({'status', 'plan', 'clarification'} - set(value)) if isinstance(value, dict) else ['status', 'plan', 'clarification']
         extra = len(set(value) - {'status', 'plan', 'clarification'}) if isinstance(value, dict) else 0

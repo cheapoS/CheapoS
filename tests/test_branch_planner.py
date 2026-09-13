@@ -90,7 +90,7 @@ class PlannerTests(unittest.TestCase):
     def test_repair_receives_rejected_call_and_specific_missing_field(self):
         response = self.reply()
         invalid = json.loads(response['tool_calls'][0]['function']['arguments'])
-        del invalid['clarification']
+        del invalid['status']
         response['tool_calls'][0]['function']['arguments'] = json.dumps(invalid)
         original = copy.deepcopy(response)
         engine = self.engine([response, self.reply()])
@@ -102,10 +102,26 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(repair[-2]['tool_calls'], response['tool_calls'])
         self.assertEqual(repair[-1]['role'], 'tool')
         self.assertEqual(repair[-1]['tool_call_id'], response['tool_calls'][0]['id'])
-        self.assertIn('missing: clarification', repair[-1]['content'])
+        self.assertIn('missing: status', repair[-1]['content'])
         self.assertEqual(events[0][0], 'planning_repair')
         self.assertEqual(events[0][1]['attempt'], 1)
         self.assertEqual(response, original)
+
+    def test_complete_plan_accepts_only_absent_or_null_clarification_metadata(self):
+        value = json.loads(self.reply()['tool_calls'][0]['function']['arguments'])
+        for empty in ('missing', None):
+            candidate = copy.deepcopy(value)
+            if empty == 'missing': candidate.pop('clarification')
+            else: candidate['clarification'] = empty
+            reply = self.reply(); reply['tool_calls'][0]['function']['arguments'] = json.dumps(candidate)
+            self.assertEqual(planner._parse(reply, self.limits), self.valid)
+        for ambiguous in (False, [], {}, 'Should I change the scope?'):
+            candidate = dict(value, clarification=ambiguous)
+            reply = self.reply(); reply['tool_calls'][0]['function']['arguments'] = json.dumps(candidate)
+            with self.assertRaises(ValueError): planner._parse(reply, self.limits)
+        for candidate in ({'status': 'clarification', 'plan': None}, {'status': 'plan'}, {'plan': self.valid}, dict(value, unauthorized=True)):
+            reply = self.reply(); reply['tool_calls'][0]['function']['arguments'] = json.dumps(candidate)
+            with self.assertRaises(ValueError): planner._parse(reply, self.limits)
 
     def test_budget_widening_missing_checks_and_truncated_plan_rejected(self):
         changed = copy.deepcopy(self.valid)
