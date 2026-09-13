@@ -195,8 +195,9 @@ async function loadStartup() {
 }
 function renderComposer() {
   const task=state.task, busy=task&&activeStatuses.has(task.status);
-  $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&state.taskPermissions.commands.length);
-  $('#composer-permissions').title='This chat · until CheapOS restarts';
+  $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&(state.taskPermissions.commands.length||state.taskPermissions.project_grants?.length));
+  $('#composer-permissions').textContent=state.taskPermissions?.project_grants?.length?'Tests allowed this session':'Commands allowed this session';
+  $('#composer-permissions').title=state.taskPermissions?.project_grants?.length?'This project · until CheapOS restarts':'This chat · until CheapOS restarts';
   const pausing=Boolean(task&&(task.status==='stopping'||state.pausingTask===task.id));
   $('#composer-area').hidden=Boolean(task?.demo||task?.archived_at||task?.trashed_at)||state.view!=='chat';
   $('#composer-project span').textContent=task?CheapOSGuide.projectName(task):state.project?CheapOSGuide.projectName({source:state.project.path}):'Open project';
@@ -384,6 +385,20 @@ function commandMarkup(check,{live=false,open=false,key=check.run_id}={}) {
   const exitPill=live?'<span class="term-status-pill live"><span class="pulse-dot"></span>Live</span>':check.passed?`<span class="term-status-pill pass">Exit 0 · ${Number(check.duration||0).toFixed(1)}s</span>`:`<span class="term-status-pill fail">Exit ${check.exit_code??'1'} · ${Number(check.duration||0).toFixed(1)}s</span>`;
   return `<details class="command-panel ${live?'is-live':check.passed?'passed':'failed'}" data-event="command-${esc(key)}" ${live||open?'open':''}><summary>${live?'<span class="spinner"></span>':icon(check.passed?'check':'x')}<strong>${status}</strong><span>${live?'Live output':`Exit ${check.exit_code??'—'} · ${Number(check.duration||0).toFixed(1)}s`}</span>${icon('chevron')}</summary><code class="command-line">${esc(check.command.join(' '))}</code><div class="command-body"><div class="terminal-window ${live?'is-live':check.passed?'passed':'failed'}"><div class="terminal-header"><div class="traffic-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div><span class="terminal-title"><code>${esc(check.command.join(' '))}</code></span><div class="terminal-actions">${exitPill}<button type="button" class="terminal-copy-btn" data-copy-terminal="command-${esc(key)}" title="Copy output">${icon('file')} Copy</button></div></div><div class="terminal-viewport"><pre class="command-output terminal-body" tabindex="0" data-command-output="command-${esc(key)}" aria-label="${live?'Live command output':'Command output'}">${formatted}</pre></div>${check.truncated?'<p class="command-note">Showing the first 32 KB of output.</p>':''}${check.reason?`<p class="command-note error">${esc(check.reason)}</p>`:''}</div></div></details>`;
 }
+function permissionMarkup(task) {
+  const pending=task.pending_approval, choice=CheapOSGuide.permissionChoice(pending), profile=pending.profile;
+  const explanation=profile?`<p>Allow supported unittest variants in this project until CheapOS restarts or you revoke permission. Tests execute project code, including later test edits.</p><details><summary>Test permission scope</summary><p>Project: ${esc(profile.project)}</p><p>Runner: unittest · ${esc(profile.executable)}</p><p>Test roots: ${profile.roots.map(root=>esc(root==='.'?'Project root (.)':root)).join(', ')}. Supported selectors, discovery patterns, and verbosity flags.</p></details>`:'<p>This exact command in this chat’s task copy · until CheapOS restarts. Different commands ask again.</p>';
+  const reason=pending.scope_reason&&!pending.scope_reason.startsWith('No project-session')?`<p>${esc(pending.scope_reason)}</p>`:'';
+  return `<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(pending.command.join(' '))}</code>${explanation}${reason}<div class="button-row"><button class="primary-button" data-permission="${choice.scope}">${choice.label}</button><button class="outline-button" data-permission="once">Run once</button><button class="subtle-button" data-permission="decline">Decline</button></div></section>`;
+}
+function bindPermissions(task) {
+  $$('[data-permission]').forEach(button=>button.onclick=async()=>{
+    const scope=button.dataset.permission, approval=task.pending_approval.id;
+    $$('[data-permission]').forEach(b=>b.disabled=true);
+    try{await api('/tasks/'+task.id+'/approval',{approved:scope!=='decline',scope:scope==='decline'?'once':scope,approval_id:approval});await loadTaskPermissions(task,true);await refresh()}
+    catch(error){toast(error.message);await refresh();$$('[data-permission]').forEach(b=>b.disabled=false)}
+  });
+}
 function renderChat() {
   const task=state.task;if(!task)return;
   const guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
@@ -396,7 +411,7 @@ function renderChat() {
   const button=(action,label,primary=false)=>`<button class="${primary?'primary-button':'subtle-button'}" data-chat-action="${action}">${label}</button>`;
   const routeFailures=task.error_code==='routing_unavailable'?(task.route?.failures||[]):[];
   const errorDetails=routeFailures.length?`<details class="chat-error"><summary>Model check results (${routeFailures.length})</summary>${routeFailures.map(f=>`<p><strong>${esc(f.model)}</strong><br>${esc(f.error)}</p>`).join('')}</details>`:task.error&&task.error!==(failure?.description||guide.description)?`<details class="chat-error"><summary>Details</summary><p>${esc(task.error)}</p></details>`:'';
-  if(task.pending_approval)decision=(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row">${button('approve-session','Allow this command for this session',true)}${button('approve','Run once')}${button('decline','Decline')}</div></section>`);
+  if(task.pending_approval)decision=permissionMarkup(task);
   else if(task.status==='ready')decision=(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
   else if(CheapOSGuide.canCommit(task))decision=(commitDecisionMarkup(task));
   else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))decision=(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, CheapOS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
@@ -413,7 +428,7 @@ function renderChat() {
     };
     if(d.dataset.event===focused)$('summary',d)?.focus({preventScroll:true});
   }
-  updateProgressClock();bindCommitDecision(task);bindTerminalCopy();
+  updateProgressClock();bindCommitDecision(task);bindTerminalCopy();bindPermissions(task);
   $$('[data-chat-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.chatAction;
     if(action==='changes'||action==='activity'){setView(action);return}
@@ -432,12 +447,12 @@ function renderActivity() {
   const action=(view,label)=>`<button class="outline-button" data-activity-view="${view}">${label}</button>`;
   const timeline=a.items.slice(0,40).map(item=>`<details class="activity-step ${item.failed?'failed':''}" data-event="step-${item.event.id}"><summary><span class="step-icon">${icon(item.icon)}</span><span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span><time>${new Date(item.event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="step-body">${eventDetail(item.event)}${item.path&&task.changes.some(c=>c.path===item.path)?`<button class="text-link" data-activity-file="${esc(item.path)}">View current diff →</button>`:''}</div></details>`).join('');
   const technical=task.events.map(e=>`<details class="activity-card" data-event="raw-${e.id}"><summary><strong>${esc(CheapOSGuide.activityItem(e)?.title||e.title)}</strong>${icon('chevron')}</summary><div class="detail-body">${eventDetail(e)}</div></details>`).join('');
-  const status=task.pending_approval?`<section class="chat-decision"><strong>Waiting for your approval</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row"><button class="primary-button" data-activity-approve="session">Allow this command for this session</button><button class="outline-button" data-activity-approve="true">Run once</button><button class="subtle-button" data-activity-approve="false">Decline & pause</button></div></section>`:activeStatuses.has(task.status)?progressMarkup(task):`<section class="activity-status"><span class="activity-eyebrow">${['approved','completed'].includes(task.status)?'RESULT':'CURRENT STATUS'}</span><h3>${esc(failure?.title||guide.title)}</h3><p>${esc(failure?.description||guide.description)}</p>${task.error&&task.error!==guide.description?`<p>${esc(task.error)}</p>`:''}<div class="button-row">${['approved','completed'].includes(task.status)?action('changes','Review changes'):''}${action('chat','Back to chat')}${['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)?`<button class="outline-button" id="activity-resume">${task.status==='error'?'Retry':guide.primaryLabel}</button>`:''}${task.error_code==='routing_unavailable'?'<button class="outline-button" id="activity-models">Models</button>':''}</div></section>`;
+  const status=task.pending_approval?permissionMarkup(task):activeStatuses.has(task.status)?progressMarkup(task):`<section class="activity-status"><span class="activity-eyebrow">${['approved','completed'].includes(task.status)?'RESULT':'CURRENT STATUS'}</span><h3>${esc(failure?.title||guide.title)}</h3><p>${esc(failure?.description||guide.description)}</p>${task.error&&task.error!==guide.description?`<p>${esc(task.error)}</p>`:''}<div class="button-row">${['approved','completed'].includes(task.status)?action('changes','Review changes'):''}${action('chat','Back to chat')}${['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)?`<button class="outline-button" id="activity-resume">${task.status==='error'?'Retry':guide.primaryLabel}</button>`:''}${task.error_code==='routing_unavailable'?'<button class="outline-button" id="activity-models">Models</button>':''}</div></section>`;
   $('#activity-view').innerHTML=`<div class="view-title"><div><h2>What’s happening</h2><p>${task.demo?'Scripted demo · real files and checks':'Real actions and saved results from this chat.'}</p></div></div>${status}${task.check_stream?commandMarkup(task.check_stream,{live:true}):''}<div class="activity-facts"><button data-activity-view="changes"><span>Saved changes · whole chat</span><strong>${a.files} file${a.files===1?'':'s'}</strong><small>Inspect the diff →</small></button><button data-activity-view="tests"><span>Checks · this request</span><strong>${esc(a.checks)}</strong><small>View command output →</small></button><button id="activity-review" ${!a.checkpoint?'disabled':''}><span>Review · this request</span><strong>${esc(a.review)}</strong><small>${a.checkpoint?'Inspect the decision →':'A passing check alone is not approval'}</small></button></div><section class="activity-timeline"><h3>Latest request</h3><p class="activity-request">${esc(a.request)}</p><p class="small muted">Newest actions first${a.items.length>40?' · showing the latest 40':''}</p>${timeline||'<p class="activity-empty">No file actions yet. Conversation and live model output are in Chat.</p>'}</section><details class="technical-log" data-event="technical"><summary>${icon('code')}Technical log <span>${task.events.length} events</span>${icon('chevron')}</summary><div>${technical}</div></details>`;
   $$('[data-activity-view]').forEach(b=>b.onclick=()=>setView(b.dataset.activityView));
   $$('[data-chat-action]').forEach(b=>b.onclick=()=>b.dataset.chatAction==='stop'?stopTask():setView('chat'));
   $$('[data-activity-file]').forEach(b=>b.onclick=()=>{state.file=task.changes.findIndex(c=>c.path===b.dataset.activityFile);setView('changes')});
-  $$('[data-activity-approve]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('/tasks/'+task.id+'/approval',{approved:b.dataset.activityApprove!=='false',remember:b.dataset.activityApprove==='session',approval_id:task.pending_approval.id});await loadTaskPermissions(task,true);await refresh()}catch(e){toast(e.message);b.disabled=false}});
+  bindPermissions(task);
   $$('[data-checkpoint]').forEach(b=>b.onclick=()=>checkpointDialog(Number(b.dataset.checkpoint)));
   $('#activity-review').onclick=()=>a.checkpoint&&checkpointDialog(a.checkpoint.number);
   if($('#activity-resume'))$('#activity-resume').onclick=e=>resumeTask(e.currentTarget);
@@ -639,8 +654,9 @@ function chatLimits() {
 }
 async function sendChat() {
   const task=state.task, busy=task&&activeStatuses.has(task.status);
-  $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&state.taskPermissions.commands.length);
-  $('#composer-permissions').title='This chat · until CheapOS restarts';
+  $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&(state.taskPermissions.commands.length||state.taskPermissions.project_grants?.length));
+  $('#composer-permissions').textContent=state.taskPermissions?.project_grants?.length?'Tests allowed this session':'Commands allowed this session';
+  $('#composer-permissions').title=state.taskPermissions?.project_grants?.length?'This project · until CheapOS restarts':'This chat · until CheapOS restarts';
   if(busy){
     await steerTask();
     return;
@@ -709,12 +725,13 @@ async function loadTaskPermissions(task, force=false) {
 }
 async function sessionPermissions() {
   const task=state.task;if(!task)return;
-  try {
-    const permissions=await api('/tasks/'+task.id+'/permissions');
-    const d=dialog(`${modalHeader('SESSION PERMISSIONS','Commands you’ve allowed')}<p class="modal-description">These exact commands may repeat in this chat’s task copy, including after Pause and Resume. Different commands ask again. Permissions expire when CheapOS restarts.</p>${permissions.commands.length?permissions.commands.map(command=>`<code class="approval-command">${esc(command.join(' '))}</code>`).join(''):'<p>No commands are remembered for this session.</p>'}<p class="small muted">Clearing permissions makes future runs ask again; commands already running continue.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies only to this chat.</span>${permissions.commands.length?'<button class="outline-button" id="clear-session-permissions">Clear permissions</button>':''}</div>`);
-    const clear=$('#clear-session-permissions',d);
-    if(clear)clear.onclick=async()=>{clear.disabled=true;try{await api('/tasks/'+task.id+'/permissions',{clear:true});d.close();await loadTaskPermissions(task,true);toast('Session permissions cleared. Future commands will ask again.')}catch(e){$('.form-error',d).textContent=e.message;clear.disabled=false}};
-  }catch(e){toast(e.message)}
+  try{
+    const permissions=await api('/tasks/'+task.id+'/permissions'), grants=permissions.project_grants||[];
+    const d=dialog(`${modalHeader('SESSION PERMISSIONS','Tests and commands you’ve allowed')}<p>Permissions expire when CheapOS restarts. Revocation affects future commands; running commands continue.</p><h3>Project tests</h3>${grants.length?grants.map(g=>`<section><p>${esc(g.profile.project)} · unittest</p><p>Test roots: ${g.profile.roots.map(root=>esc(root==='.'?'Project root (.)':root)).join(', ')}</p><button class="outline-button" data-revoke-grant="${g.id}">Revoke project tests</button></section>`).join(''):'<p>No project test grants.</p>'}<h3>Exact commands in this chat</h3>${permissions.commands.length?permissions.commands.map(c=>`<code class="approval-command">${esc(c.join(' '))}</code>`).join(''):'<p>No exact-command grants.</p>'}${permissions.commands.length?'<button class="outline-button" id="clear-session-permissions">Clear exact commands</button>':''}<p class="form-error" role="alert"></p>`);
+    const revoke=async(button,body)=>{button.disabled=true;try{await api('/tasks/'+task.id+'/permissions',body);await loadTaskPermissions(task,true);d.close();toast('Permission revoked. Future commands may ask again.');await refresh()}catch(error){$('.form-error',d).textContent=error.message;button.disabled=false;await refresh()}};
+    $$('[data-revoke-grant]',d).forEach(b=>b.onclick=()=>revoke(b,{revoke_project_grant:b.dataset.revokeGrant}));
+    const clear=$('#clear-session-permissions',d);if(clear)clear.onclick=()=>revoke(clear,{clear:true});
+  }catch(error){toast(error.message)}
 }
 async function startDemo() {
   if(!state.online){toast('The local server is unavailable. Start it with python3 run.py');return}

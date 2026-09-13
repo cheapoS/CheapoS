@@ -25,12 +25,12 @@ Run T09 permission tests and relevant presentation tests. Record the browser seq
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Shared Chat/Activity approval renderer/actions; eligible project-session choice with scope details; exact-command fallback; explicit scope submission; separate project/exact grant panels and revocation; composer project-scope indicator.
+- Acceptance evidence: Browser initial request and follow-up ran 4 checks with 1 prompt; a second same-project chat ran 2 checks with 0 prompts. Unrelated python -c command asked for exact approval and was declined. Revoke and server restart each caused fresh eligible approval.
+- Commands and results: 6 project permission regressions and 62 JavaScript tests passed; app syntax and diff checks passed. T09 HTTP contract has 29 passing tests. README and execution documentation describe shipped scopes.
+- Browser scenarios and results: Deterministic two-selector/checkpoint provider, real unittest processes, initial grant, follow-up, second registered copy, unknown-command fallback, revoke, restart, and 390px approval/Pause controls. Scope panel names project/executable/roots and later test edits. Fixture left paused.
+- Remaining limitations: Unittest only, server-session only, no persistent trust or commit-policy change.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

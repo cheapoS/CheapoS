@@ -169,3 +169,8 @@ Node is only needed for the optional JavaScript syntax check. Tests use temporar
 Next experiments: compare successful task cost against a single-model baseline, validate provider/model pairs, add stronger process isolation, and package the desktop app. Contributions should improve measured correctness and cost—not merely lower the displayed token count.
 
 MIT licensed. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+
+Routine unittest checks can use an explicit project-session grant covering the
+shown executable, test roots, and supported variants. Inspect or revoke it next
+to the composer. Other commands retain exact-command or one-time approval;
+all grants expire on restart. See [execution permissions](docs/EXECUTION.md#session-test-authorization).

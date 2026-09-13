@@ -89,3 +89,18 @@ source repository files or commits. Restoring a trashed task returns it to its
 previous active/archived state and never starts work or restores command grants.
 Active runs and unresolved commit transactions must finish or stop first.
 There is no automatic cleanup or permanent purge in this version.
+
+## Session test authorization
+
+Recognized unittest commands offer **Allow project tests for this session**.
+The displayed scope binds a Python executable and supported selectors/discovery
+flags to specific test roots and a known project. It can cover other CheapOS
+copies of that project. Tests execute repository code, including later edits.
+Changing runner configuration, the executable, or the registered project/copy
+requires another decision. Unknown command forms retain exact-command approval.
+
+**Tests allowed this session** beside the composer lists project grants and
+exact commands separately. Revoke a project grant or clear this chat's exact
+commands there. Grants expire on server restart; revocation does not terminate
+an already running command. Command permission never implies passing checks or
+approval to commit. Run once and Decline remain available.

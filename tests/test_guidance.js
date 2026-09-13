@@ -473,3 +473,10 @@ test('sidebar ordering is pinned first then creation time and stable ID, never l
   assert.deepEqual(sidebarOrder(tasks).map(t=>t.id),['old','a','b']);
   assert.equal(tasks[0].id,'b');
 });
+
+
+test('permission presentation never labels an exact grant as project-wide',()=>{
+  const {permissionChoice}=require('../dist/guidance.js');
+  assert.deepEqual(permissionChoice({command:['python','-c','pass']}),{scope:'task_exact',label:'Allow this command for this session'});
+  assert.deepEqual(permissionChoice({profile:{runner:'unittest'}}),{scope:'project_tests_session',label:'Allow project tests for this session'});
+});
