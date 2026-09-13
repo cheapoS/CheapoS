@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "collected_at": "2026-09-13T22:22:25.950021+00:00",
+  "collected_at": "2026-09-13T22:25:55.401752+00:00",
   "scope": "Supplemental independently collected trial evidence. Historical controller approvals are retained; supplemental failures prevent qualification. No credentials, provider configuration, or live task logs are included.",
   "qualification_overrides": [
     {
@@ -316,7 +316,7 @@
         "reviewer_regression_instruction": [
           {
             "event_id": 112,
-            "feedback": "Critical: String formatting in report.py uses f-string format specifiers (.2f) on Decimal objects, which will fail or produce incorrect output. Fix by converting to float: f\\\"{float(amount):.2f}\\\" or use Decimal's quantize method. Minor: README example shows output without trailing newline, but code adds one—clarify intended behavior. Recommend testing the updated validation logic (non-finite amounts, negative amounts, decimal precision checks) to ensure all error paths work correctly."
+            "feedback": "Critical: String formatting in report.py uses f-string format specifiers (.2f) on Decimal objects, which will fail or produce incorrect output. Fix by converting to float: f\\\"{float(amount):.2f}\\\" or use Decimal's quantize method. Minor: README example shows output without trailing newline, but code adds one\u2014clarify intended behavior. Recommend testing the updated validation logic (non-finite amounts, negative amounts, decimal precision checks) to ensure all error paths work correctly."
           }
         ],
         "passed": false,
@@ -470,6 +470,544 @@
             "basis": "Authenticated OmniRoute quota UI; account-wide, includes possible concurrent activity"
           }
         ]
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-antigravity-20260913/very-hard-1/supplemental-acceptance.json",
+      "source_sha256": "1860a9ab623f8cd3dc460c8a694109e40205d86ab20e068db8073d2e0301b86c",
+      "trial_family": "antigravity",
+      "trial": "very-hard-1",
+      "kind": "supplemental-acceptance",
+      "evidence": {
+        "trial_family": "antigravity",
+        "trial": "very-hard-1",
+        "task_id": "fca421ea15d2415da27f86dbac3f0cfc",
+        "original_trial_status": "ready_for_merge",
+        "supplemental_suite_source": "/tmp/cheapos-unattended-matrix/docs/trials/matrix/fixtures.py",
+        "supplemental_suite_sha256": "00718f59509cc3386542b34dd4f2da5289a325dedc1e04d6918a7f2fc5942afa",
+        "tests_run": 8,
+        "passed": true,
+        "output": "test_missing_import_has_no_traceback (supplemental_acceptance.CLITests) ... ok\ntest_whole_cli_and_errors (supplemental_acceptance.CLITests) ... ok\ntest_import_atomic_on_invalid_later_row (supplemental_acceptance.ExchangeTests) ... ok\ntest_import_quoted_unicode_and_export (supplemental_acceptance.ExchangeTests) ... ok\ntest_fresh_and_durable (supplemental_acceptance.StoreTests) ... ok\ntest_invalid_and_missing (supplemental_acceptance.StoreTests) ... ok\ntest_legacy_migration (supplemental_acceptance.StoreTests) ... ok\ntest_reject_future_schema_unchanged (supplemental_acceptance.StoreTests) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.196s\n\nOK\n",
+        "missing_file_probe": {
+          "returncode": 1,
+          "stdout": "",
+          "stderr": "error: [Errno 2] No such file or directory: '/var/folders/k6/smm5sp4n3kgcnn7xhw302knm0000gn/T/cheapos-independent-cli-rpo68qd9/missing.csv'\n",
+          "passed": true
+        },
+        "workspace_hashes": {
+          "store.py": "994f324292e0f7d2ca7b537e3fa84298799debc2adae612069afc41de2fa4bb9",
+          "README.md": "5226757209e0052738847f35ad41c501598657dc052ea08cfe7b037a83207da9",
+          "test_acceptance.py": "ba0e61af3e6b7865eb831c603b311a6eb196eb832b036148f2452efafac4dcab",
+          "cli.py": "642172e1c94eb569cf3e12a61d63049410733907cfbfb0ffcdde8f7a583f448e"
+        },
+        "workspace_preserved": true,
+        "method": "Copied Python and README files into temporary directory; executed updated VERY_HARD_TEST and explicit missing import probe. Original supplied tests and workspace untouched; no live inference."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-planning-kiro-20260913/planning-easy-prompt-1/execution-result.json",
+      "source_sha256": "8bd000f5dc3b94d99df71821bfefbb86e6bb45e20806e6096b74ca9af62b68cc",
+      "trial_family": "kiro",
+      "trial": "planning-easy-prompt-1",
+      "kind": "planned-input-execution",
+      "evidence": {
+        "kind": "planned_input_execution",
+        "level": "easy",
+        "attempt": 1,
+        "input": "prompt",
+        "profile_name": "cheapos-kiro-trial-config",
+        "run_id": "ae821c19aa264ba39dc0ec5d7805f633",
+        "app_commit": "604237af431bbf5c5701920f411760cc1f3be211",
+        "app_code_hash": "5142d2563b6cff2812957288c856ad5e07871b8dc19c9081733eecb718ec4972",
+        "reviewed_digest": "8120352db233a16c63b8a436716e1bf1816188bded94fac0351c07ecf61d5ff6",
+        "planning_seconds": 7.960180334,
+        "operator_prepared_plan": false,
+        "replanned": false,
+        "interventions_after_start": 0,
+        "intervention_reasons": [],
+        "status": "ready_for_merge",
+        "driver_seconds": 50.103908209,
+        "start_authorized": true,
+        "error_code": null,
+        "measurement": true,
+        "planning_usage": {
+          "worker": {
+            "tokens": 6413,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 0,
+            "cost": 0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 1
+        },
+        "execution_usage_delta": {
+          "worker": {
+            "tokens": 48477,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 41673,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 10
+        },
+        "cumulative_usage": {
+          "worker": {
+            "tokens": 54890,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 41673,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 11
+        },
+        "planning_consumption": {
+          "dollars": 0,
+          "working_seconds": 7.413581959,
+          "worker_turns": 0,
+          "requests": 1,
+          "tool_actions": 0,
+          "reviewer_tokens": 0,
+          "check_seconds": 0,
+          "output_tokens": 0,
+          "worker_tokens": 6413
+        },
+        "execution_consumption_delta": {
+          "dollars": 0,
+          "working_seconds": 48.899850916000005,
+          "worker_turns": 5,
+          "requests": 10,
+          "tool_actions": 9,
+          "reviewer_tokens": 41673,
+          "check_seconds": 0.22999999999999998,
+          "output_tokens": 0,
+          "worker_tokens": 48477
+        },
+        "cumulative_consumption": {
+          "dollars": 0,
+          "working_seconds": 56.313432875000004,
+          "worker_turns": 5,
+          "requests": 11,
+          "tool_actions": 9,
+          "reviewer_tokens": 41673,
+          "check_seconds": 0.22999999999999998,
+          "output_tokens": 0,
+          "worker_tokens": 54890
+        },
+        "planning_metrics": {
+          "schema_version": 1,
+          "coverage": "complete_instrumented",
+          "outcome": "ready",
+          "human_accepted_commits": 0,
+          "commit_conflict_observed": false,
+          "checks": {
+            "runs": 0,
+            "passed": 0,
+            "outcomes": []
+          },
+          "reviews": {
+            "requests": 0,
+            "decisions": []
+          },
+          "calls": {
+            "worker": 1,
+            "reviewer": 0,
+            "coordinator": 0
+          },
+          "tool_failures": 0,
+          "repeated_read_warnings": 0,
+          "handoffs": 0,
+          "recovery_attempts": 0,
+          "operator": {
+            "check_approvals_requested": 0,
+            "resumes": 0,
+            "accepted_commits": 0
+          },
+          "tokens": {
+            "input_tokens": 6381,
+            "output_tokens": 32,
+            "reasoning_tokens": null,
+            "cached_tokens": null,
+            "accounted_total": 6413
+          },
+          "cost": {
+            "accounted": 0.0,
+            "provenance": "estimated",
+            "uncertain_requests": 0,
+            "billing_receipt": false
+          },
+          "time": {
+            "elapsed_seconds": null,
+            "provider_request_seconds": null,
+            "provider_cooldown_seconds": null,
+            "operator_wait_seconds": null,
+            "controller_work_seconds": null
+          },
+          "model_failure": null,
+          "limitations": "Request time includes provider generation and network latency. Controller time excludes measured request/cooldown/operator waits. Historical or unreported fields are unknown; reviewer approval is not human acceptance."
+        },
+        "cumulative_metrics": {
+          "schema_version": 1,
+          "coverage": "complete_instrumented",
+          "outcome": "reviewer_approved",
+          "human_accepted_commits": 0,
+          "commit_conflict_observed": false,
+          "checks": {
+            "runs": 2,
+            "passed": 2,
+            "outcomes": [
+              "passed",
+              "passed"
+            ]
+          },
+          "reviews": {
+            "requests": 5,
+            "decisions": [
+              "APPROVE"
+            ]
+          },
+          "calls": {
+            "worker": 6,
+            "reviewer": 5,
+            "coordinator": 0
+          },
+          "tool_failures": 0,
+          "repeated_read_warnings": 0,
+          "handoffs": 0,
+          "recovery_attempts": 0,
+          "operator": {
+            "check_approvals_requested": 0,
+            "resumes": 0,
+            "accepted_commits": 0
+          },
+          "tokens": {
+            "input_tokens": 95030,
+            "output_tokens": 1533,
+            "reasoning_tokens": null,
+            "cached_tokens": null,
+            "accounted_total": 96563
+          },
+          "cost": {
+            "accounted": 0.0,
+            "provenance": "estimated",
+            "uncertain_requests": 0,
+            "billing_receipt": false
+          },
+          "time": {
+            "elapsed_seconds": 48.903569084000004,
+            "provider_request_seconds": 42.91102775,
+            "provider_cooldown_seconds": 0,
+            "operator_wait_seconds": 0,
+            "controller_work_seconds": 5.992541334000002
+          },
+          "model_failure": null,
+          "limitations": "Request time includes provider generation and network latency. Controller time excludes measured request/cooldown/operator waits. Historical or unreported fields are unknown; reviewer approval is not human acceptance."
+        },
+        "models": {
+          "worker": "kiro/claude-sonnet-4.5",
+          "reviewer": "kiro/claude-haiku-4.5"
+        },
+        "execution_models_used": {
+          "worker": [
+            "kiro/claude-sonnet-4.5"
+          ],
+          "reviewer": [
+            "kiro/claude-haiku-4.5"
+          ]
+        },
+        "retained_execution_request_count": 10,
+        "request_history_truncated": false,
+        "execution_request_count": 10,
+        "handoffs": 0,
+        "review_revisions": 0,
+        "checks": [
+          {
+            "passed": true,
+            "duration": 0.12,
+            "allowed_seconds": null,
+            "outcome": "passed"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "outcome": "passed"
+          }
+        ],
+        "commits": [
+          "e5af2f673037d5e4f28e2d232c724178cf55d72b"
+        ],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "source_tests_unchanged": true,
+          "tests_unchanged": true,
+          "merge_available": true,
+          "commits_verified": true
+        },
+        "autonomous_execution_success": true
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-planning-kiro-20260913/planning-easy-document-1/execution-result.json",
+      "source_sha256": "ab6c5eb27ef1f396da5681177bfe81fe31f9817ab4450239e00c5688a1be9415",
+      "trial_family": "kiro",
+      "trial": "planning-easy-document-1",
+      "kind": "planned-input-execution",
+      "evidence": {
+        "kind": "planned_input_execution",
+        "level": "easy",
+        "attempt": 1,
+        "input": "document",
+        "profile_name": "cheapos-kiro-trial-config",
+        "run_id": "87eae7004c5349c78d7805d8ca8f7909",
+        "app_commit": "604237af431bbf5c5701920f411760cc1f3be211",
+        "app_code_hash": "5142d2563b6cff2812957288c856ad5e07871b8dc19c9081733eecb718ec4972",
+        "reviewed_digest": "43e3c4182618ab96335868983477c8354a27a093fa364acc7b00e00b00842aea",
+        "planning_seconds": 7.590065416,
+        "operator_prepared_plan": false,
+        "replanned": false,
+        "interventions_after_start": 0,
+        "intervention_reasons": [],
+        "status": "ready_for_merge",
+        "driver_seconds": 50.594471875,
+        "start_authorized": true,
+        "error_code": null,
+        "measurement": true,
+        "planning_usage": {
+          "worker": {
+            "tokens": 6456,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 0,
+            "cost": 0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 1
+        },
+        "execution_usage_delta": {
+          "worker": {
+            "tokens": 44070,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 50599,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 11
+        },
+        "cumulative_usage": {
+          "worker": {
+            "tokens": 50526,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 50599,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 12
+        },
+        "planning_consumption": {
+          "dollars": 0,
+          "working_seconds": 7.132944416,
+          "worker_turns": 0,
+          "requests": 1,
+          "tool_actions": 0,
+          "reviewer_tokens": 0,
+          "check_seconds": 0,
+          "output_tokens": 0,
+          "worker_tokens": 6456
+        },
+        "execution_consumption_delta": {
+          "dollars": 0,
+          "working_seconds": 49.378198291,
+          "worker_turns": 5,
+          "requests": 11,
+          "tool_actions": 11,
+          "reviewer_tokens": 50599,
+          "check_seconds": 0.22999999999999998,
+          "output_tokens": 0,
+          "worker_tokens": 44070
+        },
+        "cumulative_consumption": {
+          "dollars": 0,
+          "working_seconds": 56.511142707,
+          "worker_turns": 5,
+          "requests": 12,
+          "tool_actions": 11,
+          "reviewer_tokens": 50599,
+          "check_seconds": 0.22999999999999998,
+          "output_tokens": 0,
+          "worker_tokens": 50526
+        },
+        "planning_metrics": {
+          "schema_version": 1,
+          "coverage": "complete_instrumented",
+          "outcome": "ready",
+          "human_accepted_commits": 0,
+          "commit_conflict_observed": false,
+          "checks": {
+            "runs": 0,
+            "passed": 0,
+            "outcomes": []
+          },
+          "reviews": {
+            "requests": 0,
+            "decisions": []
+          },
+          "calls": {
+            "worker": 1,
+            "reviewer": 0,
+            "coordinator": 0
+          },
+          "tool_failures": 0,
+          "repeated_read_warnings": 0,
+          "handoffs": 0,
+          "recovery_attempts": 0,
+          "operator": {
+            "check_approvals_requested": 0,
+            "resumes": 0,
+            "accepted_commits": 0
+          },
+          "tokens": {
+            "input_tokens": 6424,
+            "output_tokens": 32,
+            "reasoning_tokens": null,
+            "cached_tokens": null,
+            "accounted_total": 6456
+          },
+          "cost": {
+            "accounted": 0.0,
+            "provenance": "estimated",
+            "uncertain_requests": 0,
+            "billing_receipt": false
+          },
+          "time": {
+            "elapsed_seconds": null,
+            "provider_request_seconds": null,
+            "provider_cooldown_seconds": null,
+            "operator_wait_seconds": null,
+            "controller_work_seconds": null
+          },
+          "model_failure": null,
+          "limitations": "Request time includes provider generation and network latency. Controller time excludes measured request/cooldown/operator waits. Historical or unreported fields are unknown; reviewer approval is not human acceptance."
+        },
+        "cumulative_metrics": {
+          "schema_version": 1,
+          "coverage": "complete_instrumented",
+          "outcome": "reviewer_approved",
+          "human_accepted_commits": 0,
+          "commit_conflict_observed": false,
+          "checks": {
+            "runs": 2,
+            "passed": 2,
+            "outcomes": [
+              "passed",
+              "passed"
+            ]
+          },
+          "reviews": {
+            "requests": 6,
+            "decisions": [
+              "APPROVE"
+            ]
+          },
+          "calls": {
+            "worker": 6,
+            "reviewer": 6,
+            "coordinator": 0
+          },
+          "tool_failures": 0,
+          "repeated_read_warnings": 0,
+          "handoffs": 0,
+          "recovery_attempts": 0,
+          "operator": {
+            "check_approvals_requested": 0,
+            "resumes": 0,
+            "accepted_commits": 0
+          },
+          "tokens": {
+            "input_tokens": 99508,
+            "output_tokens": 1617,
+            "reasoning_tokens": null,
+            "cached_tokens": null,
+            "accounted_total": 101125
+          },
+          "cost": {
+            "accounted": 0.0,
+            "provenance": "estimated",
+            "uncertain_requests": 0,
+            "billing_receipt": false
+          },
+          "time": {
+            "elapsed_seconds": 49.381908833,
+            "provider_request_seconds": 43.635601209,
+            "provider_cooldown_seconds": 0,
+            "operator_wait_seconds": 0,
+            "controller_work_seconds": 5.746307623999996
+          },
+          "model_failure": null,
+          "limitations": "Request time includes provider generation and network latency. Controller time excludes measured request/cooldown/operator waits. Historical or unreported fields are unknown; reviewer approval is not human acceptance."
+        },
+        "models": {
+          "worker": "kiro/claude-sonnet-4.5",
+          "reviewer": "kiro/claude-haiku-4.5"
+        },
+        "execution_models_used": {
+          "worker": [
+            "kiro/claude-sonnet-4.5"
+          ],
+          "reviewer": [
+            "kiro/claude-haiku-4.5"
+          ]
+        },
+        "retained_execution_request_count": 11,
+        "request_history_truncated": false,
+        "execution_request_count": 11,
+        "handoffs": 0,
+        "review_revisions": 0,
+        "checks": [
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "outcome": "passed"
+          },
+          {
+            "passed": true,
+            "duration": 0.12,
+            "allowed_seconds": null,
+            "outcome": "passed"
+          }
+        ],
+        "commits": [
+          "2362677b495d8e57d75a4c04183592906461f436"
+        ],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "source_tests_unchanged": true,
+          "tests_unchanged": true,
+          "merge_available": true,
+          "commits_verified": true
+        },
+        "autonomous_execution_success": true
       }
     }
   ]
