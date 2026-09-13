@@ -181,8 +181,8 @@ class RoutingTests(LocalCase):
         self.assertTrue(result['answer_pending'])
         self.assertEqual(sum(e['title']=='read file' for e in result['events']),3)
 
-    def test_checkpoint_turn_limit_bounds_even_changing_edits(self):
-        task=self.chat('local');task['limits'].update(checkpoint_turns=2,worker_turns=100);self.engine.store.save(task)
+    def test_legacy_checkpoint_turn_limit_bounds_even_changing_edits(self):
+        task=self.chat('local');task.pop('checkpoint_policy');task['limits'].update(checkpoint_turns=2,worker_turns=100);self.engine.store.save(task)
         requests=self.responses([call('write_file',{'path':'new1.py','content':'one'}),call('write_file',{'path':'new2.py','content':'two'}),{'content':'Never called'}])
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'paused');self.assertEqual(len(result['changes']),2);self.assertEqual(len(requests),2)

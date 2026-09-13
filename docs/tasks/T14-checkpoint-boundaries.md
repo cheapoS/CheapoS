@@ -25,12 +25,12 @@ Add boundary tests using short scripted runs and fake/injected clock where suita
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: New tasks use soft checkpoint intervals. A changed saved patch can continue with compact context and a visible controller event. Only interval turns reset; hard turns/time/accounting/recovery/review bounds stay intact. Old tasks without checkpoint_policy retain their previous interval pause semantics.
+- Acceptance evidence: A scripted 13-edit task crossed the 12-turn boundary and completed real unittest verification plus independent review with 14 worker calls and one reviewer call. Direct tests prove no-progress pauses, partial work never becomes approved at a boundary, and hard turn/time limits and recovery counters remain unchanged. Existing bounded question, malformed-output, routing, budget and stop coverage was retained.
+- Commands and results: 68-test routing/answer/review/output/engine/boundary run exposed two issues (66 passed): fixture wait too short for 13 real filesystem edits, and check-mutated-workspace compatibility. Both corrected; all 4 affected boundary/mutation tests passed in 14.810s. 62 JavaScript tests, syntax and diff checks passed. Logs /tmp/cheapos-t14-*.log.
+- Browser scenarios and results: Isolated scripted 13-edit task displayed 13 saved files, actual checks passed, independent review passed and human approval preview. Expanded Details showed Saved progress; continuing the remaining step. No source commit approved.
+- Remaining limitations: Implementation continuation requires a changed patch, not a model claim. T15 adds request-scoped durable recovery/progress history so repeated resumed stalls cannot replenish recovery. The thirteen-edit fixture uses a bounded 30-second join because actual Git snapshots exceed the shared ten-second small-fixture wait on this host.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

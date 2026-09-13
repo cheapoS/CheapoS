@@ -129,3 +129,19 @@ verification/review before commit. Rollback still uses workspace generation to
 locate historical patches, independently of their current verification validity.
 No arbitrary environment values are persisted. Unknown executable/environment
 identity is conservatively untrusted; this is evidence tracking, not an OS sandbox.
+
+### Checkpoint intervals
+
+New tasks store `checkpoint_policy: soft`. At a checkpoint interval the
+controller compares the current patch with the patch at the previous interval.
+Useful unfinished edits trigger a compact continuation event, not a user Resume.
+Only the local interval counter resets. Total worker turns, elapsed working time,
+spending/token accounting, failed recovery attempts and review rounds remain.
+A boundary never creates an approval or labels a partial patch complete. Final
+answers/checkpoint calls still drive verification and independent review. A
+question with gathered evidence follows the existing bounded answer path.
+
+Old tasks without the policy keep their saved pause-at-interval semantics. Their
+limits are not silently enlarged. No-progress intervals still pause; changing a
+counter alone is not progress. This initial policy deliberately requires a
+changed patch for an implementation continuation, not an assistant's claim.

@@ -257,6 +257,7 @@ class Runtime:
         self.started = time.monotonic()
         self.argument_failures = 0
         self.step_turns = 0
+        self.interval_patch = task.get("patch", "")
         self.observations = {}
         self.file_observations = {}
         self.web = WebReader()
@@ -426,6 +427,7 @@ class Engine:
         directory = self.store.root / "tasks" / task_id
         workspace, snapshot = Workspace.snapshot(values.get("repository", ""), directory / "workspace")
         task = {"id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
+        task["checkpoint_policy"] = "soft"
         task.update({"conversational": conversational, "requests": [prompt.strip()], "turn_start_patch": ""})
         if conversational:
             task["request_worker_turns"] = 0
@@ -1121,15 +1123,36 @@ class Engine:
             "model": model, "role": "worker",
             "summary": "The response reached its output cap. Retrying once with smaller actions and reduced reasoning where supported. Saved edits and limits are unchanged."})
 
-    @staticmethod
-    def count_recovery_turn(runtime):
+    def checkpoint_boundary(self, runtime, compact=True):
+        """Continue useful work without resetting any hard allowance."""
+        task = runtime.task
+        runtime.guard()
+        if runtime.stop.is_set():
+            raise InterruptedError("Task stopped")
+        if request_worker_turns(task) >= task['limits']['worker_turns']:
+            raise WorkerTurnLimit("Worker model-turn limit reached; saved work is kept.")
+        if runtime.step_turns < task['limits'].get('checkpoint_turns', 12):
+            return
+        if task.get('checkpoint_policy') != 'soft':
+            raise CheckpointTurnLimit(task)
+        self.refresh_changes(task)
+        if task['patch'] == runtime.interval_patch:
+            raise ProgressPause("No meaningful patch progress was saved during the checkpoint interval. Inspect the existing evidence or clarify the remaining step before resuming.")
+        runtime.interval_patch = task['patch']
+        runtime.step_turns = 0
+        if compact:
+            task['messages'] = self.compact_context(runtime) if task.get('compact_edits') else self.initial_messages(task)
+        self.event(task, 'guard', 'Saved progress; continuing the remaining step', {
+            'worker_turns': request_worker_turns(task), 'worker_turn_limit': task['limits']['worker_turns'],
+            'summary': 'The patch is still unfinished. Continue the user requirements; verification and review are required before approval.'})
+
+    def count_recovery_turn(self, runtime):
         task = runtime.task
         if task["status"] == "reviewing":
             return
         if request_worker_turns(task) >= task["limits"]["worker_turns"]:
             raise WorkerTurnLimit("Worker model-turn limit reached during free-model recovery. Saved work is kept.")
-        if runtime.step_turns >= task["limits"].get("checkpoint_turns", 12):
-            raise CheckpointTurnLimit(task)
+        self.checkpoint_boundary(runtime, compact=False)
         task["worker_turns"] += 1
         task["request_worker_turns"] += 1
         runtime.step_turns += 1
@@ -1472,7 +1495,7 @@ class Engine:
         after_identity = evidence_identity(task)
         if before != task["patch"] or before_identity != after_identity or after_identity is None:
             result["passed"] = False
-            result["reason"] = "Verification inputs changed or the environment could not be identified. Inspect the changes and rerun checks."
+            result["reason"] = "Verification changed workspace files. Inspect the changes and rerun checks." if before != task["patch"] else "Verification environment changed or could not be identified. Inspect it and rerun checks."
             if result["outcome"] == "passed":
                 result["outcome"] = "inputs_changed"
                 result["next_action"] = "Inspect the workspace and environment before requesting fresh verification."
@@ -1485,7 +1508,7 @@ class Engine:
         self.event(task, "checks", "Verification passed" if result["passed"] else "Verification failed", result)
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
-        if result["outcome"] in {"task_deadline", "process_timeout", "output_limit", "inputs_changed"}:
+        if result["outcome"] in {"task_deadline", "process_timeout", "output_limit"}:
             raise ProgressPause(result["next_action"])
         return result
 
@@ -1526,6 +1549,7 @@ class Engine:
         else:
             checks = self.checks(runtime)
         runtime.step_turns = 0
+        runtime.interval_patch = task["patch"]
         runtime.observations.clear()
         task["loop_guidance"] = None
         if not checks["passed"]:
@@ -1677,13 +1701,12 @@ class Engine:
                     if task["patch"] == task.get("turn_start_patch", ""):
                         self.finish_answer(runtime)
                         continue
-                if runtime.step_turns >= task["limits"].get("checkpoint_turns", 12):
-                    raise CheckpointTurnLimit(task)
+                self.checkpoint_boundary(runtime)
                 runtime.step_turns += 1
                 if not task.get("action_pending") and runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
-                    task["loop_guidance"] = "You are near the checkpoint turn limit. For a question, give your answer now without editing files. For a requested change, finish only that scope and submit checkpoint; it verifies the patch and requests review. If no command is selected yet, use run_checks to choose one first. If blocked, ask_user. Avoid further polishing or repeated reads."
+                    task["loop_guidance"] = "You are near the checkpoint interval boundary. Useful unfinished edits can continue within the hard allowance; do not claim partial work is complete. For a question, give your answer now without editing files. For a requested change, finish only that scope and submit checkpoint; it verifies the patch and requests review. If no command is selected yet, use run_checks to choose one first. If blocked, ask_user. Avoid further polishing or repeated reads."
                     task["messages"].append({"role": "user", "content": task["loop_guidance"]})
-                    self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint turn limit.")
+                    self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint interval; hard task limits still apply.")
                 if len(json.dumps(task["messages"])) > 60000:
                     task["messages"] = self.compact_context(runtime) if task.get("compact_edits") else self.initial_messages(task)
                     self.event(task, "context", "Compacted worker context using current files, diff, and review feedback")
