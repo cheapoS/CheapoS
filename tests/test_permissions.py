@@ -38,20 +38,20 @@ class SessionPermissionTests(LocalCase):
         self.remember(task)
         self.assertEqual(self.finish(task)['status'], 'awaiting_reply')
 
-    def test_session_permission_covers_checkpoint_rerun_and_followup(self):
+    def test_checkpoint_reuses_checks_and_session_permission_covers_explicit_followup(self):
         task = self.task()
         self.replies([call('run_checks', {'command': COMMAND}), call('checkpoint', {'summary': 'Verified the existing upper-bound test.'}), call('review_decision', {'decision': 'APPROVE', 'feedback': 'Checks pass.'})])
         self.engine.start(task['id']); self.remember(task)
         result = self.finish(task)
         self.assertEqual(result['status'], 'approved', result['error'])
-        self.assertEqual(len(result['checks']), 2)
+        self.assertEqual(len(result['checks']), 1)
         self.assertEqual(sum(e['title'] == 'Permission needed to run the verification command' for e in result['events']), 1)
         self.assertFalse(result['auto_approve_checks'])
         self.replies([call('run_checks', {'command': COMMAND}), {'content': 'Checked again.'}])
         self.engine.start(task['id'], {'message': 'Run the same check again.'})
         result = self.finish(task)
         self.assertEqual(result['status'], 'awaiting_reply')
-        self.assertEqual(len(result['checks']), 3)
+        self.assertEqual(len(result['checks']), 2)
         self.assertEqual(self.engine.session_permissions(task['id'])['commands'], [shlex.split(COMMAND)])
 
     def test_changed_arguments_and_another_chat_still_ask(self):

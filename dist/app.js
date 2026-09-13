@@ -136,7 +136,7 @@ function renderTask({resetScroll=false}={}) {
   $('#task-status').textContent=labels[task.status]||task.status;
   $('#task-date').textContent=date(task.created_at);
   $('#task-eyebrow').classList.toggle('running',activeStatuses.has(task.status));
-  $('#task-subtitle').textContent=task.demo?'Scripted models. Real edits, checks, and checkpoint reviews.':task.status==='approved'?'Review the patch, then apply it to your project when you are ready.':'Working in a separate copy of your repository.';
+  $('#task-subtitle').textContent=task.demo?'Scripted models. Real edits, checks, and checkpoint reviews.':task.status==='approved'?'Ready for your decision. Approve and commit, or keep chatting.':'Working in a separate copy of your repository.';
   $('#change-count').textContent=task.changes.length;$('#check-count').textContent=task.checks.length;
   const sums=patchTotals(task.patch);$('#diff-tally').innerHTML=`<span>+${sums.add}</span><span>−${sums.remove}</span>`;
   $('#compact-cost').textContent=money(task.usage.cost);
@@ -146,7 +146,7 @@ function renderTask({resetScroll=false}={}) {
   renderView();renderInspector();renderComposer();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
   for(const el of $$('[data-thinking], [data-command-output]')){const saved=outputScroll.get(el.dataset.thinking||el.dataset.commandOutput);el.scrollTop=!saved||saved.bottom?el.scrollHeight:saved.top}
-  scroller.scrollTop=resetScroll?scroller.scrollHeight:state.view==='chat'&&activeStatuses.has(task.status)&&bottom?scroller.scrollHeight:oldScroll;
+  scroller.scrollTop=resetScroll?scroller.scrollHeight:state.view==='chat'&&bottom?scroller.scrollHeight:oldScroll;
 }
 function renderView() {
   $('#compact-session').hidden=true;
@@ -218,7 +218,7 @@ function renderChat() {
   let work=[];
   const flush=()=>{
     if(!work.length)return;
-    const actions=work.filter(e=>['tool','checks','tool_error','web'].includes(e.kind));
+    const actions=work.filter(e=>['tool','checks','check_reused','tool_error','web'].includes(e.kind));
     for(const event of actions){
       if(event.kind==='checks'){parts.push(commandMarkup(event.detail,{key:event.detail.run_id||event.id,open:event===latestCheck}));continue}
       if(event.title==='Running verification'&&visibleRuns.has(event.detail?.run_id))continue;
@@ -229,9 +229,9 @@ function renderChat() {
   };
   for(const event of task.events){
     if(event.kind==='guard'&&task.status==='paused'&&event.detail===task.error)continue;
-    if(['user','assistant','review','checkpoint','generation','handoff','guard','routing','commit'].includes(event.kind)){
+    if(['user','assistant','review','checkpoint','generation','handoff','guard','routing','commit','human_decision'].includes(event.kind)){
       flush();
-      if(['handoff','guard','routing','commit'].includes(event.kind)){const item=CheapOSGuide.activityItem(event);parts.push(`<aside class="chat-handoff">${icon(item.icon)}<div><strong>${esc(item.title)}</strong><p>${esc(item.note)}</p>${event.kind==='handoff'?`<small>${esc(event.detail.summary)}</small>`:''}</div></aside>`)}
+      if(['handoff','guard','routing','commit','human_decision'].includes(event.kind)){const item=CheapOSGuide.activityItem(event);parts.push(`<aside class="chat-handoff">${icon(item.icon)}<div><strong>${esc(item.title)}</strong><p>${esc(item.note)}</p>${event.kind==='handoff'?`<small>${esc(event.detail.summary)}</small>`:''}</div></aside>`)}
       else if(event.kind==='user'||event.kind==='assistant')parts.push(message(event.kind==='user'?'You':'CheapOS',event.detail));
       else if(event.kind==='generation'){parts.push(thinkingMarkup(event.detail));if(event.detail.interrupted&&event.detail.content)parts.push(`<div class="partial-response"><span>Partial response · interrupted</span>${messageText(event.detail.content)}</div>`)}
       else if(event.kind==='checkpoint')parts.push(message('CheapOS',event.detail.worker_summary));
@@ -246,16 +246,15 @@ function renderChat() {
   if(task.pending_approval)parts.push(`<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in this chat’s task copy. Session permission remembers this exact command until CheapOS restarts.</p><div class="button-row">${button('approve','Run once',true)}${button('approve-session','Allow for this session')}${button('decline','Decline')}</div></section>`);
   else if(activeStatuses.has(task.status))parts.push(progressMarkup(task),streamedOutput,task.check_stream?commandMarkup(task.check_stream,{live:true}):'');
   else if(task.status==='ready')parts.push(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
-  else if(['approved','completed'].includes(task.status))parts.push(`<section class="chat-result">${icon('check')}<div><strong>${task.status==='approved'?'Changes are ready to review.':'Implementation finished. Your review is next.'}</strong><p>${task.changes.length} changed files · ${task.checks.at(-1)?.passed?'Latest checks passed':'Check the verification output'}</p><div class="button-row">${button('changes','Review changes',true)}${CheapOSGuide.canCommit(task)?button('commit','Apply & commit'):''}<a class="subtle-button" href="/api/tasks/${task.id}/patch" download>Export patch</a></div></div></section>`);
-  else if(task.status==='awaiting_reply'&&task.changes.length)parts.push(`<section class="chat-result">${icon('file')}<div><strong>${task.changes.length} changed file${task.changes.length===1?'':'s'} saved in this chat.</strong><p>${CheapOSGuide.canCommit(task)?'Ready for your approval to apply and commit.':'The current patch still needs verification and reviewer approval before committing.'}</p><div class="button-row">${button('changes','View changes')}${CheapOSGuide.canCommit(task)?button('commit','Apply & commit',true):button('request-review','Ask for review',true)}</div></div></section>`);
+  else if(CheapOSGuide.canCommit(task))parts.push(commitDecisionMarkup(task));
+  else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))parts.push(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, CheapOS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
   else if(task.status!=='awaiting_reply')parts.push(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
-  $('#chat-view').innerHTML=parts.join('');updateProgressClock();
+  $('#chat-view').innerHTML=parts.join('');updateProgressClock();bindCommitDecision(task);
   $$('[data-chat-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.chatAction;
     if(action==='changes'||action==='activity'){setView(action);return}
     if(action==='stop'){await stopTask();return}
     if(action==='connections'){openConnections(undefined,task);return}
-    if(action==='commit'){await openCommit(b);return}
     if(action==='request-review'){await requestCommitReview(b);return}
     if(action==='resume'){await resumeTask(b);return}
     b.disabled=true;
@@ -299,37 +298,66 @@ function renderChanges() {
   if(!files.length){const last=task.commits?.at(-1);$('#changes-view').innerHTML=last?`<section class="commit-success">${icon('check')}<h2>Committed to your project.</h2><p>${esc(last.message)}</p><p><code>${esc(last.commit.slice(0,8))}</code> on <strong>${esc(last.branch)}</strong></p><p class="muted">Your next edits in this chat will build on this commit.</p><details class="patch-help"><summary>View committed patch (${last.files.length} files)</summary><pre>${esc(last.patch)}</pre></details></section>`:'<div class="empty-state">'+icon('code')+'<h2>No changes yet.</h2><p>File edits will appear here as the worker makes them.</p></div>';return}
   state.file=Math.min(state.file,files.length-1);const file=files[state.file],rows=diffLines(file.before,file.after);
   const line=r=>`<div class="diff-line ${r.type}"><span class="line-number">${r.old}</span><span class="line-number">${r.new}</span><span class="diff-sign">${r.type==='add'?'+':r.type==='remove'?'−':' '}</span><span class="source">${esc(r.text)||' '}</span></div>`;
-  $('#changes-view').innerHTML=`<div class="view-title"><div><h2>Review the work.</h2><p>${files.length} changed files in the task copy</p></div><div class="button-row"><a class="subtle-button" href="/api/tasks/${task.id}/patch" download>${icon('file')}Export patch</a>${CheapOSGuide.canCommit(task)?'<button class="primary-button" id="apply-commit">Apply & commit</button>':task.status==='awaiting_reply'?'<button class="primary-button" id="commit-review">Ask for review</button>':''}</div></div><div class="file-list">${files.map((f,i)=>`<button class="file-item ${i===state.file?'selected':''}" data-file="${i}">${icon('file')}<span>${esc(f.path)}</span><span class="file-status">${f.before?'M':'A'}</span></button>`).join('')}</div><div class="diff-panel"><div class="diff-toolbar"><span>${icon('file')}${esc(file.path)}</span><div class="segmented"><button data-diff="unified" class="${state.diff==='unified'?'selected':''}">Unified</button><button data-diff="split" class="${state.diff==='split'?'selected':''}">Split</button></div></div>${file.binary?'<p class="modal-description">Binary change. Inspect the exported Git patch.</p>':state.diff==='unified'?`<div class="diff-code" tabindex="0" aria-label="Unified code diff">${rows.map(line).join('')}</div>`:`<div class="split-diff">${['before','after'].map(side=>`<div class="diff-code" tabindex="0" aria-label="${side==='before'?'Original':'Modified'} file"><div class="split-label">${side==='before'?'Before':'After'}</div>${rows.filter(r=>r.type!==(side==='before'?'add':'remove')).map(r=>`<div class="diff-line ${r.type}"><span class="line-number">${side==='before'?r.old:r.new}</span><span class="source">${esc(r.text)||' '}</span></div>`).join('')}</div>`).join('')}</div>`}</div><div class="diff-bottom">${icon('shield')}${CheapOSGuide.canCommit(task)?'Ready for your approval. Apply & commit will update your project and create a local Git commit.':'Edits are saved in the task copy. Finish verification and review to enable Apply & commit.'}</div><details class="patch-help"><summary>Apply manually instead</summary><p>From your original repository, check the downloaded patch first, then apply it:</p><pre>git apply --check /path/to/cheapos-${task.id.slice(0,8)}.patch\ngit apply /path/to/cheapos-${task.id.slice(0,8)}.patch</pre><p>For large files, the visual comparison shows whole blocks; the exported Git patch preserves the exact change, including file modes and final newlines.</p></details>`;
+  $('#changes-view').innerHTML=`<div class="view-title"><div><h2>Review the work.</h2><p>${files.length} changed files in the task copy</p></div><div class="button-row"><a class="subtle-button" href="/api/tasks/${task.id}/patch" download>${icon('file')}Export patch</a>${!CheapOSGuide.canCommit(task)&&task.status==='awaiting_reply'?'<button class="primary-button" id="commit-review">Finish review</button>':''}</div></div>${CheapOSGuide.canCommit(task)?commitDecisionMarkup(task):''}<div class="file-list">${files.map((f,i)=>`<button class="file-item ${i===state.file?'selected':''}" data-file="${i}">${icon('file')}<span>${esc(f.path)}</span><span class="file-status">${f.before?'M':'A'}</span></button>`).join('')}</div><div class="diff-panel"><div class="diff-toolbar"><span>${icon('file')}${esc(file.path)}</span><div class="segmented"><button data-diff="unified" class="${state.diff==='unified'?'selected':''}">Unified</button><button data-diff="split" class="${state.diff==='split'?'selected':''}">Split</button></div></div>${file.binary?'<p class="modal-description">Binary change. Inspect the exported Git patch.</p>':state.diff==='unified'?`<div class="diff-code" tabindex="0" aria-label="Unified code diff">${rows.map(line).join('')}</div>`:`<div class="split-diff">${['before','after'].map(side=>`<div class="diff-code" tabindex="0" aria-label="${side==='before'?'Original':'Modified'} file"><div class="split-label">${side==='before'?'Before':'After'}</div>${rows.filter(r=>r.type!==(side==='before'?'add':'remove')).map(r=>`<div class="diff-line ${r.type}"><span class="line-number">${side==='before'?r.old:r.new}</span><span class="source">${esc(r.text)||' '}</span></div>`).join('')}</div>`).join('')}</div>`}</div><div class="diff-bottom">${icon('shield')}${CheapOSGuide.canCommit(task)?'Approve the reviewed patch above, or keep chatting to request changes.':'The task copy is saved. Verification and review must finish before committing.'}</div><details class="patch-help"><summary>Apply manually instead</summary><p>From your original repository, check the downloaded patch first, then apply it:</p><pre>git apply --check /path/to/cheapos-${task.id.slice(0,8)}.patch\ngit apply /path/to/cheapos-${task.id.slice(0,8)}.patch</pre><p>For large files, the visual comparison shows whole blocks; the exported Git patch preserves the exact change, including file modes and final newlines.</p></details>`;
   if($('#commit-review'))$('#commit-review').onclick=e=>requestCommitReview(e.currentTarget);
-  if($('#apply-commit'))$('#apply-commit').onclick=e=>openCommit(e.currentTarget);
+  bindCommitDecision(task);
   $$('[data-file]').forEach(b=>b.onclick=()=>{state.file=Number(b.dataset.file);renderChanges()});$$('[data-diff]').forEach(b=>b.onclick=()=>{state.diff=b.dataset.diff;renderChanges()});
 }
 async function requestCommitReview(trigger) {
   const task=state.task;if(!task)return;
   trigger.disabled=true;trigger.textContent='Requesting review…';
   try {
-    await api('/tasks/'+task.id+'/message',{message:'Prepare the current saved patch for review and commit. Keep the implementation unchanged unless verification or reviewer feedback requires a fix. Reuse the configured verification command and submit a checkpoint for reviewer approval. The user will approve Apply & commit in the app afterward; do not run Git commit or push.'});
+    await api('/tasks/'+task.id+'/message',{message:'Prepare the current saved patch for review and commit. Keep the implementation unchanged unless verification or reviewer feedback requires a fix. Reuse the configured verification command and submit a checkpoint for reviewer approval. The app will present the final diff for the user to approve and commit afterward; do not run Git commit or push.'});
     await refresh();setView('chat');
-  } catch(e){toast(e.message);trigger.disabled=false;trigger.textContent='Ask for review'}
+  } catch(e){toast(e.message);trigger.disabled=false;trigger.textContent='Finish review'}
 }
-async function openCommit(trigger) {
-  const task=state.task;if(!task)return;
-  if(trigger){trigger.disabled=true;trigger.textContent='Checking project…'}
+const commitPreviews=new Map();
+const previewKey=task=>task.patch_digest+':'+(task.checkpoints?.at(-1)?.number??task.checkpoints?.length??0);
+function commitDecisionMarkup(task) {
+  if(CheapOSGuide.commitDeferred(task))return `<section class="chat-result"><div><strong>Changes are saved, without a commit.</strong><p>You can keep chatting or reconsider this patch whenever you’re ready.</p><button class="subtle-button" data-commit-action="reopen">Reopen decision</button></div></section>`;
+  const entry=commitPreviews.get(task.id),current=entry?.key===previewKey(task)?entry:null;
+  if(!current){ensureCommitPreview(task);return '<section class="chat-result"><div><strong>Checks and review are complete.</strong><p>Preparing your final diff and commit message…</p></div></section>'}
+  if(current.loading)return '<section class="chat-result"><div><strong>Checks and review are complete.</strong><p>Preparing your final diff and commit message…</p></div></section>';
+  if(current.error)return `<section class="chat-result"><div><strong>Your changes are saved.</strong><p>${esc(current.error)}</p><div class="button-row"><button class="primary-button" data-commit-action="refresh">Refresh commit preview</button><button class="subtle-button" data-commit-action="change">Keep chatting</button>${task.commit_pending?'':'<button class="subtle-button" data-commit-action="defer">Decline</button>'}</div></div></section>`;
+  const p=current.preview;
+  return `<section class="commit-decision" aria-label="Your decision"><h3>${p.retry?'Finish your approved commit.':'Ready for your approval.'}</h3><p class="muted">${esc(p.review)} · checks passed. ${p.retry?'Finish the saved attempt before starting more work.':'You can approve this patch, ask for changes, or keep chatting.'}</p><dl class="commit-target"><div><dt>Project</dt><dd>${esc(p.source)}</dd></div><div><dt>Commit to</dt><dd>${esc(p.branch)} <span class="muted">at ${esc(p.head.slice(0,8))}</span></dd></div></dl><details class="commit-patch" data-event="commit-patch-${esc(task.patch_digest)}" open><summary>Final diff · ${p.files.length} file${p.files.length===1?'':'s'}</summary><pre tabindex="0" aria-label="Reviewed patch">${esc(p.patch)}</pre></details><form id="commit-form"><label>Commit message<textarea name="message" rows="2" maxlength="2000" required ${p.retry?'readonly':''}>${esc(current.message)}</textarea></label><p class="form-error" role="alert">${esc(current.submitError||'')}</p><div class="button-row"><button type="submit" class="primary-button" ${current.submitting?'disabled':''}>${current.submitting?'Committing…':p.retry?'Finish commit':'Approve & commit'}</button>${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="change" ${current.submitting?'disabled':''}>Request changes</button>`}${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="defer" ${current.submitting?'disabled':''}>Decline</button>`}</div><p class="small muted">${p.retry?'Your approved commit was interrupted. Finish the saved attempt to continue chatting.':'Approval applies this reviewed patch and creates a local commit. Declining keeps your edits saved.'} Pushing is separate.</p></form></section>`;
+}
+async function ensureCommitPreview(task,force=false) {
+  const key=previewKey(task),existing=commitPreviews.get(task.id);
+  if(!force&&existing?.key===key)return;
+  const entry={key,loading:true,message:existing?.key===key?existing.message:undefined};commitPreviews.set(task.id,entry);
   try {
-    const preview=await api('/tasks/'+task.id+'/commit-preview',{});
-    const d=dialog(`<form>${modalHeader('YOUR APPROVAL',preview.retry?'Finish the saved commit.':'Apply these changes & commit?')}<p class="modal-description">${esc(preview.review)} · task-copy checks passed. Approving updates your local project and creates one commit.</p><dl class="commit-target"><div><dt>Project</dt><dd>${esc(preview.source)}</dd></div><div><dt>Branch</dt><dd>${esc(preview.branch)} <span class="muted">at ${esc(preview.head.slice(0,8))}</span></dd></div></dl><label>Commit message<textarea name="message" rows="3" maxlength="2000" required ${preview.retry?'readonly':''}>${esc(preview.message)}</textarea></label><details class="commit-patch" open><summary>Review the exact patch · ${preview.files.length} files</summary><pre tabindex="0" aria-label="Patch to apply">${esc(preview.patch)}</pre></details><p class="form-error" role="alert"></p><div class="modal-footer"><span>Local commit · pushing is separate</span><div class="button-row"><button type="button" class="subtle-button" data-close>Cancel</button><button type="submit" class="primary-button">${preview.retry?'Approve & finish commit':'Approve & commit'}</button></div></div></form>`,'commit-modal');
-    const form=$('form',d);let committing=false;
-    d.addEventListener('cancel',e=>{if(committing)e.preventDefault()});
-    form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{
-      committing=true;const submit=$('button[type="submit"]',form);submit.textContent='Applying & committing…';$$('[data-close]',d).forEach(b=>b.disabled=true);
-      try {
-        const result=await api('/tasks/'+task.id+'/commit',{approved:true,approval_id:preview.approval_id,message:new FormData(form).get('message')});
-        d.close();await refresh();toast('Committed '+result.commit.slice(0,8)+' to '+result.branch);
-      } finally {committing=false;submit.textContent='Approve & commit';$$('[data-close]',d).forEach(b=>b.disabled=false)}
-    })};
-  } catch(e) {
-    dialog(`${modalHeader('APPLY & COMMIT','Your edits are saved.')}<p class="modal-description">${esc(e.message)}</p><div class="modal-footer"><span>Resolve this, then reopen Apply & commit.</span><button class="primary-button" data-close>Got it</button></div>`);
-  } finally {if(trigger){trigger.disabled=false;trigger.textContent='Apply & commit'}}
+    const p=await api('/tasks/'+task.id+'/commit-preview',{});
+    entry.preview=p;entry.message=entry.message??p.message;
+  } catch(e){entry.error=e.message}
+  finally {entry.loading=false;if(state.task?.id===task.id&&previewKey(state.task)===key&&commitPreviews.get(task.id)===entry)renderTask()}
+}
+function requestChanges() {
+  setView('chat');const input=$('#chat-input');input.placeholder='Tell CheapOS what to change, or ask a question…';input.focus();input.scrollIntoView({block:'nearest'});
+}
+function bindCommitDecision(task) {
+  $$('[data-commit-action]').forEach(b=>b.onclick=async()=>{
+    const action=b.dataset.commitAction;
+    if(action==='change'){requestChanges();return}
+    if(action==='refresh'){b.disabled=true;await ensureCommitPreview(task,true);return}
+    b.disabled=true;
+    try {
+      const updated=await api('/tasks/'+task.id+'/commit-decision',{decision:action==='defer'?'defer':'review',patch_digest:task.patch_digest});
+      commitPreviews.delete(task.id);
+      if(state.task?.id===task.id){state.task=updated;renderTask()}
+    }catch(e){toast(e.message);b.disabled=false}
+  });
+  const form=$('#commit-form');if(!form)return;
+  const entry=commitPreviews.get(task.id);
+  $('textarea',form).oninput=e=>{entry.message=e.target.value};
+  form.onsubmit=e=>{e.preventDefault();if(entry.submitting)return;formAction(form,async()=>{
+    entry.submitting=true;entry.submitError='';$('button[type="submit"]',form).textContent='Committing…';$$('[data-commit-action]',form).forEach(b=>b.disabled=true);
+    try {
+      const result=await api('/tasks/'+task.id+'/commit',{approved:true,approval_id:entry.preview.approval_id,message:entry.message});
+      commitPreviews.delete(task.id);await refresh();toast('Committed '+result.commit.slice(0,8)+' to '+result.branch);
+    } catch(error) {entry.submitError=error.message;entry.error=error.message;throw error}
+    finally {entry.submitting=false;if(state.task?.id===task.id)renderTask()}
+  })};
 }
 function renderTests() {
   const checks=state.task.checks;

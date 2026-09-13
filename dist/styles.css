@@ -68,13 +68,14 @@
 .command-note{padding:0 16px 12px;font-size:12px;color:#b2c0b7;line-height:1.6}
 .chat-action summary:focus-visible,.command-panel summary:focus-visible{outline:2px solid #b7e2ca;outline-offset:-2px}
 @media(prefers-reduced-motion:reduce){.chat-action summary>svg:last-child{transition:none}}
-.commit-modal { width: min(960px, calc(100vw - 40px)); }
+.commit-decision { max-width: 960px; margin: 24px auto; padding: 24px; border: 1px solid #3d5548; background: #1c2320; border-radius: 12px; }
+.commit-decision h3 { margin: 0 0 12px; font-size: 1.2rem; }
+.commit-decision > p { line-height: 1.6; }
 .commit-target { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
 .commit-target div { display: grid; grid-template-columns: 75px 1fr; gap: 12px; }
 .commit-target dt { color: var(--muted); }
 .commit-target dd { margin: 0; overflow-wrap: anywhere; }
-.commit-modal textarea { width: 100%; box-sizing: border-box; min-height: 74px; resize: vertical; margin-top: 8px; padding: 12px; color: var(--text); background: #222729; border: 1px solid #3c4442; border-radius: 8px; line-height: 1.5; }
-.commit-modal .modal-footer { position: sticky; bottom: -28px; background: var(--surface); padding: 16px 0; box-shadow: 0 -12px 15px var(--surface); }
+.commit-decision textarea { width: 100%; box-sizing: border-box; min-height: 74px; resize: vertical; margin-top: 8px; padding: 12px; color: var(--text); background: #222729; border: 1px solid #3c4442; border-radius: 8px; line-height: 1.5; }
 .commit-patch { margin-top: 22px; }
 .commit-patch summary { cursor: pointer; padding: 12px 0; }
 .commit-patch pre, .commit-success pre { max-height: 35vh; overflow: auto; padding: 16px; background: #121615; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; line-height: 1.65; white-space: pre; }

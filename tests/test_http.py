@@ -115,6 +115,13 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         preview = json.loads(body)
         data = {'approved': True, 'approval_id': preview['approval_id'], 'message': 'Fix clamp boundaries'}
+        digest = json.loads(self.request('GET', path)[2])['patch_digest']
+        choice = {'decision':'defer','patch_digest':digest}
+        self.assertEqual(self.request('POST', path + '/commit-decision', choice, {'Content-Type':'application/json'})[0], 403)
+        self.assertEqual(self.post(path + '/commit-decision', {**choice,'decision':'approve'})[0], 400)
+        self.assertEqual(self.post(path + '/commit-decision', choice)[0], 200)
+        self.assertEqual(self.post(path + '/commit', data)[0], 400)
+        self.assertEqual(self.post(path + '/commit-decision', {**choice,'decision':'review'})[0], 200)
         self.assertEqual(self.request('POST', path + '/commit', data, {'Content-Type': 'application/json'})[0], 403)
         self.assertEqual(self.post(path + '/commit', {**data, 'approved': 'true'})[0], 400)
         status, _, body = self.post(path + '/commit', data)

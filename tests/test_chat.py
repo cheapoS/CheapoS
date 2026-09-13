@@ -102,14 +102,15 @@ class ChatTests(LocalCase):
         self.engine.start(task['id'])
         self.assertEqual(self.finish(task)['status'],'awaiting_reply')
         self.engine.start(task['id'],{'message':'Now fix the lower bound.'})
-        # Both the chosen command and independent checkpoint verification need approval.
-        for expected in [1,2]:
+        # Checkpoint reuses the controller's passing check for the same patch.
+        for expected in [1]:
             wait_for(lambda:self.engine.store.get(task['id'])['status']=='waiting_approval' and len(self.engine.store.get(task['id'])['checks'])==expected-1)
             self.engine.approve_check(task['id'],True)
             wait_for(lambda:len(self.engine.store.get(task['id'])['checks'])>=expected)
         first=self.finish(task)
         self.assertEqual(first['status'],'approved')
         self.assertEqual(first['review_count'],1)
+        self.assertEqual(len(first['checks']),1)
         self.assertTrue(first['checks'][-1]['passed'])
         self.assertEqual(first['checkpoints'][-1]['user_messages'],['Explain clamp. Do not edit yet.','Now fix the lower bound.'])
         self.engine.start(task['id'],{'message':'Explain the fix without making more changes.'})
@@ -117,6 +118,7 @@ class ChatTests(LocalCase):
         self.assertEqual(second['status'],'awaiting_reply')
         self.assertEqual(second['patch'],first['patch'])
         self.assertEqual(second['review_count'],1)
+        self.assertEqual(second['checks'],first['checks'])
         self.assertEqual(second['usage']['worker']['tokens'],first['usage']['worker']['tokens']+15)
         self.assertEqual(second['providers'],first['providers'])
         self.assertEqual(second['limits'],first['limits'])

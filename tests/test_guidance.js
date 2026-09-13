@@ -22,6 +22,14 @@ test('commit activity identifies the actual branch and commit',()=>{
   assert.equal(item.note,'abcd1234 · main · Fix clamp');
 });
 
+test('declining keeps the exact patch deferred while a changed patch gets a new decision',()=>{
+  const {commitDeferred}=require('../dist/guidance.js');
+  const t={patch_digest:'one',human_decision:{decision:'defer',digest:'one'}};
+  assert.equal(commitDeferred(t),true);
+  assert.equal(commitDeferred({...t,patch_digest:'two'}),false);
+  assert.equal(commitDeferred({...t,human_decision:{decision:'review',digest:'one'}}),false);
+});
+
 test('live checks keep their command and elapsed time while output updates',()=>{
   const {progress}=require('../dist/guidance.js');
   const t=task({status:'running',updated_at:'2026-09-13T00:00:09Z',check_stream:{command:['python3','-m','unittest'],started_at:'2026-09-13T00:00:00Z',updated_at:'2026-09-13T00:00:09Z',output:'test_bounds ... ok'}});

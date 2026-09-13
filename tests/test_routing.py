@@ -57,7 +57,7 @@ class RoutingTests(LocalCase):
             call('checkpoint',{'summary':'Fixed clamp.','uncertainties':''}),
             call('review_decision',{'decision':'APPROVE','feedback':'Bounds fixed; checks passed.'})])
         self.engine.start(task['id'])
-        for n in [0,1]:
+        for n in [0]:
             wait_for(lambda:self.engine.store.get(task['id'])['status']=='waiting_approval' and len(self.engine.store.get(task['id'])['checks'])==n)
             self.engine.approve_check(task['id'],True)
             wait_for(lambda:len(self.engine.store.get(task['id'])['checks'])>n)

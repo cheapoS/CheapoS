@@ -200,6 +200,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     result = engine.clear_session_permissions(task_id)
                 elif action == "commit-preview":
                     result = engine.prepare_commit(task_id)
+                elif action == "commit-decision":
+                    result = public_task(engine.commit_decision(task_id, values))
                 elif action == "commit":
                     result = engine.apply_commit(task_id, values)
                 else:

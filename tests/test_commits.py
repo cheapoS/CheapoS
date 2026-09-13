@@ -72,6 +72,25 @@ class CommitTests(unittest.TestCase):
         self.assertEqual(self.approve(p), result)
         self.assertEqual(git(self.source, 'rev-list', '--count', 'HEAD').strip(), '2')
 
+    def test_decline_saves_the_patch_and_blocks_stale_approval_until_reopened(self):
+        p = self.preview()
+        digest = hashlib.sha256(self.task['patch'].encode()).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'patch changed'):
+            self.engine.commit_decision(self.task['id'], {'decision':'defer','patch_digest':'old'})
+        self.engine.commit_decision(self.task['id'], {'decision':'defer','patch_digest':digest})
+        with self.assertRaisesRegex(ValueError, 'left these changes uncommitted'):
+            self.approve(p)
+        self.assertFalse((self.source / 'approved.txt').exists())
+        self.assertEqual(git(self.source, 'rev-parse', 'HEAD').strip(), self.head)
+        self.engine.shutdown()
+        self.engine = Engine(Path(self.temp.name) / 'state')
+        saved = self.engine.store.get(self.task['id'])
+        self.assertEqual(saved['human_decision'], {'decision':'defer','digest':digest})
+        self.assertEqual(saved['patch'], self.task['patch'])
+        self.engine.commit_decision(self.task['id'], {'decision':'review','patch_digest':digest})
+        with patch.object(self.engine, 'checks', side_effect=AssertionError('No checks at commit')), patch.object(self.engine, 'request', side_effect=AssertionError('No model calls at commit')):
+            self.approve(self.preview())
+
     def test_followup_commits_only_the_next_patch(self):
         first = self.approve(self.preview())
         self.task = self.engine.store.get(self.task['id'])
@@ -185,6 +204,8 @@ class CommitTests(unittest.TestCase):
         self.assertEqual(git(self.source, 'rev-parse', 'HEAD').strip(), self.head)
         with self.assertRaisesRegex(ValueError, 'Finish the saved'):
             self.engine.start(self.task['id'])
+        with self.assertRaisesRegex(ValueError, 'already approved and started'):
+            self.engine.commit_decision(self.task['id'], {'decision':'defer','patch_digest':hashlib.sha256(p['patch'].encode()).hexdigest()})
         self.engine.shutdown()
         self.engine = Engine(Path(self.temp.name) / 'state')
         p = self.preview()
