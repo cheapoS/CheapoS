@@ -133,3 +133,5 @@ Remaining limitations:
 
 
 Update this card and TASKS.md; commit independently of ranking changes.
+
+Browser qualification remains pending: Chrome rejected both loopback addresses with `net::ERR_BLOCKED_BY_CLIENT`; in-app browser was unavailable. No UI action succeeded. The disposable synthetic server was stopped. Focused Node and backend coverage passed; this is not a visual pass.

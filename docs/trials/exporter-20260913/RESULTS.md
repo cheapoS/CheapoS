@@ -92,3 +92,14 @@ the app parser with a required path argument and 1,024 output-token allowance;
 no returned file tool was executed. Both models passed before each attempt.
 Provider-reported zero completion tokens are retained as reported, not inferred
 as actual zero use. Included marginal estimates are not provider billing evidence.
+
+## Post-run acceptance correction
+
+Acceptance v3 (`b44fa1b8dbe774c4788258e3c25173a0e3f202520952f82200c264151442212d`)
+accepts escaped status labels and rejects false abbreviated commit evidence.
+It was run externally against attempt 2's unchanged candidate after the run;
+it did not replace the frozen in-run pack or authorize any work. Seven tests ran
+in 0.003 seconds, with five genuine failures: missing check/accounting sections,
+a SHA shown for a no-change item, incorrectly confirmed integration, missing full
+confirmed SHA, and an unfinished item showing a commit abbreviation. This remains
+an independently failed partial implementation, not an app-approved feature.

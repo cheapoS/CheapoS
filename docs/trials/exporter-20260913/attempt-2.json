@@ -121,6 +121,12 @@
       "tests": 7,
       "failures": 5,
       "test_seconds": 0.003
+    },
+    "independent_v3_external": {
+      "tests": 7,
+      "failures": 5,
+      "test_seconds": 0.003,
+      "frozen_in_run_pack_replaced": false
     }
   }
 }
