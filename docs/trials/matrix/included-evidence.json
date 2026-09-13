@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "collected_at": "2026-09-13T22:36:21.766684+00:00",
+  "collected_at": "2026-09-13T22:40:11.518566+00:00",
   "scope": "Supplemental independently collected trial evidence. Historical controller approvals are retained; supplemental failures prevent qualification. No credentials, provider configuration, or live task logs are included.",
   "qualification_overrides": [
     {
@@ -438,49 +438,6 @@
         },
         "workspace_preserved": true,
         "method": "Current MEDIUM_TEST executed entirely from copied source bytes/in-memory modules; no original test/code edits or live calls."
-      }
-    },
-    {
-      "source_path": "/tmp/cheapos-connection-quota-observations.json",
-      "source_sha256": "2526ef18fee957b102d3353f2a3b2a78044fb6e71e65a4d2f81291495a31cc2e",
-      "kind": "connection-quota-observations",
-      "evidence": {
-        "source": "OmniRoute authenticated Provider Quota dashboard, manually refreshed",
-        "attribution": "Account-wide; concurrent user activity may contribute. Not a per-trial billing statement.",
-        "observations": [
-          {
-            "local_time": "2026-09-13 17:55",
-            "antigravity": {
-              "plan": "Ultra",
-              "claude_group_remaining_percent": 100
-            },
-            "kiro": {
-              "plan": "Free",
-              "used_credits": 0,
-              "total_credits": 50
-            }
-          },
-          {
-            "local_time": "2026-09-13 18:03",
-            "antigravity": {
-              "plan": "Ultra",
-              "claude_group_remaining_percent": 86,
-              "gemini_group_remaining_percent": 93
-            },
-            "kiro": {
-              "plan": "Free",
-              "used_credits": 0.88,
-              "total_credits": 50
-            }
-          },
-          {
-            "observed_at": "2026-09-13T18:15:34-04:00",
-            "antigravity_claude_remaining_percent": 52,
-            "kiro_used_credits": 6.38,
-            "kiro_total_credits": 50,
-            "basis": "Authenticated OmniRoute quota UI; account-wide, includes possible concurrent activity"
-          }
-        ]
       }
     },
     {
@@ -1794,6 +1751,206 @@
         "observed_at": "2026-09-13T22:32:47Z",
         "reviewer_decision_obtained": false,
         "note": "Catalog availability did not prove model inference availability. Reserved reviewer tokens remain uncertain; no retry was performed for this model."
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/medium-3/independent-verification.json",
+      "source_sha256": "cd51a52f32819d2ab28b7dafe0bb02afb57cc3f37fc83124486f32f83d0b1d65",
+      "kind": "independent-verification",
+      "evidence": {
+        "trial_family": "kiro",
+        "trial": "medium-3",
+        "task_id": "9f9953bfbe484bfcbbdc7533637753e0",
+        "original_trial_status": "ready_for_merge",
+        "passed": true,
+        "probes": [
+          {
+            "kind": "literal_readme_example",
+            "returncode": 0,
+            "stdout": "Food: 20.00\nTravel: 25.00\nTOTAL: 45.00\n\n",
+            "stderr": "",
+            "expected_stdout": "Food: 20.00\nTravel: 25.00\nTOTAL: 45.00\n\n",
+            "passed": true
+          },
+          {
+            "kind": "large_exact_money",
+            "returncode": 0,
+            "stdout": "large: 9007199254740993.01\nTOTAL: 9007199254740993.01\n",
+            "stderr": "",
+            "expected_stdout": "large: 9007199254740993.01\nTOTAL: 9007199254740993.01\n",
+            "passed": true
+          }
+        ],
+        "workspace_hashes": {
+          "ledger.py": "e39f32a81b307aecbaba4e00f163341ed5d8894eecc7647647cc698be0ee08c9",
+          "README.md": "946b4f34db8c83799a418fb70bf9e82b3606b5321e8f11e18e2af303cac379d4",
+          "test_acceptance.py": "01b11b990899a92e6a0ee1268ff1b649bcd5ea41e7db57e90b99956353cc4a41",
+          "report.py": "523fb920d5a5e8f764199a21dbc776351e8be043d3f9d3c1c4b170318a63aef7"
+        },
+        "workspace_preserved": true,
+        "method": "Executed literal terminal README fenced Python and independent >2^53 money probe in temporary source copy. Does not rerun the nine checks retained in result.json. Original workspace unchanged; no live inference."
+      },
+      "trial_family": "kiro",
+      "trial": "medium-3"
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-kiro-20260913/medium-3/result.json",
+      "source_sha256": "d6bf753f5feff975e191c9165317a89df1b140969debde45b26eca2f18fed708",
+      "kind": "result",
+      "evidence": {
+        "app_commit": "347f78ca7af83193e1be8acf8ee3282026dde7fa",
+        "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+        "level": "medium",
+        "attempt": 3,
+        "run_id": "9f9953bfbe484bfcbbdc7533637753e0",
+        "status": "ready_for_merge",
+        "error": null,
+        "error_code": null,
+        "measurement": true,
+        "operator_prepared_plan": true,
+        "interventions_after_start": 0,
+        "models": {
+          "worker": "kiro/claude-sonnet-4.5",
+          "reviewer": "kiro/claude-haiku-4.5"
+        },
+        "models_used": {
+          "worker": [
+            "kiro/claude-sonnet-4.5"
+          ],
+          "reviewer": [
+            "kiro/claude-haiku-4.5"
+          ]
+        },
+        "handoffs": 0,
+        "review_revisions": 0,
+        "request_count": 12,
+        "usage": {
+          "worker": {
+            "tokens": 64557,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 58394,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 0,
+          "estimated_requests": 12
+        },
+        "consumption": {
+          "dollars": 0,
+          "working_seconds": 74.732818917,
+          "worker_turns": 6,
+          "requests": 12,
+          "tool_actions": 16,
+          "reviewer_tokens": 58394,
+          "check_seconds": 0.33,
+          "output_tokens": 0,
+          "worker_tokens": 64557
+        },
+        "run_metrics": [
+          {
+            "id": "b4e58a08895a45f08205d02e6ad5457d",
+            "elapsed_seconds": 74.736752334,
+            "provider_request_seconds": 66.51337920900002,
+            "operator_wait_seconds": 0,
+            "provider_cooldown_seconds": 0,
+            "controller_work_seconds": 8.22337312499998,
+            "outcome": "approved"
+          }
+        ],
+        "checks": [
+          {
+            "passed": false,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... test_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n======================================================================\nERROR: test_invalid_rows (test_acceptance.Acceptance) (row='food,NaN')\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-3/state/tasks/9f9953bfbe484bfcbbdc7533637753e0/workspace/test_acceptance.py\", line 21, in test_invalid_rows\n    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')\n  File \"/private/tmp/cheapos-matrix-kiro-20260913/medium-3/state/tasks/9f9953bfbe484bfcbbdc7533637753e0/workspace/ledger.py\", line 49, in parse_expenses\n    if amount < 0:\ndecimal.InvalidOperation: [<class 'decimal.InvalidOperation'>]\n\n----------------------------------------------------------------------\nRan 9 tests in 0.008s\n\nFAILED (errors=1)\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 0.007s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 0.008s\n\nOK\n"
+          }
+        ],
+        "commits": [
+          "828f6ce030c01b1559f8569f979330095360f99c"
+        ],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true,
+          "merge_available": true,
+          "commits_verified": true
+        },
+        "driver_seconds": 77.615525917,
+        "autonomous_execution_success": true
+      },
+      "trial_family": "kiro",
+      "trial": "medium-3"
+    },
+    {
+      "source_path": "/tmp/cheapos-connection-quota-observations.json",
+      "source_sha256": "6769187edcd3225a55ac16c588bbcc73c76bce72cbf64d1214944a118a8704d6",
+      "kind": "connection-quota-observations",
+      "evidence": {
+        "source": "OmniRoute authenticated Provider Quota dashboard, manually refreshed",
+        "attribution": "Account-wide; concurrent user activity may contribute. Not a per-trial billing statement.",
+        "observations": [
+          {
+            "local_time": "2026-09-13 17:55",
+            "antigravity": {
+              "plan": "Ultra",
+              "claude_group_remaining_percent": 100
+            },
+            "kiro": {
+              "plan": "Free",
+              "used_credits": 0,
+              "total_credits": 50
+            }
+          },
+          {
+            "local_time": "2026-09-13 18:03",
+            "antigravity": {
+              "plan": "Ultra",
+              "claude_group_remaining_percent": 86,
+              "gemini_group_remaining_percent": 93
+            },
+            "kiro": {
+              "plan": "Free",
+              "used_credits": 0.88,
+              "total_credits": 50
+            }
+          },
+          {
+            "observed_at": "2026-09-13T18:15:34-04:00",
+            "antigravity_claude_remaining_percent": 52,
+            "kiro_used_credits": 6.38,
+            "kiro_total_credits": 50,
+            "basis": "Authenticated OmniRoute quota UI; account-wide, includes possible concurrent activity"
+          },
+          {
+            "observed_at": "2026-09-13T18:25:27-04:00",
+            "antigravity_claude_remaining_percent": 14,
+            "kiro_used_credits": 7.91,
+            "kiro_total_credits": 50,
+            "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
+          },
+          {
+            "observed_at": "2026-09-13T18:35:57-04:00",
+            "antigravity_claude_remaining_percent": 6,
+            "kiro_used_credits": 15.17,
+            "kiro_total_credits": 50,
+            "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
+          }
+        ]
       }
     }
   ]
