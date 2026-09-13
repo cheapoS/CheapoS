@@ -2,13 +2,17 @@
 
 **North star:** open a project, explain the job, see CheapOS working, authorize routine tests once, approve a finished commit, and keep chatting.
 
-This is the implementation companion to [the September 13 check-in](CHECK_IN_2026-09-13.md). Start with **sidebar cleanup, clearer task titles, and fewer approval interruptions**. All 27 cards are now completed on `work/check-in-tasks`; each card records its implementation, validation, and limitations. The branch remains unmerged.
+This is the completed first implementation milestone for [the September 13 check-in](CHECK_IN_2026-09-13.md): **sidebar cleanup, clearer task titles, and fewer approval interruptions**, followed by the controller/onboarding improvements below. All 27 cards are Done and record their validation and limitations. Local `main` includes the final integration commit `39903c9`.
 
-Baseline inspected: `6f22bf6` (application code `e5bddde`). Re-read current code before editing; earlier cards may already have changed it. All cards initially have status **Todo**. A dependency means its acceptance checks have passed and its commit is available, not merely that someone started it.
+**Next up: [complete a job on a feature branch](BRANCH_RUNS.md).** The active board is T28–T40, beginning with [T28 — durable branch-run state](docs/tasks/T28-branch-run-state.md). It includes the implementation sequence, shared contracts, and a copyable handoff prompt for another model. Do not restart T01.
+
+Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes below that describe that baseline are historical; re-read current code before changing behavior. A dependency means its acceptance checks have passed and its commit is available, not merely that someone started it.
 
 ## Start here
 
-Give the implementing model **one card at a time**, together with this file. Start with [T01](docs/tasks/T01-task-metadata.md), then [T02](docs/tasks/T02-task-titles.md) and [T03](docs/tasks/T03-sidebar.md). For immediate approval relief, [T07](docs/tasks/T07-existing-permission-ux.md) can be done before the rest of that first milestone, in a separate turn.
+For new work, give the implementing model **one card at a time** from [BRANCH_RUNS.md](BRANCH_RUNS.md), together with that milestone document. Its prompt and acceptance rules supersede the historical starting instructions here for T28–T40.
+
+### First-milestone handoff template (historical reference)
 
 Copy this prompt, replace the card path, and send it to the model:
 
@@ -86,7 +90,7 @@ Validated after T27 on `work/check-in-tasks`:
 - T27: eight fixture runs and 28-payload offline replay passed; additional
   context compression is **deferred**, as permitted by the research card.
 - Browser scenarios and focused checks are recorded in each task card.
-- Temporary UI fixture servers were stopped. No merge to main was performed.
+- Temporary UI fixture servers were stopped. That validation run did not merge the branch; local `main` subsequently included `39903c9` before the next milestone was planned.
 
 The full gate takes about seven minutes on this machine; select at least a
 600-second verification allowance when running it through CheapOS. The fast
@@ -113,7 +117,9 @@ cover them.
 
 ## Shared implementation contract
 
-### Current architecture and known traps
+### Original baseline architecture and known traps
+
+This list describes the pre-T01 baseline, not the completed implementation. For current branch-workflow integration points, use [BRANCH_RUNS.md](BRANCH_RUNS.md) and the source.
 
 - Python 3.9+ standard-library backend, vanilla JavaScript/CSS/HTML in `dist/`. No frontend build step. Do not introduce a framework migration or package manager as part of these cards.
 - `dist/app.js` contains sidebar, header, composer, polling, API calls, and UI actions. `dist/guidance.js` exposes pure presentation/conversation helpers used by Node tests.
@@ -133,14 +139,14 @@ cover them.
 3. Keep UI metadata separate from execution status. “Archived” and “trashed” are not substitutes for paused/running/reviewing.
 4. CheapOS stays the visible orchestrator. Show real worker/check/reviewer activity in its reply. Keep Pause reachable, draft text intact, Details expansion stable, and returning to Chat at the latest response.
 5. Automatically running *authorized* tests still needs visible output. Test names do not make arbitrary commands harmless; grant a defined runner scope, not an unrestricted executable prefix.
-6. A model can recommend a commit; only the operator approves the reviewed patch. A recovered/reconciled code change needs current checks and review. No test command may be repurposed to commit or push.
+6. In ordinary manual chats, a model can recommend a commit; only the operator approves the reviewed patch. [The planned branch-run mode](BRANCH_RUNS.md) introduces a separate, explicit up-front authorization for reviewed local feature commits and retains a final human integration decision. It is not a global waiver. A recovered/reconciled code change needs current checks and review. No test command may be repurposed to commit or push.
 7. Free-only, local-only, explicit monetary/time caps, and user Pause remain effective. No hidden paid/cloud fallback or unbounded retry. Raw malformed or truncated tool calls never execute.
 8. Never put credentials, personal task contents, or arbitrary environment variables in reports, fixtures, metadata, or commits. No new telemetry service.
 9. Planned filenames/endpoints in a card are proposed contracts, not existing APIs. Small equivalent designs are acceptable if the same behavior is tested and documented; update dependent cards when a shared contract changes.
 
 ### Validation without wasting the whole session
 
-Use the card's focused checks while iterating. Run one relevant UI scenario after the behavior is stable. Follow the current CONTRIBUTING requirements at handoff; **T12 explicitly updates that policy** so every small change no longer implies the same full test run. Until T12 lands, these cards do not silently waive existing required checks.
+Use the card's focused checks while iterating. Run one relevant UI scenario after the behavior is stable. Follow the current CONTRIBUTING requirements at handoff; T12's focused/full policy is now implemented. Do not repeat unchanged passing checks merely because work moved to review or approval.
 
 Current commands, from the repository root:
 
