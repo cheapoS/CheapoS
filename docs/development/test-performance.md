@@ -1,5 +1,55 @@
 # Development test performance
 
+## Current iteration workflow (September 13, 2026)
+
+Start with `python3 -B scripts/check.py --plan`, then run the command without
+`--plan`. It selects checks from working changes; add `--base main` to include
+committed branch changes. UI changes run JavaScript syntax checks and tests,
+with no Python suite. Documentation changes run a whitespace check only.
+See [CONTRIBUTING](../../CONTRIBUTING.md) for selection limits and the current
+policy: focused validation is sufficient for routine iteration and merges.
+Full regression is an explicit release/broad-change choice, not a default gate.
+
+The Python runner accepts repeated `--pattern` options and `--jobs 2` (up to 16).
+Workers use isolated processes, with each module's fixtures kept together.
+The existing runner still defaults to full serial execution; use `check.py` for
+automatic selection. No application verification command or safeguard changed.
+
+### Bounded measurements
+
+Darwin arm64, Python 3.9.6; both integration runs used the same 17 tests from
+`test_branch_evidence.py` and `test_branch_workspace.py`, with zero failures,
+errors or skips:
+
+| Selection | Workers | Runner wall time |
+| --- | ---: | ---: |
+| Evidence + workspace | 1 | 47.154s |
+| Evidence + workspace | 2 | 32.926s |
+
+That is 30.2% less elapsed time in this local comparison. It is not a measured
+speedup for the complete suite; machine load and module balance affect results.
+Reports were written to `/tmp/cheapos-validation-serial.json` and
+`/tmp/cheapos-validation-parallel.json` (local, not committed).
+
+The frontend command passed all 88 JavaScript tests (83ms reported by Node),
+plus syntax checks, without selecting Python tests. Runner/selector regression
+checks passed 11 tests, covering selection, real Git changes, overlapping
+patterns, concurrent process isolation, failures, crashes and import errors.
+
+Profiling a cumulative final-review case found 553 subprocess calls in 16.482s;
+subprocess work accounted for 97.7% of its time, while the actual Python check
+used only 0.014s. Reusing the readiness manifest already returned by the tested
+operation and removing one duplicate validation reduced it to 459 subprocesses
+and 12.585s (23.6% less time). Assertions and real Git checks remain intact.
+All six final-review tests passed in 80.053s after this test-only adjustment.
+Production evidence freshness and persistence behavior were not changed.
+
+The complete suite was deliberately not rerun for this tooling change. The
+measurements below are historical snapshots with different test counts, not
+current mandatory gates or timeout recommendations.
+
+## Historical timing runner and baselines
+
 Use the optional standard-library timing runner from the repository root:
 
 ```sh
@@ -102,9 +152,9 @@ python3 -B scripts/dev_tests.py --pattern test_permissions.py --timings
 python3 -B scripts/dev_tests.py --suite full --timings --json /tmp/cheapos-test-timings.json
 ```
 
-Fast intentionally covers only the five modules listed in CONTRIBUTING. Focused
-patterns and the full integration gate remain necessary for controller and Git
-changes. Treat the measured 267s full duration as evidence that a 90s agent check
+Fast intentionally covers only the five modules listed in CONTRIBUTING. At that stage, focused
+patterns and a full integration gate were required for controller and Git
+changes; the current policy above supersedes that requirement. Treat the measured 267s full duration as evidence that a 90s agent check
 timeout is insufficient; T13 must provide a bounded larger allowance when the
 full suite is deliberately selected.
 
