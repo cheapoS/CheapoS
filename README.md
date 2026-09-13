@@ -176,3 +176,7 @@ Routine unittest checks can use an explicit project-session grant covering the
 shown executable, test roots, and supported variants. Inspect or revoke it next
 to the composer. Other commands retain exact-command or one-time approval;
 all grants expire on restart. See [execution permissions](docs/EXECUTION.md#session-test-authorization).
+
+### Local setup and sample tasks
+
+**Set up connection → Models on this computer** lists eligible installed Ollama models without downloading anything. **Use all local** keeps work and review local, including when the same local model handles both requests. **Try a sample task** distinguishes a scripted demonstration from a real five-minute sample using your selected models. Both use disposable repositories. The real sample authorizes only its exact unittest command for its task copy, keeps your spending cap (at most $0.25), and still requires your final commit approval. A greeting is not a completed coding loop.

@@ -186,7 +186,7 @@ function openSetup() {
   };
   const check=async()=>{stop();if(!d.open||selected!=='omni')return;try{readiness=await api('/readiness?refresh=1');if(d.open)render()}catch(e){if(d.open)$('.form-error',d).textContent=e.message}finally{if(d.open&&selected==='omni')timer=setTimeout(check,4000)}};
   d.addEventListener('click',e=>{const action=e.target.closest('[data-setup]')?.dataset.setup;if(!action)return;
-    if(action==='local'){stop();d.close();executionPreferences();return}
+    if(action==='local'){stop();d.close();openLocalSetup();return}
     if(action==='advanced'){d.close();openConnections();return}
     if(action==='history'){d.close();return}
     if(action==='omni'){selected='omni';try{localStorage.setItem('cheapos-setup-path','omni')}catch{}check();return}
@@ -201,6 +201,20 @@ function openSetup() {
     });
   });
   try{if(localStorage.getItem('cheapos-setup-path')==='omni'){selected='omni';check()}}catch{}
+}
+async function openLocalSetup() {
+  const d=dialog(`${modalHeader('LOCAL MODELS','Work on this computer')}<p>Installed Ollama models must advertise completion and tool support. Cloud-forwarding aliases are excluded. Speed depends on your hardware and model.</p><div id="local-choices">Checking installed models…</div><p class="form-error" role="alert"></p><div class="modal-footer"><button class="outline-button" data-local="recheck">Re-check models</button><button class="subtle-button" data-local="sample">Try a sample task</button></div>`,'project-modal setup-modal');
+  let timer,closed=false;
+  d.addEventListener('close',()=>{closed=true;clearTimeout(timer)});
+  const check=async(fresh=true)=>{
+    clearTimeout(timer);try{const readiness=await api('/readiness'+(fresh?'?refresh=1':''));if(closed)return;const models=readiness.paths?.local?.models;
+      if(readiness.checking)timer=setTimeout(()=>check(false),4000);
+      if(!models){$('#local-choices',d).textContent='Checking installed models…';if(!readiness.checking)$('#local-choices',d).textContent='Could not inspect local models. Re-check or use the scripted demonstration.';return}
+      $('#local-choices',d).innerHTML=models.length?`<form id="local-choice-form"><label class="full-field">Installed local model<select name="model">${models.map(name=>`<option ${state.preferences.execution?.local_model===name?'selected':''}>${esc(name)}</option>`).join('')}</select></label><p class="small muted">Advertised: completion and tools. ${readiness.levels?.greeting&&state.startup.model?.local?'A local greeting has succeeded; coding and review are still unverified.':'No completed coding loop has been verified by this setup check.'}</p><p>All local keeps both work and review here. If one model is selected, its review is a separate request to the same model.</p><button class="primary-button" type="submit">Use all local</button></form>`:`<p>No eligible installed model found. Start <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Ollama</a> and choose a tool-capable model from its library that fits your hardware. Model downloads are manual; check the listed size before downloading.</p><p>You can try the scripted demonstration without a model.</p>`;
+      const form=$('#local-choice-form',d);if(form)form.onsubmit=e=>{e.preventDefault();formAction(d,async()=>{const model=new FormData(form).get('model');await api('/startup/config',{allow_cloud:false});state.preferences=await api('/preferences',{execution:{mode:'local',local_model:model,local_reviewer:model}});d.close();renderComposer();if(state.project)$('#chat-input').focus();else openProject()})};
+    }catch(e){if(!closed)$('.form-error',d).textContent=e.message}
+  };
+  $('[data-local="recheck"]',d).onclick=check;$('[data-local="sample"]',d).onclick=()=>{d.close();sampleDialog()};check();
 }
 function startupPreferences() {
   const settings=state.startup.settings||{enabled:true,allow_cloud:false};
@@ -457,7 +471,8 @@ function renderChat() {
   else if(!activeStatuses.has(task.status)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(guide.primary==='retry-wait'?'retry-wait':guide.primary==='clarify'?'clarify':task.status==='error'?'start':'resume',guide.primary==='retry-wait'?'Retry when available':guide.primary==='clarify'?'Add a correction':task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?guide.primaryLabel:'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
   if(task.archived_at||task.trashed_at)decision='';
   const lastReply=conversation.findLast(entry=>entry.kind==='assistant');
-  $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('');
+  $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('');
+  if($('[data-sample-diagnostics]'))$('[data-sample-diagnostics]').onclick=()=>openConnections();
   for(const d of $$('#chat-view details[data-event]')){
     const key=detailKey(d.dataset.event);
     if(state.chatDetails.has(key))d.open=state.chatDetails.get(key);
@@ -792,6 +807,13 @@ async function startDemo() {
   if(!state.online){toast('The local server is unavailable. Start it with python3 run.py');return}
   try{const task=await api('/demo',{});await loadTasks();await selectTask(task.id);await startTask(task.id)}catch(e){toast(e.message)}
 }
+function sampleDialog() {
+  const d=dialog(`${modalHeader('SAMPLE TASK','Try the complete workflow')}<p>Fix a small clamp function in a new disposable repository. Your selected project is untouched. Saved results stay available in history and can be moved to Trash.</p><h3>Scripted demonstration</h3><p>Predetermined worker and reviewer responses, actual local checks, no model requests. This demonstrates the interface; it does not validate your models.</p><button class="outline-button" data-sample="scripted">Run scripted demonstration</button><h3>Real loop with selected models</h3><p>Uses your current placement and models for file edits, actual unittest checks, and a separate review request. Up to 5 minutes, 20 worker turns, 3 iterations, and the smaller of your current spending cap or $0.25. Free only remains $0. A same-model local review is labeled as such.</p><p>Starting authorizes only the sample’s exact Python unittest discovery command in its disposable task copy for this server session. Other commands and projects still ask. You approve any final commit.</p><button class="primary-button" data-sample="real">Start real sample</button><p class="form-error" role="alert"></p>`,'project-modal setup-modal');
+  $$('[data-sample]',d).forEach(button=>button.onclick=async()=>{
+    $$('[data-sample]',d).forEach(b=>b.disabled=true);
+    try{if(button.dataset.sample==='scripted'){d.close();await startDemo();return}const task=await api('/sample',{});d.close();await loadTasks();await selectTask(task.id);await startTask(task.id)}catch(e){$('.form-error',d).textContent=e.message;$$('[data-sample]',d).forEach(b=>b.disabled=false)}
+  });
+}
 function openConnections(afterSave, taskContext=null) {
   const c=state.config, gateway=state.gateway||{}, settings=gateway.settings||{base_url:'http://127.0.0.1:20128/v1',auto_start:true,keep_running:true};
   const isOmni=p=>p.gateway==='omniroute'||!p.base_url||p.base_url.replace('localhost','127.0.0.1').replace(/\/$/,'')===settings.base_url.replace('localhost','127.0.0.1');
@@ -927,7 +949,7 @@ async function bootstrap() {
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){toast('Local server disconnected. Restart CheapOS and refresh to reconnect.');state.online=false}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopFromComposer;
+$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=sampleDialog;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopFromComposer;
 function toggleInspector() {
   const panel=$('#inspector');
   if(matchMedia('(max-width:1280px)').matches){panel.classList.remove('hidden');panel.classList.toggle('show')}

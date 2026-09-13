@@ -527,3 +527,12 @@ test('setup guidance uses typed recovery states and separates gateway identity f
   assert.equal(setupGuide({status:'local_only_ready',gateway:{status:'ready',eligible_free_count:2}}).ready,true);
   assert.equal(setupGuide({status:'no_eligible_model',gateway:{identified:true,dashboard_url:'http://localhost/'}}).dashboard,true);
 });
+
+test('sample greeting, missing review and failed checks cannot claim full-loop success',()=>{
+ const {sampleOutcome}=require('../dist/guidance.js');
+ for(const status of ['ready','awaiting_reply','error','paused'])assert.match(sampleOutcome({status,changes:[],checks:[],checkpoints:[]}),/not been verified/);
+ const result={status:'approved',changes:[{path:'x'}],patch:'p',patch_digest:'d',checks:[{passed:true,digest:'d'}],checkpoints:[{decision:'APPROVE',diff:'p'}],providers:{worker:{model:'local'},reviewer:{model:'local'}}};
+ assert.match(sampleOutcome(result),/edits, checks and review completed/);
+ assert.match(sampleOutcome(result),/same model/);
+ result.checks[0].passed=false;assert.match(sampleOutcome(result),/not been verified/);
+});

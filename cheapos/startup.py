@@ -52,7 +52,7 @@ def local_candidates(saved=None):
             name = model["name"]
             try:
                 details = local_json(origin + "/api/show", {"model":name})
-                if details.get("remote_host") or details.get("remote_model"):
+                if details.get("remote_host") or details.get("remote_model") or "cloud" in name.split(":")[-1]:
                     continue
                 capabilities = details.get("capabilities", [])
             except (OSError, ValueError, TypeError, AttributeError):

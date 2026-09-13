@@ -446,6 +446,9 @@ class Engine:
         return task
 
     def create_demo(self):
+        return self.create_sample(scripted=True)
+
+    def create_sample(self, scripted=False):
         root = self.store.root / "examples" / uuid.uuid4().hex
         root.mkdir(parents=True)
         (root / "math_utils.py").write_text("def clamp(value, lower, upper):\n    return min(value, upper)\n")
@@ -453,7 +456,23 @@ class Engine:
         git(root, "init", "-q")
         git(root, "add", ".")
         git(root, "-c", "user.name=CheapOS", "-c", "user.email=local@cheapos.invalid", "commit", "-qm", "Self-test fixture")
-        return self.create({"prompt": "Fix clamp so it handles both bounds and rejects an inverted range.", "repository": str(root), "check_command": shlex.join([sys.executable, "-m", "unittest", "discover", "-v"]), "auto_approve_checks": True}, demo=True)
+        if not scripted:
+            with (root / 'test_math_utils.py').open('a') as tests:
+                tests.write('\n    def test_inverted(self):\n        with self.assertRaises(ValueError):\n            clamp(5, 10, 0)\n')
+            git(root, 'add', '.')
+            git(root, '-c', 'user.name=CheapOS', '-c', 'user.email=local@cheapos.invalid', 'commit', '-qm', 'Real sample acceptance check')
+        command = [sys.executable, '-m', 'unittest', 'discover', '-v']
+        values = {"prompt": "Fix clamp so it handles both bounds and rejects an inverted range.", "repository": str(root), "check_command": shlex.join(command), "auto_approve_checks": scripted}
+        if not scripted:
+            values.update(conversational=True, limits={"dollars":min(self.preferences()['limits']['dollars'],0.25), "run_minutes":5,"worker_turns":20,"iterations":3,"reviewer_tokens":20000,"check_seconds":30})
+        task = self.create(values, demo=scripted)
+        if not scripted:
+            task['sample'] = True
+            task['title'] = 'Real sample: fix clamp'
+            self.command_permissions.setdefault(task['id'],set()).add((task['workspace'],tuple(command)))
+            self.event(task,'permission','Sample verification authorized for this disposable task',{'command':command,'directory':task['workspace'],'scope':'task_exact'})
+            self.store.update_metadata(task['id'],{'custom_title':'Real sample: fix clamp'})
+        return task
 
     def require_active_task(self, task_id):
         metadata = self.store.metadata(task_id)

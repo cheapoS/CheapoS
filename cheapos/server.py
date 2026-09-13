@@ -183,6 +183,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = public_task(engine.create(values))
             elif path == "/api/demo":
                 result = public_task(engine.create_demo())
+            elif path == "/api/sample":
+                result = public_task(engine.create_sample())
             elif path.startswith("/api/tasks/"):
                 parts = path.strip("/").split("/")
                 if len(parts) != 4:

@@ -25,12 +25,12 @@ Use local deterministic provider fixtures for automated tests; an operator may l
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Local setup lists eligible installed Ollama names, advertised capabilities and honest greeting/work readiness. All local explicitly saves local work/review placement with cloud startup disabled. Cloud aliases are filtered. Sample chooser separates scripted UI demonstration from a real bounded local/disposable repository loop; exact sample verification permission is task/session scoped. Outcomes require actual edits/checks/review and label same-model local review.
+- Acceptance evidence: Automated complete local sample, check failure and reviewer outage; provider fixture rejects nonlocal endpoints. Source files/HEAD preserved. No project-wide test grant created. HTTP sample creation creates no running task. Existing startup tests cover local greeting and isolation.
+- Commands and results: 23 sample/startup/readiness tests passed (10.787s); 12 engine/API tests passed (8.941s); final 3 sample tests passed (10.302s). JavaScript syntax and 68 guidance/conversation tests passed.
+- Browser scenarios and results: CUA isolated port 51029: eligible local picker saved All local; real sample made edits, ran four tests and a separate same-model reviewer request, ending at human commit approval. No-model path showed manual setup guidance and successfully ran the separately labeled scripted demo. Saved samples remained in history. Shared responsive dialog uses the T19 overflow fix.
+- Remaining limitations: Downloads/install remain manual via https://ollama.com/download; tool-capability guidance follows https://docs.ollama.com/capabilities/tool-calling. No performance claim or live personal model test. Same-model review is explicitly identified. Sample command authorization expires on server restart; final commit remains a separate operator decision.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

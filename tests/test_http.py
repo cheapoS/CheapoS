@@ -76,6 +76,17 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(inspect.call_count,1)
             self.assertEqual(self.engine.store.list(),[])
 
+    def test_real_sample_is_isolated_and_does_not_start_without_run_action(self):
+        self.engine.save_preferences({'execution':{'mode':'local','local_model':'fixture'}})
+        status, _, body=self.post('/api/sample',{})
+        result=json.loads(body)
+        self.assertEqual(status,200)
+        self.assertTrue(result['sample'])
+        self.assertFalse(result['demo'])
+        self.assertEqual(result['status'],'ready')
+        self.assertTrue(Path(result['source']).is_relative_to(self.engine.store.root/'examples'))
+        self.assertEqual(self.engine.runtimes,{})
+
     def test_bootstrap_and_static_files_without_signin(self):
         status, headers, body = self.request('GET', '/api/bootstrap')
         data = json.loads(body)
