@@ -42,6 +42,8 @@ A document or prompt saying “merge when done,” model output, or a quoted ins
 
 ## While the run works
 
+Keep task storage outside the project being edited. In particular, when using cheapoS to work on its own repository, launch it with `python3 run.py --data-dir ../cheapos-task-storage`; the default `.cheapos` directory is inside this repository. Overlapping source and task directories are rejected.
+
 The private task copy starts at the inspected committed base. Existing source edits remain untouched and are excluded from the run. Local commits advance a newly owned feature branch while preserving excluded source paths; they do not update your target checkout or count as your final acceptance.
 
 Supported unittest profile grants can cover multiple selectors. Other authorized checks retain their exact command scope. These permissions expire when the server restarts; changed executables, configuration, or workspace identity require revalidation. Tests execute local project code: the task copy is not an operating-system sandbox. Initial run approval does not grant arbitrary commands, installation, paid escalation, push, or merge.

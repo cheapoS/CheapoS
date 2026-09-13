@@ -320,8 +320,29 @@ class Workspace:
             result.append({"path": name, "before": before, "after": after, "binary": False})
         return result
 
-    def patch(self):
+    def validate_staged_paths(self):
+        """Reject unsafe staged content without exporting or discarding its bytes."""
+        changed = set(filter(None, git(self.root, "diff", "--cached", "--no-renames", "--no-ext-diff", "--no-textconv", "--name-only", "-z", "HEAD", binary=True).split(b"\0")))
+        for raw in changed:
+            self.path(raw.decode("utf-8"))
+        for record in git(self.root, "ls-files", "--stage", "-z", binary=True).split(b"\0"):
+            if not record:
+                continue
+            metadata, raw = record.split(b"\t", 1)
+            if raw not in changed:
+                continue
+            mode, oid, stage = metadata.decode("ascii").split()
+            if stage != "0" or mode not in {"100644", "100755"}:
+                raise ValueError("Unsupported staged file mode; saved index retained: " + raw.decode("utf-8"))
+            if int(git(self.root, "cat-file", "-s", oid)) > 2_000_000:
+                raise ValueError("Staged file exceeds the 2 MB limit; saved index retained: " + raw.decode("utf-8"))
+
+    def patch(self, validate=False):
+        if validate:
+            self.validate_staged_paths()
         self.changes()
+        if validate:
+            self.validate_staged_paths()
         return git(self.root, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--binary", "HEAD", "--", ".")
 
     def rollback_to_patch(self, patch):

@@ -10,10 +10,10 @@ import tempfile
 import threading
 import unicodedata
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from . import branch_evidence as evidence
 from . import branch_workspace as workspace
-from .workspace import Workspace, git
+from .workspace import Workspace, git, allowed_name
 
 _LOCKS = {}
 _LOCK_GUARD = threading.Lock()
@@ -54,14 +54,25 @@ def _message(item):
 
 
 def _preserve_exclusions(source, parent, tree, mapping):
-    changed = workspace.source_git(source, 'diff-tree', '--no-commit-id', '--name-only', '-r', '-z', parent, tree, binary=True).split(b'\0')
+    changed = workspace.source_git(source, 'diff-tree', '--no-commit-id', '--no-renames', '--name-only', '-r', '-z', parent, tree, binary=True).split(b'\0')
     excluded = [unicodedata.normalize('NFC', name).casefold() for name in mapping['skipped']]
+    changed_names = set()
     for raw in changed:
         if not raw:
             continue
-        name = unicodedata.normalize('NFC', raw.decode()).casefold()
+        path = raw.decode('utf-8')
+        relative = PurePosixPath(path)
+        if not allowed_name(path) or relative.is_absolute() or '..' in relative.parts or '\\' in path:
+            raise ValueError('Candidate contains a forbidden source path')
+        changed_names.add(raw)
+        name = unicodedata.normalize('NFC', path).casefold()
         if any(name == other or name.startswith(other + '/') or other.startswith(name + '/') for other in excluded):
             raise ValueError('Candidate overlaps an excluded source entry')
+    for record in workspace.source_git(source, 'ls-tree', '-r', '-z', tree, binary=True).split(b'\0'):
+        if not record: continue
+        metadata, raw = record.split(b'\t', 1)
+        if raw in changed_names and metadata.split()[0] not in {b'100644', b'100755'}:
+            raise ValueError('Candidate contains an unsupported source file mode')
 
 
 def prepare(task, run, item, receipt, authorize):
@@ -108,7 +119,7 @@ def _save(operation, stage, persist):
 
 def _contents(task, operation):
     # Stage eligible files before comparing; never reset/discard worker content.
-    Workspace(task['workspace']).patch()
+    Workspace(task['workspace']).patch(validate=True)
     if git(task['workspace'], 'write-tree').strip() != operation['private_tree']:
         raise ValueError('Private candidate changed during the recorded commit')
     current = git(task['workspace'], 'rev-parse', 'HEAD').strip()

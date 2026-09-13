@@ -632,7 +632,7 @@ class Engine:
                 task.pop("steer_guidance", None)
                 task["requests"] = task.get("requests", [task["prompt"]]) + [followup.strip()]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
-                task["turn_start_patch"] = Workspace(task["workspace"]).patch()
+                task["turn_start_patch"] = Workspace(task["workspace"]).patch(validate="branch_run" in task)
                 self.event(task, "user", "You", followup.strip())
             elif task.get("conversational"):
                 task["request_worker_turns"] = request_worker_turns(task)
@@ -653,7 +653,7 @@ class Engine:
             if work_policy.read_only(task):
                 # Old starter chats may contain unsolicited edits or a saved
                 # checkpoint. Preserve those files without executing that work.
-                task["turn_start_patch"] = Workspace(task["workspace"]).patch()
+                task["turn_start_patch"] = Workspace(task["workspace"]).patch(validate="branch_run" in task)
                 for key in ("pending_verification", "pending_checkpoint", "pending_review", "compact_edits"):
                     task.pop(key, None)
                 task["action_pending"] = False
@@ -850,7 +850,7 @@ class Engine:
             return self.action_messages(task)
         workspace = Workspace(task["workspace"])
         previous = task["checkpoints"][-1].get("feedback", "") if task["checkpoints"] else ""
-        summary = {"original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "latest_message": task.get("requests", [task["prompt"]])[-1], "files": workspace.list_files()[:500], "current_diff": workspace.patch()[:30000], "last_review_feedback": previous, "check_command": task["check_command"], "web_urls": sorted(allowed_urls(task))[:80]}
+        summary = {"original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "latest_message": task.get("requests", [task["prompt"]])[-1], "files": workspace.list_files()[:500], "current_diff": workspace.patch(validate="branch_run" in task)[:30000], "last_review_feedback": previous, "check_command": task["check_command"], "web_urls": sorted(allowed_urls(task))[:80]}
         summary.update(project_brief=project_context.brief(task), continuation_record=project_context.continuation(task))
         if task.get("reconciliation"):
             summary["project_reconciliation"] = reconciliation.guidance(task)
@@ -924,7 +924,7 @@ class Engine:
     def refresh_changes(self, task):
         workspace = Workspace(task["workspace"])
         task["changes"] = workspace.changes()
-        task["patch"] = workspace.patch()
+        task["patch"] = workspace.patch(validate="branch_run" in task)
         if len(task["patch"]) > 100000:
             raise BudgetError("The patch is too large for a reliable compact review. Split this task into smaller changes.")
 
@@ -1567,7 +1567,7 @@ class Engine:
             self.event(task,"tool","read check output",{"arguments":args,"result":result})
             return result
         workspace = Workspace(task["workspace"])
-        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda: workspace.patch()[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
+        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
         if name not in methods:
             raise ValueError("Unknown tool: " + name)
         if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text"}:
@@ -1684,7 +1684,7 @@ class Engine:
         task["check_command"] = argv
         task["validated_check_command"] = list(argv)
         workspace = Workspace(task["workspace"])
-        before = workspace.patch()
+        before = workspace.patch(validate="branch_run" in task)
         before_identity = evidence_identity(task)
         allowed = task['limits'].get('check_seconds', 90)
         remaining = task['limits'].get('run_minutes', 15) * 60 - (time.monotonic() - runtime.started)

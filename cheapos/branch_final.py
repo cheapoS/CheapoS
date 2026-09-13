@@ -25,7 +25,7 @@ def build_manifest(run):
         raise ValueError('Finish every item and pending commit before final review')
     mapping = run['workspace_mapping']; source = mapping['source']; tip = run['expected_feature_tip']
     work.validate_owned(mapping, tip)
-    if Workspace(mapping['workspace']).patch() or git(mapping['workspace'], 'status', '--porcelain').strip():
+    if Workspace(mapping['workspace']).patch(validate=True) or git(mapping['workspace'], 'status', '--porcelain').strip():
         raise ValueError('Private workspace must be clean before final review')
     if git(mapping['workspace'], 'rev-parse', 'HEAD').strip() != mapping['workspace_head']:
         raise ValueError('Private baseline changed')

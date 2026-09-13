@@ -43,7 +43,7 @@ def evidence_identity(task):
         value = {'version': 1, 'workspace': str(workspace.root),
                  'generation': task.get('workspace_generation', 0),
                  'baseline': git(workspace.root, 'rev-parse', 'HEAD').strip(),
-                 'patch': hashlib.sha256(workspace.patch().encode()).hexdigest(),
+                 'patch': hashlib.sha256(workspace.patch(validate="branch_run" in task).encode()).hexdigest(),
                  'command': task['check_command'], 'runner': runner,
                  'config': config_identity(workspace.root)}
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()

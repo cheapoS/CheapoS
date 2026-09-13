@@ -4,13 +4,13 @@
 
 This is the completed first implementation milestone for [the September 13 check-in](CHECK_IN_2026-09-13.md): **sidebar cleanup, clearer task titles, and fewer approval interruptions**, followed by the controller/onboarding improvements below. All 27 cards are Done and record their validation and limitations. Local `main` includes the final integration commit `39903c9`.
 
-**Next up: [complete a job on a feature branch](BRANCH_RUNS.md).** The active board is T28–T40, beginning with [T28 — durable branch-run state](docs/tasks/T28-branch-run-state.md). It includes the implementation sequence, shared contracts, and a copyable handoff prompt for another model. Do not restart T01.
+**Completed next milestone: [a job on a feature branch](BRANCH_RUNS.md).** All T28–T40 cards are Done on `work/unattended-runs`, with [validation results](docs/experiments/branch-runs.md) and a [work-mode/trigger guide](docs/unattended-runs.md). Operator review and integration are next; a separately selected live-model trial follows. Do not restart T01 or T28.
 
 Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes below that describe that baseline are historical; re-read current code before changing behavior. A dependency means its acceptance checks have passed and its commit is available, not merely that someone started it.
 
 ## Start here
 
-For new work, give the implementing model **one card at a time** from [BRANCH_RUNS.md](BRANCH_RUNS.md), together with that milestone document. Its prompt and acceptance rules supersede the historical starting instructions here for T28–T40.
+Both implementation boards are complete. Review the [branch-run results](docs/experiments/branch-runs.md) before integration, then use the live-trial selection process in [BRANCH_RUNS.md](BRANCH_RUNS.md) for the next bounded app improvement. The handoff templates below and in that document are historical implementation references.
 
 ### First-milestone handoff template (historical reference)
 

@@ -16,7 +16,9 @@ class BranchReviewTests(LocalCase):
         run = task['branch_run']; run['authorization_ref']='fixture'; run['status']='running';run['expected_feature_tip']='fixture-base'
         branch_runs.transition_item(run,'fix','working')
         self.engine.file_tool(task,'replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'})
-        self.engine.command_permissions[task['id']]={(task['workspace'],tuple(task['check_command']))}
+        scope = self.engine.branch.scopes.prepare(task, task['check_command'])
+        self.engine.branch.scopes.consent(task, scope)
+        self.assertTrue(self.engine.branch.scopes.authorize(task, task['check_command']))
         return task
 
     def test_real_checks_independent_review_receipt_and_reuse(self):

@@ -1,8 +1,8 @@
-# cheapoS next milestone: complete a job on a feature branch
+# cheapoS milestone: complete a job on a feature branch
 
 **North star:** give cheapoS a bounded job, see it implement, test, review, and commit each part, then make one final decision about the finished branch.
 
-This is the implementation companion to [TASKS.md](TASKS.md), continuing after completed cards T01–T27. Start with **T28**, then follow the dependency order below. These are implementation instructions for future work, not a statement that branch runs already exist.
+This is the completed implementation companion to [TASKS.md](TASKS.md), continuing after T01–T27. **T28–T40 are Done** on `work/unattended-runs`. The [user guide](docs/unattended-runs.md) documents work modes and triggers; the [experiment report](docs/experiments/branch-runs.md) records browser proof, recovery coverage, and the passing 514 Python / 88 JavaScript test gate. The milestone has not been merged or pushed. The next step is operator review, followed by the separately selected live trial described below.
 
 ## Why this milestone
 
@@ -142,7 +142,7 @@ The final approval binds the inspected feature tip, target ref/tip, cumulative d
 
 ## Ordered implementation cards
 
-All cards below start **Todo**. Sizes describe scope, not time. Dependencies mean implemented, validated, and available commits. T01–T27 are baseline prerequisites; do not redo them.
+Card status below reflects implementation and recorded validation. Sizes describe scope, not time. Dependencies mean implemented, validated, and available commits. T01–T27 are baseline prerequisites; do not redo them.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
@@ -158,7 +158,7 @@ All cards below start **Todo**. Sizes describe scope, not time. Dependencies mea
 | [T37](docs/tasks/T37-branch-final-readiness.md) | Combined verification, review, and revision loop | T31, T33, T34 | L | Done |
 | [T38](docs/tasks/T38-branch-final-review-ui.md) | Cumulative diff and one final decision | T36, T37 | M | Done |
 | [T39](docs/tasks/T39-branch-local-merge.md) | Explicit local integration and conversation close | T32, T37, T38 | L | Done |
-| [T40](docs/tasks/T40-branch-end-to-end.md) | Three-task end-to-end proof and user documentation | T28–T39 | M | Todo |
+| [T40](docs/tasks/T40-branch-end-to-end.md) | Three-task end-to-end proof and user documentation | T28–T39 | M | Done |
 
 Do these sequentially in this shared checkout. Do not dispatch multiple models to edit the same engine/UI files. Lower-level helpers may be callable by deterministic tests before UI exists, but no incomplete automatic-run action should appear usable to the operator.
 

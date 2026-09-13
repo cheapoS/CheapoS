@@ -31,14 +31,14 @@ The next check-in after this card is to select a real cheapoS feature for the ap
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: Reusable scripted planner/worker/reviewer fixture with three dependent CSV→Markdown→CLI items, real assertion failure and reviewer revision, cumulative diff, optional fourth correction commit, explicit local merge, and durable progress/recovery. Added the work-mode and trigger guide plus a measured [experiment report](../experiments/branch-runs.md).
 
-Acceptance evidence:
+Acceptance evidence: Real source/private Git objects, independent CLI output/malformed-input assertions, exact four-commit ancestry and receipts, stale preview rejection, unchanged source until merge, no extra apply commit, and unchanged tests/requests on final approval. Focused recovery tests cover restart, command scope renewal, budgets, ref/worktree drift, dirty targets, and integration journal recovery. Final audit also closed excluded staged-file and concurrent-planning gaps.
 
-Commands and results:
+Commands and results: Complete Python gate: 514 passed, zero failures/errors/skips in 1107.087s (Python 3.9.6, macOS arm64). JavaScript: 88 passed, zero failures/skips in 0.104s; app and branch UI syntax checks passed. Local documentation links and git diff --check passed. The experiment report records the earlier fixture errors, final audit fixes, focused coverage, full-gate timing, and synthetic usage provenance.
 
-Browser scenarios and results:
+Browser scenarios and results: Independent prompt-only and document-only runs completed through actual local merge with zero required intermediate approvals. Combined inputs retained edits and planning usage, survived pause/reload, accepted guidance, resumed, and left a readable saved branch. Prompt-only final correction produced a fourth reviewed commit. Live Details, Activity/Chat preservation, narrow layout, sidebar collapse/restore, explicit mode choice, new-chat Interactive default, and in-flight planning cancellation were verified on disposable local servers. Development rendering defects and the view reload are disclosed in the report; all fixture servers/tabs were cleaned up.
 
-Remaining limitations:
+Remaining limitations: Deterministic providers establish controller behavior, not model quality or cost savings. Live-model app self-improvement is a subsequent operator-selected trial. Local fast-forward only; finite plans/evidence/repair budgets; separate task storage; no publishing, scheduler, automatic conflict resolution, or actual repository merge/push in this milestone.

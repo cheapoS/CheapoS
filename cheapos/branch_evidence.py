@@ -44,7 +44,7 @@ def candidate(task, context, required_checks, criteria=None):
     if not isinstance(criteria, list) or not criteria or not all(isinstance(c, str) and c.strip() for c in criteria) or len(set(criteria)) != len(criteria):
         raise ValueError('Candidate requires distinct acceptance criteria')
     workspace = Workspace(task['workspace'])
-    patch = workspace.patch()
+    patch = workspace.patch(validate=True)
     checks = []
     for argv in commands(required_checks):
         identity = evidence_identity({**task, 'check_command': argv})

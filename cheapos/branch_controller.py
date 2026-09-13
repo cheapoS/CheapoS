@@ -320,7 +320,7 @@ class BranchController:
             if identity in self.planning:raise ValueError('This planning request already exists')
             if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):raise ValueError('Pause the active task before planning another run')
             self.planning[identity]={'runtime':None,'cancelled':False}
-        task=None;runtime=None;prepared=False;ledger_ended=False
+        task=None;runtime=None;prepared=False;ledger_ended=False;registration_error=None
         try:
             inputs=capture_inputs(values.get('repository',''),values.get('prompt',''),values.get('document'))
             limits=run_limits(values.get('limits',{}),3)
@@ -334,6 +334,9 @@ class BranchController:
             runtime=Runtime(task);runtime.thread=threading.current_thread()
             runtime.branch_ledger=Ledger(runtime,lambda:self.engine.store.save(task),lock=self.engine.lock)
             with self.engine.lock:
+                if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):
+                    registration_error='Another task started while preparing this draft. Pause it, then submit the planning request again.'
+                    raise ValueError(registration_error)
                 self.planning[identity]['runtime']=runtime
                 self.engine.runtimes[task_id]=runtime
                 if self.planning[identity]['cancelled']:runtime.stop.set()
@@ -358,7 +361,7 @@ class BranchController:
                 with self.engine.lock:self.engine.runtimes.pop(task['id'],None)
             if task and not prepared:
                 task['status']='paused';task['branch_run']['status']='paused';task['branch_run']['pause_reason']='operator' if runtime and runtime.stop.is_set() else 'missing_information'
-                task['error']='Planning stopped or needs clarification; submit an updated request to prepare a proposal.'
+                task['error']=registration_error or 'Planning stopped or needs clarification; submit an updated request to prepare a proposal.'
                 self.engine.store.save(task)
             with self.engine.lock:self.planning.pop(identity,None)
 
