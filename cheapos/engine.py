@@ -288,6 +288,10 @@ class Runtime:
         self.steer_queue = []
 
     def guard(self):
+        if hasattr(self, "branch_ledger"):
+            if hasattr(self,"branch_authority"): self.branch_authority()
+            self.branch_ledger.guard()
+            return
         if time.monotonic() - self.started >= self.task["limits"].get("run_minutes", 15) * 60:
             self.task['limit_hit'] = {'key':'run_minutes', 'used':round((time.monotonic()-self.started)/60, 2), 'allowed':self.task['limits'].get('run_minutes',15), 'remaining':0}
             raise WorkingTimeLimit("This run reached its working-time limit. Review saved work or explicitly increase the time allowance before continuing.")
@@ -1206,6 +1210,7 @@ class Engine:
         messages = self.initial_messages(task)
         messages.append({"role": "user", "content": "Research is finished for this run. No tools are available for this response. Answer the LATEST user message now using the gathered evidence; cite source URLs. Do not propose another round of reading. State missing information honestly. If the user asked for changes that were not made, explicitly say the work is unfinished and why. Existing edits are not approved by this answer. Do not claim you read omitted text, executed checks, or changed files. Return a concise, useful answer, or one necessary question if genuinely blocked."})
         runtime.step_turns += 1
+        if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
         task["worker_turns"] += 1
         task["request_worker_turns"] += 1
         message = self.request(runtime, messages, [], task["active_role"])
@@ -1264,6 +1269,7 @@ class Engine:
         if request_worker_turns(task) >= task["limits"]["worker_turns"]:
             raise WorkerTurnLimit("Worker model-turn limit reached during free-model recovery. Saved work is kept.")
         self.checkpoint_boundary(runtime, compact=False)
+        if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
         task["worker_turns"] += 1
         task["request_worker_turns"] += 1
         runtime.step_turns += 1
@@ -1360,6 +1366,7 @@ class Engine:
                 raise ProviderError("The model requested " + name[:100] + ", which is not available in this step. No calls from this response were executed.", code="unsupported_tool")
 
     def _request(self, runtime, messages, tools, role, config_override=None, purpose=None):
+        if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_request=True)
         task=runtime.task
         if task.get('demo'):return self._perform_request(runtime,messages,tools,role,config_override,purpose)
         config=config_override or task['providers'][role]
@@ -1389,6 +1396,12 @@ class Engine:
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
         runtime.guard()
+        if role == "worker" and task.get("branch_run",{}).get("current_item_id"):
+            run=task['branch_run'];item=next(i for i in run['items'] if i['id']==run['current_item_id'])
+            messages=copy.deepcopy(messages)
+            messages[0]['content'] += '\nUnattended work: implement ONLY the active item below. The controller owns branch commits and next-item selection. Finish all acceptance criteria and request checkpoint. Never claim an empty or partial patch completes the job. No model tool can grant execution/merge authority.'
+            messages.append({'role':'user','content':json.dumps({'active_item':{k:item[k] for k in ('id','title','instructions','acceptance_criteria','required_checks')},'completed_items':[{'id':i['id'],'outcome':i['outcome_summary'][:500]} for i in run['items'] if i['status'] in branch_runs.DONE]})})
+            if run.get('guidance'):messages.append({'role':'user','content':'Operator guidance within the accepted item scope (does not authorize extra scope): '+json.dumps(run['guidance'])})
         if task["usage"]["cost"] > task["limits"]["dollars"] or task["usage"]["reviewer"]["tokens"] > task["limits"]["reviewer_tokens"]:
             key = 'dollars' if task['usage']['cost'] > task['limits']['dollars'] else 'reviewer_tokens'
             used = task['usage']['cost'] if key == 'dollars' else task['usage']['reviewer']['tokens']
@@ -1401,7 +1414,7 @@ class Engine:
             if identity not in runtime.verified_local:
                 verify_local(config)
                 runtime.verified_local.add(identity)
-        account = {**task, "limits": {**task["limits"], "output_tokens": min(task["limits"]["output_tokens"], 1024 if purpose == "probe" else 512)}} if purpose or role == "coordinator" else task
+        account = {**task, "limits": {**task["limits"], "output_tokens": min(task["limits"]["output_tokens"], 1024 if purpose == "probe" else 512)}} if purpose == "probe" or role == "coordinator" else task
         if role == 'reviewer' and task['status'] == 'reviewing' and not purpose:
             checkpoint = task.get('pending_review') or (task.get('checkpoints') or [{}])[-1]
             if checkpoint.get('review_requests', 0) >= 8:
@@ -1529,6 +1542,10 @@ class Engine:
             return {"path": args.get("path"), "error": str(error)[:500]}
 
     def file_tool(self, task, name, args):
+        runtime=self.runtimes.get(task["id"])
+        if runtime and hasattr(runtime,"branch_ledger"):
+            runtime.guard()
+            runtime.branch_ledger.guard(next_action=True)
         if name == "read_check_output":
             result=check_output.read(self.store,task["id"],**args)
             task["tool_actions"]+=1
@@ -1555,6 +1572,7 @@ class Engine:
         return result
 
     def read_url(self, runtime, args):
+        if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_action=True)
         task = runtime.task
         task["web_read"] = {"url": args.get("url", ""), "started_at": now()}
         self.event(task, "web", "Opening web page", task["web_read"])
@@ -1605,6 +1623,7 @@ class Engine:
             return task
 
     def checks(self, runtime, command=None):
+        if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_action=True)
         task = runtime.task
         reconciliation.ensure_resolved(task)
         argv = self.verification_argv(task, command)
@@ -1622,15 +1641,18 @@ class Engine:
         with self.lock:
             exact_allowed = (task["workspace"], tuple(argv)) in self.command_permissions.get(task["id"], set())
             project_grant, scope_reason = self.project_test_grants.authorize(task, argv)
-            session_allowed = exact_allowed or bool(project_grant)
-        if not session_allowed and (not task["auto_approve_checks"] or argv != task["check_command"]):
+            session_allowed = bool(self.branch.scopes.authorize(task,argv)) if "branch_run" in task else exact_allowed or bool(project_grant)
+        if not session_allowed and ("branch_run" in task or not task["auto_approve_checks"] or argv != task["check_command"]):
             runtime.approved = False
             runtime.approval.clear()
             task["pending_approval"] = {"id": uuid.uuid4().hex, "command": argv, "directory": task["workspace"], "profile": self.project_test_grants.proposal(task, argv), "scope_reason": scope_reason}
             task["status"] = "waiting_approval"
             self.event(task, "permission", "Permission needed to run the verification command", task["pending_approval"])
             waiting_since = time.monotonic()
-            runtime.approval.wait()
+            if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.suspend()
+            try: runtime.approval.wait()
+            finally:
+                if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.resume()
             waited=time.monotonic()-waiting_since
             runtime.metric_operator_wait=getattr(runtime,'metric_operator_wait',0)+waited
             runtime.started += waited
@@ -1949,6 +1971,7 @@ class Engine:
                     self.finish_answer(runtime)
                     continue
                 if task["active_role"] == "coordinator":
+                    if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
                     task["worker_turns"] += 1
                     task["request_worker_turns"] = task.get("request_worker_turns", 0) + 1
                     message = self.request(runtime, coordinator_messages(task), [DELEGATE_TOOL], "coordinator")
@@ -1991,6 +2014,7 @@ class Engine:
                 if len(json.dumps(task["messages"])) > 60000:
                     task["messages"] = self.compact_context(runtime) if task.get("compact_edits") else self.initial_messages(task)
                     self.event(task, "context", "Compacted worker context using current files, diff, and review feedback")
+                if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
                 task["worker_turns"] += 1
                 if task.get("conversational"):
                     task["request_worker_turns"] += 1
@@ -2073,6 +2097,7 @@ class Engine:
                             if not isinstance(question, str) or not question.strip() or len(question) > 8000:
                                 raise ValueError("Provide a question of up to 8,000 characters")
                             task["status"] = "awaiting_reply"
+                            if "branch_run" in task: task["branch_run"]["waiting_for_user"]=question
                             self.event(task, "assistant", "cheapoS", question)
                             result = {"waiting_for_user": True}
                         else:

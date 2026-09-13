@@ -18,7 +18,9 @@ class BranchStartTests(unittest.TestCase):
         git(self.source,'init','-qb','main');git(self.source,'config','user.name','Fixture');git(self.source,'config','user.email','fixture@example.invalid')
         (self.source/'hello.py').write_text('value=1\n');git(self.source,'add','.');git(self.source,'commit','-qm','base')
         self.engine=Engine(self.root/'state',fixture_delay=0);self.addCleanup(self.engine.shutdown)
-        self.engine.config={'worker':dict(CONFIG,model='worker'),'reviewer':dict(CONFIG,model='reviewer')}
+        self.engine.config={'worker':dict(CONFIG,model='worker',input_rate=0,output_rate=0),'reviewer':dict(CONFIG,model='reviewer',input_rate=0,output_rate=0)}
+        self.launch=self.engine.branch.launch
+        self.engine.branch.launch=lambda task_id:self.engine.store.get(task_id)
         self.engine.save_preferences({'execution':{'mode':'manual'}})
         command=shlex.join([sys.executable,'-m','unittest','discover'])
         self.values={'repository':str(self.source),'base_ref':'refs/heads/main','target_ref':'refs/heads/main','feature_ref':'refs/heads/feature/job',

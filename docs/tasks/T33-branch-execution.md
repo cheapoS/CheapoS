@@ -27,14 +27,14 @@ Exercise cost/time/turn exhaustion, free-route cooldown, repeated malformed call
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: Controller advances ordered items through real checks, independent review, and journaled commits. Item-local recovery resets separately from cumulative limits; no intermediate operator acceptance is requested.
 
-Acceptance evidence:
+Acceptance evidence: Deterministic three-item integration repairs an actual failing assertion and reviewer-requested revision, produces three ordered commits, and leaves the source checkout untouched. A two-turn outer cap preserves unfinished items.
 
-Commands and results:
+Commands and results: `python3 -B -m unittest discover -s tests -p test_branch_execution.py -v` — 2 passed; `test_branch_budget.py` — 9 passed.
 
 Browser scenarios and results: T36 owns the visible flow; controller integration is required here.
 
-Remaining limitations:
+Remaining limitations: Final readiness and browser proof are tracked in T37/T40. Active time uses monotonic 30-second reservations renewed at most every 15 seconds; a crash conservatively retains the last reservation, while explicit waits/pauses refund the unused live portion.

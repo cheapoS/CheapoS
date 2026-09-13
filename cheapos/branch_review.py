@@ -47,6 +47,8 @@ def checkpoint(engine, runtime, args):
     decision['properties'].update(candidate_id={'type':'string'}, criteria_outcomes={'type':'object', 'description':'Map every exact acceptance criterion to {passed:boolean,evidence:string}.'})
     decision['required'] += ['candidate_id','criteria_outcomes']
     messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.'}, {'role':'user','content':json.dumps(packet)}]
+    if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
+        task['pending_review']={'branch_candidate_id':current['id'],'review_requests':0}
     task['status'] = 'reviewing'
     engine.event(task, 'checkpoint', 'Reviewing the complete branch item', {'item_id':item['id'], 'candidate_id':current['id']})
     for _ in range(8):
@@ -71,6 +73,7 @@ def checkpoint(engine, runtime, args):
                     except ValueError as error:
                         result = {'error':str(error)}
                     else:
+                        task.pop('pending_review',None)
                         item['ready_receipt'] = receipt
                         item['outcome_summary'] = str(params.get('feedback',''))[:2000]
                         task['status'] = 'approved'
@@ -78,6 +81,7 @@ def checkpoint(engine, runtime, args):
                         engine.event(task,'review','Independent item review passed',{'item_id':item['id'],'candidate_id':current['id']})
                         return {'decision':'APPROVE','feedback':item['outcome_summary']}
                 elif choice in {'REQUEST_CHANGES', 'TAKE_OVER'} and isinstance(params.get('feedback'),str):
+                    task.pop('pending_review',None)
                     task['status'] = 'running' if choice == 'REQUEST_CHANGES' else 'takeover_requested'
                     branch_runs.transition_item(run, item['id'], 'working')
                     engine.event(task,'review','Item needs revision',{'item_id':item['id'],'decision':choice,'feedback':params['feedback'][:4000]})

@@ -36,11 +36,14 @@ class BranchController:
         self.engine=engine
         self.proposals=ProposalRegistry()
         self.scopes=CheckScopes(engine.project_test_grants)
+        self.planning={}
+        self.resume_proposals=ProposalRegistry()
+        self.final_proposals=ProposalRegistry()
 
     def model_policy(self):
         return {'execution':copy.deepcopy(self.engine.preferences()['execution']), 'providers':copy.deepcopy(self.engine.config)}
 
-    def prepare(self, values):
+    def prepare(self, values, planning_task=None):
         with self.engine.lock:
             plan=state.validate_plan(values.get('plan'))
             plan['limits']=run_limits(plan['limits'],len(plan['items']))
@@ -58,7 +61,8 @@ class BranchController:
                     raise ValueError('Choose a worker and an independent reviewer in Models')
                 if evidence.model_identity(policy['providers']['worker'])==evidence.model_identity(policy['providers']['reviewer']):
                     raise ValueError('Unattended work requires two distinct named models')
-            task_id=uuid.uuid4().hex
+            task_id=planning_task['id'] if planning_task else uuid.uuid4().hex
+            if planning_task and planning_task['planning_policy']!=policy: raise ValueError('Model policy changed during planning; inspect a fresh proposal')
             mapping=work.prepare(values.get('repository',''), self.engine.store.root/'tasks'/task_id/'workspace',
                                  values.get('base_ref'),values.get('feature_ref'),values.get('target_ref'),task_id)
             # This private preparation performs no source mutation or execution.
@@ -79,6 +83,10 @@ class BranchController:
                                      'worker_turns':200,'iterations':20,'reviewer_tokens':limits['reviewer_tokens'],'check_seconds':limits['check_seconds'],'output_tokens':limits['output_tokens']}},
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id)
             task['branch_run']=run
+            if planning_task:
+                for key in ('usage','request_metrics','events','worker_turns','tool_actions'):
+                    if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
+                run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
             try:
                 scopes=[self.scopes.prepare(task,argv) for argv in commands]
             except (OSError,ValueError) as error:
@@ -126,11 +134,9 @@ class BranchController:
             run['workspace_mapping']=mapping;run['expected_feature_tip']=mapping['feature_tip']
             for scope in run['check_scope']: self.scopes.consent(task,scope)
             state.transition(run,'running')
-            # T33 supplies dispatch; no incomplete Start control is exposed in the UI.
-            state.transition(run,'paused',reason='missing_setup')
-            task['status']='paused';task['error']='Run authorized. Execution controller pending.'
+            task['status']='running';task['error']=None
             self.engine.store.save(task)
-            return task
+            return self.launch(task_id)
 
     def validate_authority(self, task, run):
         self.proposals.validate(run.get('authorization',{}),self.contract(task))
@@ -150,6 +156,36 @@ class BranchController:
             run['status']='left_on_branch'; task['status']='completed'
             self.engine.store.save(task)
             return task
+
+    def launch(self, task_id):
+        from .engine import Runtime
+        import threading
+        with self.engine.lock:
+            self.engine.require_active_task(task_id)
+            if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):
+                raise ValueError('Another task is running. Pause it before starting this run.')
+            task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            # Reconcile exact journaled commits before limits, grants or new work.
+            while run['pending_operations']:
+                item=next(i for i in run['items'] if i['id']==run['pending_operations'][0]['item_id'])
+                self.commit_item(Runtime(task),item)
+            self.validate_authority(task,run)
+            if run['workspace_mapping']['stage']!='ready':
+                def save_mapping(mapping):
+                    run['workspace_mapping']=mapping;self.engine.store.save(task)
+                run['workspace_mapping']=work.create(run['workspace_mapping'],save_mapping)
+                run['expected_feature_tip']=run['workspace_mapping']['feature_tip']
+            work.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
+            if run['status'] not in {'paused','blocked','running','finalizing'}:
+                raise ValueError('This run is not awaiting execution')
+            if run['status'] in {'paused','blocked'}:state.transition(run,'running')
+            runtime=Runtime(task)
+            runtime.branch_authority=lambda:self.validate_authority(task,run)
+            task.update(status='running',error=None,error_code=None,stream=None,check_stream=None,pending_approval=None)
+            self.engine.runtimes[task_id]=runtime
+            runtime.thread=threading.Thread(target=self.execute,args=(runtime,),daemon=True)
+            runtime.thread.start()
+            return self.engine.store.get(task_id)
 
     def commit_item(self, runtime, item):
         from . import branch_commits
@@ -180,3 +216,71 @@ class BranchController:
             self.engine.refresh_changes(task)
             task.pop('pending_checkpoint',None);task.pop('pending_review',None)
             self.engine.event(task,'branch_commit','Item already satisfied' if flags['no_change'] else 'Committed '+item['title'],event)
+
+    def execute(self, runtime):
+        from .engine import now
+        task=runtime.task;run=task['branch_run']
+        from .branch_budget import Ledger
+        runtime.branch_ledger=Ledger(runtime,lambda:self.engine.store.save(task),lock=self.engine.lock)
+        try:
+            runtime.branch_ledger.begin()
+            while True:
+                if runtime.stop.is_set():raise InterruptedError('Run paused by you')
+                runtime.guard()
+                self.validate_authority(task,run)
+                # Finish a durable operation before asking any model for more work.
+                if run['pending_operations']:
+                    item=next(i for i in run['items'] if i['id']==run['pending_operations'][0]['item_id'])
+                    self.commit_item(runtime,item)
+                    continue
+                work.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
+                item=next((i for i in run['items'] if i['status'] not in state.DONE),None)
+                if item is None:
+                    if run['status']!='finalizing':state.transition(run,'finalizing')
+                    task['status']='paused';task['error']='Implementation complete; final verification pending.'
+                    self.engine.store.save(task)
+                    return
+                if item['status'] in {'pending','blocked'}:
+                    state.transition_item(run,item['id'],'working')
+                    task.update(request_worker_turns=0,iterations=0,active_role='worker',turn_start_patch='',answer_pending=False,action_pending=False)
+                    for key in ('loop_guidance','progress_state','pause_summary','recovery_blocked','compact_edits','pending_checkpoint','pending_review','steer_guidance'):
+                        task.pop(key,None)
+                    runtime.step_turns=0;runtime.argument_failures=0;runtime.observations.clear();runtime.file_observations.clear()
+                    runtime.action_context_ready=False;runtime.compact_context_ready=False
+                    state.append_event(run,'item_started',{'item_id':item['id'],'title':item['title']})
+                    self.engine.event(task,'branch_item','Working on '+item['title'],{'item_id':item['id']})
+                run['current_item_id']=item['id']
+                if item.get('ready_receipt'):
+                    try:
+                        from .branch_review import context
+                        evidence.revalidate(item['ready_receipt'],task,context(run,item),item['required_checks'],item['acceptance_criteria'])
+                    except ValueError:item.pop('ready_receipt',None)
+                    else:
+                        self.commit_item(runtime,item)
+                        continue
+                task['status']='running';task['messages']=self.engine.initial_messages(task)
+                self.engine._run_with_wait(runtime)
+                if run.get('waiting_for_user'): raise ValueError(run['waiting_for_user'])
+                if task['status']=='awaiting_reply':
+                    # Even an unchanged outcome requires actual criteria review.
+                    from .branch_review import checkpoint
+                    result=checkpoint(self.engine,runtime,{'summary':'Worker reported the item finished.'})
+                    if result['decision']=='REQUEST_CHANGES':
+                        task['messages'].append({'role':'user','content':json.dumps(result)})
+                        self.engine._run_with_wait(runtime)
+                if task['status']=='approved' and item.get('ready_receipt'):
+                    self.commit_item(runtime,item)
+                    continue
+                raise ValueError(task.get('error') or 'This item needs information or a revised authorization before continuing.')
+        except Exception as error:
+            if run['status'] not in {'merged','left_on_branch'}:
+                error=getattr(runtime,'branch_budget_error',None) or error
+                reason='exhausted_work' if 'limit' in str(error).lower() else 'operator' if runtime.stop.is_set() else 'branch_drift' if any(word in str(error).lower() for word in ('branch changed','ownership','identity changed')) else 'missing_information'
+                run['status']='paused';run['pause_reason']=reason
+                task['status']='paused';task['error']=str(error)
+                state.append_event(run,'paused',{'reason':reason,'message':str(error)[:1000]})
+        finally:
+            runtime.branch_ledger.end()
+            task['stream']=None;task['check_stream']=None;task['updated_at']=now()
+            self.engine.store.save(task)
+
