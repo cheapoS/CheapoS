@@ -251,7 +251,7 @@ class OmniRouteManager:
         if fresh and (self.state != "ready" or time.monotonic() - self.checked_at >= 300):
             self.refresh()
             if self.thread:
-                self.thread.join(5)
+                self.thread.join(9)
         with self.lock:
             models = copy.deepcopy(self.models)
             for model in models:

@@ -18,6 +18,23 @@ from test_routing import model
 
 
 class PoolTests(unittest.TestCase):
+    def test_provider_cooldown_is_shared_persisted_and_does_not_poison_model_health(self):
+        with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time', return_value=1000):
+            pool=FreeModelPool(directory);endpoint='http://localhost:20128/v1'
+            pool.record(endpoint,'openrouter/a','worker',probe=True)
+            pool.record(endpoint,'openrouter/a','worker',error=ProviderError('Provider cooling',code='gateway_cooldown',retry_after=120,scope='provider'))
+            pool=FreeModelPool(directory)
+            self.assertEqual(pool.observation(endpoint,'openrouter/b')['cooldown_scope'],'provider')
+            self.assertFalse(pool.observation(endpoint,'another/b')['cooling_down'])
+            self.assertFalse(pool.observation('http://localhost:2222/v1','openrouter/b')['cooling_down'])
+            with patch('cheapos.model_pool.time.time',return_value=1121):
+                self.assertFalse(pool.observation(endpoint,'openrouter/b')['cooling_down'])
+                a=pool.observation(endpoint,'openrouter/a')
+                self.assertTrue(a['tool_check_passed']);self.assertEqual(a.get('failures',0),0)
+            pool.record(endpoint,'openrouter/a','worker',error=ProviderError('Model cooling',code='gateway_cooldown',retry_after=120,scope='model'))
+            with patch('cheapos.model_pool.time.time',return_value=1121):
+                self.assertFalse(pool.observation(endpoint,'openrouter/a')['cooling_down'])
+
     def test_cooldowns_survive_restart_expire_and_remain_endpoint_scoped(self):
         with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time', return_value=1000):
             pool=FreeModelPool(directory)
@@ -35,6 +52,8 @@ class PoolTests(unittest.TestCase):
             pool=FreeModelPool(directory);endpoint='http://localhost:20128/v1'
             models=[model('a-mini-8b',reasoning=False),model('z-550b',reasoning=True)]
             self.assertEqual(sorted(models,key=lambda m:pool.rank(endpoint,m,'reviewer'))[0]['id'],'z-550b')
+            pool.record(endpoint,'a-mini-8b','reviewer',probe=True)
+            self.assertEqual(sorted(models,key=lambda m:pool.rank(endpoint,m,'reviewer'))[0]['id'],'a-mini-8b')
             pool.record(endpoint,'a-mini-8b','reviewer',seconds=1)
             self.assertEqual(sorted(models,key=lambda m:pool.rank(endpoint,m,'reviewer'))[0]['id'],'a-mini-8b')
 
@@ -56,6 +75,47 @@ class PoolTests(unittest.TestCase):
 
 class FailoverTests(LocalCase):
     chat=routing_fixture.RoutingTests.chat
+
+    def test_probe_provider_cooldown_skips_siblings_but_can_use_other_provider(self):
+        from cheapos.routing import select_remote
+        from cheapos.engine import Runtime
+        for available_other in (False, True):
+            task=self.chat('remote');runtime=Runtime(task)
+            names=['openrouter/a','openrouter/b','openrouter/c'] + (['zprovider/d'] if available_other else [])
+            self.engine.gateway.catalog.return_value['models']=[model(n) for n in names]
+            def request(rt,messages,tools,role,config_override=None,**kw):
+                if config_override['model'].startswith('openrouter/'):
+                    raise ProviderError('Provider cooldown',code='gateway_cooldown',retry_after=120,scope='provider')
+                return call('routing_ready')
+            # Use a separate endpoint each iteration so a persisted wait cannot mask the first probe.
+            task['route']['base_url']='http://localhost:' + str(2200+int(available_other)) + '/v1'
+            self.engine.gateway.matches=Mock(return_value=True)
+            with patch.object(self.engine,'request',side_effect=request) as requests:
+                if available_other:
+                    select_remote(self.engine,runtime)
+                    self.assertEqual(task['providers']['worker']['model'],'zprovider/d')
+                    self.assertEqual(requests.call_count,2)
+                else:
+                    from cheapos.routing import RoutingPause
+                    with self.assertRaisesRegex(RoutingPause,'connection is cooling down'):select_remote(self.engine,runtime)
+                    self.assertEqual(requests.call_count,1)
+                    with self.assertRaises(RoutingPause):select_remote(self.engine,runtime)
+                    self.assertEqual(requests.call_count,1)
+            self.assertEqual(runtime.failed_models,set())
+            self.assertEqual(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/a').get('failures',0),0)
+
+    def test_actual_provider_cooldown_preserves_pinned_model_and_accounting(self):
+        task=self.chat('remote')
+        requests=self.responding([ProviderError('Provider cooling',code='gateway_cooldown',retry_after=120,scope='provider')],names=('openrouter/a','openrouter/b'))
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'paused',result['error'])
+        self.assertEqual(result['providers']['worker']['model'],'openrouter/a')
+        self.assertEqual(result['usage']['uncertain_requests'],1)
+        self.assertEqual(len(requests),2)
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(len(requests),2)
+        self.assertEqual(result['usage']['uncertain_requests'],1)
+        self.assertFalse(result['route'].get('recovery'))
 
     def responding(self, replies, names=('a','b','c','d')):
         self.engine.gateway.catalog.return_value['models']=[model(n) for n in names]

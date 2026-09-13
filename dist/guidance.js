@@ -138,7 +138,7 @@ const CheapOSGuide = (() => {
   function commitDeferred(task) {return task.human_decision?.decision==='defer'&&task.human_decision.digest===task.patch_digest}
   function modelHealth(model,at=Date.now()) {
     const h=model.health||{},remaining=Math.ceil(((h.retry_at||0)*1000-at)/60000);
-    if(remaining>0)return `Cooling down · ${remaining}m`;
+    if(remaining>0)return `${h.cooldown_scope==='provider'?'Provider cooling down':'Cooling down'} · ${remaining}m`;
     if((h.worker_responses||0)+(h.reviewer_responses||0)>0)return 'Responded in a task';
     return h.tool_check_passed?'Tool check passed':'Not tested yet';
   }

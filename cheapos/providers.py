@@ -4,6 +4,8 @@ import json
 import math
 import os
 import re
+import time
+from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -19,9 +21,40 @@ def is_local_ollama(config):
 
 
 class ProviderError(Exception):
-    def __init__(self, message, code=None):
+    def __init__(self, message, code=None, retry_after=None, scope=None):
         super().__init__(message)
         self.code = code
+        self.retry_after = retry_after
+        self.scope = scope
+
+
+def http_failure(error, config):
+    """Read bounded machine metadata only; do not expose upstream bodies/secrets."""
+    reason = {401: "API key was rejected", 402: "Provider credit limit reached", 403: "Provider denied access", 429: "Provider rate limit reached"}.get(error.code, f"Provider returned HTTP {error.code}")
+    if config.get("gateway") == "omniroute" and error.code not in {401, 402, 403}:
+        try:
+            value = error.headers.get("Retry-After", "")
+            try:
+                delay = float(value)
+            except ValueError:
+                delay = parsedate_to_datetime(value).timestamp() - time.time()
+            if math.isfinite(delay) and delay > 0:
+                delay = min(86400, max(1, math.ceil(delay)))
+                try:
+                    raw = error.read(16385)
+                    data = json.loads(raw) if len(raw) <= 16384 else {}
+                    metadata = data.get("error", {}) if isinstance(data, dict) else {}
+                    model_only = isinstance(metadata, dict) and metadata.get("code") == "model_cooldown"
+                except (ValueError, OSError):
+                    model_only = False
+                scope = "model" if model_only else "provider"
+                return ProviderError(f"OmniRoute reports a {scope} cooldown. Retry in about {delay} seconds. No model compatibility conclusion was drawn.",
+                                     code="gateway_cooldown", retry_after=delay, scope=scope)
+        except (ValueError, TypeError, OverflowError, AttributeError):
+            pass
+    if error.code == 404:
+        reason = "This model route is unavailable (HTTP 404)"
+    return ProviderError(reason + ". This request did not complete.", code=f"http_{error.code}")
 
 
 class BudgetError(Exception):
@@ -116,8 +149,7 @@ class ChatProvider:
         except InterruptedError:
             raise
         except HTTPError as error:
-            reason = {401: "API key was rejected", 402: "Provider credit limit reached", 403: "Provider denied access", 429: "Provider rate limit reached"}.get(error.code, f"Provider returned HTTP {error.code}")
-            raise ProviderError(reason + ". This request did not complete.", code=f"http_{error.code}") from None
+            raise http_failure(error, self.config) from None
         except (URLError, TimeoutError, OSError) as error:
             if isinstance(error, TimeoutError) or isinstance(getattr(error, "reason", None), TimeoutError):
                 duration = "3 minutes" if timeout_seconds == 180 else f"{timeout_seconds} seconds"

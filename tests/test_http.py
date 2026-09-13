@@ -1,4 +1,5 @@
 import http.client
+import io
 import json
 import tempfile
 import threading
@@ -9,9 +10,31 @@ from pathlib import Path
 
 from cheapos.engine import Engine, Runtime
 from cheapos.providers import ChatProvider, ProviderError
+from cheapos.providers import http_failure
+from urllib.error import HTTPError
 from cheapos.gateways import OmniRouteGateway
 from cheapos.startup import GREETING
 from cheapos.server import LocalServer
+
+
+class CooldownErrorTests(unittest.TestCase):
+    def error(self,status=404,retry='120',body=None):
+        return HTTPError('http://localhost/v1/chat/completions',status,'error',{'Retry-After':retry},
+                         io.BytesIO(json.dumps(body or {'error':{'message':'secret upstream text'}}).encode()))
+
+    def test_gateway_cached_404_and_model_cooldown_are_distinguished(self):
+        error=http_failure(self.error(),{'gateway':'omniroute'})
+        self.assertEqual((error.code,error.scope,error.retry_after),('gateway_cooldown','provider',120))
+        self.assertNotIn('secret',str(error))
+        error=http_failure(self.error(429,body={'error':{'code':'model_cooldown'}}),{'gateway':'omniroute'})
+        self.assertEqual(error.scope,'model')
+
+    def test_auth_direct_and_invalid_retry_metadata_keep_original_failure(self):
+        for status in (401,402,403):
+            self.assertEqual(http_failure(self.error(status),{'gateway':'omniroute'}).code,f'http_{status}')
+        self.assertEqual(http_failure(self.error(),{'gateway':'openai'}).code,'http_404')
+        for retry in ('','NaN','-2','invalid'):
+            self.assertEqual(http_failure(self.error(retry=retry),{'gateway':'omniroute'}).code,'http_404')
 
 
 class HTTPTests(unittest.TestCase):

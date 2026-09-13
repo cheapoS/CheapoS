@@ -59,9 +59,9 @@ def normalize_models(data, openrouter=False):
 
 
 class OpenAICompatibleGateway(ChatProvider):
-    def _catalog(self):
+    def _catalog(self, *, public=False):
         headers = {"Accept": "application/json", "User-Agent": "CheapOS/0.2"}
-        if self.key:
+        if self.key and not public:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"].rstrip("/") + "/models", headers=headers)
         try:
@@ -108,7 +108,34 @@ class OmniRouteGateway(OpenAICompatibleGateway):
         data, headers = self._catalog()
         if not headers.get("x-omniroute-route-class"):
             raise ProviderError("The endpoint is responding, but it was not identified as OmniRoute")
-        return normalize_models(data)
+        models = normalize_models(data)
+        if any(m["id"].startswith("openrouter/") for m in models):
+            # OmniRoute can advertise a bundled, stale provider catalog. Only
+            # refresh an already connected provider; never forward its client key.
+            try:
+                upstream, _ = OpenAICompatibleGateway(
+                    {"base_url": "https://openrouter.ai/api/v1", "key_env": "CHEAPOS_CATALOG_UNUSED"}
+                )._catalog(public=True)
+            except ProviderError:
+                raise ProviderError("OpenRouter's current catalog could not be checked. Refresh Models before using its free routes.") from None
+            models = refresh_openrouter_free_models(models, upstream)
+        return models
+
+
+def refresh_openrouter_free_models(models, upstream):
+    # Explicit current prices are required here, rather than :free name inference.
+    fresh = normalize_models(upstream)
+    eligible = {m.get("id") for m in upstream.get("data", []) if isinstance(m, dict) and isinstance(m.get("id"), str)
+                and isinstance(m.get("pricing"), dict) and {"prompt", "completion"} <= m["pricing"].keys()}
+    kept = {m["id"]: m for m in models
+            if not (m["id"].startswith("openrouter/") and (m["id"].endswith(":free") or m.get("free")))}
+    for m in fresh:
+        # Named variants preserve independent worker/reviewer identity; exclude
+        # the provider's opaque free router and non-chat zero-priced products.
+        if m["id"] in eligible and m["id"].endswith(":free") and m["free"]:
+            m = {**m, "id": "openrouter/" + m["id"], "provider": "openrouter", "local": False}
+            kept[m["id"]] = m
+    return sorted(kept.values(), key=lambda m: m["id"])
 
 
 def gateway_for(config, key=""):

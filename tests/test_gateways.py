@@ -9,12 +9,42 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from cheapos.engine import Engine
-from cheapos.gateways import OmniRouteGateway, OpenAICompatibleGateway, gateway_for, normalize_models
+from cheapos.gateways import OmniRouteGateway, OpenAICompatibleGateway, gateway_for, normalize_models, refresh_openrouter_free_models
 from cheapos.omniroute import OmniRouteManager, validate_settings
 from cheapos.providers import ProviderError
 
 
 class CatalogTests(unittest.TestCase):
+    def test_upstream_free_catalog_removes_retired_repriced_and_non_tool_routes_and_adds_new(self):
+        old = normalize_models({'data': [{'id':'openrouter/retired:free'}, {'id':'openrouter/repriced:free'},
+                                         {'id':'openrouter/safety:free','capabilities':{'tool_calling':True}},
+                                         {'id':'ollama/local','owned_by':'ollama'}, {'id':'another/provider'}]})
+        current = {'data': [{'id': name, 'pricing': price, 'supported_parameters': params} for name,price,params in [
+            ('new/coder:free', {'prompt':'0','completion':'0'}, ['tools']),
+            ('repriced:free', {'prompt':'1','completion':'0'}, ['tools']),
+            ('safety:free', {'prompt':'0','completion':'0'}, []),
+            ('openrouter/free', {'prompt':'0','completion':'0'}, ['tools']),
+            ('unknown:free', {}, ['tools'])]]}
+        result={m['id']:m for m in refresh_openrouter_free_models(old,current)}
+        self.assertEqual(set(result), {'openrouter/new/coder:free','openrouter/safety:free','ollama/local','another/provider'})
+        self.assertTrue(result['openrouter/new/coder:free']['free'])
+        self.assertFalse(result['openrouter/safety:free']['tool_calling'])
+
+    def test_public_catalog_never_sends_client_credentials(self):
+        response=Mock();response.read.return_value=b'{"data":[]}'
+        response.__enter__=Mock(return_value=response);response.__exit__=Mock(return_value=False)
+        with patch('cheapos.gateways.build_opener') as build:
+            build.return_value.open.return_value=response
+            gateway=OpenAICompatibleGateway({'base_url':'https://openrouter.ai/api/v1','key_env':'CHEAPOS_WORKER_API_KEY'}, 'fixture-secret')
+            gateway._catalog(public=True)
+            request=build.return_value.open.call_args.args[0]
+            self.assertIsNone(request.get_header('Authorization'))
+
+    def test_upstream_failure_does_not_reuse_stale_free_catalog(self):
+        with patch.object(OmniRouteGateway, '_catalog', return_value=({'data':[{'id':'openrouter/old:free'}]}, {'x-omniroute-route-class':'CLIENT_API'})), patch.object(OpenAICompatibleGateway, '_catalog', side_effect=ProviderError('offline')):
+            with self.assertRaisesRegex(ProviderError, 'current catalog'):
+                OmniRouteGateway({'base_url':'http://localhost:20128/v1'}).list_models()
+
     def test_ollama_routes_are_local_but_paid_prices_and_combos_are_not_overridden(self):
         entries=normalize_models({'data':[
             {'id':'ollama/coder','owned_by':'ollama','capabilities':{'tool_calling':True}},
@@ -75,6 +105,12 @@ class CatalogHandler(BaseHTTPRequestHandler):
 
 class GatewayHTTPTests(unittest.TestCase):
     def setUp(self):
+        original = OpenAICompatibleGateway._catalog
+        catalog_patch = patch.object(OpenAICompatibleGateway, '_catalog', autospec=True, side_effect=lambda gateway, public=False:
+            ({'data':[{'id':'coder:free','pricing':{'prompt':'0','completion':'0'},'supported_parameters':['tools']}]}, {})
+            if public else original(gateway))
+        catalog_patch.start()
+        self.addCleanup(catalog_patch.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), CatalogHandler)
         self.server.requests, self.server.status, self.server.identity = [], 200, True

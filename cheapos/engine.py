@@ -774,6 +774,9 @@ class Engine:
                 self.defer_route(task, role, "This model is no longer advertised as a free remote model with tool support.")
                 continue
             if self.gateway.pool.observation(cfg["base_url"], cfg["model"])["cooling_down"]:
+                health = self.gateway.pool.observation(cfg["base_url"], cfg["model"])
+                if health.get("cooldown_scope") == "provider":
+                    raise RoutingPause(health["last_error"] + " Saved work is kept; resume after the cooldown.")
                 task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": "This model is cooling down after a recent failure."}
                 continue
             started = time.monotonic()
@@ -785,6 +788,9 @@ class Engine:
                 message = self._request(runtime, messages, tools, role)
                 self.validate_offered_tools(message, tools)
             except ProviderError as error:
+                if error.code == "gateway_cooldown":
+                    self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error)
+                    raise RoutingPause(str(error) + " Saved work is kept; resume after the cooldown.") from None
                 if error.code not in RECOVERABLE_CODES:
                     raise
                 attempted = True

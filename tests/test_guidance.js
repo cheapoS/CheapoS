@@ -182,6 +182,7 @@ test('free pool distinguishes untested models, observed responses, and expiring 
   assert.equal(modelHealth({health:{tool_check_passed:true}}), 'Tool check passed');
   assert.equal(modelHealth({health:{worker_responses:2}}), 'Responded in a task');
   assert.equal(modelHealth({health:{retry_at:160}},100000), 'Cooling down · 1m');
+  assert.equal(modelHealth({health:{retry_at:160,cooldown_scope:'provider'}},100000), 'Provider cooling down · 1m');
   assert.equal(modelHealth({health:{retry_at:160,tool_check_passed:true}},161000), 'Tool check passed');
 });
 

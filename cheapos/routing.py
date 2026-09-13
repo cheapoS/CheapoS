@@ -1,6 +1,8 @@
 """Opt-in execution placement. Automatic routes only use explicit free models."""
 
 import copy
+import math
+import time
 
 from .providers import ProviderError, is_local_ollama, validate_provider
 
@@ -113,6 +115,10 @@ def select_remote(engine, runtime, role="worker", replace=False):
     candidates.sort(key=lambda m: gateway.pool.rank(route["base_url"], m, role, preferred.get(role)))
     tried = set()
     for model in candidates:
+        # A preceding probe may have cooled the whole provider. Do not repeat
+        # its cached error against every other model or count those as failures.
+        if gateway.pool.observation(route["base_url"], model["id"])["cooling_down"]:
+            continue
         if model["id"] in tried or len(tried) >= 4:
             continue
         tried.add(model["id"])
@@ -135,11 +141,21 @@ def select_remote(engine, runtime, role="worker", replace=False):
             engine.store.save(task)
             return
         except (ProviderError, ValueError, TypeError, KeyError) as error:
-            runtime.failed_models.add(model["id"])
+            cooldown = getattr(error, "code", None) == "gateway_cooldown"
+            if not cooldown:
+                runtime.failed_models.add(model["id"])
             gateway.pool.record(route["base_url"], model["id"], role, error=error)
             failure = {"model": model["id"], "role": role, "error": str(error)[:500]}
+            if cooldown:
+                failure["scope"] = error.scope
             route["failures"].append(failure)
-            engine.event(task, "routing", "Free model check failed", failure)
+            engine.event(task, "routing", "Free provider is cooling down" if cooldown else "Free model check failed", failure)
+    provider_waits = [gateway.pool.observation(route["base_url"], m["id"]) for m in catalog["models"]
+                      if m.get("free") and m.get("tool_calling") is True and not m.get("local") and m["id"] not in used]
+    waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") == "provider" and h["cooling_down"]]
+    if waits:
+        seconds = max(1, math.ceil(min(waits) - time.time()))
+        raise RoutingPause(f"The free provider connection is cooling down. Retry in about {seconds} seconds. Other models on that connection were not tested or marked broken. Your chat, files, checks, and usage are saved.")
     if replace:
         raise RoutingPause("No different free " + role + " passed the tool check. Failed models are temporarily cooling down. Your chat, files, checks, and usage are saved; resume to check availability again or inspect Models.")
     if role == "reviewer":

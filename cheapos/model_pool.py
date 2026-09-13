@@ -41,20 +41,34 @@ class FreeModelPool:
     def observation(self, endpoint, model):
         with self.lock:
             record = copy.deepcopy(self.records.get(self.key(endpoint, model), {}))
+            provider = self.records.get(self.key(endpoint, self.provider_key(model)), {})
+            if provider.get("retry_at", 0) > time.time():
+                record.update(retry_at=max(record.get("retry_at", 0), provider["retry_at"]),
+                              cooldown_scope="provider", last_error=provider.get("last_error", ""))
         record["cooling_down"] = record.get("retry_at", 0) > time.time()
         return record
 
+    @staticmethod
+    def provider_key(model):
+        return "\0provider/" + model.split("/", 1)[0]
+
     def record(self, endpoint, model, role, *, error=None, seconds=None, probe=False):
         with self.lock:
-            key = self.key(endpoint, model)
+            cooldown = getattr(error, "code", None) == "gateway_cooldown"
+            scope = getattr(error, "scope", None)
+            key = self.key(endpoint, self.provider_key(model) if cooldown and scope == "provider" else model)
             record = self.records.setdefault(key, {})
             record["updated_at"] = time.time()
-            if error is not None:
+            if cooldown:
+                record.update(retry_at=time.time() + min(86400, max(1, error.retry_after or 120)),
+                              cooldown_scope=scope, last_error=str(error)[:500])
+            elif error is not None:
                 failures = record.get("failures", 0) + 1
                 record.update(failures=failures, retry_at=time.time() + min(3600, 900 * 2 ** min(failures - 1, 2)),
                               last_error=str(error)[:500])
             else:
                 record.update(retry_at=0, last_error="")
+                record.pop("cooldown_scope", None)
                 if probe:
                     record["tool_check_passed"] = True
                 else:
@@ -75,6 +89,7 @@ class FreeModelPool:
         # Observed compatibility first. Metadata only breaks ties; it is not a quality rating.
         return (model["id"] != preferred, -min(health.get(role + "_responses", 0), 1),
                 health.get("failures", 0),
+                -(health.get("tool_check_passed") is True),
                 -(model.get("reasoning") is True) if role == "reviewer" else 0,
                 -min(model.get("context_length") or 0, 65536) if role == "reviewer" else 0,
                 health.get(role + "_seconds", float("inf")), model["id"])
