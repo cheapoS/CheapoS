@@ -4,6 +4,13 @@ const CheapOSGuide = (() => {
   const workPresets={interactive:{run_minutes:15,worker_turns:40,iterations:5},extended:{run_minutes:45,worker_turns:120,iterations:10}};
   function workPreset(limits){const standard={reviewer_tokens:200000,output_tokens:2048,checkpoint_turns:12,check_seconds:360};return Object.keys(workPresets).find(name=>Object.entries({...standard,...workPresets[name]}).every(([key,value])=>limits[key]===value))||'custom'}
   function presetLimits(limits,name){return {...limits,...(workPresets[name]||{})}}
+  function setupGuide(readiness={}) {
+    const gateway=readiness.gateway||{}; let status=readiness.status;
+    if(status?.startsWith('local_'))status=gateway.status==='ready'?(gateway.eligible_free_count?'gateway_ready':'no_eligible_model'):'offline';
+    const choices={checking:['Checking this computer','Reading connection metadata.'],starting:['Connecting…','Waiting for the gateway. Saved work remains accessible.'],gateway_absent:['Install the companion','Install Node.js first if it is missing, then install OmniRoute in your terminal and re-check.'],gateway_stopped:['Start OmniRoute','CheapOS can start the installed gateway on loopback.'],gateway_ready:['Connected',gateway.owned?'Using the gateway started by CheapOS.':'Reusing your existing OmniRoute instance.'],no_eligible_model:['Connect a provider','Open the dashboard and configure a provider with an eligible free, tool-capable model.'],foreign_service:['Another service is using this address','Choose a different gateway address in Advanced connections. CheapOS will not stop the other service.'],client_key_rejected:['Client API key needed','Dashboard login protects the dashboard. Provider credentials belong in its Providers page. CheapOS only needs a client API key if your gateway requires one.'],offline:['Connection unavailable','Check that OmniRoute is running, then retry.'],local_only_ready:['Local models ready','Your saved local-only choice remains active.'],local_unavailable:['Local model unavailable','Check the installed models on this computer.']};
+    const [title,detail]=choices[status]||['Check your connection','Re-check or inspect Advanced connections.'];
+    return {title,detail,ready:status==='gateway_ready',start:['gateway_stopped','offline'].includes(status),install:status==='gateway_absent',key:status==='client_key_rejected',dashboard:Boolean(gateway.identified&&gateway.dashboard_url)};
+  }
   function taskGuide(task) {
     const checkpoints=task.checkpoints||[], checks=task.checks||[], events=task.events||[];
     const latestReview=checkpoints.at(-1), latestCheck=checks.at(-1);
@@ -455,7 +462,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 

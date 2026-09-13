@@ -154,12 +154,13 @@ function startupMarkup() {
   const title=ready?'Let’s work on it.':busy?'Getting your model ready…':['unavailable','stopped'].includes(startup.status)?'Let’s get you connected.':state.project?'What would you like to work on?':'Your project. Let’s work on it.';
   const model=startup.model;
   const modelText=model?`${model.id} · ${model.transport}${model.local?(model.transport==='Local Ollama'?'':' · Local model'):' · Free route'}`:'';
-  const actions=busy?`<button class="subtle-button" data-startup="stop">Stop connecting</button>`:!ready?`<button class="primary-button" data-startup="start">${icon('play')}${startup.status==='unavailable'?'Try again':'Connect a free model'}</button>${!startup.settings?.allow_cloud?'<button class="outline-button" data-startup="cloud">Use free cloud models</button>':''}<button class="text-link" data-startup="models">Models</button>`:'';
+  const actions=busy?`<button class="subtle-button" data-startup="stop">Stop connecting</button>`:!ready?`<button class="primary-button" data-startup="setup">Set up connection</button><button class="text-link" data-startup="models">Advanced connections</button>`:'';
   return `<div class="welcome-mark">${busy?'<span class="spinner"></span>':icon('code')}</div><h1>${title}</h1>${model?`<div class="startup-model ${ready?'ready':''}"><span class="task-dot ${ready?'done':'pulsing'}"></span>${esc(modelText)}</div>`:''}<p class="welcome-greeting">${esc(ready?startup.content:startup.content||startup.message||'Open a local project, then talk to CheapOS.')}</p>${startup.thinking?thinkingMarkup({thinking:startup.thinking,request_id:'startup',model:model?.id||''},true):''}${ready?'<span class="startup-verified">Greeting received · no API cost reported</span>':''}<div class="startup-actions">${actions}</div>${startup.attempts?.some(a=>a.status==='failed')?`<details class="startup-attempts"><summary>Connection details</summary>${startup.attempts.filter(a=>a.status==='failed').map(a=>`<p><strong>${esc(a.model)}</strong><br>${esc(a.error)}</p>`).join('')}</details>`:''}`;
 }
 function bindStartupActions(root=document) {
   $$('[data-startup]',root).forEach(button=>button.onclick=async()=>{
     const action=button.dataset.startup;
+    if(action==='setup'){openSetup();return}
     if(action==='models'){openConnections();return}
     if(action==='preferences'){startupPreferences();return}
     button.disabled=true;
@@ -168,6 +169,38 @@ function bindStartupActions(root=document) {
       await api('/startup/'+(action==='stop'?'stop':'start'),{});await loadStartup();
     }catch(e){toast(e.message);button.disabled=false}
   });
+}
+function openSetup() {
+  const d=dialog(`${modalHeader('GET CONNECTED','Choose a connection')}<p class="modal-description">Connect, open a project, then send your request.</p><div class="button-row"><button class="primary-button" data-setup="omni">OmniRoute · recommended</button><button class="outline-button" data-setup="local">Models on this computer</button></div><section id="setup-status" aria-live="polite"></section><p class="form-error" role="alert"></p><div class="modal-footer"><button class="text-link" data-setup="advanced">Advanced connections</button><button class="subtle-button" data-setup="history">Return to saved work</button></div>`,'project-modal setup-modal');
+  let timer=null,busy=false,last='',readiness={},selected='';
+  const stop=()=>{clearTimeout(timer);timer=null};
+  d.addEventListener('close',stop);
+  const perform=async operation=>{if(busy)return;busy=true;$('.form-error',d).textContent='';try{await operation()}catch(e){$('.form-error',d).textContent=e.message}finally{busy=false}};
+  const render=()=>{
+    const guide=CheapOSGuide.setupGuide(readiness), key=$('[name="setup_key"]',d)?.value||'';
+    const signature=JSON.stringify([readiness.status,readiness.gateway,readiness.prerequisites]);if(signature===last)return;
+    if(document.activeElement?.name==='setup_key')return;last=signature;
+    const node=readiness.prerequisites?.node, cli=readiness.prerequisites?.omniroute;
+    $('#setup-status',d).innerHTML=`<h3>${esc(guide.title)}</h3><p>${esc(guide.detail)}</p>${guide.install?`${!node?.installed?'<p><a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer">Install Node.js LTS and npm</a>, then restart CheapOS so it can find them.</p>':''}<p>Run this in your terminal. It installs the version used for the CheapOS integration.</p><code class="approval-command">npm install -g omniroute@3.8.49</code><button class="subtle-button" data-setup="copy">Copy install command</button>`:''}${cli?.installed?`<p class="small muted">Installed OmniRoute: ${esc(cli.version||'version unknown')}${cli.compatibility==='unverified'?' · compatibility unverified':''}</p>`:''}${guide.dashboard?`<p><a href="${esc(readiness.gateway.dashboard_url)}" target="_blank" rel="noopener noreferrer">Open OmniRoute dashboard ↗</a></p><p class="small muted">Sign in there if requested, then use Providers for provider credentials. Dashboard login and provider credentials are separate from a client API key.</p>`:''}${guide.key?'<form id="setup-key-form"><label>Gateway client API key<input name="setup_key" type="password" autocomplete="new-password" required></label><button class="outline-button" type="submit">Save client key and retry</button></form>':''}<div class="button-row">${guide.start?'<button class="primary-button" data-setup="start">Connect / start</button>':''}<button class="outline-button" data-setup="recheck">Re-check / I’m back</button>${guide.ready?'<button class="primary-button" data-setup="continue">Use this connection</button>':''}</div>${guide.ready?'<p class="small muted">Uses current eligible free routes. Automatic coding selects and checks a different reviewer. A saved explicit model pair is preserved. No project work starts until you send a request.</p>':''}`;
+    if($('#setup-key-form',d)){ $('[name="setup_key"]',d).value=key;$('#setup-key-form',d).onsubmit=e=>{e.preventDefault();perform(async()=>{await api('/gateway/config',{api_key:$('[name="setup_key"]',d).value});$('[name="setup_key"]',d).value='';await api('/gateway/refresh',{});last='';await check()})}; }
+  };
+  const check=async()=>{stop();if(!d.open||selected!=='omni')return;try{readiness=await api('/readiness?refresh=1');if(d.open)render()}catch(e){if(d.open)$('.form-error',d).textContent=e.message}finally{if(d.open&&selected==='omni')timer=setTimeout(check,4000)}};
+  d.addEventListener('click',e=>{const action=e.target.closest('[data-setup]')?.dataset.setup;if(!action)return;
+    if(action==='local'){stop();d.close();executionPreferences();return}
+    if(action==='advanced'){d.close();openConnections();return}
+    if(action==='history'){d.close();return}
+    if(action==='omni'){selected='omni';try{localStorage.setItem('cheapos-setup-path','omni')}catch{}check();return}
+    if(action==='recheck'){check();return}
+    if(action==='copy'){perform(async()=>{await navigator.clipboard.writeText('npm install -g omniroute@3.8.49');toast('Install command copied')});return}
+    if(action==='start'){perform(async()=>{await api('/gateway/start',{});last='';await check()});return}
+    if(action==='continue')perform(async()=>{
+      const explicitPair=state.preferences.execution?.mode==='manual'&&state.config.worker&&state.config.reviewer;
+      if(!explicitPair)state.preferences=await api('/preferences',{execution:{...state.preferences.execution,mode:'remote'}});
+      await api('/startup/config',{allow_cloud:true});
+      d.close();renderComposer();if(state.project)$('#chat-input').focus();else openProject();
+    });
+  });
+  try{if(localStorage.getItem('cheapos-setup-path')==='omni'){selected='omni';check()}}catch{}
 }
 function startupPreferences() {
   const settings=state.startup.settings||{enabled:true,allow_cloud:false};

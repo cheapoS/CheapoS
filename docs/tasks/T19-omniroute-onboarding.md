@@ -25,12 +25,12 @@ Use readiness/HTTP fixtures and mocked dashboard destinations for deterministic 
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Guided connection choice, metadata-only status checks every four seconds while open, explicit Connect/start, pinned install-copy command, Node download guidance, dashboard credential distinction, optional client-key retry, saved setup path, and direct project continuation. Existing explicit pairs remain unchanged; new automatic remote chats use current free candidates and distinct-reviewer validation.
+- Acceptance evidence: Deterministic readiness fixture exercised ready, absent CLI/Node, rejected client key, failed start/retry, return/recovery, reload, saved explicit pair, and no project work. Source defaults and credentials remained isolated in a temporary directory.
+- Commands and results: JavaScript syntax passed; 67 guidance/conversation tests passed. Startup/routing: 39 tests passed in 22.611s. T18 readiness/HTTP contracts remain unchanged.
+- Browser scenarios and results: CUA on isolated port 51029: ready connection opened project selector without IDs; missing prerequisites and key distinction displayed; failed connection remained retryable; recovered metadata displayed Connected; setup choice survived reload; explicit pair preserved in persisted config. Narrow viewport found and fixed inherited dialog overflow; measured scrollWidth = clientWidth = 240, keyboard return succeeded.
+- Remaining limitations: Installation, dashboard login, and provider enrollment remain manual. Install instructions use the official v3.8.49 README (https://raw.githubusercontent.com/diegosouzapw/OmniRoute/v3.8.49/README.md). Optional APIs are not assumed. Local model selection is completed in T20.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

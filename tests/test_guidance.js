@@ -517,3 +517,13 @@ test('hard limit guidance identifies used and remaining allowance',()=>{
  assert.equal(guide.primaryLabel,'Review this limit');
  assert.equal(taskGuide(task({status:'paused'})).primary,'resume');
 });
+
+test('setup guidance uses typed recovery states and separates gateway identity from local choice',()=>{
+  const {setupGuide}=require('../dist/guidance.js');
+  for(const status of ['checking','starting','gateway_absent','gateway_stopped','gateway_ready','no_eligible_model','foreign_service','client_key_rejected','offline'])assert.ok(setupGuide({status}).title);
+  assert.equal(setupGuide({status:'foreign_service'}).start,false);
+  assert.equal(setupGuide({status:'client_key_rejected'}).key,true);
+  assert.equal(setupGuide({status:'gateway_absent'}).install,true);
+  assert.equal(setupGuide({status:'local_only_ready',gateway:{status:'ready',eligible_free_count:2}}).ready,true);
+  assert.equal(setupGuide({status:'no_eligible_model',gateway:{identified:true,dashboard_url:'http://localhost/'}}).dashboard,true);
+});

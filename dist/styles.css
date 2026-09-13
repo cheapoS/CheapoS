@@ -362,3 +362,5 @@ svg, svg * {
 .task-list-title small{display:block;font-size:10px;font-weight:400;opacity:.7;white-space:normal}.task-menu-actions button:focus-visible,.task-menu-button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
 
 .hidden-project-list button{display:block;width:100%;padding:12px;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);border-radius:6px;margin-top:8px}.hidden-project-list summary{cursor:pointer;padding:8px 0}
+
+.setup-modal{width:min(600px,calc(100vw - 24px));max-width:calc(100vw - 24px);overflow-wrap:anywhere}.setup-modal .button-row,.setup-modal .modal-footer{flex-wrap:wrap}.setup-modal button{white-space:normal}.setup-modal input{max-width:100%;box-sizing:border-box}
