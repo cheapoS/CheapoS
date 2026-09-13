@@ -35,6 +35,12 @@ class RoutingTraceTests(unittest.TestCase):
         trace.request(task,{'id':'next','role':'reviewer','model':'route/b','dispatched':True})
         self.assertEqual(task['routing_traces'][-1]['run_id'],'new-turn')
         self.assertEqual(len(task['routing_traces'][-1]['attempts']),1)
+        t=task['routing_traces'][-1]
+        for i in range(70):trace.candidate(t,'excluded/'+str(i),'access_excluded')
+        trace.candidate(t,'route/b','cached_probe')
+        self.assertEqual(len(t['candidates']),64)
+        self.assertTrue(t['candidates_truncated'])
+        self.assertEqual(t['candidates'][-1],{'model':'route/b','reason':'cached_probe'})
 
     def test_context_fit_does_not_mistake_old_usage_for_current_need(self):
         model={'tool_calling':True,'context_length':1024}

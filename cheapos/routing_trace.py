@@ -33,7 +33,14 @@ def begin(task, role, requested_route=None):
 def candidate(trace, model, reason):
     row={'model':model_label(model),'reason':reason if reason in REASONS else 'unknown'}
     if len(trace['candidates'])<64:trace['candidates'].append(row)
-    else:trace['candidates_truncated']=True
+    else:
+        trace['candidates_truncated']=True
+        # Retain actual selection actions even when a large discovery catalog
+        # has filled the bounded list with excluded entries.
+        actions={'cached_probe','shared_probe','probe_required','selected'}
+        if reason in actions:
+            discard=next((i for i,c in enumerate(trace['candidates']) if c['reason'] not in actions),0)
+            trace['candidates'].pop(discard);trace['candidates'].append(row)
 
 
 def selected(trace, model):
