@@ -172,6 +172,12 @@ CONTRIBUTING.md for focused iteration and explicitly selected integration checks
 
 ## Deliberate follow-ups after these milestones
 
+An [optional low-cost model workflow](docs/development/optional-low-cost-workflow.md)
+is documented for consideration after T41–T48. It would compare free-only work
+with explicitly budgeted paid access using verified completion, cost, elapsed
+time, and operator interventions. It is not an active implementation task or
+authorization to spend credits; free-only behavior stays unchanged.
+
 The first runner profile is unittest. Pytest/npm profiles, permanent Trash purge,
 automatic dependency installation, native installers, and persistent project trust
 need separate cards after their underlying contracts are proven. T04/T05 deliver
