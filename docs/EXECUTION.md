@@ -31,6 +31,14 @@ Failed probes can move to another free candidate; failed task requests pause wit
 
 The interface records each handoff with both model names. File actions record the model that performed them. The reviewer receives the original requests, patch, verification output, and read-only tools. Command execution and reviewer takeover retain their approval steps.
 
+## Command permissions and resuming
+
+For a verification command, choose **Run once**, **Allow for this session**, or **Decline** in Chat or Activity. Session permission applies only to that exact command and argument list in the current chat's task copy. It includes repeated verification at checkpoints and survives Pause, Resume, and follow-up messages. Different commands, arguments, workspaces, and chats still require approval. Grants are held in memory and expire when the CheapOS server restarts; saved approval events do not restore permission.
+
+Open **Details → Session permissions** to inspect or clear remembered commands. Clearing affects future executions; a command already running continues. Existing exact-command permissions on legacy or scripted demo tasks remain separate.
+
+**Resume** continues a normal pause with the saved models and limits. A budget stop opens the limits dialog, and reviewer takeover still requires explicit approval. Use the spending button to edit limits separately.
+
 ## Keep a slow model from wandering
 
 New runs default to:

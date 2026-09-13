@@ -115,6 +115,7 @@ class Engine:
         self.store = Store(data_directory)
         self.lock = threading.RLock()
         self.runtimes = {}
+        self.command_permissions = {}
         self.secrets = {}
         self.provider_factory = provider_factory
         self.gateway = OmniRouteManager(self.store.root)
@@ -316,11 +317,31 @@ class Engine:
             self.event(task, "state", "Chat limits updated")
             return task
 
-    def approve_check(self, task_id, approved):
+    def session_permissions(self, task_id):
+        with self.lock:
+            task = self.store.get(task_id)
+            commands = [list(argv) for directory, argv in self.command_permissions.get(task_id, set()) if directory == task["workspace"]]
+            return {"commands": sorted(commands), "directory": task["workspace"], "expires": "server_restart"}
+
+    def clear_session_permissions(self, task_id):
+        with self.lock:
+            self.store.get(task_id)
+            self.command_permissions.pop(task_id, None)
+            return self.session_permissions(task_id)
+
+    def approve_check(self, task_id, approved, remember=False, approval_id=None):
+        if not isinstance(approved, bool) or not isinstance(remember, bool) or remember and not approved:
+            raise ValueError("Provide a valid command approval")
         with self.lock:
             runtime = self.runtimes.get(task_id)
-            if not runtime or not runtime.task.get("pending_approval"):
+            if not runtime or not runtime.task.get("pending_approval") or runtime.approval.is_set() or runtime.stop.is_set():
                 raise ValueError("No command is waiting for approval")
+            pending = runtime.task["pending_approval"]
+            if (remember or approval_id is not None) and approval_id != pending["id"]:
+                raise ValueError("This approval request changed. Refresh the chat before approving.")
+            if remember:
+                self.command_permissions.setdefault(task_id, set()).add((pending["directory"], tuple(pending["command"])))
+            self.event(runtime.task, "permission", "Command allowed for this session" if remember else "Command allowed once" if approved else "Command declined", {"command": pending["command"], "directory": pending["directory"], "scope": "session" if remember else "once"})
             runtime.approved = approved is True
             runtime.approval.set()
         return {"accepted": True}
@@ -468,11 +489,14 @@ class Engine:
             argv = shlex.split(command)
         if not argv:
             raise ValueError("Choose a check from this project's guidance and call run_checks with its command. If none is suitable, use ask_user.")
-        # Permission for a previous command never authorizes a model-selected one.
-        if not task["auto_approve_checks"] or argv != task["check_command"]:
+        # Session grants match this chat, workspace, and parsed argument vector.
+        # They are held in memory, never restored from task history.
+        with self.lock:
+            session_allowed = (task["workspace"], tuple(argv)) in self.command_permissions.get(task["id"], set())
+        if not session_allowed and (not task["auto_approve_checks"] or argv != task["check_command"]):
             runtime.approved = False
             runtime.approval.clear()
-            task["pending_approval"] = {"command": argv, "directory": task["workspace"]}
+            task["pending_approval"] = {"id": uuid.uuid4().hex, "command": argv, "directory": task["workspace"]}
             task["status"] = "waiting_approval"
             self.event(task, "permission", "Permission needed to run the verification command", task["pending_approval"])
             waiting_since = time.monotonic()
@@ -484,6 +508,8 @@ class Engine:
             if not runtime.approved:
                 raise InterruptedError("Verification command was declined")
             task["status"] = "running"
+        elif session_allowed:
+            self.event(task, "permission", "Using session permission", {"command": argv, "directory": task["workspace"], "scope": "session"})
         if argv != task["check_command"]:
             task["auto_approve_checks"] = False
         task["check_command"] = argv

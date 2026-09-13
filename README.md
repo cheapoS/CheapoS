@@ -99,7 +99,7 @@ Snapshots omit common secret filenames, symlinks, dependency directories, and ig
 
 Dependencies are not installed automatically. This alpha works best with small, dependency-light projects. For other projects, pause the chat, find its copy under **Details → Workspace details**, prepare dependencies there yourself, then resume. Commands are split into arguments without a shell; pipes, shell expansion, and redirection are not interpreted.
 
-**Verification runs repository code on your host computer. A separate copy is not an operating-system sandbox.** Commands require approval by default. Legacy tasks may have a saved permission for their exact configured command; a newly proposed command always needs approval. Use repositories you trust. Checks have a 90-second timeout and output limits; child processes are stopped as a group on macOS/Linux. Model API keys are removed from their environment.
+**Verification runs repository code on your host computer. A separate copy is not an operating-system sandbox.** Commands require approval by default. Choose **Run once** or **Allow for this session** to remember an exact command for the current chat's task copy, including checkpoint reruns. Different commands still ask. Session grants expire when CheapOS restarts and can be cleared under **Details → Session permissions**. Legacy tasks may separately have a saved permission for their exact configured command. Use repositories you trust. Checks have a 90-second timeout and output limits; child processes are stopped as a group on macOS/Linux. Model API keys are removed from their environment.
 
 ## Limits and recovery
 

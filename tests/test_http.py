@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from cheapos.engine import Engine
+from cheapos.engine import Engine, Runtime
 from cheapos.providers import ChatProvider, ProviderError
 from cheapos.gateways import OmniRouteGateway
 from cheapos.startup import GREETING
@@ -57,6 +57,23 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request('GET', '/api/bootstrap', headers=headers)[0], 403)
         self.assertEqual(self.request('POST', '/api/demo', {}, {'Content-Type': 'application/json'})[0], 403)
         self.assertEqual(self.engine.store.list(), [])
+
+    def test_session_permission_api_requires_current_approval_and_only_allows_revocation(self):
+        task = self.engine.create_demo()
+        runtime = Runtime(task)
+        task['pending_approval'] = {'id': 'current', 'command': ['python3', '-m', 'unittest'], 'directory': task['workspace']}
+        self.engine.runtimes[task['id']] = runtime
+        path = '/api/tasks/' + task['id']
+        for body in [{'approved': True, 'remember': 'yes'}, {'approved': True, 'remember': True}, {'approved': True, 'remember': True, 'approval_id': 'old'}]:
+            self.assertEqual(self.post(path + '/approval', body)[0], 400)
+        self.assertEqual(self.post(path + '/approval', {'approved': True, 'remember': True, 'approval_id': 'current'})[0], 200)
+        result = json.loads(self.request('GET', path + '/permissions')[2])
+        self.assertEqual(result['commands'], [['python3', '-m', 'unittest']])
+        self.assertEqual(result['expires'], 'server_restart')
+        self.assertEqual(self.post(path + '/approval', {'approved': True, 'remember': True, 'approval_id': 'current'})[0], 400)
+        self.assertEqual(self.post(path + '/permissions', {'command': ['anything']})[0], 400)
+        self.assertEqual(self.post(path + '/permissions', {'clear': True})[0], 200)
+        self.assertEqual(json.loads(self.request('GET', path + '/permissions')[2])['commands'], [])
 
     def test_private_paths_are_not_served(self):
         for path in ['/README.md', '/.git/config', '/.cheapos/config.json', '/../run.py', '/%2e%2e/run.py', '/api/tasks/../../config']:

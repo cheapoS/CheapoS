@@ -104,6 +104,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 task = engine.store.get(parts[2])
                 if len(parts) == 3:
                     self.reply(public_task(task))
+                elif len(parts) == 4 and parts[3] == "permissions":
+                    self.reply(engine.session_permissions(task["id"]))
                 elif len(parts) == 4 and parts[3] == "patch":
                     data = task["patch"].encode("utf-8")
                     self.send_response(200)
@@ -191,7 +193,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 elif action == "approval":
                     if not isinstance(values.get("approved"), bool):
                         raise ValueError("Provide an approval decision")
-                    result = engine.approve_check(task_id, values["approved"])
+                    result = engine.approve_check(task_id, values["approved"], values.get("remember", False), values.get("approval_id"))
+                elif action == "permissions":
+                    if values != {"clear": True}:
+                        raise ValueError("Session permissions can only be cleared here")
+                    result = engine.clear_session_permissions(task_id)
                 else:
                     raise ValueError("Unknown task action")
             else:
