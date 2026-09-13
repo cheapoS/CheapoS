@@ -88,7 +88,7 @@ class FreeModelPool:
     def provider_key(model):
         return "\0provider/" + model.split("/", 1)[0]
 
-    def record(self, endpoint, model, role, *, error=None, seconds=None, probe=False):
+    def record(self, endpoint, model, role, *, error=None, seconds=None, probe=False, connection_revision=None):
         with self.lock:
             cooldown = getattr(error, "code", None) == "gateway_cooldown"
             scope = getattr(error, "scope", None)
@@ -111,6 +111,7 @@ class FreeModelPool:
                 if probe:
                     record["tool_check_passed"] = True
                     record['tool_check_at'] = time.time()
+                    if connection_revision is not None: record['tool_connection_revision'] = connection_revision
                 else:
                     record["failures"] = 0
                     field = role + "_responses"

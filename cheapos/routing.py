@@ -4,6 +4,7 @@ import copy
 import math
 import time
 
+from . import access_policy
 from .providers import ProviderError, is_local_ollama, validate_provider
 
 
@@ -70,6 +71,9 @@ def verify_local(config):
 def setup_task(task, execution, config, gateway):
     """Pin placement at creation. Old tasks keep their original pair."""
     task["execution"] = copy.deepcopy(execution)
+    policy = access_policy.snapshot(gateway.settings)
+    if policy is not None:
+        task['access_policy'] = policy
     mode = execution["mode"]
     if mode == "manual":
         return
@@ -89,12 +93,14 @@ def setup_task(task, execution, config, gateway):
         task["providers"] = {"worker": None, "reviewer": None}
     task["route"] = {"ready": False, "base_url": gateway.settings["base_url"],
                      "preferred": {r: (config.get(r) or {}).get("model") for r in ("worker", "reviewer")}}
+    if policy is not None: task['route']['access_policy'] = copy.deepcopy(policy)
 
 
 def select_remote(engine, runtime, role="worker", replace=False):
     """Find one needed role, with at most four probes. Pin each successful selection."""
     task, gateway = runtime.task, engine.gateway
     route = task["route"]
+    access_policy.validate_current(route.get('access_policy'), gateway.settings)
     if task["providers"].get(role) and not replace:
         return
     route["waiting_for"] = role
@@ -112,7 +118,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
                     and e["detail"].get("model"))
     used.update(runtime.failed_models)
     used.update(task.get('branch_run',{}).get('implementation_recovery',{}).get('failed_models',[]))
-    candidates = [m for m in catalog["models"] if m.get("free") and m.get("tool_calling") is True
+    candidates = [m for m in catalog["models"] if access_policy.eligible(m, route.get('access_policy'))
                   and not m.get("local") and not m["id"].startswith("auto/") and m["id"] not in used
                   and not gateway.pool.observation(route["base_url"], m["id"])["cooling_down"]]
     preferred = route.get("preferred", {})
@@ -126,13 +132,19 @@ def select_remote(engine, runtime, role="worker", replace=False):
             continue
         health = gateway.pool.observation(route["base_url"], model["id"])
         cached = health.get("tool_check_passed") and health.get("tool_check_at", 0) >= time.time()-300 and not health.get("last_error")
+        if access_policy.classify(model, route.get('access_policy')) == 'included':
+            cached = cached and health.get('tool_connection_revision') == route['access_policy']['connection_revision']
         if model["id"] in tried or (not cached and probes.get(role, 0) >= 4):
             continue
         tried.add(model["id"])
         probes[role] = probes.get(role, 0) + (0 if cached else 1)
         cfg = validate_provider({"gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
                                  "input_rate": 0, "output_rate": 0}, role)
-        engine.event(task, "routing", "Checking a free " + role, {"model": model["id"], "role": role})
+        if route.get('access_policy') is not None: cfg['access_binding'] = copy.deepcopy(route['access_policy'])
+        if access_policy.classify(model, route.get('access_policy')) == 'included':
+            cfg = access_policy.bind_provider(cfg, route['access_policy'], model)
+        label = 'included' if cfg.get('access') == 'included' else 'free'
+        engine.event(task, "routing", ("Checking included " if label == "included" else "Checking a free ") + role, {"model": model["id"], "role": role})
         try:
             if not cached:
                 message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose="probe")
@@ -142,11 +154,12 @@ def select_remote(engine, runtime, role="worker", replace=False):
                 name, args = engine.parse_call(calls[0])
                 if name != "routing_ready" or args != {}:
                     raise ProviderError("The model did not return the expected tool call")
-                gateway.pool.record(route["base_url"], model["id"], role, probe=True)
+                probe_scope = {'connection_revision': route['access_policy']['connection_revision']} if route.get('access_policy') else {}
+                gateway.pool.record(route["base_url"], model["id"], role, probe=True, **probe_scope)
             task["providers"][role] = cfg
             route["ready"] = bool(task["providers"].get("worker"))
             route.pop("waiting_for", None)
-            engine.event(task, "routing", "Free " + role + " is ready", {"model": model["id"], "role": role, "tool_check": "recent cached observation" if cached else "new probe"})
+            engine.event(task, "routing", label.capitalize() + " " + role + " is ready", {"model": model["id"], "role": role, "tool_check": "recent cached observation" if cached else "new probe"})
             engine.store.save(task)
             return
         except (ProviderError, ValueError, TypeError, KeyError) as error:
@@ -158,25 +171,25 @@ def select_remote(engine, runtime, role="worker", replace=False):
             if cooldown:
                 failure["scope"] = error.scope
             route["failures"].append(failure)
-            engine.event(task, "routing", "Free provider is cooling down" if cooldown else "Free model check failed", failure)
+            engine.event(task, "routing", "Provider is cooling down" if cooldown else "Model check failed", failure)
     if probes.get(role, 0) >= 4:
-        raise RoutingPause("Four free " + role + " probes were used for this request. Inspect Models and provide a new instruction; Resume does not renew probe attempts.", scope="probe_limit")
+        raise RoutingPause("Four eligible " + role + " probes were used for this request. Inspect Models and provide a new instruction; Resume does not renew probe attempts.", scope="probe_limit")
     provider_waits = [gateway.pool.observation(route["base_url"], m["id"]) for m in catalog["models"]
-                      if m.get("free") and m.get("tool_calling") is True and not m.get("local") and m["id"] not in used]
+                      if access_policy.eligible(m, route.get('access_policy')) and not m.get("local") and m["id"] not in used]
     waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") in {"provider", "model"} and h.get("retry_known") and h["cooling_down"]]
     if waits:
         seconds = max(1, math.ceil(min(waits) - time.time()))
         scope = "provider" if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits) else "model"
-        message = f"The free provider connection is cooling down. Retry in about {seconds} seconds. Other models on that connection were not tested or marked broken. Your chat, files, checks, and usage are saved." if scope == "provider" else f"Eligible free models are cooling down. Earliest retry eligibility is in about {seconds} seconds. Saved work is kept."
+        message = f"The provider connection is cooling down. Retry in about {seconds} seconds. Other models on that connection were not tested or marked broken. Your chat, files, checks, and usage are saved." if scope == "provider" else f"Eligible models are cooling down. Earliest retry eligibility is in about {seconds} seconds. Saved work is kept."
         raise RoutingPause(message, retry_at=min(waits), scope=scope)
     if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits):
-        reason = next((h.get('last_error') for h in provider_waits if h.get('cooldown_scope') == 'provider' and h['cooling_down'] and h.get('last_error')), 'The free provider is cooling down without a known retry time.')
+        reason = next((h.get('last_error') for h in provider_waits if h.get('cooldown_scope') == 'provider' and h['cooling_down'] and h.get('last_error')), 'The provider is cooling down without a known retry time.')
         raise RoutingPause(reason + " Inspect Models or retry manually later.", scope="provider")
     if replace:
-        raise RoutingPause("No different free " + role + " passed the tool check. Failed models are temporarily cooling down. Your chat, files, checks, and usage are saved; resume to check availability again or inspect Models.")
+        raise RoutingPause("No different eligible " + role + " passed the tool check. Failed models are temporarily cooling down. Your chat, files, checks, and usage are saved; resume to check availability again or inspect Models.")
     if role == "reviewer":
-        raise RoutingPause("Your changes are saved, but a different free reviewer is not available yet. Check the model results below or enabled providers in OmniRoute, then resume to retry review without repeating the edits.")
-    raise RoutingPause("No free worker passed the tool check. Check the model results below or enabled providers in OmniRoute, then resume. No project work was dispatched and no local or paid fallback was used.")
+        raise RoutingPause("Your changes are saved, but a different eligible reviewer is not available yet. Check the model results below or enabled providers in OmniRoute, then resume to retry review without repeating the edits.")
+    raise RoutingPause("No eligible worker passed the tool check. Check the model results below or enabled providers in OmniRoute, then resume. No project work was dispatched and no local or paid fallback was used.")
 
 
 def coordinator_messages(task):

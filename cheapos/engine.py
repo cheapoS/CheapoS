@@ -255,7 +255,7 @@ def request_worker_turns(task):
         if event["kind"] == "user":
             current = 0
         if event["kind"] == "routing":
-            probe = event["title"].startswith("Checking a free ")
+            probe = event["title"].startswith(("Checking a free ", "Checking included "))
         if event["kind"] == "model":
             if not probe and event["title"].startswith(("Requesting worker:", "Requesting coordinator:")):
                 total += 1
@@ -412,6 +412,11 @@ class Engine:
     def configure(self, values):
         normalized = {role: validate_provider(values.get(role), role) for role in ("worker", "reviewer")}
         for role, config in normalized.items():
+            if config.get('access') == 'included':
+                from . import access_policy
+                config = access_policy.bind_provider(config, access_policy.snapshot(self.gateway.settings),
+                    next((m for m in self.gateway.models if m['id'] == config['model']), None))
+                normalized[role] = config
             if config["gateway"] == "omniroute" and not self.gateway.matches(config["base_url"]):
                 raise ValueError("Connect the OmniRoute backend before selecting its models")
             key = values[role].get("api_key")
@@ -1341,10 +1346,14 @@ class Engine:
             if catalog["status"] != "ready":
                 raise RoutingPause("The free model catalog is unavailable. Saved work is kept; reconnect OmniRoute and resume.")
             model = next((m for m in catalog["models"] if m["id"] == cfg["model"]), None)
-            if (not model or not model.get("free") or model.get("local") or model.get("tool_calling") is not True
-                    or model["id"].startswith("auto/")):
-                self.defer_route(task, role, "This model is no longer advertised as a free remote model with tool support.")
+            from . import access_policy
+            access_policy.validate_current(task['route'].get('access_policy'), self.gateway.settings)
+            if not model or not access_policy.eligible(model, task['route'].get('access_policy')):
+                self.defer_route(task, role, "This model is no longer eligible under the captured access policy with tool support.")
                 continue
+            if access_policy.classify(model, task['route'].get('access_policy')) == 'included':
+                cfg = access_policy.bind_provider(cfg, task['route']['access_policy'], model)
+                task['providers'][role] = cfg
             if self.gateway.pool.observation(cfg["base_url"], cfg["model"])["cooling_down"]:
                 health = self.gateway.pool.observation(cfg["base_url"], cfg["model"])
                 if health.get("cooldown_scope") == "provider":
@@ -1406,6 +1415,11 @@ class Engine:
         config=config_override or task['providers'][role]
         record={'id':uuid.uuid4().hex,'run_id':task.get('metric_run_id'),'role':role,'model':config['model'],
                 'purpose':purpose or 'work','dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation'}
+        binding = config.get('access_binding')
+        if binding:
+            record['dispatch_scope'] = {'base_url': config['base_url'], 'connection_revision': binding['connection_revision'],
+                                        'model': config['model'], 'role': role}
+            record['access_class'] = 'included' if config.get('access') == 'included' else 'public_free'
         task.setdefault('request_metrics',[]).append(record)
         if len(task['request_metrics'])>2000:
             task['request_metrics'].pop(0);task['request_metrics_truncated']=True
@@ -1449,6 +1463,9 @@ class Engine:
         if task["demo"]:
             return self.fixture_response(task, role)
         config = config_override or task["providers"][role]
+        from . import access_policy
+        access_models = self.gateway.catalog(fresh=False)['models'] if (task.get('route') or {}).get('access_policy') else None
+        access_policy.guard(task, config, self.gateway.settings, access_models)
         if not self.provider_factory and task.get("execution", {}).get("mode") in {"local", "delegate"} and (role == "coordinator" or task["execution"]["mode"] == "local"):
             identity = (config["base_url"], config["model"])
             if identity not in runtime.verified_local:

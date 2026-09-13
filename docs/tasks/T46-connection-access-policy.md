@@ -1,6 +1,6 @@
 # T46 — Explicit access policy for available connections
 
-Status: Not started
+Status: Done
 Depends on: T45 findings recorded
 Size: M
 
@@ -65,9 +65,71 @@ real automatic selection separately.
 
 ## Completion record
 
-Access classifications and scope contract: pending
-Backward compatibility and acceptance evidence: pending
-Commands/browser results and measured timing: pending
-Remaining limitations: pending
+Access classifications and scope contract:
+
+- `gateway.json` now persists an opaque `connection_revision` and exact
+  `included_models`. Saving grants requires `expected_connection_revision` from
+  the inspected connection. Endpoint/client-key changes rotate the revision and
+  clear grants; refresh/startup-preference changes retain them. Keys remain in
+  memory/environment, never in this file or health records.
+- Catalog `access_class` is separate from unchanged advertised prices and `free`:
+  `public_free`, `included`, `local`, `priced`, or `unknown`. Included provider
+  configs carry an explicit binding, `pricing_source: operator_included`, original
+  `catalog_pricing`, and zero marginal-cost estimates. Positive provider-reported
+  charges still count; included access is not a public-free price claim.
+- New task/route snapshots and branch proposal model policy capture the exact
+  connection scope. Selection excludes unauthorized candidates before ranking;
+  dispatch (including override/probe requests) rechecks current scope, exact
+  model, endpoint, and tool eligibility. No paid/local fallback was added.
+  Included cached tool probes require the same connection revision.
+- Request metrics retain the dispatched endpoint/revision/model/role separately
+  from later handoffs. Health errors use model scope unless machine metadata
+  explicitly establishes provider-wide cooldown. Missing reset times remain
+  unknown; raw upstream error text is never retained by this parser.
+
+Backward compatibility and acceptance evidence:
+
+- Existing tasks/contracts without access fields retain their legacy policy;
+  historical prices are not rewritten. Catalog refresh alone cannot authorize
+  new model IDs or change a saved included scope. Auto/combo/local entries are
+  excluded from included remote authorization.
+- Pure cases cover absent and contradictory prices, exact IDs, stale revisions,
+  unknown models, local/combo exclusion, scoped cached probes, old-task behavior,
+  proposal invalidation, and sanitized quota metadata. Existing gateway, routing,
+  handoff, cooldown and branch authorization tests pass.
+- Models has an explicit exact-ID grant list, per-role included choice, honest
+  catalog labels, refresh persistence, and no inference when saving settings.
+  UI work is separately committed by the UI owner on this branch.
+
+Commands/browser results and measured timing:
+
+- Inspected `scripts/check.py --plan`: shared engine/provider imports select 60
+  modules, so used focused cases instead of that broad set.
+- 117 distinct backend tests pass across `test_access_policy` (7),
+  `test_gateways` (18), `test_routing` (25), `test_model_pool` (21), `test_http`
+  (33), `test_branch_start` (3), `test_branch_reprepare` (2), and
+  `test_cooldown_wait` (8). Loopback tests were rerun with loopback access after
+  sandbox socket denial; this was not an application failure.
+- Seven new deterministic cases total **0.013 seconds**, with no Git, inference,
+  real-time waits, or new server fixture. Existing combined focused runs took
+  about 9–11 seconds in parallel. No full suite or account experiment.
+- UI owner reports 55 Node tests passing in about 80ms; synthetic Models browser
+  validation is recorded by the parent at integration. `git diff --check` passes.
+
+Remaining limitations:
+
+- An operator's included-access statement is not a billing guarantee. Unknown
+  prices remain unknown, and reported costs override estimates.
+- Exact manual IDs can be authorized before appearing in a catalog; that does not
+  prove availability or tool support. Automatic selection still requires current
+  catalog membership and advertised tools followed by a real valid tool probe.
+- CheapOS observes its own endpoint/key configuration changes. An invisible
+  upstream alias reassignment or environment credential replacement at restart
+  behind identical endpoint/model IDs cannot be detected from catalog metadata;
+  the operator must reconfirm access after such a change. No secret-derived
+  fingerprint or claimed upstream account identity is stored.
+- Broader quality/ranking history scoping is T47; this task only adds immutable
+  dispatch provenance and connection-bound included-probe reuse.
+
 
 Update this card and TASKS.md; commit independently of ranking changes.

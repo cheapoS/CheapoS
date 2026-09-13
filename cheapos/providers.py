@@ -35,25 +35,29 @@ def http_failure(error, config):
     reason = {401: "API key was rejected", 402: "Provider credit limit reached", 403: "Provider denied access", 429: "Provider rate limit reached"}.get(error.code, f"Provider returned HTTP {error.code}")
     if config.get("gateway") == "omniroute" and error.code not in {401, 402, 403}:
         try:
+            raw = error.read(16385)
+            data = json.loads(raw) if len(raw) <= 16384 else {}
+            metadata = data.get("error", {}) if isinstance(data, dict) else {}
+            code = metadata.get('code') if isinstance(metadata, dict) else None
+        except (ValueError, OSError):
+            code = None
+        delay = None
+        try:
             value = error.headers.get("Retry-After", "")
             try:
-                delay = float(value)
+                candidate = float(value)
             except ValueError:
-                delay = parsedate_to_datetime(value).timestamp() - time.time()
-            if math.isfinite(delay) and delay > 0:
-                delay = min(86400, max(1, math.ceil(delay)))
-                try:
-                    raw = error.read(16385)
-                    data = json.loads(raw) if len(raw) <= 16384 else {}
-                    metadata = data.get("error", {}) if isinstance(data, dict) else {}
-                    model_only = isinstance(metadata, dict) and metadata.get("code") == "model_cooldown"
-                except (ValueError, OSError):
-                    model_only = False
-                scope = "model" if model_only else "provider"
-                return ProviderError(f"OmniRoute reports a {scope} cooldown. Retry in about {delay} seconds. No model compatibility conclusion was drawn.",
-                                     code="gateway_cooldown", retry_after=delay, scope=scope)
+                candidate = parsedate_to_datetime(value).timestamp() - time.time()
+            if math.isfinite(candidate) and candidate > 0:
+                delay = min(86400, max(1, math.ceil(candidate)))
         except (ValueError, TypeError, OverflowError, AttributeError):
             pass
+        if delay is not None or code in {'model_cooldown', 'provider_cooldown'} or error.code == 429:
+            # Only explicit shared-quota metadata can exclude sibling models.
+            scope = 'provider' if code == 'provider_cooldown' else 'model'
+            retry = f'Retry in about {delay} seconds.' if delay is not None else 'The reset time is unknown.'
+            return ProviderError(f'OmniRoute reports a {scope} cooldown. {retry} No model compatibility conclusion was drawn.',
+                                 code='gateway_cooldown', retry_after=delay, scope=scope)
     if error.code == 404:
         reason = "This model route is unavailable (HTTP 404)"
     return ProviderError(reason + ". This request did not complete.", code=f"http_{error.code}")
@@ -86,10 +90,13 @@ def validate_provider(value, role):
     model = str(value.get("model", "")).strip()
     if not model or len(model) > 200:
         raise ValueError(f"Choose a {role} model ID")
+    access = value.get('access')
+    if access not in (None, 'included'):
+        raise ValueError('Invalid provider access classification')
     rates = []
     for key in ("input_rate", "output_rate"):
         try:
-            rate = float(value[key])
+            rate = 0.0 if access == 'included' else float(value[key])
         except (ValueError, TypeError, KeyError):
             raise ValueError("Set input and output prices per million tokens (0 for a free/local model)")
         if not math.isfinite(rate) or rate < 0 or rate > 10000:
@@ -101,7 +108,10 @@ def validate_provider(value, role):
     gateway = value.get("gateway", "openai")
     if gateway not in {"openai", "omniroute"}:
         raise ValueError("Choose OmniRoute or an OpenAI-compatible connection")
-    return {"base_url": endpoint, "model": model, "input_rate": rates[0], "output_rate": rates[1], "key_env": env, "gateway": gateway}
+    result = {"base_url": endpoint, "model": model, "input_rate": rates[0], "output_rate": rates[1], "key_env": env, "gateway": gateway}
+    if access:
+        result['access'] = access
+    return result
 
 
 class ChatProvider:

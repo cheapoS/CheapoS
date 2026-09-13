@@ -41,7 +41,11 @@ class BranchController:
         self.final_proposals=ProposalRegistry()
 
     def model_policy(self):
-        return {'execution':copy.deepcopy(self.engine.preferences()['execution']), 'providers':copy.deepcopy(self.engine.config)}
+        from .access_policy import snapshot
+        result = {'execution':copy.deepcopy(self.engine.preferences()['execution']), 'providers':copy.deepcopy(self.engine.config)}
+        access = snapshot(self.engine.gateway.settings)
+        if access is not None: result['gateway_access'] = access
+        return result
 
     def prepare(self, values, planning_task=None):
         with self.engine.lock:
@@ -105,7 +109,9 @@ class BranchController:
     def contract(self, task):
         run=task['branch_run']
         from .branch_completion import authorization_run
-        return contract_builder(authorization_run(run),run['authorization_workspace'],self.model_policy(),run['check_scope'])
+        policy = self.model_policy()
+        if 'gateway_access' not in run.get('model_policy', {}): policy.pop('gateway_access', None)
+        return contract_builder(authorization_run(run),run['authorization_workspace'],policy,run['check_scope'])
 
     def authorize(self, task_id, values):
         with self.engine.lock:

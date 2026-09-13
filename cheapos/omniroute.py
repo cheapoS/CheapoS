@@ -9,6 +9,7 @@ import socket
 import subprocess
 import threading
 import time
+import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -16,6 +17,7 @@ from .gateways import OmniRouteGateway
 from .model_pool import FreeModelPool
 from .providers import ProviderError
 from .storage import write_json
+from . import access_policy
 
 
 DEFAULT_SETTINGS = {"base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True}
@@ -43,6 +45,13 @@ def validate_settings(values):
     if key is not None and (not isinstance(key, str) or len(key) > 4096 or "\n" in key or "\r" in key):
         raise ValueError("Invalid gateway client API key")
     settings["base_url"] = url.rstrip("/")
+    if 'connection_revision' in values:
+        revision = values['connection_revision']
+        if not isinstance(revision, str) or len(revision) != 32 or any(c not in '0123456789abcdef' for c in revision):
+            raise ValueError('Invalid connection revision')
+        settings['connection_revision'] = revision
+    if 'included_models' in values:
+        settings['included_models'] = access_policy.model_ids(values['included_models'])
     return settings
 
 
@@ -65,6 +74,9 @@ class OmniRouteManager:
             self.settings = validate_settings(json.loads(self.path.read_text()))
         except (OSError, ValueError, TypeError):
             self.settings = dict(DEFAULT_SETTINGS)
+        if 'connection_revision' not in self.settings:
+            self.settings.update(connection_revision=uuid.uuid4().hex, included_models=[])
+            write_json(self.path, self.settings)
         self.api_key = os.environ.get("CHEAPOS_GATEWAY_API_KEY", "")
         self.lock = threading.RLock()
         self.closed = threading.Event()
@@ -100,7 +112,19 @@ class OmniRouteManager:
         with self.lock:
             if not isinstance(values, dict):
                 raise ValueError("Gateway settings must be an object")
+            if 'connection_revision' in values:
+                raise ValueError('Connection revision is read-only')
             settings = validate_settings({**self.settings, **values})
+            connection_changed = (settings['base_url'] != self.settings['base_url']
+                                  or ('api_key' in values and values['api_key'] != self.api_key))
+            if 'included_models' in values:
+                if connection_changed or values.get('expected_connection_revision') != self.settings['connection_revision']:
+                    raise ValueError('Inspect the current connection before authorizing included model access')
+                wanted = access_policy.model_ids(values['included_models'])
+                if any(m['id'] in wanted and (m.get('local') or m.get('provider') == 'combo') for m in self.models):
+                    raise ValueError('Included access requires exact remote model IDs, not local or combined routes')
+            if connection_changed:
+                settings.update(connection_revision=uuid.uuid4().hex, included_models=[])
             if self.thread and self.thread.is_alive():
                 raise ValueError("Wait for the current gateway connection attempt to finish")
             if settings["base_url"] != self.settings["base_url"]:
@@ -115,6 +139,7 @@ class OmniRouteManager:
                 self.api_key = values["api_key"]
             write_json(self.path, settings)
             self.settings = settings
+            self.revision += 1
             return self.snapshot()
 
     def refresh(self, start=False):
@@ -257,5 +282,7 @@ class OmniRouteManager:
         with self.lock:
             models = copy.deepcopy(self.models)
             for model in models:
+                model['access_class'] = access_policy.classify(model, access_policy.snapshot(self.settings))
+                model['access_source'] = 'operator_statement' if model['access_class'] == 'included' else 'catalog'
                 model["health"] = self.pool.observation(self.settings["base_url"], model["id"])
             return {"models": models, "revision": self.revision + self.pool.revision, "status": self.state}
