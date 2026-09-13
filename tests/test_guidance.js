@@ -200,12 +200,12 @@ test('Activity shows handoffs and verified review evidence newest first',()=>{
 
 test('free pool distinguishes untested models, observed responses, and expiring cooldowns',()=>{
   const {modelHealth}=require('../dist/guidance.js');
-  assert.equal(modelHealth({}), 'Not tested yet');
-  assert.equal(modelHealth({health:{tool_check_passed:true}}), 'Tool check passed');
-  assert.equal(modelHealth({health:{worker_responses:2}}), 'Responded in a task');
+  assert.equal(modelHealth({}), 'Not tested yet · no prior completion evidence');
+  assert.equal(modelHealth({health:{tool_check_passed:true}}), 'Tool check passed · no prior completion evidence');
+  assert.equal(modelHealth({health:{worker_responses:2}}), 'Responded in a task · no prior completion evidence');
   assert.equal(modelHealth({health:{retry_at:160}},100000), 'Cooling down · 1m');
   assert.equal(modelHealth({health:{retry_at:160,cooldown_scope:'provider'}},100000), 'Provider cooling down · 1m');
-  assert.equal(modelHealth({health:{retry_at:160,tool_check_passed:true}},161000), 'Tool check passed');
+  assert.equal(modelHealth({health:{retry_at:160,tool_check_passed:true}},161000), 'Tool check passed · no prior completion evidence');
 });
 
 test('progress names the candidate being probed instead of the failed pinned model',()=>{
@@ -546,5 +546,5 @@ test('cost labels report provenance without hypothetical savings',()=>{
 
 test('model evidence exposes role sample counts without quality scores',()=>{
   const label=require('../dist/guidance.js').modelHealth({health:{role_evidence:{worker:{samples:3,valid_calls:8,invalid_output:1,accepted:0}}}});
-  assert.match(label,/worker: 3 runs/);assert.match(label,/1 invalid outputs/);
+  assert.match(label,/3 activity samples/);assert.match(label,/1 invalid outputs/);
 });

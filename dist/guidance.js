@@ -180,11 +180,20 @@ const CheapOSGuide = (() => {
   }
   function modelHealth(model,at=Date.now()) {
     const h=model.health||{},remaining=Math.ceil(((h.retry_at||0)*1000-at)/60000);
-    if(remaining>0)return `${h.cooldown_scope==='provider'?'Provider cooling down':'Cooling down'} · ${remaining}m`;
-    const evidence=Object.entries(h.role_evidence||{}).filter(([,e])=>e.samples>0);
-    if(evidence.length)return evidence.map(([role,e])=>`${role}: ${e.samples} runs · ${e.valid_calls} valid file/web calls · ${e.invalid_output} invalid outputs · ${e.accepted} human accepted`).join('; ');
-    if((h.worker_responses||0)+(h.reviewer_responses||0)>0)return 'Responded in a task';
-    return h.tool_check_passed?'Tool check passed':'Not tested yet';
+    if(remaining>0)return `${h.cooldown_scope==='provider'?'Provider cooling down':'Cooling down'} · ${h.retry_known===false?'reset time unknown':`${remaining}m`}`;
+    const evidence=Object.entries(h.role_evidence||{}).filter(([,e])=>e.samples>0||e.completion_samples>0);
+    if(evidence.length)return evidence.map(([role,e])=>{
+      const parts=[`${role}: ${e.completed||0} observed completions`];
+      if(!e.completed)parts.push('no prior completion evidence');
+      if(e.independently_validated)parts.push(`${e.independently_validated} independently confirmed`);
+      if(e.independently_disproved)parts.push(`${e.independently_disproved} independently disproved`);
+      if(e.human_integrated)parts.push(`${e.human_integrated} human integrated`);
+      if(e.samples)parts.push(`${e.samples} activity samples`);
+      if(e.invalid_output)parts.push(`${e.invalid_output} invalid outputs`);
+      return parts.join(' · ');
+    }).join('; ');
+    const compatibility=(h.worker_responses||0)+(h.reviewer_responses||0)>0?'Responded in a task':h.tool_check_passed?'Tool check passed':'Not tested yet';
+    return compatibility+' · no prior completion evidence';
   }
   function friendlyModel(id) {
     if (!id) return '';
