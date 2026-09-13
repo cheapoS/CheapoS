@@ -583,12 +583,15 @@ class Engine:
             raise ValueError("Enter a steering guidance message of up to 4,000 characters")
         cleaned = message.strip()
         with self.lock:
-            task = self.store.get(task_id)
+            runtime = self.runtimes.get(task_id)
+            if runtime and runtime.thread and runtime.thread.is_alive():
+                task = runtime.task
+            else:
+                task = self.store.get(task_id)
             if task.get("demo"):
                 raise ValueError("The demo uses scripted responses. Open a project to steer real tasks.")
             self.event(task, "steer", "User Guidance", cleaned)
             task["steer_guidance"] = cleaned
-            runtime = self.runtimes.get(task_id)
             if runtime and runtime.thread and runtime.thread.is_alive():
                 runtime.steer_queue.append(cleaned)
                 self.store.save(task)

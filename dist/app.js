@@ -306,13 +306,28 @@ function renderChat() {
   turns.forEach(turn=>{
     parts.push(`<div class="chat-turn" data-turn="${turn.index}">`);
     parts.push(message('You',turn.userPrompt));
-    if(turn.steerMessages&&turn.steerMessages.length){
-      turn.steerMessages.forEach(sm=>{
-        parts.push(message('Steer',sm.text));
+    const items = turn.chatItems || [];
+    if (items.length === 0) {
+      if (turn.hasActivity) parts.push(renderTurnActivityCard(turn, task));
+      if (turn.assistantReply) parts.push(message('CheapOS', turn.assistantReply));
+    } else {
+      let activityCardRendered = false;
+      const postSteerReply = items.find(it => it.kind === 'assistant' && turn.steerMessages?.length && it.eventIndex > turn.steerMessages.at(-1).eventIndex);
+      items.forEach(it => {
+        if (!turn.isLive && turn.hasActivity && !activityCardRendered && it === postSteerReply) {
+          parts.push(renderTurnActivityCard(turn, task));
+          activityCardRendered = true;
+        }
+        if (it.kind === 'steer') {
+          parts.push(message('Steer', it.text));
+        } else if (it.kind === 'assistant') {
+          parts.push(message('CheapOS', it.text));
+        }
       });
+      if (turn.hasActivity && !activityCardRendered) {
+        parts.push(renderTurnActivityCard(turn, task));
+      }
     }
-    if(turn.hasActivity)parts.push(renderTurnActivityCard(turn,task));
-    if(turn.assistantReply)parts.push(message('CheapOS',turn.assistantReply));
     parts.push(`</div>`);
   });
   if(task.stream&&task.stream.phase==='answer'&&task.stream.content){

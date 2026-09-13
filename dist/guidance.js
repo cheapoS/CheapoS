@@ -331,18 +331,70 @@ const CheapOSGuide = (() => {
       }
       const canCommitNow = seg.isLatest && canCommit(task);
       const thinkingBlocks = turnEvents.filter(e => e.kind === 'generation' && e.detail?.thinking).map(e => e.detail);
-      const steerMessages = turnEvents.filter(e => e.kind === 'steer').map(e => ({
-        text: typeof e.detail === 'string' ? e.detail : (e.detail?.message || e.detail?.detail || ''),
-        time: e.time,
-        id: e.id
-      }));
+      const steerMessages = [];
+      const seenGuardTexts = new Set();
+      turnEvents.forEach((e, idx) => {
+        const isUserSteer = e.kind === 'steer';
+        const isGuardSteer = e.kind === 'guard' && e.title === 'Applied User Guidance';
+        if (isUserSteer || isGuardSteer) {
+          let text = typeof e.detail === 'string' ? e.detail : (e.detail?.message || e.detail?.detail || '');
+          text = text.trim();
+          if (text.startsWith('"') && text.endsWith('"') && text.length > 2) {
+            text = text.slice(1, -1);
+          }
+          if (text) {
+            if (isGuardSteer && seenGuardTexts.has(text)) return;
+            if (isGuardSteer) seenGuardTexts.add(text);
+            const last = steerMessages.at(-1);
+            if (!last || last.text !== text) {
+              steerMessages.push({
+                text,
+                time: e.time,
+                id: e.id,
+                eventIndex: idx
+              });
+            }
+          }
+        }
+      });
+
+      const chatItems = [];
+      if (steerMessages.length === 0) {
+        if (assistantReply) {
+          chatItems.push({ kind: 'assistant', text: assistantReply, eventIndex: 999999 });
+        }
+      } else {
+        const firstSteerIdx = steerMessages[0].eventIndex;
+        const lastSteerIdx = steerMessages.at(-1).eventIndex;
+
+        const priorAssistant = turnEvents
+          .map((e, idx) => ({ e, idx }))
+          .filter(({ e, idx }) => e.kind === 'assistant' && idx < firstSteerIdx && typeof e.detail === 'string' && e.detail.trim().length > 0)
+          .at(-1);
+        if (priorAssistant) {
+          chatItems.push({ kind: 'assistant', text: priorAssistant.e.detail, eventIndex: priorAssistant.idx });
+        }
+
+        steerMessages.forEach(sm => {
+          chatItems.push({ kind: 'steer', text: sm.text, eventIndex: sm.eventIndex });
+        });
+
+        const postAssistant = turnEvents
+          .map((e, idx) => ({ e, idx }))
+          .filter(({ e, idx }) => e.kind === 'assistant' && idx > lastSteerIdx && typeof e.detail === 'string' && e.detail.trim().length > 0)
+          .at(-1);
+        if (postAssistant) {
+          chatItems.push({ kind: 'assistant', text: postAssistant.e.detail, eventIndex: postAssistant.idx });
+        }
+      }
+
       const hasMeaningfulWork = totalActions > 0 || editedFiles.length > 0 || latestCheck != null || latestCommit != null || ['paused', 'error', 'ready_to_apply', 'committed'].includes(phase) || steerMessages.length > 0;
       const isStreamingAnswerWithoutTools = isLive && task.stream?.phase === 'answer' && totalActions === 0;
       const hasActivity = isLive ? (!isStreamingAnswerWithoutTools && (turnEvents.length > 0 || isLive)) : hasMeaningfulWork;
       return {
         index: seg.index, userPrompt: seg.userPrompt, isLatest: seg.isLatest, isLive, phase, title, subtitle, statusIcon,
         worker: effectiveWorker, reviewer: effectiveReviewer, coordinator: effectiveCoordinator, hasActivity,
-        totalActions, editedFiles, readCount, webCount, searchCount, groupedItems: grouped, steerMessages, latestCheck, latestReview, latestCommit,
+        totalActions, editedFiles, readCount, webCount, searchCount, groupedItems: grouped, steerMessages, chatItems, latestCheck, latestReview, latestCommit,
         canCommit: canCommitNow, assistantReply, thinkingBlocks, events: turnEvents
       };
     });

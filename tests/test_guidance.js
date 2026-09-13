@@ -424,4 +424,32 @@ test('activityItem and groupActivityItems format steer events',()=>{
   assert.equal(turnList[0].steerMessages[0].text,"Make sure --separator '_' works cleanly without leaving trailing underscores");
 });
 
+test('turns builds chronological chatItems with prior assistant and steer messages',()=>{
+  const t=task({
+    prompt:'build slugify',
+    status:'running',
+    events:[
+      {kind:'tool',title:'read file'},
+      {kind:'assistant',title:'Worker',detail:'I see the duplicate def main line.'},
+      {kind:'guard',title:'Applied User Guidance',detail:'yes'},
+      {kind:'guard',title:'Applied User Guidance',detail:'why is this not at the bottom?'},
+      {kind:'tool',title:'replace lines'},
+      {kind:'assistant',title:'Worker',detail:'All tests pass now.'}
+    ]
+  });
+  const turnList=turns(t);
+  assert.equal(turnList.length,1);
+  const items=turnList[0].chatItems;
+  assert.equal(items.length,4);
+  assert.equal(items[0].kind,'assistant');
+  assert.equal(items[0].text,'I see the duplicate def main line.');
+  assert.equal(items[1].kind,'steer');
+  assert.equal(items[1].text,'yes');
+  assert.equal(items[2].kind,'steer');
+  assert.equal(items[2].text,'why is this not at the bottom?');
+  assert.equal(items[3].kind,'assistant');
+  assert.equal(items[3].text,'All tests pass now.');
+});
+
+
 
