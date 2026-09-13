@@ -119,7 +119,11 @@ async function selectTask(id) {
   try {const task=await api('/tasks/'+id);if(request!==state.selection)return;state.task=task;state.project={path:task.source,name:basename(task.source)};state.file=0;state.run=-1;state.view='chat';try{localStorage.setItem('cheapos-selected',id)}catch{}renderTask({resetScroll:true});restoreDraft();renderSidebar();$('#sidebar').classList.remove('show');}
   catch(e){toast(e.message)}finally{if(request===state.selection)state.loading=false}
 }
-function setView(view) {state.view=view;renderView();renderComposer();$('#view-container').scrollTo({top:0,behavior:'instant'});}
+function setView(view) {
+  state.view=view;renderView();renderComposer();
+  const scroller=$('#view-container');
+  scroller.scrollTo({top:view==='chat'?scroller.scrollHeight:0,behavior:'instant'});
+}
 function renderTask({resetScroll=false}={}) {
   const task=state.task;if(!task)return;$('.main-pane').classList.remove('new-conversation');
   $('.task-heading').hidden=false;$('.tabs').hidden=false;$('#compact-session').hidden=false;$('#toggle-inspector').hidden=false;$('#inspector').classList.remove('home-hidden');
