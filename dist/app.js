@@ -36,7 +36,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;',
 const icon = name => `<svg aria-hidden="true" focusable="false" tabindex="-1"><use href="#i-${name}"/></svg>`;
 const activeStatuses = new Set(['running', 'reviewing', 'waiting_approval', 'stopping']);
 const labels = {awaiting_reply:'Ready for your message',ready:'Ready to start',running:'CheapOS is working',reviewing:'Checking your changes',waiting_approval:'Command approval needed',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
-const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',run:-1,online:false,loading:false};
+const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,pausingTask:null,stoppingStartup:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',run:-1,online:false,loading:false};
 const money = value => '$' + Number(value || 0).toFixed(Number(value || 0) > 0 && value < .01 ? 4 : 2);
 const date = value => new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
@@ -128,6 +128,7 @@ async function loadStartup() {
 }
 function renderComposer() {
   const task=state.task, busy=task&&activeStatuses.has(task.status);
+  const pausing=Boolean(task&&(task.status==='stopping'||state.pausingTask===task.id));
   $('#composer-area').hidden=Boolean(task?.demo)||state.view!=='chat';
   $('#composer-project span').textContent=task?CheapOSGuide.projectName(task):state.project?CheapOSGuide.projectName({source:state.project.path}):'Open project';
   $('#composer-project').disabled=Boolean(task);
@@ -138,10 +139,10 @@ function renderComposer() {
     $('#chat-send').hidden=true;
     if($('#chat-steer')){
       $('#chat-steer').hidden=false;
-      $('#chat-steer').disabled=state.sending||Boolean(other)||!$('#chat-input').value.trim();
+      $('#chat-steer').disabled=pausing||state.sending||Boolean(other)||!$('#chat-input').value.trim();
     }
     $('#chat-input').placeholder='Add a detail or change direction…';
-    $('#composer-note').innerHTML='Keep talking to CheapOS. Your message will guide the next step.';
+    $('#composer-note').textContent=pausing?'Pausing the current step. Your work and draft stay saved.':'Keep talking to CheapOS. Your message will guide the next step.';
   }else{
     const next=CheapOSConversation.readyForNext(task);
     $('#chat-send').hidden=false;
@@ -150,7 +151,16 @@ function renderComposer() {
     $('#chat-input').placeholder=next?'What should we work on next?':state.project?'Ask about your project or describe a change…':'Open a project to get started…';
     $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':other?'Another chat is running. Open it in the sidebar to continue or pause it.':next?'Ready when you are. We’ll continue from the committed changes.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
   }
-  $('#chat-stop').hidden=!busy&&!state.startup.busy;
+  const stop=$('#chat-stop');
+  stop.hidden=!busy&&!state.startup.busy;
+  stop.disabled=pausing||state.stoppingStartup;
+  $('span',stop).textContent=busy?(pausing?'Pausing…':'Pause'):(state.stoppingStartup?'Stopping…':'Stop connecting');
+  stop.title=busy?'Pause this task. Your work stays saved.':'Stop checking model availability';
+  // Keep a fallback in views where the composer is not visible.
+  const headerPause=busy&&$('#composer-area').hidden;
+  $('#task-actions').innerHTML=headerPause?`<button class="subtle-button" id="pause-task" ${pausing?'disabled':''}>${icon('pause')}${pausing?'Pausing…':'Pause'}</button>`:'<button class="subtle-button" id="task-overview">Details</button>';
+  if($('#pause-task'))$('#pause-task').onclick=stopTask;
+  if($('#task-overview'))$('#task-overview').onclick=toggleInspector;
 }
 function openProject(afterOpen) {
   const d=dialog(`<form>${modalHeader('LOCAL PROJECT','Open a project')}<p class="modal-description">Choose your project once, then chat. CheapOS will work in a separate copy when you send your first message.</p><label class="full-field">Project folder<input name="repository" placeholder="/Users/you/projects/my-project" required autocomplete="off" autofocus><small>Use the root folder of a local Git repository.</small></label><p class="form-error" role="alert"></p><div class="modal-footer"><span>Opening a project makes no model request.</span><button type="submit" class="primary-button">Open project ${icon('chevron')}</button></div></form>`,'project-modal');
@@ -197,9 +207,6 @@ function renderTask({resetScroll=false}={}) {
       savingsPill.hidden=true;
     }
   }
-  $('#task-actions').innerHTML=activeStatuses.has(task.status)?`<button class="subtle-button" id="pause-task">${icon('x')}Pause</button>`:'<button class="subtle-button" id="task-overview">Details</button>';
-  if($('#pause-task'))$('#pause-task').onclick=stopTask;
-  if($('#task-overview'))$('#task-overview').onclick=toggleInspector;
   renderView();renderInspector();renderComposer();bindTerminalCopy();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
   for(const el of $$('[data-thinking], [data-command-output]')){const saved=outputScroll.get(el.dataset.thinking||el.dataset.commandOutput);el.scrollTop=!saved||saved.bottom?el.scrollHeight:saved.top}
@@ -261,7 +268,20 @@ function updateProgressClock() {
   }
 }
 async function stopTask() {
-  try{await api('/tasks/'+state.task.id+'/stop',{});await refresh()}catch(e){toast(e.message)}
+  const task=state.task;
+  if(!task||task.status==='stopping'||state.pausingTask===task.id)return;
+  state.pausingTask=task.id;renderComposer();
+  try{await api('/tasks/'+task.id+'/stop',{});await refresh()}
+  catch(e){toast(e.message)}
+  finally{state.pausingTask=null;renderComposer()}
+}
+async function stopFromComposer() {
+  if(state.task&&activeStatuses.has(state.task.status)){await stopTask();return}
+  if(!state.startup.busy||state.stoppingStartup)return;
+  state.stoppingStartup=true;renderComposer();
+  try{await api('/startup/stop',{});await loadStartup()}
+  catch(e){toast(e.message)}
+  finally{state.stoppingStartup=false;renderComposer()}
 }
 function thinkingMarkup(detail,live=false) {
   if(!detail.thinking)return '';
@@ -545,7 +565,7 @@ async function sendChat() {
 }
 async function steerTask(text) {
   const message=text||$('#chat-input').value.trim();
-  if(!state.task||!message||state.sending)return;
+  if(!state.task||!message||state.sending||state.task.status==='stopping'||state.pausingTask===state.task.id)return;
   const key=draftKey();state.sending=true;renderComposer();
   try {
     await api('/tasks/'+state.task.id+'/steer',{message});
@@ -725,7 +745,7 @@ async function bootstrap() {
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){toast('Local server disconnected. Restart CheapOS and refresh to reconnect.');state.online=false}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=async()=>{if(state.startup.busy){try{await api('/startup/stop',{});await loadStartup()}catch(e){toast(e.message)}}else await stopTask()};
+$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopFromComposer;
 function toggleInspector() {
   const panel=$('#inspector');
   if(matchMedia('(max-width:1280px)').matches){panel.classList.remove('hidden');panel.classList.toggle('show')}

@@ -343,3 +343,12 @@ svg, svg * {
   #chat-view .chat-message-body p { font-size: 15px; }
 }
 @media (prefers-reduced-motion:reduce) { .workflow .spinner, .workflow .pulsing { animation: none; } }
+
+/* Keep live task controls together at the end of the chat input. */
+.composer-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto;flex-shrink:0}
+.pause-chat{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:8px 13px;border-radius:8px;background:var(--mint);color:#163025;font-size:14px;font-weight:600;white-space:nowrap}
+.pause-chat svg{width:17px;height:17px;stroke-width:3}
+.pause-chat:hover:not(:disabled){background:#c0eed4}
+.pause-chat:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
+.pause-chat:disabled{opacity:.7}
+@media(max-width:700px){.composer-actions{flex-basis:100%;padding-top:3px}}
