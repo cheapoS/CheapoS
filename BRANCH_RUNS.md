@@ -14,8 +14,8 @@ The ownership split stays simple: cheapoS decides what work to do and when anoth
 
 ## The operator experience
 
-1. Open a project and say, for example, “Implement the three utilities in docs/utility-plan.md on feature/utilities.” Natural language and ordinary documents work; Markdown checkboxes are optional.
-2. cheapoS shows a compact run proposal: ordered tasks, completion criteria, base branch/commit, new feature branch, model placement, total limits, test permission scope, and the final check command. One **Start branch run** action authorizes that proposal. Existing adequate session grants need no second click.
+1. Open a project, select **Work mode → Unattended**, and supply a prompt, a project document, or both. Say, for example, “Implement the three utilities in docs/utility-plan.md on feature/utilities.” Natural language and ordinary documents work; Markdown checkboxes are optional.
+2. cheapoS shows a compact run proposal: ordered tasks, completion criteria, base branch/commit, new feature branch, model placement, total limits, test permission scope, and the final check command. One **Start run** action authorizes that proposal. Existing adequate session grants need no second click.
 3. cheapoS creates the branch and an isolated task copy. It completes one planned item at a time: implement → required checks → independent review → automatic local feature-branch commit → next item.
 4. Routine test failures and reviewer requests return to the worker. Real missing information, exhausted recovery, changed authority, or hard limits produce a specific pause. Pause stays beside the chat composer throughout.
 5. After all items, cheapoS runs the agreed final integration checks and performs a final review of the combined work. The operator sees the cumulative diff, task outcomes, and commit history in Chat.
@@ -29,6 +29,35 @@ Example progress, generated from actual controller events:
 > Working on Markdown output · Details
 >
 > All three tasks are complete. Final checks and review passed. Your branch is ready for review.
+
+## Work modes (agreed product design)
+
+Place a **Work mode** selector near the chat composer with two choices:
+
+- **Interactive** (default): the existing conversational workflow, with the
+  existing command and per-patch commit approvals. Ordinary chats keep this mode.
+- **Unattended**: turn a prompt, a project document, or both into a bounded plan.
+  After the operator inspects the proposal and clicks **Start run**, implement,
+  test, independently review, and commit each item to the authorized feature
+  branch. Routine repair continues within the agreed limits. Missing information,
+  exhausted limits, or actions outside the authorization produce a specific pause.
+  The operator makes the final merge decision.
+
+Selecting a mode alone does not request inference, create a branch, or authorize
+execution. In Unattended mode, submitting the request generates the proposal;
+**Start run** authorizes the inspected revision. Keep the selected mode visible
+and preserve the prompt/document selection while changing a draft's mode. New
+chats default to Interactive; restore a saved draft's explicit selection on reload.
+Changing modes cannot silently expand an existing task's authority: an Interactive
+chat needs a fresh Unattended proposal and Start action. An active run retains its
+authorized mode; use Pause and the run's existing controls rather than converting
+it into another workflow mid-execution.
+
+Work mode describes supervision, separately from where models run and the chosen
+budget/time preset. Do not overload the existing “Interactive 15 min” budget label
+as the work-mode control; clarify that label as a duration/preset in T35. Unattended
+does not imply scheduling, automatic wakeups after restart, unlimited spending,
+background execution after the server stops, or automatic merge/push.
 
 ## Input sources and triggers (required behavior)
 
@@ -45,18 +74,17 @@ Natural-language examples describe intent; they are not exact-match passwords.
 
 | Operator action or input | Trigger and result |
 | --- | --- |
-| Choose **Complete on a feature branch**, then submit a chat prompt such as “Implement a CSV reader, Markdown output, and CLI on a feature branch.” | Request a bounded plan from the prompt alone. |
+| Choose **Work mode → Unattended**, then submit a chat prompt such as “Implement a CSV reader, Markdown output, and CLI on a feature branch.” | Request a bounded plan from the prompt alone. |
 | Select a project document and request “Complete the tasks in docs/utility-plan.md on feature/utilities.” | Read the selected document through constrained project-file access and request a plan from its captured contents plus any accompanying prompt. |
-| In normal chat, explicitly request “Start a branch run for these changes” or “Complete this job on a feature branch.” | Offer the same branch-run proposal inline. Treat equivalent explicit intent the same way; no magic phrase is required. |
+| In **Interactive** chat, explicitly request “Start a branch run for these changes” or “Complete this job on a feature branch.” | Offer an **Unattended** proposal inline, visibly identifying the work mode. Treat equivalent explicit intent the same way; no magic phrase is required. |
 | Merely mention a branch, attach/select a document, quote a trigger phrase, or open the mode selector | Do not start planning inference or execution. A document's instructions cannot trigger authorization. Ordinary questions and document summaries stay ordinary chat. |
-| Click **Start branch run** after inspecting the proposal | Authorize and start exactly the current validated revision, branch, limits, model policy, and displayed test scope. Neither input path bypasses this action. |
+| Click **Start run** after inspecting the proposal | Authorize and start exactly the current validated revision, branch, limits, model policy, and displayed test scope. Neither input path bypasses this action. |
 | Edit the prompt, selected document, or proposal before starting | Prepare a new captured revision and invalidate any previous start token. Later on-disk document edits do not alter an authorized plan. |
 | Click **Pause** or **Resume** | Pause the existing run, or explicitly resume its saved contract after revalidation; never start a duplicate job or reset its cumulative allowance. |
 | Request changes during final review | Propose bounded revision work within the existing authorization; changed scope/limits require renewed authorization. Invalidate final readiness until revised work passes checks and review. |
 | Click **Approve & merge locally** at final review | Authorize integration of the inspected feature tip into the inspected target, subject to the final checks. A prompt or document saying “merge when done” does not replace this action. |
 
-For an ambiguous chat request, offer a choice between ordinary chat and a branch
-run before requesting a plan. Explain unreadable/missing documents and retain the
+For an ambiguous chat request, offer a choice between **Interactive** and **Unattended** before requesting a plan. Explain unreadable/missing documents and retain the
 prompt; do not silently omit the document. Document these triggers in shipped user
 help when implemented, with one complete prompt-only example and one complete
 document example. Test positive triggers and non-trigger examples for both paths.
