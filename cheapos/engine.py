@@ -17,7 +17,7 @@ from pathlib import Path
 from .providers import BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider
 from .storage import Store, write_json
 from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, Workspace, git
-from . import commits
+from . import commits, reconciliation
 from .web import WebReader, allowed_urls
 from .gateways import gateway_for
 from .omniroute import OmniRouteManager
@@ -203,13 +203,18 @@ def check_argv(command):
     return shlex.split(command)
 
 
+def current_evidence(task, evidence):
+    return evidence.get("generation", 0) == task.get("workspace_generation", 0)
+
+
 def needs_patch_review(task):
     patch = task.get("patch", "")
     if not patch:
         return False
     check = (task.get("checks") or [{}])[-1]
     review = (task.get("checkpoints") or [{}])[-1]
-    return not (check.get("passed") and check.get("digest") == hashlib.sha256(patch.encode()).hexdigest()
+    return not (current_evidence(task, check) and current_evidence(task, review)
+                and check.get("passed") and check.get("digest") == hashlib.sha256(patch.encode()).hexdigest()
                 and review.get("decision") == "APPROVE" and review.get("diff") == patch)
 
 
@@ -567,6 +572,8 @@ class Engine:
             checkpoint = next((c for c in task.get("checkpoints", []) if c.get("number") == checkpoint_number), None)
             if not checkpoint:
                 raise ValueError(f"Checkpoint #{checkpoint_number} not found")
+            if not current_evidence(task, checkpoint):
+                raise ValueError("This checkpoint belongs to the previous task copy. That copy is preserved; choose a checkpoint from the current project version.")
             ws = Workspace(task["workspace"])
             ws.rollback_to_patch(checkpoint.get("diff", ""))
             self.refresh_changes(task)
@@ -634,6 +641,8 @@ class Engine:
         workspace = Workspace(task["workspace"])
         previous = task["checkpoints"][-1].get("feedback", "") if task["checkpoints"] else ""
         summary = {"original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "latest_message": task.get("requests", [task["prompt"]])[-1], "files": workspace.list_files()[:500], "current_diff": workspace.patch()[:30000], "last_review_feedback": previous, "check_command": task["check_command"], "web_urls": sorted(allowed_urls(task))[:80]}
+        if task.get("reconciliation"):
+            summary["project_reconciliation"] = reconciliation.guidance(task)
         if task.get("commits"):
             summary["source_commits"] = [{k: c[k] for k in ("commit", "branch", "message", "files", "time")} for c in task["commits"][-3:]]
             summary["task_baseline"] = "The task baseline includes these user-approved source commits. current_diff contains only new, uncommitted task edits. Do not reapply earlier patches."
@@ -718,6 +727,7 @@ class Engine:
 
     def reviewed_patch(self, task):
         self.refresh_changes(task)
+        reconciliation.ensure_resolved(task)
         check = (task.get("checks") or [{}])[-1]
         digest = hashlib.sha256(task["patch"].encode()).hexdigest()
         if task.get("human_decision") == {"decision": "defer", "digest": digest}:
@@ -726,12 +736,45 @@ class Engine:
             raise ValueError("There are no new changes to commit")
         if task["status"] not in {"approved", "completed", "awaiting_reply"}:
             raise ValueError("Finish verification and review before applying this patch")
-        if not check.get("passed") or check.get("digest") != digest:
+        if not current_evidence(task, check) or not check.get("passed") or check.get("digest") != digest:
             raise ValueError("This patch has changed since verification. Run checks and review it again.")
         if task["status"] != "completed":
             review = (task.get("checkpoints") or [{}])[-1]
-            if review.get("decision") != "APPROVE" or review.get("diff") != task["patch"]:
+            if not current_evidence(task, review) or review.get("decision") != "APPROVE" or review.get("diff") != task["patch"]:
                 raise ValueError("This patch has changed since review. Request a new checkpoint first.")
+
+    def reconcile_project(self, task_id, values):
+        with self.lock:
+            task = self.commit_task(task_id)
+            if task.get("commit_pending"):
+                raise ValueError("Finish the saved commit attempt before reconciling the project")
+            self.reviewed_patch(task)
+            if values.get("patch_digest") != hashlib.sha256(task["patch"].encode()).hexdigest():
+                raise ValueError("The saved patch changed. Refresh the preview before reconciling.")
+            recovery = self.store.root / "tasks" / task_id / "reconciliations" / uuid.uuid4().hex
+            # Keep the entire previous record and workspace before changing the
+            # task pointer. A failed build or save cannot damage the old copy.
+            write_json(recovery / "before.json", task)
+            info = reconciliation.build(task, recovery / "workspace")
+            task.update(workspace=info["workspace"], reconciliation=info,
+                        workspace_generation=task.get("workspace_generation", 0) + 1,
+                        status="paused", active_role="worker", messages=[],
+                        stream=None, check_stream=None, pending_approval=None, web_read=None,
+                        error_code="project_reconciled", error="The current project and saved edits are together in this task copy. Continue to resolve overlaps, run the relevant checks, and request a new review.",
+                        answer_pending=False, action_pending=False, request_worker_turns=0)
+            for key in ("human_decision", "pending_review", "pending_checkpoint", "output_recovery", "compact_edits", "steer_guidance"):
+                task.pop(key, None)
+            task["loop_guidance"] = reconciliation.guidance(task)
+            self.refresh_changes(task)
+            task["turn_start_patch"] = task["patch"]
+            if not task["patch"]:
+                task.update(status="awaiting_reply", error=None, error_code=None)
+            self.event(task, "user", "You", "Reconcile the saved changes with the current project in this chat.")
+            self.event(task, "snapshot", "Reconciled task copy with current project", info)
+            self.event(task, "assistant", "CheapOS", "I’ve brought the current project into this chat and kept your saved edits. I’ll resolve the overlapping changes, then run checks and request a fresh review." if task["patch"] else "These changes are already in your project. I’ve updated this chat’s task copy; there’s nothing left to commit.")
+            self.command_permissions.pop(task_id, None)
+            self.commit_previews = {key: value for key, value in self.commit_previews.items() if value["task_id"] != task_id}
+            return task
 
     def commit_decision(self, task_id, values):
         with self.lock:
@@ -872,6 +915,8 @@ class Engine:
                    "last_check": {k: (excerpt(check[k], 4000) if k == "output" else check[k])
                                   for k in ("command", "passed", "exit_code", "output") if k in check},
                    "last_review_feedback": (task.get("checkpoints") or [{}])[-1].get("feedback", "")[:2000]}
+        if task.get("reconciliation"):
+            summary["project_reconciliation"] = reconciliation.guidance(task)
         if compact:
             # Do not replay the malformed assistant call. Preserve bounded tool
             # evidence and errors so rebuilding context does not cause a new loop.
@@ -1262,6 +1307,7 @@ class Engine:
 
     def checks(self, runtime, command=None):
         task = runtime.task
+        reconciliation.ensure_resolved(task)
         argv = self.verification_argv(task, command)
         # Session grants match this chat, workspace, and parsed argument vector.
         # They are held in memory, never restored from task history.
@@ -1311,6 +1357,7 @@ class Engine:
             result["passed"] = False
             result["reason"] = "Verification changed workspace files. Inspect the changes and rerun checks."
         result["digest"] = hashlib.sha256(task["patch"].encode()).hexdigest()
+        result["generation"] = task.get("workspace_generation", 0)
         result["time"] = now()
         task["checks"].append(result)
         task["tool_actions"] += 1
@@ -1330,6 +1377,7 @@ class Engine:
 
     def checkpoint(self, runtime, args):
         task = runtime.task
+        reconciliation.ensure_resolved(task)
         # Validate before reserving a reviewer, consuming an iteration, or
         # reusing a historical check with a malformed saved command.
         self.verification_argv(task)
@@ -1337,7 +1385,7 @@ class Engine:
         if len(task["patch"]) > 30000:
             raise BudgetError("Checkpoint exceeds 30,000 characters. Split the change before requesting review.")
         saved_review = task.get("pending_review")
-        if saved_review and (saved_review["diff"] != task["patch"] or saved_review["checks"]["command"] != task["check_command"]):
+        if saved_review and (not current_evidence(task, saved_review) or saved_review["diff"] != task["patch"] or saved_review["checks"]["command"] != task["check_command"]):
             saved_review = None
             task.pop("pending_review", None)
         if not saved_review and task["iterations"] >= task["limits"]["iterations"]:
@@ -1350,7 +1398,7 @@ class Engine:
         if not saved_review:
             task["iterations"] += 1
         checks = task["checks"][-1] if task["checks"] else {}
-        if checks.get("passed") and checks.get("digest") == hashlib.sha256(task["patch"].encode()).hexdigest() and checks.get("command") == task["check_command"]:
+        if current_evidence(task, checks) and checks.get("passed") and checks.get("digest") == hashlib.sha256(task["patch"].encode()).hexdigest() and checks.get("command") == task["check_command"]:
             self.event(task, "check_reused", "Checks already passed for this patch", {"command": checks["command"], "digest": checks["digest"], "run_id": checks.get("run_id")})
         else:
             checks = self.checks(runtime)
@@ -1364,6 +1412,7 @@ class Engine:
             self.event(task, "complete", "Frontier takeover finished; ready for your review", args)
             return {"decision": "COMPLETE", "feedback": "Takeover finished; human review required."}
         checkpoint = saved_review or {"number": len(task["checkpoints"]) + 1, "original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "files_changed": [f["path"] for f in task["changes"]], "diff": task["patch"], "checks": checks, "worker_summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000], "decision": "PENDING", "feedback": ""}
+        checkpoint["generation"] = task.get("workspace_generation", 0)
         if not saved_review:
             task["checkpoints"].append(checkpoint)
         if automatic(task, "reviewer"):

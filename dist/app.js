@@ -45,7 +45,7 @@ function toast(message) { clearTimeout(toastTimer); $('#toast').textContent=mess
 async function api(path, body) {
   const response = await fetch('/api' + path, body === undefined ? {cache:'no-store'} : {method:'POST',headers:{'Content-Type':'application/json','X-CheapOS-Token':state.token},body:JSON.stringify(body)});
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'The local server could not complete this action');
+  if (!response.ok) throw Object.assign(new Error(data.error || 'The local server could not complete this action'),{code:data.code,files:data.files});
   return data;
 }
 function dialog(html, cls='') {
@@ -381,7 +381,7 @@ async function requestCommitReview(trigger) {
   } catch(e){toast(e.message);trigger.disabled=false;trigger.textContent='Finish review'}
 }
 const commitPreviews=new Map();
-const previewKey=task=>task.patch_digest+':'+(task.checkpoints?.at(-1)?.number??task.checkpoints?.length??0);
+const previewKey=task=>(task.workspace_generation||0)+':'+task.patch_digest+':'+(task.checkpoints?.at(-1)?.number??task.checkpoints?.length??0);
 function renderPatchPreview(patch) {
   if(!patch)return '';
   const lines=patch.split('\n');
@@ -400,7 +400,10 @@ function commitDecisionMarkup(task) {
   const entry=commitPreviews.get(task.id),current=entry?.key===previewKey(task)?entry:null;
   if(!current){ensureCommitPreview(task);return '<section class="chat-result"><div><strong>Checks and review are complete.</strong><p>Preparing your final diff and commit message…</p></div></section>'}
   if(current.loading)return '<section class="chat-result"><div><strong>Checks and review are complete.</strong><p>Preparing your final diff and commit message…</p></div></section>';
-  if(current.error)return `<section class="chat-result"><div><strong>Your changes are saved.</strong><p>${esc(current.error)}</p><div class="button-row"><button class="primary-button" data-commit-action="refresh">Refresh commit preview</button><button class="subtle-button" data-commit-action="change">Keep chatting</button>${task.commit_pending?'':'<button class="subtle-button" data-commit-action="defer">Decline</button>'}</div></div></section>`;
+  if(current.error){
+    const conflict=current.code==='project_conflict';
+    return `<section class="chat-result"><div><strong>${conflict?'Let’s combine this with your current project.':'Your changes are saved.'}</strong><p>${esc(current.error)}</p>${conflict?`<p class="small muted">Files in this patch: ${(current.files||[]).map(esc).join(', ')}. I’ll preserve the previous task copy, combine the versions here, and send the result through checks and review before you approve a commit.</p>`:''}<div class="button-row">${conflict?'<button class="primary-button" data-commit-action="reconcile">Reconcile in this chat</button>':''}<button class="${conflict?'subtle-button':'primary-button'}" data-commit-action="refresh">${conflict?'Recheck project':'Refresh commit preview'}</button><button class="subtle-button" data-commit-action="change">Keep chatting</button>${task.commit_pending?'':'<button class="subtle-button" data-commit-action="defer">Decline</button>'}</div></div></section>`;
+  }
   const p=current.preview;
   return `<section class="commit-decision" aria-label="Your decision"><h3>${p.retry?'Finish your approved commit.':'Ready for your approval.'}</h3><p class="muted">${esc(p.review)} · checks passed. ${p.retry?'Finish the saved attempt before starting more work.':'You can approve this patch, ask for changes, or keep chatting.'}</p><dl class="commit-target"><div><dt>Project</dt><dd>${esc(p.source)}</dd></div><div><dt>Commit to</dt><dd>${esc(p.branch)} <span class="muted">at ${esc(p.head.slice(0,8))}</span></dd></div></dl><details class="commit-patch" data-event="commit-patch-${esc(task.patch_digest)}" open><summary>Final diff · ${p.files.length} file${p.files.length===1?'':'s'}</summary>${renderPatchPreview(p.patch)}</details><form id="commit-form"><label>Commit message<textarea name="message" rows="2" maxlength="2000" required ${p.retry?'readonly':''}>${esc(current.message)}</textarea></label><p class="form-error" role="alert">${esc(current.submitError||'')}</p><div class="button-row"><button type="submit" class="primary-button" ${current.submitting?'disabled':''}>${current.submitting?'Committing…':p.retry?'Finish commit':'Approve & commit'}</button>${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="change" ${current.submitting?'disabled':''}>Request changes</button>`}${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="defer" ${current.submitting?'disabled':''}>Decline</button>`}</div><p class="small muted">${p.retry?'Your approved commit was interrupted. Finish the saved attempt to continue chatting.':'Approval applies this reviewed patch and creates a local commit. Declining keeps your edits saved.'} Pushing is separate.</p></form></section>`;
 }
@@ -411,7 +414,7 @@ async function ensureCommitPreview(task,force=false) {
   try {
     const p=await api('/tasks/'+task.id+'/commit-preview',{});
     entry.preview=p;entry.message=entry.message??p.message;
-  } catch(e){entry.error=e.message}
+  } catch(e){entry.error=e.message;entry.code=e.code;entry.files=e.files}
   finally {entry.loading=false;if(state.task?.id===task.id&&previewKey(state.task)===key&&commitPreviews.get(task.id)===entry)renderTask()}
 }
 function requestChanges() {
@@ -421,8 +424,19 @@ function bindCommitDecision(task) {
   $$('[data-commit-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.commitAction;
     if(action==='change'){requestChanges();return}
-    if(action==='refresh'){b.disabled=true;await ensureCommitPreview(task,true);return}
+    if(action==='refresh'){b.disabled=true;b.textContent='Checking project…';try{await ensureCommitPreview(task,true)}finally{b.disabled=false}return}
     b.disabled=true;
+    if(action==='reconcile'){
+      b.textContent='Combining saved work…';
+      try{
+        const updated=await api('/tasks/'+task.id+'/reconcile',{patch_digest:task.patch_digest});
+        commitPreviews.delete(task.id);
+        if(state.task?.id===task.id){state.task=updated;renderTask()}
+        if(updated.status==='paused')await api('/tasks/'+task.id+'/start',{});
+        await refresh();setView('chat');
+      }catch(e){toast(e.message);b.disabled=false;b.textContent='Reconcile in this chat';await refresh()}
+      return;
+    }
     try {
       const updated=await api('/tasks/'+task.id+'/commit-decision',{decision:action==='defer'?'defer':'review',patch_digest:task.patch_digest});
       commitPreviews.delete(task.id);
@@ -437,7 +451,7 @@ function bindCommitDecision(task) {
     try {
       const result=await api('/tasks/'+task.id+'/commit',{approved:true,approval_id:entry.preview.approval_id,message:entry.message});
       commitPreviews.delete(task.id);await refresh();toast('Committed '+result.commit.slice(0,8)+' to '+result.branch);
-    } catch(error) {entry.submitError=error.message;entry.error=error.message;throw error}
+    } catch(error) {entry.submitError=error.message;entry.error=error.message;entry.code=error.code;entry.files=error.files;throw error}
     finally {entry.submitting=false;if(state.task?.id===task.id)renderTask()}
   })};
 }

@@ -8,6 +8,14 @@ from pathlib import Path
 from .workspace import Workspace, git
 
 
+class ProjectConflict(ValueError):
+    code = "project_conflict"
+
+    def __init__(self, files):
+        self.files = files
+        super().__init__("These edits overlap changes already in your project. Reconcile in this chat to combine both versions, then run checks and review again. Your saved work is intact.")
+
+
 def source_git(source, *args, input=None, index=None):
     # Use the operator's Git identity, but never run hooks, signing or a shell.
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
@@ -64,7 +72,7 @@ def prepare(task):
         try:
             source_git(source, "apply", "--cached", "--check", "--whitespace=nowarn", "-", input=task["patch"], index=index)
         except ValueError as error:
-            raise ValueError("The task patch conflicts with your current project. Start a fresh chat to reconcile the changes. " + str(error)) from error
+            raise ProjectConflict(files) from error
         source_git(source, "apply", "--cached", "--whitespace=nowarn", "-", input=task["patch"], index=index)
         tree = source_git(source, "write-tree", index=index)
     # Resolve identity now so a missing configuration is reported before approval.

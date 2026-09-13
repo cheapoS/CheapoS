@@ -200,6 +200,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     result = engine.clear_session_permissions(task_id)
                 elif action == "commit-preview":
                     result = engine.prepare_commit(task_id)
+                elif action == "reconcile":
+                    result = public_task(engine.reconcile_project(task_id, values))
                 elif action == "commit-decision":
                     result = public_task(engine.commit_decision(task_id, values))
                 elif action == "commit":
@@ -227,6 +229,6 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 return
             self.reply(result)
         except (ValueError, TypeError, KeyError, OSError, ProviderError) as error:
-            self.reply({"error": str(error)[:1000]}, 400)
+            self.reply({"error": str(error)[:1000], "code": getattr(error, "code", None), "files": getattr(error, "files", [])}, 400)
         except Exception:
             self.reply({"error": "The local server could not complete this action"}, 500)

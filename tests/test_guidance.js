@@ -3,6 +3,17 @@ const assert=require('node:assert/strict');
 const {taskGuide,projectName,workLabel}=require('../dist/guidance.js');
 const task=overrides=>({status:'ready',worker_turns:0,changes:[],checks:[],checkpoints:[],events:[],...overrides});
 
+test('reconciled project context invalidates earlier checks and review even for an identical diff',()=>{
+  const {canCommit}=require('../dist/guidance.js');
+  const t=task({status:'approved',changes:[{path:'file.py'}],patch:'same patch',patch_digest:'same digest',workspace_generation:1,
+    checks:[{passed:true,digest:'same digest'}],checkpoints:[{decision:'APPROVE',diff:'same patch'}]});
+  assert.equal(canCommit(t),false);
+  t.checks[0].generation=1;
+  assert.equal(canCommit(t),false);
+  t.checkpoints[0].generation=1;
+  assert.equal(canCommit(t),true);
+});
+
 test('checkpoint pause names the interval instead of the overall worker allowance',()=>{
   const message='The 12-turn checkpoint limit was reached. This request has used 62 of 100 worker turns overall.';
   const guide=taskGuide(task({status:'paused',error_code:'checkpoint_turn_limit',error:message,limits:{worker_turns:100,checkpoint_turns:12}}));
@@ -450,6 +461,5 @@ test('turns builds chronological chatItems with prior assistant and steer messag
   assert.equal(items[3].kind,'assistant');
   assert.equal(items[3].text,'All tests pass now.');
 });
-
 
 

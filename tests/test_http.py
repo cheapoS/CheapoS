@@ -156,6 +156,40 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(git(task['source'], 'rev-list', '--count', 'HEAD').strip(), '2')
         self.assertEqual(json.loads(self.request('GET', path)[2])['patch'], '')
 
+    def test_conflict_response_offers_same_chat_reconciliation_with_csrf_and_patch_guard(self):
+        import hashlib
+        from cheapos.workspace import git
+        task = self.engine.create_demo()
+        source = Path(task['source'])
+        git(source, 'config', 'user.name', 'Test Operator')
+        git(source, 'config', 'user.email', 'operator@example.invalid')
+        Workspace(task['workspace']).write_file('new.txt', 'saved task\n')
+        self.engine.refresh_changes(task)
+        digest = hashlib.sha256(task['patch'].encode()).hexdigest()
+        task.update(status='approved', checks=[{'passed': True, 'digest': digest}],
+                    checkpoints=[{'decision': 'APPROVE', 'diff': task['patch']}])
+        self.engine.store.save(task)
+        (source / 'new.txt').write_text('current project\n')
+        git(source, 'add', 'new.txt')
+        git(source, 'commit', '-qm', 'Existing project file')
+        path = '/api/tasks/' + task['id']
+        status, _, body = self.post(path + '/commit-preview', {})
+        self.assertEqual(status, 400)
+        self.assertEqual(json.loads(body)['code'], 'project_conflict')
+        self.assertEqual(json.loads(body)['files'], ['new.txt'])
+        values = {'patch_digest': digest}
+        self.assertEqual(self.request('POST', path + '/reconcile', values, {'Content-Type': 'application/json'})[0], 403)
+        self.assertEqual(self.post(path + '/reconcile', {'patch_digest': 'stale'})[0], 400)
+        with patch.object(self.engine, 'request', side_effect=AssertionError('Reconcile does not infer')):
+            status, _, body = self.post(path + '/reconcile', values)
+        self.assertEqual(status, 200, body)
+        result = json.loads(body)
+        self.assertEqual(result['id'], task['id'])
+        self.assertEqual(result['status'], 'paused')
+        self.assertEqual(result['workspace_generation'], 1)
+        self.assertEqual((source / 'new.txt').read_text(), 'current project\n')
+        self.assertEqual(self.post(path + '/commit-preview', {})[0], 400)
+
     def test_startup_status_is_read_only_and_preferences_do_not_dispatch(self):
         with patch.object(self.engine.startup, 'start') as start:
             self.assertEqual(self.request('GET', '/api/startup')[0], 200)

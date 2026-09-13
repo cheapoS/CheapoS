@@ -124,8 +124,8 @@ const CheapOSGuide = (() => {
     const check=[...recent].reverse().find(e=>e.kind==='checks')?.detail;
     const review=[...recent].reverse().find(e=>e.kind==='review')?.detail;
     const checkpoint=review&&(task.checkpoints||[]).find(c=>c.number===review.checkpoint);
-    const checkCurrent=Boolean(check?.digest&&check.digest===task.patch_digest);
-    const reviewCurrent=Boolean(checkpoint&&checkpoint.diff===task.patch);
+    const checkCurrent=Boolean(check?.digest&&check.digest===task.patch_digest&&(check.generation||0)===(task.workspace_generation||0));
+    const reviewCurrent=Boolean(checkpoint&&checkpoint.diff===task.patch&&(checkpoint.generation||0)===(task.workspace_generation||0));
     return {request:boundary>=0?events[boundary].detail:task.prompt,
       files:(task.changes||[]).length,
       checks:check?`${check.passed?'Passed':'Failed'}${checkCurrent?'':' · earlier patch'}`:'Not run for this request',
@@ -135,7 +135,7 @@ const CheapOSGuide = (() => {
   function canCommit(task) {
     if(task.commit_pending)return true;
     const check=task.checks?.at(-1),review=task.checkpoints?.at(-1);
-    return Boolean(task.changes?.length&&['approved','completed','awaiting_reply'].includes(task.status)&&check?.passed&&check.digest===task.patch_digest&&(task.status==='completed'||review?.decision==='APPROVE'&&review.diff===task.patch));
+    return Boolean(task.changes?.length&&['approved','completed','awaiting_reply'].includes(task.status)&&check?.passed&&check.digest===task.patch_digest&&(check.generation||0)===(task.workspace_generation||0)&&(task.status==='completed'||review?.decision==='APPROVE'&&review.diff===task.patch&&(review.generation||0)===(task.workspace_generation||0)));
   }
   function commitDeferred(task) {return task.human_decision?.decision==='defer'&&task.human_decision.digest===task.patch_digest}
   function modelHealth(model,at=Date.now()) {
