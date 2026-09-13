@@ -256,4 +256,17 @@ svg, svg * {
   box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4) !important;
 }
 
+.chat-message.steer-bubble {
+  border-left: 3px solid #52a8ff;
+  background: rgba(82, 168, 255, 0.05);
+}
+.steer-avatar {
+  background: rgba(82, 168, 255, 0.2);
+  color: #79b8ff;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 

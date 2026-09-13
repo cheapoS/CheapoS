@@ -301,11 +301,16 @@ function renderChat() {
   const guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
   const turns=CheapOSGuide.turns(task);
   const openDrawers=new Set($$('.details-toggle[aria-expanded="true"]').map(b=>b.dataset.toggle));
-  const message=(role,text)=>`<article class="chat-message ${role==='You'?'from-user':'from-agent'}"><div class="chat-author">${role==='You'?'<span class="mini-avatar">Y</span>':icon(role==='Review'?'spark':'code')}<strong>${esc(role)}</strong></div><div class="chat-message-body">${messageText(text)}</div></article>`;
+  const message=(role,text)=>`<article class="chat-message ${role==='You'?'from-user':role==='Steer'?'from-user steer-bubble':'from-agent'}"><div class="chat-author">${role==='Steer'?'<span class="mini-avatar steer-avatar">🧭</span>':role==='You'?'<span class="mini-avatar">Y</span>':icon(role==='Review'?'spark':'code')}<strong>${role==='Steer'?'You (Course correction)':esc(role)}</strong></div><div class="chat-message-body">${messageText(text)}</div></article>`;
   const parts=[task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':''];
   turns.forEach(turn=>{
     parts.push(`<div class="chat-turn" data-turn="${turn.index}">`);
     parts.push(message('You',turn.userPrompt));
+    if(turn.steerMessages&&turn.steerMessages.length){
+      turn.steerMessages.forEach(sm=>{
+        parts.push(message('Steer',sm.text));
+      });
+    }
     if(turn.hasActivity)parts.push(renderTurnActivityCard(turn,task));
     if(turn.assistantReply)parts.push(message('CheapOS',turn.assistantReply));
     parts.push(`</div>`);

@@ -410,6 +410,18 @@ test('activityItem and groupActivityItems format steer events',()=>{
   assert.equal(grouped[0].type,'steer');
   assert.equal(grouped[0].title,'User course correction');
   assert.equal(grouped[0].note,'Do not modify helper.py');
+
+  const t=task({
+    prompt:'build slugify',
+    status:'running',
+    events:[
+      {kind:'steer',title:'User Guidance',detail:"Make sure --separator '_' works cleanly without leaving trailing underscores"}
+    ]
+  });
+  const turnList=turns(t);
+  assert.equal(turnList.length,1);
+  assert.equal(turnList[0].steerMessages.length,1);
+  assert.equal(turnList[0].steerMessages[0].text,"Make sure --separator '_' works cleanly without leaving trailing underscores");
 });
 
 
