@@ -91,6 +91,37 @@ class BranchFinalTests(unittest.TestCase):
         self.assertEqual(len(self.requests), 1)
         self.assertTrue(self.requests[0]['review_context']['final_checks'][0]['passed'])
 
+    def test_chunk_scope_separates_background_from_synthesis_coverage(self):
+        from unittest.mock import patch
+        systems = []
+        original = self.engine.request
+        def request(runtime, messages, tools, role, **kwargs):
+            systems.append(messages[0]['content'])
+            return original(runtime, messages, tools, role, **kwargs)
+        self.engine.request = request
+        with patch.object(final, 'CHUNK_SIZE', 120):
+            ready = final.final_check_review(self.engine, self.runtime)['readiness']
+        packets = [packet for packet in self.requests if 'chunk' in packet]
+        self.assertGreater(len(packets), 3)
+        for index, packet in enumerate(packets, 1):
+            self.assertEqual(packet['scope'], {
+                'kind': packet['chunk']['kind'], 'chunk_index': index, 'chunk_total': len(packets),
+                'context_role': 'global_background', 'criterion_completion_required': False})
+            self.assertEqual(packet['chunk_ids'], [packet['chunk']['id']])
+            self.assertEqual(packet['criteria_ids'], [])
+            self.assertIn('not coverage required in this chunk', packet['instruction'])
+            self.assertIn('mid-record or mid-hunk', packet['instruction'])
+            self.assertIn('Do not reject solely', packet['instruction'])
+            self.assertIn('Report concrete defects', packet['instruction'])
+        self.assertEqual(self.requests[-1]['criteria_ids'], [r['id'] for r in ready['manifest']['requirements']])
+        self.assertTrue(all('alone define the coverage' in message for message in systems))
+        self.request_changes = True
+        self.requests.clear()
+        result = final.final_check_review(self.engine, self.runtime)
+        self.assertEqual(result['decision'], 'REQUEST_CHANGES')
+        self.assertNotIn('readiness', result)
+        self.assertEqual(len(self.requests), 1)
+
     def test_oversized_context_is_rejected_without_truncation_or_request(self):
         packet = {'review_context': {'acceptance_criteria': [{'id': 'one:1', 'criterion': 'x' * 30000}]}}
         with self.assertRaisesRegex(ValueError, 'nothing was omitted'):
