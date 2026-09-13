@@ -97,7 +97,7 @@ async function loadStartup() {
 }
 function renderComposer() {
   const task=state.task, busy=task&&activeStatuses.has(task.status);
-  $('#composer-area').hidden=Boolean(task?.demo);
+  $('#composer-area').hidden=Boolean(task?.demo)||state.view!=='chat';
   $('#composer-project span').textContent=task?CheapOSGuide.projectName(task):state.project?CheapOSGuide.projectName({source:state.project.path}):'Open project';
   $('#composer-project').disabled=Boolean(task);
   $('#chat-input').disabled=state.sending;
@@ -105,6 +105,8 @@ function renderComposer() {
   const other=state.tasks.find(t=>t.id!==task?.id&&activeStatuses.has(t.status));
   $('#chat-send').disabled=state.sending||busy||Boolean(other)||state.startup.busy||!$('#chat-input').value.trim();
   $('#chat-stop').hidden=!busy&&!state.startup.busy;
+  $('#execution-choice').textContent=executionLabel(task?(task.execution?.mode||'manual'):state.preferences.execution?.mode);
+  $('#execution-choice').title=task?'This chat keeps its saved execution choice':'Choose where new chats run';
   $('#chat-budget').textContent=money((task?.limits||state.preferences.limits).dollars)+' limit';
   $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':other?'Another chat is running. Open it in the sidebar to continue or pause it.':busy?'CheapOS is working. You can draft your next message.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
 }
@@ -117,7 +119,7 @@ async function selectTask(id) {
   try {const task=await api('/tasks/'+id);if(request!==state.selection)return;state.task=task;state.project={path:task.source,name:basename(task.source)};state.file=0;state.run=-1;state.view='chat';try{localStorage.setItem('cheapos-selected',id)}catch{}renderTask({resetScroll:true});restoreDraft();renderSidebar();$('#sidebar').classList.remove('show');}
   catch(e){toast(e.message)}finally{if(request===state.selection)state.loading=false}
 }
-function setView(view) {state.view=view;renderView();$('#view-container').scrollTo({top:0,behavior:'instant'});}
+function setView(view) {state.view=view;renderView();renderComposer();$('#view-container').scrollTo({top:0,behavior:'instant'});}
 function renderTask({resetScroll=false}={}) {
   const task=state.task;if(!task)return;$('.main-pane').classList.remove('new-conversation');
   $('.task-heading').hidden=false;$('.tabs').hidden=false;$('#compact-session').hidden=false;$('#toggle-inspector').hidden=false;$('#inspector').classList.remove('home-hidden');
@@ -139,17 +141,27 @@ function renderTask({resetScroll=false}={}) {
   renderView();renderInspector();renderComposer();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
   for(const el of $$('[data-thinking]')){const saved=thoughtScroll.get(el.dataset.thinking);el.scrollTop=!saved||saved.bottom?el.scrollHeight:saved.top}
-  scroller.scrollTop=resetScroll?scroller.scrollHeight:['chat','activity'].includes(state.view)&&activeStatuses.has(task.status)&&bottom?scroller.scrollHeight:oldScroll;
+  scroller.scrollTop=resetScroll?scroller.scrollHeight:state.view==='chat'&&activeStatuses.has(task.status)&&bottom?scroller.scrollHeight:oldScroll;
 }
 function renderView() {
   $('#compact-session').hidden=true;
   $$('.tab').forEach(b=>{const selected=b.dataset.view===state.view;b.classList.toggle('active',selected);b.setAttribute('aria-selected',String(selected))});
-  $$('.view').forEach(v=>v.classList.toggle('hidden',v.id!==state.view+'-view'));
+  $$('.view').forEach(v=>{v.classList.toggle('hidden',v.id!==state.view+'-view');if(v.id!==state.view+'-view')v.innerHTML=''});
   if(!state.task){renderHome();return}
   if(state.view==='chat')renderChat();else if(state.view==='activity')renderActivity();else if(state.view==='changes')renderChanges();else renderTests();
 }
 function eventDetail(event) {
   const detail=event.detail;
+  if(event.kind==='tool'){
+    const result=detail?.result,args=detail?.arguments||{};
+    if(event.title==='read file')return `<pre class="output">${esc(result?.content||'No content returned.')}</pre>`;
+    if(['write file','replace text'].includes(event.title))return `<p>Saved ${esc(args.path)} in the task copy.</p>`;
+    if(Array.isArray(result))return `<pre class="output">${esc(result.map(r=>typeof r==='string'?r:JSON.stringify(r)).join('\n'))}</pre>`;
+    if(typeof result==='string')return `<pre class="output">${esc(result)}</pre>`;
+  }
+  if(['handoff','routing','guard'].includes(event.kind))return `<p>${esc(typeof detail==='string'?detail:detail?.summary||detail?.error||detail?.model||'')}</p>`;
+  if(event.kind==='generation')return '<p>Model output is available in Chat.</p>';
+
   if(event.kind==='review')return `<p>${esc(detail.feedback)}</p><span class="decision ${detail.decision==='APPROVE'?'approve':'revise'}">${esc(detail.decision.replaceAll('_',' '))}</span>`;
   if(event.kind==='checkpoint')return `<p>${esc(detail.worker_summary)}</p><p class="muted">${esc(detail.uncertainties)}</p><button class="checkpoint-button" data-checkpoint="${detail.number}">Inspect checkpoint #${detail.number}</button>`;
   if(event.kind==='checks')return `<pre class="output">${esc(detail.output)}</pre>${detail.reason?`<p>${esc(detail.reason)}</p>`:''}`;
@@ -161,7 +173,7 @@ function messageText(value) {
 }
 function progressMarkup(task) {
   const p=CheapOSGuide.progress(task);if(!p)return '';
-  return `<section class="request-progress ${task.stream&&task.stream.phase!=='waiting'?'is-streaming':''}" aria-label="Current activity"><div class="request-progress-heading"><span class="spinner"></span><strong id="request-stage">${esc(p.title)}</strong><span id="request-elapsed" aria-label="Time in current step">${p.elapsed}</span></div><div class="request-model" id="request-detail">${esc(p.detail)}</div><p class="request-hint" id="request-hint">${esc(p.hint)}</p><div class="request-evidence"><span>${icon('code')}${esc(p.action)}</span><span>${icon('file')}${esc(p.evidence)}</span></div><div class="request-actions"><button class="text-link" data-chat-action="activity">View activity</button><button class="subtle-button" data-chat-action="stop" ${p.stage==='stopping'?'disabled':''}>${p.stage==='stopping'?'Stopping…':'Stop'}</button></div></section>`;
+  return `<section class="request-progress ${task.stream&&task.stream.phase!=='waiting'?'is-streaming':''}" aria-label="Current activity"><div class="request-progress-heading"><span class="spinner"></span><strong id="request-stage">${esc(p.title)}</strong><span id="request-elapsed" aria-label="Time in current step">${p.elapsed}</span></div><div class="request-model" id="request-detail">${esc(p.detail)}</div><p class="request-hint" id="request-hint">${esc(p.hint)}</p><div class="request-evidence"><span>${icon('code')}${esc(p.action)}</span><span>${icon('file')}${esc(p.evidence)}</span></div><div class="request-actions"><button class="text-link" data-chat-action="activity">${state.view==='activity'?'View live chat':'View activity'}</button><button class="subtle-button" data-chat-action="stop" ${p.stage==='stopping'?'disabled':''}>${p.stage==='stopping'?'Stopping…':'Stop'}</button></div></section>`;
 }
 function updateProgressClock() {
   if(!state.task||!$('#request-elapsed'))return;
@@ -185,13 +197,14 @@ function renderChat() {
   const flush=()=>{
     if(!work.length)return;
     const actions=work.filter(e=>['tool','checks','tool_error'].includes(e.kind));
-    if(actions.length)parts.push(`<details class="chat-work" data-event="work-${work[0].id}"><summary>${icon('code')}<span>${CheapOSGuide.workLabel(actions)}</span>${icon('chevron')}</summary><div>${actions.map(e=>`<details class="activity-card" data-event="${e.id}"><summary><strong>${esc(e.title)}</strong>${icon('chevron')}</summary><div class="detail-body">${eventDetail(e)}</div></details>`).join('')}</div></details>`);
+    if(actions.length)parts.push(`<details class="chat-work" data-event="work-${work[0].id}"><summary>${icon('code')}<span>${CheapOSGuide.workLabel(actions)}</span>${icon('chevron')}</summary><div>${actions.map(e=>`<details class="activity-card" data-event="${e.id}"><summary><strong>${esc(CheapOSGuide.activityItem(e)?.title||e.title)}</strong>${icon('chevron')}</summary><div class="detail-body">${eventDetail(e)}</div></details>`).join('')}</div></details>`);
     work=[];
   };
   for(const event of task.events){
-    if(['user','assistant','review','checkpoint','generation'].includes(event.kind)){
+    if(['user','assistant','review','checkpoint','generation','handoff','guard','routing'].includes(event.kind)){
       flush();
-      if(event.kind==='user'||event.kind==='assistant')parts.push(message(event.kind==='user'?'You':'CheapOS',event.detail));
+      if(['handoff','guard','routing'].includes(event.kind)){const item=CheapOSGuide.activityItem(event);parts.push(`<aside class="chat-handoff">${icon(item.icon)}<div><strong>${esc(item.title)}</strong><p>${esc(item.note)}</p>${event.kind==='handoff'?`<small>${esc(event.detail.summary)}</small>`:''}</div></aside>`)}
+      else if(event.kind==='user'||event.kind==='assistant')parts.push(message(event.kind==='user'?'You':'CheapOS',event.detail));
       else if(event.kind==='generation'){parts.push(thinkingMarkup(event.detail));if(event.detail.interrupted&&event.detail.content)parts.push(`<div class="partial-response"><span>Partial response · interrupted</span>${messageText(event.detail.content)}</div>`)}
       else if(event.kind==='checkpoint')parts.push(message('CheapOS',event.detail.worker_summary));
       else parts.push(message('Review',event.detail.feedback));
@@ -219,17 +232,21 @@ function renderChat() {
   });
 }
 function renderActivity() {
-  const task=state.task;
-  const events=task.events.map(event=>{
-    const symbol=event.kind==='review'?'spark':event.kind==='checks'?'tests':event.kind==='checkpoint'?'file':event.kind==='error'?'x':'code';
-    const prominent=['review','checkpoint'].includes(event.kind);
-    return `<details class="${prominent?'review-card':'activity-card'} ${event.kind==='review'&&event.detail.decision==='APPROVE'?'approved':''}" data-event="${event.id}" ${prominent?'open':''}><summary><span class="activity-icon">${icon(symbol)}</span><strong>${esc(event.title)}</strong><time class="activity-time">${new Date(event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="${prominent?'review-content':'detail-body'}">${eventDetail(event)}</div></details>`;
-  }).join('');
-  $('#activity-view').innerHTML=`<button class="text-link" id="back-chat">← Back to chat</button>${task.demo?'<div class="demo-banner">Local demo · model decisions are scripted · no paid requests</div>':''}<div class="user-message"><div class="message-meta"><span class="mini-avatar">Y</span><strong>You</strong><time>${date(task.created_at)}</time></div><p>${esc(task.prompt)}</p></div><div class="live-events">${events}</div>${task.error?`<div class="attention-card"><strong>${esc(labels[task.status])}</strong><p>${esc(task.error)}</p></div>`:''}${task.pending_approval?`<div class="approval-card"><strong>Run the verification command?</strong><code>${esc(task.pending_approval.command.join(' '))}</code><p>This executes repository code on your computer. The task copy isolates edits, but is not an operating-system sandbox.</p><div class="button-row"><button class="primary-button" data-approve="yes">Run command</button><button class="subtle-button" data-approve="no">Decline & pause</button></div></div>`:''}${activeStatuses.has(task.status)&&!task.pending_approval?`<div class="live-progress"><span class="spinner"></span>${esc(labels[task.status])}…</div>`:''}${['approved','completed'].includes(task.status)?`<div class="completion-note">${icon('check')}<span>${task.status==='approved'?'Review complete. Your patch is ready to inspect.':'Takeover finished. Review the patch before applying it.'}</span><button class="text-link" id="see-changes">Open changes →</button></div>`:''}`;
-  $('#back-chat').onclick=()=>setView('chat');
+  const task=state.task,a=CheapOSGuide.activity(task),guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
+  const action=(view,label)=>`<button class="outline-button" data-activity-view="${view}">${label}</button>`;
+  const timeline=a.items.slice(0,40).map(item=>`<details class="activity-step ${item.failed?'failed':''}" data-event="step-${item.event.id}"><summary><span class="step-icon">${icon(item.icon)}</span><span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span><time>${new Date(item.event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="step-body">${eventDetail(item.event)}${item.path&&task.changes.some(c=>c.path===item.path)?`<button class="text-link" data-activity-file="${esc(item.path)}">View current diff →</button>`:''}</div></details>`).join('');
+  const technical=task.events.map(e=>`<details class="activity-card" data-event="raw-${e.id}"><summary><strong>${esc(CheapOSGuide.activityItem(e)?.title||e.title)}</strong>${icon('chevron')}</summary><div class="detail-body">${eventDetail(e)}</div></details>`).join('');
+  const status=task.pending_approval?`<section class="chat-decision"><strong>Waiting for your approval</strong><code class="approval-command">${esc(task.pending_approval.command.join(' '))}</code><p>Runs in the task copy on your computer.</p><div class="button-row"><button class="primary-button" data-activity-approve="true">Run command</button><button class="subtle-button" data-activity-approve="false">Decline & pause</button></div></section>`:activeStatuses.has(task.status)?progressMarkup(task):`<section class="activity-status"><span class="activity-eyebrow">${['approved','completed'].includes(task.status)?'RESULT':'CURRENT STATUS'}</span><h3>${esc(failure?.title||guide.title)}</h3><p>${esc(failure?.description||guide.description)}</p>${task.error&&task.error!==guide.description?`<p>${esc(task.error)}</p>`:''}<div class="button-row">${['approved','completed'].includes(task.status)?action('changes','Review changes'):''}${action('chat','Back to chat')}${['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)?'<button class="outline-button" id="activity-resume">Review & resume</button>':''}${task.error_code==='routing_unavailable'?'<button class="outline-button" id="activity-models">Models</button>':''}</div></section>`;
+  $('#activity-view').innerHTML=`<div class="view-title"><div><h2>What’s happening</h2><p>${task.demo?'Scripted demo · real files and checks':'Real actions and saved results from this chat.'}</p></div></div>${status}<div class="activity-facts"><button data-activity-view="changes"><span>Saved changes · whole chat</span><strong>${a.files} file${a.files===1?'':'s'}</strong><small>Inspect the diff →</small></button><button data-activity-view="tests"><span>Checks · this request</span><strong>${esc(a.checks)}</strong><small>View command output →</small></button><button id="activity-review" ${!a.checkpoint?'disabled':''}><span>Review · this request</span><strong>${esc(a.review)}</strong><small>${a.checkpoint?'Inspect the decision →':'A passing check alone is not approval'}</small></button></div><section class="activity-timeline"><h3>Latest request</h3><p class="activity-request">${esc(a.request)}</p><p class="small muted">Newest actions first${a.items.length>40?' · showing the latest 40':''}</p>${timeline||'<p class="activity-empty">No file actions yet. Conversation and live model output are in Chat.</p>'}</section><details class="technical-log" data-event="technical"><summary>${icon('code')}Technical log <span>${task.events.length} events</span>${icon('chevron')}</summary><div>${technical}</div></details>`;
+  $$('[data-activity-view]').forEach(b=>b.onclick=()=>setView(b.dataset.activityView));
+  $$('[data-chat-action]').forEach(b=>b.onclick=()=>b.dataset.chatAction==='stop'?stopTask():setView('chat'));
+  $$('[data-activity-file]').forEach(b=>b.onclick=()=>{state.file=task.changes.findIndex(c=>c.path===b.dataset.activityFile);setView('changes')});
+  $$('[data-activity-approve]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('/tasks/'+task.id+'/approval',{approved:b.dataset.activityApprove==='true'});await refresh()}catch(e){toast(e.message);b.disabled=false}});
   $$('[data-checkpoint]').forEach(b=>b.onclick=()=>checkpointDialog(Number(b.dataset.checkpoint)));
-  $$('[data-approve]').forEach(b=>b.onclick=async()=>{try{await api('/tasks/'+task.id+'/approval',{approved:b.dataset.approve==='yes'});await refresh()}catch(e){toast(e.message)}});
-  if($('#see-changes'))$('#see-changes').onclick=()=>setView('changes');
+  $('#activity-review').onclick=()=>a.checkpoint&&checkpointDialog(a.checkpoint.number);
+  if($('#activity-resume'))$('#activity-resume').onclick=resumeDialog;
+  if($('#activity-models'))$('#activity-models').onclick=openConnections;
+  updateProgressClock();
 }
 function checkpointDialog(number) {
   const checkpoint=state.task.checkpoints.find(c=>c.number===number);if(!checkpoint)return;
@@ -262,25 +279,38 @@ function renderTests() {
 }
 function renderInspector() {
   const t=state.task,config=t&&!t.demo?t.providers:state.config;
-  const roles=['worker','reviewer'].map(role=>`<div class="role-row"><span class="role-icon ${role}-icon">${icon(role==='worker'?'code':'spark')}</span><span><span class="role-label">${role.toUpperCase()}</span><strong>${esc(t?.demo?'Scripted demo':config[role]?.model||'Choose a model')}</strong></span></div>`);
+  const roles=['coordinator','worker','reviewer'].filter(role=>role!=='coordinator'||config[role]).map(role=>`<div class="role-row"><span class="role-icon ${role}-icon">${icon(role==='worker'?'code':'spark')}</span><span><span class="role-label">${role.toUpperCase()}</span><strong>${esc(t?.demo?'Scripted demo':config[role]?.model||'Choose a model')}</strong></span></div>`);
   const intro=t?`<section class="economy-intro compact-intro"><div class="mode-badge">${icon('leaf')}Economy mode</div><p>Work, verify, then ask for a second opinion.</p></section>`:`<section class="economy-intro"><div class="economy-icon">${icon('leaf')}</div><h2>A little patience.<br>A little more in your pocket.</h2><p>Spend less on the loop.<br>Save the stronger model for review.</p><div class="mode-badge">${icon('leaf')}Economy mode</div></section>`;
-  const models=`<section class="model-roles">${roles[0]}<div class="role-connection"><span></span><small>codes → checks → checkpoint</small></div>${roles[1]}</section>`;
-  const usage=t?`<section class="usage"><div class="section-title">Compute, thoughtfully spent</div><div class="cost-total"><strong>${money(t.usage.cost)}</strong><span>${t.demo?'no model charges':'accounted session cost'}</span></div><div class="usage-table">${['worker','reviewer'].map(role=>`<div><span>${role==='worker'?'Worker':'Reviewer'}</span><span>${t.usage[role].tokens.toLocaleString()} <small>tokens</small></span><strong>${money(t.usage[role].cost)}</strong></div>`).join('')}</div><div class="budget-meter"><span style="width:${Math.min(100,t.limits.dollars>0?t.usage.cost/t.limits.dollars*100:0)}%"></span></div><p class="small muted">${money(t.limits.dollars)} estimated cap · ${t.limits.reviewer_tokens.toLocaleString()} reviewer tokens</p><p class="small muted">${t.usage.uncertain_requests?`${t.usage.uncertain_requests} uncertain request(s): reservations remain counted.`:t.usage.estimated_requests?'Some costs use your configured token prices.':t.demo?'Demo usage is zero. No savings are claimed.':'Reported cost when available; configured prices otherwise.'}</p>${!activeStatuses.has(t.status)&&!['approved','completed'].includes(t.status)?'<button class="text-link" id="edit-limits">Review limits →</button>':''}</section>`:'';
+  const models=`<section class="model-roles">${roles.join('<div class="role-connection"><span></span></div>')}</section>`;
+  const usage=t?`<section class="usage"><div class="section-title">Compute, thoughtfully spent</div><div class="cost-total"><strong>${money(t.usage.cost)}</strong><span>${t.demo?'no model charges':'accounted session cost'}</span></div><div class="usage-table">${['coordinator','worker','reviewer'].filter(role=>t.usage[role]).map(role=>`<div><span>${role==='worker'?'Worker':role==='coordinator'?'Local chat':'Reviewer'}</span><span>${t.usage[role].tokens.toLocaleString()} <small>tokens</small></span><strong>${money(t.usage[role].cost)}</strong></div>`).join('')}</div><div class="budget-meter"><span style="width:${Math.min(100,t.limits.dollars>0?t.usage.cost/t.limits.dollars*100:0)}%"></span></div><p class="small muted">${money(t.limits.dollars)} estimated cap · ${t.limits.reviewer_tokens.toLocaleString()} reviewer tokens</p><p class="small muted">${t.usage.uncertain_requests?`${t.usage.uncertain_requests} uncertain request(s): reservations remain counted.`:t.usage.estimated_requests?'Some costs use your configured token prices.':t.demo?'Demo usage is zero. No savings are claimed.':'Reported cost when available; configured prices otherwise.'}</p>${!activeStatuses.has(t.status)&&!['approved','completed'].includes(t.status)?'<button class="text-link" id="edit-limits">Review limits →</button>':''}</section>`:'';
   const journey=t?`<section class="journey"><div class="section-title">This session</div><ol class="journey-list">${[['Worker turns',t.worker_turns],['Tool actions',t.tool_actions],['Checkpoints',t.checkpoints.length],['Reviewer calls',t.review_count],['Latest check',t.checks.length?(t.checks.at(-1).passed?'Passed':'Failed'):'Not run']].map(([label,value])=>`<li><span class="journey-dot">${icon('check')}</span><span>${label}</span><strong>${value}</strong></li>`).join('')}</ol></section>`:'';
   const workspace=t?`<details class="workspace-info"><summary>Workspace details</summary><p>Task copy</p><code>${esc(t.workspace)}</code><p>Snapshot: ${t.snapshot.files} files · ${t.snapshot.skipped.length} excluded</p><p class="small">Snapshot excludes common secret files and dependency folders. Review your repository before sending its contents to a provider.</p></details>`:`<section class="usage"><div class="section-title">Yours, from the start</div><p class="small muted">Open source. Local task history. Your providers, your keys, your limits.</p><button class="subtle-button" id="inspector-connect">Set up connections →</button></section>`;
-  $('#session-details').innerHTML=intro+models+usage+journey+workspace+(t?'<button class="subtle-button" id="open-activity">Open activity log →</button>':'');if($('#open-activity'))$('#open-activity').onclick=()=>setView('activity');
+  $('#session-details').innerHTML=intro+models+usage+journey+workspace+(t?'<button class="subtle-button" id="open-activity">See activity →</button>':'');if($('#open-activity'))$('#open-activity').onclick=()=>setView('activity');
   if($('#edit-limits'))$('#edit-limits').onclick=chatLimits;if($('#inspector-connect'))$('#inspector-connect').onclick=openConnections;
 }
 const numberField=(name,label,value,min,max,step='1')=>`<label>${label}<input name="${name}" type="number" min="${min}" max="${max}" step="${step}" value="${value}" required></label>`;
 function limitFields(limits={dollars:1,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}) {
-  return `<div class="field-grid">${numberField('dollars','Estimated spending cap ($)',limits.dollars,0,100,'0.01')}${numberField('reviewer_tokens','Reviewer token limit',limits.reviewer_tokens,512,1000000)}</div><details class="advanced"><summary>Advanced limits</summary><div class="field-grid">${numberField('iterations','Max worker iterations',limits.iterations,1,20)}${numberField('worker_turns','Max worker model turns',limits.worker_turns,1,200)}${numberField('output_tokens','Output tokens per request',limits.output_tokens,128,16384)}</div></details>`;
+  return `<div class="field-grid">${numberField('dollars','Estimated spending cap ($)',limits.dollars,0,100,'0.01')}${numberField('reviewer_tokens','Reviewer token limit',limits.reviewer_tokens,512,1000000)}</div><details class="advanced"><summary>Advanced limits</summary><div class="field-grid">${numberField('iterations','Max worker iterations',limits.iterations,1,20)}${numberField('worker_turns','Max worker model turns',limits.worker_turns,1,200)}${numberField('output_tokens','Output tokens per request',limits.output_tokens,128,16384)}${numberField('checkpoint_turns','Turns before a checkpoint pause',limits.checkpoint_turns??12,2,200)}${numberField('run_minutes','Minutes per run (excludes approval waits)',limits.run_minutes??15,1,720)}</div></details>`;
 }
-const readLimits=f=>Object.fromEntries(['dollars','reviewer_tokens','iterations','worker_turns','output_tokens'].map(k=>[k,Number(f.get(k))]));
+const readLimits=f=>Object.fromEntries(['dollars','reviewer_tokens','iterations','worker_turns','output_tokens','checkpoint_turns','run_minutes'].map(k=>[k,Number(f.get(k))]));
 function newTask(prefill='',preset={}) {
   home();
   if(preset.repository){state.project={path:preset.repository,name:basename(preset.repository)};renderHome();restoreDraft()}
   if(prefill){$('#chat-input').value=prefill;saveDraft();renderComposer()}
   if(!state.project)openProject();else $('#chat-input').focus();
+}
+const executionLabel=mode=>({delegate:'Delegate heavy work',local:'All local',remote:'All remote',manual:'Manual model pair'}[mode]||'Manual model pair');
+function executionPreferences() {
+  const saved=state.preferences.execution||{},local=state.config.worker?.base_url?.includes(':11434')?state.config.worker.model:'';
+  const d=dialog(`<form>${modalHeader('EXECUTION','Where should the work run?')}<p class="modal-description">Choose how new chats use your laptop and connected providers.</p>${state.task?`<p class="execution-notice">This chat keeps <strong>${esc(executionLabel(state.task.execution?.mode))}</strong> and its saved models. Start a new chat to use a different setup.</p>`:''}<div class="execution-options">${[
+    ['delegate','Delegate heavy work','Short local chats. Free remote models inspect files, implement changes, and review. Your local model goes idle after handoff.'],
+    ['local','All local','Work and review on your own hardware. No remote model requests.'],
+    ['remote','All remote','A responding free OmniRoute model handles chat and work; a different free model reviews.'],
+    ['manual','Manual model pair','Use the worker and reviewer selected in Models, including paid models when your spending cap allows.']
+  ].map(([value,title,description])=>`<label class="execution-option"><input type="radio" name="mode" value="${value}" ${(saved.mode||'manual')===value?'checked':''}><span><strong>${title}</strong><small>${description}</small></span></label>`).join('')}</div><div id="execution-local"><label class="full-field">Installed Ollama model<input name="local_model" value="${esc(saved.local_model||local)}" placeholder="Your installed model ID" autocomplete="off"><small>Used for short chat in Delegate mode, and implementation in All local.</small></label><label class="full-field" id="execution-reviewer">Local reviewer model · optional<input name="local_reviewer" value="${esc(saved.local_reviewer||'')}" placeholder="Use the same local model" autocomplete="off"></label></div><p id="execution-remote" class="execution-notice">Uses providers you enabled in OmniRoute. Project context is sent when work is handed off. CheapOS checks up to four free candidates without project data, requires two different models, and pauses if none work. No automatic paid or local fallback.</p><p class="small muted">Free routing uses advertised prices. Check OmniRoute’s fallback and billing settings. Existing chats retain their models. Saving does not start inference or download anything.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new chats.</span><button class="primary-button" type="submit">Save execution choice</button></div></form>`,'execution-modal');
+  const form=$('form',d),layout=()=>{const mode=new FormData(form).get('mode');$('#execution-local',d).hidden=!['local','delegate'].includes(mode);$('#execution-reviewer',d).hidden=mode!=='local';$('#execution-remote',d).hidden=!['remote','delegate'].includes(mode);$('[name="local_model"]',d).required=['local','delegate'].includes(mode)};
+  $$('[name="mode"]',d).forEach(input=>input.onchange=layout);layout();
+  form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form);state.preferences=await api('/preferences',{execution:Object.fromEntries(['mode','local_model','local_reviewer'].map(k=>[k,String(f.get(k)||'')]))});d.close();renderComposer();toast('Execution choice saved for new chats.');})};
 }
 function chatLimits() {
   const task=state.task,limits=task?.limits||state.preferences.limits;
@@ -291,7 +321,7 @@ async function sendChat() {
   if(state.sending||state.startup.busy||state.tasks.some(t=>activeStatuses.has(t.status)))return;
   const message=$('#chat-input').value.trim();if(!message)return;
   if(!state.project){openProject(()=>{$('#chat-input').value=message;saveDraft();renderComposer()});return}
-  if(!state.config.worker||!state.config.reviewer){openConnections(()=>{$('#chat-input').focus()});return}
+  if((state.preferences.execution?.mode||'manual')==='manual'&&(!state.config.worker||!state.config.reviewer)){openConnections(()=>{$('#chat-input').focus()});return}
   const key=draftKey();state.sending=true;renderComposer();
   try {
     if(state.task){await api('/tasks/'+state.task.id+'/message',{message});state.drafts.delete(key);$('#chat-input').value='';await refresh()}
@@ -323,7 +353,7 @@ function openConnections(afterSave, taskContext=null) {
       <div class="field-grid">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
       <p class="small muted">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
   };
-  const d=dialog(`${modalHeader('MODEL CONNECTIONS','One worker. One second opinion.')}<p class="modal-description">OmniRoute handles provider access. CheapOS handles the work, checks, and review.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>To fix access and retry the same models, update the gateway and return to Retry options. To try different models, choose them below and prepare a fresh task.</p></div>`:''}
+  const d=dialog(`${modalHeader('MODEL CONNECTIONS','Choose where the work runs.')}<button class="outline-button" id="models-execution">Execution: ${esc(executionLabel(state.preferences.execution?.mode))} →</button><p class="modal-description">OmniRoute handles provider access. CheapOS handles the work, checks, and review.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>To fix access and retry the same models, update the gateway and return to Retry options. To try different models, choose them below and prepare a fresh task.</p></div>`:''}
     <form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong>OmniRoute</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
       <p id="gateway-message" class="small muted"></p><p id="gateway-instance" class="small muted"></p>
       <div class="gateway-actions"><button type="button" class="outline-button" data-gateway-action="start">Connect / start</button><button type="button" class="subtle-button" data-gateway-action="refresh">Refresh models</button><button type="button" class="subtle-button" data-gateway-action="stop" hidden>Stop instance</button></div>
@@ -333,10 +363,11 @@ function openConnections(afterSave, taskContext=null) {
         <label class="checkbox-field"><input name="auto_start" type="checkbox" ${settings.auto_start?'checked':''}><span>Start installed OmniRoute when CheapOS launches<small>Reuses an existing instance. Does not install or update software.</small></span></label>
         <label class="checkbox-field"><input name="keep_running" type="checkbox" ${settings.keep_running?'checked':''}><span>Keep OmniRoute running when CheapOS closes<small>CheapOS only stops an instance it started in this session.</small></span></label>
         <button class="outline-button gateway-save" type="submit">Save gateway settings</button></details><p class="form-error" role="alert"></p></form>
-    <form id="models-form"><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div>
-      <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. Models are chosen explicitly; CheapOS does not select fallback models.</p>
+    <form id="models-form"><details class="advanced" ${(state.preferences.execution?.mode||'manual')==='manual'?'open':''}><summary>Explicit model choices · Manual mode and remote preferences</summary><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div>
+      <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. These explicit choices apply in Manual mode. Automatic remote modes prefer eligible choices here, check free candidates, and pin the selected pair for that chat.</p>
       <label class="checkbox-field" id="share-key-field"><input type="checkbox" name="share_key" checked><span>Use the entered worker key for the reviewer when their direct API URLs match</span></label>
-      <p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">${taskContext?'Save & prepare new chat':'Save connections'} ${icon('check')}</button></div></form>`,'connections-modal');
+      </details><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">${taskContext?'Save & prepare new chat':'Save connections'} ${icon('check')}</button></div></form>`,'connections-modal');
+  $('#models-execution',d).onclick=()=>{d.close();executionPreferences()};
   const field=(role,name)=>$(`[name="${role}_${name}"]`,d);
   const usingOmni=role=>$(`[data-preset="${role}"]`,d).value==='omniroute';
   function capability(role) {
@@ -437,7 +468,7 @@ async function bootstrap() {
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){toast('Local server disconnected. Restart CheapOS and refresh to reconnect.');state.online=false}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=async()=>{if(state.startup.busy){try{await api('/startup/stop',{});await loadStartup()}catch(e){toast(e.message)}}else await stopTask()};
+$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=startDemo;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=async()=>{if(state.startup.busy){try{await api('/startup/stop',{});await loadStartup()}catch(e){toast(e.message)}}else await stopTask()};
 function toggleInspector() {
   const panel=$('#inspector');
   if(matchMedia('(max-width:1280px)').matches){panel.classList.remove('hidden');panel.classList.toggle('show')}

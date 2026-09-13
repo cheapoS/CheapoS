@@ -34,6 +34,12 @@ An existing reviewer is preserved. On a fresh setup, the same free model fills b
 
 You can also click **Try the local demo**. It creates a tiny Python repository, reproduces a failing test, edits the implementation, requests a revision, adds a regression test, and exports a real Git patch. Model decisions are scripted and clearly labeled. No provider requests or charges occur.
 
+## Choose where work runs
+
+Use the execution button beside the chat spending limit to choose **Delegate heavy work**, **All local**, **All remote**, or **Manual model pair**. Local chat can delegate project work to free OmniRoute models and go idle. Automatic remote selection checks tool support and chooses a different reviewer. Existing chats keep their saved setup.
+
+The **Activity** tab shows current status, saved file changes, checks, review decisions, and named model handoffs. Runs pause at progress limits instead of indefinitely rereading files. See [execution choices, free routing, and progress limits](docs/EXECUTION.md).
+
 ## Connect models
 
 Open **Models**. OmniRoute is the first-class local gateway, with separate model choices for the worker and reviewer. Direct OpenRouter, Ollama, and other OpenAI-compatible endpoints remain available per role.
@@ -52,7 +58,7 @@ On launch, CheapOS checks `http://127.0.0.1:20128/v1/models`. It reuses an ident
 
 The free filter only filters the catalog; it is not a gateway billing control. Running chats never switch models automatically. Startup connection checks can try other eligible free candidates before a chat begins. Check OmniRoute's own retries, combos, and fallback policies: `auto/cheap` is not a guarantee of free inference. A zero dollar cap uses configured prices and does not guarantee provider-side billing limits.
 
-OmniRoute also supports Ollama, allowing a local worker and a remote reviewer through the same gateway. Configure the local provider in OmniRoute, then refresh the catalog in CheapOS. If the catalog omits prices, disable the free-model filter to find it and enter zero prices only for a model actually running locally. A direct Ollama connection is also available below. Local inference depends on your hardware and the model’s tool support. A local `gemma4:31b` connection has been checked with real file reads, a project question, and a follow-up in the same chat. That verifies conversational use; it is not a completed live edit-and-review experiment.
+OmniRoute also supports Ollama, allowing a local worker and a remote reviewer through the same gateway. Configure the local provider in OmniRoute, then refresh the catalog in CheapOS. If the catalog omits prices, disable the free-model filter to find it and enter zero prices only for a model actually running locally. A direct Ollama connection is also available below. Local inference depends on your hardware and the model’s tool support. A local `gemma4:31b` connection has been checked with real file reads, a project question, and a follow-up in the same chat. That check verified conversational use. A later [31-second live delegation experiment](docs/experiments/2026-09-13-delegation.md) used Gemma for a short handoff, a free remote worker for edits, and a different free reviewer; verification passed and the reviewer approved the small patch.
 
 **Keep OmniRoute running when CheapOS closes** is enabled by default, allowing other clients to keep using it. Disable it to stop a process started by the current CheapOS session on exit. CheapOS never stops an instance it merely reused. Startup preferences are saved in `.cheapos/gateway.json`; gateway client keys remain in memory, or can be supplied with `CHEAPOS_GATEWAY_API_KEY` in the launch environment.
 
@@ -64,7 +70,7 @@ OmniRoute also supports Ollama, allowing a local worker and a remote reviewer th
 
 Direct API keys entered in the interface remain in server memory until it stops. They are not saved in browser storage, configuration, or task history. You can alternatively supply `CHEAPOS_WORKER_API_KEY` and `CHEAPOS_REVIEWER_API_KEY` through the launch environment. Managed OmniRoute connections use the shared gateway key rather than direct provider keys. CheapOS does not load `.env` files automatically.
 
-Saving settings and refreshing the catalog make no inference requests. The separate startup connection check makes the bounded greeting request described above. Automated tests cover the worker/reviewer workflow through local HTTP fixtures. In the initial live free-model experiment, the worker produced a patch that passed six tests, but the reviewer timed out; the full live loop and cost savings remain unproven. A chat subscription does not automatically provide API credits.
+Saving settings and refreshing the catalog make no inference requests. The separate startup connection check makes the bounded greeting request described above. Automated tests cover the worker/reviewer workflow through local HTTP fixtures. The initial live free-model experiment reached passing checks but timed out at review. A later [small live delegation test](docs/experiments/2026-09-13-delegation.md) completed edits, verification, and a separate reviewer approval. Cost savings and reliability on larger tasks remain unproven. A chat subscription does not automatically provide API credits.
 
 References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter tool calling](https://openrouter.ai/docs/guides/features/tool-calling), [OpenRouter limits](https://openrouter.ai/docs/api-reference/limits), [Ollama compatibility](https://docs.ollama.com/api/openai-compatibility).
 
@@ -74,7 +80,7 @@ References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter 
 2. Type a question or describe a change, then send. CheapOS creates a separate task copy and uses your saved model choices and limits.
 3. Questions can finish with an answer. For changes, the worker inspects the project, proposes a verification command, and asks for approval in the conversation. The controller reruns checks before requesting a reviewer decision.
 4. Keep talking in the same chat. Follow-ups retain the task copy, original model pair, accumulated usage, and prior requests—even after a completed review. **New chat** starts a fresh copy of the source project.
-5. Open **Changes** to inspect and export a patch. **Checks** shows verification output. The activity log, models, and accounting live under **Details**.
+5. Open **Changes** to inspect and export a patch. **Checks** shows verification output. **Activity** summarizes current work and results; model accounting lives under **Details**.
 
 The spending control below the message box edits the current chat's limits, or defaults for new chats. Saving limits does not run a model. Model settings apply to new chats; existing chats retain their original model pair. An error never silently changes models or retries a request.
 
@@ -126,6 +132,7 @@ Node is only needed for the optional JavaScript syntax check. Tests use temporar
 | `cheapos/workspace.py` | Repository copies, constrained file tools, verification |
 | `cheapos/providers.py` | Chat Completions adapter and usage reservations |
 | `cheapos/streaming.py` | Bounded streaming output and complete tool-call assembly |
+| `cheapos/routing.py` | Execution placement, lightweight local delegation, and bounded free-route checks |
 | `cheapos/startup.py` | Free-worker discovery, startup greeting, and connection-check accounting |
 | `cheapos/gateways.py` | Gateway interface, model discovery, and adapter selection |
 | `cheapos/omniroute.py` | Optional local gateway startup, reuse, and process ownership |

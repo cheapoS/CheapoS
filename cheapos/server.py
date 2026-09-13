@@ -1,6 +1,7 @@
 """Loopback-only HTTP API and static UI. No hosted identity or external dependencies."""
 
 import json
+import hashlib
 import secrets
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,7 +15,7 @@ from .providers import validate_provider, ProviderError
 def public_task(task, summary=False):
     if summary:
         return {key: task[key] for key in ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage")}
-    return {key: value for key, value in task.items() if key not in {"messages", "fixture_phase", "in_flight", "turn_start_patch"}}
+    return {**{key: value for key, value in task.items() if key not in {"messages", "fixture_phase", "in_flight", "turn_start_patch"}}, "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
 
 
 class LocalServer(ThreadingHTTPServer):

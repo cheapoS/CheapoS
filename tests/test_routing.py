@@ -1,0 +1,207 @@
+"""Placement, tool isolation, free selection, and bounded progress without inference."""
+import copy
+import json
+import sys
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+from cheapos.engine import Engine, Runtime, ProgressPause
+from cheapos.routing import PROBE_MESSAGES, execution_from
+from test_engine import LocalCase, call, wait_for
+
+
+def model(name, **extra):
+    return {'id':name, 'free':True, 'local':False, 'tool_calling':True, **extra}
+
+
+class RoutingTests(LocalCase):
+    def chat(self, mode='delegate', prompt='Fix the lower bound.'):
+        source=self.fixture()['source']
+        self.engine.save_preferences({'execution':{'mode':mode,'local_model':'local-chat'}})
+        self.engine.gateway.catalog=Mock(return_value={'status':'ready','models':[model('a:free'),model('b:free')], 'revision':1})
+        self.engine.gateway.snapshot=Mock(return_value={'status':'ready','busy':False})
+        return self.engine.create({'repository':source,'prompt':prompt,'conversational':True})
+
+    def responses(self, replies, probe_fail=None):
+        queue=iter(replies);requests=[]
+        class Provider:
+            def __init__(self, role, config):self.role,self.config=role,config
+            def complete(self, messages, tools, maximum):
+                requests.append({'role':self.role,'model':self.config['model'],'messages':copy.deepcopy(messages),'tools':copy.deepcopy(tools),'maximum':maximum})
+                if messages==PROBE_MESSAGES:
+                    if probe_fail and self.config['model'] in probe_fail:
+                        return {'content':'No tools.'},{'prompt_tokens':3,'completion_tokens':1,'cost':0}
+                    return call('routing_ready'),{'prompt_tokens':3,'completion_tokens':1,'cost':0}
+                return next(queue),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
+        self.engine.provider_factory=lambda role,cfg:Provider(role,cfg)
+        return requests
+
+    def test_local_chat_has_no_project_tools_or_context_and_stops_after_one_reply(self):
+        task=self.chat(prompt='Hi')
+        requests=self.responses([{'content':'Hi!'}])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'awaiting_reply')
+        self.assertEqual(len(requests),1)
+        self.assertEqual(requests[0]['role'],'coordinator')
+        self.assertLessEqual(requests[0]['maximum'],512)
+        self.assertEqual([t['function']['name'] for t in requests[0]['tools']],['delegate_work'])
+        self.assertNotIn('math_utils.py',json.dumps(requests[0]['messages']))
+        self.assertEqual(result['usage']['coordinator']['tokens'],15)
+        self.assertFalse(result['route']['ready'])
+
+    def test_delegation_edit_verification_and_different_reviewer_complete(self):
+        task=self.chat()
+        requests=self.responses([call('delegate_work',{'summary':'Fix clamp.'}),
+            call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
+            call('run_checks',{'command':sys.executable+' -m unittest discover -v'}),
+            call('checkpoint',{'summary':'Fixed clamp.','uncertainties':''}),
+            call('review_decision',{'decision':'APPROVE','feedback':'Bounds fixed; checks passed.'})])
+        self.engine.start(task['id'])
+        for n in [0,1]:
+            wait_for(lambda:self.engine.store.get(task['id'])['status']=='waiting_approval' and len(self.engine.store.get(task['id'])['checks'])==n)
+            self.engine.approve_check(task['id'],True)
+            wait_for(lambda:len(self.engine.store.get(task['id'])['checks'])>n)
+        result=self.finish(task)
+        self.assertEqual(result['status'],'approved',result['error'])
+        self.assertEqual(result['providers']['worker']['model'],'a:free')
+        self.assertEqual(result['providers']['reviewer']['model'],'b:free')
+        self.assertEqual(sum(r['role']=='coordinator' for r in requests),1)
+        self.assertTrue(result['changes'])
+        self.assertEqual(len([e for e in result['events'] if e['kind']=='handoff']),2)
+        self.assertEqual((Path(task['source'])/'math_utils.py').read_text(),'def clamp(value, lower, upper):\n    return min(value, upper)\n')
+        self.assertTrue(all('math_utils.py' not in json.dumps(r['messages']) for r in requests if r['messages']==PROBE_MESSAGES))
+        self.assertEqual(result['usage']['cost'],0)
+
+    def test_offline_gateway_pauses_delegation_without_local_edits(self):
+        task=self.chat();self.engine.gateway.catalog.return_value['status']='offline'
+        requests=self.responses([call('delegate_work',{'summary':'Edit the file.'})])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'paused')
+        self.assertEqual(result['error_code'],'routing_unavailable')
+        self.assertEqual(result['changes'],[])
+        self.assertEqual(len(requests),1)
+
+    def test_local_coordinator_cannot_execute_a_forged_file_tool(self):
+        task=self.chat();self.responses([call('write_file',{'path':'forged.txt','content':'bad'})])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'paused')
+        self.assertFalse((Path(task['workspace'])/'forged.txt').exists())
+        self.assertEqual(result['changes'],[])
+
+    def test_free_selection_skips_paid_local_unknown_and_broken_models(self):
+        task=self.chat('remote')
+        self.engine.gateway.catalog.return_value['models']=[model('paid',free=False),model('local',local=True),model('unknown',tool_calling=None),model('auto/free'),model('a:free'),model('b:free'),model('c:free')]
+        requests=self.responses([{'content':'Ready.'}],probe_fail={'a:free'})
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'awaiting_reply',result['error'])
+        self.assertEqual(result['providers']['worker']['model'],'b:free')
+        self.assertEqual(result['providers']['reviewer']['model'],'c:free')
+        self.assertEqual({r['model'] for r in requests},{'a:free','b:free','c:free'})
+        self.assertEqual(sum(r['role']=='coordinator' for r in requests),0)
+
+    def test_one_model_is_not_silently_reused_as_remote_reviewer(self):
+        task=self.chat('remote');self.engine.gateway.catalog.return_value['models']=[model('a:free')]
+        requests=self.responses([])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'paused')
+        self.assertEqual(len(requests),1)
+        self.assertIsNone(result['providers']['worker'])
+        self.assertEqual(result['changes'],[])
+
+    def test_probe_attempts_are_bounded(self):
+        task=self.chat('remote');self.engine.gateway.catalog.return_value['models']=[model(str(i)) for i in range(8)]
+        requests=self.responses([],probe_fail=set(str(i) for i in range(8)))
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'paused');self.assertEqual(len(requests),4)
+
+    def test_all_local_never_discovers_or_dispatches_remote_models(self):
+        task=self.chat('local',prompt='Hi');self.engine.gateway.catalog=Mock(side_effect=AssertionError('Remote discovery'))
+        requests=self.responses([{'content':'Hello.'}]);self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'awaiting_reply')
+        self.assertEqual(result['providers']['worker']['base_url'],'http://127.0.0.1:11434/v1')
+        self.assertEqual({r['model'] for r in requests},{'local-chat'})
+        self.engine.gateway.catalog.assert_not_called()
+
+    def test_preferences_do_not_rewrite_existing_tasks(self):
+        task=self.chat('local');before=copy.deepcopy(task)
+        self.engine.save_preferences({'execution':{'mode':'remote'}})
+        self.assertEqual(self.engine.store.get(task['id']),before)
+        self.assertEqual(Engine(self.engine.store.root).preferences()['execution']['mode'],'remote')
+
+    def test_three_identical_reads_pause_without_review_or_extra_request(self):
+        task=self.chat('local');requests=self.responses([call('read_file',{'path':'math_utils.py'})]*4)
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['error_code'],'progress_limit');self.assertEqual(result['status'],'paused')
+        self.assertEqual(len(requests),3);self.assertFalse(result['checkpoints'])
+
+    def test_checkpoint_turn_limit_bounds_even_changing_edits(self):
+        task=self.chat('local');task['limits']['checkpoint_turns']=2;self.engine.store.save(task)
+        requests=self.responses([call('write_file',{'path':'new1.py','content':'one'}),call('write_file',{'path':'new2.py','content':'two'}),{'content':'Never called'}])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'paused');self.assertEqual(len(result['changes']),2);self.assertEqual(len(requests),2)
+        self.assertIn('turn limit',result['error'])
+
+    def test_expired_run_stops_before_inference(self):
+        task=self.chat('local');runtime=Runtime(task);runtime.started-=10000
+        self.engine.provider_factory=Mock(side_effect=AssertionError('No call'))
+        with self.assertRaises(ProgressPause):self.engine.request(runtime,[],[],'worker')
+        self.engine.provider_factory.assert_not_called()
+
+    def test_invalid_execution_is_rejected(self):
+        for value in [{'mode':'paid-auto'},{'mode':'local','local_model':False},None,{'mode':'local','download':True}]:
+            with self.assertRaises(ValueError):execution_from(value)
+
+    def test_local_metadata_blocks_cloud_alias_and_unreachable_ollama(self):
+        from cheapos.routing import verify_local,local_config,RoutingPause
+        for info in [{'remote_host':'https://ollama.com','capabilities':['completion','tools']},{'capabilities':['completion']}]:
+            with patch('cheapos.startup.local_json',return_value=info),self.assertRaises(RoutingPause):verify_local(local_config('alias','worker'))
+        with patch('cheapos.startup.local_json',side_effect=OSError()),self.assertRaises(RoutingPause):verify_local(local_config('alias','worker'))
+
+    def test_paid_probe_response_stops_before_another_candidate_or_file_tool(self):
+        task=self.chat('remote');calls=[]
+        class Paid:
+            def complete(self,*args):
+                calls.append(1)
+                return call('routing_ready'),{'prompt_tokens':10,'completion_tokens':2,'cost':.1}
+        self.engine.provider_factory=lambda *args:Paid()
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'budget_paused');self.assertEqual(len(calls),1)
+        self.assertAlmostEqual(result['usage']['cost'],.1);self.assertEqual(result['changes'],[])
+
+    def test_followup_keeps_remote_pair_and_returns_to_local_chat(self):
+        task=self.chat();requests=self.responses([call('delegate_work',{'summary':'Explain clamp.'}),{'content':'Clamp has a lower bound bug.'},{'content':'You are welcome!'}])
+        self.engine.start(task['id']);first=self.finish(task)
+        self.engine.start(task['id'],{'message':'Thanks'});result=self.finish(task)
+        self.assertEqual(result['status'],'awaiting_reply')
+        self.assertEqual(result['providers'],first['providers'])
+        self.assertEqual([r['role'] for r in requests],['coordinator','worker','reviewer','worker','coordinator'])
+
+    def test_remote_mode_startup_never_queries_local_discovery(self):
+        self.chat('remote');self.engine.startup._omni=Mock(return_value=[])
+        with patch('cheapos.startup.local_candidates',side_effect=AssertionError('Local discovery')):
+            self.assertEqual(list(self.engine.startup._candidates(None)),[])
+
+    def test_local_mode_startup_never_falls_back_to_cloud(self):
+        self.chat('local');self.engine.startup._omni=Mock(side_effect=AssertionError('Cloud discovery'))
+        with patch('cheapos.startup.local_candidates',return_value=[]):
+            self.assertEqual(list(self.engine.startup._candidates(None)),[])
+
+    def test_compaction_deduplicates_unchanged_read_payloads(self):
+        task=self.chat('local')
+        for _ in range(3):self.engine.file_tool(task,'read_file',{'path':'math_utils.py'})
+        summary=json.loads(self.engine.initial_messages(task)[1]['content'])
+        self.assertEqual(sum(a['action']=='read file' for a in summary['recent_activity']),1)
+
+    def test_coordinator_cannot_exceed_cumulative_turn_limit_during_handoff(self):
+        task=self.chat();task['limits']['worker_turns']=1;self.engine.store.save(task)
+        requests=self.responses([call('delegate_work',{'summary':'Do work.'})])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'budget_paused');self.assertEqual(len(requests),1)
+        self.assertEqual(result['worker_turns'],1);self.assertFalse(result['route']['ready'])
+
+    def test_invalid_checkpoints_cannot_reset_the_progress_limit(self):
+        task=self.chat('local');task['limits']['checkpoint_turns']=2;self.engine.store.save(task)
+        requests=self.responses([call('checkpoint',{'summary':'Done','uncertainties':''})]*3)
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['error_code'],'progress_limit');self.assertEqual(len(requests),2)
+        self.assertEqual(result['checkpoints'],[])

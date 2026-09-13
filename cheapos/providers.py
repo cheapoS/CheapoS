@@ -85,10 +85,13 @@ class ChatProvider:
     def greet(self, messages, emit, stopped):
         return self._complete(messages, [], 512, emit, stopped, timeout_seconds=30, stream_seconds=60, brief=True)
 
+    def complete_brief(self, messages, tools, max_tokens, emit, stopped):
+        return self._complete(messages, tools, max_tokens, emit, stopped, timeout_seconds=30, stream_seconds=60, brief=True)
+
     def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False, timeout_seconds=REQUEST_TIMEOUT_SECONDS, stream_seconds=600, brief=False):
         body = {"model": self.config["model"], "messages": messages, "max_tokens": max_tokens, "stream": emit is not None}
         if brief and is_local_ollama(self.config):
-            body.update({"max_tokens":128, "reasoning_effort":"none"})
+            body.update({"max_tokens": min(max_tokens, 512 if tools else 128), "reasoning_effort":"none"})
         if emit is not None:
             body["stream_options"] = {"include_usage": True}
         if tools:

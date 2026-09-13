@@ -51,7 +51,10 @@ def local_candidates(saved=None):
         for model in models[:6]:
             name = model["name"]
             try:
-                capabilities = local_json(origin + "/api/show", {"model":name}).get("capabilities", [])
+                details = local_json(origin + "/api/show", {"model":name})
+                if details.get("remote_host") or details.get("remote_model"):
+                    continue
+                capabilities = details.get("capabilities", [])
             except (OSError, ValueError, TypeError, AttributeError):
                 continue
             if "completion" not in capabilities or "tools" not in capabilities:
@@ -158,6 +161,15 @@ class StartupManager:
         return catalog_candidates(catalog["models"], gateway.settings["base_url"], "omniroute") if catalog["status"] == "ready" else []
 
     def _candidates(self, saved):
+        execution = self.engine.preferences()["execution"]
+        if execution["mode"] == "remote":
+            yield from (c for c in self._omni() if not c["local"])
+            return
+        if execution["mode"] in {"delegate", "local"}:
+            installed = local_candidates(saved)
+            selected = execution["local_model"]
+            yield from (c for c in installed if not selected or c["config"]["model"] == selected)
+            return
         locals_ = local_candidates(saved)
         omni = None
         # A saved explicit free choice has priority. A catalog entry is still required.
@@ -203,7 +215,7 @@ class StartupManager:
         account = {"limits":{"output_tokens":512, "dollars":0}, "usage":{"worker":{"tokens":0,"cost":0}, "reviewer":{"tokens":0,"cost":0}, "cost":0, "uncertain_requests":0, "estimated_requests":0}}
         try:
             saved = copy.deepcopy(self.engine.config.get("worker"))
-            if saved and (saved["input_rate"] or saved["output_rate"] or saved["model"].startswith("auto/")):
+            if saved and self.engine.preferences()["execution"]["mode"] == "manual" and (saved["input_rate"] or saved["output_rate"] or saved["model"].startswith("auto/")):
                 if automatic:
                     self._set(status="configured", message="Your saved model is selected. Automatic greetings only use verified free or local models.")
                     return

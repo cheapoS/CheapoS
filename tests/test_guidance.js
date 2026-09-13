@@ -89,3 +89,23 @@ test('only evidence of a timeout produces the timeout explanation',()=>{
   failed.events[1].time=new Date(when+2000).toISOString();assert.equal(failure(failed).timeout,false);
   failed.error_code='model_timeout';assert.equal(failure(failed).timeout,true);
 });
+
+const {activity,activityItem}=require('../dist/guidance.js');
+test('Activity separates this request from an earlier approved turn',()=>{
+  const a=activity(task({prompt:'First',patch:'new',events:[{kind:'checks',detail:{passed:true,digest:'old'}},{kind:'review',detail:{checkpoint:1,decision:'APPROVE'}},{kind:'user',detail:'Now change another file'}],checkpoints:[{number:1,decision:'APPROVE',diff:'old'}]}));
+  assert.equal(a.request,'Now change another file');assert.equal(a.checks,'Not run for this request');assert.equal(a.review,'Not reviewed for this request');
+});
+test('Activity never presents an earlier patch check as current approval',()=>{
+  const a=activity(task({patch:'updated',patch_digest:'new',events:[{kind:'checks',title:'Verification passed',detail:{passed:true,digest:'old'}}]}));
+  assert.equal(a.checks,'Passed · earlier patch');assert.equal(a.review,'Not reviewed for this request');
+});
+test('Activity names real file actions and excludes preparation from completed work',()=>{
+  assert.equal(activityItem({kind:'tool',title:'read file',detail:{arguments:{path:'README.md'},result:{total_lines:80}}}).title,'Read README.md');
+  assert.equal(activityItem({kind:'model',title:'Requesting worker: X'}),null);
+  assert.equal(activityItem({kind:'tool',title:'Running verification'}),null);
+  assert.equal(activityItem({kind:'tool_error',title:'Failed',detail:{error:'No match'}}).failed,true);
+});
+test('Activity shows handoffs and verified review evidence newest first',()=>{
+  const a=activity(task({patch:'p',patch_digest:'digest',events:[{kind:'handoff',title:'Delegated',detail:{from:'Local',to:'Remote'}},{kind:'checks',title:'Passed',detail:{passed:true,digest:'digest'}},{kind:'review',title:'Approved',detail:{checkpoint:1,decision:'APPROVE'}}],checkpoints:[{number:1,diff:'p'}]}));
+  assert.equal(a.checks,'Passed');assert.equal(a.review,'Approved');assert.equal(a.items[0].title,'Approved');assert.equal(a.items[2].note,'Local → Remote');
+});

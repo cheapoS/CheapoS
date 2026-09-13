@@ -15,6 +15,7 @@ const CheapOSGuide = (() => {
     };
     const result={facts,tone:'neutral',eyebrow:'NEXT STEP',title:'Your task is saved.',description:'Open the activity log to see the saved work.',primary:'activity',primaryLabel:'View activity',secondary:hasPatch?'changes':null,secondaryLabel:'Inspect saved changes',retry:false};
     switch(task.status) {
+      case 'awaiting_reply': return {...result,title:'Ready for your next message.',description:hasPatch?'Edits are saved in this chat. A chat answer does not mean the patch was reviewed.':'Continue the conversation whenever you’re ready.',primary:'chat',primaryLabel:'Back to chat'};
       case 'ready': return {...result,title:'Your task is ready to start.',description:'CheapOS has created a separate task copy. Start the worker to make changes, run your checks, and request a review.',primary:'start',primaryLabel:task.demo?'Start the local demo':'Start this task',secondary:null};
       case 'running': return {...result,tone:'working',eyebrow:'IN PROGRESS',title:task.active_role==='reviewer'?'The reviewer is making the changes.':'The worker is working on your task.',description:'No action needed right now. CheapOS will ask before running a command that needs your approval.',primary:'activity',primaryLabel:'Follow activity'};
       case 'reviewing': return {...result,tone:'working',eyebrow:'IN PROGRESS',title:'The reviewer is checking the patch.',description:'The checkpoint reached review. Wait for a decision: approve the change, request revisions, or ask to take over.',primary:'activity',primaryLabel:'Follow the review'};
@@ -22,7 +23,7 @@ const CheapOSGuide = (() => {
       case 'stopping': return {...result,eyebrow:'PAUSING',title:'Waiting for the current request to finish.',description:'No new tool work will start. An in-flight model request can take up to three minutes to return.',primary:'activity',primaryLabel:'View activity',secondary:null};
       case 'error': return {...result,tone:'attention',title:reviewerStopped?'The reviewer didn’t finish.':'This task stopped before it finished.',description:reviewerStopped?'The worker’s changes are saved, but the latest checkpoint has no reviewer decision. Check the model connection before trying again.':'Your saved work is still available. Read the failure below and check the model connection before retrying.',primary:'connections',primaryLabel:'Check model connection',retry:true};
       case 'budget_paused': return {...result,tone:'attention',title:'This task reached a limit.',description:'CheapOS paused to respect your limits. Inspect what it produced, then review the remaining budget before continuing.',primary:'resume',primaryLabel:'Review limits & resume'};
-      case 'paused': case 'interrupted': return {...result,title:task.status==='interrupted'?'This task was interrupted.':'Your work is paused.',description:'The task copy and usage are saved. Review the limits, then resume with this task’s original models.',primary:'resume',primaryLabel:'Review & resume'};
+      case 'paused': case 'interrupted': return {...result,title:task.error_code==='progress_limit'?'Paused to avoid repeated work.':task.error_code==='routing_unavailable'?'A working free route is needed.':task.status==='interrupted'?'This task was interrupted.':'Your work is paused.',description:task.error_code?task.error:'The task copy and usage are saved. Review the limits, then resume with this task’s original models.',primary:'resume',primaryLabel:'Review & resume'};
       case 'takeover_requested': return {...result,tone:'attention',title:'The reviewer wants to take over.',description:'Read the reviewer’s feedback below. You decide whether it can implement changes using the remaining task budget.',primary:'resume',primaryLabel:'Review takeover request'};
       case 'approved': return {...result,tone:'success',eyebrow:'YOUR REVIEW',title:'The reviewer approved this patch.',description:'Inspect the changes, then export the patch when you’re ready to apply it. Your original project has not been changed by the file tools.',primary:'changes',primaryLabel:'Review the patch',secondary:'export',secondaryLabel:'Export patch'};
       case 'completed': return {...result,tone:'attention',eyebrow:'YOUR REVIEW',title:'Takeover finished. Your review is next.',description:'The implementing model finished, but this is not an independent reviewer approval. Inspect the patch before applying it to your project.',primary:'changes',primaryLabel:'Review the patch',secondary:'export',secondaryLabel:'Export patch'};
@@ -55,9 +56,9 @@ const CheapOSGuide = (() => {
     if(task.status==='waiting_approval'){stage='approval';title='Waiting for your approval';detail=(task.pending_approval?.command||[]).join(' ')}
     else if(task.status==='stopping'){stage='stopping';title='Stop requested';detail='Waiting for the current operation to finish. No new tools will start.'}
     else if(latest?.kind==='model'){
-      stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':'worker';
+      stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':latest.title.startsWith('Requesting coordinator:')?'coordinator':'worker';
       title=role==='reviewer'?'Waiting for the reviewer’s response':'Waiting for the model’s response';
-      detail=task.providers?.[role]?.model||latest.title.replace(/^Requesting (worker|reviewer): /,'');since=latest.time;
+      detail=task.providers?.[role]?.model||latest.title.replace(/^Requesting (worker|reviewer|coordinator): /,'');since=latest.time;
     }else if(latest?.title==='Running verification'){stage='checks';title='Running checks';detail=(latest.detail?.command||task.check_command||[]).join(' ')}
     const timestamp=Date.parse(since),seconds=Number.isFinite(timestamp)?Math.max(0,(at-timestamp)/1000):0;
     const limit=request?.detail?.timeout_seconds||180;
@@ -82,6 +83,39 @@ const CheapOSGuide = (() => {
     return {timeout,title:timeout?'The model didn’t respond before the time limit.':taskGuide(task).title,
       description:timeout?`${request?request.title.replace(/^Requesting (worker|reviewer): /,''):'The model'} ${task.error_code==='stream_timeout'?'reached the streaming time limit':request?.detail?.streaming?'stopped sending output before the response completed':`was given ${duration(request?.detail?.timeout_seconds||180)}`}. ${files?`${files} changed file${files===1?' is':'s are'} saved.`:'No files were changed.'} Retry when you’re ready.`:'The request stopped. Your saved work is available; check the details before retrying.'};
   }
-  return {taskGuide,projectName,workLabel,progress,failure,duration,isActive:status=>active.has(status)};
+  function activityItem(event) {
+    const d=event.detail||{},args=d.arguments||{},result=d.result;
+    let title=event.title,icon='code',note='',path=null;
+    if(event.kind==='tool'){
+      path=args.path||null;
+      if(title==='Running verification')return null;
+      const names={'read file':`Read ${path||'a file'}`,'write file':`Created ${path||'a file'}`,'replace text':`Edited ${path||'a file'}`,'list files':'Listed project files','search':`Searched for “${args.query||''}”`,'get diff':'Inspected the saved changes'};
+      title=names[title]||title;icon=path?'file':'search';
+      note=Array.isArray(result)?`${result.length} results`:result?.total_lines?`${result.total_lines} lines in file`:['write file','replace text'].includes(event.title)?'Saved in the task copy':'';
+      if(d.model)note=[d.model,note].filter(Boolean).join(' · ');
+    }else if(event.kind==='checks'){icon='tests';note=(d.command||[]).join(' ')}
+    else if(event.kind==='review'){icon='shield';note=d.feedback||''}
+    else if(event.kind==='handoff'){icon='branch';note=`${d.from} → ${d.to}`}
+    else if(event.kind==='checkpoint'){icon='shield';note=d.worker_summary||''}
+    else if(event.kind==='tool_error'){icon='x';title='Action could not finish';note=d.error||''}
+    else if(event.kind==='guard'){icon='clock';note=typeof d==='string'?d:''}
+    else if(event.kind==='routing'){icon='branch';note=d.model||d.summary||''}
+    else return null;
+    return {event,title,icon,note,path,failed:event.kind==='tool_error'||event.kind==='checks'&&!d.passed};
+  }
+  function activity(task) {
+    const events=task.events||[],boundary=events.reduce((n,e,i)=>e.kind==='user'?i:n,-1),recent=events.slice(boundary+1);
+    const check=[...recent].reverse().find(e=>e.kind==='checks')?.detail;
+    const review=[...recent].reverse().find(e=>e.kind==='review')?.detail;
+    const checkpoint=review&&(task.checkpoints||[]).find(c=>c.number===review.checkpoint);
+    const checkCurrent=Boolean(check?.digest&&check.digest===task.patch_digest);
+    const reviewCurrent=Boolean(checkpoint&&checkpoint.diff===task.patch);
+    return {request:boundary>=0?events[boundary].detail:task.prompt,
+      files:(task.changes||[]).length,
+      checks:check?`${check.passed?'Passed':'Failed'}${checkCurrent?'':' · earlier patch'}`:'Not run for this request',
+      review:review?`${{APPROVE:'Approved',REQUEST_CHANGES:'Changes requested',TAKE_OVER:'Takeover requested'}[review.decision]||'Decision saved'}${reviewCurrent?'':' · earlier patch'}`:task.status==='reviewing'?'Reviewing now':'Not reviewed for this request',
+      check,checkpoint,items:recent.map(activityItem).filter(Boolean).reverse()};
+  }
+  return {taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,isActive:status=>active.has(status)};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
