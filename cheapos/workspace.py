@@ -19,6 +19,10 @@ BLOCKED_PARTS = {".git", ".cheapos", ".ssh", ".aws", ".gnupg", "node_modules", "
 BLOCKED_NAMES = {".env", ".npmrc", ".pypirc", ".netrc", "id_rsa", "id_ed25519", "credentials", "credentials.json"}
 
 
+class FileVersionError(ValueError):
+    """The edit's inspected version does not match the file on disk."""
+
+
 def allowed_name(name):
     parts = PurePosixPath(name).parts
     return bool(parts) and not any(p in BLOCKED_PARTS or p in BLOCKED_NAMES or (p.startswith(".env.") and p not in {".env.example", ".env.sample", ".env.template"}) or p.endswith((".pem", ".key", ".p12", ".pfx")) for p in parts)
@@ -147,7 +151,7 @@ class Workspace:
         """A bounded edit against the exact bytes the worker inspected."""
         data = self.text_bytes(path)
         if expected_hash != hashlib.sha256(data).hexdigest():
-            raise ValueError("File changed since inspection. Use the current read_file hash and line numbers; no edit was made.")
+            raise FileVersionError("The edit version does not match the current file. No edit was made; inspect the refreshed lines before retrying.")
         lines = data.decode("utf-8").splitlines(keepends=True)
         if (type(start_line) is not int or type(end_line) is not int or start_line < 1
                 or start_line > len(lines) + 1 or end_line < start_line - 1 or end_line > len(lines)):

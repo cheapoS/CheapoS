@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from cheapos.engine import COMPACT_GUIDANCE, Runtime, check_argv, record_observa
 from cheapos.providers import ProviderError
 from cheapos.routing import PROBE_MESSAGES
 from cheapos.workspace import MAX_EDIT_BYTES, Workspace
-from test_engine import LocalCase, call
+from test_engine import LocalCase, call, wait_for
 import test_routing as routing_fixture
 from test_routing import model
 from test_tool_arguments import malformed
@@ -30,7 +31,7 @@ class LineEditTests(LocalCase):
         edited = ws.replace_lines('lines.txt', 2, 2, 'second', read['hash'])
         self.assertEqual(ws.path('lines.txt').read_bytes(), b'one\r\nsecond\r\nthree\r\n')
         before = ws.path('lines.txt').read_bytes()
-        with self.assertRaisesRegex(ValueError, 'changed since inspection'):
+        with self.assertRaisesRegex(ValueError, 'edit version does not match'):
             ws.replace_lines('lines.txt', 1, 1, 'stale', read['hash'])
         self.assertEqual(ws.path('lines.txt').read_bytes(), before)
         edited = ws.replace_lines('lines.txt', 2, 1, 'insert\r\n', edited['hash'])
@@ -97,7 +98,7 @@ class CompactRecoveryTests(LocalCase):
             summary = json.loads(request['messages'][1]['content'])
             file = next(f for f in summary['current_files'] if f['path'] == 'math_utils.py')
             return call('replace_lines', {'path': file['path'], 'start_line': line, 'end_line': line,
-                                          'new_text': content, 'expected_hash': file['hash']})
+                                          'new_text': content})
         return response
 
     def test_malformed_edit_then_success_then_handoff_retains_compact_context_through_review(self):
@@ -168,7 +169,7 @@ class CompactRecoveryTests(LocalCase):
         self.assertTrue(current['content'].startswith('500: ' + 'line' * 12 + '\n'))
         self.assertFalse(current['complete'])
         path.write_text('changed\n' * 600)
-        with self.assertRaisesRegex(ValueError, 'changed since inspection'):
+        with self.assertRaisesRegex(ValueError, 'edit version does not match'):
             self.engine.file_tool(task, 'replace_lines', {'path': 'math_utils.py', 'start_line': 500,
                                   'end_line': 500, 'new_text': 'stale', 'expected_hash': current['hash']})
         self.assertNotIn('stale', path.read_text())
@@ -201,14 +202,86 @@ class CompactRecoveryTests(LocalCase):
         self.engine.store.save(task)
         first = call('read_file', {'path': 'math_utils.py'})
         first['content'] = 'I have inspected the function; next I will fix its lower bound.'
-        requests = self.responses([first, call('replace_lines', {'path':'math_utils.py', 'start_line':2,
-                                  'end_line':2, 'new_text':'small edit', 'expected_hash':'stale'}),
+        def stale_edit(request):
+            (Path(task['workspace']) / 'math_utils.py').write_text('Changed outside the worker\n')
+            return call('replace_lines', {'path':'math_utils.py', 'start_line':2,
+                                         'end_line':2, 'new_text':'small edit'})
+        requests = self.responses([first, stale_edit,
                                   call('ask_user', {'question': 'Which behavior do you want?'})])
         self.engine.start(task['id']); self.finish(task)
         self.assertIn(first, requests[1]['messages'])
         feedback = [m for m in requests[2]['messages'] if m['role'] == 'tool']
-        self.assertTrue(any('changed since inspection' in m['content'] for m in feedback))
+        self.assertTrue(any('stale_file_version' in m['content'] for m in feedback))
+        self.assertTrue(any('1: Changed outside the worker' in m['content'] for m in feedback))
+        self.assertEqual((Path(task['workspace']) / 'math_utils.py').read_text(), 'Changed outside the worker\n')
         self.assertIn(first, requests[2]['messages'])
+
+    def test_controller_versions_sequential_edits_and_ignores_copied_legacy_hash(self):
+        task = self.chat('remote'); task['compact_edits'] = True
+        self.engine.store.save(task)
+        requests = self.responses([
+            call('read_file', {'path': './math_utils.py'}),
+            call('replace_lines', {'path': 'math_utils.py', 'start_line': 1, 'end_line': 0,
+                                  'new_text': '# inserted\n', 'expected_hash': 'badly-copied-hash'}),
+            call('replace_lines', {'path': './math_utils.py', 'start_line': 3, 'end_line': 3,
+                                  'new_text': '    return max(lower, min(value, upper))\n'}),
+            call('ask_user', {'question': 'Ready for your next instruction.'}),
+        ])
+        self.engine.start(task['id']); result = self.finish(task)
+        self.assertFalse(any(e['kind'] == 'tool_error' for e in result['events']))
+        self.assertEqual((Path(task['workspace']) / 'math_utils.py').read_text(),
+                         '# inserted\ndef clamp(value, lower, upper):\n    return max(lower, min(value, upper))\n')
+        for request in requests:
+            schema = next(t['function']['parameters'] for t in request['tools'] if t['function']['name'] == 'replace_lines')
+            self.assertNotIn('expected_hash', schema['properties'])
+        self.assertIn('3:     return min(value, upper)', json.dumps(requests[2]['messages']))
+        self.assertEqual(result['review_count'], 0)
+
+    def test_second_edit_in_same_response_cannot_use_shifted_line_numbers(self):
+        task = self.chat('remote'); task['compact_edits'] = True
+        self.engine.store.save(task)
+        batch = call('replace_lines', {'path': 'math_utils.py', 'start_line': 1, 'end_line': 0, 'new_text': '# first\n'})
+        second = call('replace_lines', {'path': 'math_utils.py', 'start_line': 2, 'end_line': 2, 'new_text': 'WRONG'})['tool_calls'][0]
+        second['id'] = 'call_2'; batch['tool_calls'].append(second)
+        requests = self.responses([call('read_file', {'path':'math_utils.py'}), batch,
+                                   call('replace_lines', {'path':'math_utils.py', 'start_line':3, 'end_line':3,
+                                                         'new_text':'    return max(lower, min(value, upper))\n'}),
+                                   call('ask_user', {'question':'Continue?'})])
+        self.engine.start(task['id']); result = self.finish(task)
+        self.assertEqual((Path(task['workspace']) / 'math_utils.py').read_text(),
+                         '# first\ndef clamp(value, lower, upper):\n    return max(lower, min(value, upper))\n')
+        errors = [e for e in result['events'] if e['kind'] == 'tool_error']
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]['detail']['code'], 'stale_file_version')
+        self.assertIn('3:     return min(value, upper)', json.dumps(requests[2]['messages']))
+
+    def test_unseen_file_edit_is_rejected_and_refreshed_without_user_input(self):
+        task = self.chat('remote'); task['compact_edits'] = True
+        self.engine.store.save(task)
+        requests = self.responses([
+            call('replace_lines', {'path':'math_utils.py', 'start_line':1, 'end_line':1, 'new_text':'WRONG'}),
+            call('replace_lines', {'path':'math_utils.py', 'start_line':2, 'end_line':2,
+                                   'new_text':'    return max(lower, min(value, upper))\n'}),
+            call('ask_user', {'question':'Continue?'}),
+        ])
+        self.engine.start(task['id']); result = self.finish(task)
+        self.assertEqual((Path(task['workspace']) / 'math_utils.py').read_text(),
+                         'def clamp(value, lower, upper):\n    return max(lower, min(value, upper))\n')
+        self.assertIn('stale_file_version', json.dumps(requests[1]['messages']))
+        self.assertEqual(sum(e['kind'] == 'tool_error' for e in result['events']), 1)
+
+    def test_new_file_returns_versioned_lines_for_next_chunk(self):
+        task = self.chat('remote'); task['compact_edits'] = True
+        self.engine.store.save(task)
+        requests = self.responses([
+            call('write_file', {'path':'new.py', 'content':'# first\n'}),
+            call('replace_lines', {'path':'new.py', 'start_line':2, 'end_line':1, 'new_text':'# second\n'}),
+            call('ask_user', {'question':'Continue?'}),
+        ])
+        self.engine.start(task['id']); result = self.finish(task)
+        self.assertFalse(any(e['kind'] == 'tool_error' for e in result['events']))
+        self.assertEqual((Path(task['workspace']) / 'new.py').read_text(), '# first\n# second\n')
+        self.assertIn('1: # first', json.dumps(requests[1]['messages']))
 
     def test_changing_read_ranges_only_counts_as_progress_when_new_lines_are_returned(self):
         runtime = Runtime(self.chat('remote'))
@@ -249,3 +322,52 @@ class CompactRecoveryTests(LocalCase):
             self.engine.checks(runtime)
         self.assertEqual(check_argv('python3 -c "print(1 > 0)"'), ['python3','-c','print(1 > 0)'])
         self.assertEqual(check_argv('python3 example.py "|"'), ['python3','example.py','|'])
+
+    def test_bad_saved_command_recovers_from_explicit_automatic_and_resumed_checkpoints(self):
+        for entry in ('explicit', 'automatic', 'resumed'):
+            with self.subTest(entry=entry):
+                task = self.chat('remote')
+                original_limits = copy.deepcopy(task['limits'])
+                bad = ['python3', '-m', 'unittest', '2>&1', '|', 'head', '-30']
+                good = [sys.executable, '-m', 'unittest', 'discover', '-v']
+                task.update(check_command=bad, auto_approve_checks=True)
+                edit = {'path':'math_utils.py', 'old_text':'return min(value, upper)',
+                        'new_text':'return max(lower, min(value, upper))'}
+                if entry == 'resumed':
+                    self.engine.file_tool(task, 'replace_text', edit)
+                    task['pending_checkpoint'] = {'summary':'Ready for review.', 'uncertainties':''}
+                    task['status'] = 'paused'
+                    replies = []
+                else:
+                    replies = [call('replace_text', edit),
+                               call('checkpoint', {'summary':'Ready for review.', 'uncertainties':''})
+                               if entry == 'explicit' else {'role':'assistant', 'content':'Finished the change.'}]
+                self.engine.store.save(task)
+                # Even a legacy session grant cannot authorize malformed argv.
+                self.engine.command_permissions[task['id']] = {(task['workspace'], tuple(bad))}
+                def correction(request):
+                    current = self.engine.store.get(task['id'])
+                    self.assertIn('invalid_check_command', json.dumps(request['messages']))
+                    self.assertEqual(current['iterations'], 0)
+                    self.assertEqual(current['checks'], [])
+                    self.assertEqual(current['review_count'], 0)
+                    self.assertIsNone(current.get('pending_checkpoint'))
+                    return call('run_checks', {'command':shlex.join(good)})
+                self.responses(replies + [correction,
+                    call('checkpoint', {'summary':'Verified the fix.', 'uncertainties':''}),
+                    call('review_decision', {'decision':'APPROVE', 'feedback':'Verified the focused fix.'})])
+                self.engine.start(task['id'])
+                wait_for(lambda:self.engine.store.get(task['id'])['status'] == 'waiting_approval')
+                current = self.engine.store.get(task['id'])
+                self.assertEqual(current['pending_approval']['command'], good)
+                self.assertEqual(current['checks'], [])
+                self.engine.approve_check(task['id'], True)
+                result = self.finish(task)
+                self.assertEqual(result['status'], 'approved', result['error'])
+                self.assertEqual(len(result['checks']), 1)
+                self.assertTrue(result['checks'][0]['passed'])
+                self.assertEqual(result['checks'][0]['command'], good)
+                self.assertEqual(result['iterations'], 1)
+                self.assertEqual(result['review_count'], 1)
+                self.assertEqual(result['limits'], original_limits)
+                self.assertFalse(result.get('commits'))
