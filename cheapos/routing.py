@@ -105,7 +105,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
     if role == "reviewer":
         # A previous worker may have authored part of the patch before a handoff.
         used.update(e["detail"]["model"] for e in task["events"] if e["kind"] == "tool"
-                    and e["title"] in {"write file", "replace text"} and isinstance(e.get("detail"), dict)
+                    and e["title"] in {"write file", "replace text", "replace lines"} and isinstance(e.get("detail"), dict)
                     and e["detail"].get("model"))
     used.update(runtime.failed_models)
     candidates = [m for m in catalog["models"] if m.get("free") and m.get("tool_calling") is True

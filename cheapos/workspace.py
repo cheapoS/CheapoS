@@ -1,6 +1,7 @@
 """Repository snapshots and constrained file tools. Check commands are NOT OS-sandboxed."""
 
 import codecs
+import hashlib
 import os
 import signal
 import subprocess
@@ -10,6 +11,8 @@ from pathlib import Path, PurePosixPath
 
 
 MAX_FILE_BYTES = 256_000
+MAX_EDIT_BYTES = 3000
+MAX_EDIT_LINES = 80
 MAX_SNAPSHOT_BYTES = 100_000_000
 MAX_FILES = 5000
 BLOCKED_PARTS = {".git", ".cheapos", ".ssh", ".aws", ".gnupg", "node_modules", "__pycache__", ".venv", "venv", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
@@ -117,19 +120,55 @@ class Workspace:
         return sorted(n for n in set(names) if n and n.startswith(prefix) and allowed_name(n) and not (self.root / n).is_symlink())[:MAX_FILES]
 
     def read_file(self, path, start_line=1, end_line=200):
+        data = self.text_bytes(path)
+        if type(start_line) is not int or type(end_line) is not int or start_line < 1 or end_line < start_line:
+            raise ValueError("Invalid line range")
+        lines = data.decode("utf-8").splitlines()
+        end_line = min(end_line, start_line + 299)
+        content = "\n".join(f"{i + 1}: {line}" for i, line in enumerate(lines) if start_line - 1 <= i < end_line)
+        return {"path": path, "total_lines": len(lines), "start_line": start_line, "end_line": min(end_line, len(lines)),
+                "hash": hashlib.sha256(data).hexdigest(), "content": content[:20_000],
+                "complete": start_line == 1 and end_line >= len(lines) and len(content) <= 20_000}
+
+    def text_bytes(self, path):
         target = self.path(path)
         if not target.is_file():
             raise ValueError("File not found")
-        if target.stat().st_size > MAX_FILE_BYTES:
+        with target.open("rb") as source:
+            data = source.read(MAX_FILE_BYTES + 1)
+        if len(data) > MAX_FILE_BYTES:
             raise ValueError("File is too large for the text tools")
-        if not isinstance(start_line, int) or not isinstance(end_line, int) or start_line < 1 or end_line < start_line:
-            raise ValueError("Invalid line range")
-        text = target.read_text(encoding="utf-8")
-        if "\x00" in text:
+        data.decode("utf-8")
+        if b"\x00" in data:
             raise ValueError("Binary files cannot be read by the text tools")
-        lines = text.splitlines()
-        end_line = min(end_line, start_line + 299)
-        return {"path": path, "total_lines": len(lines), "content": "\n".join(f"{i + 1}: {line}" for i, line in enumerate(lines) if start_line - 1 <= i < end_line)[:20_000]}
+        return data
+
+    def replace_lines(self, path, start_line, end_line, new_text, expected_hash):
+        """A bounded edit against the exact bytes the worker inspected."""
+        data = self.text_bytes(path)
+        if expected_hash != hashlib.sha256(data).hexdigest():
+            raise ValueError("File changed since inspection. Use the current read_file hash and line numbers; no edit was made.")
+        lines = data.decode("utf-8").splitlines(keepends=True)
+        if (type(start_line) is not int or type(end_line) is not int or start_line < 1
+                or start_line > len(lines) + 1 or end_line < start_line - 1 or end_line > len(lines)):
+            raise ValueError("Invalid line range. Lines are 1-based and inclusive; end_line = start_line - 1 inserts before start_line.")
+        if (not isinstance(new_text, str) or len(new_text.encode("utf-8")) > MAX_EDIT_BYTES
+                or len(new_text.splitlines()) > MAX_EDIT_LINES or end_line - start_line + 1 > MAX_EDIT_LINES):
+            raise ValueError("Edit is too large. Replace at most 80 lines with at most 80 lines / 3000 UTF-8 bytes per call.")
+        if "\x00" in new_text:
+            raise ValueError("Binary content cannot be written by the text tools")
+        prefix, suffix = "".join(lines[:start_line - 1]), "".join(lines[end_line:])
+        newline = "\r\n" if b"\r\n" in data else "\n"
+        if new_text and prefix and not prefix.endswith(("\n", "\r")):
+            prefix += newline
+        if new_text and suffix and not new_text.endswith(("\n", "\r")):
+            new_text += newline
+        replacement = (prefix + new_text + suffix).encode("utf-8")
+        if len(replacement) > MAX_FILE_BYTES:
+            raise ValueError("Replacement is too large")
+        self.path(path).write_bytes(replacement)
+        return {"path": path, "updated": True, "hash": hashlib.sha256(replacement).hexdigest(),
+                "total_lines": len(replacement.decode("utf-8").splitlines())}
 
     def search(self, query):
         if not isinstance(query, str) or not query or len(query) > 200:
@@ -154,7 +193,7 @@ class Workspace:
             raise ValueError("Content must be text under 256 KB")
         target = self.path(path)
         if target.exists():
-            raise ValueError("File already exists; use replace_text for existing files")
+            raise ValueError("File already exists; use an offered replacement tool for existing files")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         target.chmod(0o600)
