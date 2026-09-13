@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "collected_at": "2026-09-13T22:41:52.788876+00:00",
+  "collected_at": "2026-09-13T22:45:20.606552+00:00",
   "scope": "Supplemental independently collected trial evidence. Historical controller approvals are retained; supplemental failures prevent qualification. No credentials, provider configuration, or live task logs are included.",
   "qualification_overrides": [
     {
@@ -1897,63 +1897,6 @@
       "trial": "medium-3"
     },
     {
-      "source_path": "/tmp/cheapos-connection-quota-observations.json",
-      "source_sha256": "6769187edcd3225a55ac16c588bbcc73c76bce72cbf64d1214944a118a8704d6",
-      "kind": "connection-quota-observations",
-      "evidence": {
-        "source": "OmniRoute authenticated Provider Quota dashboard, manually refreshed",
-        "attribution": "Account-wide; concurrent user activity may contribute. Not a per-trial billing statement.",
-        "observations": [
-          {
-            "local_time": "2026-09-13 17:55",
-            "antigravity": {
-              "plan": "Ultra",
-              "claude_group_remaining_percent": 100
-            },
-            "kiro": {
-              "plan": "Free",
-              "used_credits": 0,
-              "total_credits": 50
-            }
-          },
-          {
-            "local_time": "2026-09-13 18:03",
-            "antigravity": {
-              "plan": "Ultra",
-              "claude_group_remaining_percent": 86,
-              "gemini_group_remaining_percent": 93
-            },
-            "kiro": {
-              "plan": "Free",
-              "used_credits": 0.88,
-              "total_credits": 50
-            }
-          },
-          {
-            "observed_at": "2026-09-13T18:15:34-04:00",
-            "antigravity_claude_remaining_percent": 52,
-            "kiro_used_credits": 6.38,
-            "kiro_total_credits": 50,
-            "basis": "Authenticated OmniRoute quota UI; account-wide, includes possible concurrent activity"
-          },
-          {
-            "observed_at": "2026-09-13T18:25:27-04:00",
-            "antigravity_claude_remaining_percent": 14,
-            "kiro_used_credits": 7.91,
-            "kiro_total_credits": 50,
-            "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
-          },
-          {
-            "observed_at": "2026-09-13T18:35:57-04:00",
-            "antigravity_claude_remaining_percent": 6,
-            "kiro_used_credits": 15.17,
-            "kiro_total_credits": 50,
-            "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
-          }
-        ]
-      }
-    },
-    {
       "source_path": "/tmp/cheapos-matrix-antigravity-20260913/very-hard-1/documentation-verification.json",
       "source_sha256": "4d0a56dba58e424ee96c72d53275a44cea34547ac8aae0c01ee337b4e533a825",
       "trial_family": "antigravity",
@@ -2337,6 +2280,208 @@
         },
         "driver_seconds": 29.783260833,
         "autonomous_execution_success": false
+      }
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-antigravity-20260913/medium-3/result.json",
+      "source_sha256": "5f4bd69f98e169e4e3abaa7971ebeb9bbfdb94d2b78b148f48f0cb99cd245f66",
+      "kind": "result",
+      "evidence": {
+        "app_commit": "347f78ca7af83193e1be8acf8ee3282026dde7fa",
+        "app_code_hash": "1dc20a061a8b82cdaf9a9d1fa654084ed84df1246af4948ba2ebe4bd5cd3e00e",
+        "level": "medium",
+        "attempt": 3,
+        "run_id": "8979a11e0f9341a8ae50b2f41a52e599",
+        "status": "paused",
+        "error": "The model reported an error while streaming.",
+        "error_code": null,
+        "measurement": true,
+        "operator_prepared_plan": true,
+        "interventions_after_start": 0,
+        "models": {
+          "worker": "antigravity/claude-sonnet-4-6",
+          "reviewer": "antigravity/claude-opus-4-6-thinking"
+        },
+        "models_used": {
+          "worker": [
+            "antigravity/claude-sonnet-4-6"
+          ],
+          "reviewer": [
+            "antigravity/claude-opus-4-6-thinking"
+          ]
+        },
+        "handoffs": 0,
+        "review_revisions": 0,
+        "request_count": 16,
+        "usage": {
+          "worker": {
+            "tokens": 65676,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 38726,
+            "cost": 0.0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 1,
+          "estimated_requests": 15
+        },
+        "consumption": {
+          "dollars": 0,
+          "working_seconds": 205.800527125,
+          "worker_turns": 10,
+          "requests": 16,
+          "tool_actions": 16,
+          "reviewer_tokens": 38726,
+          "check_seconds": 0.22,
+          "output_tokens": 0,
+          "worker_tokens": 65676
+        },
+        "run_metrics": [
+          {
+            "id": "d86d9e8c92e840bbb5b62b8b44ddf74e",
+            "elapsed_seconds": 205.804697583,
+            "provider_request_seconds": 199.47436433299998,
+            "operator_wait_seconds": 0,
+            "provider_cooldown_seconds": 0,
+            "controller_work_seconds": 6.330333250000024,
+            "outcome": "paused"
+          }
+        ],
+        "checks": [
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 0.007s\n\nOK\n"
+          },
+          {
+            "passed": true,
+            "duration": 0.11,
+            "allowed_seconds": null,
+            "output": "test_bad_header (test_acceptance.Acceptance) ... ok\ntest_csv_quotes_and_exact_money (test_acceptance.Acceptance) ... ok\ntest_determinism_and_no_mutation (test_acceptance.Acceptance) ... ok\ntest_documented_python_example_runs (test_acceptance.Acceptance) ... ok\ntest_empty (test_acceptance.Acceptance) ... ok\ntest_invalid_rows (test_acceptance.Acceptance) ... ok\ntest_large_exact_money (test_acceptance.Acceptance) ... ok\ntest_quoted_newline (test_acceptance.Acceptance) ... ok\ntest_trim (test_acceptance.Acceptance) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 0.007s\n\nOK\n"
+          }
+        ],
+        "commits": [
+          "f07994f4a7e8e1cb32b845d291fe89076dbf99b6"
+        ],
+        "independent": {
+          "app_code_unchanged": true,
+          "source_main_unchanged": true,
+          "source_clean": true,
+          "tests_unchanged": true
+        },
+        "driver_seconds": 207.574438416,
+        "autonomous_execution_success": false
+      },
+      "trial_family": "antigravity",
+      "trial": "medium-3"
+    },
+    {
+      "source_path": "/tmp/cheapos-matrix-antigravity-20260913/medium-3/route/quota-diagnosis.json",
+      "source_sha256": "20199080aa1055b1fc82b7a4f37fee95bec2f4ce1eb3459a6b8517e5a0e0d22b",
+      "kind": "quota-diagnosis",
+      "evidence": {
+        "trial": "antigravity-medium-3",
+        "live_calls_during_diagnosis": 0,
+        "observed_failure": {
+          "timestamp_utc": "2026-09-13T22:41:38.493Z",
+          "provider": "antigravity",
+          "model": "claude-opus-4-6-thinking",
+          "role": "reviewer",
+          "upstream_http_status": 429,
+          "gateway_error": "Antigravity upstream error (429)",
+          "gateway_reset_after_seconds": 15293,
+          "gateway_reset_after_display": "4h 14m 53s",
+          "application_error_code": "stream_error",
+          "application_message": "The model reported an error while streaming."
+        },
+        "evidence": {
+          "gateway_log": "application/app.log, 2026-09-13T22:41:38.493Z and 22:41:38.498Z",
+          "call_log": "2026-09-13T22-41-38.497Z_1789339280317-b9897e.json",
+          "call_log_response_body": null,
+          "raw_sse_frame_retained": false,
+          "quota_ui_reported_by_parent": "Antigravity Claude 0% at 18:42:19 local"
+        },
+        "conclusion": "Upstream 429 with a multi-hour cooldown is confirmed by gateway logs. Quota exhaustion is corroborated by the contemporaneous Claude 0% UI; the original upstream body and client SSE frame were not retained, so the exact quota subtype cannot be independently extracted.",
+        "classifier_gap": {
+          "installed_gateway_429_serializer": {
+            "error": {
+              "message": "<sanitized upstream message>",
+              "type": "rate_limit_error",
+              "code": "rate_limit_exceeded"
+            }
+          },
+          "shape_evidence": "Installed gateway buildErrorBody/writeStreamError code; not a captured frame from this request.",
+          "minimal_fix": "Recognize structured SSE rate_limit_error/rate_limit_exceeded and model_cooldown as a safe cooldown classification; retain only validated bounded retry metadata when explicitly present. Do not infer retry time from the generic frame or expose upstream raw messages. Keep unknown failures classified as stream_error."
+        }
+      },
+      "trial_family": "antigravity",
+      "trial": "medium-3"
+    },
+    {
+      "source_path": "/tmp/cheapos-connection-quota-observations.json",
+      "source_sha256": "1cd89e03814c97630d8234085796bd61153f40baa1a56e2ee6baee6adab3872d",
+      "kind": "cheapos-connection-quota-observations",
+      "evidence": {
+        "source": "OmniRoute authenticated Provider Quota dashboard, manually refreshed",
+        "attribution": "Account-wide; concurrent user activity may contribute. Not a per-trial billing statement.",
+        "observations": [
+          {
+            "local_time": "2026-09-13 17:55",
+            "antigravity": {
+              "plan": "Ultra",
+              "claude_group_remaining_percent": 100
+            },
+            "kiro": {
+              "plan": "Free",
+              "used_credits": 0,
+              "total_credits": 50
+            }
+          },
+          {
+            "local_time": "2026-09-13 18:03",
+            "antigravity": {
+              "plan": "Ultra",
+              "claude_group_remaining_percent": 86,
+              "gemini_group_remaining_percent": 93
+            },
+            "kiro": {
+              "plan": "Free",
+              "used_credits": 0.88,
+              "total_credits": 50
+            }
+          },
+          {
+            "observed_at": "2026-09-13T18:15:34-04:00",
+            "antigravity_claude_remaining_percent": 52,
+            "kiro_used_credits": 6.38,
+            "kiro_total_credits": 50,
+            "basis": "Authenticated OmniRoute quota UI; account-wide, includes possible concurrent activity"
+          },
+          {
+            "observed_at": "2026-09-13T18:25:27-04:00",
+            "antigravity_claude_remaining_percent": 14,
+            "kiro_used_credits": 7.91,
+            "kiro_total_credits": 50,
+            "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
+          },
+          {
+            "observed_at": "2026-09-13T18:35:57-04:00",
+            "antigravity_claude_remaining_percent": 6,
+            "kiro_used_credits": 15.17,
+            "kiro_total_credits": 50,
+            "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
+          },
+          {
+            "observed_at": "2026-09-13T18:42:19-04:00",
+            "antigravity_claude_remaining_percent": 0,
+            "antigravity_gemini_remaining_percent": 93,
+            "kiro_used_credits": 15.93,
+            "kiro_total_credits": 50,
+            "basis": "Authenticated OmniRoute quota UI; account-wide, concurrent activity possible"
+          }
+        ]
       }
     }
   ]
