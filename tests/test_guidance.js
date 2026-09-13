@@ -125,6 +125,14 @@ test('Activity names real file actions and excludes preparation from completed w
   assert.equal(activityItem({kind:'tool',title:'Running verification'}),null);
   assert.equal(activityItem({kind:'tool_error',title:'Failed',detail:{error:'No match'}}).failed,true);
 });
+
+test('web reading is distinct from repository search and shows its source',()=>{
+  assert.equal(activityItem({kind:'tool',title:'search',detail:{arguments:{query:'OmniRoute'},result:[]}}).title,'Searched project for “OmniRoute”');
+  const item=activityItem({kind:'tool',title:'read url',detail:{arguments:{url:'https://example.org'},result:{title:'Guide',source_url:'https://example.org/guide',start_line:1,end_line:120,has_more:true}}});
+  assert.equal(item.title,'Read web page · Guide');assert.match(item.note,/https:\/\/example.org\/guide/);assert.match(item.note,/more available/);
+  const p=progress(task({status:'running',web_read:{url:'https://example.org/guide',started_at:'2026-09-13T00:00:00Z'}}),Date.parse('2026-09-13T00:00:05Z'));
+  assert.equal(p.stage,'web');assert.equal(p.elapsed,'5s');assert.equal(p.title,'Opening web page');
+});
 test('Activity shows handoffs and verified review evidence newest first',()=>{
   const a=activity(task({patch:'p',patch_digest:'digest',events:[{kind:'handoff',title:'Delegated',detail:{from:'Local',to:'Remote'}},{kind:'checks',title:'Passed',detail:{passed:true,digest:'digest'}},{kind:'review',title:'Approved',detail:{checkpoint:1,decision:'APPROVE'}}],checkpoints:[{number:1,diff:'p'}]}));
   assert.equal(a.checks,'Passed');assert.equal(a.review,'Approved');assert.equal(a.items[0].title,'Approved');assert.equal(a.items[2].note,'Local → Remote');

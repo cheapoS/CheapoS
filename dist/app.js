@@ -159,12 +159,13 @@ function eventDetail(event) {
   const detail=event.detail;
   if(event.kind==='tool'){
     const result=detail?.result,args=detail?.arguments||{};
+    if(event.title==='read url')return `<p>${sourceLink(result.source_url,'Open source page')} · Read ${esc(result.fetched_at)}</p><pre class="output">${esc(result.content)}</pre><p class="muted">${result.has_more?'More lines are available. ':''}${result.truncated||result.excerpt_truncated?'Document preview was shortened. ':''}External source text.</p>`;
     if(event.title==='read file')return `<pre class="output">${esc(result?.content||'No content returned.')}</pre>`;
     if(['write file','replace text'].includes(event.title))return `<p>Saved ${esc(args.path)} in the task copy.</p>`;
     if(Array.isArray(result))return `<pre class="output">${esc(result.map(r=>typeof r==='string'?r:JSON.stringify(r)).join('\n'))}</pre>`;
     if(typeof result==='string')return `<pre class="output">${esc(result)}</pre>`;
   }
-  if(['handoff','routing','guard'].includes(event.kind))return `<p>${esc(typeof detail==='string'?detail:detail?.summary||detail?.error||detail?.model||'')}</p>`;
+  if(['handoff','routing','guard','web'].includes(event.kind))return `<p>${esc(typeof detail==='string'?detail:detail?.summary||detail?.error||detail?.model||detail?.url||'')}</p>`;
   if(event.kind==='generation')return '<p>Model output is available in Chat.</p>';
 
   if(event.kind==='review')return `<p>${esc(detail.feedback)}</p><span class="decision ${detail.decision==='APPROVE'?'approve':'revise'}">${esc(detail.decision.replaceAll('_',' '))}</span>`;
@@ -173,8 +174,16 @@ function eventDetail(event) {
   if(typeof detail==='string')return `<p class="preserve">${esc(detail)}</p>`;
   return detail?`<pre class="output">${esc(JSON.stringify(detail,null,2))}</pre>`:'';
 }
+function sourceLink(url,label) {
+  try{if(new URL(url).protocol==='https:')return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`}catch{}
+  return esc(label);
+}
 function messageText(value) {
-  return String(value||'').split(/```[^\n]*\n([\s\S]*?)```/g).map((part,i)=>i%2?`<pre class="chat-code"><code>${esc(part)}</code></pre>`:`<p>${esc(part).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`\n]+)`/g,'<code>$1</code>')}</p>`).join('');
+  const inline=text=>text.split(/(\[[^\]\n]+\]\(https:\/\/[^\s)]+\))/g).map(part=>{
+    const link=part.match(/^\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)$/);
+    return link?sourceLink(link[2],link[1]):esc(part).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  }).join('');
+  return String(value||'').split(/```[^\n]*\n([\s\S]*?)```/g).map((part,i)=>i%2?`<pre class="chat-code"><code>${esc(part)}</code></pre>`:`<p>${inline(part)}</p>`).join('');
 }
 function progressMarkup(task) {
   const p=CheapOSGuide.progress(task);if(!p)return '';
@@ -209,7 +218,7 @@ function renderChat() {
   let work=[];
   const flush=()=>{
     if(!work.length)return;
-    const actions=work.filter(e=>['tool','checks','tool_error'].includes(e.kind));
+    const actions=work.filter(e=>['tool','checks','tool_error','web'].includes(e.kind));
     for(const event of actions){
       if(event.kind==='checks'){parts.push(commandMarkup(event.detail,{key:event.detail.run_id||event.id,open:event===latestCheck}));continue}
       if(event.title==='Running verification'&&visibleRuns.has(event.detail?.run_id))continue;
@@ -219,6 +228,7 @@ function renderChat() {
     work=[];
   };
   for(const event of task.events){
+    if(event.kind==='guard'&&task.status==='paused'&&event.detail===task.error)continue;
     if(['user','assistant','review','checkpoint','generation','handoff','guard','routing'].includes(event.kind)){
       flush();
       if(['handoff','guard','routing'].includes(event.kind)){const item=CheapOSGuide.activityItem(event);parts.push(`<aside class="chat-handoff">${icon(item.icon)}<div><strong>${esc(item.title)}</strong><p>${esc(item.note)}</p>${event.kind==='handoff'?`<small>${esc(event.detail.summary)}</small>`:''}</div></aside>`)}

@@ -34,6 +34,7 @@ class Store:
                     task["pending_approval"] = None
                     task["stream"] = None
                     task["check_stream"] = None
+                    task["web_read"] = None
                     write_json(path, task)
                 self.tasks[task["id"]] = task
             except (OSError, ValueError, KeyError):

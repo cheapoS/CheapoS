@@ -50,12 +50,13 @@ const CheapOSGuide = (() => {
     const events=task.events||[],latest=events.at(-1),request=[...events].reverse().find(e=>e.kind==='model');
     const completed=[...events].reverse().find(e=>e.kind==='checks'||e.kind==='tool'&&e.title!=='Running verification');
     const args=completed?.detail?.arguments||{};
-    const action=completed?({'read file':`Read ${args.path||'a file'}`,'write file':`Created ${args.path||'a file'}`,'replace text':`Edited ${args.path||'a file'}`,'list files':'Listed project files','search':`Searched for ${args.query||'text'}`}[completed.title]||completed.title):'No tool actions completed yet';
+    const action=completed?({'read file':`Read ${args.path||'a file'}`,'read url':`Read ${args.url||'web page'}`,'write file':`Created ${args.path||'a file'}`,'replace text':`Edited ${args.path||'a file'}`,'list files':'Listed project files','search':`Searched project for ${args.query||'text'}`}[completed.title]||completed.title):'No tool actions completed yet';
     const files=(task.changes||[]).length,evidence=files?`${files} changed file${files===1?'':'s'} saved`:'No files changed yet';
     let stage='working',title='Preparing the next step',detail='',since=latest?.time||task.updated_at;
     if(task.status==='waiting_approval'){stage='approval';title='Waiting for your approval';detail=(task.pending_approval?.command||[]).join(' ')}
     else if(task.status==='stopping'){stage='stopping';title='Stop requested';detail='Waiting for the current operation to finish. No new tools will start.'}
     else if(task.check_stream){stage='checks';title='Running checks';detail=task.check_stream.command.join(' ');since=task.check_stream.started_at}
+    else if(task.web_read){stage='web';title='Opening web page';detail=task.web_read.url;since=task.web_read.started_at}
     else if(latest?.kind==='model'){
       stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':latest.title.startsWith('Requesting coordinator:')?'coordinator':'worker';
       title=role==='reviewer'?'Waiting for the reviewer’s response':'Waiting for the model’s response';
@@ -66,6 +67,7 @@ const CheapOSGuide = (() => {
     let slow=stage==='model'&&seconds>=30;
     let hint=stage==='model'?(seconds>=limit-30?`Still waiting. The response limit is ${duration(limit)}.`:seconds>=30?'No response has arrived yet. You can stop this request.':'The model’s response will appear when it arrives.'):' ';
     if(stage==='checks')hint=task.check_stream?.output?'Command output is shown below as it arrives.':'The command is running. Some programs buffer their output until they finish.';
+    if(stage==='web')hint='Reading the public page. Its text and source link will appear in Chat.';
     if(stage==='model'&&task.stream&&task.stream.phase!=='waiting'){
       const stream=task.stream,phase=stream.phase;
       title=phase==='thinking'?'Receiving the model’s thinking':phase==='answer'?'Receiving the model’s answer':'The model is preparing a tool call';
@@ -91,9 +93,10 @@ const CheapOSGuide = (() => {
     if(event.kind==='tool'){
       path=args.path||null;
       if(title==='Running verification')return null;
-      const names={'read file':`Read ${path||'a file'}`,'write file':`Created ${path||'a file'}`,'replace text':`Edited ${path||'a file'}`,'list files':'Listed project files','search':`Searched for “${args.query||''}”`,'get diff':'Inspected the saved changes'};
+      const names={'read file':`Read ${path||'a file'}`,'read url':`Read web page · ${result?.title||args.url||''}`,'write file':`Created ${path||'a file'}`,'replace text':`Edited ${path||'a file'}`,'list files':'Listed project files','search':`Searched project for “${args.query||''}”`,'get diff':'Inspected the saved changes'};
       title=names[title]||title;icon=path?'file':'search';
       note=Array.isArray(result)?`${result.length} results`:result?.total_lines?`${result.total_lines} lines in file`:['write file','replace text'].includes(event.title)?'Saved in the task copy':'';
+      if(event.title==='read url')note=`${result?.source_url||args.url} · lines ${result?.start_line}–${result?.end_line}${result?.has_more?' · more available':''}`;
       if(d.model)note=[d.model,note].filter(Boolean).join(' · ');
     }else if(event.kind==='checks'){icon='tests';note=(d.command||[]).join(' ')}
     else if(event.kind==='review'){icon='shield';note=d.feedback||''}
@@ -103,6 +106,7 @@ const CheapOSGuide = (() => {
     else if(event.kind==='guard'){icon='clock';note=typeof d==='string'?d:''}
     else if(event.kind==='routing'){icon='branch';note=[d.model,d.error].filter(Boolean).join(' · ')||d.summary||''}
     else if(event.kind==='permission'){icon='shield';note=(d.command||[]).join(' ')}
+    else if(event.kind==='web'){icon='search';title='Requested web page';note=d.url||''}
     else return null;
     return {event,title,icon,note,path,failed:event.kind==='tool_error'||event.kind==='checks'&&!d.passed};
   }
