@@ -25,12 +25,12 @@ Add output/parser/retrieval tests and a browser Details/raw-output scenario. Kee
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Bounded raw byte retention, safe task/run retrieval, raw viewer/download, worker/reviewer retrieval, and optional direct-local unittest summaries. Default remains off.
+- Acceptance evidence: [Experiment and reproducible measurements](../experiments/output-filtering.md): all 24 controlled fixture runs verified; no reduction in short baseline logs; noisy retrieval increased overall payload.
+- Commands and results: Focused filtering/verification/sample/stream tests: 23 PASS; raw capture/filter/HTTP tests: 8 PASS; JS: 70 PASS. An initial wrong module name was corrected; stop fixture now waits for request entry to remove a race.
+- Browser scenarios and results: Isolated port 51032: noisy 44-test failure shows three tracebacks in Details/Checks; reload retains evidence, original-output dialog shows all 3,340 bytes and download action. Fixed binding when switching views.
+- Remaining limitations: Two-MB/eight-run retention is bounded, older logs expire. No live token/billing measurements. Unknown gateway compression disables the local pass. UTF-8 display pagination may split a character; downloads retain exact bytes.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

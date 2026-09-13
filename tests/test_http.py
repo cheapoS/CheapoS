@@ -65,6 +65,17 @@ class HTTPTests(unittest.TestCase):
     def post(self, path, body):
         return self.request('POST', path, body, {'Content-Type':'application/json', 'X-CheapOS-Token': self.server.token})
 
+    def test_raw_check_route_only_resolves_known_task_and_run(self):
+        from cheapos import check_output
+        task=self.engine.create_demo();run='a'*32;data=b'exact failure\n\x1b[31mred\x1b[0m\n'
+        meta=check_output.retain(self.engine.store.root,task['id'],run,data,False)
+        task['checks']=[{'run_id':run,'raw_output':meta}];self.engine.store.save(task)
+        url='/api/tasks/'+task['id']+'/checks/'+run+'/raw'
+        status,headers,body=self.request('GET',url)
+        self.assertEqual(status,200);self.assertEqual(body,data);self.assertIn('text/plain',headers['Content-Type'])
+        self.assertNotEqual(self.request('GET',url.replace(run,'b'*32))[0],200)
+        self.assertEqual(self.request('GET',url,headers={'Origin':'https://foreign.invalid'})[0],403)
+
     def test_readiness_contract_does_not_start_work(self):
         with patch.object(self.engine.readiness,'inspect',return_value={'schema_version':1,'status':'gateway_absent','next_step':'install_gateway'}) as inspect:
             status, _, body = self.request('GET','/api/readiness?refresh=1')

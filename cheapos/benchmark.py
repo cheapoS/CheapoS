@@ -33,9 +33,12 @@ def fixtures():
     ]
 
 
-def run():
+def run(output_filter=False, retrieve=False, verbose=False, only=None):
     outcomes=[]
     for fixture_id,kind,files,prompt,responses in fixtures():
+        if only and fixture_id!=only:continue
+        if verbose:
+            files={**files,'test_noise.py':'import unittest\nclass Noise(unittest.TestCase):\n'+''.join(f'    def test_{i}(self): pass\n' for i in range(40))}
         baseline=hashlib.sha256(json.dumps({'files':files,'request':prompt},sort_keys=True).encode()).hexdigest()
         with tempfile.TemporaryDirectory(prefix='cheapos-benchmark-') as directory:
             root=Path(directory);source=root/'source';source.mkdir()
@@ -45,12 +48,28 @@ def run():
             engine=Engine(root/'state',fixture_delay=0)
             engine.config={role:{'base_url':'http://127.0.0.1:11434/v1','model':'fixture-'+role,'key_env':'CHEAPOS_BENCHMARK_FIXTURE_KEY','input_rate':0,'output_rate':0} for role in ('worker','reviewer')}
             queue=iter(responses)
+            retrieved=set()
             class Provider:
                 def complete(self,messages,tools,maximum):
+                    def find(value):
+                        if isinstance(value,dict):
+                            if value.get('output_representation')=='cheapos-unittest-summary-v1' and value['run_id'] not in retrieved:
+                                return value['run_id']
+                            return next((found for v in value.values() if (found:=find(v))),None)
+                        if isinstance(value,list):return next((found for v in value if (found:=find(v))),None)
+                    if retrieve:
+                        for message in messages:
+                            try:run_id=find(json.loads(message.get('content','')))
+                            except (TypeError,ValueError):continue
+                            if run_id:
+                                retrieved.add(run_id)
+                                return call('read_check_output',run_id=run_id),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
                     return next(queue),{'prompt_tokens':10,'completion_tokens':5,'cost':0,'prompt_tokens_details':{'cached_tokens':2},'completion_tokens_details':{'reasoning_tokens':1}}
             engine.provider_factory=lambda *args:Provider()
             try:
                 task=engine.create({'repository':str(source),'prompt':prompt,'conversational':True,'check_command':shlex.join([sys.executable,'-m','unittest','discover','-v']),'auto_approve_checks':True})
+                task['check_output_filter']='unittest' if output_filter else 'off'
+                engine.store.save(task)
                 with patch('cheapos.web.fetch',return_value=('https://example.org/fixture','text/plain',b'The verification code is cobalt.')):
                     engine.start(task['id']);engine.runtimes[task['id']].thread.join(30)
                 assert not engine.runtimes[task['id']].thread.is_alive(),'Fixture exceeded its bounded run'
@@ -81,7 +100,9 @@ def run():
                 assert evidence['worker']['valid_calls']>0
                 if kind!='public_link':assert evidence['reviewer']['reviews_completed']>0
                 if kind=='readme':assert evidence['worker']['accepted']==1 and evidence['reviewer']['accepted']==1
-                outcomes.append({'model_evidence':evidence,'fixture_id':fixture_id,'kind':kind,'baseline_sha256':baseline,'verified_outcome':True,**metrics.aggregate(task)})
+                filters=[r.get('output_filter',{}) for r in task.get('request_metrics',[])]
+                output_comparison={'before_bytes':sum(f.get('before_bytes',0) for f in filters),'after_bytes':sum(f.get('after_bytes',0) for f in filters),'filter_seconds':sum(f.get('seconds',0) for f in filters),'raw_retrieval_calls':len(retrieved),'omitted_rows_across_requests':sum(f.get('omitted_rows',0) for f in filters)}
+                outcomes.append({'output_comparison':output_comparison,'model_evidence':evidence,'fixture_id':fixture_id,'kind':kind,'baseline_sha256':baseline,'verified_outcome':True,**metrics.aggregate(task)})
             finally:engine.shutdown()
     return {'schema_version':1,'mode':'deterministic_scripted_providers','fixtures':outcomes,'passed':all(item['verified_outcome'] for item in outcomes),
             'limitations':'Pinned source and assertions test controller behavior. No live model quality, speed, savings, or billing claims. Human commit action is simulated only in the disposable fixture.'}

@@ -10,7 +10,7 @@ from urllib.parse import unquote, urlsplit, parse_qs
 from . import __version__
 from .gateways import gateway_for
 from .providers import validate_provider, ProviderError
-from . import metrics
+from . import metrics, check_output
 
 
 def public_task(task, summary=False, store=None):
@@ -111,6 +111,13 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 task = engine.store.get(parts[2])
                 if len(parts) == 3:
                     self.reply(public_task(task, store=engine.store))
+                elif len(parts) == 6 and parts[3] == "checks" and parts[5] == "raw":
+                    data=check_output.raw(engine.store,task["id"],parts[4])
+                    self.send_response(200)
+                    self.send_header("Content-Type","text/plain; charset=utf-8")
+                    self.send_header("Content-Length",str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
                 elif len(parts) == 4 and parts[3] == "permissions":
                     self.reply(engine.session_permissions(task["id"]))
                 elif len(parts) == 4 and parts[3] == "patch":

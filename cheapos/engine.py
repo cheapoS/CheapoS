@@ -30,6 +30,7 @@ from . import project_context
 from . import work_policy
 from . import environment
 from . import metrics
+from . import check_output
 from .model_pool import observe_task
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
@@ -51,6 +52,7 @@ LINE_EDIT = tool("replace_lines", "Replace a small inclusive line range from the
 COMPACT_WRITE = tool("write_file", "Create a NEW file with a small first chunk: at most 80 lines / 3000 UTF-8 bytes. For an existing file, use replace_lines. Add further chunks with replace_lines using the returned numbered lines.",
                      {"path": TEXT, "content": {"type": "string", "maxLength": MAX_EDIT_BYTES}}, ["path", "content"])
 READ_TOOLS = [
+    tool("read_check_output", "Read original retained verification output, 8000 bytes per page. Use run_id from a check result; offset is the returned next_offset. Latest 8 runs retained, 2 MB each.", {"run_id":TEXT,"offset":{"type":"integer","minimum":0}}, ["run_id"]),
     tool("list_files", "Recursively list eligible files in the isolated task workspace, optionally within a directory. Returned paths are relative to the workspace root.", {"path": {"type": "string", "description": "Workspace-relative directory. Omit or use '.' to list the whole project."}}),
     tool("read_file", "Read a text file with line numbers.", {"path": TEXT, "start_line": {"type": "integer"}, "end_line": {"type": "integer"}}, ["path"]),
     tool("outline_file", "Return the high-level outline of classes, methods, and functions with line numbers for a file. Use this before read_file on unfamiliar files to locate target code efficiently.", {"path": TEXT}, ["path"]),
@@ -451,6 +453,7 @@ class Engine:
         task = {"id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
+        task['check_output_filter'] = 'unittest' if os.environ.get('CHEAPOS_CHECK_OUTPUT_FILTER')=='unittest' else 'off'
         task.update({"conversational": conversational, "requests": [prompt.strip()], "turn_start_patch": ""})
         if conversational:
             task["request_worker_turns"] = 0
@@ -1338,6 +1341,9 @@ class Engine:
         if len(task['request_metrics'])>2000:
             task['request_metrics'].pop(0);task['request_metrics_truncated']=True
         started=time.monotonic()
+        original_bytes=len(json.dumps(messages).encode())
+        messages,filter_info=check_output.messages(task,messages,config)
+        record['output_filter']={**filter_info,'before_bytes':original_bytes,'after_bytes':len(json.dumps(messages).encode()),'seconds':time.monotonic()-started}
         try:
             result=self._perform_request(runtime,messages,tools,role,config_override,purpose)
             record['status']='responded'
@@ -1495,6 +1501,11 @@ class Engine:
             return {"path": args.get("path"), "error": str(error)[:500]}
 
     def file_tool(self, task, name, args):
+        if name == "read_check_output":
+            result=check_output.read(self.store,task["id"],**args)
+            task["tool_actions"]+=1
+            self.event(task,"tool","read check output",{"arguments":args,"result":result})
+            return result
         workspace = Workspace(task["workspace"])
         methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda: workspace.patch()[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
         if name not in methods:
@@ -1623,13 +1634,17 @@ class Engine:
             task["updated_at"] = now()
             self.store.publish(task)
 
+        raw_info={}
+        def retain_raw(data,truncated):
+            raw_info.update(check_output.retain(self.store.root,task["id"],live["run_id"],data,truncated))
         try:
-            result = workspace.run_checks(argv, runtime.stop, timeout=effective, on_output=emit)
+            result = workspace.run_checks(argv, runtime.stop, timeout=effective, on_output=emit, on_raw=retain_raw)
         finally:
             task["check_stream"] = None
             task["updated_at"] = now()
             self.store.publish(task)
         result["run_id"] = live["run_id"]
+        result["raw_output"] = raw_info
         result['allowed_seconds'] = effective
         result['outcome'] = {'cancelled': 'user_paused', 'timed out': 'task_deadline' if remaining <= allowed else 'process_timeout', 'output limit exceeded': 'output_limit'}.get(result.get('reason'), 'passed' if result['passed'] else 'test_failure')
         result['next_action'] = {'user_paused': 'Resume when ready.', 'task_deadline': 'Review saved work or increase the task time limit before resuming.', 'process_timeout': 'Inspect output; choose a focused check or increase the verification timeout.', 'output_limit': 'Reduce test verbosity or select a focused command.', 'test_failure': 'Inspect the failing assertion or process error before changing code.', 'passed': 'Only this command was verified.'}[result['outcome']]
@@ -1752,7 +1767,7 @@ class Engine:
                         task["status"] = {"APPROVE": "approved", "REQUEST_CHANGES": "running", "TAKE_OVER": "takeover_requested"}[decision]
                         self.event(task, "review", f"Reviewer: {decision.replace('_', ' ').lower()}", {"checkpoint": checkpoint["number"], "decision": decision, "feedback": checkpoint["feedback"]})
                         return {"decision": decision, "feedback": checkpoint["feedback"]}
-                elif name in {"read_file", "outline_file", "search", "list_files", "get_diff", "read_url"}:
+                elif name in {"read_file", "outline_file", "search", "list_files", "get_diff", "read_url", "read_check_output"}:
                     try:
                         result = self.read_url(runtime, params) if name == "read_url" else self.file_tool(task, name, params)
                     except InterruptedError:

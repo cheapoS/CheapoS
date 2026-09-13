@@ -40,12 +40,13 @@ class CheckOutputTests(LocalCase):
 
     def test_noisy_command_keeps_preview_bounded_and_enforces_output_limit(self):
         workspace = Workspace(self.fixture()['workspace'])
-        previews = []
-        result = workspace.run_checks([sys.executable, '-c', "import os,time;os.write(1,b'x'*2100000);time.sleep(10)"], threading.Event(), on_output=lambda text, cut: previews.append((text, cut)))
+        previews = [];raw=[]
+        result = workspace.run_checks([sys.executable, '-c', "import os,time;os.write(1,b'x'*2100000);time.sleep(10)"], threading.Event(), on_output=lambda text, cut: previews.append((text, cut)), on_raw=lambda data,cut:raw.append((data,cut)))
         self.assertFalse(result['passed'])
         self.assertEqual(result['reason'], 'output limit exceeded')
         self.assertTrue(result['truncated'])
         self.assertEqual(len(result['output']), 32000)
+        self.assertEqual(len(raw[0][0]),2_000_000);self.assertTrue(raw[0][1])
         self.assertTrue(all(len(text) <= 32000 for text, _ in previews))
         self.assertEqual(previews[-1], (result['output'], True))
 
@@ -86,6 +87,8 @@ class CheckOutputTests(LocalCase):
         self.assertIsNone(current['check_stream'])
         self.assertEqual(current['checks'][-1]['output'], 'Verifying now\n')
         self.assertEqual(current['checks'][-1]['reason'], 'cancelled')
+        from cheapos.check_output import raw
+        self.assertEqual(raw(Store(self.engine.store.root),task['id'],current['checks'][-1]['run_id']),b'Verifying now\n')
 
     def test_publish_failure_does_not_leave_a_child_running(self):
         workspace = Workspace(self.fixture()['workspace'])

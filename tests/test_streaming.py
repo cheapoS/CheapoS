@@ -130,13 +130,15 @@ class StreamingTests(LocalCase):
 
     def test_stop_is_visible_while_provider_is_pending(self):
         task=self.fixture(paid=True)
-        release=threading.Event()
+        release=threading.Event();entered=threading.Event()
         class Provider:
             def complete(self,*args):
+                entered.set()
                 release.wait(5)
                 return call('write_file',{'path':'should-not-exist.py','content':'no'}),{'prompt_tokens':10,'completion_tokens':10,'cost':0}
         self.engine.provider_factory=lambda *args:Provider()
         self.engine.start(task['id'])
+        self.assertTrue(entered.wait(5))
         self.engine.stop(task['id'])
         self.assertEqual(self.engine.store.get(task['id'])['status'],'stopping')
         release.set()

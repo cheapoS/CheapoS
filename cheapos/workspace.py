@@ -337,7 +337,7 @@ class Workspace:
                 Path(temp_path).unlink(missing_ok=True)
         return self.changes()
 
-    def run_checks(self, argv, stop_event, timeout=90, on_output=None):
+    def run_checks(self, argv, stop_event, timeout=90, on_output=None, on_raw=None):
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 1800:
             raise ValueError("Verification timeout must be positive and at most 1800 seconds")
         if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a and "\x00" not in a for a in argv):
@@ -390,4 +390,8 @@ class Workspace:
                 if os.fstat(output.fileno()).st_size > 2_000_000 and not reason:
                     reason = "output limit exceeded"
                 truncated = preview(final=True)
+                if on_raw:
+                    with path.open("rb") as raw:
+                        captured=raw.read(2_000_001)
+                    on_raw(captured[:2_000_000], len(captured)>2_000_000)
         return {"command": argv, "exit_code": process.returncode, "passed": process.returncode == 0 and reason is None, "output": text, "truncated": truncated, "duration": round(time.monotonic() - started, 2), "reason": reason}

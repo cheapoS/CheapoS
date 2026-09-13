@@ -1,0 +1,1130 @@
+{
+  "raw": {
+    "schema_version": 1,
+    "mode": "deterministic_scripted_providers",
+    "fixtures": [
+      {
+        "output_comparison": {
+          "before_bytes": 15391,
+          "after_bytes": 15391,
+          "filter_seconds": 5.854099999968998e-05,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f01",
+        "kind": "readme",
+        "baseline_sha256": "ebb62be101204040757bd68a5aa0ffab9eb7f392354a00173b7dacc1540dbe22",
+        "verified_outcome": true,
+        "outcome": "human_accepted",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 1
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.3512467090000002,
+          "provider_request_seconds": 0.003962000999999882,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.3472847080000003
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 15297,
+          "after_bytes": 15297,
+          "filter_seconds": 5.795800000107931e-05,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f02",
+        "kind": "utility",
+        "baseline_sha256": "16a45ed5c9a96803102efebed9f0904e0034d8b8373fd359dbfc7b7999371f80",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.3532457080000002,
+          "provider_request_seconds": 0.004072958000000071,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.3491727500000001
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 15000,
+          "after_bytes": 15000,
+          "filter_seconds": 5.6374999997999e-05,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f03",
+        "kind": "bug_fix",
+        "baseline_sha256": "bf3e9994b43148bee1e90924cf4b8fe5129f2e77887294d87d2c3fd702181edb",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.3295618339999997,
+          "provider_request_seconds": 0.004083375000000444,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.3254784589999993
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 13379,
+          "after_bytes": 13379,
+          "filter_seconds": 4.183400000101756e-05,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f04",
+        "kind": "public_link",
+        "baseline_sha256": "e7936cea590592e3ea97261ed5a700651d162bce841872233a7d39ae59486092",
+        "verified_outcome": true,
+        "outcome": "awaiting_reply",
+        "calls": {
+          "worker": 2,
+          "reviewer": 0,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "reasoning_tokens": 2,
+          "cached_tokens": 4,
+          "accounted_total": 30
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 0.1930970830000014,
+          "provider_request_seconds": 0.002385292000001371,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 0.19071179100000002
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 25012,
+          "after_bytes": 25012,
+          "filter_seconds": 9.174900000097352e-05,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f05",
+        "kind": "failed_check_repair",
+        "baseline_sha256": "990d33e8b41b85f7af327fe004d49286968f72f5f513a43e0560e3d13e961f8d",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 3,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 40,
+          "output_tokens": 20,
+          "reasoning_tokens": 4,
+          "cached_tokens": 8,
+          "accounted_total": 60
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 2.0652123749999998,
+          "provider_request_seconds": 0.0055724170000015505,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 2.059639957999998
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 42478,
+          "after_bytes": 42478,
+          "filter_seconds": 0.0001745839999998111,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f06",
+        "kind": "reviewer_revision",
+        "baseline_sha256": "1774eabe48e80350d50796482b12fd8b2bf786d19d71775c7c8cf97c17c64b29",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 5,
+          "reviewer": 2,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 70,
+          "output_tokens": 35,
+          "reasoning_tokens": 7,
+          "cached_tokens": 14,
+          "accounted_total": 105
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 3.442907666,
+          "provider_request_seconds": 0.011718500000000631,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 3.4311891659999993
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 15000,
+          "after_bytes": 15000,
+          "filter_seconds": 0.000104123999996375,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f07",
+        "kind": "commit_conflict",
+        "baseline_sha256": "bf3e9994b43148bee1e90924cf4b8fe5129f2e77887294d87d2c3fd702181edb",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.491895624999998,
+          "provider_request_seconds": 0.004516959000000043,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.487378665999998
+        }
+      }
+    ],
+    "passed": true,
+    "limitations": "Pinned source and assertions test controller behavior. No live model quality, speed, savings, or billing claims. Human commit action is simulated only in the disposable fixture."
+  },
+  "filtered": {
+    "schema_version": 1,
+    "mode": "deterministic_scripted_providers",
+    "fixtures": [
+      {
+        "output_comparison": {
+          "before_bytes": 15391,
+          "after_bytes": 15391,
+          "filter_seconds": 0.00024137499999810075,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f01",
+        "kind": "readme",
+        "baseline_sha256": "ebb62be101204040757bd68a5aa0ffab9eb7f392354a00173b7dacc1540dbe22",
+        "verified_outcome": true,
+        "outcome": "human_accepted",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 1
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.4371574170000017,
+          "provider_request_seconds": 0.0047051650000042855,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.4324522519999974
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 15297,
+          "after_bytes": 15297,
+          "filter_seconds": 0.00019012399999951413,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f02",
+        "kind": "utility",
+        "baseline_sha256": "16a45ed5c9a96803102efebed9f0904e0034d8b8373fd359dbfc7b7999371f80",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.3629420000000039,
+          "provider_request_seconds": 0.003967207000002304,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.3589747930000016
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 15000,
+          "after_bytes": 15000,
+          "filter_seconds": 0.00020104200000048422,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f03",
+        "kind": "bug_fix",
+        "baseline_sha256": "bf3e9994b43148bee1e90924cf4b8fe5129f2e77887294d87d2c3fd702181edb",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.3563584580000025,
+          "provider_request_seconds": 0.004268585000005487,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.352089872999997
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 13379,
+          "after_bytes": 13379,
+          "filter_seconds": 0.00015254199999503726,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f04",
+        "kind": "public_link",
+        "baseline_sha256": "e7936cea590592e3ea97261ed5a700651d162bce841872233a7d39ae59486092",
+        "verified_outcome": true,
+        "outcome": "awaiting_reply",
+        "calls": {
+          "worker": 2,
+          "reviewer": 0,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "reasoning_tokens": 2,
+          "cached_tokens": 4,
+          "accounted_total": 30
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 0.2098044580000007,
+          "provider_request_seconds": 0.00261758399999934,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 0.20718687400000135
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 25012,
+          "after_bytes": 25012,
+          "filter_seconds": 0.0004069999999956053,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f05",
+        "kind": "failed_check_repair",
+        "baseline_sha256": "990d33e8b41b85f7af327fe004d49286968f72f5f513a43e0560e3d13e961f8d",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 3,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 40,
+          "output_tokens": 20,
+          "reasoning_tokens": 4,
+          "cached_tokens": 8,
+          "accounted_total": 60
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 2.2881166250000007,
+          "provider_request_seconds": 0.006687915999997074,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 2.2814287090000036
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 42478,
+          "after_bytes": 42478,
+          "filter_seconds": 0.0006042909999948165,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f06",
+        "kind": "reviewer_revision",
+        "baseline_sha256": "1774eabe48e80350d50796482b12fd8b2bf786d19d71775c7c8cf97c17c64b29",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 5,
+          "reviewer": 2,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 70,
+          "output_tokens": 35,
+          "reasoning_tokens": 7,
+          "cached_tokens": 14,
+          "accounted_total": 105
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 3.600888999999995,
+          "provider_request_seconds": 0.013197790000006648,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 3.5876912099999885
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 15000,
+          "after_bytes": 15000,
+          "filter_seconds": 0.00021049999999434021,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f07",
+        "kind": "commit_conflict",
+        "baseline_sha256": "bf3e9994b43148bee1e90924cf4b8fe5129f2e77887294d87d2c3fd702181edb",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.4364159579999978,
+          "provider_request_seconds": 0.0044496249999994575,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.4319663329999983
+        }
+      }
+    ],
+    "passed": true,
+    "limitations": "Pinned source and assertions test controller behavior. No live model quality, speed, savings, or billing claims. Human commit action is simulated only in the disposable fixture."
+  },
+  "filtered_retrieval": {
+    "schema_version": 1,
+    "mode": "deterministic_scripted_providers",
+    "fixtures": [
+      {
+        "output_comparison": {
+          "before_bytes": 15391,
+          "after_bytes": 15391,
+          "filter_seconds": 0.0002226659999990943,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f01",
+        "kind": "readme",
+        "baseline_sha256": "ebb62be101204040757bd68a5aa0ffab9eb7f392354a00173b7dacc1540dbe22",
+        "verified_outcome": true,
+        "outcome": "human_accepted",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 1
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.4942164590000004,
+          "provider_request_seconds": 0.004521250000003363,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.489695208999997
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 15297,
+          "after_bytes": 15297,
+          "filter_seconds": 0.00020637500000475484,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f02",
+        "kind": "utility",
+        "baseline_sha256": "16a45ed5c9a96803102efebed9f0904e0034d8b8373fd359dbfc7b7999371f80",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.3707292080000002,
+          "provider_request_seconds": 0.004754209000005005,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.3659749989999952
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 15000,
+          "after_bytes": 15000,
+          "filter_seconds": 0.00021158300000934105,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f03",
+        "kind": "bug_fix",
+        "baseline_sha256": "bf3e9994b43148bee1e90924cf4b8fe5129f2e77887294d87d2c3fd702181edb",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.4479148750000093,
+          "provider_request_seconds": 0.004439750000010179,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.443475124999999
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 13379,
+          "after_bytes": 13379,
+          "filter_seconds": 0.0001317510000120592,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f04",
+        "kind": "public_link",
+        "baseline_sha256": "e7936cea590592e3ea97261ed5a700651d162bce841872233a7d39ae59486092",
+        "verified_outcome": true,
+        "outcome": "awaiting_reply",
+        "calls": {
+          "worker": 2,
+          "reviewer": 0,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "reasoning_tokens": 2,
+          "cached_tokens": 4,
+          "accounted_total": 30
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 0.21490966700000058,
+          "provider_request_seconds": 0.002567084000006048,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 0.21234258299999453
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 25011,
+          "after_bytes": 25011,
+          "filter_seconds": 0.00034291600000813105,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f05",
+        "kind": "failed_check_repair",
+        "baseline_sha256": "990d33e8b41b85f7af327fe004d49286968f72f5f513a43e0560e3d13e961f8d",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 3,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 40,
+          "output_tokens": 20,
+          "reasoning_tokens": 4,
+          "cached_tokens": 8,
+          "accounted_total": 60
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 2.1543442079999977,
+          "provider_request_seconds": 0.006132291000000123,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 2.1482119169999976
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 42478,
+          "after_bytes": 42478,
+          "filter_seconds": 0.0005678749999873389,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f06",
+        "kind": "reviewer_revision",
+        "baseline_sha256": "1774eabe48e80350d50796482b12fd8b2bf786d19d71775c7c8cf97c17c64b29",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 5,
+          "reviewer": 2,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 70,
+          "output_tokens": 35,
+          "reasoning_tokens": 7,
+          "cached_tokens": 14,
+          "accounted_total": 105
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 3.4852704999999986,
+          "provider_request_seconds": 0.012296000999967305,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 3.4729744990000313
+        }
+      },
+      {
+        "output_comparison": {
+          "before_bytes": 15000,
+          "after_bytes": 15000,
+          "filter_seconds": 0.00019937599998343103,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f07",
+        "kind": "commit_conflict",
+        "baseline_sha256": "bf3e9994b43148bee1e90924cf4b8fe5129f2e77887294d87d2c3fd702181edb",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.3665438330000086,
+          "provider_request_seconds": 0.004207332999996538,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.362336500000012
+        }
+      }
+    ],
+    "passed": true,
+    "limitations": "Pinned source and assertions test controller behavior. No live model quality, speed, savings, or billing claims. Human commit action is simulated only in the disposable fixture."
+  },
+  "noisy_raw": {
+    "schema_version": 1,
+    "mode": "deterministic_scripted_providers",
+    "fixtures": [
+      {
+        "output_comparison": {
+          "before_bytes": 16471,
+          "after_bytes": 16471,
+          "filter_seconds": 6.595899999983779e-05,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 0
+        },
+        "fixture_id": "f03",
+        "kind": "bug_fix",
+        "baseline_sha256": "3db35e10b23caa7011fe4dbe3ac9d7df0e49577777c9f9b5fcba6eb6bb3ce54c",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.3807130829999998,
+          "provider_request_seconds": 0.004172833999999792,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.376540249
+        }
+      }
+    ],
+    "passed": true,
+    "limitations": "Pinned source and assertions test controller behavior. No live model quality, speed, savings, or billing claims. Human commit action is simulated only in the disposable fixture."
+  },
+  "noisy_filtered": {
+    "schema_version": 1,
+    "mode": "deterministic_scripted_providers",
+    "fixtures": [
+      {
+        "output_comparison": {
+          "before_bytes": 16471,
+          "after_bytes": 15153,
+          "filter_seconds": 0.0002493340000002675,
+          "raw_retrieval_calls": 0,
+          "omitted_rows_across_requests": 41
+        },
+        "fixture_id": "f03",
+        "kind": "bug_fix",
+        "baseline_sha256": "3db35e10b23caa7011fe4dbe3ac9d7df0e49577777c9f9b5fcba6eb6bb3ce54c",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 1,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 30,
+          "output_tokens": 15,
+          "reasoning_tokens": 3,
+          "cached_tokens": 6,
+          "accounted_total": 45
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.373613791,
+          "provider_request_seconds": 0.004470041999999896,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.369143749
+        }
+      }
+    ],
+    "passed": true,
+    "limitations": "Pinned source and assertions test controller behavior. No live model quality, speed, savings, or billing claims. Human commit action is simulated only in the disposable fixture."
+  },
+  "noisy_filtered_retrieval": {
+    "schema_version": 1,
+    "mode": "deterministic_scripted_providers",
+    "fixtures": [
+      {
+        "output_comparison": {
+          "before_bytes": 22505,
+          "after_bytes": 19869,
+          "filter_seconds": 0.0003352920000008197,
+          "raw_retrieval_calls": 1,
+          "omitted_rows_across_requests": 82
+        },
+        "fixture_id": "f03",
+        "kind": "bug_fix",
+        "baseline_sha256": "3db35e10b23caa7011fe4dbe3ac9d7df0e49577777c9f9b5fcba6eb6bb3ce54c",
+        "verified_outcome": true,
+        "outcome": "reviewer_approved",
+        "calls": {
+          "worker": 2,
+          "reviewer": 2,
+          "coordinator": 0
+        },
+        "tool_failures": 0,
+        "operator": {
+          "check_approvals_requested": 0,
+          "resumes": 0,
+          "accepted_commits": 0
+        },
+        "tokens": {
+          "input_tokens": 40,
+          "output_tokens": 20,
+          "reasoning_tokens": null,
+          "cached_tokens": null,
+          "accounted_total": 60
+        },
+        "cost": {
+          "accounted": 0.0,
+          "provenance": "provider_reported",
+          "uncertain_requests": 0,
+          "billing_receipt": false
+        },
+        "time": {
+          "elapsed_seconds": 1.3904398750000002,
+          "provider_request_seconds": 0.0060947910000006544,
+          "provider_cooldown_seconds": 0,
+          "operator_wait_seconds": 0,
+          "controller_work_seconds": 1.3843450839999996
+        }
+      }
+    ],
+    "passed": true,
+    "limitations": "Pinned source and assertions test controller behavior. No live model quality, speed, savings, or billing claims. Human commit action is simulated only in the disposable fixture."
+  }
+}
