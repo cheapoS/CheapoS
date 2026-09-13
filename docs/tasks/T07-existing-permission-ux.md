@@ -11,7 +11,7 @@
 1. Reproduce the existing contract with a scripted provider: approve an exact command for the session, run it again, pause/resume, and run it in a follow-up. All should reuse the grant in the same task copy and server lifetime.
 2. Test differing argv, a new workspace, another chat, and restart. Those currently ask by design. If the identical case asks twice, fix the concrete key/state/approval-ID bug and add its regression. Do not claim changed commands are that bug.
 3. Make `Allow this command for this session` the primary button in both Chat and Activity; keep Run once and Decline. This wording must remain exact-command scoped until T09/T10 exist.
-4. Show a discoverable session-permissions control by the composer when grants exist. Clicking lists the commands and revocation action, reusing the existing endpoint. Show the expiry/scope clearly: `This chat · until CheapOS restarts`.
+4. Show a discoverable session-permissions control by the composer when grants exist. Clicking lists the commands and revocation action, reusing the existing endpoint. Show the expiry/scope clearly: `This chat · until cheapoS restarts`.
 5. For an automatic authorized rerun, show `Running tests · allowed for this session` with the real command/output in Details. If a new command asks, show the concrete difference or scope reason when known; do not invent an explanation.
 6. Do not poll the permissions endpoint on every keystroke or stream token. Refresh after grant/revoke/task selection and relevant state changes. Preserve the existing approval ID validation.
 

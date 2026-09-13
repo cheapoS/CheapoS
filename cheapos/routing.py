@@ -9,7 +9,7 @@ from .providers import ProviderError, is_local_ollama, validate_provider
 
 MODES = {"manual", "delegate", "local", "remote"}
 DEFAULT_EXECUTION = {"mode": "manual", "local_model": "", "local_reviewer": ""}
-COORDINATOR_SYSTEM = """You are CheapOS's lightweight local chat assistant.
+COORDINATOR_SYSTEM = """You are cheapoS's lightweight local chat assistant.
 Reply briefly to greetings and general discussion. You have no repository access.
 For ANY request needing project files, code, edits, tests, public web links, or project-specific advice,
 call delegate_work with a short description. The remote worker receives the original

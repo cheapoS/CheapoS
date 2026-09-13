@@ -54,7 +54,7 @@ def source_state(source):
 
 def require_clean(source):
     if source_git(source, "status", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=none"):
-        raise ValueError("Your project has uncommitted changes. Commit or move them first, then reopen Apply & commit. CheapOS will keep this task's edits saved.")
+        raise ValueError("Your project has uncommitted changes. Commit or move them first, then reopen Apply & commit. cheapoS will keep this task's edits saved.")
 
 
 def prepare(task):
@@ -119,7 +119,7 @@ def apply_and_commit(plan):
         raise ValueError("The project changed during the commit. Saved edits were kept; inspect the project before retrying.")
     # The commit contains only the prepared tree. Compare-and-swap prevents
     # moving a branch that another Git operation advanced in the meantime.
-    source_git(plan["source"], "update-ref", "-m", "CheapOS: " + plan["message"].splitlines()[0],
+    source_git(plan["source"], "update-ref", "-m", "cheapoS: " + plan["message"].splitlines()[0],
                plan["branch"], plan["commit"], plan["head"])
 
 
@@ -135,6 +135,6 @@ def advance_workspace(task, plan):
 def workspace_commit(task):
     head = git(task["workspace"], "rev-parse", "HEAD").strip()
     tree = git(task["workspace"], "write-tree").strip()
-    commit = git(task["workspace"], "-c", "user.name=CheapOS", "-c", "user.email=local@cheapos.invalid",
+    commit = git(task["workspace"], "-c", "user.name=cheapoS", "-c", "user.email=local@cheapos.invalid",
                  "commit-tree", tree, "-p", head, "-m", "Applied approved changes to source project").strip()
     return {"workspace_head": head, "workspace_commit": commit}

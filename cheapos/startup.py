@@ -16,7 +16,7 @@ from .storage import write_json
 
 DEFAULTS = {"enabled": True, "allow_cloud": False}
 GREETING = [
-    {"role":"system", "content":"You are CheapOS, a coding assistant. Greet the user in one short sentence and ask what they would like to work on. The interface handles project selection, so do not tell them to open a project. You have not read any files or verified any coding tools. Do not claim otherwise."},
+    {"role":"system", "content":"You are cheapoS, a coding assistant. Greet the user in one short sentence and ask what they would like to work on. The interface handles project selection, so do not tell them to open a project. You have not read any files or verified any coding tools. Do not claim otherwise."},
     {"role":"user", "content":"Say hi and ask what I would like to work on."},
 ]
 

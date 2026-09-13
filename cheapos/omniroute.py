@@ -105,7 +105,7 @@ class OmniRouteManager:
                 raise ValueError("Wait for the current gateway connection attempt to finish")
             if settings["base_url"] != self.settings["base_url"]:
                 if self.process is not None and self.process.poll() is None:
-                    raise ValueError("Stop the OmniRoute instance started by CheapOS before changing its endpoint")
+                    raise ValueError("Stop the OmniRoute instance started by cheapoS before changing its endpoint")
                 self.models = []
                 self.state = "unchecked"
                 self.revision += 1
@@ -196,7 +196,7 @@ class OmniRouteManager:
             while not self.closed.is_set() and time.monotonic() < deadline:
                 try:
                     models = self._probe()
-                    self._set_state("ready", "OmniRoute started by CheapOS. Ready to select models.", models)
+                    self._set_state("ready", "OmniRoute started by cheapoS. Ready to select models.", models)
                     return
                 except ProviderError as error:
                     if error.code == "client_key_rejected":
@@ -217,9 +217,9 @@ class OmniRouteManager:
                 raise ValueError("Wait for gateway startup to finish before stopping it")
             process = self.process
             if process is None or process.poll() is not None:
-                raise ValueError("CheapOS can only stop an instance it started in this session")
+                raise ValueError("cheapoS can only stop an instance it started in this session")
         self._terminate(process)
-        self._set_state("offline", "The OmniRoute instance started by CheapOS has stopped.")
+        self._set_state("offline", "The OmniRoute instance started by cheapoS has stopped.")
         return self.snapshot()
 
     @staticmethod

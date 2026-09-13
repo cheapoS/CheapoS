@@ -12,7 +12,7 @@ T09 pending approval and permission APIs, T07 composer control, Chat/Activity ap
 2. Show a concise scope explanation with expandable details: project, runner, test roots/allowed variants, and expiry. Say that these tests execute project code, including subsequent test edits. Avoid a wall of repeated warnings.
 3. Submit the explicit scope and current approval ID. Disable duplicate clicks while pending. Handle stale proposal/revocation failures by refreshing the current request; do not automatically choose a different scope.
 4. The composer control reads `Tests allowed this session` when applicable. Its panel lists project-session and task-exact grants separately, with revoke controls and expiry. Keep it legible beside Pause without widening the whole composer.
-5. Show authorized reruns as ordinary visible CheapOS work. When a command does not match, explain the specific reason returned by the controller, such as a new test runner or another project, and request only the needed approval.
+5. Show authorized reruns as ordinary visible cheapoS work. When a command does not match, explain the specific reason returned by the controller, such as a new test runner or another project, and request only the needed approval.
 6. Use the same reusable approval rendering/action logic for Chat and Activity so the two surfaces cannot drift.
 
 ## Acceptance

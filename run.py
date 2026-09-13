@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run CheapOS on this computer using only Python's standard library."""
+"""Run cheapoS on this computer using only Python's standard library."""
 
 import argparse
 import json
@@ -31,12 +31,12 @@ def lock_data(directory):
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         handle.close()
-        raise ValueError("This data directory is already in use by another CheapOS server") from None
+        raise ValueError("This data directory is already in use by another cheapoS server") from None
     return handle
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run CheapOS locally. No account required.")
+    parser = argparse.ArgumentParser(description="Run cheapoS locally. No account required.")
     parser.add_argument("--port", type=int, default=5173, help="Local port (default: 5173)")
     parser.add_argument("--no-open", action="store_true", help="Do not open a browser automatically")
     parser.add_argument("--data-dir", type=Path, default=Path(__file__).resolve().parent / ".cheapos", help="Local task storage directory")
@@ -44,7 +44,7 @@ def main():
     if not 1 <= args.port <= 65535:
         parser.error("port must be between 1 and 65535")
     if not (APP_DIRECTORY / "index.html").is_file():
-        parser.error(f"CheapOS files are missing from {APP_DIRECTORY}")
+        parser.error(f"cheapoS files are missing from {APP_DIRECTORY}")
 
     url = f"http://127.0.0.1:{args.port}/"
     # Bind first: a second launch must not mark an active server's tasks interrupted.
@@ -56,13 +56,13 @@ def main():
             with urlopen(url + "api/bootstrap", timeout=2) as response:
                 existing = json.loads(response.read(1_000_000))
             if existing.get("app") == "CheapOS":
-                print(f"CheapOS is already running at {url}", flush=True)
+                print(f"cheapoS is already running at {url}", flush=True)
                 if not args.no_open:
                     webbrowser.open(url)
                 return 0
         except (OSError, URLError, ValueError):
             pass
-        print(f"Could not start CheapOS on port {args.port}: {error}", file=sys.stderr)
+        print(f"Could not start cheapoS on port {args.port}: {error}", file=sys.stderr)
         print("Try another port: python3 run.py --port 5174", file=sys.stderr)
         return 1
 
@@ -76,14 +76,14 @@ def main():
         server.server_close()
         print(str(error), file=sys.stderr)
         return 1
-    print(f"CheapOS is running at {url}", flush=True)
+    print(f"cheapoS is running at {url}", flush=True)
     print("Local only. No sign-in required. Press Ctrl+C to stop.", flush=True)
     if not args.no_open:
         webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nCheapOS stopped.", flush=True)
+        print("\ncheapoS stopped.", flush=True)
     finally:
         server.engine.shutdown()
         server.server_close()

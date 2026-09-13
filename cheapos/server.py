@@ -82,7 +82,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():

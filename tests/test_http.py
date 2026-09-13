@@ -119,7 +119,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(headers['Cache-Control'], 'no-store')
         self.assertEqual(headers['X-Frame-Options'], 'DENY')
         self.assertNotIn('Access-Control-Allow-Origin', headers)
-        for path in ['/', '/styles.css', '/guidance.js', '/panels.js', '/app.js']:
+        for path in ['/', '/styles.css', '/guidance.js', '/panels.js', '/app.js', '/brand-icon.svg']:
             self.assertEqual(self.request('GET', path)[0], 200)
 
     def test_cross_site_and_dns_rebinding_blocked(self):

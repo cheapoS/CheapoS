@@ -12,7 +12,7 @@ from cheapos import metrics
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     choice=parser.add_mutually_exclusive_group(required=True)
-    choice.add_argument('--store',type=Path,help='Explicit local CheapOS data directory; read only')
+    choice.add_argument('--store',type=Path,help='Explicit local cheapoS data directory; read only')
     choice.add_argument('--benchmark',action='store_true',help='Run seven deterministic disposable fixtures, no live inference')
     parser.add_argument('--output',type=Path,required=True,help='Local JSON destination')
     args=parser.parse_args()

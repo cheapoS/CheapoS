@@ -8,7 +8,7 @@
 
 ## Implementation
 
-1. Add a bounded verification timeout associated with a recognized test profile or explicit user setting. Preserve legacy behavior for old tasks unless a clear migration is documented. For CheapOS's known full suite, configure sufficient time from T12's measurements rather than its current 90-second default.
+1. Add a bounded verification timeout associated with a recognized test profile or explicit user setting. Preserve legacy behavior for old tasks unless a clear migration is documented. For cheapoS's known full suite, configure sufficient time from T12's measurements rather than its current 90-second default.
 2. Pass the selected timeout into run_checks and include it in check events. The effective deadline is capped by the task's remaining hard working-time envelope. Increasing a command timeout must not silently extend the whole task deadline or spending cap.
 3. Distinguish `test assertion failed`, `test process timed out`, `task deadline reached`, `output limit`, and `user paused`. Show the relevant elapsed/allowed time and a useful next action; do not feed every infrastructure timeout back as a code defect.
 4. Define one verification-evidence identity used by checkpoint and commit readiness: task workspace generation/baseline, relevant content/patch identity, exact normalized command, runner identity, and known dependency/configuration inputs. Never store arbitrary environment variables. If environment identity is uncertain after setup, invalidate conservatively.

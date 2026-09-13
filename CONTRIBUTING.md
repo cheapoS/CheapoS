@@ -1,4 +1,4 @@
-# Contributing to CheapOS
+# Contributing to cheapoS
 
 Small, reviewable changes are welcome. For significant behavior changes, open an issue describing the problem and your proposed approach first.
 
@@ -36,7 +36,7 @@ See [test performance](docs/development/test-performance.md) for measurements.
 Model execution tests use deterministic providers and temporary repositories,
 with no external inference calls or personal API credentials.
 
-For conversation changes, check live worker and reviewer output inside the CheapOS reply, command permission, reviewer revisions, and the final approval controls. Details should stay open through updates and tab switches; returning to Chat should show the latest message. Keep course corrections in chronological order and avoid presenting a failed or unfinished check/review as a success.
+For conversation changes, check live worker and reviewer output inside the cheapoS reply, command permission, reviewer revisions, and the final approval controls. Details should stay open through updates and tab switches; returning to Chat should show the latest message. Keep course corrections in chronological order and avoid presenting a failed or unfinished check/review as a success.
 
 Preserve these properties:
 

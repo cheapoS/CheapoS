@@ -1,6 +1,6 @@
-# CheapOS implementation tasks
+# cheapoS implementation tasks
 
-**North star:** open a project, explain the job, see CheapOS working, authorize routine tests once, approve a finished commit, and keep chatting.
+**North star:** open a project, explain the job, see cheapoS working, authorize routine tests once, approve a finished commit, and keep chatting.
 
 This is the completed first implementation milestone for [the September 13 check-in](CHECK_IN_2026-09-13.md): **sidebar cleanup, clearer task titles, and fewer approval interruptions**, followed by the controller/onboarding improvements below. All 27 cards are Done and record their validation and limitations. Local `main` includes the final integration commit `39903c9`.
 
@@ -39,7 +39,7 @@ Do not weaken tests, limits, permissions, or source-commit safeguards to get gre
 
 When complete, update the task card's completion record and its row in TASKS.md.
 Commit only your task changes and report the commit, checks, and any remaining
-limitations. Do not start the next card automatically. If running inside CheapOS,
+limitations. Do not start the next card automatically. If running inside cheapoS,
 use its reviewer and human Approve & commit flow; never bypass that flow via a
 test command. A direct coding agent should follow AGENTS.md for committing.
 ```
@@ -70,7 +70,7 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 | [T16](docs/tasks/T16-cooldown-retry.md) | Cancelable waiting for a free route | T15 | M | Done |
 | [T17](docs/tasks/T17-work-presets.md) | Simple Free only / working-time controls | T14, T16 | M | Done |
 | [T18](docs/tasks/T18-connection-readiness.md) | Structured onboarding readiness and recovery states | — | M | Done |
-| [T19](docs/tasks/T19-omniroute-onboarding.md) | Guided OmniRoute setup and return to CheapOS | T18 | M | Done |
+| [T19](docs/tasks/T19-omniroute-onboarding.md) | Guided OmniRoute setup and return to cheapoS | T18 | M | Done |
 | [T20](docs/tasks/T20-local-and-sample-onboarding.md) | Local-only onboarding and an honest sample loop | T19, T10 | M | Done |
 | [T21](docs/tasks/T21-project-context.md) | Compact project brief and durable continuation state | — | M | Done |
 | [T22](docs/tasks/T22-focused-agent-work.md) | Proactive small edits and stage-appropriate tool/context use | T21 | M | Done |
@@ -93,7 +93,7 @@ Validated after T27 on `work/check-in-tasks`:
 - Temporary UI fixture servers were stopped. That validation run did not merge the branch; local `main` subsequently included `39903c9` before the next milestone was planned.
 
 The full gate takes about seven minutes on this machine; select at least a
-600-second verification allowance when running it through CheapOS. The fast
+600-second verification allowance when running it through cheapoS. The fast
 suite covers a deliberately smaller contract and does not replace this gate.
 
 ### Milestone exits
@@ -137,7 +137,7 @@ This list describes the pre-T01 baseline, not the completed implementation. For 
 1. Work on one card. Do not rewrite the entire engine, implement adjacent cards, or install optimization tools while implementing a sidebar change.
 2. Preserve source repositories, saved task copies, raw evidence, existing commits, and unrelated user/worker diffs. Test data belongs in a temporary directory, never the user's `.cheapos/` store.
 3. Keep UI metadata separate from execution status. “Archived” and “trashed” are not substitutes for paused/running/reviewing.
-4. CheapOS stays the visible orchestrator. Show real worker/check/reviewer activity in its reply. Keep Pause reachable, draft text intact, Details expansion stable, and returning to Chat at the latest response.
+4. cheapoS stays the visible orchestrator. Show real worker/check/reviewer activity in its reply. Keep Pause reachable, draft text intact, Details expansion stable, and returning to Chat at the latest response.
 5. Automatically running *authorized* tests still needs visible output. Test names do not make arbitrary commands harmless; grant a defined runner scope, not an unrestricted executable prefix.
 6. In ordinary manual chats, a model can recommend a commit; only the operator approves the reviewed patch. [The planned branch-run mode](BRANCH_RUNS.md) introduces a separate, explicit up-front authorization for reviewed local feature commits and retains a final human integration decision. It is not a global waiver. A recovered/reconciled code change needs current checks and review. No test command may be repurposed to commit or push.
 7. Free-only, local-only, explicit monetary/time caps, and user Pause remain effective. No hidden paid/cloud fallback or unbounded retry. Raw malformed or truncated tool calls never execute.

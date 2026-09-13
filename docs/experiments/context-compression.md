@@ -19,7 +19,7 @@ installed or upgraded. The probe copies only the installed compression source
 to a temporary directory to run TypeScript outside node_modules, resolves the
 already installed TOON dependency, and removes temporary payloads afterward.
 [Recorded source hashes and versions](context-compression-results.json) identify
-the exact nine source files. The probe is not imported by CheapOS.
+the exact nine source files. The probe is not imported by cheapoS.
 
 Read-only SQLite inspection selected only these five keys from the installed
 gateway's `key_value` compression namespace:
@@ -48,7 +48,7 @@ an equivalent engine. [Caveman](https://github.com/JuliusBrussee/caveman) includ
 telemetry controls and would require a separate integration decision.
 [Ponytail](https://github.com/DietrichGebert/ponytail) is principally an
 implementation-discipline layer, already addressed by T22. Neither was selected
-as a second candidate. Their marketing results are not CheapOS measurements.
+as a second candidate. Their marketing results are not cheapoS measurements.
 
 ## Reproduction
 
@@ -95,11 +95,11 @@ This is not an end-to-end model trial.
 
 System/developer text and assistant tool-call arguments stayed unchanged.
 However, sending that same JSON as a user request or source-tool content changed
-its byte representation. Semantic roundtrip alone does not satisfy CheapOS's
+its byte representation. Semantic roundtrip alone does not satisfy cheapoS's
 contract to preserve exact requests/code evidence. A production integration would
 need explicit controller-owned eligibility, durable original retrieval, and
 stable schema/cache behavior. The installed reconstruction helper is an offline
-oracle, not an automatically exposed CheapOS retrieval tool.
+oracle, not an automatically exposed cheapoS retrieval tool.
 
 Therefore the broad pass fails the protected-input adoption gate, and the bounded
 eligible fixture data shows no useful reduction. The negative result completes

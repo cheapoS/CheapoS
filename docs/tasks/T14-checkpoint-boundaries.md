@@ -12,7 +12,7 @@
 2. At a soft boundary, inspect durable state deterministically. A question with enough evidence should request its concise answer. A worker that declared completion with edits should enter verification/review. Incomplete work with demonstrated progress may compact context and continue to the next bounded interval.
 3. Do not label a partial patch as finished simply because a timer/counter fired. Reuse the existing final-answer/checkpoint completion signals; review against all user requirements. An intermediate checkpoint does not authorize a commit or erase unfinished scope.
 4. Reset only the local interval counter when continuing. Keep overall turns, elapsed time, accounting, failed recovery attempts, and review iterations. Every model call counts.
-5. Record a compact controller event such as `Saved progress; continuing the remaining step`, visible inside CheapOS Details. Do not add a new model conversation to decide whether to continue.
+5. Record a compact controller event such as `Saved progress; continuing the remaining step`, visible inside cheapoS Details. Do not add a new model conversation to decide whether to continue.
 6. If there is no meaningful progress or no remaining hard allowance, hand off to the existing pause/recovery mechanism with a specific reason. T15 improves that recovery next.
 
 ## Acceptance

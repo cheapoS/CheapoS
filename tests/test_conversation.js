@@ -10,11 +10,11 @@ test('ordinary conversation retains the answer without an execution card',()=>{
  const [reply]=replies(task({events:[event(1,'model','Requesting worker: worker-model',{}),event(2,'assistant','Worker','Hello!')]}));
  assert.equal(reply.reply,'Hello!');assert.deepEqual(reply.steps,[]);
 });
-test('streamed chat text stays in the current CheapOS reply',()=>{
+test('streamed chat text stays in the current cheapoS reply',()=>{
  const [reply]=replies(task({status:'running',stream:{phase:'answer',content:'Hello',model:'worker-model'},events:[event(1,'model','Requesting worker: worker-model',{})]}));
  assert.equal(reply.reply,'Hello');assert.equal(reply.steps.length,0);assert.equal(reply.live,true);
 });
-test('worker, checks, and reviewer are chronological steps of one CheapOS reply',()=>{
+test('worker, checks, and reviewer are chronological steps of one cheapoS reply',()=>{
  const t=task({status:'reviewing',stream:{phase:'thinking',role:'reviewer',model:'reviewer-model',thinking:'Review evidence'},events:[
  event(1,'model','Requesting worker: worker-model',{}),event(2,'assistant','Worker','I will fix the script.'),
  event(3,'tool','replace text',{arguments:{path:'script.py'},result:{updated:true},role:'worker'}),
@@ -29,7 +29,7 @@ test('worker, checks, and reviewer are chronological steps of one CheapOS reply'
  assert.equal(reply.reply,'');assert.match(reply.intro,/second opinion/);
  assert.equal(reply.stream.thinking,'Review evidence');
 });
-test('course correction separates previous work from the next CheapOS response',()=>{
+test('course correction separates previous work from the next cheapoS response',()=>{
  const t=task({status:'running',events:[event(1,'model','Requesting worker: worker-model',{}),event(2,'tool','read file',{arguments:{path:'before.py'}}),event(3,'steer','User Guidance','Keep the public API unchanged.'),event(4,'guard','Applied User Guidance','Keep the public API unchanged.'),event(5,'tool','replace text',{arguments:{path:'after.py'}})]});
  const entries=build(t);
  assert.deepEqual(entries.map(e=>e.kind),['user','assistant','user','assistant']);

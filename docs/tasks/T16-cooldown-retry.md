@@ -12,7 +12,7 @@
 2. Offer a user-visible `Retry when available` action when appropriate. Once selected, wait cancelably under the existing run, bounded by its remaining time and handoff/probe allowances. Do not reset counters each time the cooldown expires.
 3. Represent waiting explicitly and update all relevant active-state/UI/restart handling. A waiting run must be discoverable and pausable; honor the app's existing single-active-task policy rather than spawning invisible background jobs.
 4. Use interruptible waits and re-check eligibility before probing. Do not hammer the provider every UI poll or treat a cooldown deadline as proof the model is healthy.
-5. Show a countdown/status inside CheapOS with `Pause` and an option to inspect Models. If no retry time is known, do not fabricate one; offer a bounded manual retry path.
+5. Show a countdown/status inside cheapoS with `Pause` and an option to inspect Models. If no retry time is known, do not fabricate one; offer a bounded manual retry path.
 6. When the outer deadline/attempt allowance expires, stop once with preserved work and a concrete message. On server restart, mark interrupted and require explicit continuation; do not auto-dispatch saved tasks.
 
 ## Acceptance

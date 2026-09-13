@@ -9,7 +9,7 @@
 ## Implementation
 
 1. Replace the generic `project / Chat` breadcrumb with the effective task title in the primary header. Show the project as a secondary folder label. Keep one prominent title, the status, and useful view tabs; remove duplicate stacked task titles.
-2. Preserve a home/new-chat header when no task is selected. Browser tab title should reflect the task with a CheapOS suffix. Switches between tasks, projects, and home must clear stale titles.
+2. Preserve a home/new-chat header when no task is selected. Browser tab title should reflect the task with a cheapoS suffix. Switches between tasks, projects, and home must clear stale titles.
 3. Provide an accessible Rename action from the title area. Use a small dialog prefilled with the current name. Enter saves, Escape cancels, errors stay inline, and focus returns predictably. Send plain text through T01's API; render with textContent/escaping.
 4. Add deterministic automatic naming, without another model request. Prefer an explicit custom title. Otherwise select the first substantive user request: ignore a small, documented exact greeting-only set such as `hi`, `hello`, `hey`, `hi gemma`; do not label every short question a greeting. Normalize whitespace, use the first meaningful nonempty line/sentence, trim at a word boundary to a readable length (about 72 characters), and fall back to `New chat`.
 5. A greeting-only chat gains its automatic title when substantive work arrives. Once a substantive automatic title exists, ordinary follow-ups do not keep renaming the chat. Manual names are never overwritten; resetting to automatic uses the original substantive request. Use stored requests to support old greeting chats without running a bulk migration.

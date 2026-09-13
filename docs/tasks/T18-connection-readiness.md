@@ -10,7 +10,7 @@
 
 1. Define a small versioned readiness response covering local prerequisites and supported connection paths. Distinguish: gateway absent, installed but stopped, starting, ready, incompatible/unknown service on port, client key rejected, no eligible provider/model, local-only ready, and offline/unavailable.
 2. Include actionable next-step identifiers and safe diagnostics, not provider secrets or raw config files. Reuse existing gateway snapshots and probes; status inspection must not run inference or install anything.
-3. Detect the installed CLI/version and whether CheapOS owns the running process. Existing identified instances are reused; foreign processes are not killed or replaced. Never confuse dashboard credentials with an API client key.
+3. Detect the installed CLI/version and whether cheapoS owns the running process. Existing identified instances are reused; foreign processes are not killed or replaced. Never confuse dashboard credentials with an API client key.
 4. Preserve current startup preferences and selected working connections. A successful greeting means chat/usage reporting worked, not that coding/checks/review completed. Expose those readiness levels separately.
 5. Capability/version-check any optional OmniRoute API before depending on it. Baseline inspected was 3.8.49; newer upstream docs do not guarantee local API compatibility. Keep fixture coverage for supported/unsupported versions without auto-upgrading.
 6. Keep current clients working while adding the readiness payload. Do not block access to task history/diffs when setup fails.

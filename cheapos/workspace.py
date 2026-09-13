@@ -94,7 +94,7 @@ class Workspace:
             target.chmod(0o700 if mode & 0o111 else 0o600)
         git(destination, "init", "-q")
         git(destination, "add", "-f", "--", *[n for n, _, _ in selected])
-        git(destination, "-c", "user.name=CheapOS", "-c", "user.email=local@cheapos.invalid", "commit", "-qm", "Local task baseline")
+        git(destination, "-c", "user.name=cheapoS", "-c", "user.email=local@cheapos.invalid", "commit", "-qm", "Local task baseline")
         return cls(destination), {"files": len(selected), "skipped": skipped, "source": str(source)}
 
     def path(self, name):

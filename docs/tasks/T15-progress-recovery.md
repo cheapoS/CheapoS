@@ -12,8 +12,8 @@ Existing repeated-read guard, action/output/compact recovery, `model_pool.py`, p
 2. On a recoverable stall, use the existing saved evidence to issue one specific correction: answer from current evidence, use a small edit, fix the reported check, or submit the current complete patch. Do not replay malformed responses.
 3. Reuse existing automatic free-model handoffs only when task mode permits and the configured recovery allowance remains. Manual/all-local keep their chosen model. Refusal, auth/credit errors, missing required usage, user stop, and hard limits retain their distinct behavior.
 4. Persist the recovery attempt count/state through Resume and process interruption as appropriate, scoped to the user request. A new user request may start a new work segment, but must not reset cumulative financial/time accounting.
-5. After bounded recovery fails, produce one actionable pause summary: what was attempted, current saved files/checks, exact blocker, and the smallest decision or information needed. Do not ask for a hash CheapOS already tracks or suggest identical retries without a changed condition.
-6. Show short recovery updates inside the CheapOS reply; keep full diagnostics under Details. Preserve pending reviewer work so recovery does not repeat implementation or passing verification unnecessarily.
+5. After bounded recovery fails, produce one actionable pause summary: what was attempted, current saved files/checks, exact blocker, and the smallest decision or information needed. Do not ask for a hash cheapoS already tracks or suggest identical retries without a changed condition.
+6. Show short recovery updates inside the cheapoS reply; keep full diagnostics under Details. Preserve pending reviewer work so recovery does not repeat implementation or passing verification unnecessarily.
 
 ## Acceptance
 

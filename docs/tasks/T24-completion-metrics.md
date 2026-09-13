@@ -1,6 +1,6 @@
 # T24 — Task-level metrics and trustworthy cost display
 
-**Depends on:** none. **Size:** M. **Result:** CheapOS can judge efficiency by completed work, not inflated token-saving claims.
+**Depends on:** none. **Size:** M. **Result:** cheapoS can judge efficiency by completed work, not inflated token-saving claims.
 
 ## Read first
 

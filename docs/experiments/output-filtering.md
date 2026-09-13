@@ -7,7 +7,7 @@ than baseline. This does not justify a default or a billing-savings claim.
 
 ## Implementation and activation
 
-For new tasks only, explicitly start CheapOS with
+For new tasks only, explicitly start cheapoS with
 `CHEAPOS_CHECK_OUTPUT_FILTER=unittest python3 run.py`. Unset that variable for the
 default. Each task freezes its selection. Only direct loopback Ollama requests
 are eligible; gateway/automatic/other remote routes stay unfiltered because their
