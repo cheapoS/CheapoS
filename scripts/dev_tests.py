@@ -38,10 +38,14 @@ def main(argv=None):
     args = parser.parse_args(argv)
     patterns = [args.pattern] if args.pattern else FAST_PATTERNS if args.suite == "fast" else ["test_*.py"]
     suite = unittest.TestSuite(unittest.defaultTestLoader.discover(args.directory, pattern=pattern) for pattern in patterns)
+    discovered = suite.countTestCases()
     started = time.perf_counter()
     result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(suite)
     elapsed = time.perf_counter() - started
-    report = {'selection': list(patterns), 'tests': result.testsRun, 'successful': result.wasSuccessful(), 'failures': len(result.failures),
+    successful = discovered > 0 and result.wasSuccessful()
+    if not discovered:
+        print('No tests discovered for the requested selection; verification did not run.', file=sys.stderr)
+    report = {'selection': list(patterns), 'tests': result.testsRun, 'successful': successful, 'failures': len(result.failures),
               'errors': len(result.errors), 'skipped': len(result.skipped), 'expected_failures': len(result.expectedFailures),
               'unexpected_successes': len(result.unexpectedSuccesses), 'seconds': elapsed,
               'environment': {'python': platform.python_version(), 'os': platform.system(), 'machine': platform.machine()},
@@ -54,7 +58,7 @@ def main(argv=None):
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
-    return 0 if result.wasSuccessful() else 1
+    return 0 if successful else 1
 
 
 if __name__ == '__main__':

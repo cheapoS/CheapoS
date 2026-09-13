@@ -36,7 +36,22 @@ class Sample(unittest.TestCase):
             self.assertLessEqual(sum(item['seconds'] for item in data['timings']),data['seconds'])
             self.assertIn('Slowest tests',result.stdout)
             clean=subprocess.run([sys.executable,'-B',str(RUNNER),'--directory',str(root),'--pattern','missing*.py'],capture_output=True)
-            self.assertEqual(clean.returncode,0)
+            self.assertEqual(clean.returncode,1)
+            self.assertIn(b'No tests discovered',clean.stderr)
+
+    def test_empty_discovery_and_empty_module_fail_with_truthful_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'test_empty.py').write_text('# No test cases yet\n')
+            for pattern in ('missing*.py','test_empty.py'):
+                report=root/'report.json'
+                result=subprocess.run([sys.executable,'-B',str(RUNNER),'--directory',str(root),'--pattern',pattern,'--timings','--json',str(report)],capture_output=True,text=True)
+                self.assertEqual(result.returncode,1)
+                self.assertIn('No tests discovered',result.stderr)
+                self.assertIn('0 tests · FAIL',result.stdout)
+                data=json.loads(report.read_text())
+                self.assertEqual(data['tests'],0)
+                self.assertFalse(data['successful'])
 
 
     def test_fast_selection_catches_relevant_failure_and_full_includes_integration(self):

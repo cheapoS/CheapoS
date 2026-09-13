@@ -1190,11 +1190,11 @@ class Engine:
         return messages
 
     def prepare_loop_recovery(self, task):
-        if needs_patch_review(task) and not work_policy.read_only(task):
+        if (work_policy.active_implementation(task) or needs_patch_review(task)) and not work_policy.read_only(task):
             task["answer_pending"] = False
             task["action_pending"] = True
             task["loop_guidance"] = ACTION_GUIDANCE
-            self.event(task, "guard", "Moving from repeated reads to the next action", "The saved patch still needs work. The worker can edit, run checks, request review, or explain a blocker; repeated inspection is stopped.")
+            self.event(task, "guard", "Moving from repeated reads to the next action", "The requested implementation still needs work. The worker can edit, run checks, request review, or explain a blocker; repeated inspection is stopped.")
         else:
             task["answer_pending"] = True
             task["action_pending"] = False
@@ -1206,7 +1206,7 @@ class Engine:
         if task["patch"] != task.get("turn_start_patch", ""):
             task["answer_pending"] = False
             raise ProgressPause("This request has edits that still need verification and review. Inspect the saved changes before resuming.")
-        if needs_patch_review(task) and not work_policy.read_only(task):
+        if (work_policy.active_implementation(task) or needs_patch_review(task)) and not work_policy.read_only(task):
             self.prepare_loop_recovery(task)
             return
         if request_worker_turns(task) >= task["limits"]["worker_turns"]:

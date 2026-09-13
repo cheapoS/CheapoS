@@ -53,3 +53,13 @@ class WorkPolicyTests(LocalCase):
             self.assertEqual({t['function']['name'] for t in work_policy.prioritize(CHAT_TOOLS,stage)}, {t['function']['name'] for t in CHAT_TOOLS})
         self.assertEqual(len(work_policy.prioritize(REVIEW_TOOLS,'review')),len(REVIEW_TOOLS))
         self.assertIn('every active requirement',work_policy.instruction('implementation'))
+
+    def test_accepted_item_before_first_edit_is_implementation(self):
+        task={'conversational':True,'patch':'','turn_start_patch':'','events':[],
+              'branch_run':{'current_item_id':'one','items':[{'id':'one','status':'working'}]}}
+        self.assertTrue(work_policy.active_implementation(task))
+        self.assertEqual(work_policy.stage(task),'implementation')
+        task['branch_run']['items'][0]['status']='committed'
+        self.assertFalse(work_policy.active_implementation(task))
+        task.pop('branch_run')
+        self.assertEqual(work_policy.stage(task),'orientation')

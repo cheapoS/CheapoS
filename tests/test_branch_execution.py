@@ -33,11 +33,11 @@ class ScriptedRun:
 
 class BranchExecutionTests(unittest.TestCase):
     setUp=fixture.BranchStartTests.setUp
-    def run_job(self,limits=None):
+    def run_job(self,limits=None,script=None):
         command=self.values['plan']['final_checks'][0]
         self.values['plan']['items']=[{'id':name,'title':'Utility '+name,'instructions':'Implement '+name,'dependencies':[] if n==0 else [names[n-1]],'acceptance_criteria':['Utility '+name+' works'],'required_checks':[command]} for names in [('one','two','three')] for n,name in enumerate(names)]
         if limits:self.values['plan']['limits'].update(limits)
-        self.script=ScriptedRun();self.engine.provider_factory=lambda *args:self.script
+        self.script=script or ScriptedRun();self.engine.provider_factory=lambda *args:self.script
         proposal=self.engine.branch.prepare(self.values)
         task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True})
         self.launch(task['id'])
@@ -65,3 +65,20 @@ class BranchExecutionTests(unittest.TestCase):
         self.assertEqual(len(run['items']),3)
         self.assertLessEqual(task['worker_turns'],2)
         self.assertEqual(run['pause_reason'],'exhausted_work')
+
+    def test_read_loop_before_first_edit_keeps_implementation_tools(self):
+        case=self
+        class ReadThenImplement(ScriptedRun):
+            reads=0
+            def complete(self,messages,tools,max_tokens):
+                names={t['function']['name'] for t in tools}
+                case.assertTrue(names, 'An accepted implementation must not become a tools-free answer')
+                if 'review_decision' not in names and 'final_review_decision' not in names and self.reads<3:
+                    self.reads+=1
+                    return call('read_file',{'path':'hello.py'}),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
+                return super().complete(messages,tools,max_tokens)
+        task=self.run_job(script=ReadThenImplement())
+        self.assertEqual(task['branch_run']['status'],'ready_for_merge',task.get('error'))
+        self.assertEqual([item['status'] for item in task['branch_run']['items']],['committed']*3)
+        self.assertTrue(any(e['title']=='Moving from repeated reads to the next action' for e in task['events']))
+        self.assertFalse(any(e['title']=='Preparing an answer from gathered evidence' for e in task['events']))

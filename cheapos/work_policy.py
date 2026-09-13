@@ -24,6 +24,14 @@ def read_only(task):
         ' '.join(prompt.split()).casefold() for prompt in READ_ONLY_STARTERS}
 
 
+def active_implementation(task):
+    """An accepted branch item needs work even before its first edit."""
+    run = task.get('branch_run') or {}
+    return any(item.get('id') == run.get('current_item_id') and
+               item.get('status') not in {'committed', 'satisfied_without_change'}
+               for item in run.get('items', []))
+
+
 def offered_tools(task, tools):
     return [tool for tool in tools if tool['function']['name'] in READ_ONLY_TOOLS] if read_only(task) else tools
 
@@ -62,7 +70,7 @@ def small_edit_reason(task):
 def stage(task):
     if read_only(task):return 'explanation'
     if task.get('status')=='reviewing':return 'review'
-    if task.get('conversational') and task.get('patch', '') == task.get('turn_start_patch', ''):
+    if task.get('conversational') and not active_implementation(task) and task.get('patch', '') == task.get('turn_start_patch', ''):
         return 'orientation'
     check=(task.get('checks') or [{}])[-1]
     if task.get('changes'):
@@ -72,6 +80,7 @@ def stage(task):
         return 'verification' if not check or check.get('passed') else 'implementation'
     # Reading is not authorization to implement. Ordinary chat retains all
     # tools, but the controller must not turn inspection into a repair order.
+    if active_implementation(task):return 'implementation'
     if task.get('conversational'):return 'orientation'
     return 'implementation' if any(e['kind']=='tool' for e in task.get('events',[])) else 'orientation'
 
