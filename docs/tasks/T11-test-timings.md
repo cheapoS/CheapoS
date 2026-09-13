@@ -24,12 +24,12 @@ Test the runner on a tiny temporary suite before running the real full suite onc
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Optional unittest timing runner with per-test fixture-inclusive times, full-suite total, slowest ten, explicit local JSON report, pattern/directory selection, and documented baseline.
+- Acceptance evidence: Temporary failing/subtest/skip/expected-failure fixture preserves results and failure exit; test setup/teardown included. Full deterministic suite profiled with no external model calls.
+- Commands and results: Runner regression passed; full timing run: 327 passed in 290.235s, zero failures/errors. Report summarized in docs/development/test-performance.md; diff check passed.
+- Browser scenarios and results: Not applicable: development tooling only. Browser fixture idle during full profile.
+- Remaining limitations: Per-test totals identify slow workflows but do not isolate fsync/Git/process shares. Module/class setup is represented in the overall suite total.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

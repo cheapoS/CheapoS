@@ -58,7 +58,7 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 | [T08](docs/tasks/T08-test-profile-matcher.md) | Pure, explicit unittest command-profile matcher | — | M | Done |
 | [T09](docs/tasks/T09-project-session-grants.md) | Project-session test grants in the controller | T08 | L | Done |
 | [T10](docs/tasks/T10-project-permission-ui.md) | One clear project-test approval and revocation UI | T07, T09 | M | Done |
-| [T11](docs/tasks/T11-test-timings.md) | Measure the app's test bottlenecks | — | S | Todo |
+| [T11](docs/tasks/T11-test-timings.md) | Measure the app's test bottlenecks | — | S | Done |
 | [T12](docs/tasks/T12-fast-tests.md) | Fast/focused/full checks and measured fixture improvements | T11 | M | Todo |
 | [T13](docs/tasks/T13-verification-evidence.md) | Suitable check timeouts and reusable verification evidence | T09, T12 | L | Todo |
 | [T14](docs/tasks/T14-checkpoint-boundaries.md) | Internal checkpoint boundaries with hard outer limits | T13 | M | Todo |
