@@ -33,7 +33,7 @@ def safe_result(task):
         if event.get('kind') not in {'routing', 'handoff', 'worker_recovery'}: continue
         detail = event.get('detail') or {}
         events.append({'kind': event['kind'], 'title': event.get('title', '')[:160],
-                       'detail': {k: detail[k] for k in ('model','role','from','to','attempt','scope','tool_check')
+                       'detail': {k: detail[k] for k in ('model','role','from','to','attempt','scope','tool_check','completed','independently_disproved')
                                   if k in detail and isinstance(detail[k], (str,int,bool))}})
     return {'status': task.get('branch_run', {}).get('status'),
             'models': {r: sorted({q['model'] for q in requests if q.get('role')==r and isinstance(q.get('model'),str)})
@@ -135,10 +135,13 @@ def main():
         if engine:
             if any(r.thread and r.thread.is_alive() for r in engine.runtimes.values()):result['interventions_after_start']+=1
             engine.shutdown()
-            if task:task=engine.store.get(task['id']);save(root/'task.private.json',task)
+            if task:
+                task=engine.store.get(task['id']);save(root/'task.private.json',task)
+                if args.start:result.update(safe_result(task))
         result.update(elapsed_seconds=time.monotonic()-started,app_unchanged=runtime_hash(app)==frozen['runtime_hash'],
                       source_main_unchanged=git(source,'rev-parse','main')==frozen['source_sha'],source_clean=not bool(git(source,'status','--porcelain')),
-                      source_tests_unchanged=fingerprint(source,['test_acceptance.py'])==frozen['tests'])
+                      source_tests_unchanged=fingerprint(source,['test_acceptance.py'])==frozen['tests'],
+                      access_config_unchanged=fingerprint(state,list(PROFILE_FILES))==frozen['access_config'])
         if task and task.get('workspace'):
             result['candidate_tests_unchanged']=fingerprint(Path(task['workspace']),['test_acceptance.py'])==frozen['tests']
         result['qualified']=bool(args.start and not result.get('error_type') and result.get('status')=='ready_for_merge'
