@@ -273,6 +273,9 @@ class BranchController:
                     if result['decision']=='REQUEST_CHANGES':
                         task['messages'].append({'role':'user','content':json.dumps(result)})
                         self.engine._run_with_wait(runtime)
+                from .branch_worker_recovery import queue as queue_worker_recovery
+                if queue_worker_recovery(self,runtime,item):
+                    continue
                 if task['status']=='approved' and item.get('ready_receipt'):
                     self.commit_item(runtime,item)
                     continue

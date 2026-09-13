@@ -111,6 +111,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
                     and e["title"] in {"write file", "replace text", "replace lines"} and isinstance(e.get("detail"), dict)
                     and e["detail"].get("model"))
     used.update(runtime.failed_models)
+    used.update(task.get('branch_run',{}).get('implementation_recovery',{}).get('failed_models',[]))
     candidates = [m for m in catalog["models"] if m.get("free") and m.get("tool_calling") is True
                   and not m.get("local") and not m["id"].startswith("auto/") and m["id"] not in used
                   and not gateway.pool.observation(route["base_url"], m["id"])["cooling_down"]]
