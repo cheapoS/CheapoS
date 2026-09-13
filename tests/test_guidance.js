@@ -480,3 +480,11 @@ test('permission presentation never labels an exact grant as project-wide',()=>{
   assert.deepEqual(permissionChoice({command:['python','-c','pass']}),{scope:'task_exact',label:'Allow this command for this session'});
   assert.deepEqual(permissionChoice({profile:{runner:'unittest'}}),{scope:'project_tests_session',label:'Allow project tests for this session'});
 });
+
+test('exhausted recovery asks for a correction and describes saved evidence',()=>{
+ const guide=taskGuide(task({status:'paused',recovery_blocked:0,pause_summary:{saved_files:['a.py'],attempted:['small edits from current files'],blocker:'Missing target version.',next_action:'Provide the target version.'}}));
+ assert.equal(guide.primary,'clarify');
+ assert.match(guide.description,/1 saved file/);
+ assert.match(guide.description,/Missing target version/);
+ assert.match(guide.description,/Provide the target version/);
+});

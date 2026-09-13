@@ -415,7 +415,7 @@ function renderChat() {
   else if(task.status==='ready')decision=(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to CheapOS',true)}</div>`);
   else if(CheapOSGuide.canCommit(task))decision=(commitDecisionMarkup(task));
   else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))decision=(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, CheapOS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
-  else if(!activeStatuses.has(task.status)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(task.status==='error'?'start':'resume',task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='budget_paused'?`<button class="primary-button btn-boost-headroom" data-chat-action="boost-headroom">${icon('spark')} Boost Headroom & Resume</button>`:''}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
+  else if(!activeStatuses.has(task.status)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(guide.primary==='clarify'?'clarify':task.status==='error'?'start':'resume',guide.primary==='clarify'?'Add a correction':task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?(task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits'):'Resume',true)}${task.status==='budget_paused'?`<button class="primary-button btn-boost-headroom" data-chat-action="boost-headroom">${icon('spark')} Boost Headroom & Resume</button>`:''}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
   if(task.archived_at||task.trashed_at)decision='';
   const lastReply=conversation.findLast(entry=>entry.kind==='assistant');
   $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('');
@@ -432,6 +432,7 @@ function renderChat() {
   $$('[data-chat-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.chatAction;
     if(action==='changes'||action==='activity'){setView(action);return}
+    if(action==='clarify'){setView('chat');$('#chat-input')?.focus();return}
     if(action==='stop'){await stopTask();return}
     if(action==='connections'){openConnections(undefined,task);return}
     if(action==='request-review'){await requestCommitReview(b);return}
@@ -455,7 +456,7 @@ function renderActivity() {
   bindPermissions(task);
   $$('[data-checkpoint]').forEach(b=>b.onclick=()=>checkpointDialog(Number(b.dataset.checkpoint)));
   $('#activity-review').onclick=()=>a.checkpoint&&checkpointDialog(a.checkpoint.number);
-  if($('#activity-resume'))$('#activity-resume').onclick=e=>resumeTask(e.currentTarget);
+  if($('#activity-resume'))$('#activity-resume').onclick=e=>guide.primary==='clarify'?(setView('chat'),$('#chat-input')?.focus()):resumeTask(e.currentTarget);
   if($('#activity-models'))$('#activity-models').onclick=openConnections;
   updateProgressClock();
 }

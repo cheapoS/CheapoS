@@ -62,7 +62,7 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 | [T12](docs/tasks/T12-fast-tests.md) | Fast/focused/full checks and measured fixture improvements | T11 | M | Done |
 | [T13](docs/tasks/T13-verification-evidence.md) | Suitable check timeouts and reusable verification evidence | T09, T12 | L | Done |
 | [T14](docs/tasks/T14-checkpoint-boundaries.md) | Internal checkpoint boundaries with hard outer limits | T13 | M | Done |
-| [T15](docs/tasks/T15-progress-recovery.md) | Bounded recovery with actionable pause explanations | T14 | M | Todo |
+| [T15](docs/tasks/T15-progress-recovery.md) | Bounded recovery with actionable pause explanations | T14 | M | Done |
 | [T16](docs/tasks/T16-cooldown-retry.md) | Cancelable waiting for a free route | T15 | M | Todo |
 | [T17](docs/tasks/T17-work-presets.md) | Simple Free only / working-time controls | T14, T16 | M | Todo |
 | [T18](docs/tasks/T18-connection-readiness.md) | Structured onboarding readiness and recovery states | — | M | Todo |

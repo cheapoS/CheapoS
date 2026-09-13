@@ -134,17 +134,20 @@ class AnswerRecoveryTests(LocalCase):
         self.assertEqual(result['worker_turns'],105)
         self.assertEqual(result['changes'],[])
 
-    def test_forced_answer_cannot_execute_tools_and_resume_stays_in_answer_step(self):
+    def test_forced_answer_cannot_execute_tools_and_requires_correction_after_failure(self):
         t=self.chat();t.update(status='paused',error_code='progress_limit');self.engine.store.save(t)
         requests=self.provider([call('write_file',{'path':'unwanted.txt','content':'no'}),{'content':'Here is the answer.'}])
         self.engine.start(t['id']);first=self.finish(t)
         self.assertEqual(first['status'],'paused')
         self.assertTrue(first['answer_pending'])
         self.assertFalse((Path(t['workspace'])/'unwanted.txt').exists())
-        self.engine.start(t['id']);last=self.finish(t)
+        with self.assertRaisesRegex(ValueError, 'specific correction'):
+            self.engine.start(t['id'])
+        self.assertEqual(requests[0][1], [])
+        self.engine.start(t['id'], {'message':'Answer from the existing evidence. Do not edit.'});last=self.finish(t)
         self.assertEqual(last['status'],'awaiting_reply')
-        self.assertTrue(all(tools==[] for _,tools in requests))
-        self.assertEqual(last['request_worker_turns'],2)
+        self.assertEqual(last['request_worker_turns'],1)
+        self.assertEqual(last['worker_turns'],2)
 
     def test_answer_recovery_never_bypasses_edits_or_hard_budget(self):
         t=self.chat();self.engine.file_tool(t,'write_file',{'path':'new.txt','content':'unreviewed'})

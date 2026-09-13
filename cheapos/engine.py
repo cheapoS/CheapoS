@@ -18,7 +18,7 @@ from .providers import BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reco
 from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
 from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, Workspace, git
-from . import commits, reconciliation
+from . import commits, reconciliation, progress
 from .verification import evidence_identity, matches as evidence_matches
 from .web import WebReader, allowed_urls
 from .gateways import gateway_for
@@ -258,12 +258,13 @@ class Runtime:
         self.argument_failures = 0
         self.step_turns = 0
         self.interval_patch = task.get("patch", "")
+        self.interval_revision = progress.state(task)["revision"]
         self.observations = {}
         self.file_observations = {}
         self.web = WebReader()
         self.verified_local = set()
         self.failed_models = set()
-        self.handoffs = 0
+        self.handoffs = progress.state(task)["handoffs"]
         self.review_requests = 0
         self.action_context_ready = False
         self.compact_context_ready = False
@@ -400,6 +401,7 @@ class Engine:
         return self.configuration()
 
     def event(self, task, kind, title, detail=None):
+        progress.observe(task)
         task["events"].append({"id": len(task["events"]) + 1, "time": now(), "kind": kind, "title": title, "detail": detail})
         task["updated_at"] = now()
         self.store.save(task)
@@ -517,6 +519,11 @@ class Engine:
                     raise ValueError("Connect OmniRoute in Connections before starting this task")
             if changes and "limits" in changes:
                 task["limits"] = limits_from(changes["limits"])
+            if followup is None and task.get('recovery_blocked') is not None:
+                self.refresh_changes(task)
+                progress.observe(task)
+                if task['recovery_blocked'] == progress.state(task)['revision']:
+                    raise ValueError("This recovery attempt is exhausted. Send a specific correction or missing information; Resume alone cannot retry the same stalled step.")
             if task["status"] == "takeover_requested" and followup is None:
                 if not changes or changes.get("approve_takeover") is not True:
                     raise ValueError("Approve the reviewer takeover explicitly before resuming")
@@ -540,6 +547,9 @@ class Engine:
                 task["action_pending"] = False
                 task["loop_guidance"] = None
                 task.pop("output_recovery", None)
+                task.pop("progress_state", None)
+                task.pop("pause_summary", None)
+                task.pop("recovery_blocked", None)
                 task.pop("compact_edits", None)
                 task.pop("pending_checkpoint", None)
                 task.pop("pending_review", None)
@@ -564,6 +574,7 @@ class Engine:
                        and e["detail"].get("tool") in {"write_file", "replace_text", "replace_lines"}
                        for e in task["events"][boundary + 1:]):
                     self.prepare_compact_edits(task)
+            task.pop("pause_summary", None)
             task["status"] = "running"
             task["error"] = None
             task["error_code"] = None
@@ -1092,6 +1103,10 @@ class Engine:
             return
         if request_worker_turns(task) >= task["limits"]["worker_turns"]:
             raise WorkerTurnLimit("The worker-turn allowance is exhausted. The gathered evidence is saved; an answer needs one remaining worker turn.")
+        recovery = progress.state(task)
+        if recovery['answer_attempts'] >= 2:
+            raise ProgressPause("The answer step has already been tried twice for this request. Provide the missing information or a specific correction.")
+        recovery['answer_attempts'] += 1
         task["answer_pending"] = True
         self.event(task, "guard", "Preparing an answer from gathered evidence", "Research has stopped for this request. The worker will answer from the sources it already read, or explain what remains unknown.")
         messages = self.initial_messages(task)
@@ -1103,7 +1118,7 @@ class Engine:
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
         if message.get("tool_calls") or not isinstance(message.get("content"), str) or not message["content"].strip():
-            raise ProgressPause("The worker did not return an answer after research stopped. No additional tools were executed. Resume will retry only the answer step.")
+            raise ProgressPause("The worker did not return an answer after research stopped. No additional tools were executed.")
         task["answer_pending"] = False
         task["loop_guidance"] = None
         task["status"] = "awaiting_reply"
@@ -1136,9 +1151,11 @@ class Engine:
         if task.get('checkpoint_policy') != 'soft':
             raise CheckpointTurnLimit(task)
         self.refresh_changes(task)
-        if task['patch'] == runtime.interval_patch:
+        progress.observe(task)
+        if progress.state(task)['revision'] <= runtime.interval_revision:
             raise ProgressPause("No meaningful patch progress was saved during the checkpoint interval. Inspect the existing evidence or clarify the remaining step before resuming.")
         runtime.interval_patch = task['patch']
+        runtime.interval_revision = progress.state(task)['revision']
         runtime.step_turns = 0
         if compact:
             task['messages'] = self.compact_context(runtime) if task.get('compact_edits') else self.initial_messages(task)
@@ -1168,7 +1185,7 @@ class Engine:
                 raise InterruptedError("Task stopped")
             recovery = task["route"].get("recovery", {}).get(role)
             if recovery and runtime.handoffs >= MAX_HANDOFFS:
-                raise RoutingPause("Two automatic model handoffs were tried in this run. Saved work and usage are kept. Resume to check free availability again, or inspect Models.")
+                raise RoutingPause("Two automatic model handoffs were tried for this request. Saved work and usage are kept. Inspect Models and send a specific next instruction; Resume does not replenish handoffs.")
             if attempted:
                 self.count_recovery_turn(runtime)
                 attempted = False
@@ -1177,6 +1194,7 @@ class Engine:
                 self.event(task, "routing", "Finding another free " + role, {"model": recovery["from"], "error": recovery["reason"], "role": role})
                 select_remote(self, runtime, role, replace=True)
                 runtime.handoffs += 1
+                progress.state(task)["handoffs"] = runtime.handoffs
                 task["route"]["recovery"].pop(role, None)
                 self.event(task, "handoff", "Switching to another free " + role, {
                     "from": recovery["from"], "to": task["providers"][role]["model"], "role": role,
@@ -1200,10 +1218,6 @@ class Engine:
                 task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": "This model is cooling down after a recent failure."}
                 continue
             started = time.monotonic()
-            if task["status"] == "reviewing":
-                if runtime.review_requests >= 8:
-                    raise BudgetError("Reviewer reached the eight-turn checkpoint limit, including failed requests. Saved review work is kept.")
-                runtime.review_requests += 1
             try:
                 if role == "worker" and (task.get("output_recovery") or task.get("compact_edits")):
                     config = {**cfg, "_recovery_reasoning": model.get("recovery_reasoning")}
@@ -1266,6 +1280,12 @@ class Engine:
                 verify_local(config)
                 runtime.verified_local.add(identity)
         account = {**task, "limits": {**task["limits"], "output_tokens": min(task["limits"]["output_tokens"], 1024 if purpose == "probe" else 512)}} if purpose or role == "coordinator" else task
+        if role == 'reviewer' and task['status'] == 'reviewing' and not purpose:
+            checkpoint = task.get('pending_review') or (task.get('checkpoints') or [{}])[-1]
+            if checkpoint.get('review_requests', 0) >= 8:
+                raise BudgetError("Reviewer reached the eight-turn checkpoint limit, including failed requests and resumed attempts. Saved review work is kept.")
+            checkpoint['review_requests'] = checkpoint.get('review_requests', 0) + 1
+            runtime.review_requests = checkpoint['review_requests']
         reservation = reserve(account, config, messages, tools, role)
         task["in_flight"] = reservation
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
@@ -1499,6 +1519,7 @@ class Engine:
             if result["outcome"] == "passed":
                 result["outcome"] = "inputs_changed"
                 result["next_action"] = "Inspect the workspace and environment before requesting fresh verification."
+        result["input_identity"] = before_identity
         result["verification_identity"] = after_identity if result["passed"] else None
         result["digest"] = hashlib.sha256(task["patch"].encode()).hexdigest()
         result["generation"] = task.get("workspace_generation", 0)
@@ -1550,6 +1571,7 @@ class Engine:
             checks = self.checks(runtime)
         runtime.step_turns = 0
         runtime.interval_patch = task["patch"]
+        runtime.interval_revision = progress.state(task)["revision"]
         runtime.observations.clear()
         task["loop_guidance"] = None
         if not checks["passed"]:
@@ -1565,14 +1587,13 @@ class Engine:
         checkpoint["verification_identity"] = checks.get("verification_identity")
         if not saved_review:
             task["checkpoints"].append(checkpoint)
-        if automatic(task, "reviewer"):
-            task["pending_review"] = checkpoint
-            task["pending_checkpoint"] = {"summary": checkpoint["worker_summary"], "uncertainties": checkpoint["uncertainties"]}
+        task["pending_review"] = checkpoint
+        task["pending_checkpoint"] = {"summary": checkpoint["worker_summary"], "uncertainties": checkpoint["uncertainties"]}
         task["status"] = "reviewing"
         self.event(task, "handoff", "Sending changes for review", {"from": task["providers"].get("worker", {}).get("model", "Scripted worker"), "to": task["providers"].get("reviewer", {}).get("model", "Scripted reviewer"), "role": "reviewer", "summary": "The controller collected verification output. The reviewer will inspect the patch and evidence."})
         self.event(task, "checkpoint", f"Checkpoint #{checkpoint['number']} ready for review", checkpoint)
         messages = [{"role": "system", "content": REVIEW_SYSTEM}, {"role": "user", "content": json.dumps(checkpoint)}]
-        runtime.review_requests = 0
+        runtime.review_requests = checkpoint.get("review_requests", 0)
         for _ in range(8):
             message = self.request(runtime, messages, REVIEW_TOOLS, "reviewer")
             task["review_count"] += 1
@@ -1640,14 +1661,16 @@ class Engine:
 
     def tool_argument_feedback(self, runtime, error):
         runtime.argument_failures += 1
+        recovery = progress.state(runtime.task)
+        recovery["malformed_attempts"] += 1
         result = {"error": str(error), "code": error.code, "tool": error.name}
         self.event(runtime.task, "tool_error", "Model needs to correct tool arguments", result)
         if (automatic(runtime.task, runtime.task["active_role"]) and runtime.task["active_role"] == "worker"
                 and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines"}):
             self.prepare_compact_edits(runtime.task)
             runtime.compact_context_ready = False
-        if runtime.argument_failures >= 3:
-            raise ProgressPause("The model returned malformed tool arguments three times in a row. These calls were not executed. Saved work is intact; check the model before retrying.")
+        if recovery["malformed_attempts"] >= 3:
+            raise ProgressPause("The model returned malformed tool arguments three times for this request. These calls were not executed. Saved work is intact; send a specific correction or check the model before starting a new request.")
         return result
 
     def _run(self, runtime):
@@ -1824,6 +1847,11 @@ class Engine:
                                   "checkpoint_turn_limit" if isinstance(error, CheckpointTurnLimit) else "progress_limit")
             task["error"] = str(error)
             self.refresh_changes(task)
+            progress.observe(task)
+            task['pause_summary'] = progress.pause_summary(task, error)
+            infrastructure = (task.get('checks') or [{}])[-1].get('next_action') == str(error) or 'time limit' in str(error)
+            if isinstance(error, ProgressPause) and not isinstance(error, CheckpointTurnLimit) and not infrastructure:
+                task['recovery_blocked'] = progress.state(task)['revision']
             self.event(task, "guard", "Paused to avoid repeated work" if isinstance(error, ProgressPause) else "Waiting for a usable route", task["error"])
         except InterruptedError as error:
             task["status"] = "paused"

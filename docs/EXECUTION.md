@@ -145,3 +145,22 @@ Old tasks without the policy keep their saved pause-at-interval semantics. Their
 limits are not silently enlarged. No-progress intervals still pause; changing a
 counter alone is not progress. This initial policy deliberately requires a
 changed patch for an implementation continuation, not an assistant's claim.
+
+### Recovery across Resume
+
+Progress is recorded once per distinct patch, check result, review step or answered
+request. Timestamps, repeated reads, model claims and previously seen patch states
+do not earn progress; flipping a file back and forth cannot renew an interval.
+Recovery state belongs to the user request and is saved with it. Automatic free
+handoffs remain capped at two across Resume/restart; malformed-call corrections
+are capped at three. Existing smaller-output and small-edit recovery stay in use.
+Manual/local tasks retain their selected model. Auth, refusal, missing usage,
+monetary limits and user Pause keep their existing behavior.
+
+An exhausted unchanged progress recovery asks for a specific correction instead
+of offering another identical retry. The pause retains saved filenames, last
+check and attempted corrections. A new user instruction starts a new recovery
+segment without clearing cumulative usage or worker history. Pending reviewer
+work, including its eight-request bound and passing checks, survives Resume for
+manual as well as automatic tasks. Explicit test reruns still execute; checks
+and independent review are never replaced by a progress claim.

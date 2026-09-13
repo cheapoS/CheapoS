@@ -14,6 +14,10 @@ const CheapOSGuide = (() => {
       you:['approved','completed'].includes(task.status)?'Review and apply':'Review comes last'
     };
     const result={facts,tone:'neutral',eyebrow:'NEXT STEP',title:'Your task is saved.',description:'Open the activity log to see the saved work.',primary:'activity',primaryLabel:'View activity',secondary:hasPatch?'changes':null,secondaryLabel:'Inspect saved changes',retry:false};
+    if(task.status==='paused'&&task.recovery_blocked!=null&&task.pause_summary){
+      const p=task.pause_summary,attempts=(p.attempted||[]).join(', ');
+      return {...result,tone:'attention',title:'A specific correction is needed.',description:`${p.saved_files.length} saved file${p.saved_files.length===1?'':'s'}. ${attempts?`Tried ${attempts}. `:''}${p.blocker} ${p.next_action}`,primary:'clarify',primaryLabel:'Add a correction'};
+    }
     switch(task.status) {
       case 'awaiting_reply': return {...result,title:'Ready for your next message.',description:hasPatch?'Edits are saved in this chat. A chat answer does not mean the patch was reviewed.':'Continue the conversation whenever you’re ready.',primary:'chat',primaryLabel:'Back to chat'};
       case 'ready': return {...result,title:'Your task is ready to start.',description:'CheapOS has created a separate task copy. Start the worker to make changes, run your checks, and request a review.',primary:'start',primaryLabel:task.demo?'Start the local demo':'Start this task',secondary:null};
@@ -110,7 +114,7 @@ const CheapOSGuide = (() => {
     else if(event.kind==='handoff'){icon='branch';note=`${d.from} → ${d.to}`}
     else if(event.kind==='checkpoint'){icon='shield';note=d.worker_summary||''}
     else if(event.kind==='tool_error'){icon='x';title=d.code==='invalid_tool_arguments'?'Asking the model to correct its tool call':'Action could not finish';note=d.error||''}
-    else if(event.kind==='guard'){icon='clock';note=typeof d==='string'?d:''}
+    else if(event.kind==='guard'){icon='clock';note=typeof d==='string'?d:d.summary||''}
     else if(event.kind==='routing'){icon='branch';note=[d.model,d.error].filter(Boolean).join(' · ')||d.summary||''}
     else if(event.kind==='permission'){icon='shield';note=(d.command||[]).join(' ')}
     else if(event.kind==='web'){icon='search';title='Requested web page';note=d.url||''}

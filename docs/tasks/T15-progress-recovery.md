@@ -25,12 +25,12 @@ Extend the existing answer/output/compact/model-pool recovery modules rather tha
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: One durable progress helper recognizes distinct patch/check/review/answer evidence, ignores repeat reads/messages/timestamps and past patch states. Existing bounded answer/small-edit/output recovery retained. Per-request handoff and malformed-call allowances survive Resume/restart. Exhausted unchanged progress requires a specific correction. Pending manual and automatic reviews retain evidence and their eight-request bound.
+- Acceptance evidence: Existing fixtures cover repeated reads, malformed and truncated output, check repair, reviewer revisions, route failure, missing usage/auth/refusals and incomplete answers. New tests verify patch cycles cannot renew progress, identical Resume makes no calls after restart, clarified input preserves cumulative usage, and an exhausted manual reviewer cannot get eight more requests or rerun checks by resuming.
+- Commands and results: Final recovery regression run: 71 passed in 98.136s. New manual-review bound included in 4 progress tests (5.518s). After conservative legacy-progress initialization, 20 progress/boundary/answer tests passed in 35.513s. JavaScript syntax, 63 presentation tests and git diff --check passed. Logs /tmp/cheapos-t15-*.log.
+- Browser scenarios and results: Scripted successful recovery showed Moving from repeated reads to the next action, two saved files, actual tests and independent review passed. Exhausted read-only recovery showed saved-file count, attempted answer, precise blocker and Add a correction; clicking focused the composer. No source commit approved.
+- Remaining limitations: Retry allowances are intentionally request-scoped; an exhausted same-request handoff no longer gets a new allowance merely from Resume. New instructions may start a new work segment while preserving cumulative accounting. Known cooldown waiting is T16. Progress evidence is deterministic and conservative, not a semantic judgment that the whole request is finished.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

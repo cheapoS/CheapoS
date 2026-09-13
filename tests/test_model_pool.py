@@ -154,7 +154,7 @@ class FailoverTests(LocalCase):
         self.assertEqual(actual[3]['messages'],actual[4]['messages'])
         self.assertIn('return min(value, upper)',(Path(task['source'])/'math_utils.py').read_text())
 
-    def test_two_handoffs_then_pause_and_resume_skips_cooling_models(self):
+    def test_two_handoffs_remain_exhausted_on_unchanged_resume(self):
         task=self.chat('remote')
         requests=self.responding([ProviderError('Broken',code='stream_error') for _ in range(3)])
         self.engine.start(task['id']);paused=self.finish(task)
@@ -163,8 +163,10 @@ class FailoverTests(LocalCase):
         self.assertEqual(paused['usage']['uncertain_requests'],3)
         requests=self.responding([{'content':'Recovered.'}])
         self.engine.start(task['id']);result=self.finish(task)
-        self.assertEqual(result['status'],'awaiting_reply',result['error'])
-        self.assertEqual({r['model'] for r in requests},{'d'})
+        self.assertEqual(result['status'],'paused',result['error'])
+        self.assertEqual(requests, [])
+        self.assertIn('does not replenish', result['error'])
+        self.assertEqual(result['progress_state']['handoffs'], 2)
         self.assertEqual(result['usage']['uncertain_requests'],3)
 
     def test_worker_turn_cap_stops_before_replacement_probe(self):
