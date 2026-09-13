@@ -463,3 +463,13 @@ test('turns builds chronological chatItems with prior assistant and steer messag
 });
 
 
+
+
+test('sidebar ordering is pinned first then creation time and stable ID, never live usage',()=>{
+  const {sidebarOrder}=require('../dist/guidance.js');
+  const tasks=[{id:'b',created_at:'2026-01-02'},{id:'a',created_at:'2026-01-02'},{id:'old',created_at:'2025-01-01',pinned:true}];
+  assert.deepEqual(sidebarOrder(tasks).map(t=>t.id),['old','a','b']);
+  tasks[0].updated_at='2027';tasks[0].usage={tokens:9999};
+  assert.deepEqual(sidebarOrder(tasks).map(t=>t.id),['old','a','b']);
+  assert.equal(tasks[0].id,'b');
+});

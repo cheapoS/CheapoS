@@ -50,7 +50,7 @@ async function api(path, body) {
 }
 function dialog(html, cls='') {
   const previous=document.activeElement, d=document.createElement('dialog'); d.className='modal '+cls; d.innerHTML=html; $('#overlay-root').append(d);
-  d.addEventListener('close',()=>{d.remove();previous?.focus()});
+  d.addEventListener('close',()=>{d.remove();if(previous?.isConnected)previous.focus();else if(previous?.dataset.taskMenu)$$('[data-task-menu]').find(b=>b.dataset.taskMenu===previous.dataset.taskMenu)?.focus();else $('#rename-task')?.focus()});
   d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close()}});
   $$('[data-close]',d).forEach(b=>b.onclick=()=>d.close()); d.showModal(); return d;
 }
@@ -61,14 +61,52 @@ async function formAction(form, operation) {
   try { await operation(); } catch(e) { if(error)error.textContent=e.message;else toast(e.message); }
   finally {buttons.forEach(b=>b.disabled=false)}
 }
+const sidebarPrefs=(()=>{try{return JSON.parse(localStorage.getItem('cheapos-sidebar-groups'))||{}}catch{return {}}})();
+function saveSidebarPrefs(){try{localStorage.setItem('cheapos-sidebar-groups',JSON.stringify(sidebarPrefs))}catch{}}
 function renderSidebar() {
   $('#task-total').textContent=state.projects.length;
   $('#connection-indicator').textContent=state.startup.busy?'Connecting…':state.startup.status==='ready'?'Ready':state.config.worker&&state.config.reviewer?'Configured':'Set up';
   const groups=state.projects.map(project=>({project,tasks:state.tasks.filter(t=>!t.demo&&t.source===project.path)}));
   const demos=state.tasks.filter(t=>t.demo);if(demos.length)groups.push({project:{path:'demo',name:'Local demo'},tasks:demos});
-  $('#task-list').innerHTML=groups.map(({project,tasks})=>`<div class="project-group"><button class="project-label ${state.project?.path===project.path?'selected':''}" data-project="${esc(project.path)}" title="${esc(project.path)}">${icon('folder')}<span>${esc(CheapOSGuide.projectName({source:project.path,demo:project.path==='demo'}))}</span></button>${tasks.slice(0,12).map(t=>`<button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${['approved','awaiting_reply'].includes(t.status)?'done':''} ${activeStatuses.has(t.status)?'pulsing':''}"></span><span class="task-list-title">${esc(t.title)}</span>${['error','budget_paused','waiting_approval'].includes(t.status)?'<span class="task-attention" aria-label="Needs attention">•</span>':''}</button>`).join('')}</div>`).join('')||'<p class="sidebar-empty">Open a project to start.<br>Your chats will appear here.</p>';
+  const html=`<label class="history-filter">History<select id="history-filter"><option value="active" ${state.historyView!=='archived'?'selected':''}>Active</option><option value="archived" ${state.historyView==='archived'?'selected':''}>Archived</option></select></label>`+groups.map(({project,tasks})=>{
+    const pref=sidebarPrefs[project.path]||{}, sorted=CheapOSGuide.sidebarOrder(tasks), shown=pref.more?sorted:sorted.slice(0,12);
+    return `<div class="project-group"><div class="project-group-heading"><button class="icon-btn" data-collapse="${esc(project.path)}" aria-label="${pref.collapsed?'Expand':'Collapse'} ${esc(project.name||project.path)}" aria-expanded="${!pref.collapsed}">${icon('chevron')}</button><button class="project-label ${state.project?.path===project.path?'selected':''}" data-project="${esc(project.path)}" title="${esc(project.path)}">${icon('folder')}<span>${esc(CheapOSGuide.projectName({source:project.path,demo:project.path==='demo'}))}</span></button></div>${pref.collapsed?'':shown.map(t=>`<div class="task-row"><button class="task ${state.task?.id===t.id?'active':''}" data-task="${t.id}" title="${esc(t.title)}"><span class="task-dot ${['approved','awaiting_reply'].includes(t.status)?'done':''} ${activeStatuses.has(t.status)?'pulsing':''}"></span><span class="task-list-title">${t.pinned?'★ ':''}${esc(t.title)}</span>${['error','budget_paused','waiting_approval'].includes(t.status)?'<span class="task-attention" aria-label="Needs attention">•</span>':''}</button><button class="task-menu-button" data-task-menu="${t.id}" aria-label="Options for ${esc(t.title)}" aria-haspopup="dialog">⋯</button></div>`).join('')+(sorted.length>12?`<button class="text-link show-more" data-more="${esc(project.path)}">${pref.more?'Show fewer':`Show more (${sorted.length-12})`}</button>`:'')}</div>`;
+  }).join('');
+  const list=$('#task-list');
+  // Keep the existing DOM (and keyboard focus) when only live usage changed.
+  if(list.dataset.rendered===html)return;
+  const focused=document.activeElement, focusKey=focused?.getAttribute('data-task-menu')||focused?.getAttribute('data-task');
+  const wasMenu=focused?.hasAttribute('data-task-menu');
+  list.innerHTML=html;list.dataset.rendered=html;
+  $('#history-filter').onchange=async e=>{const previous=state.historyView;state.historyView=e.target.value;try{await loadTasks()}catch(error){state.historyView=previous;renderSidebar();toast(error.message)}};
   $$('[data-task]').forEach(b=>b.onclick=()=>selectTask(b.dataset.task));
+  $$('[data-task-menu]').forEach(b=>b.onclick=()=>taskMenu(state.tasks.find(t=>t.id===b.dataset.taskMenu)));
   $$('[data-project]').forEach(b=>b.onclick=()=>b.dataset.project==='demo'?selectTask(demos[0].id):chooseProject(state.projects.find(p=>p.path===b.dataset.project)));
+  for(const [attr,key] of [['collapse','collapsed'],['more','more']])$$('[data-'+attr+']').forEach(b=>b.onclick=()=>{const path=b.dataset[attr];sidebarPrefs[path]||={};sidebarPrefs[path][key]=!sidebarPrefs[path][key];saveSidebarPrefs();renderSidebar();$$("[data-"+attr+"]").find(el=>el.dataset[attr]===path)?.focus()});
+  if(focusKey)$$(wasMenu?'[data-task-menu]':'[data-task]').find(el=>(wasMenu?el.dataset.taskMenu:el.dataset.task)===focusKey)?.focus({preventScroll:true});
+}
+async function archiveTask(task, archived) {
+  if(archived&&activeStatuses.has(task.status)){
+    await api('/tasks/'+task.id+'/stop',{});
+    const deadline=Date.now()+190000;
+    while(Date.now()<deadline){
+      const latest=await api('/tasks/'+task.id);
+      if(!activeStatuses.has(latest.status))break;
+      await new Promise(resolve=>setTimeout(resolve,300));
+    }
+  }
+  await api('/tasks/'+task.id+'/metadata',{archived});
+  if(!archived)state.historyView='active';
+  if(archived&&state.task?.id===task.id)home();
+  await loadTasks();await refresh();
+}
+function taskMenu(task) {
+  if(!task)return;
+  const d=dialog(`${modalHeader('CHAT OPTIONS',esc(task.title))}<div class="task-menu-actions"><button data-rename>Rename</button><button data-pin>${task.pinned?'Unpin':'Pin'}</button><button data-archive>${task.archived_at?'Restore':activeStatuses.has(task.status)?'Pause & archive':'Archive'}</button></div><p class="form-error" role="alert"></p>`);
+  $('[data-rename]',d).onclick=()=>{d.close();renameTask(task)};
+  const act=operation=>async()=>{const buttons=$$('button',d);buttons.forEach(b=>b.disabled=true);try{await operation();d.close()}catch(e){$('.form-error',d).textContent=e.message}finally{buttons.forEach(b=>b.disabled=false)}};
+  $('[data-pin]',d).onclick=act(async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()});
+  $('[data-archive]',d).onclick=act(async()=>{if(activeStatuses.has(task.status))$('.form-error',d).textContent='Waiting for this task to stop…';await archiveTask(task,!task.archived_at)});
 }
 const draftKey=()=>state.task?.id||state.project?.path||'new';
 function saveDraft(){state.drafts.set(draftKey(),$('#chat-input').value)}
@@ -130,7 +168,7 @@ async function loadStartup() {
 function renderComposer() {
   const task=state.task, busy=task&&activeStatuses.has(task.status);
   const pausing=Boolean(task&&(task.status==='stopping'||state.pausingTask===task.id));
-  $('#composer-area').hidden=Boolean(task?.demo)||state.view!=='chat';
+  $('#composer-area').hidden=Boolean(task?.demo||task?.archived_at||task?.trashed_at)||state.view!=='chat';
   $('#composer-project span').textContent=task?CheapOSGuide.projectName(task):state.project?CheapOSGuide.projectName({source:state.project.path}):'Open project';
   $('#composer-project').disabled=Boolean(task);
   $('#chat-input').disabled=state.sending;
@@ -219,6 +257,12 @@ function renderView() {
   $$('.view').forEach(v=>{v.classList.toggle('hidden',v.id!==state.view+'-view');if(v.id!==state.view+'-view')v.innerHTML=''});
   if(!state.task){renderHome();return}
   if(state.view==='chat')renderChat();else if(state.view==='activity')renderActivity();else if(state.view==='changes')renderChanges();else renderTests();
+  if(state.task.archived_at||state.task.trashed_at){
+    const view=$('#'+state.view+'-view');
+    for(const el of $$('button,input,textarea',view))el.disabled=true;
+    const banner=document.createElement('section');banner.className='chat-decision';banner.innerHTML='<p>Archived conversation · restore before continuing.</p><button class="primary-button">Restore</button>';
+    $('button',banner).onclick=async()=>{try{await archiveTask(state.task,false)}catch(e){toast(e.message)}};view.prepend(banner);
+  }
 }
 function eventDetail(event) {
   const detail=event.detail;
@@ -739,11 +783,12 @@ async function loadGateway() {
   if(state.catalogRevision!==g.revision){const catalog=await api('/gateway/models');state.gatewayModels=catalog.models;state.catalogRevision=catalog.revision}
   if(JSON.stringify(previous)!==JSON.stringify(g)){renderSidebar();if(!state.task)renderHome();state.gatewayListener?.()}
 }
-function openSearch() {
+async function openSearch() {
+  let all;try{all=(await Promise.all([api('/tasks'),api('/tasks?view=archived')])).flat()}catch(e){toast(e.message);return}
   const d=dialog(`<div class="search-box">${icon('search')}<input id="task-search" type="search" placeholder="Find a task or project…" aria-label="Search tasks" autofocus><kbd>ESC</kbd></div><div id="search-results"></div><div class="search-footer">Saved on this computer</div>`,'search-modal');
-  const render=(q='')=>{const found=state.tasks.filter(t=>(t.title+' '+t.source).toLowerCase().includes(q.toLowerCase()));$('#search-results',d).innerHTML=found.length?found.map(t=>`<button class="search-result" data-result="${t.id}">${icon('chat')}<span><strong>${esc(t.title)}</strong><small>${esc(t.demo?'Local demo':basename(t.source))} · ${esc(labels[t.status])}</small></span>${icon('chevron')}</button>`).join(''):'<div class="no-results">No matching tasks.</div>';$$('[data-result]',d).forEach(b=>b.onclick=()=>{d.close();selectTask(b.dataset.result)})};$('#task-search',d).oninput=e=>render(e.target.value);render();
+  const render=(q='')=>{const found=all.filter(t=>(t.title+' '+t.source).toLowerCase().includes(q.toLowerCase()));$('#search-results',d).innerHTML=found.length?found.map(t=>`<button class="search-result" data-result="${t.id}">${icon('chat')}<span><strong>${esc(t.title)}</strong><small>${esc(t.demo?'Local demo':basename(t.source))} · ${t.archived_at?'Archived · ':''}${esc(labels[t.status])}</small></span>${icon('chevron')}</button>`).join(''):'<div class="no-results">No matching tasks.</div>';$$('[data-result]',d).forEach(b=>b.onclick=()=>{d.close();selectTask(b.dataset.result)})};$('#task-search',d).oninput=e=>render(e.target.value);render();
 }
-async function loadTasks() {const tasks=await api('/tasks');const changed=JSON.stringify(tasks)!==JSON.stringify(state.tasks);state.tasks=tasks;if(changed){renderSidebar();renderComposer();if(!state.task)renderHome()}}
+async function loadTasks() {const tasks=await api('/tasks?view='+(state.historyView||'active'));const changed=JSON.stringify(tasks)!==JSON.stringify(state.tasks);state.tasks=tasks;if(changed){renderSidebar();renderComposer();if(!state.task)renderHome()}}
 async function refresh() {
   if(state.loading)return;
   await loadStartup();await loadGateway();await loadTasks();const selected=state.task?.id;if(!selected)return;

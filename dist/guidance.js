@@ -442,7 +442,8 @@ const CheapOSGuide = (() => {
       return line;
     }).join('\n');
   }
-  return {modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
+  return {sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 
