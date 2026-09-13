@@ -44,7 +44,7 @@ class CooldownWaitTests(LocalCase):
             with patch('cheapos.engine.time.monotonic',clock.now),patch('cheapos.engine.time.time',clock.now),patch.object(self.engine,'_run_until_pause') as run:
                 self.engine._run(runtime)
             run.assert_not_called()
-            self.assertEqual(task['status'],'paused')
+            self.assertEqual(task['status'],'paused' if stop_at is not None else 'budget_paused')
             self.assertIsNone(task['route_wait'])
             self.assertLessEqual(clock.now(),1001.25)
 

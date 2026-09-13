@@ -113,6 +113,10 @@ class ProgressPause(Exception):
     pass
 
 
+class WorkingTimeLimit(ProgressPause):
+    pass
+
+
 class CheckpointTurnLimit(ProgressPause):
     def __init__(self, task):
         super().__init__(f"The {task['limits'].get('checkpoint_turns', 12)}-turn checkpoint limit was reached before verification and review. "
@@ -273,7 +277,8 @@ class Runtime:
 
     def guard(self):
         if time.monotonic() - self.started >= self.task["limits"].get("run_minutes", 15) * 60:
-            raise ProgressPause("This run reached its time limit. Saved changes are available; review them or increase the run limit before resuming.")
+            self.task['limit_hit'] = {'key':'run_minutes', 'used':round((time.monotonic()-self.started)/60, 2), 'allowed':self.task['limits'].get('run_minutes',15), 'remaining':0}
+            raise WorkingTimeLimit("This run reached its working-time limit. Review saved work or explicitly increase the time allowance before continuing.")
 
 
 class Engine:
@@ -1280,7 +1285,9 @@ class Engine:
             raise InterruptedError("Task stopped")
         runtime.guard()
         if task["usage"]["cost"] > task["limits"]["dollars"] or task["usage"]["reviewer"]["tokens"] > task["limits"]["reviewer_tokens"]:
-            raise BudgetError("The provider's reported usage reached the task limit. No further requests will be made.")
+            key = 'dollars' if task['usage']['cost'] > task['limits']['dollars'] else 'reviewer_tokens'
+            used = task['usage']['cost'] if key == 'dollars' else task['usage']['reviewer']['tokens']
+            raise BudgetError("The provider's reported usage reached the task limit. No further requests will be made.", key, used, task['limits'][key])
         if task["demo"]:
             return self.fixture_response(task, role)
         config = config_override or task["providers"][role]
@@ -1539,7 +1546,10 @@ class Engine:
         self.event(task, "checks", "Verification passed" if result["passed"] else "Verification failed", result)
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
-        if result["outcome"] in {"task_deadline", "process_timeout", "output_limit"}:
+        if result['outcome'] == 'task_deadline':
+            task['limit_hit'] = {'key':'run_minutes','used':round((time.monotonic()-runtime.started)/60,2),'allowed':task['limits'].get('run_minutes',15),'remaining':0}
+            raise WorkingTimeLimit(result['next_action'])
+        if result["outcome"] in {"process_timeout", "output_limit"}:
             raise ProgressPause(result["next_action"])
         return result
 
@@ -1566,7 +1576,7 @@ class Engine:
             saved_review = None
             task.pop("pending_review", None)
         if not saved_review and task["iterations"] >= task["limits"]["iterations"]:
-            raise BudgetError("Worker iteration limit reached")
+            raise BudgetError("Worker iteration limit reached", "iterations", task["iterations"], task["limits"]["iterations"])
         if task.get("route") and not task["providers"].get("reviewer"):
             task["pending_checkpoint"] = {"summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000]}
             self.store.save(task)
@@ -1733,9 +1743,9 @@ class Engine:
                 try:
                     self.wait_for_route(runtime)
                 except (ProgressPause, InterruptedError) as error:
-                    task['status'] = 'paused'
+                    task['status'] = 'budget_paused' if isinstance(error, WorkingTimeLimit) else 'paused'
                     task['error'] = str(error)
-                    task['error_code'] = 'routing_wait_stopped'
+                    task['error_code'] = 'working_time_limit' if isinstance(error, WorkingTimeLimit) else 'routing_wait_stopped'
                     self.event(task, 'guard', 'Route waiting stopped', str(error))
                     return
             self._run_until_pause(runtime)
@@ -1913,8 +1923,8 @@ class Engine:
                         break
                 self.store.save(task)
         except (ProgressPause, RoutingPause) as error:
-            task["status"] = "paused"
-            task["error_code"] = ("routing_unavailable" if isinstance(error, RoutingPause) else
+            task["status"] = "budget_paused" if isinstance(error, WorkingTimeLimit) else "paused"
+            task["error_code"] = ("working_time_limit" if isinstance(error, WorkingTimeLimit) else "routing_unavailable" if isinstance(error, RoutingPause) else
                                   "checkpoint_turn_limit" if isinstance(error, CheckpointTurnLimit) else "progress_limit")
             task["error"] = str(error)
             if isinstance(error, RoutingPause):
@@ -1923,7 +1933,7 @@ class Engine:
             progress.observe(task)
             task['pause_summary'] = progress.pause_summary(task, error)
             infrastructure = (task.get('checks') or [{}])[-1].get('next_action') == str(error) or 'time limit' in str(error)
-            if isinstance(error, ProgressPause) and not isinstance(error, CheckpointTurnLimit) and not infrastructure:
+            if isinstance(error, ProgressPause) and not isinstance(error, (CheckpointTurnLimit, WorkingTimeLimit)) and not infrastructure:
                 task['recovery_blocked'] = progress.state(task)['revision']
             self.event(task, "guard", "Paused to avoid repeated work" if isinstance(error, ProgressPause) else "Waiting for a usable route", task["error"])
         except InterruptedError as error:
@@ -1931,6 +1941,10 @@ class Engine:
             task["error"] = str(error)
             self.event(task, "state", "Task paused", task["error"])
         except BudgetError as error:
+            task['limit_hit'] = error.limit_hit
+            if isinstance(error, WorkerTurnLimit):
+                used = request_worker_turns(task)
+                task['limit_hit'] = {'key':'worker_turns','used':used,'allowed':task['limits']['worker_turns'],'remaining':max(0,task['limits']['worker_turns']-used)}
             task["status"] = "budget_paused"
             task["error_code"] = "worker_turn_limit" if isinstance(error, WorkerTurnLimit) else None
             task["error"] = str(error)

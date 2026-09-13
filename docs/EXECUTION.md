@@ -180,3 +180,23 @@ pending reviewer/check evidence. Unknown retry times offer manual recovery
 instead of an invented countdown. Exhausted attempts explain the relevant cap.
 A server restart marks a waiting task interrupted, retains its consumed wait
 allowance, and requires explicit continuation; it never launches background work.
+
+### Work presets and explicit limits
+
+The primary work settings are Free only (zero dollars), or an explicit dollar cap,
+and a time preset. Interactive is 15 working minutes, 40 worker turns and five
+worker iterations. Extended is 45 minutes, 120 turns and ten iterations. Both
+remain bounded and support Pause; neither promises unattended completion.
+Presets change those three work values only. They never change spending, model
+placement, provider choices, or cumulative usage. Other custom counters are kept;
+any nonstandard work/check/token counters display Custom with the actual duration.
+Technical counters and the per-command verification timeout remain under Advanced.
+
+The new-chat defaults editor is separate from current-chat limits. Saving either
+does not dispatch work; current running tasks must be paused before their limits
+change. Ordinary Pause/Resume uses the current values. A spending, reviewer-token,
+worker-turn, iteration or working-time stop exposes the specific allowance with
+used/allowed/remaining values and requires an explicit adjustment before the UI
+resumes. Nonadjustable blockers point to saved changes or model settings rather
+than increasing unrelated counters. Free-only uses configured prices, not a
+provider billing guarantee.

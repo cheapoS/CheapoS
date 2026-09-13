@@ -59,7 +59,9 @@ def http_failure(error, config):
 
 
 class BudgetError(Exception):
-    pass
+    def __init__(self, message, limit=None, used=None, allowed=None):
+        super().__init__(message)
+        self.limit_hit = {'key': limit, 'used': used, 'allowed': allowed, 'remaining': max(0, allowed-used)} if limit and used is not None and allowed is not None else None
 
 
 class NoRedirects(HTTPRedirectHandler):
@@ -186,13 +188,16 @@ def reserve(task, config, messages, tools, role):
     if role == "reviewer":
         remaining = task["limits"]["reviewer_tokens"] - task["usage"]["reviewer"]["tokens"]
         output = min(output, remaining - prompt_bound)
+    token_blocked = output < 128
     remaining_cost = task["limits"]["dollars"] - task["usage"]["cost"]
     input_cost = prompt_bound * config["input_rate"] / 1_000_000
     if config["output_rate"]:
         output = min(output, math.floor((remaining_cost - input_cost) * 1_000_000 / config["output_rate"]))
     projected = input_cost + max(0, output) * config["output_rate"] / 1_000_000
     if output < 128 or projected > remaining_cost + 1e-10:
-        raise BudgetError("The next model request does not fit the remaining budget. Increase the task limit or use a smaller checkpoint/model.")
+        key = 'reviewer_tokens' if role == 'reviewer' and token_blocked else 'dollars'
+        used = task['usage']['reviewer']['tokens'] if key == 'reviewer_tokens' else task['usage']['cost']
+        raise BudgetError("The next model request does not fit the remaining budget. Increase the task limit or use a smaller checkpoint/model.", key, used, task['limits'][key])
     reservation = {"role": role, "prompt_tokens": prompt_bound, "completion_tokens": output, "tokens": prompt_bound + output, "cost": projected}
     bucket = task["usage"][role]
     bucket["tokens"] += reservation["tokens"]

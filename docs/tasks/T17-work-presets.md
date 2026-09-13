@@ -25,12 +25,12 @@ Add limits/preferences serialization and UI-state tests. Browser-test preset/cus
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Free only or explicit cap plus Interactive (15 minutes/40 turns/5 iterations) and Extended (45 minutes/120 turns/10 iterations). Nonstandard work/check/token settings display Custom. Presets preserve spending and placement. Advanced holds technical counters. Separate new-chat defaults and current-chat limits. Specific structured hard-limit usage opens only the relevant adjustment; ordinary Pause/Resume uses current settings.
+- Acceptance evidence: Defaults/current-task serialization and restart isolation tests, specific spending/reviewer-token preflight information, working-time stop classification, and pure preset tests preserving zero/positive spending and custom advanced values. Free-only accounting and existing recovery remain bounded.
+- Commands and results: Engine/boundary/cooldown/verification: 38 passed (40.505s). New work-limits tests: 3 passed (1.198s). HTTP and output recovery: 36 passed (39.362s). JavaScript syntax, 66 presentation tests and diff checks passed. Logs /tmp/cheapos-t17-*.log.
+- Browser scenarios and results: Changed defaults to Extended while an existing task stayed Interactive. Customized it to 22 minutes; ordinary Pause/Resume used Custom 22 without a modal. Hard worker stop showed Used 1 of 1; adjusted only turns to 2 and continued. A newly created task inherited Extended 45/120/10 and zero dollars. Verified stored fixture limits. Narrow dialog remained scrollable and Save was keyboard-reachable; viewport reset afterward.
+- Remaining limitations: Presets are bounded work envelopes, not a reliability promise. Advanced overrides intentionally keep Custom even when the duration matches a preset. Nonadjustable accounting/model/patch blockers direct the user to the specific evidence instead of increasing unrelated limits. Free-only depends on configured prices; provider billing remains separate.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

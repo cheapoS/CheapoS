@@ -1,6 +1,9 @@
 /* Translate saved execution evidence into a clear next step. No model calls. */
 const CheapOSGuide = (() => {
   const active = new Set(['running', 'reviewing', 'waiting_approval', 'waiting_retry', 'stopping']);
+  const workPresets={interactive:{run_minutes:15,worker_turns:40,iterations:5},extended:{run_minutes:45,worker_turns:120,iterations:10}};
+  function workPreset(limits){const standard={reviewer_tokens:200000,output_tokens:2048,checkpoint_turns:12,check_seconds:360};return Object.keys(workPresets).find(name=>Object.entries({...standard,...workPresets[name]}).every(([key,value])=>limits[key]===value))||'custom'}
+  function presetLimits(limits,name){return {...limits,...(workPresets[name]||{})}}
   function taskGuide(task) {
     const checkpoints=task.checkpoints||[], checks=task.checks||[], events=task.events||[];
     const latestReview=checkpoints.at(-1), latestCheck=checks.at(-1);
@@ -19,6 +22,7 @@ const CheapOSGuide = (() => {
       return {...result,tone:'attention',title:'A specific correction is needed.',description:`${p.saved_files.length} saved file${p.saved_files.length===1?'':'s'}. ${attempts?`Tried ${attempts}. `:''}${p.blocker} ${p.next_action}`,primary:'clarify',primaryLabel:'Add a correction'};
     }
     if(['paused','interrupted'].includes(task.status)&&task.route_unavailable?.can_wait)return {...result,title:'A free route is cooling down.',description:task.route_unavailable.message,primary:'retry-wait',primaryLabel:'Retry when available'};
+    if(task.status==='budget_paused'&&task.limit_hit){const hit=task.limit_hit;return {...result,tone:'attention',title:'This task reached its '+({run_minutes:'working-time',worker_turns:'worker-turn',reviewer_tokens:'reviewer-token',iterations:'iteration',dollars:'spending'}[hit.key]||'work')+' limit.',description:`Used ${hit.used} of ${hit.allowed}; ${hit.remaining} remaining. ${task.error||'Review the saved work before explicitly adjusting this allowance.'}`,primary:'resume',primaryLabel:'Review this limit'};}
     switch(task.status) {
       case 'awaiting_reply': return {...result,title:'Ready for your next message.',description:hasPatch?'Edits are saved in this chat. A chat answer does not mean the patch was reviewed.':'Continue the conversation whenever you’re ready.',primary:'chat',primaryLabel:'Back to chat'};
       case 'ready': return {...result,title:'Your task is ready to start.',description:'CheapOS has created a separate task copy. Start the worker to make changes, run your checks, and request a review.',primary:'start',primaryLabel:task.demo?'Start the local demo':'Start this task',secondary:null};
@@ -451,7 +455,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 

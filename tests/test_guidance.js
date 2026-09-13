@@ -497,3 +497,23 @@ test('known cooldown waits are explicit and expose the retry action',()=>{
  assert.equal(CheapOSGuide.taskGuide(task({status:'paused',route_unavailable:{can_wait:true,message:'Provider cooling',retry_at:1010}})).primary,'retry-wait');
  assert.notEqual(CheapOSGuide.taskGuide(task({status:'paused',route_unavailable:{can_wait:false}})).primary,'retry-wait');
 });
+
+test('work presets keep spending and other custom settings explicit',()=>{
+ const {workPreset,presetLimits}=require('../dist/guidance.js');
+ const limits={dollars:0,run_minutes:15,worker_turns:40,iterations:5,check_seconds:111,reviewer_tokens:12345};
+ assert.equal(workPreset(limits),'custom');
+ assert.equal(workPreset({...limits,reviewer_tokens:200000,check_seconds:360,output_tokens:2048,checkpoint_turns:12}),'interactive');
+ const extended=presetLimits(limits,'extended');
+ assert.equal(extended.run_minutes,45);assert.equal(extended.worker_turns,120);
+ assert.equal(extended.dollars,0);assert.equal(extended.check_seconds,111);assert.equal(extended.reviewer_tokens,12345);
+ assert.equal(workPreset({...extended,run_minutes:22}),'custom');
+ assert.equal(presetLimits({...limits,dollars:2},'extended').dollars,2);
+ assert.equal(limits.run_minutes,15);
+});
+
+test('hard limit guidance identifies used and remaining allowance',()=>{
+ const guide=taskGuide(task({status:'budget_paused',error:'Next request does not fit.',limit_hit:{key:'reviewer_tokens',used:1900,allowed:2000,remaining:100}}));
+ assert.match(guide.title,/reviewer-token/);assert.match(guide.description,/1900 of 2000; 100 remaining/);
+ assert.equal(guide.primaryLabel,'Review this limit');
+ assert.equal(taskGuide(task({status:'paused'})).primary,'resume');
+});
