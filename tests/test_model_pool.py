@@ -86,7 +86,7 @@ class FailoverTests(LocalCase):
             with self.assertRaisesRegex(RoutingPause,'daily free-model quota'):select_remote(self.engine,runtime)
             self.assertEqual(request.call_count,1)
         self.assertEqual(runtime.failed_models,set())
-        self.assertFalse(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/b')['retry_known'])
+        self.assertFalse(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/b',task['route']['access_policy']['connection_revision'])['retry_known'])
 
     def test_probe_provider_cooldown_skips_siblings_but_can_use_other_provider(self):
         from cheapos.routing import select_remote
@@ -122,8 +122,8 @@ class FailoverTests(LocalCase):
         task=self.chat('remote');url=task['route']['base_url'];pool=self.engine.gateway.pool
         self.engine.gateway.catalog.return_value['models']=[model('a',free=False),model('b'),model('c')]
         for name in ('a','b','c','retired'):
-            pool.record(url,name,'worker',probe=True)
-            for i in range(3):pool.record_outcome(url,name,'worker',str(i),'fixture',{'checkpoints':1})
+            pool.record(url,name,'worker',probe=True,connection_revision=task['route']['access_policy']['connection_revision'])
+            for i in range(3):pool.record_outcome(url,name,'worker',str(i),'fixture',{'checkpoints':1},task['route']['access_policy']['connection_revision'])
         with patch.object(self.engine,'request') as request:
             select_remote(self.engine,Runtime(task),'worker')
             select_remote(self.engine,Runtime(task),'reviewer')

@@ -1093,7 +1093,7 @@ class Engine:
             for role in ('worker','reviewer'):
                 config=task.get('providers',{}).get(role) or {}
                 if config.get('base_url') and task.get('metric_run_id'):
-                    self.gateway.pool.record_acceptance(config['base_url'],config['model'],role,task['id'],task['metric_run_id'])
+                    self.gateway.pool.record_acceptance(config['base_url'],config['model'],role,task['id'],task['metric_run_id'],(config.get('access_binding') or {}).get('connection_revision'))
             return result
 
     def action_messages(self, task):
@@ -1249,7 +1249,7 @@ class Engine:
 
     def defer_route(self, task, role, reason):
         cfg = task["providers"][role]
-        self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=reason)
+        self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=reason, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
         task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": str(reason)[:500]}
         # reserve() already added this request to the totals. Do not refund or replay it.
         task["in_flight"] = None
@@ -1354,8 +1354,8 @@ class Engine:
             if access_policy.classify(model, task['route'].get('access_policy')) == 'included':
                 cfg = access_policy.bind_provider(cfg, task['route']['access_policy'], model)
                 task['providers'][role] = cfg
-            if self.gateway.pool.observation(cfg["base_url"], cfg["model"])["cooling_down"]:
-                health = self.gateway.pool.observation(cfg["base_url"], cfg["model"])
+            if self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))["cooling_down"]:
+                health = self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
                 if health.get("cooldown_scope") == "provider":
                     raise RoutingPause(health["last_error"] + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=health.get("cooldown_scope"))
                 task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": "This model is cooling down after a recent failure."}
@@ -1378,8 +1378,8 @@ class Engine:
                         self.defer_route(task, role, "The worker reached its output cap again after a smaller-action retry.")
                     continue
                 if error.code == "gateway_cooldown":
-                    self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error)
-                    health = self.gateway.pool.observation(cfg["base_url"], cfg["model"])
+                    self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
+                    health = self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
                     raise RoutingPause(str(error) + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=error.scope) from None
                 if error.code not in RECOVERABLE_CODES:
                     raise
@@ -1388,7 +1388,7 @@ class Engine:
                     self.event(task, "routing", "Model requested an unavailable tool", {"model": cfg["model"], "role": role, "error": str(error)})
                 self.defer_route(task, role, error)
                 continue
-            self.gateway.pool.record(cfg["base_url"], cfg["model"], role, seconds=time.monotonic() - started)
+            self.gateway.pool.record(cfg["base_url"], cfg["model"], role, seconds=time.monotonic() - started, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
             return message
 
     @staticmethod
@@ -1415,6 +1415,8 @@ class Engine:
         config=config_override or task['providers'][role]
         record={'id':uuid.uuid4().hex,'run_id':task.get('metric_run_id'),'role':role,'model':config['model'],
                 'purpose':purpose or 'work','dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation'}
+        if task.get('branch_run'):
+            record['branch_item_id'] = task['branch_run'].get('current_item_id')
         binding = config.get('access_binding')
         if binding:
             record['dispatch_scope'] = {'base_url': config['base_url'], 'connection_revision': binding['connection_revision'],

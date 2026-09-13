@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from cheapos import branch_completion as completion
 from cheapos.branch_authorization import ProposalRegistry
+from cheapos.model_pool import FreeModelPool
 from cheapos.workspace import git
 import test_branch_final as fixtures
 
@@ -29,6 +30,7 @@ class BranchCompletionTests(unittest.TestCase):
         def save_task(task): self.saved_task=copy.deepcopy(task)
         self.engine.store=SimpleNamespace(save=save_task,get=lambda _:copy.deepcopy(self.saved_task))
         self.engine.lock=threading.RLock();self.engine.runtimes={}
+        self.engine.gateway=SimpleNamespace(pool=FreeModelPool(self.root/'state'))
         self.engine.require_active_task=lambda _:None
         self.engine.event=lambda task,kind,title,detail:task['events'].append({'kind':kind,'title':title,'detail':detail})
         self.controller=SimpleNamespace(engine=self.engine,final_proposals=ProposalRegistry(),

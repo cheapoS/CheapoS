@@ -1,6 +1,6 @@
 # T47 — Prefer models with evidence of completing work
 
-Status: Not started
+Status: Done
 Depends on: T46
 Size: M
 
@@ -66,9 +66,63 @@ suite, or new heavy regression is part of this card.
 
 ## Completion record
 
-Outcome fields and ranking rules: pending
-Attribution/compatibility evidence: pending
-Commands and measured timing: pending
-Remaining limitations: pending
+Outcome fields and ranking rules: role_evidence adds completion_samples,
+completed (not independently disproved), independently_validated,
+independently_disproved and human_integrated. Existing compatibility samples stay
+separate. Rank preserves a configured preference, then observed independent
+validation/completion, disproof, and compatibility/tie-break evidence. A single
+completion may beat fast invalid work; it is an observation, never an accuracy
+estimate. Eligibility, cooldowns, distinct reviewer and durable exclusions remain
+upstream of ranking. No model names or assumed parameter counts establish quality.
 
-Update this card and TASKS.md; commit before controlled live qualification.
+Attribution: new request metrics capture branch_item_id beside T46 dispatch_scope.
+Completed operation must match run/item/candidate, exact 40/64-character SHA and
+feature-parent continuity; immutable receipt is reconstructed against its original
+required checks and criteria. Only one unambiguous dispatched connection/model
+scope per role earns a sample. Missing historical or truncated provenance is
+unknown, not inferred from current providers. A receipt is counted once across
+Resume/restart/re-read; accepted flags and original observation times survive
+activity rereads. Observation occurs after durable commit publication and during
+Resume/final preview for backfill. No current-workspace test/Git rerun is needed.
+
+Connection isolation: pool keys include optional opaque connection revision for
+health, cooldown, probe, outcome and completion records. Legacy None accesses
+legacy unscoped records only. Engine/routing pass actual dispatch binding and
+Models uses the current gateway revision. Credentials are neither persisted nor
+hashed into a public quality identity.
+
+Trusted independent hook: local Python
+`pool.adjudicate_completion(endpoint, model, role, receipt_id, evidence_digest,
+passed, connection_revision)` accepts only an existing exact receipt and a retained
+independent artifact SHA256 with boolean verdict. It is not exposed through worker
+tools or HTTP. Observer caller must validate the actual candidate before invoking
+it; a hash alone is not proof. Repeated artifacts are idempotent, conflicting
+verdicts for the same artifact fail, disproof stays sticky for that receipt.
+A new candidate requires a new receipt. A completed controller merge separately
+marks human_integrated; review syntax alone never becomes independent validation.
+
+Validation: selector exposed 60 dependent modules because engine imports are
+broad; used focused pool/routing/access/gateway and existing commit/merge coverage
+instead of a full suite. New synthetic receipt tests use no Engine, Git, sockets,
+real waits or model calls. Five new tests measured 0.018 seconds including module
+setup; covers malformed receipts/checks/SHA lengths, handoff-safe scoped identities,
+restart deduplication, invalidation, retained acceptance, rank/pins, and scoped
+cooldown/probe isolation. Existing routing25 passed9.266s; model_pool21 passed9.528s;
+gateways18 passed0.141s; commit-controller2 passed9.992s; outcomes2 passed within
+0.050s with four earlier new cases. Completion fixture now supplies the real small
+pool dependency; final rerun:6 existing completion tests passed33.086s (11 tests including the five
+new tiny cases passed33.168s). Initial gateway
+socket restriction was rerun with loopback permission; initial completion fixture
+lacked gateway, not a product failure. No assertions were removed.
+
+UI by coordinating agent commit528191c: 58 focused Node tests pass88ms; three new
+cases total about0.77ms. Shows observed completions/no prior completion evidence,
+separate independent/human counts, and compatibility without accuracy claims.
+Browser verification is not newly claimed here.
+
+Remaining limitations: independent observations require a trusted local observer;
+there is no automated external verifier or inferred billing/accuracy. History is
+bounded (128 completion receipts per route/connection, 30-day visible window).
+No historical model-quality backfill without captured scope. Core task status,
+files, usage and recovery limits remain unchanged. No live qualification ran in
+this card; T48 owns it. TASKS.md is updated by the coordinating agent.

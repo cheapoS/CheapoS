@@ -284,5 +284,5 @@ class OmniRouteManager:
             for model in models:
                 model['access_class'] = access_policy.classify(model, access_policy.snapshot(self.settings))
                 model['access_source'] = 'operator_statement' if model['access_class'] == 'included' else 'catalog'
-                model["health"] = self.pool.observation(self.settings["base_url"], model["id"])
+                model["health"] = self.pool.observation(self.settings["base_url"], model["id"], self.settings.get("connection_revision"))
             return {"models": models, "revision": self.revision + self.pool.revision, "status": self.state}

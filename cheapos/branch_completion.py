@@ -120,6 +120,8 @@ def preview(controller, task_id, values=None):
     if values: raise ValueError('Final preview accepts no fields')
     with controller.engine.lock:
         task = _task(controller, task_id); run = task['branch_run']
+        from .model_pool import observe_completions
+        observe_completions(controller.engine.gateway.pool,task)
         readiness = run.get('readiness')
         if not readiness: raise ValueError('Run final verification before opening the merge preview')
         blocker = None
@@ -252,6 +254,7 @@ def merge(controller, task_id, values):
             raise
         run['merge_receipt'] = finished; run.pop('merge_operation', None)
         run['status'] = 'merged'; task['status'] = 'completed'; task['error'] = None
+        controller.engine.gateway.pool.mark_integrated(task['id'],run['id'])
         state.append_event(run, 'merged', {'target_ref':run['target_ref'], 'sha':finished['feature_tip']}, event_key=finished['id'])
         controller.engine.event(task, 'branch_merged', 'Merged locally. What would you like to work on next?', {'target_ref':run['target_ref'], 'sha':finished['feature_tip']})
         controller.engine.store.save(task)
