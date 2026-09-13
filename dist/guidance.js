@@ -168,6 +168,8 @@ const CheapOSGuide = (() => {
   function modelHealth(model,at=Date.now()) {
     const h=model.health||{},remaining=Math.ceil(((h.retry_at||0)*1000-at)/60000);
     if(remaining>0)return `${h.cooldown_scope==='provider'?'Provider cooling down':'Cooling down'} · ${remaining}m`;
+    const evidence=Object.entries(h.role_evidence||{}).filter(([,e])=>e.samples>0);
+    if(evidence.length)return evidence.map(([role,e])=>`${role}: ${e.samples} runs · ${e.valid_calls} valid file/web calls · ${e.invalid_output} invalid outputs · ${e.accepted} human accepted`).join('; ');
     if((h.worker_responses||0)+(h.reviewer_responses||0)>0)return 'Responded in a task';
     return h.tool_check_passed?'Tool check passed':'Not tested yet';
   }

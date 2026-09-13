@@ -543,3 +543,8 @@ test('cost labels report provenance without hypothetical savings',()=>{
  assert.equal(costProvenance({usage:{uncertain_requests:1}}),'Includes uncertain reservations');
  assert.equal(costProvenance({}),'Cost provenance unknown');
 });
+
+test('model evidence exposes role sample counts without quality scores',()=>{
+  const label=require('../dist/guidance.js').modelHealth({health:{role_evidence:{worker:{samples:3,valid_calls:8,invalid_output:1,accepted:0}}}});
+  assert.match(label,/worker: 3 runs/);assert.match(label,/1 invalid outputs/);
+});

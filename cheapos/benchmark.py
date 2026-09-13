@@ -77,7 +77,11 @@ def run():
                         else:raise AssertionError('Conflicting source change was not blocked')
                         assert git(source,'rev-parse','HEAD')==conflict_head
                         task=engine.store.get(task['id']);assert task.get('commit_conflict_observed')
-                outcomes.append({'fixture_id':fixture_id,'kind':kind,'baseline_sha256':baseline,'verified_outcome':True,**metrics.aggregate(task)})
+                evidence={role:engine.gateway.pool.observation(config['base_url'],config['model'])['role_evidence'][role] for role,config in task['providers'].items()}
+                assert evidence['worker']['valid_calls']>0
+                if kind!='public_link':assert evidence['reviewer']['reviews_completed']>0
+                if kind=='readme':assert evidence['worker']['accepted']==1 and evidence['reviewer']['accepted']==1
+                outcomes.append({'model_evidence':evidence,'fixture_id':fixture_id,'kind':kind,'baseline_sha256':baseline,'verified_outcome':True,**metrics.aggregate(task)})
             finally:engine.shutdown()
     return {'schema_version':1,'mode':'deterministic_scripted_providers','fixtures':outcomes,'passed':all(item['verified_outcome'] for item in outcomes),
             'limitations':'Pinned source and assertions test controller behavior. No live model quality, speed, savings, or billing claims. Human commit action is simulated only in the disposable fixture.'}

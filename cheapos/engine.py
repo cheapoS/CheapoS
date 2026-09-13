@@ -30,6 +30,7 @@ from . import project_context
 from . import work_policy
 from . import environment
 from . import metrics
+from .model_pool import observe_task
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
 
@@ -417,7 +418,11 @@ class Engine:
 
     def event(self, task, kind, title, detail=None):
         progress.observe(task)
-        task["events"].append({"id": len(task["events"]) + 1, "time": now(), "kind": kind, "title": title, "detail": detail})
+        role='worker' if kind=='checkpoint' else 'reviewer' if kind=='review' or task.get('status')=='reviewing' else task.get('active_role','worker')
+        actor={'role':role,'model':(task.get('providers',{}).get(role) or {}).get('model')}
+        if kind=='model' and task.get('request_metrics'):
+            actor={key:task['request_metrics'][-1][key] for key in ('role','model')}
+        task["events"].append({"id": len(task["events"]) + 1, "time": now(), "kind": kind, "title": title, "detail": detail,'run_id':task.get('metric_run_id'),'actor':actor})
         task["updated_at"] = now()
         self.store.save(task)
 
@@ -1029,6 +1034,10 @@ class Engine:
             self.refresh_changes(task)
             task.update(status="awaiting_reply", turn_start_patch=task["patch"], error=None, error_code=None, messages=[], answer_pending=False)
             self.event(task, "commit", "Changes committed to your project", result)
+            for role in ('worker','reviewer'):
+                config=task.get('providers',{}).get(role) or {}
+                if config.get('base_url') and task.get('metric_run_id'):
+                    self.gateway.pool.record_acceptance(config['base_url'],config['model'],role,task['id'],task['metric_run_id'])
             return result
 
     def action_messages(self, task):
@@ -1849,6 +1858,7 @@ class Engine:
             if len(task['run_metrics'])>500:
                 task['run_metrics'].pop(0);task['metrics_history_truncated']=True
             task['metrics_cancelled']=runtime.stop.is_set()
+            observe_task(self.gateway.pool,task,run_id)
             task['updated_at']=now()
             self.store.save(task)
 

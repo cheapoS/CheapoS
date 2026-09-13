@@ -72,7 +72,7 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 | [T22](docs/tasks/T22-focused-agent-work.md) | Proactive small edits and stage-appropriate tool/context use | T21 | M | Done |
 | [T23](docs/tasks/T23-environment-readiness.md) | Detect missing project tools and explain setup | T13, T21 | M | Done |
 | [T24](docs/tasks/T24-completion-metrics.md) | End-to-end task metrics and trustworthy cost display | — | M | Done |
-| [T25](docs/tasks/T25-model-selection.md) | Model ranking informed by completed work | T24 | M | Todo |
+| [T25](docs/tasks/T25-model-selection.md) | Model ranking informed by completed work | T24 | M | Done |
 | [T26](docs/tasks/T26-output-filtering.md) | Benchmark optional test-output filtering | T13, T24 | M | Todo |
 | [T27](docs/tasks/T27-context-compression.md) | Evaluate one optional context-compression layer | T21, T22, T26 | M | Todo |
 

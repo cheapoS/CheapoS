@@ -123,26 +123,29 @@ def select_remote(engine, runtime, role="worker", replace=False):
         # its cached error against every other model or count those as failures.
         if gateway.pool.observation(route["base_url"], model["id"])["cooling_down"]:
             continue
-        if model["id"] in tried or probes.get(role, 0) >= 4:
+        health = gateway.pool.observation(route["base_url"], model["id"])
+        cached = health.get("tool_check_passed") and health.get("tool_check_at", 0) >= time.time()-300 and not health.get("last_error")
+        if model["id"] in tried or (not cached and probes.get(role, 0) >= 4):
             continue
         tried.add(model["id"])
-        probes[role] = probes.get(role, 0) + 1
+        probes[role] = probes.get(role, 0) + (0 if cached else 1)
         cfg = validate_provider({"gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
                                  "input_rate": 0, "output_rate": 0}, role)
         engine.event(task, "routing", "Checking a free " + role, {"model": model["id"], "role": role})
         try:
-            message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose="probe")
-            calls = message.get("tool_calls", [])
-            if not isinstance(calls, list) or len(calls) != 1:
-                raise ProviderError("The model did not return the expected tool call")
-            name, args = engine.parse_call(calls[0])
-            if name != "routing_ready" or args != {}:
-                raise ProviderError("The model did not return the expected tool call")
-            gateway.pool.record(route["base_url"], model["id"], role, probe=True)
+            if not cached:
+                message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose="probe")
+                calls = message.get("tool_calls", [])
+                if not isinstance(calls, list) or len(calls) != 1:
+                    raise ProviderError("The model did not return the expected tool call")
+                name, args = engine.parse_call(calls[0])
+                if name != "routing_ready" or args != {}:
+                    raise ProviderError("The model did not return the expected tool call")
+                gateway.pool.record(route["base_url"], model["id"], role, probe=True)
             task["providers"][role] = cfg
             route["ready"] = bool(task["providers"].get("worker"))
             route.pop("waiting_for", None)
-            engine.event(task, "routing", "Free " + role + " is ready", {"model": model["id"], "role": role})
+            engine.event(task, "routing", "Free " + role + " is ready", {"model": model["id"], "role": role, "tool_check": "recent cached observation" if cached else "new probe"})
             engine.store.save(task)
             return
         except (ProviderError, ValueError, TypeError, KeyError) as error:

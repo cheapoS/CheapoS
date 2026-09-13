@@ -25,12 +25,12 @@ Run pool/routing tests and replay T24 fixture observations. No automatic paid es
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Bounded role/run outcome history, explicit three-sample ranking tiers, separate acceptance, recent probe reuse, and Models evidence labels. See [policy](../development/model-selection.md).
+- Acceptance evidence: Deterministic history/recency/legacy tests; current eligibility and distinct reviewer remain enforced. T24 seven-fixture replay checks observed tool/review outcomes and simulated human acceptance.
+- Commands and results: Pool/routing/benchmark gate: 45 tests, two failures corrected (privacy assertion and stale T22 unavailable-read fixture). Focused corrections and new cache/replay checks: 5 PASS. JS: 70 PASS.
+- Browser scenarios and results: Models label covered by pure UI test; no new navigation flow.
+- Remaining limitations: Protocol completion is not independently proven correctness. No real-model quality claim. Acceptance is attributed only to observed contributors in the latest run.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

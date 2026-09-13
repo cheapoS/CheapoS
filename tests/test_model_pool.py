@@ -104,6 +104,22 @@ class FailoverTests(LocalCase):
             self.assertEqual(runtime.failed_models,set())
             self.assertEqual(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/a').get('failures',0),0)
 
+    def test_recent_probe_reused_but_eligibility_and_distinctness_still_apply(self):
+        from cheapos.routing import select_remote
+        from cheapos.engine import Runtime
+        task=self.chat('remote');url=task['route']['base_url'];pool=self.engine.gateway.pool
+        self.engine.gateway.catalog.return_value['models']=[model('a',free=False),model('b'),model('c')]
+        for name in ('a','b','c','retired'):
+            pool.record(url,name,'worker',probe=True)
+            for i in range(3):pool.record_outcome(url,name,'worker',str(i),'fixture',{'checkpoints':1})
+        with patch.object(self.engine,'request') as request:
+            select_remote(self.engine,Runtime(task),'worker')
+            select_remote(self.engine,Runtime(task),'reviewer')
+            self.assertEqual(task['providers']['worker']['model'],'b')
+            self.assertEqual(task['providers']['reviewer']['model'],'c')
+            request.assert_not_called()
+        self.assertEqual(task['progress_state']['route_probes'],{'worker':0,'reviewer':0})
+
     def test_actual_provider_cooldown_preserves_pinned_model_and_accounting(self):
         task=self.chat('remote')
         requests=self.responding([ProviderError('Provider cooling',code='gateway_cooldown',retry_after=120,scope='provider')],names=('openrouter/a','openrouter/b'))
@@ -256,14 +272,14 @@ class FailoverTests(LocalCase):
         self.assertEqual(result['status'],'paused')
         self.assertFalse(any(e['kind']=='handoff' for e in result['events']))
 
-    def test_unavailable_read_during_action_recovery_hands_off_without_executing_any_calls(self):
+    def test_unavailable_tool_during_action_recovery_hands_off_without_executing_any_calls(self):
         from cheapos.engine import ACTION_GUIDANCE
         task=self.chat('remote')
         self.engine.file_tool(task,'write_file',{'path':'notes.txt','content':'Saved work'})
         task.update(action_pending=True,loop_guidance=ACTION_GUIDANCE)
         self.engine.store.save(task)
         mixed=call('write_file',{'path':'unwanted.txt','content':'Must not execute'})
-        mixed['tool_calls']+=call('read_file',{'path':'notes.txt'})['tool_calls']
+        mixed['tool_calls']+=call('delete_file',{'path':'notes.txt'})['tool_calls']
         requests=self.responding([mixed,call('replace_text',{'path':'notes.txt','old_text':'Saved work','new_text':'Corrected work'}),call('ask_user',{'question':'Which example next?'})])
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'awaiting_reply',result['error'])
