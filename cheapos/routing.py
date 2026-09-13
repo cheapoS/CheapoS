@@ -170,7 +170,8 @@ def select_remote(engine, runtime, role="worker", replace=False):
         message = f"The free provider connection is cooling down. Retry in about {seconds} seconds. Other models on that connection were not tested or marked broken. Your chat, files, checks, and usage are saved." if scope == "provider" else f"Eligible free models are cooling down. Earliest retry eligibility is in about {seconds} seconds. Saved work is kept."
         raise RoutingPause(message, retry_at=min(waits), scope=scope)
     if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits):
-        raise RoutingPause("The free provider is cooling down without a known retry time. Inspect Models or retry manually later.", scope="provider")
+        reason = next((h.get('last_error') for h in provider_waits if h.get('cooldown_scope') == 'provider' and h['cooling_down'] and h.get('last_error')), 'The free provider is cooling down without a known retry time.')
+        raise RoutingPause(reason + " Inspect Models or retry manually later.", scope="provider")
     if replace:
         raise RoutingPause("No different free " + role + " passed the tool check. Failed models are temporarily cooling down. Your chat, files, checks, and usage are saved; resume to check availability again or inspect Models.")
     if role == "reviewer":

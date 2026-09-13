@@ -1,0 +1,552 @@
+{
+  "date": "2026-09-13",
+  "execution": [
+    {
+      "level": "easy",
+      "attempt": 1,
+      "run_id": "101efaeb11f74c9fa46fdf8db42c36ea",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "openrouter/cohere/north-mini-code:free",
+        "reviewer": "openrouter/dots-studio/dots-3-note-preview:free"
+      },
+      "request_count": 26,
+      "usage": {
+        "worker": {
+          "tokens": 35726,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 60321,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 1,
+        "estimated_requests": 25
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 155.683153666,
+        "worker_turns": 11,
+        "requests": 26,
+        "tool_actions": 16,
+        "reviewer_tokens": 60321,
+        "check_seconds": 0.35,
+        "output_tokens": 0,
+        "worker_tokens": 35726
+      },
+      "run_metrics": [
+        {
+          "id": "6c9ad3221fc644868dc12cce55c42819",
+          "elapsed_seconds": 155.68734775,
+          "provider_request_seconds": 134.26263549799998,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 21.424712252000006,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "e43237bb31135a8352acb635f6b7a09d6dc57637"
+      ],
+      "independent": {
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 164.3166395,
+      "phase": "diagnostic",
+      "evidence_path": "/tmp/cheapos-matrix-20260913/easy-1/result.json"
+    },
+    {
+      "app_commit": "9b3423fbf345639b30e7e9f23d28f463cc73df59",
+      "level": "easy",
+      "attempt": 2,
+      "run_id": "3bb2b44baa554153b19971f4ee99088c",
+      "status": "paused",
+      "error": "Recovery repeated already available file evidence. Saved edits remain intact; provide the missing requirement or change the approach.",
+      "error_code": "progress_limit",
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "openrouter/cohere/north-mini-code:free",
+        "reviewer": null
+      },
+      "request_count": 17,
+      "usage": {
+        "worker": {
+          "tokens": 63334,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 0,
+          "cost": 0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 17
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 108.272538583,
+        "worker_turns": 16,
+        "requests": 17,
+        "tool_actions": 13,
+        "reviewer_tokens": 0,
+        "check_seconds": 0.22999999999999998,
+        "output_tokens": 0,
+        "worker_tokens": 63334
+      },
+      "run_metrics": [
+        {
+          "id": "1bf716749a1d43c9b4db12dfb4082d01",
+          "elapsed_seconds": 108.275433166,
+          "provider_request_seconds": 103.09720100099999,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 5.178232165000011,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": false,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_acceptance (unittest.loader._FailedTest) ... ERROR\n\n======================================================================\nERROR: test_acceptance (unittest.loader._FailedTest)\n----------------------------------------------------------------------\nImportError: Failed to import test module: test_acceptance\nTraceback (most recent call last):\n  File \"/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/loader.py\", line 154, in loadTestsFromName\n    module = __import__(module_name)\n  File \"/private/tmp/cheapos-matrix-20260913/easy-2/state/tasks/3bb2b44baa554153b19971f4ee99088c/workspace/test_acceptance.py\", line 2, in <module>\n    from labels import normalize_label\nModuleNotFoundError: No module named 'labels'\n\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (errors=1)\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [],
+      "independent": {
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 113.133486125,
+      "autonomous_execution_success": false,
+      "phase": "diagnostic",
+      "evidence_path": "/tmp/cheapos-matrix-20260913/easy-2/result.json"
+    },
+    {
+      "app_commit": "d18ce79638cd0c4b3f19d84c8faabb14915881f8",
+      "level": "easy",
+      "attempt": 3,
+      "run_id": "5dce97b16d2c461596f986377d705581",
+      "status": "ready_for_merge",
+      "error": null,
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "openrouter/cohere/north-mini-code:free",
+        "reviewer": "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      "models_used": {
+        "worker": [
+          "openrouter/cohere/north-mini-code:free"
+        ],
+        "reviewer": [
+          "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+        ]
+      },
+      "handoffs": 0,
+      "review_revisions": 1,
+      "request_count": 31,
+      "usage": {
+        "worker": {
+          "tokens": 60600,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 45798,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 31
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 132.084697375,
+        "worker_turns": 17,
+        "requests": 31,
+        "tool_actions": 23,
+        "reviewer_tokens": 45798,
+        "check_seconds": 0.57,
+        "output_tokens": 0,
+        "worker_tokens": 60600
+      },
+      "run_metrics": [
+        {
+          "id": "5ec08112f300441e9c4e4401eb973aea",
+          "elapsed_seconds": 132.08979654200002,
+          "provider_request_seconds": 107.51775316500006,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 24.572043376999957,
+          "outcome": "approved"
+        }
+      ],
+      "checks": [
+        {
+          "passed": false,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_acceptance (unittest.loader._FailedTest) ... ERROR\n\n======================================================================\nERROR: test_acceptance (unittest.loader._FailedTest)\n----------------------------------------------------------------------\nImportError: Failed to import test module: test_acceptance\nTraceback (most recent call last):\n  File \"/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/loader.py\", line 154, in loadTestsFromName\n    module = __import__(module_name)\n  File \"/private/tmp/cheapos-matrix-20260913/easy-3/state/tasks/5dce97b16d2c461596f986377d705581/workspace/test_acceptance.py\", line 2, in <module>\n    from labels import normalize_label\nModuleNotFoundError: No module named 'labels'\n\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (errors=1)\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.12,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [
+        "1ae8433055b072d074e9e23ac0b4de60eaf10dc3"
+      ],
+      "independent": {
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true,
+        "merge_available": true,
+        "commits_verified": true
+      },
+      "driver_seconds": 140.167794084,
+      "autonomous_execution_success": true,
+      "phase": "diagnostic",
+      "evidence_path": "/tmp/cheapos-matrix-20260913/easy-3/result.json"
+    },
+    {
+      "app_commit": "1569570ea8290b5ca13f9f31772352b8a8aacc56",
+      "level": "easy",
+      "attempt": 1,
+      "run_id": "efdfef2ac3fb41238f2184f682fed549",
+      "status": "paused",
+      "error": "The selected executable is absent or not executable: [/Library/Developer/CommandLineTools/usr/bin/python3,",
+      "error_code": "environment_setup",
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "openrouter/dots-studio/dots-3-note-preview:free",
+        "reviewer": null
+      },
+      "models_used": {
+        "worker": [
+          "openrouter/cohere/north-mini-code:free",
+          "openrouter/dots-studio/dots-3-note-preview:free"
+        ],
+        "reviewer": []
+      },
+      "handoffs": 1,
+      "review_revisions": 0,
+      "request_count": 20,
+      "usage": {
+        "worker": {
+          "tokens": 79780,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 0,
+          "cost": 0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 20
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 71.603795125,
+        "worker_turns": 18,
+        "requests": 20,
+        "tool_actions": 19,
+        "reviewer_tokens": 0,
+        "check_seconds": 0.11,
+        "output_tokens": 0,
+        "worker_tokens": 79780
+      },
+      "run_metrics": [
+        {
+          "id": "ecdfab1472184cf4bd7ea98e2ebf796c",
+          "elapsed_seconds": 71.608252167,
+          "provider_request_seconds": 63.84122183199998,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 7.7670303350000225,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [],
+      "independent": {
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 77.310664458,
+      "autonomous_execution_success": false,
+      "phase": "isolated-v1",
+      "evidence_path": "/tmp/cheapos-matrix-isolated-20260913/easy-1/result.json"
+    },
+    {
+      "app_commit": "1569570ea8290b5ca13f9f31772352b8a8aacc56",
+      "app_code_hash": "1738744412cbd65def1b5b41ec16b70fb553e44f0f36dd373ef094a81451ac6b",
+      "level": "easy",
+      "attempt": 2,
+      "run_id": "e289155543ba45e485eafc89a92e322c",
+      "status": "paused",
+      "error": "Reviewer reached the eight-turn checkpoint limit, including failed requests and resumed attempts. Saved review work is kept.",
+      "error_code": null,
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "openrouter/cohere/north-mini-code:free",
+        "reviewer": "openrouter/dots-studio/dots-3-note-preview:free"
+      },
+      "models_used": {
+        "worker": [
+          "openrouter/cohere/north-mini-code:free"
+        ],
+        "reviewer": [
+          "openrouter/dots-studio/dots-3-note-preview:free",
+          "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+        ]
+      },
+      "handoffs": 1,
+      "review_revisions": 0,
+      "request_count": 26,
+      "usage": {
+        "worker": {
+          "tokens": 46834,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 50785,
+          "cost": 0.0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 1,
+        "estimated_requests": 24
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 107.93226179199999,
+        "worker_turns": 14,
+        "requests": 26,
+        "tool_actions": 18,
+        "reviewer_tokens": 50785,
+        "check_seconds": 0.22,
+        "output_tokens": 0,
+        "worker_tokens": 46834
+      },
+      "run_metrics": [
+        {
+          "id": "c1092c5dee0a463f9f2c64e8c5900244",
+          "elapsed_seconds": 107.93706987499999,
+          "provider_request_seconds": 98.931952044,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 9.005117830999993,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        },
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 113.649573,
+      "autonomous_execution_success": false,
+      "phase": "isolated-v1",
+      "evidence_path": "/tmp/cheapos-matrix-isolated-20260913/easy-2/result.json"
+    },
+    {
+      "app_commit": "1569570ea8290b5ca13f9f31772352b8a8aacc56",
+      "app_code_hash": "1738744412cbd65def1b5b41ec16b70fb553e44f0f36dd373ef094a81451ac6b",
+      "level": "easy",
+      "attempt": 3,
+      "run_id": "0beb0057a82d44f1b4e339b6e6c40c3b",
+      "status": "paused",
+      "error": "The selected executable is absent or not executable: [/Library/Developer/CommandLineTools/usr/bin/python3,",
+      "error_code": "environment_setup",
+      "measurement": true,
+      "operator_prepared_plan": true,
+      "interventions_after_start": 0,
+      "models": {
+        "worker": "openrouter/dots-studio/dots-3-note-preview:free",
+        "reviewer": null
+      },
+      "models_used": {
+        "worker": [
+          "openrouter/cohere/north-mini-code:free",
+          "openrouter/dots-studio/dots-3-note-preview:free"
+        ],
+        "reviewer": []
+      },
+      "handoffs": 1,
+      "review_revisions": 0,
+      "request_count": 19,
+      "usage": {
+        "worker": {
+          "tokens": 67251,
+          "cost": 0.0
+        },
+        "reviewer": {
+          "tokens": 0,
+          "cost": 0
+        },
+        "cost": 0.0,
+        "uncertain_requests": 0,
+        "estimated_requests": 19
+      },
+      "consumption": {
+        "dollars": 0,
+        "working_seconds": 46.063664542,
+        "worker_turns": 17,
+        "requests": 19,
+        "tool_actions": 17,
+        "reviewer_tokens": 0,
+        "check_seconds": 0.11,
+        "output_tokens": 0,
+        "worker_tokens": 67251
+      },
+      "run_metrics": [
+        {
+          "id": "8b19825190d5420b8c074d19e208eda7",
+          "elapsed_seconds": 46.067536375,
+          "provider_request_seconds": 38.331861246999985,
+          "operator_wait_seconds": 0,
+          "provider_cooldown_seconds": 0,
+          "controller_work_seconds": 7.735675128000018,
+          "outcome": "paused"
+        }
+      ],
+      "checks": [
+        {
+          "passed": true,
+          "duration": 0.11,
+          "allowed_seconds": null,
+          "output": "test_empty (test_acceptance.Labels) ... ok\ntest_spaces (test_acceptance.Labels) ... ok\ntest_type (test_acceptance.Labels) ... ok\ntest_unicode (test_acceptance.Labels) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.000s\n\nOK\n"
+        }
+      ],
+      "commits": [],
+      "independent": {
+        "app_code_unchanged": true,
+        "source_main_unchanged": true,
+        "source_clean": true,
+        "tests_unchanged": true
+      },
+      "driver_seconds": 51.150473999999996,
+      "autonomous_execution_success": false,
+      "phase": "isolated-v1",
+      "evidence_path": "/tmp/cheapos-matrix-isolated-20260913/easy-3/result.json"
+    }
+  ],
+  "planning": {
+    "error": "Four free worker probes were used for this request. Inspect Models and provide a new instruction; Resume does not renew probe attempts.",
+    "elapsed_seconds": 94.06551075,
+    "tasks": [
+      {
+        "id": "439020c8859c4c87a32c0d15adbb7b46",
+        "status": "paused",
+        "usage": {
+          "worker": {
+            "tokens": 9544,
+            "cost": 0.0
+          },
+          "reviewer": {
+            "tokens": 0,
+            "cost": 0
+          },
+          "cost": 0.0,
+          "uncertain_requests": 4,
+          "estimated_requests": 0
+        },
+        "request_count": 4
+      }
+    ]
+  },
+  "status": "blocked_provider_daily_quota",
+  "unrun_levels": [
+    "medium",
+    "hard",
+    "very-hard"
+  ]
+}

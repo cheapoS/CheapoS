@@ -23,6 +23,13 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
         except json.JSONDecodeError as error:
             raise error_type(f'The provider sent malformed JSON in a stream event ({error.msg}, line {error.lineno}, column {error.colno}). No tool calls from this response were executed.', code='invalid_stream_json') from None
         if not isinstance(data, dict) or data.get('error'):
+            # Gateways can deliver quota failures inside HTTP-200 SSE frames.
+            # Recognize this narrow provider signal without echoing a raw body
+            # that may contain account details. Do not guess a reset time.
+            failure = data.get('error') if isinstance(data, dict) else None
+            detail = failure.get('message', '') if isinstance(failure, dict) else failure
+            if isinstance(detail, str) and 'free-models-per-day' in detail.lower():
+                raise error_type('The provider daily free-model quota is exhausted. Retry after the provider resets it; no reset time was supplied.', code='gateway_cooldown', scope='provider')
             raise error_type('The model reported an error while streaming.', code='stream_error')
         if isinstance(data.get('usage'), dict):
             usage = data['usage']
