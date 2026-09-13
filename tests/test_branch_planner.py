@@ -87,6 +87,26 @@ class PlannerTests(unittest.TestCase):
         self.assertIn('kept or deleted', raised.exception.question)
         self.assertEqual(len(self.requests), 1)
 
+    def test_repair_receives_rejected_call_and_specific_missing_field(self):
+        response = self.reply()
+        invalid = json.loads(response['tool_calls'][0]['function']['arguments'])
+        del invalid['clarification']
+        response['tool_calls'][0]['function']['arguments'] = json.dumps(invalid)
+        original = copy.deepcopy(response)
+        engine = self.engine([response, self.reply()])
+        events = []
+        engine.event = lambda task, kind, title, detail: events.append((kind, detail))
+        result = planner.plan(engine, self.runtime, planner.capture_inputs(self.root, 'Implement the utility'))
+        self.assertEqual(result, self.valid)
+        repair = self.requests[-1]
+        self.assertEqual(repair[-2]['tool_calls'], response['tool_calls'])
+        self.assertEqual(repair[-1]['role'], 'tool')
+        self.assertEqual(repair[-1]['tool_call_id'], response['tool_calls'][0]['id'])
+        self.assertIn('missing: clarification', repair[-1]['content'])
+        self.assertEqual(events[0][0], 'planning_repair')
+        self.assertEqual(events[0][1]['attempt'], 1)
+        self.assertEqual(response, original)
+
     def test_budget_widening_missing_checks_and_truncated_plan_rejected(self):
         changed = copy.deepcopy(self.valid)
         changed['limits']['dollars'] = 100

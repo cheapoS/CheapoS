@@ -103,7 +103,9 @@ def _parse(message, limits):
         raise ValueError('Plan tool arguments exceed the complete proposal limit')
     value = json.loads(raw)
     if not isinstance(value, dict) or set(value) != {'status', 'plan', 'clarification'}:
-        raise ValueError('Return exactly status, plan and clarification')
+        missing = sorted({'status', 'plan', 'clarification'} - set(value)) if isinstance(value, dict) else ['status', 'plan', 'clarification']
+        extra = len(set(value) - {'status', 'plan', 'clarification'}) if isinstance(value, dict) else 0
+        raise ValueError('Return exactly status, plan and clarification; missing: ' + (', '.join(missing) or 'none') + '; unexpected fields: ' + str(extra))
     question = value['clarification']
     if not isinstance(question, str) or len(question) > 2000:
         raise ValueError('Clarification must be a bounded question')
@@ -141,8 +143,21 @@ def plan(engine, runtime, inputs):
         except ClarificationRequired:
             raise
         except (ValueError, TypeError, KeyError, AttributeError) as error:
+            detail = {'attempt': attempt + 1, 'error': str(error)[:1000]}
+            if hasattr(engine, 'event'):
+                engine.event(runtime.task, 'planning_repair', 'Correcting the run proposal' if attempt < 2 else 'Run proposal needs attention', detail)
             if attempt == 2:
                 raise ValueError('Planner could not produce a complete valid proposal after two repairs: ' + str(error)) from error
             # Invalid side-effect tool calls are data only and are never dispatched.
-            messages.append({'role': 'user', 'content': 'The proposal was invalid: ' + str(error)[:1000] + '. Return a complete corrected proposal or ask clarification. No work has been authorized.'})
+            # Preserve the rejected answer so the model can repair its actual
+            # mistake instead of seeing the same request with a generic error.
+            feedback = 'The proposal was invalid: ' + str(error)[:1000] + '. Return a complete corrected proposal or ask clarification. No work has been authorized.'
+            rejected = copy.deepcopy(response.get('tool_calls') or []) if isinstance(response, dict) else []
+            if rejected and all(isinstance(c, dict) and isinstance(c.get('function'), dict) for c in rejected):
+                for index, call in enumerate(rejected):
+                    call['id'] = call.get('id') or 'proposal-repair-%s-%s' % (attempt, index)
+                messages.append({'role': 'assistant', 'content': '', 'tool_calls': rejected})
+                messages.extend({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps({'error': feedback})} for call in rejected)
+            else:
+                messages.append({'role': 'user', 'content': feedback})
     raise AssertionError('Unreachable planner loop')
