@@ -1,16 +1,73 @@
 # cheapoS implementation tasks
 
-**North star:** open a project, explain the job, see cheapoS working, authorize routine tests once, approve a finished commit, and keep chatting.
+**North star:** open a project, explain the job, see cheapoS working, authorize routine tests once, approve a finished commit, and keep chatting. For Unattended work, approve a finite proposal, let cheapoS implement/check/review/commit it, then inspect the result and decide whether to merge.
 
 This is the completed first implementation milestone for [the September 13 check-in](CHECK_IN_2026-09-13.md): **sidebar cleanup, clearer task titles, and fewer approval interruptions**, followed by the controller/onboarding improvements below. All 27 cards are Done and record their validation and limitations. Local `main` includes the final integration commit `39903c9`.
 
-**Completed next milestone: [a job on a feature branch](BRANCH_RUNS.md).** All T28–T40 cards are Done on `work/unattended-runs`, with [validation results](docs/experiments/branch-runs.md) and a [work-mode/trigger guide](docs/unattended-runs.md). Operator review and integration are next; a separately selected live-model trial follows. Do not restart T01 or T28.
+**Completed next milestone: [a job on a feature branch](BRANCH_RUNS.md).** All T28–T40 cards are Done, with [validation results](docs/experiments/branch-runs.md) and a [work-mode/trigger guide](docs/unattended-runs.md). Those changes and subsequent live-trial repairs are integrated into `main`. Do not restart T01 or T28.
 
 Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes below that describe that baseline are historical; re-read current code before changing behavior. A dependency means its acceptance checks have passed and its commit is available, not merely that someone started it.
 
 ## Start here
 
-Both implementation boards are complete. Review the [branch-run results](docs/experiments/branch-runs.md) before integration, then use the live-trial selection process in [BRANCH_RUNS.md](BRANCH_RUNS.md) for the next bounded app improvement. The handoff templates below and in that document are historical implementation references.
+**Next up: trustworthy acceptance, a useful feature delivered by cheapoS, then better automatic model selection. Start with T41.** The two original implementation boards are complete; T41–T48 below are the active backlog. Their planning baseline is `69ab884` on `main` (September 13, 2026). Read current code before assuming anything remains missing.
+
+The [live qualification matrix](docs/trials/matrix/RESULTS.md) establishes that the workflow can complete real work: 30 execution attempts, 18 app-ready outcomes, and no operator interventions after Start in those attempts. Three app-ready results failed independent checks. Models, fixtures, and revisions differed, so these are observations, not a production success-rate estimate. The next iteration should improve correctness and useful completion, not merely raise caps or count more tokens.
+
+Already implemented: stalled-worker handoffs, preserved recovery context, review-schema correction, scoped quota reporting, explicit measurement mode, and faster change-scoped development checks. Extend these mechanisms; do not rebuild them. [Test-performance measurements](docs/development/test-performance.md) show the same 26 commit tests dropping from 120.899 seconds serially to 46.329 seconds in parallel. That is not a complete-suite benchmark.
+
+**New test cost rule:** do not introduce more slow/heavy regression tests by
+default. Reuse existing integration coverage and keep new cases small. Before
+adding a heavy case, tell the operator its purpose, measured/estimated runtime,
+frequency, and why cheaper coverage is insufficient; wait for acceptance of that
+extra cost. Report new-test timing at handoff. This applies to every card below.
+Live trials are explicitly selected experiments, not additions to everyday tests.
+
+### Current ordered backlog
+
+The cards are instructions for future work, not authorization to execute the entire backlog now. Mark each card Done only against its own acceptance criteria. T44 is deliberately a live cheapoS implementation task; the observing agent must not silently write the feature itself.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T41](docs/tasks/T41-current-validation-docs.md) | Align current validation instructions and exporter trial checks | — | S | Not started |
+| [T42](docs/tasks/T42-report-acceptance-contract.md) | Prepare independent acceptance evidence for report export | T41 | M | Not started |
+| [T43](docs/tasks/T43-actionable-review-disagreement.md) | Make review disagreements concrete before changing passing work | T41 | M | Not started |
+| [T44](docs/tasks/T44-live-report-export.md) | Have cheapoS implement the three-item report exporter | T42, T43 | L | Not started |
+| [T45](docs/tasks/T45-report-export-qualification.md) | Verify the real download and record the feature trial outcome | T44 attempted; feature checks require its complete candidate | M | Not started |
+| [T46](docs/tasks/T46-connection-access-policy.md) | Distinguish free, included, local, priced, and unknown access | T45 findings recorded | M | Not started |
+| [T47](docs/tasks/T47-outcome-aware-routing.md) | Select eligible models using completed-work evidence | T46 | M | Not started |
+| [T48](docs/tasks/T48-controlled-routing-trial.md) | Qualify automatic selection on a fixed small task | T47 | M | Not started |
+
+### Current handoff template
+
+```text
+Implement only T41 from docs/tasks/T41-current-validation-docs.md.
+Read AGENTS.md, CONTRIBUTING.md, TASKS.md, and that card first.
+Inspect the current code and verify dependencies; do not restart completed work.
+Follow the card's scope, acceptance criteria, and focused validation instructions.
+Do not run the full suite solely because you are committing or merging.
+Preserve meaningful checks, consent, saved work, and unrelated changes.
+Keep new tests fast. Disclose any proposed heavy test and its runtime before
+adding it; do not introduce it without the operator accepting that extra cost.
+
+Update the card's completion record and its TASKS.md status. Commit only this
+task's changes. Report the commit, actual checks, and remaining limitations.
+Do not execute the next card automatically.
+
+For T44/T48, operate cheapoS as the trial driver. Follow their separate live-run
+instructions; do not substitute observer-written code or a scripted model for
+a live success. Keep any unsuccessful or assisted attempt in the evidence.
+```
+
+Replace both the ID and card path for the selected task. For live runs, explicit
+measurement mode follows current AGENTS.md; retain the authorized access and
+spending policy, Pause, command consent, usage accounting, and honest failure
+reporting. Included account access is not automatically a public free route.
+
+Milestone exit: one useful feature implemented through cheapoS, with independent
+acceptance evidence, a working operator-facing download, and recorded commit
+receipts. A reviewed feature branch remains for the operator's merge decision.
+Later routing trials must distinguish a usable endpoint from demonstrated work.
 
 ### First-milestone handoff template (historical reference)
 
@@ -46,7 +103,7 @@ test command. A direct coding agent should follow AGENTS.md for committing.
 
 If a card is still too large for a model's output/context limit, stop at a coherent, tested boundary and describe the remaining acceptance items. Do not mark the card Done. Ask the operator to split that card into explicit follow-ups before proceeding; do not silently broaden scope or claim a partial feature is complete.
 
-## Ordered backlog
+## Historical first-milestone backlog
 
 The order is recommended, not a request to run all tasks now. Size is relative: **S** = a focused surface, **M** = a few related components, **L** = a carefully bounded integration. Size is not an estimate of model minutes.
 
@@ -92,9 +149,9 @@ Validated after T27 on `work/check-in-tasks`:
 - Browser scenarios and focused checks are recorded in each task card.
 - Temporary UI fixture servers were stopped. That validation run did not merge the branch; local `main` subsequently included `39903c9` before the next milestone was planned.
 
-The full gate takes about seven minutes on this machine; select at least a
-600-second verification allowance when running it through cheapoS. The fast
-suite covers a deliberately smaller contract and does not replace this gate.
+This historical gate took about seven minutes on this machine. It is not a
+current timeout recommendation or a requirement to rerun the suite. Follow
+CONTRIBUTING.md for focused iteration and explicitly selected integration checks.
 
 ### Milestone exits
 
@@ -171,6 +228,7 @@ Status: Done / Blocked / In progress
 Behavior delivered:
 Acceptance evidence:
 Commands and results:
+New-test timing and any explicitly accepted heavy-test cost:
 Browser scenarios and results:
 Remaining limitations:
 ```

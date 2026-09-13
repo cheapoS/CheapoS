@@ -15,6 +15,19 @@ Use the full suite only for an explicit comprehensive check, a release, or broad
 backend risk that focused tests cannot cover; explain that choice. Preserve
 meaningful assertions and product verification/permission safeguards.
 
+## New test cost must be visible
+
+Do not introduce new slow/heavy regression tests as part of routine work. Prefer
+small deterministic cases and reuse existing integration coverage. A new full
+multi-item agent/Git workflow, deliberate real-time wait, expensive repeated
+fixture, or material increase to the normal selected checks needs explicit cost
+disclosure before it is added. Tell the operator what the test covers, its
+measured or estimated runtime, how often it will run, and why cheaper coverage
+is insufficient. Keep it proposed until the operator accepts that extra cost.
+Unknown runtime is not permission to call a test fast; measure the smallest
+representative fixture first. Include new-test timing in the completion report.
+Do not weaken assertions or product verification/permission rules for speed.
+
 # Live unattended trial policy
 
 Use explicit measurement mode for future live qualification/feature trials so

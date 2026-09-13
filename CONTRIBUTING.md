@@ -10,6 +10,15 @@ current policy here supersedes blanket full-gate instructions in historical task
 cards. Preserve real failure, permission, persistence and Git coverage when those
 behaviors change; do not weaken product safeguards to make checks faster.
 
+New tests should be fast. Reuse existing integration coverage rather than adding
+another expensive workflow for each small behavior. Before introducing a heavy
+test, tell the operator its purpose, measured or estimated runtime, frequency,
+and why a cheaper test is insufficient. Keep it proposed until the operator
+accepts that cost. Examples include a full multi-item agent/Git run, real-time
+waits, repeated expensive setup, or a material increase in routine check time.
+Measure uncertain costs with the smallest representative fixture and report
+new-test timing at handoff. Preserve meaningful assertions and product safeguards.
+
 ```sh
 python3 -B scripts/check.py --plan          # inspect selection from working changes
 python3 -B scripts/check.py                 # run selected checks, up to 4 processes
