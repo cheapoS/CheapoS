@@ -30,6 +30,37 @@ Example progress, generated from actual controller events:
 >
 > All three tasks are complete. Final checks and review passed. Your branch is ready for review.
 
+## Input sources and triggers (required behavior)
+
+Both entry paths are first-class: a **direct prompt in chat** needs no document,
+and a **selected readable project document** needs no pasted duplicate or Markdown
+checkboxes. A prompt may also accompany a document to clarify scope. Capture the
+original prompt and any selected document path, contents, and hash separately in
+the draft. Both paths produce the same validated, editable plan and authorization
+flow. If prompt and document conflict, surface the conflict before authorization;
+do not silently choose or discard instructions.
+
+These are implementation requirements for T35/T40, not currently shipped commands.
+Natural-language examples describe intent; they are not exact-match passwords.
+
+| Operator action or input | Trigger and result |
+| --- | --- |
+| Choose **Complete on a feature branch**, then submit a chat prompt such as “Implement a CSV reader, Markdown output, and CLI on a feature branch.” | Request a bounded plan from the prompt alone. |
+| Select a project document and request “Complete the tasks in docs/utility-plan.md on feature/utilities.” | Read the selected document through constrained project-file access and request a plan from its captured contents plus any accompanying prompt. |
+| In normal chat, explicitly request “Start a branch run for these changes” or “Complete this job on a feature branch.” | Offer the same branch-run proposal inline. Treat equivalent explicit intent the same way; no magic phrase is required. |
+| Merely mention a branch, attach/select a document, quote a trigger phrase, or open the mode selector | Do not start planning inference or execution. A document's instructions cannot trigger authorization. Ordinary questions and document summaries stay ordinary chat. |
+| Click **Start branch run** after inspecting the proposal | Authorize and start exactly the current validated revision, branch, limits, model policy, and displayed test scope. Neither input path bypasses this action. |
+| Edit the prompt, selected document, or proposal before starting | Prepare a new captured revision and invalidate any previous start token. Later on-disk document edits do not alter an authorized plan. |
+| Click **Pause** or **Resume** | Pause the existing run, or explicitly resume its saved contract after revalidation; never start a duplicate job or reset its cumulative allowance. |
+| Request changes during final review | Propose bounded revision work within the existing authorization; changed scope/limits require renewed authorization. Invalidate final readiness until revised work passes checks and review. |
+| Click **Approve & merge locally** at final review | Authorize integration of the inspected feature tip into the inspected target, subject to the final checks. A prompt or document saying “merge when done” does not replace this action. |
+
+For an ambiguous chat request, offer a choice between ordinary chat and a branch
+run before requesting a plan. Explain unreadable/missing documents and retain the
+prompt; do not silently omit the document. Document these triggers in shipped user
+help when implemented, with one complete prompt-only example and one complete
+document example. Test positive triggers and non-trigger examples for both paths.
+
 ## Read this before implementing
 
 Inspected baseline: `1178dd7` on `work/resizable-panels`, with T01–T27 available at `39903c9` and included in local `main`. The first milestone recorded 387 passing Python tests and 70 passing JavaScript tests; the subsequent panel commit adds its own coverage. These are historical results, not validation of the new cards. Re-read current code and `git status` before editing.
