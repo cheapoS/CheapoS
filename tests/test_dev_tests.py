@@ -64,3 +64,57 @@ class Sample(unittest.TestCase):
                 result=subprocess.run([sys.executable,'-B',str(RUNNER),'--directory',str(root),'--suite',suite,'--json',str(report)],capture_output=True)
                 self.assertEqual(result.returncode,1)
                 self.assertEqual(json.loads(report.read_text())['tests'],count)
+
+    def test_parallel_modules_preserve_results_and_deduplicate_patterns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'test_good.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_ok(self): pass\n @unittest.skip('fixture')\n def test_skip(self): pass\n")
+            (root/'test_bad.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_failure(self): self.fail('parallel failure')\n @unittest.expectedFailure\n def test_expected(self): self.fail('expected')\n")
+            totals=[]
+            for jobs in (1,2):
+                report=root/f'report-{jobs}.json'
+                result=subprocess.run([sys.executable,'-B',str(RUNNER),'--directory',str(root),'--pattern','test_*.py','--pattern','test_good.py','--jobs',str(jobs),'--json',str(report)],capture_output=True,text=True,timeout=15)
+                self.assertEqual(result.returncode,1)
+                self.assertIn('parallel failure',result.stderr)
+                data=json.loads(report.read_text())
+                totals.append(tuple(data[key] for key in ('tests','failures','errors','skipped','expected_failures')))
+            self.assertEqual(totals,[(4,1,0,1,1)]*2)
+
+    def test_parallel_workers_overlap_and_keep_module_fixtures_together(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            for name,other in [('one','two'),('two','one')]:
+                (root/f'test_{name}.py').write_text(f"""import os,time,unittest
+from pathlib import Path
+root=Path(__file__).parent
+value=None
+def setUpModule():
+ global value
+ value=os.getpid()
+ (root/'{name}.pid').write_text(str(value))
+ deadline=time.monotonic()+5
+ while not (root/'{other}.pid').exists():
+  if time.monotonic()>deadline:raise AssertionError('workers did not overlap')
+  time.sleep(.01)
+class T(unittest.TestCase):
+ def test_module_fixture(self):self.assertEqual(value,os.getpid())
+ def test_another(self):self.assertEqual(value,os.getpid())
+""")
+            report=root/'report.json'
+            result=subprocess.run([sys.executable,'-B',str(RUNNER),'--directory',str(root),'--suite','full','--jobs','2','--json',str(report)],capture_output=True,text=True,timeout=15)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(report.read_text())['tests'],4)
+            self.assertNotEqual((root/'one.pid').read_text(),(root/'two.pid').read_text())
+
+    def test_worker_crash_and_import_error_cannot_report_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'test_good.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_ok(self): pass\n")
+            bad=root/'test_bad.py'
+            for content in ("import unittest,os\nclass T(unittest.TestCase):\n def test_exit(self):os._exit(7)\n", "raise RuntimeError('broken import')\n"):
+                bad.write_text(content)
+                report=root/'report.json'
+                result=subprocess.run([sys.executable,'-B',str(RUNNER),'--directory',str(root),'--jobs','2','--json',str(report)],capture_output=True,text=True,timeout=15)
+                self.assertEqual(result.returncode,1)
+                self.assertFalse(json.loads(report.read_text())['successful'])
+                self.assertGreater(json.loads(report.read_text())['errors'],0)

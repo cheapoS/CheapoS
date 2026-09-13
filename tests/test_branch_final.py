@@ -53,16 +53,15 @@ class BranchFinalTests(unittest.TestCase):
         return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
 
     def test_cumulative_diff_clean_private_copy_and_actual_final_check(self):
-        manifest = final.build_manifest(self.run)
+        result = final.final_check_review(self.engine, self.runtime)
+        manifest = result['readiness']['manifest']
         self.assertIn('+two', manifest['diff'])
         self.assertEqual(manifest['files'], [{'status':'M','path':'code','added_lines':1,'removed_lines':1,'item_ids':['one']}])
-        result = final.final_check_review(self.engine, self.runtime)
         self.assertEqual(result['decision'],'APPROVE')
         self.assertEqual(self.events[-1][3]['decision'],'APPROVE')
         self.assertEqual(self.task['checks'][0]['output'], 'final passed\n')
-        self.assertTrue(final.validate(result['readiness'], self.task))
         count = len(self.requests)
-        final.validate(result['readiness'], self.task)
+        self.assertTrue(final.validate(result['readiness'], self.task))
         self.assertEqual(len(self.requests),count)
         self.assertIsNone(result['readiness']['integration_blocker'])
 

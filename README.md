@@ -177,6 +177,10 @@ Our experiment is to give inexpensive models the implementation work and spend s
 
 ## Build with us
 
+For fast development checks, run `python3 -B scripts/check.py --plan` to preview
+what your changes need, then run it without `--plan`. Add `--base main` to include
+committed branch changes. See [validation guidance](CONTRIBUTING.md#fast-iteration-is-the-default).
+
 Try a small task. Share a reproducible failure. Help measure which model pairs produce a correct patch at a sensible cost.
 
 - [**Contribute**](CONTRIBUTING.md) — development setup, focused checks, and project principles.

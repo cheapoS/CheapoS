@@ -2,29 +2,72 @@
 
 Small, reviewable changes are welcome. For significant behavior changes, open an issue describing the problem and your proposed approach first.
 
-Choose checks for the changed behavior while iterating:
+## Fast iteration is the default
 
-| Change | Focused validation |
+This is an actively developed private alpha. Run checks that exercise the change;
+merging a small change does **not** require the entire regression suite. The
+current policy here supersedes blanket full-gate instructions in historical task
+cards. Preserve real failure, permission, persistence and Git coverage when those
+behaviors change; do not weaken product safeguards to make checks faster.
+
+```sh
+python3 -B scripts/check.py --plan          # inspect selection from working changes
+python3 -B scripts/check.py                 # run selected checks, up to 4 processes
+python3 -B scripts/check.py --base main     # include committed branch changes
+python3 -B scripts/check.py --files dist/app.js dist/styles.css
+```
+
+The selector includes staged, unstaged, and untracked changes. Without `--base`,
+a clean working tree runs nothing and says so. `--base main` includes changes
+since the branch's merge base as well as current edits. `--files` overrides Git
+detection. Unknown runtime files and Python files without known test coverage
+select all Python modules visibly; inspect `--plan` before broad changes.
+Selection follows static imports, including shared test helpers. Dynamic imports,
+subprocess entry points, generated assets and behavior reached indirectly can
+need additional focused tests; update the mapping in `scripts/check.py` when
+adding such dependencies. This is a development aid, not a proof of complete
+coverage or a replacement for the app's agreed verification command.
+
+| Change | Iteration and normal merge checks |
 | --- | --- |
-| Documentation only | Check local links, examples, and `git diff --check`; no unrelated runtime suite |
-| Frontend presentation | `node --check dist/app.js`, `node --test tests/test_*.js`, and the affected browser flow |
-| Pure utilities/title/test-profile policy | `python3 -B scripts/dev_tests.py --suite fast` plus the changed module if not in fast |
-| Permissions/controller | `python3 -B scripts/dev_tests.py --pattern test_permissions.py`, affected project-permission/review/recovery modules, and HTTP coverage for API changes |
-| Commit/reconciliation | `python3 -B scripts/dev_tests.py --pattern test_commits.py` plus affected review/rollback tests; retain real Git fixtures |
-| Test runner/fixtures | `python3 -B scripts/dev_tests.py --pattern test_dev_tests.py`, affected fixture modules, then full before integration |
+| Documentation only | Local links/examples and `git diff --check`; no runtime suite |
+| Frontend presentation | Changed-file command (JS syntax + JS tests), and the affected browser flow; no unrelated Python suite |
+| One Python feature | Selected dependent tests; add a targeted scenario when static imports cannot identify the behavior |
+| Permissions/controller | Affected authorization, execution and recovery modules plus relevant HTTP cases |
+| Commit/reconciliation | Affected Git/evidence/recovery modules, retaining real repositories and failure cases |
+| Test runner/selection | Runner/selector tests plus a representative real integration subset; a full run is not required merely because the runner changed |
 
-Use `--pattern test_x.py` for each relevant Python module. The **fast** suite
-contains `test_titles.py`, `test_test_profiles.py`, `test_time_ago.py`,
-`test_word_count.py`, and `test_csv_to_md.py`: small policy/utility tests without
-Git or HTTP fixture setup. It does not replace integration coverage.
+For a tighter loop, explicitly name the relevant modules. Patterns can repeat and
+overlap without running a test twice. Separate worker processes keep each test
+module's setup/teardown together and isolate globals and mocks:
 
-Before integrating a behavior change or releasing, run the complete gate once:
-`python3 -B scripts/dev_tests.py --suite full --timings`,
-`node --check dist/app.js`, and `node --test tests/test_*.js`. Full discovers all
-`test_*.py` modules, including real Git, processes, HTTP, persistence, restart,
-and end-to-end scenarios. The original unittest discovery command remains valid.
-Do not repeat unchanged passing checks merely because work moved to review or
-human approval; rerun when code or relevant inputs change.
+```sh
+python3 -B scripts/dev_tests.py --pattern test_titles.py
+python3 -B scripts/dev_tests.py --pattern test_branch_evidence.py --pattern test_branch_workspace.py --jobs 2 --timings
+python3 -B scripts/dev_tests.py --suite fast
+```
+
+Use `--jobs 1` to debug serially, or reduce the worker count if local resources are
+busy. `check.py` defaults to at most 4 workers; `dev_tests.py` keeps its existing
+serial default and full selection when no selector is supplied, so existing
+verification commands do not silently become weaker. Workers report failures,
+import errors, crashes, skips and counts; empty discovery fails. Parallel timing
+is wall time, so summed individual timings can exceed it. Ctrl+C cancels workers.
+
+Use the complete suite for a release, an explicitly requested comprehensive
+check, or broad backend changes whose effects cannot be bounded by focused
+coverage. State the reason before choosing it. It is **not** a default step for
+every commit, merge, documentation update or UI adjustment:
+
+```sh
+python3 -B scripts/check.py --full --jobs 4
+# Python only, with a reusable timing report:
+python3 -B scripts/dev_tests.py --suite full --jobs 4 --timings --json /tmp/cheapos-full.json
+```
+
+Once relevant checks pass, do not repeat them because work moved to review,
+commit or merge. Recheck when conflicts or subsequent edits change the tested
+behavior. Report exactly what ran, what did not, and any remaining uncertainty.
 
 For UI behavior changes exercise the relevant flow with an isolated data directory
 and deterministic provider. Record any unavailable browser check honestly; never
