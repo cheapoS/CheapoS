@@ -32,14 +32,14 @@ Do not wire automatic execution, merge, or the public Start action yet. Record t
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: `branch_workspace.prepare/materialize/create/validate_owned` provide read-only source preparation, private committed-byte materialization, owned feature creation, and exact source/private identity checks. Feature and ownership marker creation share a conditional Git transaction.
 
-Acceptance evidence:
+Acceptance evidence: Dirty source/index/untracked bytes preserved; binary/executable/excluded entries handled; linked worktrees, identity replacement, branch collisions, partial retries, changed prepared copies and configured protected refs checked.
 
-Commands and results:
+Commands and results: `test_branch_workspace.py` 11 PASS (35.430s); existing `test_engine.py -k snapshot` 1 PASS.
 
 Browser scenarios and results: Not required for this backend-only card.
 
-Remaining limitations:
+Remaining limitations: Filters, sparse/assume-unchanged and shallow repositories are unsupported. Symlinks/submodules/oversize entries stay excluded and are recorded. Partial private-copy failures retain artifacts and pause for inspection. `materialize` may create the private preview before authorization, with no source object/ref mutation; T30 binds consent to that exact copy.
