@@ -128,3 +128,18 @@ expected ModuleNotFoundError for cheapos.run_report; not an acceptance pass.
 Endpoint fixture unchanged; prior 0.014-second expected-404 baseline remains
 applicable. AST syntax, digest verification and whitespace checks pass. No live
 inference, exporter code, full suite, or new heavy test was introduced.
+
+
+### Version 3 follow-up (future qualification only)
+
+Semantic status checks now accept valid Markdown escaped underscores; injection
+checks remain raw. Absent-commit checks reject abbreviated fixture SHAs as well
+as full SHAs. Confirmed full-SHA, missing accounting and mismatched merge tests
+remain intact. Version 2's frozen attempt and failures are preserved.
+
+Version 3 pack SHA256: `b44fa1b8dbe774c4788258e3c25173a0e3f202520952f82200c264151442212d`.
+Self-check: 2 tests in 0.001 seconds, ten negative controls, including shortened
+false commits, plus valid escaped pause/no-change controls. Syntax, digest and
+diff checks pass. No feature implementation, live calls, new heavy fixture or
+unchanged baseline rerun. This is an observer contract correction, not a pass
+for either historical incomplete attempt.

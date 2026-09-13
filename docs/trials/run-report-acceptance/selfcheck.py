@@ -7,7 +7,7 @@ import time
 import unittest
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
-from contract import task, has, private_absent, commit_present, commit_absent, unavailable, escaped, SHA, SECRET, check_counts, unknown_field, integration_unconfirmed, integration_confirmed
+from contract import task, has, private_absent, commit_present, commit_absent, unavailable, escaped, SHA, SECRET, check_counts, unknown_field, integration_unconfirmed, integration_confirmed, plain
 from cheapos import branch_runs
 
 
@@ -23,7 +23,7 @@ class PackSelfCheck(unittest.TestCase):
     def test_negative_controls(self):
         # Minimal outputs from known-bad implementations: each must be rejected.
         controls=[(lambda s: has(s,'feature/report'),'feature_branch: None'),
-                  (commit_present,'committed'), (commit_absent,SHA),
+                  (commit_present,'committed'), (commit_absent,SHA), (commit_absent,SHA[:8]),
                   (private_absent,'prompt: '+SECRET),
                   (unavailable,'worker tokens: 0; reviewer tokens: 0; cost: 0'),
                   (escaped,'東京 |raw|\n# injected'),
@@ -39,6 +39,9 @@ class PackSelfCheck(unittest.TestCase):
         unknown_field('Reviewer tokens: unavailable\nCost: 0',r'reviewer.*tokens')
         integration_unconfirmed('**Status:** Unconfirmed (merged)\nCost: 0')
         integration_confirmed('## Outcome\nMerged')
+        self.assertRegex(plain(r'Paused: recovery\_exhausted'), r'recovery[ _-]exhausted')
+        self.assertRegex(plain(r'satisfied\_without\_change'), r'without.change')
+        commit_absent('No commit; reviewed without change')
 
 
 def digest():

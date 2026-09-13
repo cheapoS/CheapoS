@@ -1,7 +1,7 @@
 """Run explicitly through scripts/dev_tests.py; absent exporter is expected baseline failure."""
 import copy
 import unittest
-from contract import task, has, private_absent, commit_present, commit_absent, unavailable, escaped, SHA, check_counts, unknown_field, integration_unconfirmed, integration_confirmed
+from contract import task, has, private_absent, commit_present, commit_absent, unavailable, escaped, SHA, check_counts, unknown_field, integration_unconfirmed, integration_confirmed, plain
 
 
 class FormatterAcceptance(unittest.TestCase):
@@ -33,7 +33,7 @@ class FormatterAcceptance(unittest.TestCase):
         value = task(); item = value['branch_run']['items'][0]
         item['status'] = 'satisfied_without_change'; item['commit_receipt']['outcome'] = 'satisfied_without_change'
         report = self.render(value); commit_absent(report)
-        self.assertRegex(report.lower(), r'no.change|without.change|already.satisfied')
+        self.assertRegex(plain(report), r'no.change|without.change|already.satisfied')
         item['commit_receipt']['run_id'] = 'other'
         invalid = self.render(value)
         self.assertRegex(invalid.lower(), r'unconfirmed|unavailable|incomplete|pending|not.confirmed|unverified')
@@ -79,7 +79,7 @@ class FormatterAcceptance(unittest.TestCase):
         run['items'].append(second)
         report = self.render(value); escaped(report)
         self.assertLess(report.index('First item'), report.index('Second item'))
-        self.assertRegex(report.lower(), r'recovery[ _-]exhausted')
+        self.assertRegex(plain(report), r'recovery[ _-]exhausted')
 
     def test_invalid_inputs(self):
         for value in (None, {}, {'id':'interactive'}, {'branch_run': {'schema_version': 999}}):

@@ -50,7 +50,7 @@ def commit_present(report):
 
 
 def commit_absent(report):
-    assert SHA not in report, 'Unconfirmed commit SHA leaked as report evidence'
+    assert not re.search(r'(?<![a-fA-F0-9])'+re.escape(SHA[:7])+r'[a-fA-F0-9]*(?![a-fA-F0-9])', report), 'Unconfirmed full or abbreviated commit SHA leaked as report evidence'
 
 
 def unavailable(report):
@@ -67,6 +67,7 @@ def escaped(report):
 
 def plain(text):
     """Remove presentation delimiters, not content; accept lists/tables/emphasis."""
+    text = re.sub(r'\\([\\`*_{}\[\]()#+.!|>-])', r'\1', text)
     return re.sub(r'[*_`|]', ' ', text).strip().lower()
 
 

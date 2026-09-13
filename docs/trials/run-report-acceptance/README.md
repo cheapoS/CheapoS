@@ -1,4 +1,4 @@
-# Independent report acceptance contract (T42, version 2)
+# Independent report acceptance contract (T42, version 3)
 
 This pack is separate from ordinary `tests/` discovery. It requires only installed
 Python and the real repository package; no credentials, model, Git repository,
@@ -73,7 +73,7 @@ not a fake proof suitable for branch execution.
 ## Independent checks and limits
 
 `python3 -B docs/trials/run-report-acceptance/selfcheck.py` validates the current
-fixture schema and tests nine deliberately bad output fragments: invented branch
+fixture schema and tests ten deliberately bad output fragments: invented branch
 field, missing confirmed SHA, stale SHA, private text leakage, missing accounting
 as zero, Markdown injection, missing reviewer accounting masked by another field,
 false merged status masked by unrelated unknown data, and unconfirmed integration. These are assertion negative controls, not a
@@ -115,3 +115,22 @@ as pipes/newlines; escaping is required, not silently activating that markup.
 No exporter implementation is included. Version 2 still intentionally fails on
 this feature-absent source baseline. A new proposal must freeze this new manifest;
 old results are not rescored as though version 2 ran during their execution.
+
+
+## Version 3 correction before future qualification
+
+Version 2 digest was
+`58630b139a9c8a69402bd4eda5f67f312ff924e7136b818f57befb36ec2844b0`
+(commit `d1bc3a3`). T44 attempt 2 keeps its original frozen pack and observed
+failures. Valid Markdown escaped underscores in `recovery\_exhausted` and
+`satisfied\_without\_change` exposed another observer assertion defect.
+Version 3 decodes Markdown punctuation escapes for semantic status comparisons;
+the separate injection checks still inspect raw Markdown. Escaped category and
+no-change spellings are positive self-check controls.
+
+The absent-commit check now rejects both the fixture's full SHA and its standard
+abbreviations of seven or more hex characters. Full confirmed SHA remains
+required. This catches abbreviated invented commits in no-change output; it does
+not relax missing check accounting or wrong merge-receipt assertions. Ten negative
+controls include the abbreviated false commit. No exporter code or prior trial
+workspace was changed. Only a future proposal may adopt this new frozen digest.

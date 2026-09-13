@@ -1,12 +1,12 @@
 {
   "algorithm": "sha256",
   "files": {
-    "contract.py": "c8168b4dc2b27d4a149a394cfa2a471ca80b0488be88793b1c4ebbae0cb054c9",
+    "contract.py": "0348d2795dff9c36d6e78922a51149ef45135c92a93bc6688ced9f3a6fe4cf8c",
     "example.py": "99e0d3cb8e80b2b2a7a63aa6d367356d850b21eb4a2ba3675d8e6d69b8deb15a",
-    "test_formatter_acceptance.py": "0d7a30aec4cc93fd76fc634be04016f0fe66685871053d88babaa7f433f906c5",
+    "test_formatter_acceptance.py": "1ee0e3b918c32c52c9258040017017bab78d39463d8c1755c94440022718a1a8",
     "test_endpoint_acceptance.py": "b2559052525c1ef6b40c455de49b03f17caedf75c6dbe649dfb203901fb746ba",
-    "selfcheck.py": "017509d7cda1df467422d3f232be6c01dd6242160fe6455573ea9a4573c78f23",
-    "README.md": "6950ba3d3906cc6776ea460d05d3e6fb41811226d20728d69d2cb6d5ecb2a84b"
+    "selfcheck.py": "3d48dce99a8e0d2c1d1c82c7bcc5307f56ee954c71dee5ae3ec57ce0fcc76caf",
+    "README.md": "6f38458e2eb8ada57a1846ec9aa06a821e42a522e94daca343bac680dfafe5af"
   },
-  "pack_sha256": "58630b139a9c8a69402bd4eda5f67f312ff924e7136b818f57befb36ec2844b0"
+  "pack_sha256": "b44fa1b8dbe774c4788258e3c25173a0e3f202520952f82200c264151442212d"
 }
