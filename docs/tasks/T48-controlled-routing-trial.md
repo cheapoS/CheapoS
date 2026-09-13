@@ -1,6 +1,6 @@
 # T48 — Qualify automatic selection on a fixed small task
 
-Status: Not started
+Status: Done — controlled attempt recorded; selection failed
 Depends on: T47
 Size: M (a small live experiment, not a new broad benchmark suite)
 
@@ -57,10 +57,25 @@ under AGENTS.md; do not silently grow another expensive matrix.
 
 ## Completion record
 
-Fixture/app/configuration identity: pending
-Task IDs, selected routes, and actual outcome: pending
-Independent checks and receipts: pending
-Timing/usage/interventions: pending
-Remaining limitations and next recommendation: pending
+The single planned run is recorded in [the dated report](../trials/routing-20260913/RESULTS.md)
+and [sanitized machine evidence](../trials/routing-20260913/attempt-1.json).
+App `019af67ac4671cf73b3f55e997359bf1ddc416e4`; task
+`2b4ed33dc6174bbda46e06a6107cc714`. Full fixture/test/configuration hashes are
+retained in both records. Operator-prepared plan; automatic remote selection.
+
+Two included Kiro probes failed argument validation; one public-free OpenRouter
+probe reported provider-wide daily quota exhaustion. Sibling routes were skipped.
+No pair was selected, implementation began, checks ran, or receipts appeared.
+Source/app/configuration/acceptance unchanged; no merge/push. Zero interventions.
+
+31.604 seconds wall, 29.896 provider seconds, three requests, 13,296 accounted
+tokens including an uncertain reservation. Included $0 marginal estimate is not
+an invoice. No reviewer usage. Completion-quality counters stayed zero.
+
+Next recommendation: an explicit required marker in the routing probe, keeping
+strict argument validation, followed by one separately proposed same-fixture
+trial. Raw returned arguments were not retained, so the omission's origin is
+unproven. No live retry or new heavy regression added. Observer syntax/help and
+diff checks pass; failure-report completion does not qualify automatic delivery.
 
 Update this card and TASKS.md; commit only the sanitized experiment record.

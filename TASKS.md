@@ -36,7 +36,7 @@ The cards are instructions for future work, not authorization to execute the ent
 | [T45](docs/tasks/T45-report-export-qualification.md) | Verify the real download and record the feature trial outcome | T44 attempted; feature checks require its complete candidate | M | Done — both attempts recorded; feature unqualified |
 | [T46](docs/tasks/T46-connection-access-policy.md) | Distinguish free, included, local, priced, and unknown access | T45 findings recorded | M | Done — browser verification pending |
 | [T47](docs/tasks/T47-outcome-aware-routing.md) | Select eligible models using completed-work evidence | T46 | M | Done |
-| [T48](docs/tasks/T48-controlled-routing-trial.md) | Qualify automatic selection on a fixed small task | T47 | M | Not started |
+| [T48](docs/tasks/T48-controlled-routing-trial.md) | Qualify automatic selection on a fixed small task | T47 | M | Done — controlled attempt recorded; selection failed |
 
 ### Current handoff template
 
