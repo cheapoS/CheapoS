@@ -30,7 +30,7 @@ class BranchFinalTests(unittest.TestCase):
         self.omit_coverage = False
         self.request_changes = False
         self.events = []
-        self.engine = SimpleNamespace(event=lambda *args:self.events.append(args), checks=self.checks, request=self.request, parse_call=lambda call: (call['function']['name'], json.loads(call['function']['arguments'])))
+        self.engine = SimpleNamespace(store=SimpleNamespace(save=lambda task:None), event=lambda *args:self.events.append(args), checks=self.checks, request=self.request, parse_call=lambda call: (call['function']['name'], json.loads(call['function']['arguments'])))
 
     authorize = fixtures.BranchCommitTests.authorize
     receipt = fixtures.BranchCommitTests.receipt
@@ -47,7 +47,7 @@ class BranchFinalTests(unittest.TestCase):
         return record
 
     def request(self, runtime, messages, tools, role, **kwargs):
-        packet = json.loads(messages[-1]['content']); self.requests.append(packet)
+        packet = json.loads(messages[1]['content']); self.requests.append(packet)
         result = {'decision':'REQUEST_CHANGES' if self.request_changes else 'APPROVE', 'manifest_id':packet['manifest_id'],
                   'chunk_ids':[] if self.omit_coverage else packet['chunk_ids'], 'criteria_ids':packet['criteria_ids'], 'feedback':'Read all supplied contents and checked the evidence.'}
         return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
@@ -64,6 +64,69 @@ class BranchFinalTests(unittest.TestCase):
         self.assertTrue(final.validate(result['readiness'], self.task))
         self.assertEqual(len(self.requests),count)
         self.assertIsNone(result['readiness']['integration_blocker'])
+
+    def test_chunk_context_contains_bound_checks_and_still_allows_rejection(self):
+        result = final.final_check_review(self.engine, self.runtime)
+        ready = result['readiness']
+        packets = [packet for packet in self.requests if 'chunk' in packet]
+        self.assertEqual(len(packets), len(ready['manifest']['chunks']))
+        for packet in packets:
+            context = packet['review_context']
+            self.assertEqual(context['acceptance_criteria'], [
+                {'id': r['id'], 'criterion': r['criterion']} for r in ready['manifest']['requirements']])
+            self.assertEqual(len(context['final_checks']), len(ready['checks']))
+            for summary, bound in zip(context['final_checks'], ready['checks']):
+                self.assertEqual(summary, {
+                    'candidate_id': ready['candidate']['id'], 'command': bound['command'],
+                    'passed': True, 'exit_code': 0,
+                    'verification_identity': bound['record']['verification_identity'],
+                    'input_identity': bound['record']['input_identity'],
+                    'record_digest': evidence._digest(bound['record'])})
+                self.assertNotIn('output', summary)
+        self.request_changes = True
+        self.requests.clear()
+        rejected = final.final_check_review(self.engine, self.runtime)
+        self.assertEqual(rejected['decision'], 'REQUEST_CHANGES')
+        self.assertNotIn('readiness', rejected)
+        self.assertEqual(len(self.requests), 1)
+        self.assertTrue(self.requests[0]['review_context']['final_checks'][0]['passed'])
+
+    def test_chunk_scope_separates_background_from_synthesis_coverage(self):
+        from unittest.mock import patch
+        systems = []
+        original = self.engine.request
+        def request(runtime, messages, tools, role, **kwargs):
+            systems.append(messages[0]['content'])
+            return original(runtime, messages, tools, role, **kwargs)
+        self.engine.request = request
+        with patch.object(final, 'CHUNK_SIZE', 120):
+            ready = final.final_check_review(self.engine, self.runtime)['readiness']
+        packets = [packet for packet in self.requests if 'chunk' in packet]
+        self.assertGreater(len(packets), 3)
+        for index, packet in enumerate(packets, 1):
+            self.assertEqual(packet['scope'], {
+                'kind': packet['chunk']['kind'], 'chunk_index': index, 'chunk_total': len(packets),
+                'context_role': 'global_background', 'criterion_completion_required': False})
+            self.assertEqual(packet['chunk_ids'], [packet['chunk']['id']])
+            self.assertEqual(packet['criteria_ids'], [])
+            self.assertIn('not coverage required in this chunk', packet['instruction'])
+            self.assertIn('mid-record or mid-hunk', packet['instruction'])
+            self.assertIn('Do not reject solely', packet['instruction'])
+            self.assertIn('Report concrete defects', packet['instruction'])
+        self.assertEqual(self.requests[-1]['criteria_ids'], [r['id'] for r in ready['manifest']['requirements']])
+        self.assertTrue(all('alone define the coverage' in message for message in systems))
+        self.request_changes = True
+        self.requests.clear()
+        result = final.final_check_review(self.engine, self.runtime)
+        self.assertEqual(result['decision'], 'REQUEST_CHANGES')
+        self.assertNotIn('readiness', result)
+        self.assertEqual(len(self.requests), 1)
+
+    def test_oversized_context_is_rejected_without_truncation_or_request(self):
+        packet = {'review_context': {'acceptance_criteria': [{'id': 'one:1', 'criterion': 'x' * 30000}]}}
+        with self.assertRaisesRegex(ValueError, 'nothing was omitted'):
+            final._review(self.engine, self.runtime, {'id': 'manifest'}, packet, [], [])
+        self.assertEqual(self.requests, [])
 
     def test_overlapping_commits_and_reviewed_no_change_keep_history(self):
         for identity, text in [('two', 'three\n'), ('three', 'three\n')]:
@@ -85,10 +148,33 @@ class BranchFinalTests(unittest.TestCase):
     def test_missing_coverage_or_review_revision_never_ready(self):
         self.omit_coverage = True
         with self.assertRaisesRegex(ValueError,'coverage'): final.final_check_review(self.engine,self.runtime)
+        self.assertEqual(len(self.requests),3)
+        with self.assertRaisesRegex(ValueError,'coverage'): final.final_check_review(self.engine,self.runtime)
+        self.assertEqual(len(self.requests),3)
+        self.run.pop('final_review_corrections',None)  # A separate review scenario.
         self.omit_coverage = False; self.request_changes = True
         result=final.final_check_review(self.engine,self.runtime)
         self.assertEqual(result['decision'],'REQUEST_CHANGES')
         self.assertNotIn('readiness',result)
+
+    def test_invalid_final_coverage_gets_specific_feedback_and_can_be_repaired(self):
+        original=self.engine.request;seen=[]
+        def request(runtime,messages,tools,role,**kwargs):
+            if not seen:
+                self.omit_coverage=True
+            else:
+                self.omit_coverage=False
+                if len(seen)==1:
+                    feedback=json.loads(messages[-1]['content'])
+                    self.assertIn('chunk_ids',feedback['error'])
+                    self.assertEqual(messages[-1]['tool_call_id'],'review')
+            seen.append(1)
+            return original(runtime,messages,tools,role,**kwargs)
+        self.engine.request=request
+        result=final.final_check_review(self.engine,self.runtime)
+        self.assertEqual(result['decision'],'APPROVE')
+        self.assertTrue(final.validate(result['readiness'],self.task))
+        self.assertEqual(sum(self.run['final_review_corrections'].values()),1)
 
     def test_multichunk_exhaustive_content_and_digest(self):
         # A small chunk ceiling exercises the same deterministic splitting path.

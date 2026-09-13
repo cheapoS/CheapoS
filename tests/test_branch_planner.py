@@ -1,5 +1,7 @@
 import copy
 import json
+import sys
+import shlex
 import tempfile
 import threading
 import unittest
@@ -16,7 +18,7 @@ class PlannerTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         git(self.root, 'init', '-q')
         self.limits = {'dollars': 0, 'working_seconds': 900, 'requests': 30}
-        self.valid = {'items': [{'id': 'one', 'title': 'Add reader', 'instructions': 'Implement reader', 'dependencies': [], 'acceptance_criteria': ['Reader parses a row'], 'required_checks': ['python -m unittest']}], 'limits': self.limits, 'final_checks': ['python -m unittest']}
+        self.valid = {'items': [{'id': 'one', 'title': 'Add reader', 'instructions': 'Implement reader', 'dependencies': [], 'acceptance_criteria': ['Reader parses a row'], 'required_checks': [shlex.join([sys.executable, '-m', 'unittest'])]}], 'limits': self.limits, 'final_checks': [shlex.join([sys.executable, '-m', 'unittest'])]}
         self.task = {'planning_limits': self.limits, 'request_metrics': [], 'usage': {'cost': 0}}
         self.runtime = SimpleNamespace(task=self.task, stop=threading.Event(), guard=lambda: None)
         self.requests = []
@@ -133,6 +135,23 @@ class PlannerTests(unittest.TestCase):
         for response in (self.reply(changed), self.reply(missing), truncated):
             with self.subTest(response=response), self.assertRaises(ValueError):
                 planner.plan(self.engine([response] * 3), self.runtime, planner.capture_inputs(self.root, 'Work'))
+
+    def test_prose_and_shell_checks_receive_field_specific_repair(self):
+        for field, bad in [('item', 'List all files'), ('final', 'python3 -m unittest && echo passed')]:
+            invalid = copy.deepcopy(self.valid)
+            if field == 'item': invalid['items'][0]['required_checks'] = [bad]
+            else: invalid['final_checks'] = [bad]
+            result = planner.plan(self.engine([self.reply(invalid), self.reply()]), self.runtime,
+                                  planner.capture_inputs(self.root, 'Implement reader'))
+            self.assertEqual(result, self.valid)
+            feedback = self.requests[-1][-1]['content']
+            self.assertIn('items[one].required_checks[0]' if field == 'item' else 'final_checks[0]', feedback)
+            self.assertIn('List' if field == 'item' else 'shell', feedback.lower() if field != 'item' else feedback)
+
+    def test_model_cannot_enable_measurement(self):
+        proposed = dict(self.valid, measurement=True)
+        with self.assertRaisesRegex(ValueError, 'Only the operator'):
+            planner._parse(self.reply(proposed), self.limits)
 
     def test_cancellation_never_creates_or_authorizes_work(self):
         captured = planner.capture_inputs(self.root, 'Work')

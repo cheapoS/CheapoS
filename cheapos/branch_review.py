@@ -2,9 +2,11 @@
 import copy
 import json
 import shlex
+import hashlib
 
 from . import branch_evidence as evidence
 from . import branch_runs
+from .measurement import enabled as measuring
 
 
 def context(run, item):
@@ -44,14 +46,17 @@ def checkpoint(engine, runtime, args):
     branch_runs.transition_item(run, item['id'], 'reviewing')
     tools = copy.deepcopy(REVIEW_TOOLS)
     decision = next(t for t in tools if t['function']['name'] == 'review_decision')['function']['parameters']
-    decision['properties'].update(candidate_id={'type':'string'}, criteria_outcomes={'type':'object', 'description':'Map every exact acceptance criterion to {passed:boolean,evidence:string}.'})
+    outcome = {'type':'object','properties':{'passed':{'type':'boolean'},'evidence':{'type':'string'}},'required':['passed','evidence'],'additionalProperties':False}
+    decision['properties'].update(candidate_id={'type':'string','enum':[current['id']]}, criteria_outcomes={'type':'object', 'description':'Use every exact criterion key. passed is a JSON boolean, evidence is a nonempty string.', 'properties':{c:copy.deepcopy(outcome) for c in criteria},'required':list(criteria),'additionalProperties':False})
     decision['required'] += ['candidate_id','criteria_outcomes']
     messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.'}, {'role':'user','content':json.dumps(packet)}]
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
         task['pending_review']={'branch_candidate_id':current['id'],'review_requests':0}
     task['status'] = 'reviewing'
     engine.event(task, 'checkpoint', 'Reviewing the complete branch item', {'item_id':item['id'], 'candidate_id':current['id']})
-    for _ in range(8):
+    rounds = 0
+    while measuring(task) or rounds < 8:
+        rounds += 1
         runtime.guard()
         message = engine.request(runtime, messages, tools, 'reviewer')
         task['review_count'] += 1
@@ -61,6 +66,7 @@ def checkpoint(engine, runtime, args):
             raise ProgressPause('Reviewer exceeded the bounded tool-call allowance.')
         if not calls:
             messages.append({'role':'user','content':'Call review_decision with the candidate ID and every criterion outcome.'})
+        observations = []
         for call in calls:
             if runtime.stop.is_set(): raise InterruptedError('Task stopped')
             name, params = engine.parse_call(call)
@@ -72,6 +78,7 @@ def checkpoint(engine, runtime, args):
                         evidence.revalidate(receipt, task, ctx, specs, criteria)
                     except ValueError as error:
                         result = {'error':str(error)}
+                        engine.event(task,'review_feedback','Review decision needs correction',result)
                     else:
                         task.pop('pending_review',None)
                         item['ready_receipt'] = receipt
@@ -93,4 +100,14 @@ def checkpoint(engine, runtime, args):
             elif name == 'read_url': result = engine.read_url(runtime,params)
             else: result = {'error':'Review tools are read-only.'}
             messages.append({'role':'tool','tool_call_id':call['id'],'content':json.dumps(result)})
+            observations.append({'name':name,'parameters':params,'result':result})
+        # Measurement removes cumulative request caps, not endless identical
+        # reads or invalid decisions. Keep this evidence with the candidate so
+        # restarting or resuming cannot renew the same unsuccessful attempts.
+        fingerprint = hashlib.sha256(json.dumps(observations,sort_keys=True).encode()).hexdigest()
+        repeated = task['pending_review'].setdefault('observations',{})
+        repeated[fingerprint] = repeated.get(fingerprint,0) + 1
+        engine.store.save(task)
+        if repeated[fingerprint] >= 3:
+            raise ProgressPause('Independent review repeated the same evidence or invalid response three times. Saved review evidence is retained.')
     raise ProgressPause('Independent review reached its eight-request limit without a valid decision.')

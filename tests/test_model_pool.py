@@ -76,6 +76,18 @@ class PoolTests(unittest.TestCase):
 class FailoverTests(LocalCase):
     chat=routing_fixture.RoutingTests.chat
 
+    def test_unknown_daily_quota_reset_stops_sibling_probes_and_keeps_reason(self):
+        from cheapos.routing import select_remote, RoutingPause
+        from cheapos.engine import Runtime
+        task=self.chat('remote');runtime=Runtime(task)
+        self.engine.gateway.catalog.return_value['models']=[model('openrouter/a'),model('openrouter/b')]
+        error=ProviderError('The provider daily free-model quota is exhausted.',code='gateway_cooldown',scope='provider')
+        with patch.object(self.engine,'request',side_effect=error) as request:
+            with self.assertRaisesRegex(RoutingPause,'daily free-model quota'):select_remote(self.engine,runtime)
+            self.assertEqual(request.call_count,1)
+        self.assertEqual(runtime.failed_models,set())
+        self.assertFalse(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/b')['retry_known'])
+
     def test_probe_provider_cooldown_skips_siblings_but_can_use_other_provider(self):
         from cheapos.routing import select_remote
         from cheapos.engine import Runtime

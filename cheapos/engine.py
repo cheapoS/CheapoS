@@ -31,6 +31,7 @@ from . import work_policy
 from . import environment
 from . import metrics
 from . import check_output
+from .measurement import enabled as measuring
 from .model_pool import observe_task
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
@@ -214,6 +215,8 @@ def record_observation(runtime, name, args, result):
 
 def check_argv(command):
     """Reject shell syntax instead of passing it as bogus test-runner arguments."""
+    if command.lstrip().startswith('['):
+        raise ValueError('Send command as a plain command string, not a serialized argument list. For example: python3 -B -m unittest. Omit command to reuse the selected check.')
     lexer = shlex.shlex(command, posix=False, punctuation_chars="|&;<>()")
     lexer.whitespace_split = True
     lexer.commenters = ""
@@ -672,7 +675,7 @@ class Engine:
             task["messages"] = self.initial_messages(task)
             runtime = Runtime(task)
             task['retry_wait_enabled'] = retry_wait
-            if retry_wait:
+            if retry_wait and wait_info['remaining_seconds'] is not None:
                 runtime.started -= max(0, task['limits'].get('run_minutes', 15) * 60 - wait_info['remaining_seconds'])
             self.runtimes[task_id] = runtime
             self.event(task, "state", "Task started" if task["worker_turns"] == 0 else "Resuming from saved files and checkpoints",{'run_kind':'followup' if followup is not None else 'start' if task['worker_turns']==0 else 'resume'})
@@ -1212,7 +1215,7 @@ class Engine:
         if (work_policy.active_implementation(task) or needs_patch_review(task)) and not work_policy.read_only(task):
             self.prepare_loop_recovery(task)
             return
-        if request_worker_turns(task) >= task["limits"]["worker_turns"]:
+        if not measuring(task) and request_worker_turns(task) >= task["limits"]["worker_turns"]:
             raise WorkerTurnLimit("The worker-turn allowance is exhausted. The gathered evidence is saved; an answer needs one remaining worker turn.")
         recovery = progress.state(task)
         if recovery['answer_attempts'] >= 2:
@@ -1256,8 +1259,10 @@ class Engine:
         runtime.guard()
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
-        if request_worker_turns(task) >= task['limits']['worker_turns']:
+        if not measuring(task) and request_worker_turns(task) >= task['limits']['worker_turns']:
             raise WorkerTurnLimit("Worker model-turn limit reached; saved work is kept.")
+        if measuring(task):
+            return
         if runtime.step_turns < task['limits'].get('checkpoint_turns', 12):
             return
         if task.get('checkpoint_policy') != 'soft':
@@ -1289,7 +1294,7 @@ class Engine:
         task = runtime.task
         if task["status"] == "reviewing":
             return
-        if request_worker_turns(task) >= task["limits"]["worker_turns"]:
+        if not measuring(task) and request_worker_turns(task) >= task["limits"]["worker_turns"]:
             raise WorkerTurnLimit("Worker model-turn limit reached during free-model recovery. Saved work is kept.")
         self.checkpoint_boundary(runtime, compact=False)
         if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
@@ -1433,7 +1438,7 @@ class Engine:
             messages[0]['content'] += '\nUnattended work: implement ONLY the active item below. The controller owns branch commits and next-item selection. Finish all acceptance criteria and request checkpoint. Never claim an empty or partial patch completes the job. No model tool can grant execution/merge authority.'
             messages.append({'role':'user','content':json.dumps({'active_item':{k:item[k] for k in ('id','title','instructions','acceptance_criteria','required_checks')},'completed_items':[{'id':i['id'],'outcome':i['outcome_summary'][:500]} for i in run['items'] if i['status'] in branch_runs.DONE]})})
             if run.get('guidance'):messages.append({'role':'user','content':'Operator guidance within the accepted item scope (does not authorize extra scope): '+json.dumps(run['guidance'])})
-        if task["usage"]["cost"] > task["limits"]["dollars"] or task["usage"]["reviewer"]["tokens"] > task["limits"]["reviewer_tokens"]:
+        if task["usage"]["cost"] > task["limits"]["dollars"] or (not measuring(task) and task["usage"]["reviewer"]["tokens"] > task["limits"]["reviewer_tokens"]):
             key = 'dollars' if task['usage']['cost'] > task['limits']['dollars'] else 'reviewer_tokens'
             used = task['usage']['cost'] if key == 'dollars' else task['usage']['reviewer']['tokens']
             raise BudgetError("The provider's reported usage reached the task limit. No further requests will be made.", key, used, task['limits'][key])
@@ -1448,7 +1453,7 @@ class Engine:
         account = {**task, "limits": {**task["limits"], "output_tokens": min(task["limits"]["output_tokens"], 1024 if purpose == "probe" else 512)}} if purpose == "probe" or role == "coordinator" else task
         if role == 'reviewer' and task['status'] == 'reviewing' and not purpose:
             checkpoint = task.get('pending_review') or (task.get('checkpoints') or [{}])[-1]
-            if checkpoint.get('review_requests', 0) >= 8:
+            if not measuring(task) and checkpoint.get('review_requests', 0) >= 8:
                 raise BudgetError("Reviewer reached the eight-turn checkpoint limit, including failed requests and resumed attempts. Saved review work is kept.")
             checkpoint['review_requests'] = checkpoint.get('review_requests', 0) + 1
             runtime.review_requests = checkpoint['review_requests']
@@ -1459,7 +1464,14 @@ class Engine:
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
         streaming = getattr(provider, "streams_output", False) is True
         brief = purpose == "probe" or role == "coordinator"
-        self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": reservation["completion_tokens"], "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
+        maximum = None if measuring(task) and not brief and config['input_rate'] == config['output_rate'] == 0 else reservation['completion_tokens']
+        record['requested_output_limit'] = maximum
+        record['output_limit_basis'] = 'provider_default' if maximum is None else 'task_limit'
+        if maximum is None:
+            # This reservation is an estimate until usage arrives, not an upper
+            # bound on tokens. Zero rates keep the monetary reservation sound.
+            reservation['tokens_are_upper_bound'] = False
+        self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": maximum, "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
         record['dispatched']=True
         if streaming:
             live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
@@ -1489,7 +1501,7 @@ class Engine:
                 if (purpose == "probe" or role == "coordinator") and hasattr(provider, "complete_brief"):
                     message, usage = provider.complete_brief(messages, tools, reservation["completion_tokens"], emit, runtime.stop.is_set)
                 else:
-                    message, usage = provider.complete_with_progress(messages, tools, reservation["completion_tokens"], emit, runtime.stop.is_set)
+                    message, usage = provider.complete_with_progress(messages, tools, maximum, emit, runtime.stop.is_set)
                 completed = True
             except ProviderError as error:
                 self.account_failed_response(task, config, reservation, error)
@@ -1501,7 +1513,7 @@ class Engine:
                 self.store.save(task)
         else:
             try:
-                message, usage = provider.complete(messages, tools, reservation["completion_tokens"])
+                message, usage = provider.complete(messages, tools, maximum)
             except ProviderError as error:
                 self.account_failed_response(task, config, reservation, error)
                 raise
@@ -1707,7 +1719,7 @@ class Engine:
         allowed = task['limits'].get('check_seconds', 90)
         remaining = task['limits'].get('run_minutes', 15) * 60 - (time.monotonic() - runtime.started)
         runtime.guard()
-        effective = min(allowed, remaining)
+        effective = None if measuring(task) else min(allowed, remaining)
         live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False, "session_allowed": session_allowed, "timeout_seconds": effective}
         task["check_stream"] = live
         self.event(task, "tool", "Running verification", {"command": argv, "run_id": live["run_id"], "timeout_seconds": effective})
@@ -1877,6 +1889,10 @@ class Engine:
             raise ProviderError("The model returned a tool call without a valid ID or name", code="invalid_tool_envelope") from None
         if not isinstance(arguments, str):
             raise ToolArgumentsError(name, call_id, "arguments must be a JSON-encoded string")
+        # Some providers omit the object for these default, read-only calls.
+        # Do not extend this to zero-required executable tools such as run_checks.
+        if arguments == "" and name in {"list_files", "get_diff"}:
+            arguments = "{}"
         try:
             params = json.loads(arguments)
         except json.JSONDecodeError as error:
@@ -1901,13 +1917,13 @@ class Engine:
 
     def route_wait_info(self, runtime, error):
         task = runtime.task
-        remaining = max(0, task['limits'].get('run_minutes', 15) * 60 - (time.monotonic() - runtime.started))
+        remaining = None if measuring(task) else max(0, task['limits'].get('run_minutes', 15) * 60 - (time.monotonic() - runtime.started))
         retry_at = getattr(error, 'retry_at', None)
         role = 'reviewer' if task.get('pending_review') else (task.get('route') or {}).get('waiting_for', task['active_role'])
         recovery = progress.state(task)
         needs_probe = not task['providers'].get(role) or bool((task.get('route') or {}).get('recovery', {}).get(role))
         allowance = recovery.get('wait_cycles', 0) < 3 and (not needs_probe or recovery.get('route_probes', {}).get(role, 0) < 4)
-        can_wait = bool(automatic(task, role) and retry_at and 0 <= max(0, retry_at-time.time()) < remaining and allowance)
+        can_wait = bool(automatic(task, role) and retry_at and (remaining is None or 0 <= max(0, retry_at-time.time()) < remaining) and allowance)
         return {'scope': getattr(error, 'scope', None), 'retry_at': retry_at, 'remaining_seconds': remaining,
                 'can_wait': can_wait, 'role': role, 'message': str(error)}
 
@@ -1940,8 +1956,8 @@ class Engine:
             self.event(task, 'routing', 'Cooldown ended; checking route eligibility', {'role': info.get('role')})
         finally:
             runtime.metric_cooldown_wait=getattr(runtime,'metric_cooldown_wait',0)+time.monotonic()-waiting_started
-            info['remaining_seconds'] = max(0, task['limits'].get('run_minutes', 15) * 60 - (time.monotonic()-runtime.started))
-            info['can_wait'] = bool(info['remaining_seconds'] > max(0, info['retry_at']-time.time()) and recovery.get('wait_cycles',0) < 3)
+            info['remaining_seconds'] = None if measuring(task) else max(0, task['limits'].get('run_minutes', 15) * 60 - (time.monotonic()-runtime.started))
+            info['can_wait'] = bool((info['remaining_seconds'] is None or info['remaining_seconds'] > max(0, info['retry_at']-time.time())) and recovery.get('wait_cycles',0) < 3)
             task['route_wait'] = None
 
     def _run(self, runtime):
@@ -1998,7 +2014,7 @@ class Engine:
                     task["messages"].append({"role": "user", "content": "Resumed checkpoint result: " + json.dumps(result)})
                     self.store.save(task)
                     continue
-                if request_worker_turns(task) >= task["limits"]["worker_turns"]:
+                if not measuring(task) and request_worker_turns(task) >= task["limits"]["worker_turns"]:
                     raise WorkerTurnLimit("Worker model-turn limit reached for this request. Saved work is kept; increase the worker-turn allowance to continue.")
                 if task.get("answer_pending"):
                     self.finish_answer(runtime)
@@ -2025,14 +2041,14 @@ class Engine:
                         continue
                     else:
                         raise RoutingPause("The local assistant did not answer or delegate. Resume to try again.")
-                if request_worker_turns(task) >= task["limits"]["worker_turns"]:
+                if not measuring(task) and request_worker_turns(task) >= task["limits"]["worker_turns"]:
                     raise WorkerTurnLimit("Worker model-turn limit reached after local chat. No remote work was started for this request.")
                 if task.get("route") and not task["route"]["ready"]:
                     select_remote(self, runtime)
                 if task.get("delegation"):
                     self.event(task, "handoff", "Local chat delegated the work", {"from": task["providers"]["coordinator"]["model"], "to": task["providers"]["worker"]["model"], "role": "worker", "summary": task.pop("delegation")})
                     task["messages"] = self.initial_messages(task)
-                near_end = runtime.step_turns >= task["limits"].get("checkpoint_turns", 12) - 1 or request_worker_turns(task) >= task["limits"]["worker_turns"] - 1
+                near_end = not measuring(task) and (runtime.step_turns >= task["limits"].get("checkpoint_turns", 12) - 1 or request_worker_turns(task) >= task["limits"]["worker_turns"] - 1)
                 if task.get("conversational") and runtime.step_turns and near_end and not task.get("action_pending"):
                     self.refresh_changes(task)
                     if task["patch"] == task.get("turn_start_patch", ""):
@@ -2040,7 +2056,7 @@ class Engine:
                         continue
                 self.checkpoint_boundary(runtime)
                 runtime.step_turns += 1
-                if not task.get("action_pending") and runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
+                if not measuring(task) and not task.get("action_pending") and runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
                     task["loop_guidance"] = "You are near the checkpoint interval boundary. Useful unfinished edits can continue within the hard allowance; do not claim partial work is complete. For a question, give your answer now without editing files. For a requested change, finish only that scope and submit checkpoint; it verifies the patch and requests review. If no command is selected yet, use run_checks to choose one first. If blocked, ask_user. Avoid further polishing or repeated reads."
                     task["messages"].append({"role": "user", "content": task["loop_guidance"]})
                     self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint interval; hard task limits still apply.")

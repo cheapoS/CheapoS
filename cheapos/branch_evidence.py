@@ -109,8 +109,13 @@ def ready_receipt(current, checks, review, worker_model, reviewer_model, criteri
         raise ValueError('Automatic commits require a distinct reviewer model')
     if review.get('candidate_id') != current['id'] or review.get('decision') != 'APPROVE' or not isinstance(review.get('feedback'), str):
         raise ValueError('Independent APPROVE for this candidate is required')
-    if not isinstance(criteria_outcomes, dict) or set(criteria_outcomes) != set(current['criteria']) or any(not isinstance(v, dict) or v.get('passed') is not True or not isinstance(v.get('evidence'), str) or not v['evidence'].strip() for v in criteria_outcomes.values()):
-        raise ValueError('Every criterion requires passing acceptance evidence')
+    if not isinstance(criteria_outcomes, dict):
+        raise ValueError('criteria_outcomes must be an object keyed by each exact acceptance criterion')
+    if set(criteria_outcomes) != set(current['criteria']):
+        raise ValueError('Use the exact criterion keys. Missing: '+json.dumps(sorted(set(current['criteria'])-set(criteria_outcomes)))+'; unexpected: '+json.dumps(sorted(set(criteria_outcomes)-set(current['criteria']))))
+    for criterion, value in criteria_outcomes.items():
+        if not isinstance(value, dict) or value.get('passed') is not True or not isinstance(value.get('evidence'), str) or not value['evidence'].strip():
+            raise ValueError('Criterion '+json.dumps(criterion)+' requires {"passed": true, "evidence": "specific nonempty evidence"}; passed must be a JSON boolean, not a string')
     if len(checks) != len(current['checks']):
         raise ValueError('Missing required checks')
     for expected, bound in zip(current['checks'], checks):

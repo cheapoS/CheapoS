@@ -31,6 +31,8 @@ this projection. Each appended repair is independently bound to its exact item.
     contract = auth['contract']; original = contract['plan']; projected = copy.deepcopy(run)
     if run['plan'].get('final_checks') != original.get('final_checks') or run['plan'].get('limits') != original.get('limits') or run.get('limits') != original.get('limits'):
         raise ValueError('Final checks or cumulative limits changed')
+    if run['plan'].get('measurement', False) != original.get('measurement', False):
+        raise ValueError('Authorized measurement mode changed')
     initial = original['items']; current = run['plan']['items']
     if current[:len(initial)] != initial:
         raise ValueError('Originally authorized work changed')
