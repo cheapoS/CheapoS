@@ -37,7 +37,7 @@ READ_TOOLS = [
     tool("list_files", "List eligible files in the isolated task workspace."),
     tool("read_file", "Read a text file with line numbers.", {"path": TEXT, "start_line": {"type": "integer"}, "end_line": {"type": "integer"}}, ["path"]),
     tool("search", "Search LOCAL repository files for a literal string. This is not internet search; use read_url for web links.", {"query": TEXT}, ["query"]),
-    tool("read_url", "Read a public HTTPS page supplied in chat, or a link returned by this tool. GitHub repository links open the README. Returns numbered lines and links; use start_line/end_line for more. No internet search, sign-in, or JavaScript. If unavailable, explain the limitation rather than repeatedly searching local files.", {"url": TEXT, "start_line": {"type": "integer"}, "end_line": {"type": "integer"}}, ["url"]),
+    tool("read_url", "Read a public HTTPS page supplied in chat, or a link returned by this tool. GitHub repository links open the README. Returns numbered lines and links. To continue, set start_line to the previous end_line + 1; omitting end_line reads the next 120 lines. No internet search, sign-in, or JavaScript. If unavailable, explain the limitation rather than repeatedly searching local files.", {"url": TEXT, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 1}}, ["url"]),
     tool("get_diff", "Inspect the current patch relative to the task's starting snapshot."),
 ]
 WORKER_TOOLS = READ_TOOLS + [
@@ -99,6 +99,24 @@ class ProgressPause(Exception):
 
 class WorkerTurnLimit(BudgetError):
     pass
+
+
+def excerpt(text, maximum):
+    if not isinstance(text, str) or len(text) <= maximum:
+        return text
+    marker = "\n[Middle omitted from saved context; this is a partial excerpt.]\n"
+    half = (maximum - len(marker)) // 2
+    return text[:half] + marker + text[-half:]
+
+
+def observation_key(name, args, result):
+    if name == "read_url" and isinstance(result, dict):
+        evidence = [name, result.get("source_url", args.get("url")), result.get("content")]
+    elif name == "read_file" and isinstance(result, dict):
+        evidence = [name, args.get("path"), result.get("content")]
+    else:
+        evidence = [name, args, result]
+    return hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
 
 
 def request_worker_turns(task):
@@ -310,6 +328,8 @@ class Engine:
             if followup is not None:
                 task["conversational"] = True
                 task["request_worker_turns"] = 0
+                task["answer_pending"] = False
+                task["loop_guidance"] = None
                 task.pop("pending_checkpoint", None)
                 task["requests"] = task.get("requests", [task["prompt"]]) + [followup.strip()]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
@@ -317,6 +337,8 @@ class Engine:
                 self.event(task, "user", "You", followup.strip())
             elif task.get("conversational"):
                 task["request_worker_turns"] = request_worker_turns(task)
+                if task.get("error_code") == "progress_limit" and Workspace(task["workspace"]).patch() == task.get("turn_start_patch", ""):
+                    task["answer_pending"] = True
             task["status"] = "running"
             task["error"] = None
             task["error_code"] = None
@@ -398,7 +420,18 @@ class Engine:
         summary = {"original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "latest_message": task.get("requests", [task["prompt"]])[-1], "files": workspace.list_files()[:500], "current_diff": workspace.patch()[:30000], "last_review_feedback": previous, "check_command": task["check_command"], "web_urls": sorted(allowed_urls(task))[:80]}
         # Keep completed observations across compaction/restart. Replaying an old
         # assistant tool call could repeat an edit, so carry this as data instead.
-        activity, size, seen_reads = [], 0, set()
+        activity, size, seen_reads, sources = [], 0, set(), []
+        boundary = max((i for i, e in enumerate(task["events"]) if e["kind"] == "user"), default=-1)
+        for event in reversed(task["events"][boundary+1:]):
+            if event["kind"] == "tool" and event["title"] == "read url":
+                result = event["detail"].get("result") or {}
+                source = {k: result[k] for k in ("source_url", "start_line", "end_line", "has_more") if k in result}
+                if source and source not in sources:
+                    sources.append(source)
+                if len(sources) >= 12:
+                    break
+        if sources:
+            summary["web_reads_this_request"] = list(reversed(sources))
         for event in reversed(task["events"]):
             if event["kind"] not in {"tool", "tool_error", "assistant", "checks"}:
                 continue
@@ -406,19 +439,33 @@ class Engine:
             if event["kind"] == "tool" and isinstance(detail, dict):
                 args = detail.get("arguments", {})
                 if event["title"] in {"read file", "read url"} and (args.get("path") or args.get("url")):
-                    read_key = json.dumps(args, sort_keys=True)
+                    result = detail.get("result")
+                    read_key = observation_key(event["title"].replace(" ", "_"), args, result)
+                    if event["title"] == "read url" and isinstance(result, dict):
+                        # Keep the latest excerpt starting at this section rather
+                        # than filling context with overlapping URL/range variants.
+                        read_key = (result.get("source_url", args.get("url")), result.get("start_line", args.get("start_line", 1)))
                     if read_key in seen_reads:
                         continue
                     seen_reads.add(read_key)
-                    result = detail.get("result")
-                    if isinstance(result, dict) and len(result.get("content", "")) > 8000:
-                        result["content"] = result["content"][:8000] + "\n[Preview shortened; use a targeted read for missing lines.]"
+                    if isinstance(result, dict) and isinstance(result.get("content"), str):
+                        result["content"] = excerpt(result["content"], 4000)
+                        # The controller already retains link permissions. Repeating
+                        # every URL here displaced the actual findings from context.
+                        if event["title"] == "read url":
+                            result.pop("links", None)
                 if event["title"] in {"replace text", "write file"}:
                     detail["arguments"] = {"path": args.get("path")}
+                if isinstance(detail.get("result"), str):
+                    detail["result"] = excerpt(detail["result"], 5000)
+            elif event["kind"] == "assistant":
+                detail = excerpt(detail, 4000)
+            elif event["kind"] == "checks" and isinstance(detail, dict):
+                detail["output"] = excerpt(detail.get("output", ""), 4000)
             item = {"kind": event["kind"], "action": event["title"], "detail": detail}
             encoded_size = len(json.dumps(item))
             if size + encoded_size > 24000:
-                break
+                continue
             activity.append(item)
             size += encoded_size
             if len(activity) == 12:
@@ -426,7 +473,10 @@ class Engine:
         if activity:
             summary["recent_activity"] = list(reversed(activity))
             summary["continuation"] = "Continue from these completed observations and the current diff. Use targeted reads for missing context. This is a partial history; do not repeat completed edits or assume earlier checks are still current."
-        return [{"role": "system", "content": CHAT_SYSTEM if task.get("conversational") else WORKER_SYSTEM}, {"role": "user", "content": json.dumps(summary)}]
+        messages = [{"role": "system", "content": CHAT_SYSTEM if task.get("conversational") else WORKER_SYSTEM}, {"role": "user", "content": json.dumps(summary)}]
+        if task.get("loop_guidance"):
+            messages.append({"role": "user", "content": "Controller direction: " + task["loop_guidance"]})
+        return messages
 
     def refresh_changes(self, task):
         workspace = Workspace(task["workspace"])
@@ -434,6 +484,32 @@ class Engine:
         task["patch"] = workspace.patch()
         if len(task["patch"]) > 100000:
             raise BudgetError("The patch is too large for a reliable compact review. Split this task into smaller changes.")
+
+    def finish_answer(self, runtime):
+        """One accounted response without tools; never a substitute for patch review."""
+        task = runtime.task
+        self.refresh_changes(task)
+        if task["patch"] != task.get("turn_start_patch", ""):
+            task["answer_pending"] = False
+            raise ProgressPause("This request has edits that still need verification and review. Inspect the saved changes before resuming.")
+        if request_worker_turns(task) >= task["limits"]["worker_turns"]:
+            raise WorkerTurnLimit("The worker-turn allowance is exhausted. The gathered evidence is saved; an answer needs one remaining worker turn.")
+        task["answer_pending"] = True
+        self.event(task, "guard", "Preparing an answer from gathered evidence", "Research has stopped for this request. The worker will answer from the sources it already read, or explain what remains unknown.")
+        messages = self.initial_messages(task)
+        messages.append({"role": "user", "content": "Research is finished for this run. No tools are available for this response. Answer the LATEST user message now using the gathered evidence; cite source URLs. Do not propose another round of reading. State missing information honestly. If the user asked for changes that were not made, explicitly say the work is unfinished and why. Existing edits are not approved by this answer. Do not claim you read omitted text, executed checks, or changed files. Return a concise, useful answer, or one necessary question if genuinely blocked."})
+        runtime.step_turns += 1
+        task["worker_turns"] += 1
+        task["request_worker_turns"] += 1
+        message = self.request(runtime, messages, [], task["active_role"])
+        if runtime.stop.is_set():
+            raise InterruptedError("Task stopped")
+        if message.get("tool_calls") or not isinstance(message.get("content"), str) or not message["content"].strip():
+            raise ProgressPause("The worker did not return an answer after research stopped. No additional tools were executed. Resume will retry only the answer step.")
+        task["answer_pending"] = False
+        task["loop_guidance"] = None
+        task["status"] = "awaiting_reply"
+        self.event(task, "assistant", "CheapOS", message["content"][:12000])
 
     def request(self, runtime, messages, tools, role, config_override=None, purpose=None):
         task = runtime.task
@@ -616,6 +692,7 @@ class Engine:
         checks = self.checks(runtime)
         runtime.step_turns = 0
         runtime.observations.clear()
+        task["loop_guidance"] = None
         if not checks["passed"]:
             return {"decision": "REQUEST_CHANGES", "feedback": "The configured verification command failed. Fix the failure before review.", "checks": checks}
         if task["active_role"] == "reviewer":
@@ -688,6 +765,9 @@ class Engine:
                     continue
                 if request_worker_turns(task) >= task["limits"]["worker_turns"]:
                     raise WorkerTurnLimit("Worker model-turn limit reached for this request. Saved work is kept; increase the worker-turn allowance to continue.")
+                if task.get("answer_pending"):
+                    self.finish_answer(runtime)
+                    continue
                 if task["active_role"] == "coordinator":
                     task["worker_turns"] += 1
                     task["request_worker_turns"] = task.get("request_worker_turns", 0) + 1
@@ -716,11 +796,18 @@ class Engine:
                 if task.get("delegation"):
                     self.event(task, "handoff", "Local chat delegated the work", {"from": task["providers"]["coordinator"]["model"], "to": task["providers"]["worker"]["model"], "role": "worker", "summary": task.pop("delegation")})
                     task["messages"] = self.initial_messages(task)
+                near_end = runtime.step_turns >= task["limits"].get("checkpoint_turns", 12) - 1 or request_worker_turns(task) >= task["limits"]["worker_turns"] - 1
+                if task.get("conversational") and runtime.step_turns and near_end:
+                    self.refresh_changes(task)
+                    if task["patch"] == task.get("turn_start_patch", ""):
+                        self.finish_answer(runtime)
+                        continue
                 if runtime.step_turns >= task["limits"].get("checkpoint_turns", 12):
                     raise ProgressPause("The worker reached its turn limit without a checkpoint or answer. Review the saved changes, then resume if more work is needed.")
                 runtime.step_turns += 1
                 if runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
-                    task["messages"].append({"role": "user", "content": "You are near the checkpoint turn limit. For a question, give your answer now without editing files. For a requested change, finish only that scope and submit checkpoint; it reruns the saved verification command. If no command is selected yet, use run_checks to choose one first. If blocked, ask_user. Avoid further polishing or repeated reads."})
+                    task["loop_guidance"] = "You are near the checkpoint turn limit. For a question, give your answer now without editing files. For a requested change, finish only that scope and submit checkpoint; it reruns the saved verification command. If no command is selected yet, use run_checks to choose one first. If blocked, ask_user. Avoid further polishing or repeated reads."
+                    task["messages"].append({"role": "user", "content": task["loop_guidance"]})
                     self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint turn limit.")
                 if len(json.dumps(task["messages"])) > 60000:
                     task["messages"] = self.initial_messages(task)
@@ -762,21 +849,25 @@ class Engine:
                             if name in {"write_file", "replace_text"}:
                                 runtime.observations.clear()
                             else:
-                                evidence = {k: v for k, v in result.items() if k not in {"cached", "fetched_at"}} if name == "read_url" else result
-                                fingerprint = hashlib.sha256(json.dumps([name, args, evidence], sort_keys=True).encode()).hexdigest()
+                                fingerprint = observation_key(name, args, result)
                                 runtime.observations[fingerprint] = runtime.observations.get(fingerprint, 0) + 1
                                 if runtime.observations[fingerprint] == 2:
-                                    result = {"observation": result, "guidance": "This exact read returned the same information twice. Answer the user's question from the evidence, use read_url for a supplied web link, or ask_user to explain what is missing. Do not edit just to reset the loop guard. A further identical read will pause this run."}
+                                    task["loop_guidance"] = "This read returned the same information twice. Answer the user's question from the evidence, use read_url for a supplied web link, or ask_user to explain what is missing. Do not edit just to reset the loop guard. Another identical read ends research for this run."
+                                    result = {"observation": result, "guidance": task["loop_guidance"]}
                                     self.event(task, "guard", "Asking the worker to use what it found", "The same read returned unchanged information twice. CheapOS asked for an answer, a relevant web read, or a clear explanation of what is missing.")
                                 elif runtime.observations[fingerprint] >= 3:
-                                    raise ProgressPause("The worker repeated an unchanged read after being asked to answer or explain the blocker. No new information was found. Your work is saved; give it a more specific instruction or resume to try again.")
+                                    self.refresh_changes(task)
+                                    if task.get("conversational") and task["patch"] == task.get("turn_start_patch", ""):
+                                        task["answer_pending"] = True
+                                    else:
+                                        raise ProgressPause("The worker repeated an unchanged read after being asked to answer or explain the blocker. No new information was found. Your work is saved; give it a more specific instruction or resume to try again.")
                     except InterruptedError:
                         raise
                     except (ValueError, OSError, TypeError, UnicodeError) as error:
                         result = {"error": str(error)[:1000]}
                         self.event(task, "tool_error", "Tool could not complete: " + name, result)
                     task["messages"].append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)})
-                    if task["status"] not in ACTIVE:
+                    if task["status"] not in ACTIVE or task.get("answer_pending"):
                         break
                 self.store.save(task)
         except (ProgressPause, RoutingPause) as error:

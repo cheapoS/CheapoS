@@ -173,11 +173,13 @@ class RoutingTests(LocalCase):
         self.assertEqual(self.engine.store.get(task['id']),before)
         self.assertEqual(Engine(self.engine.store.root).preferences()['execution']['mode'],'remote')
 
-    def test_three_identical_reads_pause_without_review_or_extra_request(self):
+    def test_three_identical_reads_allow_one_answer_request_without_tools(self):
         task=self.chat('local');requests=self.responses([call('read_file',{'path':'math_utils.py'})]*4)
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['error_code'],'progress_limit');self.assertEqual(result['status'],'paused')
-        self.assertEqual(len(requests),3);self.assertFalse(result['checkpoints'])
+        self.assertEqual(len(requests),4);self.assertFalse(result['checkpoints'])
+        self.assertTrue(result['answer_pending'])
+        self.assertEqual(sum(e['title']=='read file' for e in result['events']),3)
 
     def test_checkpoint_turn_limit_bounds_even_changing_edits(self):
         task=self.chat('local');task['limits']['checkpoint_turns']=2;self.engine.store.save(task)

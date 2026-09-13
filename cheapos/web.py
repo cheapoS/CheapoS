@@ -186,12 +186,14 @@ class WebReader:
         self.failures = {}
         self.attempted = set()
 
-    def read(self, task, url, start_line=1, end_line=120, stopped=lambda: False):
+    def read(self, task, url, start_line=1, end_line=None, stopped=lambda: False):
         url = normalize_url(url)
         if url not in allowed_urls(task):
             raise ValueError('Open a URL supplied by the user or a link returned by read_url. Ask the user for a link if it is missing; repository search is not internet search.')
+        if end_line is None and type(start_line) is int:
+            end_line = start_line + 119
         if type(start_line) is not int or type(end_line) is not int or start_line < 1 or end_line < start_line:
-            raise ValueError('Provide a valid line range')
+            raise ValueError('start_line must be an integer at least 1; end_line must be an integer at least start_line. To continue, supply only start_line (for example, 121).')
         cached = url in self.pages
         if not cached:
             if url in self.failures:

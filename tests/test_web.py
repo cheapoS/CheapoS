@@ -39,6 +39,9 @@ class WebTests(unittest.TestCase):
             self.assertTrue(next_page['cached'])
             self.assertFalse(next_page['has_more'])
             self.assertEqual(get.call_count, 1)
+            continued = reader.read(t, URL, start_line=201)
+            self.assertEqual(continued['start_line'],201)
+            self.assertEqual(continued['end_line'],242)
         link = URL+'/blob/main/docs/setup.md'
         self.assertIn(link, allowed_urls(t))
         with patch('cheapos.web.fetch', return_value=(link, 'text/plain', b'Setup instructions')) as get:
@@ -178,14 +181,13 @@ class WebChatTests(LocalCase):
         self.assertIn('guidance',json.loads(requests[-1][0][-1]['content']))
         self.assertEqual(result['changes'],[])
 
-    def test_third_identical_read_still_stops_without_encouraging_edits(self):
+    def test_third_identical_read_switches_to_an_answer_without_edits(self):
         t=self.chat()
-        self.provider([call('read_file',{'path':'math_utils.py'})]*3)
+        requests=self.provider([call('read_file',{'path':'math_utils.py'})]*3+[{'content':'The upper bound is handled; the lower bound is missing.'}])
         self.engine.start(t['id'])
         result=self.finish(t)
-        self.assertEqual(result['status'],'paused')
-        self.assertEqual(result['error_code'],'progress_limit')
-        self.assertIn('No new information',result['error'])
+        self.assertEqual(result['status'],'awaiting_reply')
+        self.assertEqual(requests[-1][1],[])
         self.assertEqual(result['changes'],[])
 
     def test_cancelled_reviewer_web_read_cannot_approve_in_the_same_batch(self):

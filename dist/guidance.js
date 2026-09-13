@@ -60,6 +60,7 @@ const CheapOSGuide = (() => {
     else if(latest?.kind==='model'){
       stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':latest.title.startsWith('Requesting coordinator:')?'coordinator':'worker';
       title=role==='reviewer'?'Waiting for the reviewer’s response':'Waiting for the model’s response';
+      if(task.answer_pending)title='Preparing an answer from gathered evidence';
       detail=task.providers?.[role]?.model||latest.title.replace(/^Requesting (worker|reviewer|coordinator): /,'');since=latest.time;
     }else if(latest?.title==='Running verification'){stage='checks';title='Running checks';detail=(latest.detail?.command||task.check_command||[]).join(' ')}
     const timestamp=Date.parse(since),seconds=Number.isFinite(timestamp)?Math.max(0,(at-timestamp)/1000):0;
