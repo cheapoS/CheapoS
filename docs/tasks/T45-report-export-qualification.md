@@ -1,6 +1,6 @@
 # T45 — Verify the download and report the real outcome
 
-Status: Not started
+Status: Done (attempt 1 failure documented; browser acceptance pending complete feature)
 Depends on: T44 attempted; feature acceptance needs a complete candidate
 Size: M
 
@@ -60,3 +60,5 @@ Interventions and limitations: pending
 
 Update this card and TASKS.md. Commit only sanitized records and scoped repairs,
 not generated personal reports, downloaded artifacts, or credentials.
+
+Attempt 1: [qualification record](../trials/exporter-20260913/RESULTS.md). Incomplete feature; no browser success claimed.
