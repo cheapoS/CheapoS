@@ -36,6 +36,8 @@ def main():
                     'gateway_fallback_disabled':False,'app_fallback_disabled':True,'qualified_pinned_model':False,
                     'requests':0,'usage':None,'status':'not_dispatched','output_token_allowance':1024}
             results.append(result);begin=time.monotonic()
+            if not engine.gateway.matches(cfg['base_url']):raise ValueError('Configured diagnostic endpoint differs from authorized gateway')
+            access_policy.guard({'access_policy':policy,'route':{'access_policy':policy}},cfg,engine.gateway.settings,catalog['models'])
             if not model or not access_policy.eligible(model,policy):result['status']='access_excluded';continue
             identity=route_health.probe_identity(cfg['base_url'],model,policy['connection_revision'])
             if engine.gateway.pool.observation(cfg['base_url'],cfg['model'],policy['connection_revision'])['cooling_down']:
@@ -47,9 +49,7 @@ def main():
                 response,usage=gateway_for(cfg,engine.provider_key(role,cfg)).complete_brief(PROBE_MESSAGES,[PROBE_TOOL],1024,lambda *a:None,lambda:False)
                 result['usage']={k:v for k,v in usage.items() if k in ('prompt_tokens','completion_tokens','total_tokens','cost') and isinstance(v,(int,float))}
                 result.update({k:v for k,v in (usage.get('_served_identity') or {}).items() if k in ('served_model','identity_provenance')})
-                calls=response.get('tool_calls',[])
-                name,arguments=engine.parse_call(calls[0]) if len(calls)==1 else (None,None)
-                if name!='routing_ready' or arguments!={'marker':route_health.PROBE_MARKER}:raise ValueError('Unexpected probe response')
+                route_health.validate_probe(response,engine.parse_call)
                 result['status']='structured_tool_support'
                 engine.gateway.pool.record(cfg['base_url'],cfg['model'],role,probe=True,connection_revision=policy['connection_revision'],probe_identity=identity)
             except Exception as error:

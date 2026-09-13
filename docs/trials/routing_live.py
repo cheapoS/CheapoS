@@ -64,6 +64,8 @@ def main():
     if args.prepare:
         if not args.config_dir:parser.error('--config-dir required')
         if git(app,'status','--porcelain'):parser.error('Commit app changes first')
+        settings=json.loads((args.config_dir/'gateway.json').read_text())
+        if not settings.get('connection_revision'):parser.error('Initialize the isolated profile with the current app before freezing its configuration')
         root.mkdir(mode=0o700);source.mkdir();state.mkdir(mode=0o700)
         for name in PROFILE_FILES:save(state/name,json.loads((args.config_dir/name).read_text()))
         files,items=fixture(app)
