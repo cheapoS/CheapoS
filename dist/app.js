@@ -109,6 +109,7 @@ function startupPreferences() {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const values=new FormData(form);await api('/startup/config',{enabled:values.has('enabled'),allow_cloud:values.has('allow_cloud')});d.close();await loadStartup()})};
 }
 function renderHome() {
+  $('#task-title').textContent='New chat';$('#task-title').title='';$('#rename-task').hidden=true;document.title='CheapOS';
   $('.task-heading').hidden=true;$('.tabs').hidden=true;$('#compact-session').hidden=true;$('#toggle-inspector').hidden=true;$('#inspector').classList.add('home-hidden');
   $('.main-pane').classList.add('new-conversation');
   $('#project-name').textContent=state.project?CheapOSGuide.projectName({source:state.project.path}):'Your workspace';
@@ -183,7 +184,7 @@ function renderTask({resetScroll=false}={}) {
   const scroller=$('#view-container'), oldScroll=scroller.scrollTop, bottom=scroller.scrollHeight-scroller.clientHeight-oldScroll<60;
   const expanded=new Map((resetScroll?[]:$$('details[data-event]')).map(d=>[d.dataset.event,d.open]));
   const outputScroll=new Map((resetScroll?[]:$$('[data-thinking], [data-command-output]')).map(el=>[el.dataset.thinking||el.dataset.commandOutput,{top:el.scrollTop,bottom:el.scrollHeight-el.clientHeight-el.scrollTop<30}]));
-  $('#task-title').textContent=task.title;$('#task-title').title=task.title;
+  $('#task-title').textContent=task.title;$('#task-title').title=task.title;$('#rename-task').hidden=false;document.title=task.title+' — CheapOS';
   $('#project-name').textContent=CheapOSGuide.projectName(task);
   $('#task-status').textContent=labels[task.status]||task.status;
   $('#task-date').textContent=date(task.created_at);
@@ -598,6 +599,16 @@ function resumeDialog() {
   const d=dialog(`<form>${modalHeader(takeover?'REVIEWER TAKEOVER':turnLimit?'WORKER TURNS':'TASK LIMITS',takeover?'Let the reviewer take over?':turnLimit?'Continue this request?':'Continue from saved work.')}<p class="modal-description">${takeover?'The reviewer will implement changes using the same task budget. You will review its final patch.':turnLimit?`${used} worker turns used on this request. Choose a higher allowance to continue from saved work. Your ${money(task.limits.dollars)} spending cap stays unchanged.`:`Usage already counted: ${money(task.usage.cost)}. Resuming keeps your saved edits and accounting.`}</p>${fields}<p class="small muted">${turnLimit?'New messages get their own worker-turn allowance. Resume keeps the turns already used. Costs and token usage remain cumulative.':'A stopped or failed provider request may still be billable. Its reservation stays counted. Automatic remote chats can recover with another free model. Manual and local chats keep their models; updated connection keys are available.'}</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Source project stays separate.</span><button type="submit" class="primary-button">${takeover?'Approve takeover':'Save limits & resume'} ${icon('play')}</button></div></form>`);
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form),limits=turnLimit?{...task.limits,worker_turns:Number(f.get('worker_turns'))}:readLimits(f);if(turnLimit&&limits.worker_turns<=used)throw new Error('Choose an allowance above the turns already used.');await api('/tasks/'+task.id+'/start',{limits,approve_takeover:takeover});d.close();await refresh()})};
 }
+async function renameTask(task=state.task) {
+  if(!task)return;
+  const d=dialog(`<form>${modalHeader('TASK NAME','Rename task')}<label class="full-field">Task title<input name="title" maxlength="120" required value="${esc(task.title)}" autocomplete="off"></label><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" class="text-link" data-automatic>Use automatic title</button><button type="button" class="subtle-button" data-close>Cancel</button><button type="submit" class="primary-button">Save</button></div></form>`);
+  const form=$('form',d), input=$('input',d);
+  const save=async title=>{await api('/tasks/'+task.id+'/metadata',{custom_title:title});d.close();await refresh()};
+  form.onsubmit=e=>{e.preventDefault();formAction(form,()=>save(input.value))};
+  $('[data-automatic]',d).onclick=()=>formAction(form,()=>save(null));
+  input.focus();input.select();
+}
+
 async function sessionPermissions() {
   const task=state.task;if(!task)return;
   try {
@@ -737,7 +748,7 @@ async function refresh() {
   if(state.loading)return;
   await loadStartup();await loadGateway();await loadTasks();const selected=state.task?.id;if(!selected)return;
   const task=await api('/tasks/'+selected);if(state.task?.id!==selected)return;
-  if(task.updated_at!==state.task.updated_at||task.status!==state.task.status){state.task=task;renderTask()}
+  if(['updated_at','status','title','custom_title','pinned','archived_at','trashed_at'].some(key=>task[key]!==state.task[key])){state.task=task;renderTask()}
 }
 async function bootstrap() {
   try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.preferences=data.preferences||state.preferences;try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();}
@@ -756,3 +767,5 @@ $('#sidebar-toggle').onclick=()=>{if(matchMedia('(max-width:700px)').matches)$('
 $('#mobile-menu').onclick=()=>{if(matchMedia('(max-width:700px)').matches)$('#sidebar').classList.toggle('show');else{$('#sidebar').classList.remove('collapsed');$('#mobile-menu').style.display='none'}};
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}if(e.key==='Escape'){$('#sidebar').classList.remove('show');$('#inspector').classList.remove('show')}});
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);
+
+$('#rename-task').onclick=()=>renameTask();

@@ -8,6 +8,8 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .titles import automatic_title
+
 
 def write_json(path, value):
     path = Path(path)
@@ -113,7 +115,7 @@ class Store:
 
     def present(self, task):
         metadata = self.metadata(task["id"])
-        return {**task, **metadata, "title": metadata["custom_title"] or task["title"]}
+        return {**task, **metadata, "title": metadata["custom_title"] or automatic_title(self.get(task["id"]))}
 
     def visible(self, view="active"):
         if view not in {"active", "archived", "trash"}:

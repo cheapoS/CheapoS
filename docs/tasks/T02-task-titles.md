@@ -30,12 +30,12 @@ Add title-policy regressions to an appropriate Python or JS helper test, dependi
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Deterministic first-substantive-request names, manual rename/reset, a single primary task header, secondary project identity, and metadata-aware polling.
+- Acceptance evidence: Greeting/short-question/Unicode/long-prompt policy tests; manual names survive follow-ups and restart; requests remain unchanged.
+- Commands and results: 2 title tests and 5 metadata tests passed; 60 JavaScript tests and app syntax check passed; diff whitespace check passed. T01 integration ran 304 tests: 278 passed in sandbox; 26 socket-binding errors resolved by passing HTTP (26 tests) and gateway module reruns with loopback access.
+- Browser scenarios and results: Enter saves; whitespace errors stay inline; Escape cancels and returns focus; literal HTML-looking/emoji names render safely; reload retains name; in-session draft survives rename. Renamed an active scripted task through checks/review; worker events and title survived. Checked header/dialog at 390px and reset viewport.
+- Remaining limitations: Long names truncate visually with full title available; composer drafts retain existing session-only persistence.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

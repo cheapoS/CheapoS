@@ -39,6 +39,18 @@ class TaskMetadataTests(unittest.TestCase):
         self.assertEqual(store.get('known')['events'], list(range(20)))
         self.assertEqual(store.get('known')['title'], 'Original')
 
+    def test_manual_title_survives_substantive_followups_and_reset(self):
+        self.task['prompt'] = 'hi'
+        self.task['requests'] = ['hi']
+        self.store.save(self.task)
+        self.assertEqual(self.store.visible()[0]['title'], 'New chat')
+        self.store.update_metadata('known', {'custom_title': 'CSV tools'})
+        self.task['requests'].extend(['Create a CSV converter with tests', 'Change the format'])
+        self.store.save(self.task)
+        self.assertEqual(Store(self.temp.name).visible()[0]['title'], 'CSV tools')
+        self.store.update_metadata('known', {'custom_title': None})
+        self.assertEqual(self.store.visible()[0]['title'], 'Create a CSV converter with tests')
+
     def test_defaults_archive_idempotence_and_malformed_record(self):
         self.assertEqual(self.store.visible()[0]['title'], 'Original')
         first = self.store.update_metadata('known', {'archived': True})
