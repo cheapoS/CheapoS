@@ -1,0 +1,73 @@
+{
+  "candidate": "installed OmniRoute SmartCrusher; minRows=8",
+  "results": [
+    {
+      "stage": "raw",
+      "requests": 28,
+      "before_bytes": 157380,
+      "after_bytes": 157380,
+      "changed_requests": 0,
+      "compression_ms": 0.17207999999999402,
+      "fixture_evidence_unchanged": true,
+      "retrieval_calls": 0
+    },
+    {
+      "stage": "concise",
+      "requests": 28,
+      "before_bytes": 156062,
+      "after_bytes": 156062,
+      "changed_requests": 0,
+      "compression_ms": 0.02666599999996322,
+      "fixture_evidence_unchanged": true,
+      "retrieval_calls": 0
+    }
+  ],
+  "synthetic": {
+    "before_bytes": 3901,
+    "after_bytes": 1557,
+    "compression_and_roundtrip_ms": 3.077167000000003,
+    "roundtrip_equal": true,
+    "original_retrievable": true,
+    "original_sha256": "69af3a811262644041e3a37a25e12b1114922b96d36b11aafe57f6117baf362b",
+    "raw_retrieval_bytes": 3901,
+    "retrieval_operations": 1
+  },
+  "guard_findings": {
+    "system_and_developer_preserved": true,
+    "tool_arguments_preserved": true,
+    "user_request_bytes_changed": true,
+    "json_source_bytes_changed": true
+  },
+  "decision": "defer: no fixture benefit; blanket pass changes protected user/source text; no production retrieval integration",
+  "versions": {
+    "omniroute": "3.8.49",
+    "license": "MIT",
+    "node": "v26.3.0",
+    "toon": "4.1.1"
+  },
+  "source_sha256": {
+    "encoderComparison.ts": "e6abc2eca5a9e2aba238767ae469fa0edcc08f9af063a393a58e2d1a076c1006",
+    "gcf/decode_generic.ts": "9dd60951ac9ab01f5aaaea4fa8f3f2302c4f0bd74c8057fa856d33cff7043184",
+    "gcf/generic.ts": "b0af6e9f3560d4fe4d17e9eb46c9f1582fc09ea703cc07a771d3e967db47379d",
+    "gcf/index.ts": "2d05119f08b3d37452d81e6d9504cbcefa1db7be813ed9e0bab7d338d3e0c35d",
+    "gcf/scalar.ts": "b85641f949588ea09397965bb2fa60f86c2b286a5d0404180123536206bfc675",
+    "index.ts": "4402c16a7f955f617cea8dd507bd8288f968d7abd5d3665c2479adef75134efc",
+    "smartcrusher.ts": "104c997b1758df7cf5dd9ac0fec39a8386f59bf2f1f99b355c23be7d244d73c6",
+    "tabular.ts": "87e096d530a58fab6a2c8f9acc789b4694ff7ead9ef4a5240ee331e7f63056a9",
+    "toon.ts": "56ec96e3ab4a2b6c04be99cd5a7788059ec3dd5c9cee140a80ff459905cced80"
+  },
+  "fixture_runs": {
+    "baseline_seven_passed": true,
+    "noisy_passed": true,
+    "source_hashes": [
+      "ebb62be101204040757bd68a5aa0ffab9eb7f392354a00173b7dacc1540dbe22",
+      "16a45ed5c9a96803102efebed9f0904e0034d8b8373fd359dbfc7b7999371f80",
+      "bf3e9994b43148bee1e90924cf4b8fe5129f2e77887294d87d2c3fd702181edb",
+      "e7936cea590592e3ea97261ed5a700651d162bce841872233a7d39ae59486092",
+      "990d33e8b41b85f7af327fe004d49286968f72f5f513a43e0560e3d13e961f8d",
+      "1774eabe48e80350d50796482b12fd8b2bf786d19d71775c7c8cf97c17c64b29",
+      "bf3e9994b43148bee1e90924cf4b8fe5129f2e77887294d87d2c3fd702181edb",
+      "3db35e10b23caa7011fe4dbe3ac9d7df0e49577777c9f9b5fcba6eb6bb3ce54c"
+    ]
+  }
+}

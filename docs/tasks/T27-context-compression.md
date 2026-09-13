@@ -29,12 +29,12 @@ Run relevant provider/gateway/context tests and T24/T26 comparison scenarios. Ne
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: [Reproducible offline evaluation](../experiments/context-compression.md) of the already installed gateway SmartCrusher pass; explicit defer decision, no runtime integration or dependency installation.
+- Acceptance evidence: 28 captured request payloads unchanged across raw/filtered stages; eight controller scenarios passed. Synthetic roundtrip/retrieval passed, but broad pass changes protected user/source bytes, so adoption gate fails.
+- Commands and results: context_compression_benchmark.py with installed OmniRoute 3.8.49 and Node 26.3.0: PASS, decision defer. Exact hashes/settings/results recorded; no live inference. Final integration gate recorded separately.
+- Browser scenarios and results: No runtime UI added; T26 raw-evidence viewer already verified.
+- Remaining limitations: No real-model quality/token/billing claim; no production retrieval integration for this candidate. A future adoption experiment needs explicit model/budget selection and repeated representative trials.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
