@@ -1889,6 +1889,10 @@ class Engine:
             raise ProviderError("The model returned a tool call without a valid ID or name", code="invalid_tool_envelope") from None
         if not isinstance(arguments, str):
             raise ToolArgumentsError(name, call_id, "arguments must be a JSON-encoded string")
+        # Some providers omit the object for these default, read-only calls.
+        # Do not extend this to zero-required executable tools such as run_checks.
+        if arguments == "" and name in {"list_files", "get_diff"}:
+            arguments = "{}"
         try:
             params = json.loads(arguments)
         except json.JSONDecodeError as error:

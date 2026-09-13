@@ -65,6 +65,38 @@ class BranchFinalTests(unittest.TestCase):
         self.assertEqual(len(self.requests),count)
         self.assertIsNone(result['readiness']['integration_blocker'])
 
+    def test_chunk_context_contains_bound_checks_and_still_allows_rejection(self):
+        result = final.final_check_review(self.engine, self.runtime)
+        ready = result['readiness']
+        packets = [packet for packet in self.requests if 'chunk' in packet]
+        self.assertEqual(len(packets), len(ready['manifest']['chunks']))
+        for packet in packets:
+            context = packet['review_context']
+            self.assertEqual(context['acceptance_criteria'], [
+                {'id': r['id'], 'criterion': r['criterion']} for r in ready['manifest']['requirements']])
+            self.assertEqual(len(context['final_checks']), len(ready['checks']))
+            for summary, bound in zip(context['final_checks'], ready['checks']):
+                self.assertEqual(summary, {
+                    'candidate_id': ready['candidate']['id'], 'command': bound['command'],
+                    'passed': True, 'exit_code': 0,
+                    'verification_identity': bound['record']['verification_identity'],
+                    'input_identity': bound['record']['input_identity'],
+                    'record_digest': evidence._digest(bound['record'])})
+                self.assertNotIn('output', summary)
+        self.request_changes = True
+        self.requests.clear()
+        rejected = final.final_check_review(self.engine, self.runtime)
+        self.assertEqual(rejected['decision'], 'REQUEST_CHANGES')
+        self.assertNotIn('readiness', rejected)
+        self.assertEqual(len(self.requests), 1)
+        self.assertTrue(self.requests[0]['review_context']['final_checks'][0]['passed'])
+
+    def test_oversized_context_is_rejected_without_truncation_or_request(self):
+        packet = {'review_context': {'acceptance_criteria': [{'id': 'one:1', 'criterion': 'x' * 30000}]}}
+        with self.assertRaisesRegex(ValueError, 'nothing was omitted'):
+            final._review(self.engine, self.runtime, {'id': 'manifest'}, packet, [], [])
+        self.assertEqual(self.requests, [])
+
     def test_overlapping_commits_and_reviewed_no_change_keep_history(self):
         for identity, text in [('two', 'three\n'), ('three', 'three\n')]:
             self.item = {'id': identity, 'title': identity, 'instructions': 'Implement correct content',

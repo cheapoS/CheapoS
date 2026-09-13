@@ -107,6 +107,22 @@ class ToolArgumentTests(LocalCase):
                 self.assertNotIn('{broken',str(caught.exception))
                 opener.return_value.open.assert_called_once()
 
+    def test_empty_arguments_are_normalized_only_for_default_read_tools(self):
+        for name in ('list_files', 'get_diff'):
+            with self.subTest(name=name):
+                self.assertEqual(Engine.parse_call(malformed(name=name, arguments='')['tool_calls'][0]), (name, {}))
+            for arguments in (' ', '\n', None, '[]', 'null', '{'):
+                with self.subTest(name=name, arguments=arguments), self.assertRaises(ToolArgumentsError):
+                    Engine.parse_call(malformed(name=name, arguments=arguments)['tool_calls'][0])
+        for name in ('write_file', 'run_checks', 'read_file', 'checkpoint', 'unknown_tool'):
+            with self.subTest(name=name), self.assertRaises(ToolArgumentsError):
+                Engine.parse_call(malformed(name=name, arguments='')['tool_calls'][0])
+        call = malformed(name='get_diff', arguments='')['tool_calls'][0]
+        call['id'] = ''
+        with self.assertRaises(ProviderError) as caught:
+            Engine.parse_call(call)
+        self.assertEqual(caught.exception.code, 'invalid_tool_envelope')
+
     def test_argument_shape_errors_are_repairable_but_missing_identity_is_not(self):
         for args in ('[]','null','"text"','',None):
             with self.subTest(args=args),self.assertRaises(ToolArgumentsError):
