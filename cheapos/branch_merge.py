@@ -35,8 +35,10 @@ def _destination(mapping, target):
 def _clean(source, target):
     if workspace.source_git(source, 'symbolic-ref', '--quiet', 'HEAD') != target:
         raise ValueError('Destination checkout branch changed')
-    for marker in ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply', 'sequencer'):
-        path = Path(workspace.source_git(source, 'rev-parse', '--git-path', marker))
+    markers = ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply', 'sequencer')
+    args = [arg for marker in markers for arg in ('--git-path', marker)]
+    for raw in workspace.source_git(source, 'rev-parse', *args).splitlines():
+        path = Path(raw)
         if (path if path.is_absolute() else Path(source) / path).exists():
             raise ValueError('Finish the existing Git operation before integration')
     if workspace.source_git(source, 'status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none'):

@@ -44,6 +44,33 @@ and 12.585s (23.6% less time). Assertions and real Git checks remain intact.
 All six final-review tests passed in 80.053s after this test-only adjustment.
 Production evidence freshness and persistence behavior were not changed.
 
+### Subprocess batching, module partitioning, and LPT parallel scheduling (September 13, 2026)
+
+Profiling `test_commits.py` found 342 subprocess calls in 9.149s for a single
+test, with subprocess execution accounting for 94.1% of test duration.
+Marker queries in `commits.py` (`source_state`) and `branch_merge.py` (`_clean`)
+were batched from 6 sequential `git rev-parse --git-path <marker>` calls into a
+single batched invocation. Precomputed `evidence_identity` hashes were reused
+across consecutive matching calls in `needs_patch_review` and `reviewed_patch`.
+
+`parallel_tests.py` now implements Longest Processing Time (LPT) queue
+scheduling, dispatching known heavy modules (`test_commits`, `test_branch_*`)
+first so short tests backfill worker capacity rather than leaving idle workers
+waiting on long-tail modules. `check.py` defaults to `min(8, os.cpu_count() or 1)`
+workers.
+
+The monolithic `test_commits.py` (previously 26 tests, 120.9s serial) was
+partitioned into three independent modules: `test_commits.py` (core commit
+behavior), `test_commit_reconciliation.py` (reconciliation logic), and
+`test_commit_recovery.py` (crash and ref failure recovery), allowing them to run
+concurrently.
+
+| Selection | Workers | Before | After | Wall-clock reduction |
+| --- | ---: | ---: | ---: | ---: |
+| Single followup commit test | 1 | 9.149s | 6.794s | 25.7% |
+| Complete 26 commit tests | 3 | 120.899s (serial) | 46.329s (parallel) | 61.7% |
+| Selection + runner + commits + merge (44 tests) | 6 | — | 61.350s | All passing |
+
 The complete suite was deliberately not rerun for this tooling change. The
 measurements below are historical snapshots with different test counts, not
 current mandatory gates or timeout recommendations.

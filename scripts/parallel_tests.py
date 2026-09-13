@@ -18,11 +18,53 @@ def cases(suite):
             yield entry
 
 
+KNOWN_WEIGHTS = {
+    'test_commits': 120,
+    'test_commit_reconciliation': 40,
+    'test_commit_recovery': 40,
+    'test_branch_completion': 98,
+    'test_branch_end_to_end': 97,
+    'test_branch_final': 84,
+    'test_branch_commits': 75,
+    'test_branch_execution': 63,
+    'test_branch_recovery': 60,
+    'test_branch_merge': 57,
+    'test_branch_workspace': 35,
+    'test_http': 31,
+    'test_branch_commit_controller': 30,
+    'test_benchmark': 28,
+    'test_model_pool': 24,
+    'test_routing': 22,
+    'test_compact_edits': 22,
+    'test_answer_recovery': 19,
+    'test_branch_planning_http': 17,
+    'test_checkpoint_boundaries': 15,
+    'test_branch_evidence': 15,
+    'test_permissions': 14,
+    'test_starter_scope': 13,
+    'test_branch_http': 13,
+    'test_project_permissions': 13,
+    'test_chat': 12,
+    'test_branch_start': 12,
+    'test_engine': 12,
+    'test_output_recovery': 11,
+    'test_samples': 10,
+    'test_branch_review': 10,
+    'test_branch_reprepare': 10,
+}
+
+
+def module_priority(module):
+    name = module.split('.')[-1]
+    return KNOWN_WEIGHTS.get(name, 1)
+
+
 def run_modules(modules, args, patterns, runner):
     live = set()
     lock = threading.Lock()
     stopping = threading.Event()
     reports = []
+    ordered = sorted(modules, key=module_priority, reverse=True)
     with tempfile.TemporaryDirectory(prefix='cheapos-tests-') as directory:
         def run(index, module):
             report_path = Path(directory) / (str(index) + '.json')
@@ -51,7 +93,7 @@ def run_modules(modules, args, patterns, runner):
 
         pool = ThreadPoolExecutor(max_workers=args.jobs)
         try:
-            futures = [pool.submit(run, index, module) for index, module in enumerate(modules)]
+            futures = [pool.submit(run, index, module) for index, module in enumerate(ordered)]
             for future in as_completed(futures):
                 result = future.result()
                 if result is None:

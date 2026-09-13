@@ -225,8 +225,8 @@ def check_argv(command):
     return shlex.split(command)
 
 
-def current_evidence(task, evidence):
-    return evidence.get("generation", 0) == task.get("workspace_generation", 0) and evidence_matches(task, evidence)
+def current_evidence(task, evidence, identity=None):
+    return evidence.get("generation", 0) == task.get("workspace_generation", 0) and evidence_matches(task, evidence, identity=identity)
 
 
 def needs_patch_review(task):
@@ -235,7 +235,8 @@ def needs_patch_review(task):
         return False
     check = (task.get("checks") or [{}])[-1]
     review = (task.get("checkpoints") or [{}])[-1]
-    return not (current_evidence(task, check) and current_evidence(task, review)
+    ident = evidence_identity(task)
+    return not (current_evidence(task, check, identity=ident) and current_evidence(task, review, identity=ident)
                 and check.get("passed") and check.get("digest") == hashlib.sha256(patch.encode()).hexdigest()
                 and review.get("decision") == "APPROVE" and review.get("diff") == patch)
 
@@ -953,11 +954,12 @@ class Engine:
             raise ValueError("There are no new changes to commit")
         if task["status"] not in {"approved", "completed", "awaiting_reply"}:
             raise ValueError("Finish verification and review before applying this patch")
-        if not current_evidence(task, check) or not check.get("passed") or check.get("digest") != digest:
+        ident = evidence_identity(task)
+        if not current_evidence(task, check, identity=ident) or not check.get("passed") or check.get("digest") != digest:
             raise ValueError("This patch has changed since verification. Run checks and review it again.")
         if task["status"] != "completed":
             review = (task.get("checkpoints") or [{}])[-1]
-            if not current_evidence(task, review) or review.get("decision") != "APPROVE" or review.get("diff") != task["patch"]:
+            if not current_evidence(task, review, identity=ident) or review.get("decision") != "APPROVE" or review.get("diff") != task["patch"]:
                 raise ValueError("This patch has changed since review. Request a new checkpoint first.")
 
     def reconcile_project(self, task_id, values):
