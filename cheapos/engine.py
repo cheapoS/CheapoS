@@ -1286,13 +1286,16 @@ class Engine:
 
     def request(self, runtime, messages, tools, role, config_override=None, purpose=None):
         task = runtime.task
-        if config_override is not None or purpose or not automatic(task, role):
+        routed_purpose = purpose in {None, 'branch_planning', 'branch_final'}
+        if config_override is not None or not routed_purpose or not automatic(task, role):
             return self._request(runtime, messages, tools, role, config_override, purpose)
         attempted = False
         while True:
             runtime.guard()
             if runtime.stop.is_set():
                 raise InterruptedError("Task stopped")
+            if not task['providers'].get(role):
+                select_remote(self, runtime, role)
             recovery = task["route"].get("recovery", {}).get(role)
             if recovery and runtime.handoffs >= MAX_HANDOFFS:
                 raise RoutingPause("Two automatic model handoffs were tried for this request. Saved work and usage are kept. Inspect Models and send a specific next instruction; Resume does not replenish handoffs.")
@@ -1309,7 +1312,7 @@ class Engine:
                 self.event(task, "handoff", "Switching to another free " + role, {
                     "from": recovery["from"], "to": task["providers"][role]["model"], "role": role,
                     "summary": "Continuing with the same chat, saved files, checks, and limits. " + recovery["reason"]})
-                if (task.get("action_pending") or task.get("compact_edits")) and task["status"] != "reviewing":
+                if not purpose and (task.get("action_pending") or task.get("compact_edits")) and task["status"] != "reviewing":
                     messages[:] = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
             cfg = task["providers"][role]
             # Revalidate pinned choices against the refreshed catalog, including prices.
@@ -1329,15 +1332,15 @@ class Engine:
                 continue
             started = time.monotonic()
             try:
-                if role == "worker" and (task.get("output_recovery") or task.get("compact_edits")):
+                if not purpose and role == "worker" and (task.get("output_recovery") or task.get("compact_edits")):
                     config = {**cfg, "_recovery_reasoning": model.get("recovery_reasoning")}
                     guidance = COMPACT_GUIDANCE if task.get("compact_edits") else OUTPUT_GUIDANCE
                     message = self._request(runtime, messages + [{"role": "user", "content": guidance}], tools, role, config_override=config)
                 else:
-                    message = self._request(runtime, messages, tools, role)
+                    message = self._request(runtime, messages, tools, role, purpose=purpose)
                 self.validate_offered_tools(message, tools)
             except ProviderError as error:
-                if error.code == "output_limit" and role == "worker":
+                if not purpose and error.code == "output_limit" and role == "worker":
                     attempted = True
                     if not task.get("output_recovery", {}).get(cfg["model"]):
                         self.prepare_output_recovery(task, cfg["model"])

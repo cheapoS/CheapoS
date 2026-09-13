@@ -4,7 +4,7 @@ import json
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from cheapos.server import LocalServer
 from cheapos.workspace import git
 from cheapos.branch_workspace import _tip
@@ -85,6 +85,31 @@ class BranchPlanningHTTPTests(unittest.TestCase):
             self.assertEqual(status, 400)
         self.assertFalse(self.provider.inputs)
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
+
+    def test_remote_planning_probes_before_inference_without_starting_work(self):
+        from cheapos.routing import PROBE_MESSAGES
+        self.engine.save_preferences({'execution': {'mode': 'remote'}})
+        self.engine.gateway.catalog = Mock(return_value={'status': 'ready', 'models': [
+            {'id': 'planner:free', 'free': True, 'local': False, 'tool_calling': True}]})
+        provider = self.provider
+        dispatched = []
+        class RemoteProvider:
+            def complete(inner, messages, tools, max_tokens):
+                dispatched.append([t['function']['name'] for t in tools])
+                if messages == PROBE_MESSAGES:
+                    return call('routing_ready'), {'prompt_tokens': 3, 'completion_tokens': 1, 'cost': 0}
+                return provider.complete(messages, tools, max_tokens)
+        self.engine.provider_factory = lambda *args: RemoteProvider()
+        status, proposal = self.post('/api/branch-runs/plan', self.request_values())
+        self.assertEqual(status, 200, proposal)
+        task = self.engine.store.get(proposal['task_id'])
+        self.assertEqual(dispatched, [['routing_ready'], ['propose_branch_plan']])
+        self.assertEqual(task['branch_run']['status'], 'awaiting_authorization')
+        self.assertEqual([r['purpose'] for r in task['request_metrics']], ['probe', 'branch_planning'])
+        self.assertEqual(task['usage']['worker']['tokens'], 34)
+        self.assertEqual(task['usage']['cost'], 0)
+        self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
+        self.assertFalse(self.engine.runtimes)
 
     def test_conflict_is_clarification_with_preserved_captured_request(self):
         (self.source / 'scope.md').write_text('Remove the original utility.')

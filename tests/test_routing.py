@@ -15,6 +15,33 @@ def model(name, **extra):
 
 
 class RoutingTests(LocalCase):
+    def test_unattended_requests_select_free_roles_and_keep_accounting_purpose(self):
+        task = self.chat('remote')
+        requests = self.responses([{'content': 'Plan'}, {'content': 'Review'}, {'content': 'Final'}])
+        runtime = Runtime(task)
+        messages = [{'role': 'user', 'content': 'Prepare the bounded job.'}]
+        for role, purpose in [('worker', 'branch_planning'), ('reviewer', None), ('reviewer', 'branch_final')]:
+            self.engine.request(runtime, messages, [], role, purpose=purpose)
+        self.assertEqual(task['providers']['worker']['model'], 'a:free')
+        self.assertEqual(task['providers']['reviewer']['model'], 'b:free')
+        self.assertEqual([r['model'] for r in requests], ['a:free', 'a:free', 'b:free', 'b:free', 'b:free'])
+        self.assertEqual([r['purpose'] for r in task['request_metrics']], ['probe', 'branch_planning', 'probe', 'work', 'branch_final'])
+        self.assertEqual(task['usage']['cost'], 0)
+        self.assertEqual(sum(task['usage'][role]['tokens'] for role in ('worker', 'reviewer')), 53)
+
+    def test_unattended_final_request_revalidates_free_model_pricing(self):
+        task = self.chat('remote')
+        requests = self.responses([{'content': 'Plan'}, {'content': 'Review'}, {'content': 'Final'}])
+        runtime = Runtime(task)
+        messages = [{'role': 'user', 'content': 'Inspect the candidate.'}]
+        self.engine.request(runtime, messages, [], 'worker', purpose='branch_planning')
+        self.engine.request(runtime, messages, [], 'reviewer')
+        self.engine.gateway.catalog.return_value['models'] = [model('a:free'), model('b:free', free=False), model('c:free')]
+        self.engine.request(runtime, messages, [], 'reviewer', purpose='branch_final')
+        self.assertEqual(task['providers']['reviewer']['model'], 'c:free')
+        self.assertEqual(requests[-1]['model'], 'c:free')
+        self.assertEqual(task['request_metrics'][-1]['purpose'], 'branch_final')
+
     def chat(self, mode='delegate', prompt='Fix the lower bound.'):
         source=self.fixture()['source']
         self.engine.save_preferences({'execution':{'mode':mode,'local_model':'local-chat'}})
