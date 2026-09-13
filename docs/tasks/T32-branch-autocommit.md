@@ -26,14 +26,14 @@ Inject failure before ref update, after ref update, after private baseline advan
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: `branch_commits.prepare/finish` journal immutable source/private commits, atomically verify ownership and compare-and-swap the feature ref, recover interrupted baseline advancement, and reject stale authority/candidates. Controller `commit_item` atomically records mapping/outcome and one operation-keyed milestone.
 
-Acceptance evidence:
+Acceptance evidence: Real source/index preservation, sequential ancestry, excluded-path collision refusal, ownership races, failures before/after ref updates and baseline advancement; final controller-save failure recovers the exact commit with one milestone and no human-acceptance record.
 
-Commands and results:
+Commands and results: 8 branch transaction scenarios passed (initial 7: 64.220s, added race and sequential checks passed); 2 controller completion/recovery tests PASS (21.585s); all 26 existing manual commit tests PASS (121.548s).
 
 Browser scenarios and results: Not required until T36/T40; transaction tests are required here.
 
-Remaining limitations:
+Remaining limitations: Workers must remain frozen while the controller holds its commit transition. Source hooks/signing remain disabled under the existing manual Git policy; filters/sparse configurations are rejected. No publishing or target update occurs here.

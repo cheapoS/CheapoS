@@ -150,7 +150,7 @@ All cards below start **Todo**. Sizes describe scope, not time. Dependencies mea
 | [T29](docs/tasks/T29-branch-workspace.md) | Snapshot from a committed base and owned feature ref | T28 | L | Done |
 | [T30](docs/tasks/T30-branch-authorization.md) | One run authorization and scoped test permissions | T28, T29 | M | Done |
 | [T31](docs/tasks/T31-branch-evidence.md) | Exact candidate evidence and independent review gate | T28, T29 | M | Done |
-| [T32](docs/tasks/T32-branch-autocommit.md) | Journaled automatic commits to the owned ref | T30, T31 | L | Todo |
+| [T32](docs/tasks/T32-branch-autocommit.md) | Journaled automatic commits to the owned ref | T30, T31 | L | Done |
 | [T33](docs/tasks/T33-branch-execution.md) | Sequential execution, recovery, and shared limits | T32 | L | Todo |
 | [T34](docs/tasks/T34-branch-resume.md) | Pause/restart recovery and branch drift handling | T33 | M | Todo |
 | [T35](docs/tasks/T35-branch-start-ui.md) | Document-to-plan proposal and simple start flow | T30, T33, T34 | M | Todo |

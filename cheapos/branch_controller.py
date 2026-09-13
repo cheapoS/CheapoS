@@ -151,3 +151,32 @@ class BranchController:
             self.engine.store.save(task)
             return task
 
+    def commit_item(self, runtime, item):
+        from . import branch_commits
+        task=runtime.task;run=task['branch_run']
+        with self.engine.lock:
+            operation=next((op for op in run['pending_operations'] if op['item_id']==item['id']),None)
+            if operation is None:
+                operation=branch_commits.prepare(task,run,item,item['ready_receipt'],self.validate_authority)
+                run['pending_operations'].append(operation)
+            def save_operation(value):
+                index=next(i for i,op in enumerate(run['pending_operations']) if op['id']==value['id'])
+                run['pending_operations'][index]=value
+                self.engine.store.save(task)
+            receipt=json.loads(operation['receipt'])
+            flags={'checks_passed':True,'review_approved':True,'acceptance_satisfied':True,
+                   'candidate_id':receipt['candidate']['id'],'review_candidate_id':receipt['candidate']['id'],
+                   'worker_model':receipt['worker_model'],'reviewer_model':receipt['reviewer_model'],
+                   'no_change':receipt['outcome']=='satisfied_without_change'}
+            if not flags['no_change'] and item['status']=='reviewing':state.transition_item(run,item['id'],'committing',flags)
+            finished=branch_commits.finish(task,run,item,operation,save_operation,self.validate_authority)
+            item['commit_receipt']=copy.deepcopy(finished)
+            run['workspace_mapping'].update(feature_tip=finished['new_tip'],workspace_head=finished['private_new'])
+            run['expected_feature_tip']=finished['new_tip']
+            state.transition_item(run,item['id'],'satisfied_without_change' if flags['no_change'] else 'committed',flags)
+            run.setdefault('completed_operations',[]).append(finished)
+            run['pending_operations']=[op for op in run['pending_operations'] if op['id']!=finished['id']]
+            event=state.append_event(run,'item_completed',{'item_id':item['id'],'title':item['title'],'commit':None if flags['no_change'] else finished['new_tip']},event_key=finished['id'])
+            self.engine.refresh_changes(task)
+            task.pop('pending_checkpoint',None);task.pop('pending_review',None)
+            self.engine.event(task,'branch_commit','Item already satisfied' if flags['no_change'] else 'Committed '+item['title'],event)
