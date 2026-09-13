@@ -1,3 +1,4 @@
+from cheapos.routing import PROBE_MARKER
 """Access classification/scope cases without Git, inference or process fixtures."""
 import copy
 import json
@@ -86,7 +87,12 @@ class AccessTests(unittest.TestCase):
         pool=SimpleNamespace(observation=lambda *a:{'cooling_down':False,'tool_check_passed':True,'tool_check_at':time.time(),'tool_connection_revision':'old'},rank=lambda *a:0,record=Mock())
         gateway=SimpleNamespace(settings=policy,matches=lambda u:True,catalog=lambda **k:{'status':'ready','models':models},pool=pool)
         engine=SimpleNamespace(gateway=gateway,event=Mock(),store=SimpleNamespace(save=Mock()),
-                               request=Mock(return_value={'tool_calls':[{'id':'probe'}]}),parse_call=lambda c:('routing_ready',{}))
+                               request=Mock(return_value={'tool_calls':[{'id':'probe'}]}),parse_call=lambda c:('routing_ready',{'marker': PROBE_MARKER}))
+        cache={'valid':False}
+        pool.fresh_probe=lambda *a:cache['valid']
+        pool.claim_probe=lambda *a:(True,None)
+        pool.release_probe=Mock()
+        pool.record.side_effect=lambda *a,**kw:cache.update(valid=True)
         runtime=SimpleNamespace(task=task,failed_models=set())
         routing.select_remote(engine,runtime)
         self.assertEqual(engine.request.call_count,1)

@@ -17,7 +17,7 @@ from .gateways import OmniRouteGateway
 from .model_pool import FreeModelPool
 from .providers import ProviderError
 from .storage import write_json
-from . import access_policy
+from . import access_policy, route_health
 
 
 DEFAULT_SETTINGS = {"base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True}
@@ -171,7 +171,7 @@ class OmniRouteManager:
             self.state, self.message = state, message
             self.diagnostic_code = code
             if models is not None:
-                self.models = models
+                self.models = route_health.metadata_facts(models, self.models, time.time())
             elif state != "starting":
                 self.models = []
             self.revision += 1
@@ -284,5 +284,7 @@ class OmniRouteManager:
             for model in models:
                 model['access_class'] = access_policy.classify(model, access_policy.snapshot(self.settings))
                 model['access_source'] = 'operator_statement' if model['access_class'] == 'included' else 'catalog'
+                if 'metadata_evidence' in model:
+                    model['metadata_evidence']['stale'] = time.monotonic() - self.checked_at >= 300
                 model["health"] = self.pool.observation(self.settings["base_url"], model["id"], self.settings.get("connection_revision"))
             return {"models": models, "revision": self.revision + self.pool.revision, "status": self.state}

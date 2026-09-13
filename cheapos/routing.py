@@ -4,7 +4,7 @@ import copy
 import math
 import time
 
-from . import access_policy
+from . import access_policy, route_health, routing_trace
 from .providers import ProviderError, is_local_ollama, validate_provider
 
 
@@ -21,10 +21,12 @@ DELEGATE_TOOL = {"type": "function", "function": {
     "name": "delegate_work", "description": "Hand project work to a free remote worker; the local model goes idle.",
     "parameters": {"type": "object", "properties": {"summary": {"type": "string"}},
                    "required": ["summary"], "additionalProperties": False}}}
+PROBE_MARKER = route_health.PROBE_MARKER
+PROBE_VERSION = route_health.PROBE_VERSION
 PROBE_TOOL = {"type": "function", "function": {
     "name": "routing_ready", "description": "Confirm tool calling works. This tool does not execute anything.",
-    "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}}
-PROBE_MESSAGES = [{"role": "user", "content": "Call routing_ready with {} now. Do not do other work."}]
+    "parameters": {"type": "object", "properties": {"marker": {"type":"string", "enum":[PROBE_MARKER]}}, "required":["marker"], "additionalProperties": False}}}
+PROBE_MESSAGES = [{"role": "user", "content": "Call routing_ready with marker cheapos-tool-check-v2 now. Do not do other work."}]
 
 
 class RoutingPause(Exception):
@@ -103,6 +105,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
     access_policy.validate_current(route.get('access_policy'), gateway.settings)
     if task["providers"].get(role) and not replace:
         return
+    trace = routing_trace.begin(task, role, route.get("preferred", {}).get(role))
     route["waiting_for"] = role
     route["failures"] = []
     if not gateway.matches(route["base_url"]):
@@ -119,27 +122,33 @@ def select_remote(engine, runtime, role="worker", replace=False):
     used.update(runtime.failed_models)
     used.update(task.get('branch_run',{}).get('implementation_recovery',{}).get('failed_models',[]))
     connection_revision=(route.get('access_policy') or {}).get('connection_revision')
-    candidates = [m for m in catalog["models"] if access_policy.eligible(m, route.get('access_policy'))
-                  and not m.get("local") and not m["id"].startswith("auto/") and m["id"] not in used
-                  and not gateway.pool.observation(route["base_url"], m["id"], connection_revision)["cooling_down"]]
+    candidates = []
+    for model in catalog['models']:
+        fit = routing_trace.context_fit(task, model)
+        reason = ('local_excluded' if model.get('local') else 'capability_missing' if model.get('tool_calling') is not True
+                  else 'access_excluded' if not access_policy.eligible(model, route.get('access_policy'))
+                  else 'failed_model' if model['id'] in runtime.failed_models
+                  else 'prior_worker' if model['id'] in used
+                  else 'cooldown' if gateway.pool.observation(route['base_url'],model['id'],connection_revision)['cooling_down']
+                  else fit)
+        routing_trace.candidate(trace, model['id'], reason)
+        if reason in {'eligible', 'fit_unknown'}: candidates.append(model)
     preferred = route.get("preferred", {})
     connection_revision=(route.get('access_policy') or {}).get('connection_revision')
     candidates.sort(key=lambda m: gateway.pool.rank(route["base_url"], m, role, preferred.get(role), connection_revision))
     tried = set()
     probes = task.setdefault("progress_state", {}).setdefault("route_probes", {})
+    probes.setdefault(role, 0)
     for model in candidates:
         # A preceding probe may have cooled the whole provider. Do not repeat
         # its cached error against every other model or count those as failures.
         if gateway.pool.observation(route["base_url"], model["id"], connection_revision)["cooling_down"]:
+            routing_trace.candidate(trace, model["id"], "cooldown")
             continue
-        health = gateway.pool.observation(route["base_url"], model["id"], connection_revision)
-        cached = health.get("tool_check_passed") and health.get("tool_check_at", 0) >= time.time()-300 and not health.get("last_error")
-        if access_policy.classify(model, route.get('access_policy')) == 'included':
-            cached = cached and health.get('tool_connection_revision') == route['access_policy']['connection_revision']
-        if model["id"] in tried or (not cached and probes.get(role, 0) >= 4):
-            continue
-        tried.add(model["id"])
-        probes[role] = probes.get(role, 0) + (0 if cached else 1)
+        identity = route_health.probe_identity(route['base_url'], model, connection_revision)
+        cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
+        if model['id'] in tried or (not cached and probes.get(role, 0) >= 4): continue
+        tried.add(model['id'])
         cfg = validate_provider({"gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
                                  "input_rate": 0, "output_rate": 0}, role)
         if route.get('access_policy') is not None: cfg['access_binding'] = copy.deepcopy(route['access_policy'])
@@ -149,15 +158,33 @@ def select_remote(engine, runtime, role="worker", replace=False):
         engine.event(task, "routing", ("Checking included " if label == "included" else "Checking a free ") + role, {"model": model["id"], "role": role})
         try:
             if not cached:
-                message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose="probe")
-                calls = message.get("tool_calls", [])
-                if not isinstance(calls, list) or len(calls) != 1:
-                    raise ProviderError("The model did not return the expected tool call")
-                name, args = engine.parse_call(calls[0])
-                if name != "routing_ready" or args != {}:
-                    raise ProviderError("The model did not return the expected tool call")
-                probe_scope = {'connection_revision': route['access_policy']['connection_revision']} if route.get('access_policy') else {}
-                gateway.pool.record(route["base_url"], model["id"], role, probe=True, **probe_scope)
+                owner, pending = gateway.pool.claim_probe(identity)
+                if pending is None and not owner:
+                    raise RoutingPause('Four connection checks are already in flight. Retry after they finish; no probe was dispatched.', scope='probe_capacity')
+                try:
+                    if not owner:
+                        routing_trace.candidate(trace, model['id'], 'shared_probe')
+                        while not pending.wait(.1):
+                            runtime.guard()
+                            if runtime.stop.is_set(): raise InterruptedError('Task stopped')
+                        access_policy.validate_current(route.get('access_policy'), gateway.settings)
+                        cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
+                        if not cached: continue
+                    else:
+                        # A previous owner may have finished between lookup and claim.
+                        cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
+                        if not cached:
+                            routing_trace.candidate(trace, model['id'], 'probe_required')
+                            probes[role] = probes.get(role, 0) + 1
+                            message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose='probe')
+                            route_health.validate_probe(message, engine.parse_call)
+                            gateway.pool.record(route['base_url'], model['id'], role, probe=True,
+                                                connection_revision=connection_revision, probe_identity=identity)
+                finally:
+                    if owner: gateway.pool.release_probe(identity, pending)
+            else:
+                routing_trace.candidate(trace, model['id'], 'cached_probe')
+            routing_trace.selected(trace, model['id'])
             observed=gateway.pool.observation(route['base_url'],model['id'],connection_revision).get('role_evidence',{}).get(role,{})
             engine.event(task,'routing','Observed completion evidence' if observed.get('completed',0) else 'No prior completion evidence',
                          {'model':model['id'],'role':role,'completed':observed.get('completed',0),
@@ -169,15 +196,22 @@ def select_remote(engine, runtime, role="worker", replace=False):
             engine.store.save(task)
             return
         except (ProviderError, ValueError, TypeError, KeyError) as error:
-            cooldown = getattr(error, "code", None) == "gateway_cooldown"
-            if not cooldown:
-                runtime.failed_models.add(model["id"])
-            gateway.pool.record(route["base_url"], model["id"], role, error=error, connection_revision=connection_revision)
-            failure = {"model": model["id"], "role": role, "error": str(error)[:500]}
-            if cooldown:
-                failure["scope"] = error.scope
-            route["failures"].append(failure)
-            engine.event(task, "routing", "Provider is cooling down" if cooldown else "Model check failed", failure)
+            classification = route_health.classify(error, {'purpose':'probe', 'caller_error':isinstance(error, ValueError)})
+            cooldown = classification['category'] == 'rate_limit_quota'
+            if classification['quality_impact']: runtime.failed_models.add(model['id'])
+            gateway.pool.record(route['base_url'], model['id'], role, error=error, connection_revision=connection_revision,
+                                failure_context={'caller_error':isinstance(error, ValueError)})
+            failure = {'model':model['id'], 'role':role, 'error':classification['action'],
+                       'scope':classification['scope'], 'failure_category':classification['category']}
+            route['failures'].append(failure)
+            metric = next((m for m in reversed(task.get('request_metrics', []))
+                           if m.get('purpose') == 'probe' and m.get('model') == model['id']), None)
+            if metric is not None:
+                metric.update(status='failed', failure_category=classification['category'])
+                routing_trace.request(task, metric)
+            engine.event(task, 'routing', 'Provider is cooling down' if cooldown else 'Model check failed', failure)
+            if classification['scope'] in {'request','connection','account'}:
+                raise RoutingPause(classification['action'], scope=classification['scope']) from None
     if probes.get(role, 0) >= 4:
         raise RoutingPause("Four eligible " + role + " probes were used for this request. Inspect Models and provide a new instruction; Resume does not renew probe attempts.", scope="probe_limit")
     provider_waits = [gateway.pool.observation(route["base_url"], m["id"], connection_revision) for m in catalog["models"]

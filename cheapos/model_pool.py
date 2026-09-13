@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from .storage import write_json
+from . import route_health
 
 
 RECOVERABLE_CODES = {"stream_error", "stream_interrupted", "stream_timeout", "model_timeout",
@@ -67,6 +68,7 @@ class FreeModelPool:
         self.path = Path(directory) / "model-health.json"
         self.lock = threading.RLock()
         self.revision = 0
+        self.inflight_probes = {}
         try:
             self.records = json.loads(self.path.read_text())
             if not isinstance(self.records, dict):
@@ -81,10 +83,15 @@ class FreeModelPool:
     def observation(self, endpoint, model, connection_revision=None):
         with self.lock:
             record = copy.deepcopy(self.records.get(self.key(endpoint, model, connection_revision), {}))
+            connection = self.records.get(self.key(endpoint, '\0connection', connection_revision), {})
             provider = self.records.get(self.key(endpoint, self.provider_key(model), connection_revision), {})
             if provider.get("retry_at", 0) > time.time():
                 record.update(retry_at=max(record.get("retry_at", 0), provider["retry_at"]),
-                              cooldown_scope="provider", retry_known=provider.get("retry_known", False), last_error=provider.get("last_error", ""))
+                              cooldown_scope="provider", retry_known=provider.get("retry_known", False), last_error=provider.get("last_error", ""), failure=provider.get("failure"))
+            if connection.get('retry_at', 0) > time.time():
+                record.update(retry_at=max(record.get('retry_at',0),connection['retry_at']), cooldown_scope=connection.get('cooldown_scope','connection'),
+                              retry_known=connection.get('retry_known', False), last_error=connection.get('last_error', ''),
+                              failure=connection.get('failure'))
         record["cooling_down"] = record.get("retry_at", 0) > time.time()
         history=[item for item in record.pop('outcomes',[]) if item.get('time',0)>=time.time()-30*86400 and item.get('connection_revision')==connection_revision]
         completed=[item for item in record.pop('completions',[]) if item.get('time',0)>=time.time()-30*86400 and item.get('connection_revision')==connection_revision]
@@ -104,32 +111,45 @@ class FreeModelPool:
     def provider_key(model):
         return "\0provider/" + model.split("/", 1)[0]
 
-    def record(self, endpoint, model, role, *, error=None, seconds=None, probe=False, connection_revision=None):
+    def record(self, endpoint, model, role, *, error=None, seconds=None, probe=False, connection_revision=None, probe_identity=None, failure_context=None):
         with self.lock:
-            cooldown = getattr(error, "code", None) == "gateway_cooldown"
-            scope = getattr(error, "scope", None)
-            key = self.key(endpoint, self.provider_key(model) if cooldown and scope == "provider" else model, connection_revision)
+            failure = route_health.classify(error, failure_context) if error is not None else None
+            if failure and (failure['category'] == 'cancelled' or failure['scope'] == 'request'): return
+            cooldown = failure is not None and failure['category'] == 'rate_limit_quota'
+            scope = failure['scope'] if failure else None
+            target = '\0connection' if scope in {'connection', 'account'} else self.provider_key(model) if cooldown and scope == 'provider' else model
+            key = self.key(endpoint, target, connection_revision)
             record = self.records.setdefault(key, {})
             record["updated_at"] = time.time()
+            if failure: record['failure'] = failure
             if cooldown:
-                record.update(retry_at=time.time() + min(86400, max(1, error.retry_after or 120)),
-                              cooldown_scope=scope, retry_known=error.retry_after is not None, last_error=str(error)[:500])
+                record.update(retry_at=time.time() + min(86400, max(1, getattr(error,'retry_after',None) or 120)),
+                              cooldown_scope=scope, retry_known=getattr(error,'retry_after',None) is not None, last_error=failure['action'])
             elif error is not None:
                 record.pop("cooldown_scope", None)
                 record.pop("retry_known", None)
-                failures = record.get("failures", 0) + 1
-                record.update(failures=failures, retry_at=time.time() + min(3600, 900 * 2 ** min(failures - 1, 2)),
-                              last_error=str(error)[:500])
+                field = 'failures' if failure['quality_impact'] else 'availability_failures'
+                failures = record.get(field, 0) + 1
+                record[field] = failures
+                delay = 0 if failure['category'] == 'malformed_request' else min(3600, 900 * 2 ** min(failures - 1, 2))
+                record.update(retry_at=time.time() + delay, last_error=failure['action'], retry_known=False)
+                if scope in {'connection', 'account'}: record['cooldown_scope'] = scope
             else:
                 record.update(retry_at=0, last_error="")
+                record.pop('failure', None)
                 record.pop("cooldown_scope", None)
                 record.pop("retry_known", None)
                 if probe:
+                    record['probe_contract_version'] = route_health.PROBE_VERSION
+                    record['probe_identity'] = probe_identity
+                    record['tool_check_source'] = 'validated_tool_response'
                     record["tool_check_passed"] = True
                     record['tool_check_at'] = time.time()
                     if connection_revision is not None: record['tool_connection_revision'] = connection_revision
                 else:
                     record["failures"] = 0
+                    record['request_observed_at'] = time.time()
+                    record['request_source'] = 'actual_request'
                     field = role + "_responses"
                     record[field] = record.get(field, 0) + 1
                     if seconds is not None:
@@ -141,6 +161,28 @@ class FreeModelPool:
             write_json(self.path, self.records)
             self.revision += 1
 
+    def fresh_probe(self, endpoint, model, connection_revision, identity, now=None):
+        health = self.observation(endpoint, model, connection_revision)
+        age = (time.time() if now is None else now) - health.get('tool_check_at', 0)
+        return bool(not health['cooling_down'] and not health.get('last_error')
+                    and health.get('tool_check_passed') and 0 <= age < 300
+                    and health.get('probe_contract_version') == route_health.PROBE_VERSION
+                    and health.get('probe_identity') == identity)
+
+    def claim_probe(self, identity):
+        with self.lock:
+            if identity in self.inflight_probes: return False, self.inflight_probes[identity]
+            if len(self.inflight_probes) >= 4: return False, None
+            event = threading.Event()
+            self.inflight_probes[identity] = event
+            return True, event
+
+    def release_probe(self, identity, event):
+        with self.lock:
+            if self.inflight_probes.get(identity) is event:
+                del self.inflight_probes[identity]
+                event.set()
+
     def rank(self, endpoint, model, role, preferred=None, connection_revision=None):
         health = self.observation(endpoint, model["id"], connection_revision)
         evidence=health['role_evidence'].get(role,{})
@@ -151,7 +193,7 @@ class FreeModelPool:
         if connection_revision is not None and tier < 0: tier = 0
         # Observed compatibility first. Metadata only breaks ties; it is not a quality rating.
         return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3), min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0, -min(health.get(role + "_responses", 0), 1) if connection_revision is None else 0,
-                -(health.get("tool_check_passed") is True and (connection_revision is None or health.get("tool_connection_revision")==connection_revision)),
+                -self.fresh_probe(endpoint, model["id"], connection_revision, route_health.probe_identity(endpoint,model,connection_revision)),
                 -(model.get("reasoning") is True) if role == "reviewer" else 0,
                 -min(model.get("context_length") or 0, 65536) if role == "reviewer" else 0,
                 health.get(role + "_seconds", float("inf")) if connection_revision is None else float("inf"), model["id"])

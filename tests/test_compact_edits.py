@@ -1,3 +1,4 @@
+from cheapos.routing import PROBE_MARKER
 """Small edits stay bounded, versioned, and recoverable across free workers."""
 import copy
 import hashlib
@@ -82,7 +83,7 @@ class CompactRecoveryTests(LocalCase):
             def __init__(self, role, config): self.role, self.config = role, config
             def complete(self, messages, tools, maximum):
                 if messages == PROBE_MESSAGES:
-                    return call('routing_ready'), {'prompt_tokens': 3, 'completion_tokens': 1, 'cost': 0}
+                    return call('routing_ready', {'marker': PROBE_MARKER}), {'prompt_tokens': 3, 'completion_tokens': 1, 'cost': 0}
                 request = {'role': self.role, 'config': copy.deepcopy(self.config), 'tools': copy.deepcopy(tools),
                            'messages': copy.deepcopy(messages), 'maximum': maximum}
                 requests.append(request)

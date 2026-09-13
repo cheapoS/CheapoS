@@ -1,3 +1,4 @@
+from cheapos.routing import PROBE_MARKER
 import copy,json,threading,unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -63,7 +64,7 @@ class RecoveryExecutionTests(unittest.TestCase):
   def factory(role,config):
    def complete(messages,tools,max_tokens):
     names={t['function']['name'] for t in tools};name=config['model'];counters[name]=counters.get(name,0)+1
-    if 'routing_ready' in names:return call('routing_ready'),{'prompt_tokens':2,'completion_tokens':2,'cost':0}
+    if 'routing_ready' in names:return call('routing_ready', {'marker': PROBE_MARKER}),{'prompt_tokens':2,'completion_tokens':2,'cost':0}
     if 'final_review_decision' in names:
      p=json.loads(messages[1]['content']);result={k:p[k] for k in ('manifest_id','chunk_ids','criteria_ids')};result.update(decision='APPROVE',feedback='Actual tests and complete file evidence satisfy the criteria.');return call('final_review_decision',result),{'prompt_tokens':10,'completion_tokens':10,'cost':0}
     if 'review_decision' in names:

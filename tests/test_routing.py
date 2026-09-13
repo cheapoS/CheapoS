@@ -1,3 +1,4 @@
+from cheapos.routing import PROBE_MARKER
 """Placement, tool isolation, free selection, and bounded progress without inference."""
 import copy
 import json
@@ -58,7 +59,7 @@ class RoutingTests(LocalCase):
                 if messages==PROBE_MESSAGES:
                     if probe_fail and self.config['model'] in probe_fail:
                         return {'content':'No tools.'},{'prompt_tokens':3,'completion_tokens':1,'cost':0}
-                    return call('routing_ready'),{'prompt_tokens':3,'completion_tokens':1,'cost':0}
+                    return call('routing_ready', {'marker': PROBE_MARKER}),{'prompt_tokens':3,'completion_tokens':1,'cost':0}
                 return next(queue),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
         self.engine.provider_factory=lambda role,cfg:Provider(role,cfg)
         return requests
@@ -238,7 +239,7 @@ class RoutingTests(LocalCase):
         class Paid:
             def complete(self,*args):
                 calls.append(1)
-                return call('routing_ready'),{'prompt_tokens':10,'completion_tokens':2,'cost':.1}
+                return call('routing_ready', {'marker': PROBE_MARKER}),{'prompt_tokens':10,'completion_tokens':2,'cost':.1}
         self.engine.provider_factory=lambda *args:Paid()
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'budget_paused');self.assertEqual(len(calls),1)
