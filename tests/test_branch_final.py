@@ -1,0 +1,127 @@
+import copy
+import json
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+
+from cheapos import branch_final as final, branch_evidence as evidence
+from cheapos.verification import evidence_identity
+from cheapos.workspace import git
+import test_branch_commits as fixtures
+
+
+class BranchFinalTests(unittest.TestCase):
+    def setUp(self):
+        fixtures.BranchCommitTests.setUp(self)
+        self.run.update(schema_version=1, base_sha=self.run['workspace_mapping']['base_sha'],
+                        feature_ref='refs/heads/feature/job', target_ref='refs/heads/main', pending_operations=[], items=[])
+        self.task.update(branch_run=self.run, providers={'worker':{'model':'worker'},'reviewer':{'model':'reviewer'}}, checks=[], checks_generation=0)
+        self.run['plan']['final_checks'] = [[sys.executable, '-c', 'print("final passed")']]
+        self.item['instructions'] = 'Implement correct content'
+        self.run['plan']['items'] = [copy.deepcopy(self.item)]
+        operation = fixtures.BranchCommitTests.finish(self, fixtures.BranchCommitTests.prepare(self, 'two\n'))
+        fixtures.BranchCommitTests.apply_result(self, operation)
+        self.item.update(status='committed', commit_receipt=operation)
+        self.run['items'] = [self.item]
+        self.runtime = SimpleNamespace(task=self.task, guard=lambda: None)
+        self.requests = []
+        self.omit_coverage = False
+        self.request_changes = False
+        self.events = []
+        self.engine = SimpleNamespace(event=lambda *args:self.events.append(args), checks=self.checks, request=self.request, parse_call=lambda call: (call['function']['name'], json.loads(call['function']['arguments'])))
+
+    authorize = fixtures.BranchCommitTests.authorize
+    receipt = fixtures.BranchCommitTests.receipt
+    save = fixtures.BranchCommitTests.save
+
+    def checks(self, runtime, command):
+        import shlex
+        argv = shlex.split(command)
+        result = subprocess.run(argv, cwd=self.task['workspace'], capture_output=True, text=True)
+        identity = evidence_identity({**self.task, 'check_command': argv})
+        record = {'command':argv, 'passed':result.returncode == 0, 'exit_code':result.returncode,
+                  'verification_identity':identity, 'input_identity':identity, 'output':result.stdout}
+        self.task['checks'].append(record)
+        return record
+
+    def request(self, runtime, messages, tools, role, **kwargs):
+        packet = json.loads(messages[-1]['content']); self.requests.append(packet)
+        result = {'decision':'REQUEST_CHANGES' if self.request_changes else 'APPROVE', 'manifest_id':packet['manifest_id'],
+                  'chunk_ids':[] if self.omit_coverage else packet['chunk_ids'], 'criteria_ids':packet['criteria_ids'], 'feedback':'Read all supplied contents and checked the evidence.'}
+        return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
+
+    def test_cumulative_diff_clean_private_copy_and_actual_final_check(self):
+        manifest = final.build_manifest(self.run)
+        self.assertIn('+two', manifest['diff'])
+        self.assertEqual(manifest['files'], [{'status':'M','path':'code','added_lines':1,'removed_lines':1,'item_ids':['one']}])
+        result = final.final_check_review(self.engine, self.runtime)
+        self.assertEqual(result['decision'],'APPROVE')
+        self.assertEqual(self.events[-1][3]['decision'],'APPROVE')
+        self.assertEqual(self.task['checks'][0]['output'], 'final passed\n')
+        self.assertTrue(final.validate(result['readiness'], self.task))
+        count = len(self.requests)
+        final.validate(result['readiness'], self.task)
+        self.assertEqual(len(self.requests),count)
+        self.assertIsNone(result['readiness']['integration_blocker'])
+
+    def test_overlapping_commits_and_reviewed_no_change_keep_history(self):
+        for identity, text in [('two', 'three\n'), ('three', 'three\n')]:
+            self.item = {'id': identity, 'title': identity, 'instructions': 'Implement correct content',
+                         'required_checks': [], 'acceptance_criteria': ['correct content']}
+            self.run['current_item_id'] = identity
+            self.run['plan']['items'].append(copy.deepcopy(self.item))
+            operation = fixtures.BranchCommitTests.finish(self, fixtures.BranchCommitTests.prepare(self, text))
+            fixtures.BranchCommitTests.apply_result(self, operation)
+            self.item.update(status='satisfied_without_change' if identity == 'three' else 'committed', commit_receipt=operation)
+            self.run['items'].append(self.item)
+        manifest = final.build_manifest(self.run)
+        self.assertIn('+three', manifest['diff'])
+        self.assertNotIn('+two', manifest['diff'])
+        self.assertEqual(len(manifest['commits']), 3)
+        self.assertEqual(manifest['commits'][-1]['old_tip'], manifest['commits'][-1]['new_tip'])
+        self.assertEqual([r['id'] for r in manifest['requirements']], ['one:1', 'two:1', 'three:1'])
+
+    def test_missing_coverage_or_review_revision_never_ready(self):
+        self.omit_coverage = True
+        with self.assertRaisesRegex(ValueError,'coverage'): final.final_check_review(self.engine,self.runtime)
+        self.omit_coverage = False; self.request_changes = True
+        result=final.final_check_review(self.engine,self.runtime)
+        self.assertEqual(result['decision'],'REQUEST_CHANGES')
+        self.assertNotIn('readiness',result)
+
+    def test_multichunk_exhaustive_content_and_digest(self):
+        # A small chunk ceiling exercises the same deterministic splitting path.
+        from unittest.mock import patch
+        with patch.object(final,'CHUNK_SIZE',120):
+            manifest=final.build_manifest(self.run)
+            self.assertGreater(len(manifest['chunks']),3)
+            self.assertEqual(''.join(c['content'] for c in manifest['chunks'] if c['kind']=='diff'),manifest['diff'])
+            result=final.final_check_review(self.engine,self.runtime)
+            self.assertEqual(len(result['readiness']['reviews']),len(manifest['chunks']))
+            self.assertEqual(result['readiness']['review']['criteria_ids'],['one:1'])
+
+    def test_stale_target_feature_environment_and_pending_refused(self):
+        ready=final.final_check_review(self.engine,self.runtime)['readiness']
+        (Path(self.task['workspace'])/'setup.cfg').write_text('[changed]\n')
+        with self.assertRaises(ValueError): final.validate(ready,self.task)
+        (Path(self.task['workspace'])/'setup.cfg').unlink()
+        self.run['pending_operations']=[{'id':'pending'}]
+        with self.assertRaises(ValueError): final.build_manifest(self.run)
+        self.run['pending_operations']=[]
+        (self.source/'code').write_text('target change\n');git(self.source,'add','code');git(self.source,'commit','-qm','external target')
+        with self.assertRaisesRegex(ValueError,'changed'): final.validate(ready,self.task)
+        self.assertIsNotNone(final.final_check_review(self.engine,self.runtime)['readiness']['integration_blocker'])
+        git(self.source,'update-ref',self.run['feature_ref'],git(self.source,'rev-parse','HEAD').strip())
+        with self.assertRaises(ValueError): final.build_manifest(self.run)
+
+    def test_failure_does_not_create_readiness(self):
+        self.run['plan']['final_checks']=[[sys.executable,'-c','raise SystemExit(1)']]
+        result=final.final_check_review(self.engine,self.runtime)
+        self.assertEqual(result['decision'],'REQUEST_CHANGES')
+        self.assertNotIn('readiness',result)
+        self.assertEqual(self.requests,[])
+
+
+if __name__ == '__main__': unittest.main()

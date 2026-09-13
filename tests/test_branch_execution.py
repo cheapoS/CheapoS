@@ -9,7 +9,10 @@ import test_branch_start as fixture
 class ScriptedRun:
     def __init__(self):self.steps={};self.revisions=0;self.items=[]
     def complete(self,messages,tools,max_tokens):
-        if any(t['function']['name']=='review_decision' for t in tools):
+        if any(t['function']['name']=='final_review_decision' for t in tools):
+            packet=json.loads(messages[1]['content'])
+            message=call('final_review_decision',{**{k:packet[k] for k in ('manifest_id','chunk_ids','criteria_ids')},'decision':'APPROVE','feedback':'Passing final suite covers all criteria.'})
+        elif any(t['function']['name']=='review_decision' for t in tools):
             packet=json.loads(messages[1]['content']);item=packet['item'];identity=item['id']
             if identity=='two' and not self.revisions:
                 self.revisions+=1
@@ -44,7 +47,7 @@ class BranchExecutionTests(unittest.TestCase):
 
     def test_three_items_repair_review_revision_and_no_intermediate_approval(self):
         task=self.run_job();run=task['branch_run']
-        self.assertEqual(run['status'],'finalizing',task.get('error'))
+        self.assertEqual(run['status'],'ready_for_merge',task.get('error'))
         self.assertEqual([i['status'] for i in run['items']],['committed']*3)
         self.assertEqual(self.script.items,['one','two','three'])
         self.assertEqual(self.script.revisions,1)

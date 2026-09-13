@@ -27,14 +27,14 @@ Browser-test the actual final button after T38, with one approval and no repeate
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: Explicit preview-bound local fast-forward preserves the original item commits. Durable merge intent supports exact recovery after target movement; failures retain a paused recovery state. Duplicate approval cannot create a new commit.
 
-Acceptance evidence:
+Acceptance evidence: Seven Git merge-helper tests plus completion integration validate clean checked-out/unchecked targets, dirty/diverged/stale state, explicit merge and crash recovery.
 
-Commands and results:
+Commands and results: test_branch_merge.py: 7 passed in 55.805s; completion suite: 5 passed in 87.285s, plus saved-branch preview and strengthened crash recovery regressions passed.
 
-Browser scenarios and results:
+Browser scenarios and results: Prompt run merged four feature commits; independent document run merged three. Target refs exactly matched approved feature tips and approval did not rerun checks. Completion displayed “Merged locally” and offered a new chat.
 
-Remaining limitations:
+Remaining limitations: No force merge, rebase, conflict resolution, push or PR. Targets checked out in another worktree require separate integration planning.

@@ -78,7 +78,7 @@ def checkpoint(engine, runtime, args):
                         item['outcome_summary'] = str(params.get('feedback',''))[:2000]
                         task['status'] = 'approved'
                         task['checkpoints'].append({'number':len(task['checkpoints'])+1,'decision':'APPROVE','feedback':item['outcome_summary'], 'diff':current['patch'],'branch_candidate_id':current['id']})
-                        engine.event(task,'review','Independent item review passed',{'item_id':item['id'],'candidate_id':current['id']})
+                        engine.event(task,'review','Independent item review passed',{'item_id':item['id'],'candidate_id':current['id'],'decision':'APPROVE','feedback':item['outcome_summary']})
                         return {'decision':'APPROVE','feedback':item['outcome_summary']}
                 elif choice in {'REQUEST_CHANGES', 'TAKE_OVER'} and isinstance(params.get('feedback'),str):
                     task.pop('pending_review',None)

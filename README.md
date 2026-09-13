@@ -43,6 +43,10 @@ details. Narrow screens use one overlay panel at a time. Widths and visibility
 are saved in this browser. Keyboard users can focus a divider and use arrow keys
 to resize, Home to hide, or End to maximize.
 
+## Choose how to supervise work
+
+Use **Work mode** beside the composer: **Interactive** keeps conversational approvals; **Unattended** plans a bounded job from a prompt, project document, or both, then works on an authorized feature branch. You make the final local merge decision. See [work modes, triggers, and unattended runs](docs/unattended-runs.md).
+
 ## Choose where work runs
 
 Use the execution button beside the chat spending limit to choose **Delegate heavy work**, **All local**, **All remote**, or **Manual model pair**. Local chat can delegate project work to free OmniRoute models and go idle. Automatic remote selection checks tool support and chooses a different reviewer. Existing chats keep their saved setup.
@@ -100,7 +104,7 @@ References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter 
 4. Keep talking in the same chat. Follow-ups retain the task copy, current model pair, accumulated usage, and prior requests—even after a completed review. **New chat** starts a fresh copy of the source project.
 5. After tests and model review finish, Chat presents the final diff and editable commit message. Choose **Approve & commit** to apply the reviewed patch and create its local commit, **Request changes** to keep working, or **Decline** to leave it saved without committing. You can keep chatting after reviewer approval; questions preserve the approval, while further edits need verification and review again. **Changes** also lets you inspect each file. **Checks** shows verification output. **Activity** summarizes current work and results; model accounting lives under **Details**.
 
-Your approval is required for each commit; a model's approval cannot authorize it. Approving does not call a model or rerun tests. The controller reuses its passing check only while the patch and command match; an explicit request to rerun tests still runs them. A worker's final response after editing automatically enters checkpoint review when a verification command is configured.
+In Interactive mode, your approval is required for each commit; a model's approval cannot authorize it. Approving does not call a model or rerun tests. The controller reuses its passing check only while the patch and command match; an explicit request to rerun tests still runs them. A worker's final response after editing automatically enters checkpoint review when a verification command is configured.
 
 The preview expires after ten minutes; the patch and destination are rechecked before applying. Declining persists across restarts, and **Reopen decision** brings the same patch back without a new model review.
 
@@ -148,7 +152,7 @@ Dependencies are not installed automatically. This alpha works best with small, 
 - Research keeps a compact record of the sources and sections already read. When no patch still needs review, cheapoS reserves the final available research turn for an answer with tools disabled; repeated reads can trigger this earlier. If saved edits still need work, recovery supplies fresh file contents (up to four files and 24,000 characters, with incomplete snapshots labeled), the latest request, and check results. It offers editing, verification, checkpoint, and clarification tools for the next step, with reading tools disabled. Automatic remote routes reject calls to unavailable tools before executing any calls in that response, then use the same bounded free-model handoff policy. It uses the remaining limits; automatic remote routing can replace a failing worker. Retry preserves the appropriate recovery step, including after a provider interruption; recovery cannot approve edits or bypass command permission.
 - One task runs at a time. A process lock prevents two app servers from using the same data directory.
 
-There is no unattended commit, push, dependency installation, merge, arbitrary shell tool, or production sandbox. Keep tasks small: snapshots are limited to 5,000 files / 100 MB, and review checkpoints to a 30,000-character patch. Task history is currently retained until you remove it locally with the app stopped.
+Unattended runs can create reviewed commits on the feature branch authorized by Start run. Final local merge requires a separate explicit decision. There is no automatic push, dependency installation, unrestricted shell tool, or production sandbox. Keep tasks small: snapshots are limited to 5,000 files / 100 MB, and review checkpoints to a 30,000-character patch. Task history is currently retained until you remove it locally with the app stopped.
 
 ## Development
 

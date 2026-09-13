@@ -85,7 +85,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():
@@ -190,6 +190,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     raise ValueError("Choose a worker or reviewer connection")
                 config = validate_provider(values.get("config"), role)
                 result = {"models": gateway_for(config, engine.provider_key(role, config)).list_models()}
+            elif path == "/api/branch-runs/project":
+                result = engine.branch.project(values)
+            elif path == "/api/branch-runs/plan":
+                result = engine.branch.plan(values)
+            elif path == "/api/branch-runs/plan-stop":
+                result = engine.branch.stop_plan(values)
             elif path == "/api/branch-runs/prepare":
                 result = engine.branch.prepare(values)
             elif path == "/api/tasks":
@@ -211,6 +217,19 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     result = public_task(engine.update_task_metadata(task_id, values))
                 elif action == "branch-start":
                     result = public_task(engine.branch.authorize(task_id, values))
+                elif action in {"branch-final-preview", "branch-final-diff", "branch-merge", "branch-revise", "branch-final-recheck"}:
+                    from . import branch_completion
+                    operation = {"branch-final-preview":"preview", "branch-final-diff":"diff", "branch-merge":"merge", "branch-revise":"revise", "branch-final-recheck":"recheck"}[action]
+                    result = getattr(branch_completion, operation)(engine.branch, task_id, values)
+                    if isinstance(result, dict) and "branch_run" in result: result = public_task(result)
+                elif action == "branch-proposal-edit":
+                    result = engine.branch.reprepare(task_id, values)
+                elif action == "branch-proposal":
+                    result = engine.branch.proposal(task_id)
+                elif action == "branch-message":
+                    result = public_task(engine.branch.message(task_id, values))
+                elif action == "branch-resume":
+                    result = engine.branch.resume(task_id, values)
                 elif action == "branch-leave":
                     if values: raise ValueError("Leave accepts no fields")
                     result = public_task(engine.branch.revoke(task_id))

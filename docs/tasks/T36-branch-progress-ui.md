@@ -27,14 +27,14 @@ Add pure projection tests for duplicate delivery, restart, no-change items, wron
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: One conversation contains worker/check/reviewer details and durable receipt-backed item milestones. Run status drives Pause through transient item approval/commit boundaries. Guidance retains the accepted scope and allowance.
 
-Acceptance evidence:
+Acceptance evidence: Pure projection tests reject stale/wrong receipts, deduplicate milestones, distinguish final/merged states, and cover actual rendering of new event shapes.
 
-Commands and results:
+Commands and results: 88 Node tests passed, including branch UI and conversation regression coverage; app and branch-module syntax passed.
 
-Browser scenarios and results:
+Browser scenarios and results: Expanded check/reviewer details survived Activity→Chat. Completed SHAs stayed visible through polling, pause/reload/resume. Narrow layout stayed within viewport; sidebar collapsed and restored with top control. No intermediate commit approval appeared.
 
-Remaining limitations:
+Remaining limitations: Provider reasoning is displayed only when supplied. Completed runs explicitly offer a new chat rather than submitting unsupported guidance to a closed run.

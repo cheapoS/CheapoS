@@ -431,6 +431,8 @@ class Engine:
         if kind=='model' and task.get('request_metrics'):
             actor={key:task['request_metrics'][-1][key] for key in ('role','model')}
         task["events"].append({"id": len(task["events"]) + 1, "time": now(), "kind": kind, "title": title, "detail": detail,'run_id':task.get('metric_run_id'),'actor':actor})
+        if task.get('branch_run'):
+            task['events'][-1].update(branch_run_id=task['branch_run']['id'],item_id=task['branch_run'].get('current_item_id'))
         task["updated_at"] = now()
         self.store.save(task)
 

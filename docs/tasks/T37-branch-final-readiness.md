@@ -27,14 +27,14 @@ Exercise multi-chunk final review: omitted or changed chunks/criteria fail readi
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: Final checks bind to the clean private candidate; exhaustive cumulative manifest/chunk review covers every criterion. Bounded repair items retain original history and cumulative limits. Operator corrections use an inspected amendment.
 
-Acceptance evidence:
+Acceptance evidence: Actual final checks, multichunk coverage, overlapping commits/no-change history, stale target/environment, failed coverage and bounded amendments were validated.
 
-Commands and results:
+Commands and results: test_branch_final.py: 6 passed in 80.425s after its event-emitting test fixture was updated. Completion tests and full gate recorded in T40.
 
-Browser scenarios and results: Final decision UI is T38; backend preview/revision contracts must pass here.
+Browser scenarios and results: Requested documentation correction produced a fourth reviewed commit and renewed readiness before final merge.
 
-Remaining limitations:
+Remaining limitations: At most three repair items and twelve distinct original criteria per repair. Broader work needs a new scoped proposal. Oversized final review pauses explicitly rather than omitting content.

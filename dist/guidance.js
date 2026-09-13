@@ -160,6 +160,7 @@ const CheapOSGuide = (() => {
       check,checkpoint,items:recent.map(activityItem).filter(Boolean).reverse()};
   }
   function canCommit(task) {
+    if(task?.branch_run)return false;
     if(task.commit_pending)return true;
     const check=task.checks?.at(-1),review=task.checkpoints?.at(-1);
     return Boolean(task.changes?.length&&['approved','completed','awaiting_reply'].includes(task.status)&&check?.passed&&check.digest===task.patch_digest&&(check.generation||0)===(task.workspace_generation||0)&&(task.status==='completed'||review?.decision==='APPROVE'&&review.diff===task.patch&&(review.generation||0)===(task.workspace_generation||0)));

@@ -29,14 +29,14 @@ Run relevant JS/conversation, planner, routing, HTTP, and authorization tests. N
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: Interactive/Unattended selector, prompt/document/combined planning, cancelable bounded planner, editable same-task proposals, preserved planning usage, token invalidation, explicit Start and reload recovery are implemented.
 
-Acceptance evidence:
+Acceptance evidence: Planner, actual HTTP, authorization, and proposal-edit tests cover missing/conflicting inputs, cancellation races, unchanged source before Start, stale tokens, scope, and accounting.
 
-Commands and results:
+Commands and results: test_branch_planner.py: 7 passed; test_branch_planning_http.py: 5 passed in 21.737s; test_branch_reprepare.py: 2 passed; final frontend gate recorded in T40.
 
-Browser scenarios and results:
+Browser scenarios and results: Independent prompt-only and document-only browser runs completed; combined inputs were edited, kept, reloaded, inspected, and started. Mode/document drafts survived switches/reload; selection alone created no task or inference. Explicit branch intent offered the mode choice.
 
-Remaining limitations:
+Remaining limitations: Changing a draft repository, committed base, captured inputs, or model policy requires fresh planning. Same-base plan/ref edits preserve the existing draft and accounting.

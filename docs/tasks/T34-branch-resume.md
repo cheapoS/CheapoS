@@ -26,14 +26,14 @@ Pause during cooldown and tests; verify subprocess cancellation and no next-item
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: Resume reconciles journaled commits before new work, revalidates ownership and feature tip, and renews expired test scope separately from durable run authority. Pause/restart keeps cumulative accounting and artifacts.
 
-Acceptance evidence:
+Acceptance evidence: Seven recovery tests passed: real process and cooldown cancellation, blocked reviewer restart, staged worker/check/review recovery, scope renewal, feature/worktree interference, target drift, and source-CAS crash recovery.
 
-Commands and results:
+Commands and results: test_branch_recovery.py: 7 passed in focused runs (30.633s + 16.638s).
 
-Browser scenarios and results: T36/T40 cover UI; backend restart and cancellation tests are required here.
+Browser scenarios and results: Combined-input browser run paused with two commits, survived reload without execution, accepted guidance, and resumed to the third commit.
 
-Remaining limitations:
+Remaining limitations: External feature changes are never adopted or reset automatically.

@@ -69,17 +69,17 @@ the draft. Both paths produce the same validated, editable plan and authorizatio
 flow. If prompt and document conflict, surface the conflict before authorization;
 do not silently choose or discard instructions.
 
-These are implementation requirements for T35/T40, not currently shipped commands.
+These triggers are implemented. See [the user guide](docs/unattended-runs.md) for the shipped flow and first-version limits.
 Natural-language examples describe intent; they are not exact-match passwords.
 
 | Operator action or input | Trigger and result |
 | --- | --- |
-| Choose **Work mode → Unattended**, then submit a chat prompt such as “Implement a CSV reader, Markdown output, and CLI on a feature branch.” | Request a bounded plan from the prompt alone. |
+| Choose **Work mode → Unattended**, then submit a chat prompt such as “Implement a CSV reader, Markdown output, and CLI on a feature branch.” | Open the planning form from the prompt alone; Prepare proposal requests the bounded plan. |
 | Select a project document and request “Complete the tasks in docs/utility-plan.md on feature/utilities.” | Read the selected document through constrained project-file access and request a plan from its captured contents plus any accompanying prompt. |
 | In **Interactive** chat, explicitly request “Start a branch run for these changes” or “Complete this job on a feature branch.” | Offer an **Unattended** proposal inline, visibly identifying the work mode. Treat equivalent explicit intent the same way; no magic phrase is required. |
 | Merely mention a branch, attach/select a document, quote a trigger phrase, or open the mode selector | Do not start planning inference or execution. A document's instructions cannot trigger authorization. Ordinary questions and document summaries stay ordinary chat. |
 | Click **Start run** after inspecting the proposal | Authorize and start exactly the current validated revision, branch, limits, model policy, and displayed test scope. Neither input path bypasses this action. |
-| Edit the prompt, selected document, or proposal before starting | Prepare a new captured revision and invalidate any previous start token. Later on-disk document edits do not alter an authorized plan. |
+| Edit a saved proposal before starting | Same-base plan/branch/target edits retain planning usage and invalidate prior Start tokens. Changed prompt/document/project/base/model policy requires fresh planning. On-disk document edits never alter accepted work. |
 | Click **Pause** or **Resume** | Pause the existing run, or explicitly resume its saved contract after revalidation; never start a duplicate job or reset its cumulative allowance. |
 | Request changes during final review | Propose bounded revision work within the existing authorization; changed scope/limits require renewed authorization. Invalidate final readiness until revised work passes checks and review. |
 | Click **Approve & merge locally** at final review | Authorize integration of the inspected feature tip into the inspected target, subject to the final checks. A prompt or document saying “merge when done” does not replace this action. |
@@ -152,12 +152,12 @@ All cards below start **Todo**. Sizes describe scope, not time. Dependencies mea
 | [T31](docs/tasks/T31-branch-evidence.md) | Exact candidate evidence and independent review gate | T28, T29 | M | Done |
 | [T32](docs/tasks/T32-branch-autocommit.md) | Journaled automatic commits to the owned ref | T30, T31 | L | Done |
 | [T33](docs/tasks/T33-branch-execution.md) | Sequential execution, recovery, and shared limits | T32 | L | Done |
-| [T34](docs/tasks/T34-branch-resume.md) | Pause/restart recovery and branch drift handling | T33 | M | Todo |
-| [T35](docs/tasks/T35-branch-start-ui.md) | Document-to-plan proposal and simple start flow | T30, T33, T34 | M | Todo |
-| [T36](docs/tasks/T36-branch-progress-ui.md) | One cheapoS conversation with visible milestones | T33, T35 | M | Todo |
-| [T37](docs/tasks/T37-branch-final-readiness.md) | Combined verification, review, and revision loop | T31, T33, T34 | L | Todo |
-| [T38](docs/tasks/T38-branch-final-review-ui.md) | Cumulative diff and one final decision | T36, T37 | M | Todo |
-| [T39](docs/tasks/T39-branch-local-merge.md) | Explicit local integration and conversation close | T32, T37, T38 | L | Todo |
+| [T34](docs/tasks/T34-branch-resume.md) | Pause/restart recovery and branch drift handling | T33 | M | Done |
+| [T35](docs/tasks/T35-branch-start-ui.md) | Document-to-plan proposal and simple start flow | T30, T33, T34 | M | Done |
+| [T36](docs/tasks/T36-branch-progress-ui.md) | One cheapoS conversation with visible milestones | T33, T35 | M | Done |
+| [T37](docs/tasks/T37-branch-final-readiness.md) | Combined verification, review, and revision loop | T31, T33, T34 | L | Done |
+| [T38](docs/tasks/T38-branch-final-review-ui.md) | Cumulative diff and one final decision | T36, T37 | M | Done |
+| [T39](docs/tasks/T39-branch-local-merge.md) | Explicit local integration and conversation close | T32, T37, T38 | L | Done |
 | [T40](docs/tasks/T40-branch-end-to-end.md) | Three-task end-to-end proof and user documentation | T28–T39 | M | Todo |
 
 Do these sequentially in this shared checkout. Do not dispatch multiple models to edit the same engine/UI files. Lower-level helpers may be callable by deterministic tests before UI exists, but no incomplete automatic-run action should appear usable to the operator.

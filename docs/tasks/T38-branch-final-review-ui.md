@@ -26,14 +26,14 @@ Run UI projection and API integration tests. At this card's handoff, clearly rec
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: Final review shows the cumulative base-to-feature diff, per-file manifest, checks/reviewer evidence and exact target. Only a current explicit preview can authorize merge; blocked or revoked runs keep a read-only diff.
 
-Acceptance evidence:
+Acceptance evidence: Backend coverage tests bind preview to readiness/target and reject stale/cross-task approval. UI projection and actual renderer tests pass.
 
-Commands and results:
+Commands and results: Final frontend gate: 88 Node tests passed; syntax passed.
 
-Browser scenarios and results:
+Browser scenarios and results: Prompt and document browser flows displayed all seven changed files, including the first CSV module and last CLI/document edits. Revision invalidated prior readiness; Leave retained an inspectable diff with merge disabled.
 
-Remaining limitations:
+Remaining limitations: Local-only integration; unsupported/dirty/divergent targets show a blocker. Saved terminal reviews expose only read-only actions.
