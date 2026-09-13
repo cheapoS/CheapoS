@@ -122,7 +122,8 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertEqual(task['branch_run']['plan']['items'][0]['id'], 'utility')
         self.assertEqual(task['branch_run']['plan']['final_checks'], [self.provider.command])
         self.assertIn('cheapos-missing-test-runner', task['error'])
-        self.assertEqual(task['usage']['worker']['tokens'], 30)
+        self.assertEqual(task['usage']['worker']['tokens'], 90)
+        self.assertEqual(len([e for e in task['events'] if e['kind'] == 'planning_repair']), 3)
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
         self.assertFalse(self.engine.runtimes)
 
