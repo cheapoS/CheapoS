@@ -1464,7 +1464,14 @@ class Engine:
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
         streaming = getattr(provider, "streams_output", False) is True
         brief = purpose == "probe" or role == "coordinator"
-        self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": reservation["completion_tokens"], "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
+        maximum = None if measuring(task) and not brief and config['input_rate'] == config['output_rate'] == 0 else reservation['completion_tokens']
+        record['requested_output_limit'] = maximum
+        record['output_limit_basis'] = 'provider_default' if maximum is None else 'task_limit'
+        if maximum is None:
+            # This reservation is an estimate until usage arrives, not an upper
+            # bound on tokens. Zero rates keep the monetary reservation sound.
+            reservation['tokens_are_upper_bound'] = False
+        self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": maximum, "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
         record['dispatched']=True
         if streaming:
             live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
@@ -1494,7 +1501,7 @@ class Engine:
                 if (purpose == "probe" or role == "coordinator") and hasattr(provider, "complete_brief"):
                     message, usage = provider.complete_brief(messages, tools, reservation["completion_tokens"], emit, runtime.stop.is_set)
                 else:
-                    message, usage = provider.complete_with_progress(messages, tools, reservation["completion_tokens"], emit, runtime.stop.is_set)
+                    message, usage = provider.complete_with_progress(messages, tools, maximum, emit, runtime.stop.is_set)
                 completed = True
             except ProviderError as error:
                 self.account_failed_response(task, config, reservation, error)
@@ -1506,7 +1513,7 @@ class Engine:
                 self.store.save(task)
         else:
             try:
-                message, usage = provider.complete(messages, tools, reservation["completion_tokens"])
+                message, usage = provider.complete(messages, tools, maximum)
             except ProviderError as error:
                 self.account_failed_response(task, config, reservation, error)
                 raise

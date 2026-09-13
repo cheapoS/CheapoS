@@ -6,6 +6,9 @@ import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
+from test_engine import LocalCase
+from cheapos.providers import ChatProvider
 from cheapos.branch_budget import Ledger, LimitExceeded
 from cheapos.branch_completion import authorization_run
 from cheapos.branch_runs import validate_plan
@@ -63,6 +66,34 @@ class MeasurementTests(unittest.TestCase):
         with self.assertRaises(ValueError): validate_plan(dict(plan,measurement='true'))
         run={'authorization':{'contract':{'plan':dict(plan,measurement=False)}},'plan':plan,'limits':plan['limits']}
         with self.assertRaisesRegex(ValueError,'measurement'):authorization_run(run)
+
+
+class MeasurementOutputTests(LocalCase):
+    def test_zero_cost_measurement_uses_provider_default_and_reconciles_actual_tokens(self):
+        task=self.fixture(paid=True);task['branch_run']={'id':'measurement-fixture','plan':{'measurement':True}}
+        for cfg in task['providers'].values():cfg.update(input_rate=0,output_rate=0)
+        provider=Mock();provider.complete.return_value=({'role':'assistant','content':'Done'}, {'prompt_tokens':10,'completion_tokens':9000,'cost':0})
+        self.engine.provider_factory=lambda role,config:provider
+        self.engine._request(Runtime(task),[{'role':'user','content':'Work'}],[],'worker',purpose='branch_planning')
+        self.assertIsNone(provider.complete.call_args.args[2])
+        self.assertEqual(task['usage']['worker']['tokens'],9010)
+        self.assertEqual(task['request_metrics'][-1]['output_limit_basis'],'provider_default')
+        self.engine._request(Runtime(task),[],[],'worker',purpose='probe')
+        self.assertEqual(provider.complete.call_args.args[2],1024)
+        task['branch_run']['plan']['measurement']=False
+        self.engine._request(Runtime(task),[],[],'worker',purpose='branch_planning')
+        self.assertEqual(provider.complete.call_args.args[2],task['limits']['output_tokens'])
+
+    def test_wire_request_omits_output_cap_only_when_none(self):
+        provider=ChatProvider({'base_url':'http://127.0.0.1:1234/v1','model':'fixture','key_env':'TEST_UNUSED'})
+        response=Mock();response.__enter__=Mock(return_value=response);response.__exit__=Mock(return_value=False)
+        response.read.return_value=json.dumps({'choices':[{'message':{'role':'assistant','content':'Hi'}}],'usage':{'prompt_tokens':1,'completion_tokens':2}}).encode()
+        with patch('cheapos.providers.build_opener') as build:
+            build.return_value.open.return_value=response
+            provider.complete([],[],None)
+            self.assertNotIn('max_tokens',json.loads(build.return_value.open.call_args.args[0].data))
+            provider.complete([],[],256)
+            self.assertEqual(json.loads(build.return_value.open.call_args.args[0].data)['max_tokens'],256)
 
 
 class MeasurementExecutionTests(unittest.TestCase):
