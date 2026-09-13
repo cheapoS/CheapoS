@@ -27,6 +27,10 @@ class IdentityTests(unittest.TestCase):
         ensure_independent(task,{'role':'reviewer',**metadata('other/named')})
         ensure_independent({},review)  # Historical policy unchanged.
         ensure_independent(task,{**review,'purpose':'probe'})
+        manual={'served_identity_version':1,'request_metrics':[{'role':'worker','dispatched':True,**metadata('same/named')}]}
+        unknown_review={'role':'reviewer',**metadata('same/named')}
+        ensure_independent(manual,unknown_review)
+        with self.assertRaises(ProviderError):ensure_independent({**manual,'branch_run':{'id':'run'}},unknown_review)
 
     def test_stream_reports_model_only_when_consistent(self):
         def stream(models):

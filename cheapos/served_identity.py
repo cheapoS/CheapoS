@@ -38,8 +38,10 @@ def normalized(value):
 def ensure_independent(task, record):
     """Gate new review responses before tools/approval. No inference or retries.
 
-    Exact named configurations retain the existing distinct-config policy when
-    served metadata is absent; that is explicitly not underlying identity proof.
+    Exact named configurations retain existing policy when served metadata is
+    absent: distinct-config comparison for Unattended/automatic work, while manual
+    Interactive same-name configuration remains allowed. Neither proves underlying
+    identity separation. Reported same served identities always block.
     Historical tasks without the version marker retain their existing policy.
     """
     if task.get('served_identity_version')!=1 or record.get('role')!='reviewer' or record.get('purpose')=='probe':return
@@ -54,5 +56,8 @@ def ensure_independent(task, record):
         requested=worker.get('requested_model',worker.get('model'))
         if opaque(requested) and served is None:
             raise ProviderError('Worker route identity is unavailable; an opaque alias cannot establish independent review.',code='review_identity_unknown')
-        if normalized(current or record.get('requested_model'))==normalized(served or requested):
+        actual_conflict=current is not None and served is not None and normalized(current)==normalized(served)
+        strict=bool(task.get('branch_run')) or task.get('execution',{}).get('mode') in {'delegate','remote'}
+        configured_conflict=strict and normalized(current or record.get('requested_model'))==normalized(served or requested)
+        if actual_conflict or configured_conflict:
             raise ProviderError('Worker and reviewer resolve to the same reported or configured model. Independent review is required.',code='review_identity_conflict')
