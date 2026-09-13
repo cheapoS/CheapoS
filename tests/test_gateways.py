@@ -124,7 +124,7 @@ class GatewayHTTPTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), CatalogHandler)
         self.server.requests, self.server.status, self.server.identity = [], 200, True
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval":0.01}, daemon=True)
         self.thread.start()
         self.manager = OmniRouteManager(self.temp.name)
         self.manager.configure({'base_url': f'http://127.0.0.1:{self.server.server_port}/v1', 'api_key': 'fixture-client-key'})

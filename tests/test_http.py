@@ -41,9 +41,9 @@ class CooldownErrorTests(unittest.TestCase):
 class HTTPTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.engine = Engine(Path(self.temp.name) / 'state')
+        self.engine = Engine(Path(self.temp.name) / 'state', fixture_delay=0)
         self.server = LocalServer(('127.0.0.1', 0), Path(__file__).resolve().parent.parent / 'dist', self.engine)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval":0.01}, daemon=True)
         self.thread.start()
 
     def tearDown(self):
@@ -426,7 +426,7 @@ class ProviderTests(unittest.TestCase):
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), FakeModelHandler)
         self.server.requests = []
         self.server.mode = 'normal'
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval":0.01}, daemon=True)
         self.thread.start()
         self.provider = ChatProvider({'base_url':f'http://127.0.0.1:{self.server.server_port}/v1','model':'fixture','key_env':'CHEAPOS_TEST_KEY'}, 'fixture-secret')
 
@@ -503,7 +503,7 @@ class ProviderTests(unittest.TestCase):
 
     def run_full_workflow(self, managed=False):
         with tempfile.TemporaryDirectory() as directory:
-            engine = Engine(directory)
+            engine = Engine(directory, fixture_delay=0)
             task = engine.create_demo()
             script = dict(task)
             reviews = []

@@ -26,12 +26,12 @@ Run focused checks during changes, then one full suite and a representative brow
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Explicit fast/focused/full selections; test-only zero demo pacing injection and shorter HTTP shutdown polling; change-to-check CONTRIBUTING policy; measured comparison.
+- Acceptance evidence: Deliberate temporary failures are caught by fast/full selection. Full still discovers every test module and preserves Git/process/persistence coverage. Standard browser demo still reaches checks/review with normal pacing.
+- Commands and results: Runner regressions: 2 passed; fast: 50 passed in 0.014s (0.069s separate CLI wall time); full: 328 passed in 267.283s; 62 JavaScript tests, syntax, and diff checks passed.
+- Browser scenarios and results: Restarted disposable fixture using updated Engine; normal scripted demo reached passed checks and independent approval with final human decision still required.
+- Remaining limitations: Full suite improved about 7.9% in one comparison but remains above the two-minute target. Larger verification allowance is required in T13; no further unmeasured optimizations added.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

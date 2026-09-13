@@ -33,7 +33,7 @@ class LocalCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.engine = Engine(self.root / 'state')
+        self.engine = Engine(self.root / 'state', fixture_delay=0)
 
     def tearDown(self):
         self.engine.shutdown()

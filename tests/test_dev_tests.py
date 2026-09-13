@@ -37,3 +37,15 @@ class Sample(unittest.TestCase):
             self.assertIn('Slowest tests',result.stdout)
             clean=subprocess.run([sys.executable,'-B',str(RUNNER),'--directory',str(root),'--pattern','missing*.py'],capture_output=True)
             self.assertEqual(clean.returncode,0)
+
+
+    def test_fast_selection_catches_relevant_failure_and_full_includes_integration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'test_titles.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_failure(self): self.fail('fast failure')\n")
+            (root/'test_integration.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_failure(self): self.fail('integration failure')\n")
+            for suite,count in [('fast',1),('full',2)]:
+                report=root/(suite+'.json')
+                result=subprocess.run([sys.executable,'-B',str(RUNNER),'--directory',str(root),'--suite',suite,'--json',str(report)],capture_output=True)
+                self.assertEqual(result.returncode,1)
+                self.assertEqual(json.loads(report.read_text())['tests'],count)

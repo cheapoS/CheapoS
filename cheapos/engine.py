@@ -274,7 +274,10 @@ class Runtime:
 
 
 class Engine:
-    def __init__(self, data_directory, provider_factory=None):
+    def __init__(self, data_directory, provider_factory=None, fixture_delay=0.12):
+        if isinstance(fixture_delay, bool) or not isinstance(fixture_delay, (int, float)) or not math.isfinite(fixture_delay) or not 0 <= fixture_delay <= 1:
+            raise ValueError("Fixture pacing must be between zero and one second")
+        self.fixture_delay = fixture_delay
         self.store = Store(data_directory)
         self.lock = threading.RLock()
         self.runtimes = {}
@@ -1817,5 +1820,5 @@ class Engine:
                 raise ValueError("Self-test has already completed")
             name, args = steps[phase]
             task["fixture_phase"] += 1
-        time.sleep(0.12)
+        time.sleep(self.fixture_delay)
         return {"role": "assistant", "content": None, "tool_calls": [{"id": uuid.uuid4().hex, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}]}

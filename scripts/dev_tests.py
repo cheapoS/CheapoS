@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+FAST_PATTERNS = ("test_titles.py", "test_test_profiles.py", "test_time_ago.py", "test_word_count.py", "test_csv_to_md.py")
 
 
 class TimedResult(unittest.TextTestResult):
@@ -29,15 +30,18 @@ class TimedResult(unittest.TextTestResult):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--directory', default=str(ROOT / 'tests'))
-    parser.add_argument('--pattern', default='test_*.py')
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--pattern', help='Focused discovery filename pattern')
+    selection.add_argument('--suite', choices=('fast', 'full'), default=None)
     parser.add_argument('--timings', action='store_true')
     parser.add_argument('--json', type=Path, help='Explicit local JSON report destination')
     args = parser.parse_args(argv)
-    suite = unittest.defaultTestLoader.discover(args.directory, pattern=args.pattern)
+    patterns = [args.pattern] if args.pattern else FAST_PATTERNS if args.suite == "fast" else ["test_*.py"]
+    suite = unittest.TestSuite(unittest.defaultTestLoader.discover(args.directory, pattern=pattern) for pattern in patterns)
     started = time.perf_counter()
     result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(suite)
     elapsed = time.perf_counter() - started
-    report = {'tests': result.testsRun, 'successful': result.wasSuccessful(), 'failures': len(result.failures),
+    report = {'selection': list(patterns), 'tests': result.testsRun, 'successful': result.wasSuccessful(), 'failures': len(result.failures),
               'errors': len(result.errors), 'skipped': len(result.skipped), 'expected_failures': len(result.expectedFailures),
               'unexpected_successes': len(result.unexpectedSuccesses), 'seconds': elapsed,
               'environment': {'python': platform.python_version(), 'os': platform.system(), 'machine': platform.machine()},

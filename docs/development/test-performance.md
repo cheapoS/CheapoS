@@ -64,3 +64,46 @@ the default half-second polling boundary. Keep production pacing and real
 Git/process/persistence/cancellation coverage. Compare the full suite on this
 same environment afterward. Defer persistence changes and parallel processes
 until more detailed profiling warrants them.
+
+## T12 comparison
+
+Same Darwin arm64 / Python 3.9.6 environment; no external inference. Automated
+`LocalCase`/HTTP fixtures now explicitly request zero cosmetic provider pacing.
+HTTP/gateway fixture servers use a 10ms shutdown polling interval. Production
+demos keep the 120ms default, and no persistence, Git, cancellation, or restart
+tests were removed.
+
+| Selection | Tests | Result | Runner time |
+| --- | ---: | --- | ---: |
+| T11 full baseline | 327 | Pass | 290.235s |
+| T12 full | 328 | Pass | 267.283s |
+| T12 fast | 50 | Pass | 0.014s |
+
+The extra full-suite test verifies fast/full selection catches injected failures.
+A separate fast CLI invocation took 0.069s including process startup/discovery.
+Full-suite duration decreased by 22.952s
+(7.9%) in this pair of runs. This is
+one local comparison, not a cross-machine performance guarantee. The two-minute
+full-suite target was **not achieved**. Git/persistence-heavy scenarios still
+dominate; further changes need more detailed profiling, not reduced coverage.
+
+| Module | Baseline | After |
+| --- | ---: | ---: |
+| `test_http` | 39.301s | 22.371s |
+| `test_commits` | 89.453s | 87.069s |
+| `test_gateways` | 0.810s | 0.290s |
+| `test_permissions` | 11.781s | 11.855s |
+
+Commands:
+
+```sh
+python3 -B scripts/dev_tests.py --suite fast --timings
+python3 -B scripts/dev_tests.py --pattern test_permissions.py --timings
+python3 -B scripts/dev_tests.py --suite full --timings --json /tmp/cheapos-test-timings.json
+```
+
+Fast intentionally covers only the five modules listed in CONTRIBUTING. Focused
+patterns and the full integration gate remain necessary for controller and Git
+changes. Treat the measured 267s full duration as evidence that a 90s agent check
+timeout is insufficient; T13 must provide a bounded larger allowance when the
+full suite is deliberately selected.
