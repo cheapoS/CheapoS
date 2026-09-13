@@ -25,12 +25,12 @@ Add aggregation tests with old/new/interrupted records and a deterministic bench
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Versioned local request/run instrumentation and evidence aggregation, reported token subsets and cost provenance, measured run/provider/cooldown/approval/controller timing, cancellation/acceptance distinctions, anonymized local export CLI, and seven pinned deterministic controller benchmarks. Removed the fixed hypothetical frontier-rate savings claim.
+- Acceptance evidence: Aggregation covers reconciled cost counted once, token subsets, unknown historical fields, uncertain reservations, cancellation, and later failures after prior commits. Benchmarks independently verify README/utility/bug/public-link/repair/revision/conflict outcomes with actual checks and disposable sources.
+- Commands and results: 17 sample/tool-argument/cooldown/HTTP integration tests passed in 22.400s. Metrics plus seven-scenario benchmark smoke: 5 tests passed in 25.905s. CLI benchmark reported all seven passed. JavaScript syntax and 69 guidance/conversation tests passed. Local store export/privacy check passed.
+- Browser scenarios and results: CUA isolated port 51031: completed sample displayed 75 accounted tokens, $0.00, Provider-reported cost; hypothetical Saved dollars text absent. Sample still distinguished reviewer approval from human commit acceptance.
+- Remaining limitations: docs/development/task-metrics.md defines timing coverage, unknown fields, provenance and history bounds. Fixture usage is synthetic and no live-model quality/savings claim is made. Time outside active runs is unmeasured. Accounted cost is not a provider billing receipt; export is local and opt-in.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

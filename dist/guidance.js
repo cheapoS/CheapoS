@@ -16,6 +16,10 @@ const CheapOSGuide = (() => {
     const success=Boolean(task.changes?.length&&canCommit(task));
     return `${success?'Real sample: edits, checks and review completed. Review the patch before approving a commit.':'Real sample: full-loop success has not been verified. Inspect the actual stages below.'}${same?' Review uses a separate request to the same model.':''}`;
   }
+  function costProvenance(task) {
+    const value=task.metrics?.cost?.provenance;
+    return ({provider_reported:'Provider-reported cost',estimated:'Estimated cost',mixed_reported_and_estimated:'Reported + estimated cost',includes_estimates:'Includes estimates',includes_uncertain_reservations:'Includes uncertain reservations',scripted_no_model_requests:'Scripted · no model requests'})[value]||(task.usage?.uncertain_requests?'Includes uncertain reservations':'Cost provenance unknown');
+  }
   function taskGuide(task) {
     const checkpoints=task.checkpoints||[], checks=task.checks||[], events=task.events||[];
     const latestReview=checkpoints.at(-1), latestCheck=checks.at(-1);
@@ -467,7 +471,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 

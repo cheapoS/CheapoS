@@ -29,6 +29,7 @@ from .readiness import ReadinessManager
 from . import project_context
 from . import work_policy
 from . import environment
+from . import metrics
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
 
@@ -444,6 +445,7 @@ class Engine:
         workspace, snapshot = Workspace.snapshot(values.get("repository", ""), directory / "workspace")
         task = {"id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         task["checkpoint_policy"] = "soft"
+        task['metrics_schema'] = 1
         task.update({"conversational": conversational, "requests": [prompt.strip()], "turn_start_patch": ""})
         if conversational:
             task["request_worker_turns"] = 0
@@ -631,7 +633,7 @@ class Engine:
             if retry_wait:
                 runtime.started -= max(0, task['limits'].get('run_minutes', 15) * 60 - wait_info['remaining_seconds'])
             self.runtimes[task_id] = runtime
-            self.event(task, "state", "Task started" if task["worker_turns"] == 0 else "Resuming from saved files and checkpoints")
+            self.event(task, "state", "Task started" if task["worker_turns"] == 0 else "Resuming from saved files and checkpoints",{'run_kind':'followup' if followup is not None else 'start' if task['worker_turns']==0 else 'resume'})
             runtime.thread = threading.Thread(target=self._run, args=(runtime,), daemon=True)
             runtime.thread.start()
         return self.store.get(task_id)
@@ -966,7 +968,11 @@ class Engine:
                 plan = dict(pending)
             else:
                 self.reviewed_patch(task)
-                plan = commits.prepare(task)
+                try:plan = commits.prepare(task)
+                except commits.ProjectConflict:
+                    task['commit_conflict_observed']=True
+                    self.store.save(task)
+                    raise
                 summary = (task.get("checkpoints") or [{}])[-1].get("worker_summary") or task["title"]
                 plan["message"] = " ".join(summary.split())[:120] or "Apply CheapOS changes"
             token = uuid.uuid4().hex
@@ -1314,6 +1320,28 @@ class Engine:
                 raise ProviderError("The model requested " + name[:100] + ", which is not available in this step. No calls from this response were executed.", code="unsupported_tool")
 
     def _request(self, runtime, messages, tools, role, config_override=None, purpose=None):
+        task=runtime.task
+        if task.get('demo'):return self._perform_request(runtime,messages,tools,role,config_override,purpose)
+        config=config_override or task['providers'][role]
+        record={'id':uuid.uuid4().hex,'run_id':task.get('metric_run_id'),'role':role,'model':config['model'],
+                'purpose':purpose or 'work','dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation'}
+        task.setdefault('request_metrics',[]).append(record)
+        if len(task['request_metrics'])>2000:
+            task['request_metrics'].pop(0);task['request_metrics_truncated']=True
+        started=time.monotonic()
+        try:
+            result=self._perform_request(runtime,messages,tools,role,config_override,purpose)
+            record['status']='responded'
+            return result
+        except Exception as error:
+            record['status']='cancelled' if runtime.stop.is_set() or isinstance(error,InterruptedError) else 'failed'
+            record['error_code']=getattr(error,'code',None)
+            raise
+        finally:
+            record['seconds']=time.monotonic()-started
+            self.store.save(task)
+
+    def _perform_request(self, runtime, messages, tools, role, config_override=None, purpose=None):
         task = runtime.task
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
@@ -1338,11 +1366,14 @@ class Engine:
             checkpoint['review_requests'] = checkpoint.get('review_requests', 0) + 1
             runtime.review_requests = checkpoint['review_requests']
         reservation = reserve(account, config, messages, tools, role)
+        record=task['request_metrics'][-1]
+        reservation['metric_id']=record['id']
         task["in_flight"] = reservation
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
         streaming = getattr(provider, "streams_output", False) is True
         brief = purpose == "probe" or role == "coordinator"
         self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": reservation["completion_tokens"], "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
+        record['dispatched']=True
         if streaming:
             live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
             task["stream"] = live
@@ -1388,6 +1419,7 @@ class Engine:
                 self.account_failed_response(task, config, reservation, error)
                 raise
         known = reconcile(task, config, reservation, usage)
+        metrics.record_usage(record,usage,known)
         self.store.save(task)
         if task.get("execution", {}).get("mode") in {"delegate", "remote"} and task["usage"]["cost"] > 0:
             raise BudgetError("An automatic free route reported a charge. Work stopped before executing any returned tools. Check the gateway's billing and fallback settings.")
@@ -1403,6 +1435,8 @@ class Engine:
         if not isinstance(usage, dict) or not usage:
             return  # No usable usage frame: retain the entire reservation.
         known = reconcile(task, config, reservation, usage)
+        record=next((r for r in reversed(task.get('request_metrics',[])) if r['id']==reservation.get('metric_id')),None)
+        if record is not None:metrics.record_usage(record,usage,known)
         cost = usage.get("cost")
         if not known and isinstance(cost, (int, float)) and not isinstance(cost, bool) and math.isfinite(cost) and cost > 0:
             extra = max(0, cost - reservation["cost"])
@@ -1549,7 +1583,9 @@ class Engine:
             self.event(task, "permission", "Permission needed to run the verification command", task["pending_approval"])
             waiting_since = time.monotonic()
             runtime.approval.wait()
-            runtime.started += time.monotonic() - waiting_since
+            waited=time.monotonic()-waiting_since
+            runtime.metric_operator_wait=getattr(runtime,'metric_operator_wait',0)+waited
+            runtime.started += waited
             task["pending_approval"] = None
             if runtime.stop.is_set():
                 raise InterruptedError("Task stopped")
@@ -1777,6 +1813,7 @@ class Engine:
         task['status'] = 'waiting_retry'
         task['stream'] = None
         task['route_wait'] = {'retry_at': info['retry_at'], 'started_at': time.time(), 'scope': info.get('scope')}
+        waiting_started=time.monotonic()
         self.event(task, 'routing', 'Waiting for a free route', task['route_wait'])
         try:
             while True:
@@ -1792,11 +1829,30 @@ class Engine:
             task['error_code'] = None
             self.event(task, 'routing', 'Cooldown ended; checking route eligibility', {'role': info.get('role')})
         finally:
+            runtime.metric_cooldown_wait=getattr(runtime,'metric_cooldown_wait',0)+time.monotonic()-waiting_started
             info['remaining_seconds'] = max(0, task['limits'].get('run_minutes', 15) * 60 - (time.monotonic()-runtime.started))
             info['can_wait'] = bool(info['remaining_seconds'] > max(0, info['retry_at']-time.time()) and recovery.get('wait_cycles',0) < 3)
             task['route_wait'] = None
 
     def _run(self, runtime):
+        task=runtime.task;run_id=uuid.uuid4().hex;task['metric_run_id']=run_id;started=time.monotonic()
+        runtime.metric_operator_wait=0;runtime.metric_cooldown_wait=0
+        try:self._run_with_wait(runtime)
+        finally:
+            elapsed=time.monotonic()-started
+            requests=[r for r in task.get('request_metrics',[]) if r.get('run_id')==run_id]
+            provider=sum(r.get('seconds',0) for r in requests if r.get('dispatched'))
+            operator=runtime.metric_operator_wait;cooldown=runtime.metric_cooldown_wait
+            task.setdefault('run_metrics',[]).append({'id':run_id,'elapsed_seconds':elapsed,'provider_request_seconds':provider,
+                'operator_wait_seconds':operator,'provider_cooldown_seconds':cooldown,
+                'controller_work_seconds':max(0,elapsed-provider-operator-cooldown),'outcome':task['status']})
+            if len(task['run_metrics'])>500:
+                task['run_metrics'].pop(0);task['metrics_history_truncated']=True
+            task['metrics_cancelled']=runtime.stop.is_set()
+            task['updated_at']=now()
+            self.store.save(task)
+
+    def _run_with_wait(self, runtime):
         task = runtime.task
         while True:
             if task.get('retry_wait_enabled'):

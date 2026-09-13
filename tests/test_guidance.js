@@ -536,3 +536,10 @@ test('sample greeting, missing review and failed checks cannot claim full-loop s
  assert.match(sampleOutcome(result),/same model/);
  result.checks[0].passed=false;assert.match(sampleOutcome(result),/not been verified/);
 });
+
+test('cost labels report provenance without hypothetical savings',()=>{
+ const {costProvenance}=require('../dist/guidance.js');
+ assert.equal(costProvenance({metrics:{cost:{provenance:'provider_reported'}}}),'Provider-reported cost');
+ assert.equal(costProvenance({usage:{uncertain_requests:1}}),'Includes uncertain reservations');
+ assert.equal(costProvenance({}),'Cost provenance unknown');
+});

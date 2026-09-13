@@ -328,19 +328,12 @@ function renderTask({resetScroll=false}={}) {
   const sums=patchTotals(task.patch);$('#diff-tally').innerHTML=`<span>+${sums.add}</span><span>−${sums.remove}</span>`;
   $('#compact-cost').textContent=money(task.usage.cost);
   const totalTokens=(task.usage?.worker?.tokens||0)+(task.usage?.reviewer?.tokens||0)+(task.usage?.coordinator?.tokens||0);
-  const estFrontierCost=(totalTokens/1000)*0.006;
-  const actualCost=task.usage?.cost||0;
-  const savings=Math.max(0,estFrontierCost-actualCost);
-  const savingsPill=$('#compute-savings-pill');
-  if(savingsPill){
-    if(totalTokens>0){
-      savingsPill.hidden=false;
-      const tokStr=totalTokens>=1000?`${(totalTokens/1000).toFixed(1)}k`:`${totalTokens}`;
-      savingsPill.innerHTML=`<span class="pill-bolt">⚡</span> <strong>${tokStr} tokens</strong> · $${actualCost.toFixed(2)} <span class="pill-savings">(Saved ~$${savings.toFixed(2)})</span>`;
-      savingsPill.title=`Total task tokens: ${totalTokens.toLocaleString()}. Estimated savings vs cloud frontier models.`;
-    }else{
-      savingsPill.hidden=true;
-    }
+  const actualCost=task.usage?.cost;
+  const usagePill=$('#compute-savings-pill');
+  if(usagePill){
+    usagePill.hidden=totalTokens===0;
+    usagePill.textContent=`${totalTokens.toLocaleString()} accounted tokens · ${actualCost==null?'cost unknown':money(actualCost)} · ${CheapOSGuide.costProvenance(task)}`;
+    usagePill.title=`Cost provenance: ${task.metrics?.cost?.provenance||'unknown'}. Includes retained uncertain reservations when present. Configured accounting is not a billing receipt.`;
   }
   renderView();renderInspector();renderComposer();bindTerminalCopy();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
