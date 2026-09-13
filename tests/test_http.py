@@ -124,6 +124,19 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post('/api/tasks/missing/metadata', values)[0], 400)
         self.assertEqual(self.post(path + '/metadata', {'status': 'running'})[0], 400)
 
+    def test_trash_routes_require_token_preserve_inspection_and_block_execution(self):
+        task=self.engine.create_demo();path='/api/tasks/'+task['id']
+        self.assertEqual(self.request('POST',path+'/trash',{}, {'Content-Type':'application/json'})[0],403)
+        self.assertEqual(self.post(path+'/trash',{})[0],200)
+        self.assertEqual(len(json.loads(self.request('GET','/api/tasks?view=trash')[2])),1)
+        self.assertEqual(json.loads(self.request('GET','/api/tasks')[2]),[])
+        self.assertEqual(self.request('GET',path)[0],200)
+        for action,values in [('start',{}),('approval',{'approved':True}),('reconcile',{}),('commit-preview',{}),('rollback',{'checkpoint':1})]:
+            self.assertEqual(self.post(path+'/'+action,values)[0],400)
+        self.assertEqual(self.post(path+'/restore',{})[0],200)
+        self.assertEqual(json.loads(self.request('GET',path)[2])['status'],'ready')
+        self.assertEqual(self.post('/api/tasks/missing/trash',{})[0],400)
+
     def test_private_paths_are_not_served(self):
         for path in ['/README.md', '/.git/config', '/.cheapos/config.json', '/../run.py', '/%2e%2e/run.py', '/api/tasks/../../config']:
             self.assertEqual(self.request('GET', path)[0], 404, path)

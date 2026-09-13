@@ -73,7 +73,7 @@ class Store:
         """UI state is independent of worker-owned execution records."""
         with self.lock:
             self.get(task_id)
-            defaults = dict(custom_title=None, pinned=False, archived_at=None, trashed_at=None)
+            defaults = dict(custom_title=None, pinned=False, archived_at=None, trashed_at=None, trash_archived_at=None)
             try:
                 value = json.loads((self.root / "tasks" / task_id / "metadata.json").read_text())
                 if not isinstance(value, dict):
@@ -115,7 +115,7 @@ class Store:
 
     def present(self, task):
         metadata = self.metadata(task["id"])
-        return {**task, **metadata, "title": metadata["custom_title"] or automatic_title(self.get(task["id"]))}
+        return {**task, **metadata, "saved_change_count": len(self.get(task["id"]).get("changes", [])), "title": metadata["custom_title"] or automatic_title(self.get(task["id"]))}
 
     def visible(self, view="active"):
         if view not in {"active", "archived", "trash"}:
@@ -125,3 +125,16 @@ class Store:
             return [task for task in tasks if (
                 bool(task["trashed_at"]) if view == "trash" else
                 not task["trashed_at"] and bool(task["archived_at"]) == (view == "archived"))]
+
+    def set_trashed(self, task_id, trashed):
+        with self.lock:
+            metadata = self.metadata(task_id)
+            if trashed and not metadata["trashed_at"]:
+                metadata["trashed_at"] = datetime.now(timezone.utc).isoformat()
+                metadata["trash_archived_at"] = metadata["archived_at"]
+            elif not trashed and metadata["trashed_at"]:
+                metadata["archived_at"] = metadata["trash_archived_at"]
+                metadata["trashed_at"] = None
+                metadata["trash_archived_at"] = None
+            write_json(self.root / "tasks" / task_id / "metadata.json", metadata)
+            return metadata

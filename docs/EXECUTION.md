@@ -80,3 +80,12 @@ A timeline lists recent actions newest first, including named files, failures, r
 Automated fixtures cover local-chat tool isolation, delegation through edit/check/review, different free model selection, failed and charged probes, local-only placement, persisted choices, follow-ups, and progress limits. They make no live inference requests. These tests establish controller behavior; live provider availability, coding quality, and cost savings require separate experiments.
 
 A [live 31-second delegation smoke test](experiments/2026-09-13-delegation.md) also completed the full loop with Gemma, a free Cohere worker, and a different free Dots reviewer.
+
+## Archived and trashed tasks
+
+Archive removes a task from active history. Restore it before continuing work.
+Trash retains the conversation and all saved task files on disk; it changes no
+source repository files or commits. Restoring a trashed task returns it to its
+previous active/archived state and never starts work or restores command grants.
+Active runs and unresolved commit transactions must finish or stop first.
+There is no automatic cleanup or permanent purge in this version.

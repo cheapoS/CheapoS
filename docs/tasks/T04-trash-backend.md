@@ -30,12 +30,12 @@ Add lifecycle tests plus HTTP rejection coverage. Include a regression for incom
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Token-protected logical Trash/Restore, prior archive state, saved-change count, idempotent transitions, command-grant revocation, and controller execution guards.
+- Acceptance evidence: Saved patch, source, events, usage, and execution record remain identical across Trash/Restore/restart. Live runtimes and pending commits reject deletion. Archived tasks restore to Archived; no files are removed.
+- Commands and results: 3 Trash tests, 5 metadata tests, 6 permission tests, and 27 HTTP tests passed. App syntax and diff whitespace checks passed.
+- Browser scenarios and results: Backend-only card; UI arrives in T05.
+- Remaining limitations: Trash retains disk usage; no purge or retention policy, documented in EXECUTION.md.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

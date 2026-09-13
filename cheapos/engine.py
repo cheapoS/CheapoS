@@ -413,6 +413,8 @@ class Engine:
 
     def update_task_metadata(self, task_id, values):
         with self.lock:
+            if self.store.metadata(task_id)["trashed_at"]:
+                raise ValueError("Restore this task from Trash before changing it")
             task = self.store.get(task_id)
             runtime = self.runtimes.get(task_id)
             if values.get("archived") is True:
@@ -421,6 +423,27 @@ class Engine:
                 if task.get("commit_pending"):
                     raise ValueError("Finish the saved commit attempt before archiving")
             self.store.update_metadata(task_id, values)
+            return self.store.present(task)
+
+    def trash_task(self, task_id):
+        with self.lock:
+            task = self.store.get(task_id)
+            runtime = self.runtimes.get(task_id)
+            if runtime and runtime.thread and runtime.thread.is_alive():
+                raise ValueError("Pause this task and wait for it to stop before moving it to Trash")
+            if task.get("status") in {"running", "reviewing", "waiting_approval", "stopping"}:
+                raise ValueError("Wait for this task to stop before moving it to Trash")
+            if task.get("commit_pending"):
+                raise ValueError("Finish the saved commit attempt before moving this task to Trash")
+            self.store.set_trashed(task_id, True)
+            self.command_permissions.pop(task_id, None)
+            self.commit_previews = {k:v for k,v in self.commit_previews.items() if v["task_id"] != task_id}
+            return self.store.present(task)
+
+    def restore_task(self, task_id):
+        with self.lock:
+            task = self.store.get(task_id)
+            self.store.set_trashed(task_id, False)
             return self.store.present(task)
 
     def start(self, task_id, changes=None):
@@ -519,6 +542,7 @@ class Engine:
 
     def stop(self, task_id):
         with self.lock:
+            self.require_active_task(task_id)
             runtime = self.runtimes.get(task_id)
             if not runtime or not runtime.thread.is_alive():
                 raise ValueError("Task is not running")
@@ -532,6 +556,7 @@ class Engine:
         if not isinstance(values.get("limits"), dict):
             raise ValueError("Provide the chat limits")
         with self.lock:
+            self.require_active_task(task_id)
             runtime = self.runtimes.get(task_id)
             if runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError("Pause this chat before changing its limits")
@@ -556,6 +581,7 @@ class Engine:
         if not isinstance(approved, bool) or not isinstance(remember, bool) or remember and not approved:
             raise ValueError("Provide a valid command approval")
         with self.lock:
+            self.require_active_task(task_id)
             runtime = self.runtimes.get(task_id)
             if not runtime or not runtime.task.get("pending_approval") or runtime.approval.is_set() or runtime.stop.is_set():
                 raise ValueError("No command is waiting for approval")

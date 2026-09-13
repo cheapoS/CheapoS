@@ -182,7 +182,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 if len(parts) != 4:
                     raise ValueError("Unknown task action")
                 task_id, action = parts[2:]
-                if action == "metadata":
+                if action in {"trash", "restore"}:
+                    if values:
+                        raise ValueError("This action does not accept fields")
+                    result = public_task(engine.trash_task(task_id) if action == "trash" else engine.restore_task(task_id))
+                elif action == "metadata":
                     result = public_task(engine.update_task_metadata(task_id, values))
                 elif action == "start":
                     result = public_task(engine.start(task_id, values))
