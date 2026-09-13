@@ -683,6 +683,8 @@ class Engine:
             if runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError("Pause this chat before changing its limits")
             task = self.store.get(task_id)
+            if "branch_run" in task:
+                raise ValueError("Use the Unattended run proposal/revision controls to change its authorized work.")
             task["limits"] = limits_from(values.get("limits"))
             self.event(task, "state", "Chat limits updated")
             return task
@@ -740,6 +742,8 @@ class Engine:
             if runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError("Pause this chat before rolling back to a checkpoint")
             task = self.store.get(task_id)
+            if "branch_run" in task:
+                raise ValueError("Use the Unattended run proposal/revision controls to change its authorized work.")
             if not isinstance(checkpoint_number, int):
                 raise ValueError("Provide a checkpoint number to rollback to")
             if checkpoint_number == 0:
@@ -779,6 +783,8 @@ class Engine:
                 task = runtime.task
             else:
                 task = self.store.get(task_id)
+            if "branch_run" in task:
+                raise ValueError("Use the Unattended run revision controls to change its authorized work.")
             if task.get("demo"):
                 raise ValueError("The demo uses scripted responses. Open a project to steer real tasks.")
             self.event(task, "steer", "User Guidance", cleaned)
@@ -800,6 +806,8 @@ class Engine:
         with self.lock:
             self.require_active_task(task_id)
             task = self.store.get(task_id)
+            if "branch_run" in task:
+                raise ValueError("Use the Unattended run proposal/revision controls to change its authorized work.")
             limits = task.setdefault("limits", dict(DEFAULT_LIMITS))
             limits["reviewer_tokens"] = min(1000000, limits.get("reviewer_tokens", 200000) + additional_tokens)
             limits["worker_turns"] = min(200, limits.get("worker_turns", 40) + additional_turns)

@@ -33,9 +33,9 @@ Status: Done
 
 Behavior delivered: Versioned, strictly bounded plans; stable IDs and event sequences; evidence-gated transitions; controller-owned atomic updates; redacted list summaries; unknown-schema dispatch refusal and restart pause mapping. Original prompts and captured inputs remain separate from item state.
 
-Acceptance evidence: Pure lifecycle/invalid-plan tests plus storage round-trip, concurrent metadata updates, list/full consistency, and manual-dispatch guards.
+Acceptance evidence: Pure lifecycle/invalid-plan tests plus storage round-trip, concurrent metadata updates, list/full consistency, and manual-dispatch, rollback, steering, and limit-change guards.
 
-Commands and results: `test_branch_runs.py` 10 PASS; `test_branch_state_storage.py` 4 PASS; `test_task_metadata.py` 5 PASS. Agent fast suite 50 PASS.
+Commands and results: `test_branch_runs.py` 10 PASS; `test_branch_state_storage.py` 5 PASS; `test_task_metadata.py` 5 PASS. Agent fast suite 50 PASS.
 
 Browser scenarios and results: Not required for this backend-only card.
 

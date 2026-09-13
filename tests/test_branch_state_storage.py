@@ -61,3 +61,12 @@ class BranchStateStorageTests(unittest.TestCase):
     def test_supported_draft_cannot_bypass_future_authorization(self):
         with self.assertRaisesRegex(ValueError, 'Unattended'): self.engine.start('known')
         self.assertEqual(self.engine.runtimes, {})
+
+    def test_manual_mutations_cannot_change_branch_contract(self):
+        for action in (lambda: self.engine.rollback_checkpoint('known', 0),
+                       lambda: self.engine.update_limits('known', {'limits':{}}),
+                       lambda: self.engine.boost_headroom('known'),
+                       lambda: self.engine.steer('known', 'Change all requirements'),
+                       lambda: self.engine.commit_task('known')):
+            with self.assertRaisesRegex(ValueError, 'Unattended'): action()
+        self.assertEqual(self.engine.store.get('known'), self.task)
