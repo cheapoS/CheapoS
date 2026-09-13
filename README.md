@@ -34,6 +34,15 @@ An existing reviewer is preserved. On a fresh setup, the same free model fills b
 
 You can also click **Try the local demo**. It creates a tiny Python repository, reproduces a failing test, edits the implementation, requests a revision, adds a regression test, and exports a real Git patch. Model decisions are scripted and clearly labeled. No provider requests or charges occur.
 
+## Arrange your workspace
+
+Drag either panel’s inner boundary to resize it. Drag toward the outer window edge
+to hide it; use the panel buttons in the top bar to reopen it at its remembered
+width. Desktop widths are capped at 28.5% for the sidebar and 25% for session
+details. Narrow screens use one overlay panel at a time. Widths and visibility
+are saved in this browser. Keyboard users can focus a divider and use arrow keys
+to resize, Home to hide, or End to maximize.
+
 ## Choose where work runs
 
 Use the execution button beside the chat spending limit to choose **Delegate heavy work**, **All local**, **All remote**, or **Manual model pair**. Local chat can delegate project work to free OmniRoute models and go idle. Automatic remote selection checks tool support and chooses a different reviewer. Existing chats keep their saved setup.

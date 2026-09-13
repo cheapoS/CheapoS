@@ -364,3 +364,22 @@ svg, svg * {
 .hidden-project-list button{display:block;width:100%;padding:12px;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);border-radius:6px;margin-top:8px}.hidden-project-list summary{cursor:pointer;padding:8px 0}
 
 .setup-modal{width:min(600px,calc(100vw - 24px));max-width:calc(100vw - 24px);overflow-wrap:anywhere}.setup-modal .button-row,.setup-modal .modal-footer{flex-wrap:wrap}.setup-modal button{white-space:normal}.setup-modal input{max-width:100%;box-sizing:border-box}
+
+/* Drag boundaries stay inside the panels so narrow layouts have no overlay hit area. */
+.resizable-panels .sidebar{max-width:28.5vw;position:relative;transition:none;overflow:hidden;min-width:0}
+.resizable-panels .inspector{max-width:25vw;position:relative;inset:auto;box-shadow:none;display:flex;min-width:0;overflow:hidden}
+.resizable-panels .sidebar.collapsed,.resizable-panels .inspector.collapsed{display:none}
+.resizable-panels .mobile-menu{display:flex}
+.panel-resizer{position:absolute;top:0;bottom:0;width:10px;z-index:40;cursor:col-resize;touch-action:none;outline-offset:-3px}
+.left-resizer{right:0}.right-resizer{left:0}
+.panel-resizer::after{content:"";position:absolute;top:0;bottom:0;width:2px;left:4px;background:transparent}
+.panel-resizer:hover::after,.panel-resizer:focus-visible::after{background:var(--mint)}
+.resizing-panels,.resizing-panels *{cursor:col-resize!important;user-select:none!important}
+.resizing-panels .panel-resizer::after{background:var(--mint)}
+@media(max-width:700px){
+  .resizable-panels .sidebar.show{max-width:min(360px,calc(100vw - 32px));position:absolute;inset:0 auto 0 0;z-index:35;box-shadow:20px 0 50px #0008}
+  .resizable-panels .inspector.show{max-width:min(360px,calc(100vw - 32px));position:absolute;inset:var(--panel-top,53px) 0 0 auto;z-index:35;box-shadow:-20px 0 50px #0008}
+}
+.resizable-panels .composer-controls{flex-wrap:wrap}
+.resizable-panels .tabs{overflow-x:auto;flex-shrink:0}
+.resizable-panels .tabs .tab{flex-shrink:0}

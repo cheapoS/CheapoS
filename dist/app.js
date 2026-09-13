@@ -142,7 +142,7 @@ function restoreDraft(){$('#chat-input').value=state.drafts.get(draftKey())||'';
 function home() {
   saveDraft();state.selection++;state.loading=false;state.task=null;state.view='chat';
   try{localStorage.removeItem('cheapos-selected')}catch{}
-  renderHome();restoreDraft();renderSidebar();$('#sidebar').classList.remove('show');$('#view-container').scrollTop=0;
+  renderHome();restoreDraft();renderSidebar();panelLayout.closeMobileSidebar();$('#view-container').scrollTop=0;
 }
 function chooseProject(project) {
   saveDraft();home();state.project=project;renderHome();restoreDraft();renderSidebar();
@@ -302,7 +302,7 @@ function openProject(afterOpen) {
 }
 async function selectTask(id) {
   saveDraft();const request=++state.selection;state.loading=true;
-  try {const task=await api('/tasks/'+id);if(request!==state.selection)return;if(!task.demo&&(state.hiddenProjects||[]).some(p=>p.path===task.source)){reopenHiddenProject(task.source,task.id);return;}state.task=task;state.project={path:task.source,name:basename(task.source)};state.file=0;state.run=-1;state.view='chat';try{localStorage.setItem('cheapos-selected',id)}catch{}renderTask({resetScroll:true});restoreDraft();renderSidebar();$('#sidebar').classList.remove('show');}
+  try {const task=await api('/tasks/'+id);if(request!==state.selection)return;if(!task.demo&&(state.hiddenProjects||[]).some(p=>p.path===task.source)){reopenHiddenProject(task.source,task.id);return;}state.task=task;state.project={path:task.source,name:basename(task.source)};state.file=0;state.run=-1;state.view='chat';try{localStorage.setItem('cheapos-selected',id)}catch{}renderTask({resetScroll:true});restoreDraft();renderSidebar();panelLayout.closeMobileSidebar();}
   catch(e){toast(e.message)}finally{if(request===state.selection)state.loading=false}
 }
 function setView(view) {
@@ -963,15 +963,9 @@ async function bootstrap() {
 async function poll() {try{if(state.online)await refresh()}catch(e){toast('Local server disconnected. Restart CheapOS and refresh to reconnect.');state.online=false}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 $('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=sampleDialog;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopFromComposer;
-function toggleInspector() {
-  const panel=$('#inspector');
-  if(matchMedia('(max-width:1280px)').matches){panel.classList.remove('hidden');panel.classList.toggle('show')}
-  else{panel.classList.remove('show');panel.classList.toggle('hidden')}
-}
-$('#toggle-inspector').onclick=toggleInspector;$('#compact-session').onclick=toggleInspector;
-$('#sidebar-toggle').onclick=()=>{if(matchMedia('(max-width:700px)').matches)$('#sidebar').classList.remove('show');else{$('#sidebar').classList.add('collapsed');$('#mobile-menu').style.display='flex'}};
-$('#mobile-menu').onclick=()=>{if(matchMedia('(max-width:700px)').matches)$('#sidebar').classList.toggle('show');else{$('#sidebar').classList.remove('collapsed');$('#mobile-menu').style.display='none'}};
-document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}if(e.key==='Escape'){$('#sidebar').classList.remove('show');$('#inspector').classList.remove('show')}});
+function toggleInspector(){ $('#toggle-inspector').click() }
+const panelLayout=CheapOSPanels.mount();
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}});
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);
 
 $('#rename-task').onclick=()=>renameTask();
