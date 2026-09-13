@@ -34,9 +34,17 @@ The cards are instructions for future work, not authorization to execute the ent
 | [T43](docs/tasks/T43-actionable-review-disagreement.md) | Make review disagreements concrete before changing passing work | T41 | M | Not started |
 | [T44](docs/tasks/T44-live-report-export.md) | Have cheapoS implement the three-item report exporter | T42, T43 | L | Not started |
 | [T45](docs/tasks/T45-report-export-qualification.md) | Verify the real download and record the feature trial outcome | T44 attempted; feature checks require its complete candidate | M | Not started |
-| [T46](docs/tasks/T46-connection-access-policy.md) | Distinguish free, included, local, priced, and unknown access | T45 findings recorded | M | Not started |
-| [T47](docs/tasks/T47-outcome-aware-routing.md) | Select eligible models using completed-work evidence | T46 | M | Not started |
-| [T48](docs/tasks/T48-controlled-routing-trial.md) | Qualify automatic selection on a fixed small task | T47 | M | Not started |
+| [T46](docs/tasks/T46-connection-access-policy.md) | Explicit access, fresh catalog evidence, inexpensive probes, and scoped failure handling | T45 findings recorded | M | Not started |
+| [T47](docs/tasks/T47-outcome-aware-routing.md) | Completed-work selection, actual model identity, and visible routing traces | T46 | M | Not started |
+| [T48](docs/tasks/T48-controlled-routing-trial.md) | Qualify the real gateway path and automatic selection on one small task | T47 | M | Not started |
+
+T46–T48 incorporate design lessons from
+[free-coding-models](https://github.com/vava-nessa/free-coding-models/tree/536af716263e514723594dd13e755fb06fcdec2d):
+versioned health evidence, failure attribution, catalog drift, visible attempt
+traces, and pinned checks through the actual router. Each card links the relevant
+source. OmniRoute remains the gateway; no additional router/package is required.
+Endpoint health remains separate from verified coding outcomes. These additions
+do not move the report-export milestone behind a new broad benchmark campaign.
 
 ### Current handoff template
 
