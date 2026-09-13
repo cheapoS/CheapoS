@@ -51,6 +51,6 @@ def evidence_identity(task):
         return None
 
 
-def matches(task, record):
+def matches(task, record, identity=None):
     saved = record.get('verification_identity')
-    return bool(saved) and saved == evidence_identity(task)
+    return bool(saved) and saved == (identity if identity is not None else evidence_identity(task))
