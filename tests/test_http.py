@@ -65,6 +65,17 @@ class HTTPTests(unittest.TestCase):
     def post(self, path, body):
         return self.request('POST', path, body, {'Content-Type':'application/json', 'X-CheapOS-Token': self.server.token})
 
+    def test_readiness_contract_does_not_start_work(self):
+        with patch.object(self.engine.readiness,'inspect',return_value={'schema_version':1,'status':'gateway_absent','next_step':'install_gateway'}) as inspect:
+            status, _, body = self.request('GET','/api/readiness?refresh=1')
+            self.assertEqual(status,200)
+            self.assertEqual(json.loads(body)['schema_version'],1)
+            self.engine.readiness.thread.join(2)
+            status, _, body = self.request('GET','/api/readiness')
+            self.assertEqual(json.loads(body)['next_step'],'install_gateway')
+            self.assertEqual(inspect.call_count,1)
+            self.assertEqual(self.engine.store.list(),[])
+
     def test_bootstrap_and_static_files_without_signin(self):
         status, headers, body = self.request('GET', '/api/bootstrap')
         data = json.loads(body)

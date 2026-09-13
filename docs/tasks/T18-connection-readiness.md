@@ -25,12 +25,12 @@ Run startup/gateway/HTTP tests and add response-contract coverage. This card is 
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: GET `/api/readiness` returns schema version 1, typed recovery actions, safe prerequisite/version/ownership metadata, local availability, and separate catalog/greeting/work readiness levels. Probes are background, bounded and cached; explicit refresh remains metadata-only.
+- Acceptance evidence: Deterministic fixtures cover absent Node/CLI, stopped/starting/ready/foreign/auth/offline/empty catalog, local selection, greeting, version compatibility, secret omission, and no startup inference. Existing gateway lifecycle tests cover reuse and foreign-process ownership.
+- Commands and results: `PYTHONPATH=tests python3 -B -m unittest test_readiness test_startup test_gateways test_http -q`: 67 passed in 29.155s. Added HTTP readiness test: 1 passed in 0.016s.
+- Browser scenarios and results: Backend-only card; UI coverage follows in T19.
+- Remaining limitations: Installed CLI version is not proof of the running service version. Optional setup/enrollment APIs remain disabled for all versions; the dashboard is the supported fallback. No installs, upgrades, inference, or foreign-process stops are performed.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

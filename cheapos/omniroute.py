@@ -75,6 +75,7 @@ class OmniRouteManager:
         self.checked_at = 0
         self.state = "unchecked"
         self.message = "Checking your local model gateway"
+        self.diagnostic_code = None
 
     def matches(self, url):
         def identity(value):
@@ -93,7 +94,7 @@ class OmniRouteManager:
                     "pid": self.process.pid if owned else None, "model_count": len(self.models),
                     "revision": self.revision + self.pool.revision, "key_configured": bool(self.api_key),
                     "free_count": sum(m.get("free") and m.get("tool_calling") is True and not m.get("local") for m in self.models),
-                    "dashboard_url": self.settings["base_url"][:-3]}
+                    "dashboard_url": self.settings["base_url"][:-3], "diagnostic_code": self.diagnostic_code}
 
     def configure(self, values):
         with self.lock:
@@ -140,9 +141,10 @@ class OmniRouteManager:
         except OSError:
             return False
 
-    def _set_state(self, state, message, models=None):
+    def _set_state(self, state, message, models=None, code=None):
         with self.lock:
             self.state, self.message = state, message
+            self.diagnostic_code = code
             if models is not None:
                 self.models = models
             elif state != "starting":
@@ -159,8 +161,8 @@ class OmniRouteManager:
             except ProviderError as error:
                 detail = str(error)
                 if self._port_open():
-                    state = "auth_required" if "client API key" in detail else "unavailable"
-                    self._set_state(state, detail)
+                    state = "auth_required" if error.code == "client_key_rejected" else "unavailable"
+                    self._set_state(state, detail, code=error.code)
                     return
             if not start:
                 self._set_state("offline", "OmniRoute is offline. Start it here or connect to another model endpoint.")
@@ -197,8 +199,8 @@ class OmniRouteManager:
                     self._set_state("ready", "OmniRoute started by CheapOS. Ready to select models.", models)
                     return
                 except ProviderError as error:
-                    if "client API key" in str(error):
-                        self._set_state("auth_required", str(error))
+                    if error.code == "client_key_rejected":
+                        self._set_state("auth_required", str(error), code=error.code)
                         return
                 if self.process.poll() is not None:
                     self._set_state("error", "OmniRoute exited during startup. Run omniroute in a terminal to inspect the error.")

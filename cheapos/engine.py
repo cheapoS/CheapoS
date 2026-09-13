@@ -25,6 +25,7 @@ from .gateways import gateway_for
 from .omniroute import OmniRouteManager
 from .streaming import STREAM_MAX_SECONDS
 from .startup import StartupManager
+from .readiness import ReadinessManager
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
 
@@ -300,6 +301,7 @@ class Engine:
         except (OSError, ValueError):
             self.config = {"worker": None, "reviewer": None}
         self.startup = StartupManager(self)
+        self.readiness = ReadinessManager(self)
 
     def configuration(self):
         result = copy.deepcopy(self.config)
@@ -757,6 +759,7 @@ class Engine:
             return task
 
     def shutdown(self):
+        self.readiness.shutdown()
         self.startup.shutdown()
         for runtime in list(self.runtimes.values()):
             runtime.stop.set()

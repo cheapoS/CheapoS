@@ -91,6 +91,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
         try:
             if path == "/api/bootstrap":
                 self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.visible(), "projects": engine.projects(), "hidden_projects": [p for p in engine.projects(include_hidden=True) if p["path"] in engine.hidden_project_paths()], "preferences": engine.preferences()})
+            elif path == "/api/readiness":
+                self.reply(engine.readiness.snapshot(refresh=parse_qs(urlsplit(self.path).query).get("refresh") == ["1"]))
             elif path == "/api/startup":
                 self.reply({**engine.startup.snapshot(), "config":engine.configuration()})
             elif path == "/api/projects/hidden":

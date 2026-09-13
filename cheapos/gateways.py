@@ -87,12 +87,12 @@ class OpenAICompatibleGateway(ChatProvider):
                 return json.loads(raw), response.headers
         except HTTPError as error:
             if error.code in {401, 403}:
-                raise ProviderError("The gateway requires a valid client API key. Its dashboard password is separate.") from None
+                raise ProviderError("The gateway requires a valid client API key. Its dashboard password is separate.", code="client_key_rejected") from None
             raise ProviderError(f"Model discovery returned HTTP {error.code}") from None
         except (URLError, TimeoutError, OSError):
-            raise ProviderError("The model endpoint is not reachable") from None
+            raise ProviderError("The model endpoint is not reachable", code="endpoint_unavailable") from None
         except (ValueError, TypeError):
-            raise ProviderError("The gateway returned an invalid model catalog") from None
+            raise ProviderError("The gateway returned an invalid model catalog", code="invalid_catalog") from None
 
     def list_models(self):
         data, _ = self._catalog()
@@ -122,7 +122,7 @@ class OmniRouteGateway(OpenAICompatibleGateway):
     def list_models(self):
         data, headers = self._catalog()
         if not headers.get("x-omniroute-route-class"):
-            raise ProviderError("The endpoint is responding, but it was not identified as OmniRoute")
+            raise ProviderError("The endpoint is responding, but it was not identified as OmniRoute", code="unidentified_service")
         models = normalize_models(data)
         if any(m["id"].startswith("openrouter/") for m in models):
             # OmniRoute can advertise a bundled, stale provider catalog. Only

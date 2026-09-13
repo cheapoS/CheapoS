@@ -65,7 +65,7 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 | [T15](docs/tasks/T15-progress-recovery.md) | Bounded recovery with actionable pause explanations | T14 | M | Done |
 | [T16](docs/tasks/T16-cooldown-retry.md) | Cancelable waiting for a free route | T15 | M | Done |
 | [T17](docs/tasks/T17-work-presets.md) | Simple Free only / working-time controls | T14, T16 | M | Done |
-| [T18](docs/tasks/T18-connection-readiness.md) | Structured onboarding readiness and recovery states | — | M | Todo |
+| [T18](docs/tasks/T18-connection-readiness.md) | Structured onboarding readiness and recovery states | — | M | Done |
 | [T19](docs/tasks/T19-omniroute-onboarding.md) | Guided OmniRoute setup and return to CheapOS | T18 | M | Todo |
 | [T20](docs/tasks/T20-local-and-sample-onboarding.md) | Local-only onboarding and an honest sample loop | T19, T10 | M | Todo |
 | [T21](docs/tasks/T21-project-context.md) | Compact project brief and durable continuation state | — | M | Todo |

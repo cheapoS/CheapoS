@@ -1,0 +1,135 @@
+"""Read-only first-use diagnostics. No inference, installs, or process ownership changes."""
+import copy
+import json
+import os
+import re
+import shutil
+import subprocess
+import threading
+import time
+from pathlib import Path
+from .omniroute import find_executable
+from .startup import local_candidates
+
+BASELINE = '3.8.49'
+VERSION = re.compile(r'^v?(\d+\.\d+\.\d+)(?:[-+][\w.-]+)?$')
+
+
+def prerequisites():
+    executable = find_executable()
+    cli_version = None
+    if executable:
+        # npm installs put the package manifest above the resolved bin entry.
+        # Read it instead of launching a gateway just to inspect its version.
+        for directory in list(Path(executable).resolve().parents)[:4]:
+            try:
+                data = json.loads((directory / 'package.json').read_text())
+                if data.get('name') == 'omniroute' and VERSION.fullmatch(str(data.get('version', ''))):
+                    cli_version = data['version']
+                    break
+            except (OSError, ValueError, AttributeError):
+                pass
+    node = shutil.which('node')
+    node_version = None
+    if node:
+        try:
+            result = subprocess.run([node, '--version'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=2,
+                                    env={key:value for key,value in os.environ.items() if key in {'PATH','SystemRoot','WINDIR','LANG'}})
+            match = VERSION.fullmatch(result.stdout.decode('utf-8', 'replace').strip())
+            if result.returncode == 0 and match: node_version = match.group(1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return {'node': {'installed':bool(node),'version':node_version},
+            'omniroute': {'installed':bool(executable),'version':cli_version,
+                          'compatibility':'validated_baseline' if cli_version == BASELINE else 'unverified',
+                          'validated_baseline':BASELINE}}
+
+
+def describe(gateway, prerequisites, locals_, execution, startup, direct=False):
+    """Versioned response built only from metadata, never a greeting's claims."""
+    installed = prerequisites['omniroute']['installed']
+    status = gateway['status']
+    code = gateway.get('diagnostic_code')
+    if status in {'checking','starting'} or gateway.get('busy'):
+        state, action = 'starting', 'wait'
+    elif status == 'auth_required' or code == 'client_key_rejected':
+        state, action = 'client_key_rejected', 'enter_client_key'
+    elif code == 'unidentified_service':
+        state, action = 'foreign_service', 'choose_gateway_endpoint'
+    elif status == 'ready':
+        state, action = ('gateway_ready','open_project') if gateway.get('free_count',0) else ('no_eligible_model','configure_provider')
+    elif status == 'unavailable':
+        state, action = 'offline', 'inspect_gateway'
+    elif not installed:
+        state, action = 'gateway_absent', 'install_gateway' if prerequisites['node']['installed'] else 'install_node'
+    elif status in {'offline','not_installed','unchecked','stopped'} and not gateway.get('owned'):
+        state, action = 'gateway_stopped', 'start_gateway'
+    else:
+        state, action = 'offline', 'inspect_gateway'
+    names = [candidate['config']['model'] for candidate in locals_]
+    selected = execution.get('local_model')
+    local_ready = bool(names and (not selected or selected in names))
+    if execution.get('mode') == 'local':
+        state, action = ('local_only_ready','open_project') if local_ready else ('local_unavailable','check_local_models')
+    greeting = startup.get('status') == 'ready' and bool(startup.get('verified_at'))
+    return {'schema_version':1, 'status':state, 'next_step':action,
+            'prerequisites':prerequisites,
+            'gateway':{'identified':status == 'ready', 'status':status, 'owned':bool(gateway.get('owned')), 'pid':gateway.get('pid'),
+                       'dashboard_url':gateway.get('dashboard_url') if status == 'ready' else None,
+                       'client_key_configured':bool(gateway.get('key_configured')), 'diagnostic_code':code,
+                       'model_count':gateway.get('model_count',0), 'eligible_free_count':gateway.get('free_count',0),
+                       'service_version':None, 'optional_apis':{'setup':False,'provider_enrollment':False}},
+            'paths':{'local':{'status':'ready' if local_ready else 'unavailable','models':names,'selected':selected or None},
+                     'direct':{'configured':bool(direct),'status':'configured_unverified' if direct else 'not_configured'}},
+            'levels':{'catalog':status == 'ready','local_metadata':local_ready,'greeting':greeting,
+                      'usage_reporting':greeting and bool(startup.get('usage')),'coding':False,'checks':False,'review':False}}
+
+
+class ReadinessManager:
+    def __init__(self, engine):
+        self.engine = engine
+        self.lock = threading.RLock()
+        self.thread = None
+        self.closed = False
+        self.checked_at = 0
+        self.local_checked_at = 0
+        self.locals = []
+        self.state = {'schema_version':1,'status':'checking','next_step':'wait'}
+
+    def inspect(self):
+        engine = self.engine
+        prerequisites_ = prerequisites()
+        gateway = engine.gateway.snapshot()
+        if not gateway.get('busy'):
+            refreshed = engine.gateway.refresh(start=False)
+            if gateway['status'] == 'unchecked': gateway = refreshed
+        if time.monotonic()-self.local_checked_at >= 30 or not self.local_checked_at:
+            self.locals = local_candidates(engine.config.get('worker'))
+            self.local_checked_at = time.monotonic()
+        direct = all(engine.config.get(role) and engine.config[role].get('gateway') != 'omniroute' for role in ('worker','reviewer'))
+        return describe(gateway, prerequisites_, self.locals, engine.preferences()['execution'], engine.startup.snapshot(), direct)
+
+    def _refresh(self):
+        try:
+            result = self.inspect()
+        except Exception:
+            # Never turn a probe failure into task-history failure or leak raw configuration.
+            result = {'schema_version':1,'status':'offline','next_step':'recheck','diagnostic_code':'readiness_probe_failed'}
+        with self.lock:
+            if not self.closed:
+                self.state = result
+                self.checked_at = time.monotonic()
+
+    def snapshot(self, refresh=False):
+        with self.lock:
+            busy = bool(self.thread and self.thread.is_alive())
+            interval = 2 if refresh or self.state['status'] in {'checking','starting'} else 15
+            if not self.closed and not busy and (not self.checked_at or time.monotonic()-self.checked_at >= interval):
+                self.thread = threading.Thread(target=self._refresh, daemon=True)
+                self.thread.start()
+                busy = True
+            return {**copy.deepcopy(self.state),'checking':busy}
+
+    def shutdown(self):
+        self.closed = True
+        if self.thread: self.thread.join(1)
