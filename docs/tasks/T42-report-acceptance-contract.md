@@ -111,3 +111,20 @@ remains the existing controller's responsibility. TASKS.md status managed by the
 coordinating agent to avoid concurrent edits.
 
 Update this card and TASKS.md; commit the pack/specification, not feature code.
+
+
+### Version 2 follow-up (before T44 fresh attempt)
+
+Corrected the observer's version 1 outcome fixture (`ready`, not `committed`) and
+same-line count assertion. Added scoped missing-field/integration checks,
+item-status and wrong-run checks, and Markdown delimiter cases. No original trial
+pack or runtime was edited; version 1 remains in commit c93adfa with its original
+digest above. Version 1 results must not be described as full independent proof.
+
+Version 2 pack SHA256: `58630b139a9c8a69402bd4eda5f67f312ff924e7136b818f57befb36ec2844b0`.
+Commands unchanged. Self-check: 2 tests, 0.001 seconds, nine negative controls plus
+three valid count layouts. Feature-absent baseline: 7 tests, 0.001 seconds,
+expected ModuleNotFoundError for cheapos.run_report; not an acceptance pass.
+Endpoint fixture unchanged; prior 0.014-second expected-404 baseline remains
+applicable. AST syntax, digest verification and whitespace checks pass. No live
+inference, exporter code, full suite, or new heavy test was introduced.

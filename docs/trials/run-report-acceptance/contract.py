@@ -23,7 +23,7 @@ def task():
                'feature_ref': run['feature_ref'], 'target_ref': run['target_ref'], 'source': '/'+SECRET})
     run['items'][0].update(status='committed', commit_receipt={
         'id': 'synthetic-operation', 'stage': 'completed', 'run_id': run['id'],
-        'item_id': 'first', 'old_tip': BASE, 'new_tip': SHA, 'outcome': 'committed'})
+        'item_id': 'first', 'old_tip': BASE, 'new_tip': SHA, 'outcome': 'ready'})
     return {'id': TASK_ID, 'title': 'Synthetic report', 'status': 'approved', 'branch_run': run,
             'source': '/'+SECRET, 'workspace': '/'+SECRET, 'prompt': SECRET,
             'messages': [SECRET], 'events': [], 'patch': SECRET,
@@ -60,3 +60,65 @@ def unavailable(report):
 def escaped(report):
     assert '|raw|' not in report and '\n# injected' not in report, 'Markdown label injection'
     has(report, '東京')
+    assert '[click](https://example.invalid)' not in report, 'Markdown link injection'
+    assert '**bold**' not in report, 'Markdown emphasis injection'
+    assert '`code`' not in report, 'Markdown code injection'
+
+
+def plain(text):
+    """Remove presentation delimiters, not content; accept lists/tables/emphasis."""
+    return re.sub(r'[*_`|]', ' ', text).strip().lower()
+
+
+def section(report, label):
+    lines = report.splitlines()
+    # Expand ordinary Markdown table columns into labeled values, preserving sections.
+    expanded = []; headers = None
+    for line in lines:
+        if line.strip().startswith('|'):
+            cells = [c.strip() for c in line.strip().strip('|').split('|')]
+            if all(re.fullmatch(r':?-{3,}:?', c) for c in cells):
+                continue
+            if headers is None:
+                headers = cells; expanded.append(line)
+            else:
+                expanded.append('; '.join(h+': '+v for h,v in zip(headers,cells)))
+        else:
+            headers = None; expanded.append(line)
+    lines = expanded
+    for index, line in enumerate(lines):
+        if re.match(r'^\s*#{1,6}\s+', line) and re.search(label, plain(line)):
+            end = next((i for i in range(index+1, len(lines)) if re.match(r'^\s*#{1,6}\s+', lines[i])), len(lines))
+            return '\n'.join(lines[index:end])
+    # Inline labeled summaries are also supported.
+    selected = [line for line in lines if re.search(label, plain(line))]
+    assert selected, 'Missing labeled report section: '+label
+    return '\n'.join(selected)
+
+
+def unknown_field(report, label):
+    value = section(report, label)
+    unavailable(value)
+    assert not re.search(r'\b0\b', plain(value)), 'Unknown field became recorded zero: '+label
+
+
+def check_counts(report, total, failed):
+    scope = section(report, r'checks?')
+    cleaned = plain(scope)
+    assert re.search(r'\b'+str(total)+r'\b', cleaned), 'Missing check count'
+    assert re.search(r'(?:fail\w*[^\n]*\b'+str(failed)+r'\b|\b'+str(failed)+r'\b[^\n]*fail)', cleaned), 'Missing failed check count'
+    assert re.search(r'(?:total[^\n]*\b'+str(total)+r'\b|\b'+str(total)+r'\b[^\n]*(?:total|checks?))', cleaned), 'Missing labeled total checks'
+
+
+def outcome(report):
+    return plain(section(report, r'\b(?:status|outcome|integration)\b'))
+
+
+def integration_unconfirmed(report):
+    assert re.search(r'unconfirmed|confirming|unavailable|incomplete|pending|not.confirmed', outcome(report)), 'Incorrect confirmed integration'
+
+
+def integration_confirmed(report):
+    value = outcome(report)
+    assert re.search(r'\bmerged\b|\bintegrated\b', value)
+    assert not re.search(r'unconfirmed|confirming|unavailable|incomplete|pending|not.confirmed', value)

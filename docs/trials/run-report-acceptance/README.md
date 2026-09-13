@@ -1,4 +1,4 @@
-# Independent report acceptance contract (T42, version 1)
+# Independent report acceptance contract (T42, version 2)
 
 This pack is separate from ordinary `tests/` discovery. It requires only installed
 Python and the real repository package; no credentials, model, Git repository,
@@ -73,9 +73,10 @@ not a fake proof suitable for branch execution.
 ## Independent checks and limits
 
 `python3 -B docs/trials/run-report-acceptance/selfcheck.py` validates the current
-fixture schema and tests six deliberately bad output fragments: invented branch
+fixture schema and tests nine deliberately bad output fragments: invented branch
 field, missing confirmed SHA, stale SHA, private text leakage, missing accounting
-as zero, and Markdown injection. These are assertion negative controls, not a
+as zero, Markdown injection, missing reviewer accounting masked by another field,
+false merged status masked by unrelated unknown data, and unconfirmed integration. These are assertion negative controls, not a
 mock exporter passed off as implementation validation. Endpoint import/runtime
 will be exercised against the actual feature once implemented.
 
@@ -84,3 +85,33 @@ browser download for paused/ready/merged/left-on-branch; no export in Interactiv
 unchanged composer draft/open Details and Pause/proposal/revision/merge controls.
 These must be recorded separately, not inferred from HTTP tests. Endpoint fixture
 requires loopback binding permission. No expensive full-run fixture is introduced.
+
+## Version 2 correction before a fresh attempt
+
+Version 1 digest was
+`ce21e1075fc06d9f7810ca6a41d5f133cfcb4c6acc38a92de5385169fa473397`
+(commit `c93adfa`). Retain that pack/manifest and T44 attempt 1 outcome; no frozen
+files in the original trial were changed. The observer found a fixture defect:
+changed-patch commit operations preserve ready_receipt.outcome **ready**, while
+the item status becomes **committed**. Version 1 wrongly used outcome committed.
+The worker followed that incorrect example. This is an observer contract defect,
+not evidence of independent feature success or purely worker failure.
+
+A second defect required a check total on the same line as “Checks”, rejecting
+valid heading/list formatting. Version 2 accepts labeled lists, inline summaries,
+and Markdown tables; it checks count values within the Checks section. Positive
+controls include all three layouts. Missing fields are asserted individually:
+worker/reviewer tokens, checks, review decisions, cost and working time. A field
+cannot be omitted or masked by an unrelated unavailable value. Labeled fields
+may be headings or inline labels; spelling is case-insensitive.
+
+Integration assertions inspect the Status/Outcome/Integration field rather than
+searching unrelated report sections. Both mappings carrying the same wrong run ID
+must fail against the actual run.id. A completed receipt on a working item cannot
+establish a committed outcome. A mismatched no-change receipt must be labeled
+unconfirmed/unverified. Labels include link, emphasis and code delimiters as well
+as pipes/newlines; escaping is required, not silently activating that markup.
+
+No exporter implementation is included. Version 2 still intentionally fails on
+this feature-absent source baseline. A new proposal must freeze this new manifest;
+old results are not rescored as though version 2 ran during their execution.

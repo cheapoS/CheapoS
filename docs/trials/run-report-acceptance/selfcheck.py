@@ -7,7 +7,7 @@ import time
 import unittest
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
-from contract import task, has, private_absent, commit_present, commit_absent, unavailable, escaped, SHA, SECRET
+from contract import task, has, private_absent, commit_present, commit_absent, unavailable, escaped, SHA, SECRET, check_counts, unknown_field, integration_unconfirmed, integration_confirmed
 from cheapos import branch_runs
 
 
@@ -19,17 +19,26 @@ class PackSelfCheck(unittest.TestCase):
         self.assertEqual(receipt['run_id'],run['id']); self.assertEqual(receipt['item_id'],run['items'][0]['id'])
         self.assertEqual(receipt['stage'],'completed'); self.assertEqual(receipt['new_tip'],run['expected_feature_tip'])
         self.assertNotIn('feature_branch',run)
+        self.assertEqual(receipt['outcome'], 'ready')
     def test_negative_controls(self):
         # Minimal outputs from known-bad implementations: each must be rejected.
         controls=[(lambda s: has(s,'feature/report'),'feature_branch: None'),
                   (commit_present,'committed'), (commit_absent,SHA),
                   (private_absent,'prompt: '+SECRET),
                   (unavailable,'worker tokens: 0; reviewer tokens: 0; cost: 0'),
-                  (escaped,'東京 |raw|\n# injected')]
+                  (escaped,'東京 |raw|\n# injected'),
+                  (lambda s: unknown_field(s, r'reviewer.*tokens'), 'Reviewer tokens: 0\nCost: unavailable'),
+                  (integration_unconfirmed, '**Status:** Merged\nCost: unavailable'),
+                  (integration_confirmed, '**Status:** Unconfirmed merged')]
         for assertion,bad in controls:
             with self.subTest(output=bad), self.assertRaises(AssertionError): assertion(bad)
         unavailable('Reviewer tokens: unavailable; cost: 0')
         escaped('東京 \\|raw\\| # injected'); private_absent('Safe title')
+        for report in ('## Checks\n\n- **Total:** 2\n- **Failed:** 1', 'Checks: 2 total, 1 failed', '## Checks\n| Total | Failed |\n| --- | --- |\n| 2 | 1 |'):
+            check_counts(report,2,1)
+        unknown_field('Reviewer tokens: unavailable\nCost: 0',r'reviewer.*tokens')
+        integration_unconfirmed('**Status:** Unconfirmed (merged)\nCost: 0')
+        integration_confirmed('## Outcome\nMerged')
 
 
 def digest():
