@@ -140,6 +140,21 @@ function renderTask({resetScroll=false}={}) {
   $('#change-count').textContent=task.changes.length;$('#check-count').textContent=task.checks.length;
   const sums=patchTotals(task.patch);$('#diff-tally').innerHTML=`<span>+${sums.add}</span><span>−${sums.remove}</span>`;
   $('#compact-cost').textContent=money(task.usage.cost);
+  const totalTokens=(task.usage?.worker?.tokens||0)+(task.usage?.reviewer?.tokens||0)+(task.usage?.coordinator?.tokens||0);
+  const estFrontierCost=(totalTokens/1000)*0.006;
+  const actualCost=task.usage?.cost||0;
+  const savings=Math.max(0,estFrontierCost-actualCost);
+  const savingsPill=$('#compute-savings-pill');
+  if(savingsPill){
+    if(totalTokens>0){
+      savingsPill.hidden=false;
+      const tokStr=totalTokens>=1000?`${(totalTokens/1000).toFixed(1)}k`:`${totalTokens}`;
+      savingsPill.innerHTML=`<span class="pill-bolt">⚡</span> <strong>${tokStr} tokens</strong> · $${actualCost.toFixed(2)} <span class="pill-savings">(Saved ~$${savings.toFixed(2)})</span>`;
+      savingsPill.title=`Total task tokens: ${totalTokens.toLocaleString()}. Estimated savings vs cloud frontier models.`;
+    }else{
+      savingsPill.hidden=true;
+    }
+  }
   $('#task-actions').innerHTML=activeStatuses.has(task.status)?`<button class="subtle-button" id="pause-task">${icon('x')}Pause</button>`:'<button class="subtle-button" id="task-overview">Details</button>';
   if($('#pause-task'))$('#pause-task').onclick=stopTask;
   if($('#task-overview'))$('#task-overview').onclick=toggleInspector;
@@ -232,9 +247,13 @@ function renderTurnActivityCard(turn, task) {
   const routingPill=(isLive&&turn.phase==='delegating'&&turn.coordinator)?`<span class="model-pill">${esc(turn.coordinator)} → ${esc(turn.worker)}</span>`:modelPill;
   const timelineItems=turn.groupedItems.map(item=>{
     if(item.type==='read')return `<div class="timeline-item">Read <code>${esc(item.path)}</code>${item.count>1?`<span class="count-badge">×${item.count}</span>`:''}${item.lines?`<small class="muted"> · ${item.lines} lines</small>`:''}</div>`;
+    if(item.type==='outline')return `<div class="timeline-item">Outlined symbols in <code>${esc(item.path)}</code></div>`;
     if(item.type==='search')return `<div class="timeline-item">Searched project for <em>“${esc(item.query)}”</em> <small class="muted">· ${item.results} results</small>${item.count>1?`<span class="count-badge">×${item.count}</span>`:''}</div>`;
     if(item.type==='web')return `<div class="timeline-item">Read web page: ${sourceLink(item.url,item.title)} ${item.range?`<small class="muted">· ${esc(item.range)}</small>`:''}</div>`;
-    if(item.type==='edit')return `<div class="timeline-item"><strong>Edited</strong> <code>${esc(item.path)}</code> <small class="muted">· saved in task copy</small></div>`;
+    if(item.type==='edit'){
+      const warn=item.event?.detail?.result?.syntax_warning;
+      return `<div class="timeline-item"><strong>Edited</strong> <code>${esc(item.path)}</code> <small class="muted">· saved in task copy</small>${warn?`<div class="timeline-item stalled" style="margin-top:4px">⚠ ${esc(warn)}</div>`:''}</div>`;
+    }
     if(item.type==='checks'){
       const exitNote=`Exit ${item.exit_code??'0'} · ${Number(item.duration||0).toFixed(1)}s`;
       return `<div class="timeline-item">✓ <strong>Verification:</strong> <code>${esc(item.command.join(' '))}</code> <small class="muted">(${exitNote})</small>${item.output?`<pre class="timeline-command-preview">${esc(item.output.slice(-800))}</pre>`:''}</div>`;
@@ -356,6 +375,19 @@ async function requestCommitReview(trigger) {
 }
 const commitPreviews=new Map();
 const previewKey=task=>task.patch_digest+':'+(task.checkpoints?.at(-1)?.number??task.checkpoints?.length??0);
+function renderPatchPreview(patch) {
+  if(!patch)return '';
+  const lines=patch.split('\n');
+  const rendered=lines.map(l=>{
+    if(l.startsWith('diff --git')||l.startsWith('index ')||l.startsWith('new file'))return `<div class="diff-meta-line header">${esc(l)}</div>`;
+    if(l.startsWith('---')||l.startsWith('+++'))return `<div class="diff-meta-line">${esc(l)}</div>`;
+    if(l.startsWith('@@'))return `<div class="diff-hunk">${esc(l)}</div>`;
+    if(l.startsWith('+'))return `<div class="diff-line add"><span class="diff-sign">+</span><span class="source">${esc(l.slice(1))||' '}</span></div>`;
+    if(l.startsWith('-'))return `<div class="diff-line remove"><span class="diff-sign">−</span><span class="source">${esc(l.slice(1))||' '}</span></div>`;
+    return `<div class="diff-line"><span class="diff-sign"> </span><span class="source">${esc(l.startsWith(' ')?l.slice(1):l)||' '}</span></div>`;
+  }).join('');
+  return `<div class="commit-diff-preview diff-code" tabindex="0" aria-label="Reviewed patch">${rendered}</div>`;
+}
 function commitDecisionMarkup(task) {
   if(CheapOSGuide.commitDeferred(task))return `<section class="chat-result"><div><strong>Changes are saved, without a commit.</strong><p>You can keep chatting or reconsider this patch whenever you’re ready.</p><button class="subtle-button" data-commit-action="reopen">Reopen decision</button></div></section>`;
   const entry=commitPreviews.get(task.id),current=entry?.key===previewKey(task)?entry:null;
@@ -363,7 +395,7 @@ function commitDecisionMarkup(task) {
   if(current.loading)return '<section class="chat-result"><div><strong>Checks and review are complete.</strong><p>Preparing your final diff and commit message…</p></div></section>';
   if(current.error)return `<section class="chat-result"><div><strong>Your changes are saved.</strong><p>${esc(current.error)}</p><div class="button-row"><button class="primary-button" data-commit-action="refresh">Refresh commit preview</button><button class="subtle-button" data-commit-action="change">Keep chatting</button>${task.commit_pending?'':'<button class="subtle-button" data-commit-action="defer">Decline</button>'}</div></div></section>`;
   const p=current.preview;
-  return `<section class="commit-decision" aria-label="Your decision"><h3>${p.retry?'Finish your approved commit.':'Ready for your approval.'}</h3><p class="muted">${esc(p.review)} · checks passed. ${p.retry?'Finish the saved attempt before starting more work.':'You can approve this patch, ask for changes, or keep chatting.'}</p><dl class="commit-target"><div><dt>Project</dt><dd>${esc(p.source)}</dd></div><div><dt>Commit to</dt><dd>${esc(p.branch)} <span class="muted">at ${esc(p.head.slice(0,8))}</span></dd></div></dl><details class="commit-patch" data-event="commit-patch-${esc(task.patch_digest)}" open><summary>Final diff · ${p.files.length} file${p.files.length===1?'':'s'}</summary><pre tabindex="0" aria-label="Reviewed patch">${esc(p.patch)}</pre></details><form id="commit-form"><label>Commit message<textarea name="message" rows="2" maxlength="2000" required ${p.retry?'readonly':''}>${esc(current.message)}</textarea></label><p class="form-error" role="alert">${esc(current.submitError||'')}</p><div class="button-row"><button type="submit" class="primary-button" ${current.submitting?'disabled':''}>${current.submitting?'Committing…':p.retry?'Finish commit':'Approve & commit'}</button>${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="change" ${current.submitting?'disabled':''}>Request changes</button>`}${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="defer" ${current.submitting?'disabled':''}>Decline</button>`}</div><p class="small muted">${p.retry?'Your approved commit was interrupted. Finish the saved attempt to continue chatting.':'Approval applies this reviewed patch and creates a local commit. Declining keeps your edits saved.'} Pushing is separate.</p></form></section>`;
+  return `<section class="commit-decision" aria-label="Your decision"><h3>${p.retry?'Finish your approved commit.':'Ready for your approval.'}</h3><p class="muted">${esc(p.review)} · checks passed. ${p.retry?'Finish the saved attempt before starting more work.':'You can approve this patch, ask for changes, or keep chatting.'}</p><dl class="commit-target"><div><dt>Project</dt><dd>${esc(p.source)}</dd></div><div><dt>Commit to</dt><dd>${esc(p.branch)} <span class="muted">at ${esc(p.head.slice(0,8))}</span></dd></div></dl><details class="commit-patch" data-event="commit-patch-${esc(task.patch_digest)}" open><summary>Final diff · ${p.files.length} file${p.files.length===1?'':'s'}</summary>${renderPatchPreview(p.patch)}</details><form id="commit-form"><label>Commit message<textarea name="message" rows="2" maxlength="2000" required ${p.retry?'readonly':''}>${esc(current.message)}</textarea></label><p class="form-error" role="alert">${esc(current.submitError||'')}</p><div class="button-row"><button type="submit" class="primary-button" ${current.submitting?'disabled':''}>${current.submitting?'Committing…':p.retry?'Finish commit':'Approve & commit'}</button>${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="change" ${current.submitting?'disabled':''}>Request changes</button>`}${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="defer" ${current.submitting?'disabled':''}>Decline</button>`}</div><p class="small muted">${p.retry?'Your approved commit was interrupted. Finish the saved attempt to continue chatting.':'Approval applies this reviewed patch and creates a local commit. Declining keeps your edits saved.'} Pushing is separate.</p></form></section>`;
 }
 async function ensureCommitPreview(task,force=false) {
   const key=previewKey(task),existing=commitPreviews.get(task.id);

@@ -45,6 +45,7 @@ COMPACT_WRITE = tool("write_file", "Create a NEW file with a small first chunk: 
 READ_TOOLS = [
     tool("list_files", "Recursively list eligible files in the isolated task workspace, optionally within a directory. Returned paths are relative to the workspace root.", {"path": {"type": "string", "description": "Workspace-relative directory. Omit or use '.' to list the whole project."}}),
     tool("read_file", "Read a text file with line numbers.", {"path": TEXT, "start_line": {"type": "integer"}, "end_line": {"type": "integer"}}, ["path"]),
+    tool("outline_file", "Return the high-level outline of classes, methods, and functions with line numbers for a file. Use this before read_file on unfamiliar files to locate target code efficiently.", {"path": TEXT}, ["path"]),
     tool("search", "Search LOCAL repository files for a literal string. This is not internet search; use read_url for web links.", {"query": TEXT}, ["query"]),
     tool("read_url", "Read a public HTTPS page supplied in chat, or a link returned by this tool. GitHub repository links open the README. Returns numbered lines and links. To continue, set start_line to the previous end_line + 1; omitting end_line reads the next 120 lines. No internet search, sign-in, or JavaScript. If unavailable, explain the limitation rather than repeatedly searching local files.", {"url": TEXT, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 1}}, ["url"]),
     tool("get_diff", "Inspect the current patch relative to the task's starting snapshot."),
@@ -1125,7 +1126,7 @@ class Engine:
 
     def file_tool(self, task, name, args):
         workspace = Workspace(task["workspace"])
-        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "search": workspace.search, "get_diff": lambda: workspace.patch()[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
+        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda: workspace.patch()[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
         if name not in methods:
             raise ValueError("Unknown tool: " + name)
         if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text"}:
@@ -1324,7 +1325,7 @@ class Engine:
                         task["status"] = {"APPROVE": "approved", "REQUEST_CHANGES": "running", "TAKE_OVER": "takeover_requested"}[decision]
                         self.event(task, "review", f"Reviewer: {decision.replace('_', ' ').lower()}", {"checkpoint": checkpoint["number"], "decision": decision, "feedback": checkpoint["feedback"]})
                         return {"decision": decision, "feedback": checkpoint["feedback"]}
-                elif name in {"read_file", "search", "list_files", "get_diff", "read_url"}:
+                elif name in {"read_file", "outline_file", "search", "list_files", "get_diff", "read_url"}:
                     try:
                         result = self.read_url(runtime, params) if name == "read_url" else self.file_tool(task, name, params)
                     except InterruptedError:

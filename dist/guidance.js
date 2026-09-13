@@ -36,7 +36,7 @@ const CheapOSGuide = (() => {
     return String(task.source||'').split(/[/\\]/).filter(Boolean).pop()||'Your project';
   }
   function workLabel(events) {
-    const reads=events.filter(e=>e.kind==='tool'&&['read file','search','list files'].includes(e.title)).length;
+    const reads=events.filter(e=>e.kind==='tool'&&['read file','outline file','search','list files'].includes(e.title)).length;
     const edits=events.filter(e=>e.kind==='tool'&&['write file','replace text','replace lines'].includes(e.title)).length;
     const checks=events.filter(e=>e.kind==='checks').length;
     return [reads?`Explored the project (${reads})`:null,edits?`Made ${edits} edit${edits===1?'':'s'}`:null,checks?`Ran ${checks} check${checks===1?'':'s'}`:null].filter(Boolean).join(' · ')||'Work details';
@@ -50,7 +50,7 @@ const CheapOSGuide = (() => {
     const events=task.events||[],latest=events.at(-1),request=[...events].reverse().find(e=>e.kind==='model');
     const completed=[...events].reverse().find(e=>e.kind==='checks'||e.kind==='tool'&&e.title!=='Running verification');
     const args=completed?.detail?.arguments||{};
-    const action=completed?({'read file':`Read ${args.path||'a file'}`,'read url':`Read ${args.url||'web page'}`,'write file':`Created ${args.path||'a file'}`,'replace text':`Edited ${args.path||'a file'}`,'replace lines':`Edited ${args.path||'a file'}`,'list files':'Listed project files','search':`Searched project for ${args.query||'text'}`}[completed.title]||completed.title):'No tool actions completed yet';
+    const action=completed?({'read file':`Read ${args.path||'a file'}`,'outline file':`Outlined ${args.path||'a file'}`,'read url':`Read ${args.url||'web page'}`,'write file':`Created ${args.path||'a file'}`,'replace text':`Edited ${args.path||'a file'}`,'replace lines':`Edited ${args.path||'a file'}`,'list files':'Listed project files','search':`Searched project for ${args.query||'text'}`}[completed.title]||completed.title):'No tool actions completed yet';
     const files=(task.changes||[]).length,evidence=files?`${files} changed file${files===1?'':'s'} saved`:'No files changed yet';
     let stage='working',title='Preparing the next step',detail='',since=latest?.time||task.updated_at;
     if(task.status==='waiting_approval'){stage='approval';title='Waiting for your approval';detail=(task.pending_approval?.command||[]).join(' ')}
@@ -98,9 +98,9 @@ const CheapOSGuide = (() => {
     if(event.kind==='tool'){
       path=args.path||null;
       if(title==='Running verification')return null;
-      const names={'read file':`Read ${path||'a file'}`,'read url':`Read web page · ${result?.title||args.url||''}`,'write file':`Created ${path||'a file'}`,'replace text':`Edited ${path||'a file'}`,'replace lines':`Edited ${path||'a file'}`,'list files':'Listed project files','search':`Searched project for “${args.query||''}”`,'get diff':'Inspected the saved changes'};
+      const names={'read file':`Read ${path||'a file'}`,'outline file':`Outlined ${path||'a file'}`,'read url':`Read web page · ${result?.title||args.url||''}`,'write file':`Created ${path||'a file'}`,'replace text':`Edited ${path||'a file'}`,'replace lines':`Edited ${path||'a file'}`,'list files':'Listed project files','search':`Searched project for “${args.query||''}”`,'get diff':'Inspected the saved changes'};
       title=names[title]||title;icon=path?'file':'search';
-      note=Array.isArray(result)?`${result.length} results`:result?.total_lines?`${result.total_lines} lines in file`:['write file','replace text','replace lines'].includes(event.title)?'Saved in the task copy':'';
+      note=result?.syntax_warning?`⚠ ${result.syntax_warning}`:Array.isArray(result)?`${result.length} results`:result?.total_lines?`${result.total_lines} lines in file`:['write file','replace text','replace lines'].includes(event.title)?'Saved in the task copy':'';
       if(event.title==='read url')note=`${result?.source_url||args.url} · lines ${result?.start_line}–${result?.end_line}${result?.has_more?' · more available':''}`;
       if(d.model)note=[d.model,note].filter(Boolean).join(' · ');
     }else if(event.kind==='check_reused'){icon='tests';note='The same patch and command already passed; no test rerun.'}
@@ -167,6 +167,10 @@ const CheapOSGuide = (() => {
           const existing = reads.get(path), lines = d.result?.total_lines;
           if (existing) { existing.count++; if (lines) existing.lines = lines; }
           else { const entry = { type: 'read', path, count: 1, lines, event: e }; reads.set(path, entry); items.push(entry); }
+          continue;
+        }
+        if (e.title === 'outline file') {
+          items.push({ type: 'outline', path: args.path || 'file', event: e });
           continue;
         }
         if (e.title === 'search') {
@@ -250,7 +254,8 @@ const CheapOSGuide = (() => {
       const latestReview = turnEvents.filter(e => e.kind === 'review').at(-1)?.detail;
       const latestCommit = turnEvents.filter(e => e.kind === 'commit' && e.detail?.commit).at(-1)?.detail;
       const editedFiles = [...new Set(turnEvents.filter(e => e.kind === 'tool' && ['write file', 'replace text', 'replace lines'].includes(e.title)).map(e => e.detail?.arguments?.path).filter(Boolean))];
-      const readCount = grouped.filter(g => g.type === 'read').reduce((sum, g) => sum + g.count, 0);
+      const outlineCount = grouped.filter(g => g.type === 'outline').length;
+      const readCount = grouped.filter(g => g.type === 'read').reduce((sum, g) => sum + g.count, 0) + outlineCount;
       const webCount = grouped.filter(g => g.type === 'web').length;
       const searchCount = grouped.filter(g => g.type === 'search').reduce((sum, g) => sum + g.count, 0);
       const totalActions = readCount + webCount + searchCount + editedFiles.length;

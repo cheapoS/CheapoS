@@ -335,3 +335,35 @@ test('turns suppresses live activity card while actively streaming answer when n
   assert.equal(turnList[0].isLive,true);
   assert.equal(turnList[0].hasActivity,false);
 });
+
+test('activityItem formats outline file and syntax_warning',()=>{
+  const outlineItem=activityItem({kind:'tool',title:'outline file',detail:{arguments:{path:'cheapos/engine.py'},result:{total_lines:200}}});
+  assert.equal(outlineItem.title,'Outlined cheapos/engine.py');
+  assert.equal(outlineItem.note,'200 lines in file');
+
+  const editWithWarning=activityItem({kind:'tool',title:'write file',detail:{arguments:{path:'broken.py'},result:{syntax_warning:'SyntaxError at line 5: invalid syntax'}}});
+  assert.equal(editWithWarning.title,'Created broken.py');
+  assert.equal(editWithWarning.note,'⚠ SyntaxError at line 5: invalid syntax');
+});
+
+test('groupActivityItems and turns handle outline file events',()=>{
+  const events=[
+    {kind:'tool',title:'outline file',detail:{arguments:{path:'cheapos/engine.py'},result:{total_lines:1300}}},
+    {kind:'tool',title:'read file',detail:{arguments:{path:'cheapos/engine.py'},result:{total_lines:1300}}}
+  ];
+  const items=groupActivityItems(events);
+  assert.equal(items.length,2);
+  assert.equal(items[0].type,'outline');
+  assert.equal(items[0].path,'cheapos/engine.py');
+  assert.equal(items[1].type,'read');
+
+  const t=task({
+    prompt:'explain engine',
+    status:'running',
+    events
+  });
+  const turnList=turns(t);
+  assert.equal(turnList[0].readCount,2);
+  assert.equal(turnList[0].totalActions,2);
+});
+

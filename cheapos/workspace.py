@@ -171,8 +171,70 @@ class Workspace:
         if len(replacement) > MAX_FILE_BYTES:
             raise ValueError("Replacement is too large")
         self.path(path).write_bytes(replacement)
-        return {"path": path, "updated": True, "hash": hashlib.sha256(replacement).hexdigest(),
-                "total_lines": len(replacement.decode("utf-8").splitlines())}
+        result = {"path": path, "updated": True, "hash": hashlib.sha256(replacement).hexdigest(),
+                  "total_lines": len(replacement.decode("utf-8").splitlines())}
+        warning = self.validate_syntax(path)
+        if warning:
+            result["syntax_warning"] = warning
+        return result
+
+    def validate_syntax(self, path):
+        """Fast syntax check for edited files. Returns an error description or None."""
+        try:
+            target = self.path(path)
+            if not target.is_file():
+                return None
+            data = target.read_bytes()
+            if path.endswith(".py"):
+                import ast
+                ast.parse(data, filename=path)
+            elif path.endswith(".json"):
+                import json
+                json.loads(data.decode("utf-8"))
+        except SyntaxError as err:
+            return f"SyntaxError at line {err.lineno}: {err.msg}"
+        except ValueError as err:
+            return f"FormatError: {err}"
+        except Exception:
+            return None
+        return None
+
+    def outline_file(self, path):
+        """Return the class, method, and function outlines with line numbers for a file."""
+        data = self.text_bytes(path)
+        text = data.decode("utf-8")
+        if path.endswith(".py"):
+            import ast
+            try:
+                tree = ast.parse(data, filename=path)
+            except SyntaxError as err:
+                return {"path": path, "outline": f"SyntaxError at line {err.lineno}: {err.msg}", "total_lines": len(text.splitlines())}
+            outline = []
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    end = getattr(node, "end_lineno", node.lineno)
+                    args = [a.arg for a in node.args.args]
+                    outline.append(f"def {node.name}({', '.join(args)}) (lines {node.lineno}–{end})")
+                elif isinstance(node, ast.ClassDef):
+                    end = getattr(node, "end_lineno", node.lineno)
+                    outline.append(f"class {node.name} (lines {node.lineno}–{end})")
+                    for sub in node.body:
+                        if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            sub_end = getattr(sub, "end_lineno", sub.lineno)
+                            sub_args = [a.arg for a in sub.args.args]
+                            outline.append(f"  def {sub.name}({', '.join(sub_args)}) (lines {sub.lineno}–{sub_end})")
+            if not outline:
+                return {"path": path, "outline": "(No top-level functions or classes found)", "total_lines": len(text.splitlines())}
+            return {"path": path, "outline": "\n".join(outline), "total_lines": len(text.splitlines())}
+        else:
+            outline = []
+            for i, line in enumerate(text.splitlines(), 1):
+                stripped = line.strip()
+                if stripped.startswith(("#", "function ", "class ", "export function ", "export class ", "def ")):
+                    outline.append(f"line {i}: {stripped[:100]}")
+                    if len(outline) >= 100:
+                        break
+            return {"path": path, "outline": "\n".join(outline) if outline else "(No outline symbols found)", "total_lines": len(text.splitlines())}
 
     def search(self, query):
         if not isinstance(query, str) or not query or len(query) > 200:
@@ -201,7 +263,11 @@ class Workspace:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         target.chmod(0o600)
-        return {"path": path, "created": True}
+        result = {"path": path, "created": True}
+        warning = self.validate_syntax(path)
+        if warning:
+            result["syntax_warning"] = warning
+        return result
 
     def replace_text(self, path, old_text, new_text):
         target = self.path(path)
@@ -216,7 +282,11 @@ class Workspace:
         if len(replacement.encode("utf-8")) > MAX_FILE_BYTES:
             raise ValueError("Replacement is too large")
         target.write_text(replacement, encoding="utf-8")
-        return {"path": path, "updated": True}
+        result = {"path": path, "updated": True}
+        warning = self.validate_syntax(path)
+        if warning:
+            result["syntax_warning"] = warning
+        return result
 
     def changes(self):
         # Include newly created files in the exported patch without changing the baseline.
