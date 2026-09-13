@@ -25,7 +25,7 @@ const CheapOSGuide = (() => {
       case 'budget_paused': return {...result,tone:'attention',title:task.error_code==='worker_turn_limit'?'This request used its worker turns.':'This task reached a limit.',description:task.error_code==='worker_turn_limit'?`Used ${task.request_worker_turns??task.worker_turns} of ${task.limits.worker_turns} worker turns for this request. Your work is saved. Increase that allowance to continue; spending limits stay the same.`:'CheapOS paused to respect your limits. Inspect what it produced, then review the remaining budget before continuing.',primary:'resume',primaryLabel:task.error_code==='worker_turn_limit'?'Review turn limit':'Review limits & resume'};
       case 'paused': case 'interrupted': return {...result,title:task.error_code==='progress_limit'?'Paused to avoid repeated work.':task.error_code==='routing_unavailable'?'A working free route is needed.':task.status==='interrupted'?'This task was interrupted.':'Your work is paused.',description:task.error_code?task.error:'The task copy and usage are saved. Resume with the same models and limits.',primary:'resume',primaryLabel:'Resume'};
       case 'takeover_requested': return {...result,tone:'attention',title:'The reviewer wants to take over.',description:'Read the reviewer’s feedback below. You decide whether it can implement changes using the remaining task budget.',primary:'resume',primaryLabel:'Review takeover request'};
-      case 'approved': return {...result,tone:'success',eyebrow:'YOUR REVIEW',title:'The reviewer approved this patch.',description:'Inspect the changes, then export the patch when you’re ready to apply it. Your original project has not been changed by the file tools.',primary:'changes',primaryLabel:'Review the patch',secondary:'export',secondaryLabel:'Export patch'};
+      case 'approved': return {...result,tone:'success',eyebrow:'YOUR REVIEW',title:'The reviewer approved this patch.',description:'Inspect the diff, then choose Apply & commit. You approve the destination branch and commit message before CheapOS updates your project.',primary:'changes',primaryLabel:'Review the patch',secondary:'export',secondaryLabel:'Export patch'};
       case 'completed': return {...result,tone:'attention',eyebrow:'YOUR REVIEW',title:'Takeover finished. Your review is next.',description:'The implementing model finished, but this is not an independent reviewer approval. Inspect the patch before applying it to your project.',primary:'changes',primaryLabel:'Review the patch',secondary:'export',secondaryLabel:'Export patch'};
       default:return result;
     }
@@ -108,6 +108,7 @@ const CheapOSGuide = (() => {
     else if(event.kind==='routing'){icon='branch';note=[d.model,d.error].filter(Boolean).join(' · ')||d.summary||''}
     else if(event.kind==='permission'){icon='shield';note=(d.command||[]).join(' ')}
     else if(event.kind==='web'){icon='search';title='Requested web page';note=d.url||''}
+    else if(event.kind==='commit'){icon='branch';note=d.commit?`${d.commit.slice(0,8)} · ${d.branch} · ${d.message}`:d.error||d.branch||''}
     else return null;
     return {event,title,icon,note,path,failed:event.kind==='tool_error'||event.kind==='checks'&&!d.passed};
   }
@@ -124,6 +125,11 @@ const CheapOSGuide = (() => {
       review:review?`${{APPROVE:'Approved',REQUEST_CHANGES:'Changes requested',TAKE_OVER:'Takeover requested'}[review.decision]||'Decision saved'}${reviewCurrent?'':' · earlier patch'}`:task.status==='reviewing'?'Reviewing now':'Not reviewed for this request',
       check,checkpoint,items:recent.map(activityItem).filter(Boolean).reverse()};
   }
-  return {taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,isActive:status=>active.has(status)};
+  function canCommit(task) {
+    if(task.commit_pending)return true;
+    const check=task.checks?.at(-1),review=task.checkpoints?.at(-1);
+    return Boolean(task.changes?.length&&['approved','completed','awaiting_reply'].includes(task.status)&&check?.passed&&check.digest===task.patch_digest&&(task.status==='completed'||review?.decision==='APPROVE'&&review.diff===task.patch));
+  }
+  return {taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status)};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;

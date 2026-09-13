@@ -3,6 +3,25 @@ const assert=require('node:assert/strict');
 const {taskGuide,projectName,workLabel}=require('../dist/guidance.js');
 const task=overrides=>({status:'ready',worker_turns:0,changes:[],checks:[],checkpoints:[],events:[],...overrides});
 
+test('commit is offered only for a verified current patch with review or explicit takeover review',()=>{
+  const {canCommit}=require('../dist/guidance.js');
+  const t=task({status:'approved',changes:[{path:'README.md'}],patch:'current',patch_digest:'digest',checks:[{passed:true,digest:'digest'}],checkpoints:[{decision:'APPROVE',diff:'current'}]});
+  assert.equal(canCommit(t),true);
+  assert.equal(canCommit({...t,status:'awaiting_reply'}),true);
+  assert.equal(canCommit({...t,status:'running'}),false);
+  assert.equal(canCommit({...t,patch:'other'}),false);
+  assert.equal(canCommit({...t,patch_digest:'other'}),false);
+  assert.equal(canCommit({...t,changes:[]}),false);
+  assert.equal(canCommit({...t,checkpoints:[]}),false);
+  assert.equal(canCommit({...t,status:'completed',checkpoints:[]}),true);
+});
+
+test('commit activity identifies the actual branch and commit',()=>{
+  const {activityItem}=require('../dist/guidance.js');
+  const item=activityItem({kind:'commit',title:'Changes committed to your project',detail:{commit:'abcd1234ffff',branch:'main',message:'Fix clamp'}});
+  assert.equal(item.note,'abcd1234 · main · Fix clamp');
+});
+
 test('live checks keep their command and elapsed time while output updates',()=>{
   const {progress}=require('../dist/guidance.js');
   const t=task({status:'running',updated_at:'2026-09-13T00:00:09Z',check_stream:{command:['python3','-m','unittest'],started_at:'2026-09-13T00:00:00Z',updated_at:'2026-09-13T00:00:09Z',output:'test_bounds ... ok'}});

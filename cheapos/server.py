@@ -15,7 +15,7 @@ from .providers import validate_provider, ProviderError
 def public_task(task, summary=False):
     if summary:
         return {key: task[key] for key in ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage")}
-    return {**{key: value for key, value in task.items() if key not in {"messages", "fixture_phase", "in_flight", "turn_start_patch"}}, "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
+    return {**{key: value for key, value in task.items() if key not in {"messages", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending"}}, "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -198,6 +198,10 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     if values != {"clear": True}:
                         raise ValueError("Session permissions can only be cleared here")
                     result = engine.clear_session_permissions(task_id)
+                elif action == "commit-preview":
+                    result = engine.prepare_commit(task_id)
+                elif action == "commit":
+                    result = engine.apply_commit(task_id, values)
                 else:
                     raise ValueError("Unknown task action")
             else:

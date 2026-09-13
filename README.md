@@ -80,7 +80,11 @@ References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter 
 2. Type a question or describe a change, then send. CheapOS creates a separate task copy and uses your saved model choices and limits.
 3. Questions can finish with an answer. For changes, the worker inspects the project, proposes a verification command, and asks for approval in the conversation. The controller reruns checks before requesting a reviewer decision.
 4. Keep talking in the same chat. Follow-ups retain the task copy, original model pair, accumulated usage, and prior requests—even after a completed review. **New chat** starts a fresh copy of the source project.
-5. Open **Changes** to inspect and export a patch. **Checks** shows verification output. **Activity** summarizes current work and results; model accounting lives under **Details**.
+5. Open **Changes** to inspect the diff. After verification and review, choose **Apply & commit**, review the destination branch and editable commit message, then **Approve & commit**. CheapOS applies the patch to your project and makes a local Git commit. **Checks** shows verification output. **Activity** summarizes current work and results; model accounting lives under **Details**.
+
+Your approval is required for each commit; a model's approval cannot authorize it. The preview expires after ten minutes and is rechecked before applying. Your source checkout must be clean, on a branch, and have a configured Git author identity. The exact patch must apply cleanly; unrelated committed changes are preserved. Checks describe the task copy, while the preview identifies the current destination commit. Conflicts or unrelated uncommitted work stop the operation without discarding edits. Git hooks and signing are disabled for this action; repositories with content filters or sparse index flags use the exported patch workflow. A takeover can be committed after passing checks and your explicit review, with its lack of independent approval shown in the preview.
+
+After committing, the chat advances its task baseline so follow-up changes create a new patch. The commit hash and original patch stay in history. An interrupted commit attempt is saved for an explicit retry, and a repeated request cannot create a duplicate commit. Pushing remains separate. **Export patch** is available for manual Git workflows.
 
 The spending control below the message box edits the current chat's limits, or defaults for new chats. Saving limits does not run a model. Model settings apply to new chats; existing chats retain their original model pair. An error never silently changes models or retries a request.
 
@@ -119,7 +123,7 @@ Dependencies are not installed automatically. This alpha works best with small, 
 - Research keeps a compact record of the sources and sections already read. For a chat request with no new edits, CheapOS reserves the final available research turn for an answer with tools disabled; repeated reads can trigger this earlier. This response uses the same worker and remaining budget. It can report missing information, but cannot approve edits. Resuming a paused read-only loop goes directly to this answer step instead of restarting research.
 - One task runs at a time. A process lock prevents two app servers from using the same data directory.
 
-There is no automatic commit, push, dependency installation, merge, arbitrary shell tool, or production sandbox. Keep tasks small: snapshots are limited to 5,000 files / 100 MB, and review checkpoints to a 30,000-character patch. Task history is currently retained until you remove it locally with the app stopped.
+There is no unattended commit, push, dependency installation, merge, arbitrary shell tool, or production sandbox. Keep tasks small: snapshots are limited to 5,000 files / 100 MB, and review checkpoints to a 30,000-character patch. Task history is currently retained until you remove it locally with the app stopped.
 
 ## Development
 

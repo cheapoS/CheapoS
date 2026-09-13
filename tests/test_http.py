@@ -101,6 +101,30 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post('/api/tasks', {})[0], 400)
         self.assertEqual(self.post('/api/tasks/missing/approval', {'approved':'yes'})[0], 400)
 
+    def test_commit_api_requires_preview_and_explicit_same_origin_approval(self):
+        from cheapos.workspace import git
+        task = self.engine.create_demo()
+        git(task['source'], 'config', 'user.name', 'Test Operator')
+        git(task['source'], 'config', 'user.email', 'operator@example.invalid')
+        self.engine.start(task['id'])
+        self.engine.runtimes[task['id']].thread.join(10)
+        self.assertEqual(self.engine.store.get(task['id'])['status'], 'approved')
+        path = '/api/tasks/' + task['id']
+        self.assertEqual(self.request('POST', path + '/commit-preview', {}, {'Content-Type': 'application/json'})[0], 403)
+        status, _, body = self.post(path + '/commit-preview', {})
+        self.assertEqual(status, 200)
+        preview = json.loads(body)
+        data = {'approved': True, 'approval_id': preview['approval_id'], 'message': 'Fix clamp boundaries'}
+        self.assertEqual(self.request('POST', path + '/commit', data, {'Content-Type': 'application/json'})[0], 403)
+        self.assertEqual(self.post(path + '/commit', {**data, 'approved': 'true'})[0], 400)
+        status, _, body = self.post(path + '/commit', data)
+        self.assertEqual(status, 200, body)
+        committed = json.loads(body)
+        self.assertEqual(git(task['source'], 'rev-parse', 'HEAD').strip(), committed['commit'])
+        self.assertEqual(self.post(path + '/commit', data)[0], 200)
+        self.assertEqual(git(task['source'], 'rev-list', '--count', 'HEAD').strip(), '2')
+        self.assertEqual(json.loads(self.request('GET', path)[2])['patch'], '')
+
     def test_startup_status_is_read_only_and_preferences_do_not_dispatch(self):
         with patch.object(self.engine.startup, 'start') as start:
             self.assertEqual(self.request('GET', '/api/startup')[0], 200)
