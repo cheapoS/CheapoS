@@ -204,6 +204,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     result = public_task(engine.commit_decision(task_id, values))
                 elif action == "commit":
                     result = engine.apply_commit(task_id, values)
+                elif action == "rollback":
+                    checkpoint = values.get("checkpoint")
+                    if not isinstance(checkpoint, int):
+                        raise ValueError("Provide a checkpoint number to rollback to")
+                    result = public_task(engine.rollback_checkpoint(task_id, checkpoint))
                 else:
                     raise ValueError("Unknown task action")
             else:

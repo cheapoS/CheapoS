@@ -323,6 +323,19 @@ class Workspace:
         self.changes()
         return git(self.root, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--binary", "HEAD", "--", ".")
 
+    def rollback_to_patch(self, patch):
+        git(self.root, "checkout", "-f", "HEAD")
+        git(self.root, "clean", "-fd")
+        if patch and isinstance(patch, str) and patch.strip():
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as f:
+                f.write(patch)
+                temp_path = f.name
+            try:
+                git(self.root, "apply", "--whitespace=nowarn", temp_path)
+            finally:
+                Path(temp_path).unlink(missing_ok=True)
+        return self.changes()
+
     def run_checks(self, argv, stop_event, timeout=90, on_output=None):
         if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a and "\x00" not in a for a in argv):
             raise ValueError("Check command must be an argument list")

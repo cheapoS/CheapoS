@@ -343,7 +343,22 @@ function renderActivity() {
 }
 function checkpointDialog(number) {
   const checkpoint=state.task.checkpoints.find(c=>c.number===number);if(!checkpoint)return;
-  dialog(`${modalHeader('REVIEW EVIDENCE','Checkpoint #'+number)}<p class="modal-description">This is the evidence captured for this review. The reviewer can also read the current workspace.</p><div class="checkpoint-section"><h3>Original task</h3><p>${esc(checkpoint.original_task)}</p></div><div class="checkpoint-section"><h3>Worker summary</h3><p>${esc(checkpoint.worker_summary)}</p><p>${esc(checkpoint.uncertainties)}</p></div><div class="checkpoint-section"><h3>Verification</h3><pre>${esc(checkpoint.checks.output)}</pre></div><div class="checkpoint-section"><h3>Patch at this checkpoint</h3><pre>${esc(checkpoint.diff)}</pre></div><div class="checkpoint-section"><h3>${esc(checkpoint.decision)}</h3><p>${esc(checkpoint.feedback)}</p></div>`,'checkpoint-modal');
+  const isRunning=activeStatuses.has(state.task.status);
+  const d=dialog(`${modalHeader('REVIEW EVIDENCE','Checkpoint #'+number)}<p class="modal-description">This is the evidence captured for this review. The reviewer can also read the current workspace.</p><div class="checkpoint-section"><h3>Original task</h3><p>${esc(checkpoint.original_task)}</p></div><div class="checkpoint-section"><h3>Worker summary</h3><p>${esc(checkpoint.worker_summary)}</p><p>${esc(checkpoint.uncertainties)}</p></div><div class="checkpoint-section"><h3>Verification</h3><pre>${esc(checkpoint.checks.output)}</pre></div><div class="checkpoint-section"><h3>Patch at this checkpoint</h3><pre>${esc(checkpoint.diff)}</pre></div><div class="checkpoint-section"><h3>${esc(checkpoint.decision)}</h3><p>${esc(checkpoint.feedback)}</p></div><div class="modal-footer"><span>Revert files to this exact checkpoint.</span><button type="button" class="outline-button" id="modal-rollback" ${isRunning?'disabled title="Pause task first"':''}>Rollback to Checkpoint #${number}</button></div>`,'checkpoint-modal');
+  const rollbackBtn=$('#modal-rollback',d);
+  if(rollbackBtn)rollbackBtn.onclick=async()=>{
+    if(isRunning)return;
+    rollbackBtn.disabled=true;
+    try{
+      await api('/tasks/'+state.task.id+'/rollback',{checkpoint:number});
+      d.close();
+      toast('Rolled back workspace to Checkpoint #'+number);
+      await refresh();
+    }catch(err){
+      toast(err.message);
+      rollbackBtn.disabled=false;
+    }
+  };
 }
 function patchTotals(patch) {const lines=patch.split('\n');return {add:lines.filter(l=>l.startsWith('+')&&!l.startsWith('+++')).length,remove:lines.filter(l=>l.startsWith('-')&&!l.startsWith('---')).length};}
 function diffLines(before,after) {

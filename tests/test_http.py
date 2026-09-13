@@ -15,6 +15,7 @@ from urllib.error import HTTPError
 from cheapos.gateways import OmniRouteGateway
 from cheapos.startup import GREETING
 from cheapos.server import LocalServer
+from cheapos.workspace import Workspace
 
 
 class CooldownErrorTests(unittest.TestCase):
@@ -228,6 +229,34 @@ class HTTPTests(unittest.TestCase):
             status, _, body = self.post(path, {})
             self.assertEqual(status, 400)
             self.assertIn(b'Pause the active task', body)
+
+    def test_rollback_endpoint(self):
+        task = self.engine.create_demo()
+        ws = Workspace(task['workspace'])
+        ws.write_file('demo_file.py', 'print("hello")\n')
+        self.engine.refresh_changes(task)
+        task['checkpoints'].append({
+            'number': 1,
+            'diff': task['patch'],
+            'worker_summary': 'Added demo_file.py',
+            'decision': 'APPROVE',
+            'feedback': 'Good'
+        })
+        self.engine.store.save(task)
+
+        # Modify file
+        ws.write_file('extra.txt', 'extra\n')
+
+        # Call rollback endpoint
+        status, _, body = self.post(f'/api/tasks/{task["id"]}/rollback', {'checkpoint': 1})
+        self.assertEqual(status, 200)
+        result = json.loads(body)
+        self.assertEqual(result['patch'], task['checkpoints'][0]['diff'])
+        self.assertFalse(ws.path('extra.txt').exists())
+
+        # Invalid requests
+        self.assertEqual(self.post(f'/api/tasks/{task["id"]}/rollback', {'checkpoint': 'invalid'})[0], 400)
+        self.assertEqual(self.post(f'/api/tasks/{task["id"]}/rollback', {})[0], 400)
 
 
 class FakeModelHandler(BaseHTTPRequestHandler):
