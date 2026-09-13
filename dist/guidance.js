@@ -1,6 +1,6 @@
 /* Translate saved execution evidence into a clear next step. No model calls. */
 const CheapOSGuide = (() => {
-  const active = new Set(['running', 'reviewing', 'waiting_approval', 'stopping']);
+  const active = new Set(['running', 'reviewing', 'waiting_approval', 'waiting_retry', 'stopping']);
   function taskGuide(task) {
     const checkpoints=task.checkpoints||[], checks=task.checks||[], events=task.events||[];
     const latestReview=checkpoints.at(-1), latestCheck=checks.at(-1);
@@ -18,11 +18,13 @@ const CheapOSGuide = (() => {
       const p=task.pause_summary,attempts=(p.attempted||[]).join(', ');
       return {...result,tone:'attention',title:'A specific correction is needed.',description:`${p.saved_files.length} saved file${p.saved_files.length===1?'':'s'}. ${attempts?`Tried ${attempts}. `:''}${p.blocker} ${p.next_action}`,primary:'clarify',primaryLabel:'Add a correction'};
     }
+    if(['paused','interrupted'].includes(task.status)&&task.route_unavailable?.can_wait)return {...result,title:'A free route is cooling down.',description:task.route_unavailable.message,primary:'retry-wait',primaryLabel:'Retry when available'};
     switch(task.status) {
       case 'awaiting_reply': return {...result,title:'Ready for your next message.',description:hasPatch?'Edits are saved in this chat. A chat answer does not mean the patch was reviewed.':'Continue the conversation whenever you’re ready.',primary:'chat',primaryLabel:'Back to chat'};
       case 'ready': return {...result,title:'Your task is ready to start.',description:'CheapOS has created a separate task copy. Start the worker to make changes, run your checks, and request a review.',primary:'start',primaryLabel:task.demo?'Start the local demo':'Start this task',secondary:null};
       case 'running': return {...result,tone:'working',eyebrow:'IN PROGRESS',title:task.active_role==='reviewer'?'The reviewer is making the changes.':'The worker is working on your task.',description:'No action needed right now. CheapOS will ask before running a command that needs your approval.',primary:'activity',primaryLabel:'Follow activity'};
       case 'reviewing': return {...result,tone:'working',eyebrow:'IN PROGRESS',title:'The reviewer is checking the patch.',description:'The checkpoint reached review. Wait for a decision: approve the change, request revisions, or ask to take over.',primary:'activity',primaryLabel:'Follow the review'};
+      case 'waiting_retry': return {...result,tone:'working',title:'Waiting for a free route.',description:'The retry stays within the remaining task time. Pause cancels waiting.',primary:'activity',primaryLabel:'View waiting status'};
       case 'waiting_approval': return {...result,tone:'attention',title:'Approve the verification command.',description:'The worker is waiting for permission to run the command below in the task copy.',primary:'approve',primaryLabel:'Run this command',secondary:'decline',secondaryLabel:'Decline & pause'};
       case 'stopping': return {...result,eyebrow:'PAUSING',title:'Waiting for the current request to finish.',description:'No new tool work will start. An in-flight model request can take up to three minutes to return.',primary:'activity',primaryLabel:'View activity',secondary:null};
       case 'error': return {...result,tone:'attention',title:reviewerStopped?'The reviewer didn’t finish.':'This task stopped before it finished.',description:reviewerStopped?'The worker’s changes are saved, but the latest checkpoint has no reviewer decision. Check the model connection before trying again.':'Your saved work is still available. Read the failure below and check the model connection before retrying.',primary:'connections',primaryLabel:'Check model connection',retry:true};
@@ -57,6 +59,7 @@ const CheapOSGuide = (() => {
     const action=completed?({'read file':`Read ${args.path||'a file'}`,'outline file':`Outlined ${args.path||'a file'}`,'read url':`Read ${args.url||'web page'}`,'write file':`Created ${args.path||'a file'}`,'replace text':`Edited ${args.path||'a file'}`,'replace lines':`Edited ${args.path||'a file'}`,'list files':'Listed project files','search':`Searched project for ${args.query||'text'}`}[completed.title]||completed.title):'No tool actions completed yet';
     const files=(task.changes||[]).length,evidence=files?`${files} changed file${files===1?'':'s'} saved`:'No files changed yet';
     let stage='working',title='Preparing the next step',detail='',since=latest?.time||task.updated_at;
+    if(task.status==='waiting_retry'){const wait=task.route_wait||{};return {stage:'waiting_retry',title:'Waiting for a free route',detail:`Retry eligibility in ${duration(Math.ceil(Math.max(0,(wait.retry_at||at/1000)-at/1000)))}`,elapsed:duration(Math.max(0,at/1000-(wait.started_at||at/1000))),action:'No model request is running',evidence:'Saved work and checks are retained',hint:'Pause cancels waiting. Availability will be checked again after the cooldown.',slow:false}}
     if(task.status==='waiting_approval'){stage='approval';title='Waiting for your approval';detail=(task.pending_approval?.command||[]).join(' ')}
     else if(task.status==='stopping'){stage='stopping';title='Stop requested';detail='Waiting for the current operation to finish. No new tools will start.'}
     else if(task.check_stream){stage='checks';title='Running checks';detail=task.check_stream.command.join(' ');since=task.check_stream.started_at}
@@ -273,7 +276,7 @@ const CheapOSGuide = (() => {
       if (isLive) {
         statusIcon = 'working';
         const p = progress(task, at), elapsed = p?.elapsed || '0s';
-        if (task.status === 'waiting_approval') {
+        if (task.status === 'waiting_retry') {phase='waiting';title='Waiting for a free route';subtitle=p.detail;} else if (task.status === 'waiting_approval') {
           phase = 'approval'; title = 'Command approval needed'; subtitle = (task.pending_approval?.command || []).join(' '); statusIcon = 'attention';
         } else if (task.check_stream || p?.stage === 'checks') {
           phase = 'verifying'; title = 'Running verification…'; subtitle = (task.check_stream?.command || latestCheck?.command || []).join(' ') + (elapsed ? ` · ${elapsed}` : '');
@@ -509,10 +512,12 @@ const CheapOSConversation = (() => {
       title = {work:'Working on your request',checks:'Running checks',review:'Getting an independent review',plan:'Preparing the next step',commit:'Committing your changes'}[phase];
       if (task.pending_approval) title = 'Waiting for your permission';
       else if(task.check_stream?.session_allowed) title = 'Running tests · allowed for this session';
+      else if (task.status === 'waiting_retry') title = 'Waiting for a free route';
       else if (task.status === 'stopping') title = 'Pausing work';
       outcome = task.pending_approval || task.status === 'stopping' ? 'pending' : 'live';
       if (task.pending_approval) detail = task.pending_approval.command.join(' ');
       else if (task.check_stream) detail = task.check_stream.command.join(' ');
+      else if (task.status === 'waiting_retry') detail = guide.progress(task,at).detail;
       else if (task.stream?.phase === 'thinking') detail = 'Thinking through the next step';
       else if (task.stream?.phase === 'tool') detail = `Preparing ${String(task.stream.tool || 'the next action').replaceAll('_',' ')}`;
       else if (task.stream?.phase === 'answer') detail = 'Writing a response';
@@ -572,7 +577,8 @@ const CheapOSConversation = (() => {
     if (steps.length) {
       intro = live ? {work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';
       if (live && phase === 'work' && last(events, 'review')?.detail?.decision === 'REQUEST_CHANGES') intro = 'The review found something to improve. I’m addressing that feedback.';
-      if (latest && task.pending_approval) intro = 'I need your permission to run this check.';
+      if (latest && task.status==='waiting_retry') intro='I’m waiting for the free route’s cooldown before checking availability again.';
+      else if (latest && task.pending_approval) intro = 'I need your permission to run this check.';
       else if (latest && ['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)) intro = 'I’ve saved the work so far. I need your attention before continuing.';
       else if (latest && guide.canCommit(task)) intro = task.status === 'completed' ? 'Checks have passed. The changes are ready for your review.' : 'The changes have passed checks and review. They’re ready for your decision.';
       else if (steps.at(-1).phase === 'commit' && steps.at(-1).events.some(e => e.detail?.commit)) intro = 'Your approved changes are committed to the project.';

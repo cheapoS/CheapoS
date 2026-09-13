@@ -2,6 +2,7 @@
 
 import copy
 import json
+import time
 import os
 import threading
 import unicodedata
@@ -32,7 +33,13 @@ class Store:
         for path in self.root.glob("tasks/*/task.json"):
             try:
                 task = json.loads(path.read_text(encoding="utf-8"))
-                if task["status"] in {"running", "reviewing", "waiting_approval", "stopping"}:
+                if task["status"] in {"running", "reviewing", "waiting_approval", "waiting_retry", "stopping"}:
+                    if task['status'] == 'waiting_retry' and task.get('route_wait'):
+                        info = task.get('route_unavailable') or {}
+                        info['remaining_seconds'] = max(0, info.get('remaining_seconds', 0) - max(0, time.time()-task['route_wait']['started_at']))
+                        info['can_wait'] = bool(info.get('can_wait') and info['remaining_seconds'] > 0)
+                    task['retry_wait_enabled'] = False
+                    task['route_wait'] = None
                     task["status"] = "interrupted"
                     task["error"] = "The server stopped. Review the saved work before resuming."
                     task["pending_approval"] = None

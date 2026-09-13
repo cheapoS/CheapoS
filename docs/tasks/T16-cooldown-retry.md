@@ -25,12 +25,12 @@ No OS scheduler, recurring automation, external monitor, real long sleeps in uni
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Structured route-unavailable scope/retry time/remaining-envelope eligibility; explicit Retry when available starts cancelable waiting in the same active task. Countdown, Pause and Models controls; eligibility rechecked after expiry. Three scheduled waits and four probes per role per request, with existing handoff/time/spending caps. Restart interrupts and never auto-dispatches. Unknown Retry-After stays unknown.
+- Acceptance evidence: Eight cooldown fixtures cover no work before expiry, one probe after expiry, stop/deadline cancellation, unknown/over-budget refusal, active-slot exclusion, restart retention, probe exhaustion, and pending review resuming without worker/check replay. Fake clocks avoid long sleeps.
+- Commands and results: Initial routing/recovery set: 52 passed (54.874s). Final wait/model-pool/probe-bound set: 29 passed (30.805s). HTTP: 29 passed (30.691s). JavaScript syntax and 64 presentation tests passed; git diff --check passed. Logs /tmp/cheapos-t16-*.log.
+- Browser scenarios and results: Dedicated scripted server at port 51027 offered Retry when available for a known provider cooldown. Waiting showed a live eligibility countdown, no model request running, Pause and Inspect Models. Pause canceled the wait. A later explicit retry continued the saved request to Ready for your message. Corrected the live step countdown to update with the main countdown.
+- Remaining limitations: A countdown is next eligibility, not a health guarantee. Unknown provider retry times use manual recovery. A request exhausting waits/probes needs a changed instruction or operator decision; Resume does not reset those counters. No background scheduler or paid/local fallback added.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

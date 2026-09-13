@@ -44,7 +44,7 @@ class FreeModelPool:
             provider = self.records.get(self.key(endpoint, self.provider_key(model)), {})
             if provider.get("retry_at", 0) > time.time():
                 record.update(retry_at=max(record.get("retry_at", 0), provider["retry_at"]),
-                              cooldown_scope="provider", last_error=provider.get("last_error", ""))
+                              cooldown_scope="provider", retry_known=provider.get("retry_known", False), last_error=provider.get("last_error", ""))
         record["cooling_down"] = record.get("retry_at", 0) > time.time()
         return record
 
@@ -61,14 +61,17 @@ class FreeModelPool:
             record["updated_at"] = time.time()
             if cooldown:
                 record.update(retry_at=time.time() + min(86400, max(1, error.retry_after or 120)),
-                              cooldown_scope=scope, last_error=str(error)[:500])
+                              cooldown_scope=scope, retry_known=error.retry_after is not None, last_error=str(error)[:500])
             elif error is not None:
+                record.pop("cooldown_scope", None)
+                record.pop("retry_known", None)
                 failures = record.get("failures", 0) + 1
                 record.update(failures=failures, retry_at=time.time() + min(3600, 900 * 2 ** min(failures - 1, 2)),
                               last_error=str(error)[:500])
             else:
                 record.update(retry_at=0, last_error="")
                 record.pop("cooldown_scope", None)
+                record.pop("retry_known", None)
                 if probe:
                     record["tool_check_passed"] = True
                 else:

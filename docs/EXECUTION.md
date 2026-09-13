@@ -164,3 +164,19 @@ segment without clearing cumulative usage or worker history. Pending reviewer
 work, including its eight-request bound and passing checks, survives Resume for
 manual as well as automatic tasks. Explicit test reruns still execute; checks
 and independent review are never replaced by a progress claim.
+
+### Waiting for a free route
+
+A reported cooldown with a known retry time can offer **Retry when available**.
+This explicit action waits inside the existing active task, consuming its remaining
+run time. Pause interrupts the wait. Other tasks cannot start while it waits.
+The countdown marks the next eligibility check, not a promise of model health.
+No model request is made during the wait and UI polling does not trigger probes.
+
+Scheduled waits are capped at three per user request; route probes are capped at
+four per role across waits and Resume. Existing handoff, worker, reviewer, time
+and spending caps still apply. Expiry rechecks free-model eligibility and keeps
+pending reviewer/check evidence. Unknown retry times offer manual recovery
+instead of an invented countdown. Exhausted attempts explain the relevant cap.
+A server restart marks a waiting task interrupted, retains its consumed wait
+allowance, and requires explicit continuation; it never launches background work.

@@ -27,7 +27,10 @@ PROBE_MESSAGES = [{"role": "user", "content": "Call routing_ready with {} now. D
 
 
 class RoutingPause(Exception):
-    pass
+    def __init__(self, message, retry_at=None, scope=None):
+        super().__init__(message)
+        self.retry_at = retry_at
+        self.scope = scope
 
 
 def execution_from(value):
@@ -114,14 +117,16 @@ def select_remote(engine, runtime, role="worker", replace=False):
     preferred = route.get("preferred", {})
     candidates.sort(key=lambda m: gateway.pool.rank(route["base_url"], m, role, preferred.get(role)))
     tried = set()
+    probes = task.setdefault("progress_state", {}).setdefault("route_probes", {})
     for model in candidates:
         # A preceding probe may have cooled the whole provider. Do not repeat
         # its cached error against every other model or count those as failures.
         if gateway.pool.observation(route["base_url"], model["id"])["cooling_down"]:
             continue
-        if model["id"] in tried or len(tried) >= 4:
+        if model["id"] in tried or probes.get(role, 0) >= 4:
             continue
         tried.add(model["id"])
+        probes[role] = probes.get(role, 0) + 1
         cfg = validate_provider({"gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
                                  "input_rate": 0, "output_rate": 0}, role)
         engine.event(task, "routing", "Checking a free " + role, {"model": model["id"], "role": role})
@@ -150,12 +155,18 @@ def select_remote(engine, runtime, role="worker", replace=False):
                 failure["scope"] = error.scope
             route["failures"].append(failure)
             engine.event(task, "routing", "Free provider is cooling down" if cooldown else "Free model check failed", failure)
+    if probes.get(role, 0) >= 4:
+        raise RoutingPause("Four free " + role + " probes were used for this request. Inspect Models and provide a new instruction; Resume does not renew probe attempts.", scope="probe_limit")
     provider_waits = [gateway.pool.observation(route["base_url"], m["id"]) for m in catalog["models"]
                       if m.get("free") and m.get("tool_calling") is True and not m.get("local") and m["id"] not in used]
-    waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") == "provider" and h["cooling_down"]]
+    waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") in {"provider", "model"} and h.get("retry_known") and h["cooling_down"]]
     if waits:
         seconds = max(1, math.ceil(min(waits) - time.time()))
-        raise RoutingPause(f"The free provider connection is cooling down. Retry in about {seconds} seconds. Other models on that connection were not tested or marked broken. Your chat, files, checks, and usage are saved.")
+        scope = "provider" if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits) else "model"
+        message = f"The free provider connection is cooling down. Retry in about {seconds} seconds. Other models on that connection were not tested or marked broken. Your chat, files, checks, and usage are saved." if scope == "provider" else f"Eligible free models are cooling down. Earliest retry eligibility is in about {seconds} seconds. Saved work is kept."
+        raise RoutingPause(message, retry_at=min(waits), scope=scope)
+    if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits):
+        raise RoutingPause("The free provider is cooling down without a known retry time. Inspect Models or retry manually later.", scope="provider")
     if replace:
         raise RoutingPause("No different free " + role + " passed the tool check. Failed models are temporarily cooling down. Your chat, files, checks, and usage are saved; resume to check availability again or inspect Models.")
     if role == "reviewer":

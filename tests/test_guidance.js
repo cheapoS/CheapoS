@@ -488,3 +488,12 @@ test('exhausted recovery asks for a correction and describes saved evidence',()=
  assert.match(guide.description,/Missing target version/);
  assert.match(guide.description,/Provide the target version/);
 });
+
+test('known cooldown waits are explicit and expose the retry action',()=>{
+ const CheapOSGuide=require('../dist/guidance.js');
+ const waiting=task({status:'waiting_retry',route_wait:{started_at:1000,retry_at:1010}});
+ assert.equal(CheapOSGuide.progress(waiting,1005000).title,'Waiting for a free route');
+ assert.match(CheapOSGuide.progress(waiting,1005000).detail,/5s/);
+ assert.equal(CheapOSGuide.taskGuide(task({status:'paused',route_unavailable:{can_wait:true,message:'Provider cooling',retry_at:1010}})).primary,'retry-wait');
+ assert.notEqual(CheapOSGuide.taskGuide(task({status:'paused',route_unavailable:{can_wait:false}})).primary,'retry-wait');
+});
