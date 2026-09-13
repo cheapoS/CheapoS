@@ -187,14 +187,16 @@ const CheapOSGuide = (() => {
     return `${e.stale?'Stale metadata':'Observed metadata'} · ${String(e.source||'source unavailable').slice(0,80)} · ${stamp}${changes?' · Changed: '+changes:''}. Catalog metadata does not verify current availability.`;
   }
   function routingTraceView(task={}) {
-    const traces=Array.isArray(task.routing_traces)?task.routing_traces.slice(-20):[];
+    const traces=Array.isArray(task.routing_traces)?task.routing_traces.slice(-32):[];
     const reason=value=>String(value||'reason unavailable').replaceAll('_',' ').slice(0,120);
     const rows=traces.map(t=>({id:String(t.id||'trace').slice(0,100),role:String(t.role||'role unavailable'),requested:String(t.requested_route||'unknown'),selected:t.selected_model?String(t.selected_model):null,
-      candidates:(t.candidates||[]).slice(0,40).map(c=>`${c.model||'Unknown candidate'}: ${reason(c.reason)}`),
-      attempts:(t.attempts||[]).slice(0,40).map(a=>`${a.purpose==='probe'?'Dispatched probe':a.purpose==='cached'?'Cached observation':'Request'} ${a.request_id||'ID unavailable'} · requested ${a.model||'unknown'} · ${reason(a.status)}${Number.isFinite(a.seconds)?' · '+a.seconds.toFixed(2)+'s':''}${a.failure_category?' · '+reason(a.failure_category):''} · served ${a.served_model||'unknown'} (${a.served_model?a.identity_provenance||'provenance unavailable':'identity not exposed'})`),
+      candidates:(t.candidates||[]).slice(0,64).map(c=>`${c.model||'Unknown candidate'}: ${reason(c.reason)}`),
+      attempts:(t.attempts||[]).slice(0,64).map(a=>`${a.purpose==='probe'?'Dispatched probe':a.purpose==='cached'?'Cached observation':'Request'} ${a.request_id||'ID unavailable'} · requested ${a.model||'unknown'} · ${reason(a.status)}${Number.isFinite(a.seconds)?' · '+a.seconds.toFixed(2)+'s':''}${a.failure_category?' · '+reason(a.failure_category):''} · served ${a.served_model||'unknown'} (${a.served_model?a.identity_provenance||'provenance unavailable':'identity not exposed'})`),
+      notice:[t.candidates_truncated||(t.candidates||[]).length>64?'Candidate evidence is partial; some candidate rows are unavailable in this view.':'',t.attempts_truncated||(t.attempts||[]).length>64?'Attempt evidence is partial; some attempt rows are unavailable in this view.':''].filter(Boolean).join(' '),
       gateway:'Gateway internal attempts unavailable'}));
     const last=rows.at(-1);
-    return {rows,summary:last?(last.selected?`${last.role}: selected ${last.selected}.`:`${last.role}: no route selected. Inspect Models or wait for an eligible route; saved work is retained.`):''};
+    const historyNotice=task.routing_traces_truncated||(task.routing_traces||[]).length>32?'Routing history is partial; earlier traces are unavailable in this view.':'';
+    return {rows,...(historyNotice?{historyNotice}:{}),summary:last?(last.selected?`${last.role}: selected ${last.selected}.`:`${last.role}: no route selected. Inspect Models or wait for an eligible route; saved work is retained.`):''};
   }
   function modelHealth(model,at=Date.now()) {
     const h=model.health||{},remaining=Math.ceil(((h.retry_at||0)*1000-at)/60000);

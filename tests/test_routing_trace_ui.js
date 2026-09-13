@@ -31,3 +31,16 @@ test('routing details stay inside reply disclosure with stable key and escaped l
  assert.match(html,/&lt;alias>/);assert.doesNotMatch(html,/<alias>/);
  assert.equal(context.view.message(e,t,'',false),'');
 });
+test('all 64 retained rows remain visible and partial evidence is disclosed',()=>{
+ const candidates=Array.from({length:64},(_,i)=>({model:'model-'+i,reason:i===63?'cached_probe':'eligible'}));
+ const attempts=Array.from({length:64},(_,i)=>({request_id:'request-'+i,model:'model',purpose:'work'}));
+ const view=routingTraceView({routing_traces_truncated:true,routing_traces:[{candidates,attempts,candidates_truncated:true,attempts_truncated:true}]});
+ assert.equal(view.rows[0].candidates.length,64);assert.match(view.rows[0].candidates[63],/cached probe/);
+ assert.equal(view.rows[0].attempts.length,64);assert.match(view.rows[0].attempts[63],/request-63/);
+ assert.match(view.rows[0].notice,/Candidate evidence is partial.*Attempt evidence is partial/);
+ assert.match(view.historyNotice,/earlier traces are unavailable/);
+ const full=routingTraceView({routing_traces:Array.from({length:32},(_,i)=>({id:String(i)}))});
+ assert.equal(full.rows.length,32);assert.equal(full.historyNotice,undefined);
+ const capped=routingTraceView({routing_traces:Array.from({length:33},(_,i)=>({id:String(i)}))});
+ assert.equal(capped.rows.length,32);assert.match(capped.historyNotice,/partial/);
+});
