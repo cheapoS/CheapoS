@@ -46,7 +46,14 @@ Open **Models**. OmniRoute is the first-class local gateway, with separate model
 
 ### OmniRoute companion
 
-Install and configure [OmniRoute](https://github.com/diegosouzapw/OmniRoute) separately using its official instructions. CheapOS uses your installed `omniroute` command and existing provider configuration; it does not bundle, install, or update it. The integration was checked against OmniRoute 3.8.49.
+Install OmniRoute with these two simple commands:
+
+```sh
+npm install -g omniroute
+omniroute
+```
+
+This boots the local gateway on `localhost:20128` with zero‑config keyless operation. CheapOS uses your installed `omniroute` command and existing provider configuration; it does not bundle, install, or update it. The integration was checked against OmniRoute 3.8.49.
 
 On launch, CheapOS checks `http://127.0.0.1:20128/v1/models`. It reuses an identified OmniRoute instance or starts the installed CLI on loopback when **Start installed OmniRoute when CheapOS launches** is enabled (the default). Startup runs in the background, so your local task history and patches stay accessible if the gateway fails. An occupied port or rejected client key does not trigger another server.
 
