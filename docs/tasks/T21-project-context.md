@@ -25,12 +25,12 @@ Add deterministic context-construction tests, serialized-size checks, and a befo
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-- Behavior delivered: —
-- Acceptance evidence: —
-- Commands and results: —
-- Browser scenarios and results: —
-- Remaining limitations: —
+- Behavior delivered: Deterministic source-attributed project brief and durable continuation record are supplied to normal and recovered worker contexts. Records retain requirements/corrections, current numbered excerpts/hashes and actual check/review identities. Cache invalidates on baseline/generation/file list/guidance/manifest/command changes.
+- Acceptance evidence: Fixtures cover repeated questions without rediscovering configured tests, changed manifests, ignored secrets/dependencies, saved continuation, fresh file hashes, all earlier requirements and new steering. Existing compact/recovery/routing tests preserve coordinator isolation and stale-edit safeguards.
+- Commands and results: 59 context/answer/compact/routing tests passed in 63.178s; 8 context/steering tests passed in 2.639s; final context tests passed.
+- Browser scenarios and results: Backend prompt construction only; no presentation changes.
+- Remaining limitations: Documented in docs/development/project-context.md: brief ≤24 KB, continuation ≤112 KB, user requirements/corrections ≤48 KB before explicit pause. Source excerpts are labeled/retrievable. Deterministic retrieval fixture reduces one extra guidance read to zero; no live model quality or latency claim.
 
 Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.

@@ -26,6 +26,7 @@ from .omniroute import OmniRouteManager
 from .streaming import STREAM_MAX_SECONDS
 from .startup import StartupManager
 from .readiness import ReadinessManager
+from . import project_context
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
 
@@ -791,6 +792,7 @@ class Engine:
         workspace = Workspace(task["workspace"])
         previous = task["checkpoints"][-1].get("feedback", "") if task["checkpoints"] else ""
         summary = {"original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "latest_message": task.get("requests", [task["prompt"]])[-1], "files": workspace.list_files()[:500], "current_diff": workspace.patch()[:30000], "last_review_feedback": previous, "check_command": task["check_command"], "web_urls": sorted(allowed_urls(task))[:80]}
+        summary.update(project_brief=project_context.brief(task), continuation_record=project_context.continuation(task))
         if task.get("reconciliation"):
             summary["project_reconciliation"] = reconciliation.guidance(task)
         if task.get("commits"):
@@ -1070,6 +1072,7 @@ class Engine:
                    "last_check": {k: (excerpt(check[k], 4000) if k == "output" else check[k])
                                   for k in ("command", "passed", "exit_code", "output") if k in check},
                    "last_review_feedback": (task.get("checkpoints") or [{}])[-1].get("feedback", "")[:2000]}
+        summary.update(project_brief=project_context.brief(task), continuation_record=project_context.continuation(task))
         if task.get("reconciliation"):
             summary["project_reconciliation"] = reconciliation.guidance(task)
         if compact:
