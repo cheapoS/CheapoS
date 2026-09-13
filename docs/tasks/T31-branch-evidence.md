@@ -30,14 +30,14 @@ Use scripted providers, actual temporary-file edits, and relevant verification/r
 
 ## Completion record
 
-Status: Todo
+Status: Done
 
-Behavior delivered:
+Behavior delivered: Exact per-item candidates, per-command execution identities, independent named-model review, complete criterion outcomes, immutable JSON receipts, and actual Engine checkpoint integration. No-change items require the same evidence gate.
 
-Acceptance evidence:
+Acceptance evidence: Actual temporary subprocess checks; stale file/plan/parent/runner identities rejected; old failed checks do not prevent repaired candidates; same-model and incomplete-criteria approvals rejected; unchanged checks reused.
 
-Commands and results:
+Commands and results: `test_branch_evidence.py` 6 PASS; `test_branch_review.py` 2 PASS (5.946s); existing `test_verification.py` 7 PASS (9.083s).
 
 Browser scenarios and results: Not required for this backend-only card.
 
-Remaining limitations:
+Remaining limitations: Item packets exceeding 30,000 characters pause explicitly for smaller planned items. The final cumulative chunk review belongs to T37. Takeover cannot bypass independent review.

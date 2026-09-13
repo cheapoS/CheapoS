@@ -1709,6 +1709,9 @@ class Engine:
             return result
 
     def checkpoint(self, runtime, args):
+        if "branch_run" in runtime.task:
+            from .branch_review import checkpoint
+            return checkpoint(self, runtime, args)
         task = runtime.task
         reconciliation.ensure_resolved(task)
         # Validate before reserving a reviewer, consuming an iteration, or
