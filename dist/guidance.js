@@ -99,7 +99,7 @@ const CheapOSGuide = (() => {
     else if(event.kind==='checkpoint'){icon='shield';note=d.worker_summary||''}
     else if(event.kind==='tool_error'){icon='x';title='Action could not finish';note=d.error||''}
     else if(event.kind==='guard'){icon='clock';note=typeof d==='string'?d:''}
-    else if(event.kind==='routing'){icon='branch';note=d.model||d.summary||''}
+    else if(event.kind==='routing'){icon='branch';note=[d.model,d.error].filter(Boolean).join(' · ')||d.summary||''}
     else return null;
     return {event,title,icon,note,path,failed:event.kind==='tool_error'||event.kind==='checks'&&!d.passed};
   }

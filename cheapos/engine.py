@@ -274,6 +274,7 @@ class Engine:
                 task["active_role"] = "reviewer"
             if followup is not None:
                 task["conversational"] = True
+                task.pop("pending_checkpoint", None)
                 task["requests"] = task.get("requests", [task["prompt"]]) + [followup.strip()]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
                 task["turn_start_patch"] = Workspace(task["workspace"]).patch()
@@ -389,7 +390,7 @@ class Engine:
             if identity not in runtime.verified_local:
                 verify_local(config)
                 runtime.verified_local.add(identity)
-        account = {**task, "limits": {**task["limits"], "output_tokens": min(task["limits"]["output_tokens"], 128 if purpose == "probe" else 512)}} if purpose or role == "coordinator" else task
+        account = {**task, "limits": {**task["limits"], "output_tokens": min(task["limits"]["output_tokens"], 1024 if purpose == "probe" else 512)}} if purpose or role == "coordinator" else task
         reservation = reserve(account, config, messages, tools, role)
         task["in_flight"] = reservation
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
@@ -507,12 +508,17 @@ class Engine:
         task = runtime.task
         if not task["check_command"]:
             raise ValueError("First choose an appropriate verification command and call run_checks, or ask_user if you need guidance.")
-        task["iterations"] += 1
-        if task["iterations"] > task["limits"]["iterations"]:
-            raise BudgetError("Worker iteration limit reached")
         self.refresh_changes(task)
         if len(task["patch"]) > 30000:
             raise BudgetError("Checkpoint exceeds 30,000 characters. Split the change before requesting review.")
+        if task["iterations"] >= task["limits"]["iterations"]:
+            raise BudgetError("Worker iteration limit reached")
+        if task.get("route") and not task["providers"].get("reviewer"):
+            task["pending_checkpoint"] = {"summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000]}
+            self.store.save(task)
+            select_remote(self, runtime, "reviewer")
+        task.pop("pending_checkpoint", None)
+        task["iterations"] += 1
         checks = self.checks(runtime)
         runtime.step_turns = 0
         runtime.observations.clear()
@@ -576,9 +582,14 @@ class Engine:
             while task["status"] in ACTIVE:
                 if runtime.stop.is_set():
                     raise InterruptedError("Task stopped")
+                runtime.guard()
+                if task.get("pending_checkpoint") is not None:
+                    result = self.checkpoint(runtime, task["pending_checkpoint"])
+                    task["messages"].append({"role": "user", "content": "Resumed checkpoint result: " + json.dumps(result)})
+                    self.store.save(task)
+                    continue
                 if task["worker_turns"] >= task["limits"]["worker_turns"]:
                     raise BudgetError("Worker model-turn limit reached")
-                runtime.guard()
                 if task["active_role"] == "coordinator":
                     task["worker_turns"] += 1
                     message = self.request(runtime, coordinator_messages(task), [DELEGATE_TOOL], "coordinator")

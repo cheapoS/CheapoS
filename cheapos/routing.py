@@ -1,7 +1,6 @@
 """Opt-in execution placement. Automatic routes only use explicit free models."""
 
 import copy
-import json
 
 from .providers import ProviderError, is_local_ollama, validate_provider
 
@@ -87,44 +86,53 @@ def setup_task(task, execution, config, gateway):
                      "preferred": {r: (config.get(r) or {}).get("model") for r in ("worker", "reviewer")}}
 
 
-def select_remote(engine, runtime):
-    """Probe at most four distinct candidates before dispatch. Never retry task inference."""
+def select_remote(engine, runtime, role="worker"):
+    """Find one needed role, with at most four probes. Pin each successful selection."""
     task, gateway = runtime.task, engine.gateway
     route = task["route"]
-    if route["ready"]:
+    if task["providers"].get(role):
         return
-    if not gateway.matches(route["base_url"]) or gateway.catalog()["status"] != "ready":
+    route["waiting_for"] = role
+    route["failures"] = []
+    if not gateway.matches(route["base_url"]):
         raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Local work will not start as a fallback.")
-    candidates = [m for m in gateway.catalog()["models"] if m.get("free") and m.get("tool_calling") is True
-                  and not m.get("local") and not m["id"].startswith("auto/")]
+    catalog = gateway.catalog()
+    if catalog["status"] != "ready":
+        raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Your saved work is kept.")
+    used = {cfg["model"] for cfg in task["providers"].values() if cfg}
+    candidates = [m for m in catalog["models"] if m.get("free") and m.get("tool_calling") is True
+                  and not m.get("local") and not m["id"].startswith("auto/") and m["id"] not in used]
     preferred = route.get("preferred", {})
-    candidates.sort(key=lambda m: (m["id"] != preferred.get("worker"), m["id"]))
-    selected, tried = {}, set()
-    for role in ("worker", "reviewer"):
-        ordered = sorted(candidates, key=lambda m: (m["id"] != preferred.get(role), m["id"]))
-        for model in ordered:
-            if model["id"] in tried or len(tried) >= 4:
-                continue
-            tried.add(model["id"])
-            cfg = validate_provider({"gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
-                                     "input_rate": 0, "output_rate": 0}, role)
-            engine.event(task, "routing", "Checking a free " + role, {"model": model["id"], "role": role})
-            try:
-                message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose="probe")
-                calls = message.get("tool_calls", [])
-                valid = len(calls) == 1 and calls[0].get("function", {}).get("name") == "routing_ready"
-                if not valid or json.loads(calls[0]["function"].get("arguments", "null")) != {}:
-                    raise ProviderError("The model did not return the expected tool call")
-                selected[role] = cfg
-                engine.event(task, "routing", "Free " + role + " is ready", {"model": model["id"], "role": role})
-                break
-            except (ProviderError, ValueError, TypeError, KeyError) as error:
-                engine.event(task, "routing", "Free model check failed", {"model": model["id"], "error": str(error)[:500]})
-        if role not in selected:
-            raise RoutingPause("Could not find two different responding free models with tool support. Check enabled providers in OmniRoute, then resume. No project work was dispatched and no local or paid fallback was used.")
-    task["providers"].update(selected)
-    route["ready"] = True
-    engine.store.save(task)
+    candidates.sort(key=lambda m: (m["id"] != preferred.get(role), m["id"]))
+    tried = set()
+    for model in candidates:
+        if model["id"] in tried or len(tried) >= 4:
+            continue
+        tried.add(model["id"])
+        cfg = validate_provider({"gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
+                                 "input_rate": 0, "output_rate": 0}, role)
+        engine.event(task, "routing", "Checking a free " + role, {"model": model["id"], "role": role})
+        try:
+            message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose="probe")
+            calls = message.get("tool_calls", [])
+            if not isinstance(calls, list) or len(calls) != 1:
+                raise ProviderError("The model did not return the expected tool call")
+            name, args = engine.parse_call(calls[0])
+            if name != "routing_ready" or args != {}:
+                raise ProviderError("The model did not return the expected tool call")
+            task["providers"][role] = cfg
+            route["ready"] = bool(task["providers"].get("worker"))
+            route.pop("waiting_for", None)
+            engine.event(task, "routing", "Free " + role + " is ready", {"model": model["id"], "role": role})
+            engine.store.save(task)
+            return
+        except (ProviderError, ValueError, TypeError, KeyError) as error:
+            failure = {"model": model["id"], "role": role, "error": str(error)[:500]}
+            route["failures"].append(failure)
+            engine.event(task, "routing", "Free model check failed", failure)
+    if role == "reviewer":
+        raise RoutingPause("Your changes are saved, but a different free reviewer is not available yet. Check the model results below or enabled providers in OmniRoute, then resume to retry review without repeating the edits.")
+    raise RoutingPause("No free worker passed the tool check. Check the model results below or enabled providers in OmniRoute, then resume. No project work was dispatched and no local or paid fallback was used.")
 
 
 def coordinator_messages(task):

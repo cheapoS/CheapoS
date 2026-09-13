@@ -91,6 +91,10 @@ test('only evidence of a timeout produces the timeout explanation',()=>{
 });
 
 const {activity,activityItem}=require('../dist/guidance.js');
+test('route failures expose the model and reason',()=>{
+  const item=activityItem({kind:'routing',title:'Free model check failed',detail:{model:'free-model',error:'Output limit reached'}});
+  assert.equal(item.note,'free-model · Output limit reached');
+});
 test('Activity separates this request from an earlier approved turn',()=>{
   const a=activity(task({prompt:'First',patch:'new',events:[{kind:'checks',detail:{passed:true,digest:'old'}},{kind:'review',detail:{checkpoint:1,decision:'APPROVE'}},{kind:'user',detail:'Now change another file'}],checkpoints:[{number:1,decision:'APPROVE',diff:'old'}]}));
   assert.equal(a.request,'Now change another file');assert.equal(a.checks,'Not run for this request');assert.equal(a.review,'Not reviewed for this request');

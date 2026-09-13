@@ -95,18 +95,63 @@ class RoutingTests(LocalCase):
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'awaiting_reply',result['error'])
         self.assertEqual(result['providers']['worker']['model'],'b:free')
-        self.assertEqual(result['providers']['reviewer']['model'],'c:free')
-        self.assertEqual({r['model'] for r in requests},{'a:free','b:free','c:free'})
+        self.assertIsNone(result['providers']['reviewer'])
+        self.assertEqual({r['model'] for r in requests},{'a:free','b:free'})
         self.assertEqual(sum(r['role']=='coordinator' for r in requests),0)
 
-    def test_one_model_is_not_silently_reused_as_remote_reviewer(self):
+    def test_readonly_chat_needs_only_one_free_model(self):
         task=self.chat('remote');self.engine.gateway.catalog.return_value['models']=[model('a:free')]
-        requests=self.responses([])
+        requests=self.responses([call('read_file',{'path':'math_utils.py'}),{'content':'The lower bound is missing.'}])
         self.engine.start(task['id']);result=self.finish(task)
-        self.assertEqual(result['status'],'paused')
-        self.assertEqual(len(requests),1)
-        self.assertIsNone(result['providers']['worker'])
+        self.assertEqual(result['status'],'awaiting_reply')
+        self.assertEqual(len(requests),3)
+        self.assertEqual(result['providers']['worker']['model'],'a:free')
+        self.assertIsNone(result['providers']['reviewer'])
+        self.assertEqual(requests[0]['maximum'],1024)
+        self.assertTrue(all(r['role']=='worker' for r in requests))
         self.assertEqual(result['changes'],[])
+
+    def test_missing_reviewer_preserves_edits_and_resume_retries_only_review(self):
+        task=self.chat('remote');self.engine.gateway.catalog.return_value['models']=[model('a:free')]
+        task['check_command']=[sys.executable,'-m','unittest','discover','-v'];task['auto_approve_checks']=True
+        self.engine.store.save(task)
+        requests=self.responses([
+            call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
+            call('checkpoint',{'summary':'Fixed clamp.','uncertainties':''})])
+        self.engine.start(task['id']);paused=self.finish(task)
+        self.assertEqual(paused['status'],'paused',paused['error'])
+        self.assertEqual(paused['route']['waiting_for'],'reviewer')
+        self.assertEqual(paused['providers']['worker']['model'],'a:free')
+        self.assertIsNone(paused['providers']['reviewer'])
+        self.assertEqual(paused['iterations'],0)
+        self.assertEqual(paused['pending_checkpoint']['summary'],'Fixed clamp.')
+        self.assertTrue(paused['changes']);self.assertEqual(len(requests),3)
+        # Reload durable state, and exhaust worker turns: resume must still review.
+        paused['limits']['worker_turns']=paused['worker_turns'];self.engine.store.save(paused)
+        self.engine=Engine(self.engine.store.root)
+        self.engine.gateway.catalog=Mock(return_value={'status':'ready','models':[model('a:free'),model('b:free')]})
+        self.engine.gateway.snapshot=Mock(return_value={'status':'ready','busy':False})
+        requests=self.responses([call('review_decision',{'decision':'APPROVE','feedback':'Verified.'})])
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'approved',result['error'])
+        self.assertTrue(all(r['role']=='reviewer' and r['model']=='b:free' for r in requests))
+        self.assertEqual(result['patch'],paused['patch']);self.assertEqual(result['worker_turns'],paused['worker_turns'])
+        self.assertEqual(result['iterations'],1);self.assertNotIn('pending_checkpoint',result)
+
+    def test_failed_reviewer_probes_are_bounded_and_keep_worker_and_checkpoint(self):
+        task=self.chat('remote')
+        task['check_command']=[sys.executable,'-m','unittest'];self.engine.store.save(task)
+        names=['a:free']+[str(i) for i in range(8)]
+        task['route']['preferred']['worker']='a:free';self.engine.store.save(task)
+        self.engine.gateway.catalog.return_value['models']=[model(n) for n in names]
+        requests=self.responses([call('checkpoint',{'summary':'Ready.'})],probe_fail=set(names[1:]))
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['error_code'],'routing_unavailable')
+        self.assertEqual(result['providers']['worker']['model'],'a:free')
+        self.assertEqual(len([r for r in requests if r['role']=='reviewer']),4)
+        self.assertEqual(len(result['route']['failures']),4)
+        self.assertTrue(all(f['role']=='reviewer' and f['error'] for f in result['route']['failures']))
+        self.assertIn('pending_checkpoint',result)
 
     def test_probe_attempts_are_bounded(self):
         task=self.chat('remote');self.engine.gateway.catalog.return_value['models']=[model(str(i)) for i in range(8)]
@@ -174,7 +219,7 @@ class RoutingTests(LocalCase):
         self.engine.start(task['id'],{'message':'Thanks'});result=self.finish(task)
         self.assertEqual(result['status'],'awaiting_reply')
         self.assertEqual(result['providers'],first['providers'])
-        self.assertEqual([r['role'] for r in requests],['coordinator','worker','reviewer','worker','coordinator'])
+        self.assertEqual([r['role'] for r in requests],['coordinator','worker','worker','coordinator'])
 
     def test_remote_mode_startup_never_queries_local_discovery(self):
         self.chat('remote');self.engine.startup._omni=Mock(return_value=[])
