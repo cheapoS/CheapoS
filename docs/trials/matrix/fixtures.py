@@ -8,12 +8,17 @@ class Acceptance(unittest.TestCase):
   rows=parse_expenses('category,amount\\n"food, groceries",0.10\\n"food, groceries",0.20\\nTravel,2.50\\n')
   self.assertEqual(rows,[('food, groceries',Decimal('0.10')),('food, groceries',Decimal('0.20')),('Travel',Decimal('2.50'))])
   self.assertEqual(summarize(rows),'Travel: 2.50\\nfood, groceries: 0.30\\nTOTAL: 2.80\\n')
+ def test_large_exact_money(self):
+  rows=parse_expenses('category,amount\\nA,9007199254740993.01\\n')
+  self.assertEqual(summarize(rows),'A: 9007199254740993.01\\nTOTAL: 9007199254740993.01\\n')
+ def test_quoted_newline(self):
+  self.assertEqual(parse_expenses('category,amount\\n"food\\ntravel",1.20\\n'),[('food\\ntravel',Decimal('1.20'))])
  def test_empty(self): self.assertEqual(summarize(parse_expenses('category,amount\\n')),'TOTAL: 0.00\\n')
  def test_trim(self): self.assertEqual(parse_expenses('category,amount\\n  food  , 1.20 \\n'),[('food',Decimal('1.20'))])
  def test_bad_header(self):
   with self.assertRaises(ValueError):parse_expenses('name,cost\\nfood,1\\n')
  def test_invalid_rows(self):
-  for row in ('food,-1','food,NaN','food,Infinity','food,x',',1','food,1,extra','food,1.001'):
+  for row in ('food,-1','food,NaN','food,Infinity','food,x',',1','food,1,extra','food,1.001','food,1.230'):
    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')
  def test_determinism_and_no_mutation(self):
   rows=[('b',Decimal('1')),('a',Decimal('2'))];before=list(rows)
@@ -91,6 +96,9 @@ class ExchangeTests(Base):
    self.assertEqual(s.list(),[{'id':1,'title':'Keep','done':False}])
 class CLITests(Base):
  def cli(self,*args):return subprocess.run([sys.executable,'cli.py','--db',str(self.path),*args],capture_output=True,text=True,timeout=5)
+ def test_missing_import_has_no_traceback(self):
+  result=self.cli('import',str(Path(self.tmp.name)/'missing.csv'))
+  self.assertNotEqual(result.returncode,0);self.assertNotIn('Traceback',result.stderr)
  def test_whole_cli_and_errors(self):
   self.assertEqual(self.cli('add','Task A').returncode,0);self.assertEqual(json.loads(self.cli('list').stdout),[{'id':1,'title':'Task A','done':False}]);self.assertEqual(self.cli('complete','1').returncode,0)
   csv=Path(self.tmp.name)/'input.csv';csv.write_text('title,done\\nTask B,false\\n');self.assertEqual(self.cli('import',str(csv)).returncode,0)
