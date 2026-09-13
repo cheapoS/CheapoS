@@ -20,6 +20,14 @@ class Acceptance(unittest.TestCase):
  def test_invalid_rows(self):
   for row in ('food,-1','food,NaN','food,Infinity','food,x',',1','food,1,extra','food,1.001','food,1.230'):
    with self.subTest(row=row),self.assertRaises(ValueError):parse_expenses('category,amount\\n'+row+'\\n')
+ def test_documented_python_example_runs(self):
+  import re,io,contextlib
+  from pathlib import Path
+  blocks=re.findall(r'```python[ \t]*\\n(.*?)```',Path('README.md').read_text(),re.S|re.I)
+  self.assertTrue(blocks,'Document a runnable fenced Python usage example')
+  namespace={}
+  with contextlib.redirect_stdout(io.StringIO()):
+   for block in blocks:exec(compile(block,'README.md','exec'),namespace)
  def test_determinism_and_no_mutation(self):
   rows=[('b',Decimal('1')),('a',Decimal('2'))];before=list(rows)
   self.assertEqual(summarize(rows),'a: 2.00\\nb: 1.00\\nTOTAL: 3.00\\n');self.assertEqual(rows,before)
@@ -108,7 +116,7 @@ class CLITests(Base):
 def fixture(level):
  if level=='medium':
   return {'README.md':'# Expense summary\n','ledger.py':"def parse_expenses(text):\n    return [(row.split(',')[0], float(row.split(',')[1])) for row in text.splitlines()[1:]]\n",'report.py':"def summarize(rows):\n    return str(sum(amount for _, amount in rows))\n",'test_acceptance.py':MEDIUM_TEST},[
-   ('expenses','Repair CSV money handling and reporting','Fix ledger.py parse_expenses(text) to use real CSV parsing and Decimal. Exact header category,amount. Trim category/amount; category must be nonempty; reject negative, nonfinite, invalid, or more-than-two-decimal-place amounts and wrong row widths with ValueError. Return ordered (category,Decimal) tuples. Fix report.py summarize(rows) to aggregate by category, sort categories lexicographically, emit category: amount lines with two decimals, followed by TOTAL: amount and a final newline. Do not mutate input. Update README with usage.', ['CSV quoted fields, Unicode, exact money and invalid inputs are handled.','Sorted deterministic report and documentation satisfy acceptance checks.'])]
+   ('expenses','Repair CSV money handling and reporting','Fix ledger.py parse_expenses(text) to use real CSV parsing and Decimal. Exact header category,amount. Trim category/amount; category must be nonempty; reject negative, nonfinite, invalid, or more-than-two-decimal-place amounts and wrong row widths with ValueError. Return ordered (category,Decimal) tuples. Fix report.py summarize(rows) to aggregate by category, sort categories lexicographically, emit category: amount lines with two decimals, followed by TOTAL: amount and a final newline. Do not mutate input. Update README with a runnable fenced Python usage example; its code must execute successfully.', ['CSV quoted fields, Unicode, exact money and invalid inputs are handled.','Sorted deterministic report and documentation satisfy acceptance checks.'])]
  if level=='hard':
   return {'README.md':'# Persistent task board\n','test_acceptance.py':HARD_TEST},[
    ('api','Build durable task API','Create app.py with create_server(db_path, port=0) returning an HTTPServer bound to 127.0.0.1, not started. SQLite persistent tasks table. GET /tasks returns ordered [{id,title,done}] JSON. POST /tasks {title} trims a 1..200 character string and creates item with status201. POST /tasks/<id>/complete with {} returns updated item200, missing404. Invalid input400 and unknown paths404 return JSON error objects without writes. Handle malformed JSON cleanly. Use only standard library. Document how to start server.', ['HTTP API stores tasks durably and validates input without unintended writes.','Completion and missing routes use correct JSON status codes.'],'APITests'),
