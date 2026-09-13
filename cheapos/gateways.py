@@ -46,6 +46,20 @@ def normalize_models(data, openrouter=False):
         if not isinstance(reasoning, bool):
             supported = item.get("supported_parameters")
             reasoning = any(p in supported for p in ("reasoning", "reasoning_effort")) if isinstance(supported, list) else None
+        recovery_reasoning = None
+        reasoning_meta = item.get("reasoning")
+        supported = item.get("supported_parameters")
+        if isinstance(reasoning_meta, dict) and isinstance(supported, list) and "reasoning" in supported:
+            if reasoning_meta.get("mandatory") is False:
+                recovery_reasoning = {"enabled": False}
+            else:
+                efforts = reasoning_meta.get("supported_efforts", [])
+                if efforts is None:
+                    recovery_reasoning = {"effort": "low"}
+                elif isinstance(efforts, list):
+                    effort = next((e for e in ("minimal", "low", "medium") if e in efforts), None)
+                    if effort:
+                        recovery_reasoning = {"effort": effort}
         context = item.get("context_length")
         local = item.get("owned_by") == "ollama" and not model_id.startswith("auto/")
         if local and input_rate is None and output_rate is None:
@@ -53,7 +67,8 @@ def normalize_models(data, openrouter=False):
         models.append({"id": model_id, "name": str(item.get("name") or model_id)[:240], "local":local,
                        "provider": str(item.get("owned_by") or "")[:100],
                        "context_length": context if isinstance(context, int) and not isinstance(context, bool) and context > 0 else None,
-                       "tool_calling": tools, "reasoning": reasoning, "input_rate": input_rate, "output_rate": output_rate,
+                       "tool_calling": tools, "reasoning": reasoning, "recovery_reasoning": recovery_reasoning,
+                       "input_rate": input_rate, "output_rate": output_rate,
                        "free": input_rate == 0 and output_rate == 0 and not model_id.startswith("auto/") and item.get("owned_by") != "combo"})
     return sorted(models, key=lambda m: m["id"])
 

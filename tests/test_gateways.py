@@ -15,6 +15,16 @@ from cheapos.providers import ProviderError
 
 
 class CatalogTests(unittest.TestCase):
+    def test_output_recovery_uses_only_advertised_reasoning_controls(self):
+        data={'data':[{'id':str(i),'supported_parameters':['reasoning'],'reasoning':meta} for i,meta in enumerate([
+            {'mandatory':False}, {'mandatory':True,'supported_efforts':['high','low']},
+            {'mandatory':True}, {'mandatory':True,'supported_efforts':['high']},
+            {'mandatory':True,'supported_efforts':None}, {'supported_efforts':['none','high']},
+        ])]}
+        models=normalize_models(data)
+        self.assertEqual([m['recovery_reasoning'] for m in models],
+                         [{'enabled':False},{'effort':'low'},None,None,{'effort':'low'},None])
+
     def test_upstream_free_catalog_removes_retired_repriced_and_non_tool_routes_and_adds_new(self):
         old = normalize_models({'data': [{'id':'openrouter/retired:free'}, {'id':'openrouter/repriced:free'},
                                          {'id':'openrouter/safety:free','capabilities':{'tool_calling':True}},

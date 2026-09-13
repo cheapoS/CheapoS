@@ -10,11 +10,11 @@ STREAM_MAX_SECONDS = 600
 def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX_SECONDS):
     started = time.monotonic()
     content, thinking, calls, usage = [], [], {}, {}
-    size, finished, done = 0, False, False
+    size, finished, done, limited = 0, False, False, False
     frame = []
 
     def consume(payload):
-        nonlocal usage, finished, done
+        nonlocal usage, finished, done, limited
         if payload.strip() == '[DONE]':
             done = True
             return
@@ -32,8 +32,10 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
             reason = choice.get('finish_reason')
             if reason is not None:
                 if reason == 'length':
-                    raise error_type('The model reached its output limit before finishing. Partial tool calls were not executed.', code='output_limit')
-                if not isinstance(reason, str) or reason not in {'stop', 'tool_calls', 'function_call'}:
+                    # Drain the bounded stream for its final usage frame. No
+                    # message/tool calls from a limited response will be returned.
+                    limited = True
+                elif not isinstance(reason, str) or reason not in {'stop', 'tool_calls', 'function_call'}:
                     label = reason if isinstance(reason, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', reason) else 'unrecognized'
                     raise error_type(f'The provider ended the response with finish_reason={label}. Partial tool calls were not executed; saved files are unchanged by this response.', code='stream_error' if label == 'error' else 'model_refusal')
                 finished = True
@@ -81,6 +83,8 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
                 frame = []
         elif line.startswith('data:'):
             frame.append(line[5:].lstrip(' '))
+    if limited:
+        raise error_type('The model reached its output limit before finishing. Partial tool calls were not executed.', code='output_limit', usage=usage or None)
     if not done or not finished:
         raise error_type('The model stream ended before its response was complete. Partial tool calls were not executed.', code='stream_interrupted')
     message = {'role':'assistant', 'content':''.join(content) or None}

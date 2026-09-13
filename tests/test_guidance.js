@@ -139,6 +139,9 @@ test('interrupted responses show saved work and the recovery step',()=>{
   assert.equal(result.timeout,false);assert.equal(result.title,'The model response ended early.');
   assert.match(result.description,/1 changed file is saved/);assert.match(result.description,/Retry returns to the saved work/);
   assert.equal(failure(task({status:'error',error_code:'output_limit'})).title,'The response reached its output limit.');
+  const capped=task({status:'error',error_code:'output_limit',execution:{mode:'delegate'},active_role:'worker'});
+  assert.match(failure(capped).description,/smaller next action/);
+  assert.doesNotMatch(failure({...capped,pending_review:{}}).description,/smaller next action/);
 });
 test('tool argument corrections are distinct from unreadable provider responses',()=>{
   const item=activityItem({kind:'tool_error',detail:{code:'invalid_tool_arguments',error:'Invalid arguments'}});

@@ -174,8 +174,8 @@ class FailoverTests(LocalCase):
         self.assertEqual(result['status'],'budget_paused');self.assertEqual(result['error_code'],'worker_turn_limit')
         self.assertEqual({r['model'] for r in requests},{'a'});self.assertEqual(result['worker_turns'],1)
 
-    def test_auth_output_limits_and_refusals_do_not_trigger_handoffs(self):
-        for code in ['http_401','http_402','http_403','output_limit','model_refusal']:
+    def test_auth_and_refusals_do_not_trigger_handoffs(self):
+        for code in ['http_401','http_402','http_403','model_refusal']:
             with self.subTest(code=code):
                 task=self.chat('remote');requests=self.responding([ProviderError('Stopped',code=code)])
                 self.engine.start(task['id']);result=self.finish(task)

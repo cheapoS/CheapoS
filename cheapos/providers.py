@@ -21,11 +21,12 @@ def is_local_ollama(config):
 
 
 class ProviderError(Exception):
-    def __init__(self, message, code=None, retry_after=None, scope=None):
+    def __init__(self, message, code=None, retry_after=None, scope=None, usage=None):
         super().__init__(message)
         self.code = code
         self.retry_after = retry_after
         self.scope = scope
+        self.usage = usage
 
 
 def http_failure(error, config):
@@ -123,6 +124,8 @@ class ChatProvider:
 
     def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False, timeout_seconds=REQUEST_TIMEOUT_SECONDS, stream_seconds=600, brief=False):
         body = {"model": self.config["model"], "messages": messages, "max_tokens": max_tokens, "stream": emit is not None}
+        if self.config.get("_recovery_reasoning") is not None:
+            body["reasoning"] = self.config["_recovery_reasoning"]
         if brief and is_local_ollama(self.config):
             body.update({"max_tokens": min(max_tokens, 512 if tools else 128), "reasoning_effort":"none"})
         if emit is not None:
@@ -159,7 +162,13 @@ class ChatProvider:
         except (ValueError, KeyError, TypeError, AttributeError):
             raise ProviderError("Provider returned an invalid response structure. No tool calls from this response were executed.", code="invalid_response_shape") from None
         try:
-            message = data["choices"][0]["message"]
+            choice = data["choices"][0]
+            if not isinstance(choice, dict):
+                raise ValueError()
+            if choice.get("finish_reason") == "length":
+                raise ProviderError("The model reached its output limit before finishing. Partial tool calls were not executed.",
+                                    code="output_limit", usage=data.get("usage"))
+            message = choice["message"]
             if not isinstance(message, dict) or not (message.get("content") or message.get("tool_calls")):
                 raise ValueError()
             # Preserve tool IDs and reasoning_details required by some tool-capable providers.

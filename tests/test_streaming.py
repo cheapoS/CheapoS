@@ -40,6 +40,14 @@ class StreamingTests(LocalCase):
         for suffix in [b'',chunk(finish='stop'),chunk(finish='length')+b'data: [DONE]\n\n']:
             with self.assertRaises(ProviderError):self.parse(tool+suffix)
 
+    def test_output_limit_retains_final_usage_without_returning_partial_calls(self):
+        partial=chunk({'tool_calls':[{'index':0,'id':'edit','function':{'name':'write_file','arguments':'{"path":"unsafe.py"'}}]})
+        usage={'prompt_tokens':12,'completion_tokens':4096,'cost':.02}
+        with self.assertRaises(ProviderError) as caught:
+            self.parse(partial+chunk(finish='length')+chunk(usage=usage)+b'data: [DONE]\n\n')
+        self.assertEqual(caught.exception.code,'output_limit')
+        self.assertEqual(caught.exception.usage,usage)
+
     def test_unsuccessful_finish_reason_is_visible_and_partial_tools_never_return(self):
         tool=chunk({'tool_calls':[{'index':0,'id':'edit','function':{'name':'write_file','arguments':'{"path":"unsafe.py","content":"x"}'}}]})
         for reason,label in [('error','error'),('content_filter','content_filter'),('unknown_native_reason','unknown_native_reason'),('unsafe\nvalue','unrecognized'),({'invalid':'shape'},'unrecognized')]:

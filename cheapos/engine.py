@@ -113,6 +113,13 @@ Do not rerun a failed command unchanged. Commands are argument lists, not a shel
 If a file snapshot is incomplete and essential information is missing, ask_user with the specific blocker instead of guessing.
 All limits and command permissions still apply; only the controller can approve the result."""
 
+OUTPUT_GUIDANCE = """Your earlier response reached its output cap before completing. None of its tool calls ran.
+Continue from the saved evidence and completed tool results; do not repeat the interrupted analysis.
+Take one small next action. For an existing file, prefer a short exact replace_text over rewriting the whole file.
+Do not batch a whole implementation into one response. For a question, answer concisely from the available evidence.
+Do not guess missing file contents, weaken tests, or claim unrun checks. After edits, verification and checkpoint review are still required.
+The response cap and all task limits remain unchanged."""
+
 
 class ToolArgumentsError(ProviderError):
     def __init__(self, name, call_id, detail):
@@ -371,12 +378,17 @@ class Engine:
                 cfg = task["providers"].get(failed_role)
                 if automatic(task, failed_role) and cfg:
                     self.defer_route(task, failed_role, task["error"])
+            if task.get("error_code") == "output_limit" and followup is None:
+                last_request = next((e for e in reversed(task["events"]) if e["kind"] == "model"), {})
+                if automatic(task, "worker") and last_request.get("title", "").startswith("Requesting worker:") and task["providers"].get("worker"):
+                    self.prepare_output_recovery(task, task["providers"]["worker"]["model"])
             if followup is not None:
                 task["conversational"] = True
                 task["request_worker_turns"] = 0
                 task["answer_pending"] = False
                 task["action_pending"] = False
                 task["loop_guidance"] = None
+                task.pop("output_recovery", None)
                 task.pop("pending_checkpoint", None)
                 task.pop("pending_review", None)
                 task["requests"] = task.get("requests", [task["prompt"]]) + [followup.strip()]
@@ -732,6 +744,25 @@ class Engine:
         task["in_flight"] = None
         self.store.save(task)
 
+    def prepare_output_recovery(self, task, model):
+        task.setdefault("output_recovery", {})[model] = True
+        self.event(task, "routing", "Continuing with a smaller next action", {
+            "model": model, "role": "worker",
+            "summary": "The response reached its output cap. Retrying once with smaller actions and reduced reasoning where supported. Saved edits and limits are unchanged."})
+
+    @staticmethod
+    def count_recovery_turn(runtime):
+        task = runtime.task
+        if task["status"] == "reviewing":
+            return
+        if request_worker_turns(task) >= task["limits"]["worker_turns"]:
+            raise WorkerTurnLimit("Worker model-turn limit reached during free-model recovery. Saved work is kept.")
+        if runtime.step_turns >= task["limits"].get("checkpoint_turns", 12):
+            raise ProgressPause("The checkpoint turn limit was reached during free-model recovery. Saved work is kept.")
+        task["worker_turns"] += 1
+        task["request_worker_turns"] += 1
+        runtime.step_turns += 1
+
     def request(self, runtime, messages, tools, role, config_override=None, purpose=None):
         task = runtime.task
         if config_override is not None or purpose or not automatic(task, role):
@@ -742,17 +773,12 @@ class Engine:
             if runtime.stop.is_set():
                 raise InterruptedError("Task stopped")
             recovery = task["route"].get("recovery", {}).get(role)
+            if recovery and runtime.handoffs >= MAX_HANDOFFS:
+                raise RoutingPause("Two automatic model handoffs were tried in this run. Saved work and usage are kept. Resume to check free availability again, or inspect Models.")
+            if attempted:
+                self.count_recovery_turn(runtime)
+                attempted = False
             if recovery:
-                if runtime.handoffs >= MAX_HANDOFFS:
-                    raise RoutingPause("Two automatic model handoffs were tried in this run. Saved work and usage are kept. Resume to check free availability again, or inspect Models.")
-                if attempted and task["status"] != "reviewing":
-                    if request_worker_turns(task) >= task["limits"]["worker_turns"]:
-                        raise WorkerTurnLimit("Worker model-turn limit reached during free-model recovery. Saved work is kept.")
-                    if runtime.step_turns >= task["limits"].get("checkpoint_turns", 12):
-                        raise ProgressPause("The checkpoint turn limit was reached during free-model recovery. Saved work is kept.")
-                    task["worker_turns"] += 1
-                    task["request_worker_turns"] += 1
-                    runtime.step_turns += 1
                 runtime.failed_models.add(recovery["from"])
                 self.event(task, "routing", "Finding another free " + role, {"model": recovery["from"], "error": recovery["reason"], "role": role})
                 select_remote(self, runtime, role, replace=True)
@@ -785,9 +811,20 @@ class Engine:
                     raise BudgetError("Reviewer reached the eight-turn checkpoint limit, including failed requests. Saved review work is kept.")
                 runtime.review_requests += 1
             try:
-                message = self._request(runtime, messages, tools, role)
+                if role == "worker" and task.get("output_recovery", {}).get(cfg["model"]):
+                    config = {**cfg, "_recovery_reasoning": model.get("recovery_reasoning")}
+                    message = self._request(runtime, messages + [{"role": "user", "content": OUTPUT_GUIDANCE}], tools, role, config_override=config)
+                else:
+                    message = self._request(runtime, messages, tools, role)
                 self.validate_offered_tools(message, tools)
             except ProviderError as error:
+                if error.code == "output_limit" and role == "worker":
+                    attempted = True
+                    if not task.get("output_recovery", {}).get(cfg["model"]):
+                        self.prepare_output_recovery(task, cfg["model"])
+                    else:
+                        self.defer_route(task, role, "The worker reached its output cap again after a smaller-action retry.")
+                    continue
                 if error.code == "gateway_cooldown":
                     self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error)
                     raise RoutingPause(str(error) + " Saved work is kept; resume after the cooldown.") from None
@@ -839,7 +876,7 @@ class Engine:
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
         streaming = getattr(provider, "streams_output", False) is True
         brief = purpose == "probe" or role == "coordinator"
-        self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": reservation["completion_tokens"], "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None})
+        self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": reservation["completion_tokens"], "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
         if streaming:
             live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
             task["stream"] = live
@@ -870,13 +907,20 @@ class Engine:
                 else:
                     message, usage = provider.complete_with_progress(messages, tools, reservation["completion_tokens"], emit, runtime.stop.is_set)
                 completed = True
+            except ProviderError as error:
+                self.account_failed_response(task, config, reservation, error)
+                raise
             finally:
                 task["stream"] = None
                 if live["thinking"] or not completed and live["content"]:
                     self.event(task, "generation", "Model thinking" if completed else "Interrupted model output", {"request_id":live["request_id"], "model":config["model"], "role":role, "thinking":live["thinking"], "content":live["content"] if not completed else "", "interrupted":not completed, "truncated":live["truncated"]})
                 self.store.save(task)
         else:
-            message, usage = provider.complete(messages, tools, reservation["completion_tokens"])
+            try:
+                message, usage = provider.complete(messages, tools, reservation["completion_tokens"])
+            except ProviderError as error:
+                self.account_failed_response(task, config, reservation, error)
+                raise
         known = reconcile(task, config, reservation, usage)
         self.store.save(task)
         if task.get("execution", {}).get("mode") in {"delegate", "remote"} and task["usage"]["cost"] > 0:
@@ -887,6 +931,22 @@ class Engine:
             raise InterruptedError("Stopped after the in-flight model request completed")
         runtime.guard()
         return message
+
+    def account_failed_response(self, task, config, reservation, error):
+        usage = error.usage
+        if not isinstance(usage, dict) or not usage:
+            return  # No usable usage frame: retain the entire reservation.
+        known = reconcile(task, config, reservation, usage)
+        cost = usage.get("cost")
+        if not known and isinstance(cost, (int, float)) and not isinstance(cost, bool) and math.isfinite(cost) and cost > 0:
+            extra = max(0, cost - reservation["cost"])
+            task["usage"]["cost"] += extra
+            task["usage"][reservation["role"]]["cost"] += extra
+        self.store.save(task)
+        if task.get("execution", {}).get("mode") in {"delegate", "remote"} and task["usage"]["cost"] > 0:
+            raise BudgetError("An automatic free route reported a charge. Work stopped before retrying or executing any returned tools.")
+        if not known:
+            raise BudgetError("Provider omitted complete token usage. The conservative reservation is retained; review the budget before resuming.")
 
     def file_tool(self, task, name, args):
         workspace = Workspace(task["workspace"])
