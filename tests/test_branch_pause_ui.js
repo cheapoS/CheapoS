@@ -19,3 +19,13 @@ test('all supported blockers use explicit existing actions without claiming comm
   const v=pausePresentation(task(cause,action));assert.equal(v.action,action);assert.doesNotMatch(v.saved,/committed|passed/);
  }
 });
+
+test('Activity shows escaped claims and counterevidence with bounded dispute history',()=>{
+ const fs=require('node:fs'),vm=require('node:vm');
+ const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
+ const start=source.indexOf('function reviewDisputeMarkup('),end=source.indexOf('function renderActivity()',start);
+ const sandbox={esc:value=>String(value??'').replaceAll('<','&lt;')};vm.createContext(sandbox);vm.runInContext(source.slice(start,end),sandbox);
+ const finding={id:'a',status:'requested',attempts:3,structural:{criterion:'one:1'},history:[{candidate_id:'old',finding:{location:'a.py:2',expected:'safe',observed:'<script>',support:'code'}}],worker_counterevidence:{disposition:'disproved',evidence:'check 3 passed'}};
+ const result=sandbox.reviewDisputeMarkup({branch_run:{dispute_ledger:{findings:{a:finding}}}});
+ assert.match(result,/check 3 passed/);assert.match(result,/&lt;script>/);assert.doesNotMatch(result,/<script>/);assert.match(result,/not approval/);
+});

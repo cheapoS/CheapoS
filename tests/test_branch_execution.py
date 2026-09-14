@@ -16,7 +16,7 @@ class ScriptedRun:
             packet=json.loads(messages[1]['content']);item=packet['item'];identity=item['id']
             if identity=='two' and not self.revisions:
                 self.revisions+=1
-                message=call('review_decision',{'decision':'REQUEST_CHANGES','feedback':'Add notes_two.txt explaining the second utility.', 'candidate_id':packet['candidate_id'], 'defects':[{'criterion':item['acceptance_criteria'][0], 'location':'notes_two.txt', 'kind':'static', 'expected':'Second utility explanation', 'observed':'Explanation absent', 'support':'The item documentation is missing from the supplied file list.', 'reproduction':''}]})
+                message=call('review_decision',{'decision':'REQUEST_CHANGES','feedback':'Add notes_two.txt explaining the second utility.', 'candidate_id':packet['candidate_id'], 'defects':[{'criterion':item['acceptance_criteria'][0], 'location':'notes_two.txt:1', 'kind':'static', 'expected':'Second utility explanation', 'observed':'Explanation absent', 'support':'The item documentation is missing from the supplied file list.', 'reproduction':''}]})
             else:
                 message=call('review_decision',{'decision':'APPROVE','feedback':'Read implementation and passing tests','candidate_id':packet['candidate_id'], 'criteria_outcomes':{c:{'passed':True,'evidence':'Implementation and its actual tests cover this criterion'} for c in item['acceptance_criteria']}})
         else:
@@ -27,7 +27,11 @@ class ScriptedRun:
             elif step==1:message=call('write_file',{'path':'test_'+identity+'.py','content':f'import unittest\nimport {identity}\nclass Check(unittest.TestCase):\n def test_value(self): self.assertEqual({identity}.value,{value})\n'})
             elif identity=='one' and step==3:message=call('replace_text',{'path':'one.py','old_text':'value = 0','new_text':'value = 1'})
             elif identity=='two' and step==3:message=call('write_file',{'path':'notes_two.txt','content':'Second utility returns two.\n'})
-            else:message=call('checkpoint',{'summary':'Item implemented','uncertainties':''})
+            else:
+                repair=next((json.loads(m['content'])['review_repair'] for m in messages if m.get('role')=='user' and m.get('content','').startswith('{') and 'review_repair' in json.loads(m['content'])),None)
+                args={'summary':'Item implemented','uncertainties':''}
+                if repair:args['repair_dispositions']=[{'finding_id':f['finding_id'],'candidate_id':repair['candidate_id'],'disposition':'reproduced_and_corrected','evidence':'notes_two.txt:1 now explains the utility; required checks pass','broader_edit_reason':'Existing utility and test files remain part of the original item patch.'} for f in repair['defects']]
+                message=call('checkpoint',args)
         return message,{'prompt_tokens':10,'completion_tokens':5,'cost':0}
 
 

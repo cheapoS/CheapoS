@@ -59,6 +59,11 @@ class BranchFinalTests(unittest.TestCase):
     def test_cumulative_diff_clean_private_copy_and_actual_final_check(self):
         result = final.final_check_review(self.engine, self.runtime)
         manifest = result['readiness']['manifest']
+        from cheapos.review_context import read
+        excerpt=read(self.run,manifest,{'manifest_id':manifest['id'],'path':'code','start_line':1,'end_line':10})
+        self.assertEqual(excerpt['content'],'1: two')
+        self.assertEqual(excerpt['candidate'],manifest['feature_tip'])
+        self.assertTrue(excerpt['complete_file'])
         self.assertIn('+two', manifest['diff'])
         self.assertEqual(manifest['files'], [{'status':'M','path':'code','added_lines':1,'removed_lines':1,'item_ids':['one']}])
         self.assertEqual(result['decision'],'APPROVE')

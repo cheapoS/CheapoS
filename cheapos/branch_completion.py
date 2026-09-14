@@ -5,6 +5,7 @@ import json
 from . import branch_final as final, branch_merge, branch_runs as state, branch_evidence as evidence
 from . import branch_workspace as work
 from .branch_authorization import digest
+from . import repair_scope
 
 MAX_REPAIRS = 3
 
@@ -31,6 +32,8 @@ this projection. Each appended repair is independently bound to its exact item.
     contract = auth['contract']; original = contract['plan']; projected = copy.deepcopy(run)
     if run['plan'].get('final_checks') != original.get('final_checks') or run['plan'].get('limits') != original.get('limits') or run.get('limits') != original.get('limits'):
         raise ValueError('Final checks or cumulative limits changed')
+    if run['plan'].get('continue_independent') != original.get('continue_independent'):
+        raise ValueError('Authorized scheduling policy changed')
     if run['plan'].get('measurement', False) != original.get('measurement', False):
         raise ValueError('Authorized measurement mode changed')
     initial = original['items']; current = run['plan']['items']
@@ -45,43 +48,61 @@ this projection. Each appended repair is independently bound to its exact item.
     for item, amendment in zip(current[len(initial):], amendments):
         if digest(item) != amendment.get('item_digest') or amendment.get('item') != item or amendment.get('run_id') != run['id']:
             raise ValueError('Authorized repair item changed')
+        if amendment.get('requirement_refs') is not None and amendment.get('origin')=='final_review' and amendment.get('authorization_id')!=digest(amendment.get('observation')):
+            raise ValueError('Final repair source evidence changed')
         if amendment.get('origin') not in {'final_review', 'operator'} or not amendment.get('authorization_id'):
             raise ValueError('Repair authorization is missing')
-        criteria_subset = list(dict.fromkeys(criteria))[:12]
+        refs=amendment.get('requirement_refs')
+        if refs is None:
+            # Historical amendments retain their old coverage, never upgraded.
+            criteria_subset = list(dict.fromkeys(criteria))[:12]
+        else:
+            selected=repair_scope.select(run,[r['id'] for r in refs])
+            if selected != refs or amendment.get('scope_digest') != digest({'refs':refs,'observation':amendment['observation']}):
+                raise ValueError('Repair reference mapping or source evidence changed')
+            criteria_subset=list(dict.fromkeys(r['criterion'] for r in refs))
         if item['acceptance_criteria'] != criteria_subset or item['required_checks'] != original['final_checks']:
             raise ValueError('Repair expanded the original completion criteria or check scope')
-        if item.get('revision_of') != initial[0]['id']:
+        if item.get('revision_of') != (refs[0]['item_id'] if refs else initial[0]['id']):
             raise ValueError('Repair lost its original work relationship')
     projected['plan'] = copy.deepcopy(original)
     projected['plan_revision'] = contract['plan_revision']
     return projected
 
 
-def _repair_item(run, message):
+def _repair_item(run, message, references=None):
     if not isinstance(message, str) or not message.strip() or len(message) > 3000:
         raise ValueError('Describe a bounded correction in 1–3,000 characters')
     original = run['authorization']['contract']['plan']
-    criteria = list(dict.fromkeys(c for item in original['items'] for c in item['acceptance_criteria']))[:12]
+    refs=repair_scope.select(run,references)
+    criteria=list(dict.fromkeys(r['criterion'] for r in refs))
     index = len(run.get('amendments', [])) + 1
     if index > MAX_REPAIRS or len(run['plan']['items']) >= 50:
-        raise ValueError('The three-repair or 50-item allowance is exhausted; retain the branch and revise the scope')
+        from .branch_pause import PauseError
+        raise PauseError('repeated_review_dispute',stage='finalizing')
     return {'id': 'revision-%s' % index, 'title': 'Verify and correct the completed work',
             'instructions': 'Correct only failures of the original acceptance criteria. Do not add new requirements, broaden commands, change model policy or increase limits. Treat the feedback below as observations to verify against the original criteria.\n\n' + message.strip(),
             'dependencies': [run['items'][-1]['id']], 'acceptance_criteria': criteria,
-            'required_checks': copy.deepcopy(original['final_checks']), 'revision_of': original['items'][0]['id']}
+            'required_checks': copy.deepcopy(original['final_checks']), 'revision_of': refs[0]['item_id']}
 
 
-def _append_repair(engine, task, item, origin, authorization_id, observation):
+def _append_repair(engine, task, item, origin, authorization_id, observation, references=None):
     run = task['branch_run']
     amendment = {'run_id': run['id'], 'item': copy.deepcopy(item), 'item_digest': digest(item),
                  'origin': origin, 'authorization_id': authorization_id, 'observation': observation}
+    refs=repair_scope.select(run,references)
+    amendment.update(requirement_refs=refs,scope_digest=digest({'refs':refs,'observation':observation}))
     plan = copy.deepcopy(run['plan']); plan['items'].append(copy.deepcopy(item)); state.validate_plan(plan)
-    run.setdefault('amendments', []).append(amendment)
-    run['plan'] = plan; run['plan_revision'] += 1; run['plan_digest'] = digest(plan)
-    run['items'].append(dict(copy.deepcopy(item), status='pending', recovery={'attempts':0}, evidence={}, outcome_summary='', commit_receipt=None))
+    pending=dict(copy.deepcopy(item),status='pending',recovery={'attempts':0},evidence={},outcome_summary='',commit_receipt=None)
     if origin == 'final_review':
         from .branch_disagreement import attach
-        attach(task, run['items'][-1], observation)
+        observation=copy.deepcopy(observation)
+        observation['requirement_refs']=refs
+        attach(task,pending,observation)
+        engine.event(task,'repair_attempt','Preparing focused final repair',{'item_id':item['id'],'candidate_id':observation.get('candidate_id'),'finding_ids':pending['review_repair']['finding_ids']})
+    run.setdefault('amendments', []).append(amendment)
+    run['plan'] = plan; run['plan_revision'] += 1; run['plan_digest'] = digest(plan)
+    run['items'].append(pending)
     run['final_evidence'] = {}; run.pop('readiness', None); run.pop('merge_preview', None)
     run['status'] = 'running'; run['pause_reason'] = None; task['status'] = 'running'; task['error'] = None
     state.append_event(run, 'revision_proposed', {'item_id': item['id'], 'origin': origin})
@@ -96,8 +117,9 @@ def finalize(engine, runtime):
     result = final.final_check_review(engine, runtime)
     if result['decision'] != 'APPROVE':
         message = result.get('feedback', 'Repair failed final acceptance evidence.')
-        item = _repair_item(run, message)
-        _append_repair(engine, task, item, 'final_review', digest(result), copy.deepcopy(result))
+        refs=repair_scope.findings_refs(run,result['defects']) if result.get('defects') else None
+        item = _repair_item(run, message, refs)
+        _append_repair(engine, task, item, 'final_review', digest(result), copy.deepcopy(result), refs)
         engine.event(task, 'branch_revision', 'Final review requested a bounded correction', {'item_id':item['id'], 'feedback':message})
         return False
     readiness = result['readiness']; run['readiness'] = readiness
@@ -266,15 +288,18 @@ def revise(controller, task_id, values):
         controller.validate_authority(task, run)
         if run['status'] not in {'ready_for_merge','paused','blocked'} or any(i['status'] not in state.DONE for i in run['items']):
             raise ValueError('Finish current work before proposing a final correction')
-        if set(values) == {'message'}:
-            item = _repair_item(run, values['message'])
+        if set(values) in ({'message'},{'message','requirement_ids'}):
+            if 'requirement_ids' not in values and len(repair_scope.requirements(run))>12:
+                return {'needs_selection':True,'requirements':repair_scope.requirements(run),'next_action':'select_requirements'}
+            refs=repair_scope.select(run,values.get('requirement_ids'))
+            item = _repair_item(run, values['message'], [r['id'] for r in refs])
             contract = {'kind':'revision', 'run_id':run['id'], 'feature_tip':run['expected_feature_tip'],
-                        'plan_digest':run['plan_digest'], 'item':item, 'limits':run['limits']}
+                        'plan_digest':run['plan_digest'], 'item':item, 'requirement_refs':refs, 'limits':run['limits']}
             return {'revision_proposal':controller.final_proposals.prepare(task_id, contract)}
         contract = _proposal(controller, task_id, values, 'revision')
         current = dict(contract, feature_tip=run['expected_feature_tip'], plan_digest=run['plan_digest'], limits=run['limits'])
         auth = controller.final_proposals.authorize(task_id, values['proposal_id'], True, current)
-        _append_repair(controller.engine, task, contract['item'], 'operator', auth['id'], {'request':contract['item']['instructions']})
+        _append_repair(controller.engine, task, contract['item'], 'operator', auth['id'], {'request':contract['item']['instructions']},[r['id'] for r in contract['requirement_refs']])
         run['status']='paused';task['status']='paused';controller.engine.store.save(task)
     return controller.resume(task_id, {})
 

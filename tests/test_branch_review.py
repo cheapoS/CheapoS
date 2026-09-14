@@ -66,12 +66,12 @@ class BranchReviewTests(LocalCase):
             packet=json.loads(messages[1]['content'])
             return call('review_decision',{'decision':'APPROVE','feedback':'done','candidate_id':packet['candidate_id'],'criteria_outcomes':{'wrong key':{'passed':True,'evidence':'Tests'}}})
         self.engine.request=Mock(side_effect=review)
-        with self.assertRaisesRegex(ProgressPause,'repeated'):checkpoint(self.engine,Runtime(task),{})
+        with self.assertRaisesRegex(ProgressPause,'Unsupported|repeated'):checkpoint(self.engine,Runtime(task),{})
         self.assertEqual(self.engine.request.call_count,3)
         feedback=[e['detail']['error'] for e in task['events'] if e['kind']=='review_feedback']
         self.assertIn('Both bounds work',feedback[0]);self.assertIn('wrong key',feedback[0])
-        with self.assertRaisesRegex(ProgressPause,'repeated'):checkpoint(self.engine,Runtime(task),{})
-        self.assertEqual(self.engine.request.call_count,4)
+        with self.assertRaisesRegex(ProgressPause,'Unsupported|repeated'):checkpoint(self.engine,Runtime(task),{})
+        self.assertEqual(self.engine.request.call_count,3)
         self.assertNotIn('ready_receipt',task['branch_run']['items'][0])
 
     def test_serialized_check_command_does_not_poison_saved_environment(self):

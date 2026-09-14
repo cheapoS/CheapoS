@@ -43,7 +43,16 @@ def checkpoint(engine, runtime, args):
                 return {'decision':'REQUEST_CHANGES', 'feedback':'Repair the failing required check.', 'checks':result}
     current = evidence.candidate(task, ctx, specs, criteria)
     checks = evidence.current_checks(current, task['checks'])
+    from . import review_disputes
+    if item.get('review_repair'):
+        disagreement.pending(task,item)
+        review_disputes.dispositions(task,item,args,current['id'])
     packet = evidence.review_packet(current, item, run['plan'], checks, str(args.get('uncertainties', ''))[:2000])
+    if item.get('review_repair'):
+        packet['repair_review']=review_disputes.brief(item['review_repair'])
+        import difflib
+        packet['repair_diff_since_claim']=''.join(difflib.unified_diff(item['review_repair'].get('source_patch','').splitlines(True),current['patch'].splitlines(True),fromfile='disputed candidate patch',tofile='current candidate patch',n=3))
+        packet['worker_summary']=str(args.get('summary',''))[:4000]
     if len(json.dumps(packet)) > 30000:
         raise ProgressPause('Item review exceeds 30,000 characters. Split the item in a revised proposal; no evidence was omitted.')
     branch_runs.transition_item(run, item['id'], 'reviewing')
@@ -51,6 +60,7 @@ def checkpoint(engine, runtime, args):
     decision = next(t for t in tools if t['function']['name'] == 'review_decision')['function']['parameters']
     outcome = {'type':'object','properties':{'passed':{'type':'boolean'},'evidence':{'type':'string'}},'required':['passed','evidence'],'additionalProperties':False}
     decision['properties'].update(candidate_id={'type':'string','enum':[current['id']]}, criteria_outcomes={'type':'object', 'description':'Use every exact criterion key. passed is a JSON boolean, evidence is a nonempty string.', 'properties':{c:copy.deepcopy(outcome) for c in criteria},'required':list(criteria),'additionalProperties':False})
+    decision['properties']['suggestions']={'type':'array','maxItems':8,'items':{'type':'string'}}
     decision['properties']['defects'] = disagreement.schema(criteria)
     decision['required'] += ['candidate_id','criteria_outcomes']
     diff_notice = ' If packet diff is empty, the change may already be present in the repository from earlier commits; if files and passing checks satisfy the criteria, call review_decision with APPROVE.' if not packet.get('diff') else ''
@@ -65,17 +75,8 @@ def checkpoint(engine, runtime, args):
         rounds += 1
         disagreement.ensure_available(task, current['id'])
         runtime.guard()
-        attempt = 0
-        while True:
-            try:
-                message = engine.request(runtime, messages, tools, 'reviewer')
-                break
-            except ProviderError as error:
-                if getattr(error, 'code', None) == 'stream_error' and attempt < 2:
-                    attempt += 1
-                    time.sleep(1)
-                    continue
-                raise
+        engine.event(task,'review_request','Requesting item review',{'item_id':item['id'],'candidate_id':current['id']})
+        message = engine.request(runtime, messages, tools, 'reviewer')
         task['review_count'] += 1
         messages.append(message)
         calls = message.get('tool_calls', [])
@@ -100,9 +101,9 @@ def checkpoint(engine, runtime, args):
                         receipt = evidence.ready_receipt(current, checks, params, task['providers']['worker'], task['providers']['reviewer'], params.get('criteria_outcomes'))
                         evidence.revalidate(receipt, task, ctx, specs, criteria)
                     except ValueError as error:
-                        result = {'error':str(error)}
-                        engine.event(task,'review_feedback','Review decision needs correction',result)
+                        result = disagreement.unsupported(engine,task,current['id'],params,error)
                     else:
+                        review_disputes.resolved(task,item,current['id'])
                         task.pop('pending_review',None)
                         item['ready_receipt'] = receipt
                         item['outcome_summary'] = str(params.get('feedback',''))[:2000]
@@ -126,7 +127,12 @@ def checkpoint(engine, runtime, args):
                         task['status'] = 'running' if choice == 'REQUEST_CHANGES' else 'takeover_requested'
                         branch_runs.transition_item(run, item['id'], 'working')
                         result = disagreement.repair(params, current['id'], checks)
-                        if choice == 'REQUEST_CHANGES': disagreement.attach(task, item, result)
+                        if choice == 'REQUEST_CHANGES':
+                            result['source_patch']=current['patch']
+                            refs=item.get('review_repair',{}).get('requirement_refs')
+                            if refs:result['requirement_refs']=copy.deepcopy(refs)
+                            disagreement.attach(task, item, result)
+                            engine.event(task,'repair_attempt','Preparing focused item repair',{'item_id':item['id'],'candidate_id':current['id'],'finding_ids':item['review_repair']['finding_ids']})
                         engine.event(task,'review','Actionable item review claim' if choice == 'REQUEST_CHANGES' else 'Item needs takeover',
                                      {'item_id':item['id'],'decision':choice,'feedback':params['feedback'][:4000],
                                       'defects':params.get('defects'), 'candidate_id':current['id']})

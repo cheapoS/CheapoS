@@ -38,7 +38,7 @@ class DisagreementTests(unittest.TestCase):
         finding=defect('executable');finding.pop('kind')
         repair=disagreement.repair({'defects':[finding]},'candidate',[])
         self.assertEqual(repair['defects'][0]['kind'],'executable')
-        item={'id':'one','review_repair':{'defects':[finding]}}
+        item={'id':'one','acceptance_criteria':['exact values'],'review_repair':{'defects':[finding]}}
         task={'branch_run':{'items':[item],'current_item_id':'one'},'checks':[]}
         with self.assertRaisesRegex(ValueError,'Demonstrate'):disagreement.before_write(task,'report.py')
         for change in ({'kind':[]},{'reproduction':False},{'kind':None},{'location':'../secret:1'},
@@ -119,7 +119,7 @@ class DisagreementTests(unittest.TestCase):
             disagreement.attach(restored, item, result)
 
     def test_executable_gate_requires_current_failed_check_and_preserves_counterprobe(self):
-        item = {'id': 'one'}
+        item = {'id': 'one','acceptance_criteria':['exact values']}
         task = {'branch_run': {'current_item_id': 'one', 'items': [item]}, 'checks': []}
         disagreement.attach(task, item, disagreement.repair({'defects': [defect('executable')]}, 'candidate', []))
         with patch('cheapos.verification.evidence_identity', return_value='current'):

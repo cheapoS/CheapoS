@@ -16,6 +16,7 @@ TEMPLATES = {
  'repeated_work': ('Repeated work stopped making progress.', 'correction'),
  'essential_clarification': ('An essential decision is needed before work can continue.', 'reply'),
  'repeated_review_dispute': ('Review disagreement needs a decision before more repair work.', 'review_dispute'),
+ 'review_context_unavailable': ('Final review needs candidate context that could not be obtained. Inspect the saved context-read diagnostic before retrying.', 'inspect'),
  'unknown': ('This run stopped for an unclassified reason. Inspect the retained diagnostic.', 'inspect'),
 }
 CODES = {'gateway_cooldown':'provider_quota','http_429':'provider_quota',
