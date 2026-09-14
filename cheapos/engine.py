@@ -1547,8 +1547,17 @@ class Engine:
                     message, usage = provider.complete_with_progress(messages, tools, maximum, emit, runtime.stop.is_set)
                 completed = True
             except ProviderError as error:
-                self.account_failed_response(task, config, reservation, error)
-                raise
+                if error.code == 'stream_error' and hasattr(provider, 'complete'):
+                    task["stream"] = None
+                    try:
+                        message, usage = provider.complete(messages, tools, maximum)
+                        completed = True
+                    except ProviderError as fallback_error:
+                        self.account_failed_response(task, config, reservation, fallback_error)
+                        raise
+                else:
+                    self.account_failed_response(task, config, reservation, error)
+                    raise
             finally:
                 task["stream"] = None
                 if live["thinking"] or not completed and live["content"]:
@@ -1697,6 +1706,15 @@ class Engine:
             # added. Resume must not execute it again, even with a session grant.
             if any(re.fullmatch(r"\d*[|&;<>]+\d*", arg) for arg in argv):
                 raise CheckCommandError("The saved verification command contains shell syntax. Call run_checks with only the test command; cheapoS captures output automatically.")
+        if argv and '-m' in argv and 'unittest' in argv:
+            cleaned = []
+            for arg in argv:
+                if arg.endswith('.py'):
+                    arg = arg[:-3]
+                elif '.py.' in arg:
+                    arg = arg.replace('.py.', '.')
+                cleaned.append(arg)
+            argv = cleaned
         if not argv:
             raise CheckCommandError("Choose a check from this project's guidance and call run_checks with its command. If none is suitable, use ask_user.")
         return argv

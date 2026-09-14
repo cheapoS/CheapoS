@@ -4,9 +4,12 @@ import json
 import shlex
 import hashlib
 
+import time
+
 from . import branch_evidence as evidence
 from . import branch_runs, branch_disagreement as disagreement
 from .measurement import enabled as measuring
+from .providers import ProviderError
 
 
 def context(run, item):
@@ -62,7 +65,17 @@ def checkpoint(engine, runtime, args):
         rounds += 1
         disagreement.ensure_available(task, current['id'])
         runtime.guard()
-        message = engine.request(runtime, messages, tools, 'reviewer')
+        attempt = 0
+        while True:
+            try:
+                message = engine.request(runtime, messages, tools, 'reviewer')
+                break
+            except ProviderError as error:
+                if getattr(error, 'code', None) == 'stream_error' and attempt < 2:
+                    attempt += 1
+                    time.sleep(1)
+                    continue
+                raise
         task['review_count'] += 1
         messages.append(message)
         calls = message.get('tool_calls', [])

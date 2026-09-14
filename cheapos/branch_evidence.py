@@ -29,6 +29,15 @@ def commands(specifications):
         argv = shlex.split(command) if isinstance(command, str) else command
         if not isinstance(argv, list) or not argv or not all(isinstance(s, str) and s and '\0' not in s for s in argv):
             raise ValueError('Invalid required check command')
+        if '-m' in argv and 'unittest' in argv:
+            cleaned = []
+            for arg in argv:
+                if arg.endswith('.py'):
+                    arg = arg[:-3]
+                elif '.py.' in arg:
+                    arg = arg.replace('.py.', '.')
+                cleaned.append(arg)
+            argv = cleaned
         if argv in result:
             raise ValueError('Duplicate required check command')
         result.append(list(argv))

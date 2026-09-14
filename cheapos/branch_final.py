@@ -3,10 +3,12 @@ import copy
 import hashlib
 import json
 import shlex
+import time
 
 from . import branch_evidence as evidence, branch_workspace as work, branch_runs, branch_disagreement as disagreement
 from .workspace import Workspace, git
 from .unattended_items import completion_order
+from .providers import ProviderError
 
 CHUNK_SIZE = 20000
 MAX_CONTENT = 1000000
@@ -127,7 +129,17 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
     while attempts.get(key,0) < 3:
         disagreement.ensure_available(runtime.task, key)
         runtime.guard()
-        message = engine.request(runtime, messages, tools, 'reviewer', purpose='branch_final')
+        attempt = 0
+        while True:
+            try:
+                message = engine.request(runtime, messages, tools, 'reviewer', purpose='branch_final')
+                break
+            except ProviderError as error:
+                if getattr(error, 'code', None) == 'stream_error' and attempt < 2:
+                    attempt += 1
+                    time.sleep(1)
+                    continue
+                raise
         calls = message.get('tool_calls', [])
         try:
             if len(calls) != 1:
