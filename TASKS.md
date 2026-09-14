@@ -10,14 +10,15 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
-**Next up: T62–T73 — reliable planning, readable plans, and clear failure explanations.**
+**Next up: T62–T74 — reliable planning, one continuous conversation, and clear failure explanations.**
 These are the next implementation cards, based on the planner review at
 `db774c7` (September 14, 2026) and the operator's follow-up UI requests. Start
-with T62. Read current code before implementing; the review is a reproduction
-record, not a reason to undo newer fixes. T01–T61 completion records below are
+with the first unfinished card whose dependencies are available. Read current
+code before implementing; the review is a reproduction record, not a reason
+to undo newer fixes. T01–T61 completion records below are
 historical, not the next work queue.
 
-### T62–T73 next implementation queue
+### T62–T74 next implementation queue
 
 The dedicated planner should let an operator choose a stronger planning model
 while retaining the existing worker/reviewer loop and authorized spending policy.
@@ -38,6 +39,7 @@ Clicking Start should immediately return to a visibly starting conversation.
 | [T70](docs/tasks/T70-responsive-run-start.md) | Close Start immediately and report startup progress in chat | T69 | M | Ready after dependency |
 | [T71](docs/tasks/T71-readable-planner-dialog.md) | Widen the planner and make long proposals easier to read | Current planner dialog | S | Ready |
 | [T72](docs/tasks/T72-technical-logs-tab.md) | Put Technical logs last and show the newest events first | T69, T73 | S/M | Ready after dependencies |
+| [T74](docs/tasks/T74-unified-orchestration-reply.md) | Keep planning, worker, and reviewer progress inside the owning cheapoS reply | T68, T69, T70, T73; coordinate with T71/T72 | M | Ready after dependencies |
 
 **Required tab order:** without a plan, **Chat → Changes → Activity → Tests → Technical logs**;
 with a plan, **Chat → Changes → Plan → Activity → Tests → Technical logs**. The current Checks
@@ -50,6 +52,14 @@ replaces generic “unclassified reason; inspect the diagnostic” copy whenever
 specific safe diagnostic exists. Technical logs provide supporting detail, not
 the only way to learn why the task stopped. T73 is listed ahead of the UI cards
 because this is an immediate operator blocker; existing task IDs stay stable.
+**One visible owner for each operation:** T74 joins the planning announcement,
+live status, expandable output, and ready/error result inside the same cheapoS
+reply. Remove the separate planning block and detached progress cards. Worker
+and reviewer phases follow the same pattern, with actual model identity in
+Details and branch metadata in Plan. Do not hide real progress to remove clutter.
+For multi-item runs, keep each check, review, and commit attached to its item;
+the active reply must identify the current item without borrowing success from
+earlier work. The 10:15 screenshots and their item-transition cases are in T74.
 
 Shared completion conditions:
 
@@ -215,7 +225,7 @@ Update the card's completion record and its TASKS.md status. Commit only this
 task's changes. Report the commit, actual checks, and remaining limitations.
 Do not execute the next card automatically.
 
-For T62–T73, use the reproduction and acceptance contract in the selected card.
+For T62–T74, use the reproduction and acceptance contract in the selected card.
 Preserve the authorized model and spending policy when adding a stronger planner.
 Keep approved plans visible and immutable through the Plan view. Start should
 close immediately with honest progress and errors in chat, never fabricated
@@ -224,6 +234,9 @@ Technical logs are the final tab, newest first; never reverse the saved event
 array or the chronological conversation to achieve that presentation.
 The primary stop banner must surface the recorded problem and next action;
 Technical logs are supplementary, not the required route to a useful explanation.
+For T74, unify ownership and rendering instead of hiding live output or adding
+another status panel. Keep each phase's details and result inside its cheapoS
+reply, with honest state and actual planner/worker/reviewer attribution.
 
 For historical T49–T60 work, distinguish trial workarounds already in main from remaining gaps.
 Do not raise global limits, discard acceptance criteria, enable paid fallback,
