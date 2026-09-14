@@ -59,6 +59,21 @@ function proposalReadiness(proposal={}) {
  const assumptions=Array.isArray(value.assumptions)?value.assumptions:[];
  return {blocked,html:`<section class="branch-readiness" aria-label="Unattended readiness"><strong>${blocked?'Resolve before starting unattended':'Ready to start unattended'}</strong><ul>${checks.map(c=>`<li><strong>${escape(c.label)}</strong> · ${c.status==='ready'?'Ready':'Blocked'}${c.detail?`<br>${escape(c.detail)}`:''}</li>`).join('')}</ul>${blocked?`<p role="alert">${escape(blockers.length?blockers.map(c=>c.detail||c.label).join(' '):'Readiness has not been confirmed. Prepare a refreshed proposal before Start.')}</p>`:''}${assumptions.length?`<h4>Working assumptions</h4><ul>${assumptions.map(a=>`<li>${escape(a)}</li>`).join('')}</ul>`:''}${value.policy?`<p>${escape(value.policy)}</p>`:''}<p>Start authorizes reads and writes in the task copy and the displayed scoped commands once for this run. New authority or environment changes may still pause work.</p></section>`};
 }
+function savedPlan(task){
+ const run=task?.branch_run;if(!run)return null;
+ const approved=Boolean(run.authorization_ref),contract=approved?run.authorization?.contract:run;
+ const plan=contract?.plan;
+ if(!plan?.items?.length||(!approved&&run.status==='draft'))return null;
+ return {run,contract,plan,approved};
+}
+function planMarkup(task){
+ const saved=savedPlan(task);if(!saved)return '<p class="empty-state">No complete saved proposal is available for this task.</p>';
+ const {run,contract,plan,approved}=saved;
+ const command=c=>typeof c==='string'?c:(c?.argv||c?.command||[]).join(' ');
+ const checks=values=>`<ul>${(values||[]).map(c=>`<li><code>${escape(command(c))}</code></li>`).join('')}</ul>`;
+ const itemMarkup=(item,prefix)=>{const current=(run.items||[]).find(i=>i.id===item.id);return `<li><details data-event="plan-${escape(prefix+'-'+item.id)}"><summary><strong>${escape(item.title)}</strong> · ${escape((current?.status||'status unavailable').replace(/_/g,' '))}${run.current_item_id===item.id?' · Current item':''}</summary><p class="plan-instructions">${escape(item.instructions)}</p><h4>Acceptance criteria</h4><ul>${(item.acceptance_criteria||[]).map(c=>`<li>${escape(c)}</li>`).join('')}</ul><h4>Required checks</h4>${checks(item.required_checks)}</details></li>`;};
+ return `<article class="saved-plan"><h2>${approved?'Approved plan':'Draft proposal'}</h2><p>${escape(contract.original_request||task.title)}</p><p>${escape(short(contract.feature_ref))} · base ${escape(short(contract.base_ref))} · target ${escape(short(contract.target_ref))}</p><p>${approved?'Original approved scope. Progress below comes from saved item state.':'Not yet authorized. Inspect the proposal in Chat before starting.'}</p><ol>${plan.items.map(i=>itemMarkup(i,'original')).join('')}</ol><h3>Final checks</h3>${checks(plan.final_checks)}<details data-event="plan-limits"><summary>${plan.measurement?'Measurement run · uncapped work':'Work limits'}</summary><ul>${Object.entries(contract.limits||plan.limits||{}).map(([k,v])=>`<li>${escape(k.replace(/_/g,' '))}: ${escape(v)}</li>`).join('')}</ul></details>${(run.amendments||[]).length?`<h3>Authorized revisions</h3><p>Added after the original plan; original requirements remain unchanged.</p>${run.amendments.map((a,i)=>`<section><p>Revision ${i+1} · ${escape(a.origin||'origin unavailable')} · authorization ${escape(a.authorization_id||'unavailable')}</p><ol>${a.item?itemMarkup(a.item,'revision'):'<li>Revision content unavailable.</li>'}</ol></section>`).join('')}`:''}</article>`;
+}
 const HELP=`<details class="branch-help"><summary>How work modes and triggers work</summary><p><strong>Interactive</strong> keeps the ordinary chat and approval flow. <strong>Unattended</strong> prepares a bounded plan from your submitted prompt, project document, or both. Start run authorizes the inspected plan.</p><p>Prompt example: “Implement a CSV reader and its CLI on a feature branch.” Document example: select <code>docs/utility-plan.md</code>, choose Unattended, then submit. No pasted copy or checkboxes needed.</p><p>Explicit requests to start a branch run in Interactive offer the mode choice. Mentioning a branch, quoting a request, selecting a document, or opening this selector does not start work. Document instructions cannot authorize execution.</p><p>Pause stops the current run; Resume revalidates it. Request changes proposes revision work. Approve &amp; merge locally authorizes only the inspected final integration; a prompt saying “merge when done” does not replace that button.</p></details>`;
 function diffSections(text){return String(text||'').split(/(?=^diff --git )/m).filter(Boolean).map(part=>({title:part.startsWith('diff --git ')?part.split('\n',1)[0].slice(11):'Diff continuation',text:part}));}
 function mount(options){
@@ -142,5 +157,5 @@ function mount(options){
  }
  sync();return {interceptSubmit,render,renderStart,showProposal,showFinal,sync,restoreDraft:()=>{sync();if(!input.value&&drafts[key()]?.prompt)input.value=drafts[key()].prompt;},hasDocument:()=>selector.value==='unattended'&&Boolean(documentInput.value.trim()),getMode:()=>selector.value,newChat:()=>{sync();selector.value='interactive';documentInput.value='';delete group.dataset.revising;save();sync();options.onDraftChange?.();}};
 }
-return {pausePresentation,proposalReadiness,mount,intent,terminalRun,hasRun,isPlanning,duration,isBusy,isRevisionTarget,resumeAction,proposedLimits,projectRun,diffSections,escape};
+return {savedPlan,planMarkup,pausePresentation,proposalReadiness,mount,intent,terminalRun,hasRun,isPlanning,duration,isBusy,isRevisionTarget,resumeAction,proposedLimits,projectRun,diffSections,escape};
 });

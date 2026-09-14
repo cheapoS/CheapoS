@@ -363,10 +363,13 @@ async function selectTask(id) {
   try {const task=await api('/tasks/'+id);if(request!==state.selection)return;if(!task.demo&&(state.hiddenProjects||[]).some(p=>p.path===task.source)){reopenHiddenProject(task.source,task.id);return;}state.task=task;state.project={path:task.source,name:basename(task.source)};state.file=0;state.run=-1;state.view='chat';try{localStorage.setItem('cheapos-selected',id)}catch{}renderTask({resetScroll:true});restoreDraft();renderSidebar();panelLayout.closeMobileSidebar();}
   catch(e){toast(e.message)}finally{if(request===state.selection)state.loading=false}
 }
+const viewMemory=new Map();
+function rememberView(){if(!state.task)return;viewMemory.set(state.task.id+':'+state.view,{scroll:$('#view-container').scrollTop,details:new Map($$('details[data-event]').map(d=>[d.dataset.event,d.open]))});}
 function setView(view) {
+  rememberView();
   state.view=view;renderView();renderComposer();
   const scroller=$('#view-container');
-  scroller.scrollTo({top:view==='chat'?scroller.scrollHeight:0,behavior:'instant'});
+  const saved=viewMemory.get(state.task?.id+':'+view);for(const d of $$('details[data-event]'))if(saved?.details.has(d.dataset.event))d.open=saved.details.get(d.dataset.event);scroller.scrollTo({top:view==='chat'?scroller.scrollHeight:saved?.scroll||0,behavior:'instant'});
   for(const output of $$('[data-command-output]'))output.scrollTop=output.scrollHeight;
 }
 function renderTask({resetScroll=false}={}) {
@@ -400,10 +403,11 @@ function renderTask({resetScroll=false}={}) {
 }
 function renderView() {
   $('#compact-session').hidden=true;
-  $$('.tab').forEach(b=>{const selected=b.dataset.view===state.view;b.classList.toggle('active',selected);b.setAttribute('aria-selected',String(selected))});
-  $$('.view').forEach(v=>{v.classList.toggle('hidden',v.id!==state.view+'-view');if(v.id!==state.view+'-view')v.innerHTML=''});
+  const hasPlan=Boolean(CheapOSBranchUI.savedPlan(state.task));$('[data-view=plan]').hidden=!hasPlan;if(state.view==='plan'&&!hasPlan)state.view='chat';
+  $$('.tab').forEach(b=>{const selected=b.dataset.view===state.view;b.classList.toggle('active',selected);b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;b.id='tab-'+b.dataset.view;b.setAttribute('aria-controls',b.dataset.view+'-view')});
+  $$('.view').forEach(v=>{v.classList.toggle('hidden',v.id!==state.view+'-view');v.setAttribute('aria-labelledby','tab-'+v.id.replace(/-view$/,''));if(v.id!==state.view+'-view')v.innerHTML=''});
   if(!state.task){renderHome();return}
-  if(state.view==='chat')renderChat();else if(state.view==='activity')renderActivity();else if(state.view==='changes')renderChanges();else renderTests();
+  if(state.view==='plan')$('#plan-view').innerHTML=CheapOSBranchUI.planMarkup(state.task);else if(state.view==='chat')renderChat();else if(state.view==='activity')renderActivity();else if(state.view==='changes')renderChanges();else renderTests();
   bindTerminalCopy();
   if(state.task.archived_at||state.task.trashed_at){
     const view=$('#'+state.view+'-view');
@@ -1097,7 +1101,7 @@ async function bootstrap() {
   catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start cheapoS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
-$$('.tab').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+$$('.tab').forEach(b=>{b.onclick=()=>setView(b.dataset.view);b.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=$$('.tab').filter(t=>!t.hidden),i=tabs.indexOf(b),next=e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];setView(next.dataset.view);next.focus();};});
 $('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=sampleDialog;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopFromComposer;
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();

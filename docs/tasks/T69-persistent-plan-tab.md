@@ -1,6 +1,6 @@
 # T69 — Keep the approved plan visible in its own task tab
 
-Status: Ready
+Status: Implemented
 Priority: High — operator orientation
 Depends on: current persisted plan and authorization contract
 Size: M
@@ -71,4 +71,4 @@ adding a nonfunctional placeholder. Chat and Activity stay chronological.
 
 ## Completion record
 
-Pending.
+Implemented persistent read-only Plan from saved authorization contract (draft uses saved proposal), original scope separate from revision provenance and live status. Tabs reordered with keyboard navigation, per-task expansion/scroll retention. Focused Node: 19 cases, 68.8 ms total; two new pure cases 0.24 ms. Browser verification shared with T70–T72 remains pending until their integration.

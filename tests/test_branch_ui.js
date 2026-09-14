@@ -34,3 +34,11 @@ test('planning chats stay busy and accept follow-up before authorization',()=>{
  task.branch_run.authorization_ref='approved';assert.equal(ui.isPlanning(task),false);
  assert.equal(ui.isBusy({status:'running',branch_run:{status:'draft'}}),true);
 });
+
+test('saved plan keeps approved scope separate from progress and authorized revisions',()=>{
+ const original={items:[{id:'one',title:'Original <scope>',instructions:'Read code',acceptance_criteria:['Works'],required_checks:[{argv:['python3','-m','unittest']}]}],final_checks:[{argv:['check']}],limits:{dollars:0}};
+ const task={title:'Job',branch_run:{status:'running',authorization_ref:'auth',authorization:{contract:{plan:original,original_request:'Implement original',feature_ref:'refs/heads/work'}},plan:{items:[{id:'one',title:'Narrated replacement'}]},items:[{id:'one',status:'working'}],current_item_id:'one',amendments:[{origin:'operator',authorization_id:'revision-auth',item:{id:'two',title:'Repair',acceptance_criteria:['Works'],required_checks:[]}}]}};
+ const html=ui.planMarkup(task);assert.match(html,/Approved plan/);assert.match(html,/Original &lt;scope&gt;/);assert.doesNotMatch(html,/Narrated replacement/);assert.match(html,/Current item/);assert.match(html,/python3 -m unittest/);assert.match(html,/Authorized revisions/);assert.match(html,/revision-auth/);assert.equal(ui.planMarkup(JSON.parse(JSON.stringify(task))),html);
+ task.branch_run.authorization=null;assert.equal(ui.savedPlan(task),null);assert.match(ui.planMarkup(task),/No complete saved/);
+});
+test('ordinary chat and planning placeholders omit Plan until persisted proposal exists',()=>{assert.equal(ui.savedPlan({}),null);const task={branch_run:{status:'draft',plan:{items:[{title:'placeholder'}]}}};assert.equal(ui.savedPlan(task),null);task.branch_run.status='awaiting_authorization';assert.equal(ui.savedPlan(task).approved,false);});
