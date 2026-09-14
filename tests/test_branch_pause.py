@@ -10,6 +10,7 @@ class PauseDetails(unittest.TestCase):
   t=self.task()
   self.assertEqual(pause.classify(ValueError('SECRET limit exhausted'),t)['cause'],'unknown')
   self.assertEqual(pause.classify(LimitExceeded('requests',3,2),t)['cause'],'exhausted_work')
+  self.assertEqual(pause.classify(ProviderError('stream',code='transport_retry_exhausted'),t)['cause'],'provider_connection')
   q=pause.classify(ProviderError('SECRET https://key@example.com',code='gateway_cooldown'),t)
   self.assertEqual(q['cause'],'provider_quota');self.assertEqual(q['stage'],'reviewing');self.assertNotIn('SECRET',str(q));self.assertNotIn('retry_at',q)
  def test_public_retemplates_and_bounds(self):

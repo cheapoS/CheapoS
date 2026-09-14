@@ -25,6 +25,7 @@ CODES = {'gateway_cooldown':'provider_quota','http_429':'provider_quota',
  'invalid_tool_arguments':'malformed_output','invalid_tool_envelope':'malformed_output','invalid_response_json':'malformed_output','invalid_stream_json':'malformed_output','stream_error':'malformed_output',
  'progress_limit':'repeated_work','worker_recovery_exhausted':'repeated_work','recovery_exhausted':'repeated_work',
  'http_500':'provider_connection','http_502':'provider_connection','http_503':'provider_connection','http_504':'provider_connection','request_timeout':'provider_connection','routing_unavailable':'provider_connection',
+ 'transport_retry_exhausted':'provider_connection','streaming_unsupported':'provider_connection',
  'worker_turn_limit':'exhausted_work','iteration_limit':'exhausted_work','reviewer_token_limit':'exhausted_work','budget_exceeded':'exhausted_work',
  'environment_missing':'missing_setup','missing_executable':'missing_setup','command_permission_required':'command_grant',
  'authority_changed':'authority_changed','branch_drift':'branch_drift','review_dispute':'repeated_review_dispute','essential_clarification':'essential_clarification'}
