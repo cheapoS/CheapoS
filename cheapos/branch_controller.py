@@ -588,6 +588,8 @@ class BranchController:
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             run.pop('final_review_corrections', None)
             run.pop('review_disagreements', None)
+            task.pop('pending_review', None)
+            task.pop('recovery_blocked', None)
             self.engine.store.save(task)
             from .model_pool import observe_completions
             observe_completions(self.engine.gateway.pool,task)
@@ -638,6 +640,7 @@ class BranchController:
                 raise ValueError('Guidance is full; prepare an explicit revision')
             guidance.append({'item_id':run['current_item_id'],'message':message.strip()})
             task.pop('pending_review', None)
+            task.pop('recovery_blocked', None)
             if run.get('current_item_id'):
                 current_item = next((i for i in run['items'] if i['id'] == run['current_item_id']), None)
                 if current_item and current_item['status'] == 'reviewing':

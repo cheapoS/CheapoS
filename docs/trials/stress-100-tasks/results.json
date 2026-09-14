@@ -348,5 +348,33 @@
       "reviewer": 39346,
       "planner": 4823
     }
+  },
+  {
+    "task_id": "ST-016",
+    "title": "Fixed-Size Circular Ring Buffer",
+    "category": "Data Structures",
+    "status": "MERGED",
+    "duration": 122.82,
+    "turns": 4,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 18530,
+      "reviewer": 34026,
+      "planner": 4987
+    }
+  },
+  {
+    "task_id": "ST-041",
+    "title": "CSV Dialect Detector",
+    "category": "Serialization & IO",
+    "status": "MERGED",
+    "duration": 129.71,
+    "turns": 4,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 17515,
+      "reviewer": 32911,
+      "planner": 4870
+    }
   }
 ]

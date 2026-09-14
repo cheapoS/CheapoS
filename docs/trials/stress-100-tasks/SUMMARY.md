@@ -1,7 +1,7 @@
 # cheapoS 100-Task Stress Test Report
 
-- **Total Executed:** 25
-- **Merged Cleanly:** 25 (100.0%)
+- **Total Executed:** 27
+- **Merged Cleanly:** 27 (100.0%)
 - **Paused / Blocked:** 0
 - **Failed:** 0
 - **Total Spend:** $0.0000 (Strict $0.00 Free Tier)
@@ -33,3 +33,5 @@
 | ST-070 | Log Secret Redactor | Security & Encodings | MERGED | 5 | 102.68 | $0.0000 |
 | ST-071 | Topological Sorter | Graph & Algorithms | MERGED | 11 | 120.68 | $0.0000 |
 | ST-076 | Lowest Common Ancestor | Graph & Algorithms | MERGED | 13 | 128.86 | $0.0000 |
+| ST-016 | Fixed-Size Circular Ring Buffer | Data Structures | MERGED | 4 | 122.82 | $0.0000 |
+| ST-041 | CSV Dialect Detector | Serialization & IO | MERGED | 4 | 129.71 | $0.0000 |
