@@ -25,6 +25,9 @@ Important: the current engine already freezes file versions before inference.
 checks that the first edit survives while the stale second edit is rejected,
 then a later response succeeds using refreshed lines. Do not report the pasted
 offset-corruption scenario as an unfixed fact without reproducing a different path.
+This card owns edit sequencing and recovery mechanics.
+[T58](T58-focused-review-repairs.md) owns keeping reviewer-requested changes
+localized and carrying evidence between review cycles; do not duplicate that work.
 
 ## Work
 

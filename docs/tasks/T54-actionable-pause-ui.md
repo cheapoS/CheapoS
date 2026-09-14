@@ -2,7 +2,7 @@
 
 Status: Not started
 Priority: Medium
-Depends on: T53
+Depends on: T53, T60
 Size: M
 Planning baseline: `4b6ed68`, September 14, 2026
 
@@ -45,6 +45,7 @@ This is a focused pause experience, not a layout redesign.
    | Essential clarification | Focus the reply composer with the saved question visible |
    | Branch/authority change | Inspect the existing conflict or authorization flow |
    | Malformed output/repeated work | Show the specific failure and the supported correction/retry action |
+   | Repeated review dispute | Show the disputed requirement, latest findings and counterevidence, and the controller-supported next action |
 
 4. Details should identify the affected item, worker/reviewer stage, safe model
    label, and retained diagnostic reference. Do not show raw tracebacks or secret

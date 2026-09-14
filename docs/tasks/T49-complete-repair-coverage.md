@@ -2,7 +2,7 @@
 
 Status: Not started
 Priority: High
-Depends on: current merged branch-run implementation
+Depends on: T57
 Size: M
 Planning baseline: `4b6ed68`, September 14, 2026
 
@@ -27,6 +27,8 @@ from the repair item. Final manifests still enumerate original requirements;
 do not claim that every original criterion has vanished from final review.
 The defect is incomplete repair scope and instructions. Final manifests already
 provide stable references such as `item-id:3`; reuse that identity.
+Consume the canonical findings established by [T57](T57-canonical-review-findings.md)
+when deriving repair scope; do not reintroduce the raw-payload enforcement bug.
 
 ## Work
 

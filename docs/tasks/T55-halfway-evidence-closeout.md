@@ -2,7 +2,7 @@
 
 Status: Not started
 Priority: Medium
-Depends on: T49–T54
+Depends on: T49–T54, T56–T60
 Size: S/M
 Planning baseline: `4b6ed68`, September 14, 2026
 
@@ -14,13 +14,19 @@ and “we measured its full cost and reliability” remain separate claims.
 
 ## Evidence to inspect
 
-Read the completion records for T49–T54 and the retained
+Read the completion records for T49–T54 and T56–T60 and the retained
 [five-task report](../trials/unattended-10-tasks/RESULTS.md). That report currently
 lists 327 worker turns, 60 reviews, an estimated 445 requests, and $0.019 configured/
 reported cost. Treat these as reported values until their provenance is established;
 do not promote the pasted assessment's superlatives into measured findings.
 The underlying trial repository or private records may no longer be available.
 Missing evidence is a limitation, not permission to invent replacement data.
+
+The later pasted review-loop assessment lists 13, 11, 4, 3 and 15 decisions for
+Tasks 1–5: 46 total (16 REQUEST_CHANGES and 30 APPROVE). Its headline still says
+60 reviews; the earlier report instead lists 13, 16, 4, 3 and 24. Preserve those
+source distinctions until records explain them. Do not assume one count is wrong
+or silently relabel model requests as substantive review decisions.
 
 ## Work
 
@@ -32,6 +38,13 @@ Missing evidence is a limitation, not permission to invent replacement data.
    Distinguish worker turns, tool calls, review cycles, logical requests, and
    actual network attempts. Identify which app revision each task used and mark
    runtime repairs/restarts and planning assistance as interventions.
+   Separate item decisions, final chunk decisions, final synthesis, schema
+   corrections, context reads, transport retries, and worker repair cycles.
+   Use T50/T60's event distinctions for future counts. If historical records
+   cannot resolve the 46-versus-60 discrepancy, label it unresolved explicitly.
+   Measure repair turns and repeated disputes only where evidence supports that
+   attribution; do not carry forward the unsupported claim that 80% of loops
+   came from one edit failure mode.
 3. Qualify the cost statement: separate configured estimates, provider-reported
    charges, uncertain reservations, and any independently verified billing. T50
    fixes future fallback accounting; it cannot recover unrecorded historical
@@ -55,10 +68,12 @@ Missing evidence is a limitation, not permission to invent replacement data.
 
 ## Acceptance
 
-- T49–T54 have specific implementation and validation records, with browser gaps
+- T49–T54 and T56–T60 have specific implementation and validation records, with browser gaps
   visibly pending rather than disguised as passes.
 - Historical numbers are labeled by evidence source and uncertainty. No new
   claim of audited billing or universal model reliability is introduced.
+- Review requests, valid decisions, and actual repair cycles are distinct. The
+  46-versus-60 discrepancy is reconciled from evidence or explicitly unresolved.
 - Known fixed bugs and unresolved limitations have distinct entries and links.
 - The final handoff recommends one next experiment without launching it.
 

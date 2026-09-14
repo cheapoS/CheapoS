@@ -28,6 +28,12 @@ record. That second dispatch does not pass through the ordinary request boundary
 The reported trial improvement is useful evidence for a workaround, not proof
 of universal Gemini incompatibility or 100% future stability.
 
+[branch_review.py](../../cheapos/branch_review.py) and
+[branch_final.py](../../cheapos/branch_final.py) also retry `stream_error` locally
+up to twice, with a one-second sleep. Audit the combined request path, not just
+the inner engine fallback: nested retry loops must not multiply attempts or
+reset their allowance on each resumed reviewer invocation.
+
 ## Work
 
 1. Represent transport choice explicitly at the request/provider boundary using
@@ -39,6 +45,9 @@ of universal Gemini incompatibility or 100% future stability.
    access policy, remaining spend, reviewer/request allowances, current authority,
    and user cancellation. Reserve before each actual attempt. Keep retry count
    finite under the existing recovery policy; do not add recursive retry loops.
+   Consolidate the outer item/final-review retries with this policy and preserve
+   their counts durably. If backoff is needed, use the existing cancelable wait
+   mechanism; do not add unconditional sleeps or infer a provider reset time.
 3. Finalize the first attempt as failed/interrupted, retaining known usage or its
    uncertain reservation. Create a distinct attempt ID for the fallback, linked
    to the first. Capture transport, role/purpose, dispatched and served model,
