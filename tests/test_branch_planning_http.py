@@ -104,7 +104,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         status, proposal = self.post('/api/branch-runs/plan', self.request_values())
         self.assertEqual(status, 200, proposal)
         task = self.engine.store.get(proposal['task_id'])
-        self.assertEqual(dispatched, [['routing_ready'], ['propose_branch_plan']])
+        self.assertEqual(dispatched, [['routing_ready'], ['propose_branch_plan', 'inspect_project_file']])
         self.assertEqual(task['branch_run']['status'], 'awaiting_authorization')
         self.assertEqual([r['purpose'] for r in task['request_metrics']], ['probe', 'branch_planning'])
         self.assertEqual(task['usage']['worker']['tokens'], 34)

@@ -32,7 +32,8 @@ class PlannerTests(unittest.TestCase):
             self.requests.append(copy.deepcopy(messages))
             self.assertEqual(role, 'worker')
             self.assertEqual(purpose, 'branch_planning')
-            self.assertEqual([t['function']['name'] for t in tools], ['propose_branch_plan'])
+            self.assertEqual(tools[0]['function']['name'], 'propose_branch_plan')
+            self.assertTrue(all(t['function']['name'] in {'propose_branch_plan', 'inspect_project_file'} for t in tools))
             runtime.task['request_metrics'].append({'id': str(len(self.requests)), 'purpose': purpose})
             return responses.pop(0)
         return SimpleNamespace(request=request)
@@ -152,6 +153,38 @@ class PlannerTests(unittest.TestCase):
         proposed = dict(self.valid, measurement=True)
         with self.assertRaisesRegex(ValueError, 'Only the operator'):
             planner._parse(self.reply(proposed), self.limits)
+
+    def test_context_first_discovery_retains_assumptions_in_signed_plan(self):
+        (self.root / 'package.json').write_text('{"scripts":{"test":"node --test"}}')
+        (self.root / 'controls.js').write_text('function restartServer() {}')
+        (self.root / '.env').write_text('SECRET')
+        (self.root / 'linked').symlink_to(self.root / 'controls.js')
+        inspect = {'tool_calls': [{'id': 'read', 'function': {'name': 'inspect_project_file', 'arguments': '{"path":"controls.js"}'}}]}
+        reply = self.reply()
+        value = json.loads(reply['tool_calls'][0]['function']['arguments'])
+        value['assumptions'] = ['Reuse the existing restartServer control.']
+        reply['tool_calls'][0]['function']['arguments'] = json.dumps(value)
+        result = planner.plan(self.engine([inspect, reply]), self.runtime, planner.capture_inputs(self.root, 'Add a restart button'))
+        context = json.loads(self.requests[0][1]['content'])['project_context']
+        self.assertIn('controls.js', context['files'])
+        self.assertNotIn('.env', context['files'])
+        self.assertNotIn('linked', context['files'])
+        self.assertIn('node --test', context['manifests'][0]['contents'])
+        self.assertIn('restartServer', self.requests[1][-1]['content'])
+        self.assertEqual(self.task['planning_assumptions'], value['assumptions'])
+        self.assertIn(value['assumptions'][0], result['items'][0]['instructions'])
+
+    def test_discovery_is_bounded_and_unsafe_reads_return_only_error(self):
+        (self.root / '.env').write_text('TOP_SECRET')
+        inspect = {'tool_calls': [{'function': {'name': 'inspect_project_file', 'arguments': '{"path":".env"}'}}]}
+        result = planner.plan(self.engine([inspect] * planner.MAX_DISCOVERY_REQUESTS + [self.reply()]), self.runtime,
+                              planner.capture_inputs(self.root, 'Improve existing controls'))
+        self.assertEqual(result, self.valid)
+        self.assertEqual(len(self.requests), planner.MAX_DISCOVERY_REQUESTS + 1)
+        self.assertNotIn('TOP_SECRET', json.dumps(self.requests))
+        self.assertIn('error', self.requests[-1][-1]['content'])
+        with self.assertRaises(ValueError):
+            planner.inspect_project_file(self.root, '../outside')
 
     def test_cancellation_never_creates_or_authorizes_work(self):
         captured = planner.capture_inputs(self.root, 'Work')
