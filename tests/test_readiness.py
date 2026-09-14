@@ -63,3 +63,17 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(engine.gateway.method_calls,[unittest.mock.call.snapshot(),unittest.mock.call.refresh(start=False)]*2)
         engine.startup.start.assert_not_called()
         manager.shutdown()
+
+    def test_explicit_recheck_bypasses_local_metadata_cache_without_inference(self):
+        engine=SimpleNamespace(gateway=Mock(), config={}, preferences=Mock(return_value={'execution':{'mode':'delegate','local_model':'gemma4:31b'}}), startup=Mock())
+        engine.gateway.snapshot.return_value={'status':'ready'}
+        engine.startup.snapshot.return_value={}
+        manager=ReadinessManager(engine)
+        immediate=SimpleNamespace(is_alive=lambda:False, start=manager._refresh, join=lambda timeout:None)
+        with patch('cheapos.readiness.prerequisites',return_value={'node':{'installed':True},'omniroute':{'installed':True}}), patch('cheapos.readiness.local_candidates',side_effect=[[],[{'config':{'model':'gemma4:31b'}}]]) as local, patch('cheapos.readiness.threading.Thread',return_value=immediate):
+            self.assertEqual(manager.snapshot(refresh=True)['paths']['local']['status'],'unavailable')
+            self.assertEqual(manager.snapshot(refresh=True)['paths']['local']['status'],'ready')
+            self.assertEqual(local.call_count,2)
+            self.assertEqual(local.call_args.kwargs['preferred'],('gemma4:31b',None))
+        engine.startup.start.assert_not_called()
+        manager.shutdown()

@@ -77,6 +77,7 @@ def describe(gateway, prerequisites, locals_, execution, startup, direct=False):
             'gateway':{'identified':status == 'ready', 'status':status, 'owned':bool(gateway.get('owned')), 'pid':gateway.get('pid'),
                        'dashboard_url':gateway.get('dashboard_url') if status == 'ready' else None,
                        'client_key_configured':bool(gateway.get('key_configured')), 'diagnostic_code':code,
+                       'key_storage':{key:gateway.get('key_storage', {}).get(key) for key in ('available','backend','saved','source','error')},
                        'model_count':gateway.get('model_count',0), 'eligible_free_count':gateway.get('free_count',0),
                        'service_version':None, 'optional_apis':{'setup':False,'provider_enrollment':False}},
             'paths':{'local':{'status':'ready' if local_ready else 'unavailable','models':names,'selected':selected or None},
@@ -93,6 +94,7 @@ class ReadinessManager:
         self.closed = False
         self.checked_at = 0
         self.local_checked_at = 0
+        self.local_selection = None
         self.locals = []
         self.state = {'schema_version':1,'status':'checking','next_step':'wait'}
 
@@ -103,11 +105,14 @@ class ReadinessManager:
         if not gateway.get('busy'):
             refreshed = engine.gateway.refresh(start=False)
             if gateway['status'] == 'unchecked': gateway = refreshed
-        if time.monotonic()-self.local_checked_at >= 30 or not self.local_checked_at:
-            self.locals = local_candidates(engine.config.get('worker'))
+        execution = engine.preferences()['execution']
+        selection = (execution.get('local_model'), execution.get('local_reviewer'))
+        if time.monotonic()-self.local_checked_at >= 30 or not self.local_checked_at or selection != self.local_selection:
+            self.locals = local_candidates(engine.config.get('worker'), preferred=selection)
             self.local_checked_at = time.monotonic()
+            self.local_selection = selection
         direct = all(engine.config.get(role) and engine.config[role].get('gateway') != 'omniroute' for role in ('worker','reviewer'))
-        return describe(gateway, prerequisites_, self.locals, engine.preferences()['execution'], engine.startup.snapshot(), direct)
+        return describe(gateway, prerequisites_, self.locals, execution, engine.startup.snapshot(), direct)
 
     def _refresh(self):
         try:
@@ -123,6 +128,9 @@ class ReadinessManager:
     def snapshot(self, refresh=False):
         with self.lock:
             busy = bool(self.thread and self.thread.is_alive())
+            if refresh and not busy:
+                self.checked_at = 0
+                self.local_checked_at = 0
             interval = 2 if refresh or self.state['status'] in {'checking','starting'} else 15
             if not self.closed and not busy and (not self.checked_at or time.monotonic()-self.checked_at >= interval):
                 self.thread = threading.Thread(target=self._refresh, daemon=True)

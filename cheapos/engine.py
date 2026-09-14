@@ -400,23 +400,35 @@ class Engine:
         return {"path": source, "name": Path(source).name}
 
     def preferences(self):
+        # Each preference group recovers independently. An old/invalid limit must
+        # not erase the operator's saved local model or execution mode.
+        result = {"limits": limits_from({"dollars": 0}), "execution": dict(DEFAULT_EXECUTION)}
         try:
             saved = json.loads((self.store.root / "preferences.json").read_text())
-            return {"limits": limits_from(saved["limits"]), "execution": execution_from(saved.get("execution", DEFAULT_EXECUTION))}
-        except (OSError, ValueError, KeyError, TypeError):
-            # New chats default to zero spend. Changing a provider cannot silently
-            # turn a free setup into a paid conversation.
-            return {"limits": limits_from({"dollars": 0}), "execution": dict(DEFAULT_EXECUTION)}
+        except (OSError, ValueError):
+            return result
+        if isinstance(saved, dict):
+            for name, validate in (("limits", limits_from), ("execution", execution_from)):
+                try:
+                    value = saved[name]
+                    if not isinstance(value, dict):
+                        continue
+                    result[name] = validate({"dollars":0, **value} if name == 'limits' else value)
+                except (ValueError, KeyError, TypeError):
+                    pass
+        return result
 
     def save_preferences(self, values):
-        current = self.preferences()
         if not values or set(values) - {"limits", "execution"}:
             raise ValueError("Provide limits or execution preferences")
         if "limits" in values and not isinstance(values["limits"], dict):
             raise ValueError("Provide the new chat limits")
-        result = {"limits": limits_from(values.get("limits", current["limits"])),
-                  "execution": execution_from(values.get("execution", current["execution"]))}
+        if "execution" in values and not isinstance(values["execution"], dict):
+            raise ValueError("Provide valid execution preferences")
         with self.lock:
+            current = self.preferences()
+            result = {"limits": limits_from(values.get("limits", current["limits"])),
+                      "execution": execution_from({**current["execution"], **values.get("execution", {})})}
             write_json(self.store.root / "preferences.json", result)
         return result
 

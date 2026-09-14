@@ -35,7 +35,7 @@ def local_json(url, body=None):
         return json.loads(raw)
 
 
-def local_candidates(saved=None):
+def local_candidates(saved=None, preferred=()):
     """Read only installed Ollama metadata; never pull a model or start inference."""
     base = saved["base_url"] if saved and is_local_ollama(saved) else "http://127.0.0.1:11434/v1"
     origin = base.rsplit("/v1", 1)[0]
@@ -46,7 +46,7 @@ def local_candidates(saved=None):
         except (OSError, ValueError, TypeError, AttributeError):
             running = set()
         models = [m for m in models if isinstance(m, dict) and isinstance(m.get("name"), str)]
-        models.sort(key=lambda m:(m["name"] != (saved or {}).get("model"), m["name"] not in running, m.get("size", 0)))
+        models.sort(key=lambda m:(m["name"] not in preferred, m["name"] != (saved or {}).get("model"), m["name"] not in running, m.get("size", 0)))
         candidates = []
         for model in models[:6]:
             name = model["name"]
@@ -166,8 +166,8 @@ class StartupManager:
             yield from (c for c in self._omni() if not c["local"])
             return
         if execution["mode"] in {"delegate", "local"}:
-            installed = local_candidates(saved)
             selected = execution["local_model"]
+            installed = local_candidates(saved, preferred=[selected])
             yield from (c for c in installed if not selected or c["config"]["model"] == selected)
             return
         locals_ = local_candidates(saved)

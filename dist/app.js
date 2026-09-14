@@ -69,7 +69,8 @@ const sidebarPrefs=(()=>{try{return JSON.parse(localStorage.getItem('cheapos-sid
 function saveSidebarPrefs(){try{localStorage.setItem('cheapos-sidebar-groups',JSON.stringify(sidebarPrefs))}catch{}}
 function renderSidebar() {
   $('#task-total').textContent=state.projects.length;
-  $('#connection-indicator').textContent=state.startup.busy?'Connecting…':state.startup.status==='ready'?'Ready':state.config.worker&&state.config.reviewer?'Configured':'Set up';
+  const connection=CheapOSGuide.connectionNotice(state.readiness,state.gateway,state.preferences.execution,state.config);
+  $('#connection-indicator').textContent=connection.tone==='attention'?'Needs attention':connection.tone==='checking'?'Checking…':'Configured';
   const groups=state.projects.map(project=>({project,tasks:state.tasks.filter(t=>!t.demo&&t.source===project.path)}));
   const demos=state.tasks.filter(t=>t.demo);if(demos.length)groups.push({project:{path:'demo',name:'Local demo'},tasks:demos});
   const filter=$('#history-menu');
@@ -201,6 +202,19 @@ function bindStartupActions(root=document) {
     }catch(e){toast(e.message);button.disabled=false}
   });
 }
+function gatewayKeyStatus(gateway={}) {
+  const storage=gateway.key_storage||{};
+  if(storage.error)return storage.error;
+  if(storage.source==='environment')return 'Using CHEAPOS_GATEWAY_API_KEY from the launch environment. It overrides a remembered key on startup.';
+  if(storage.source==='saved')return `Saved in ${storage.backend||'this computer’s credential store'} · restored after restart.`;
+  if(gateway.key_configured||gateway.client_key_configured)return 'Session-only key · will need to be entered again after restart.';
+  return 'No client key configured. Provider credentials and your dashboard password stay in OmniRoute.';
+}
+function gatewayRememberField(gateway={},name,checked) {
+  const storage=gateway.key_storage||{},canRemember=Boolean(storage.available);
+  const remember=checked??(storage.saved||(canRemember&&storage.source!=='environment'&&!gateway.key_configured&&!gateway.client_key_configured));
+  return `<label class="checkbox-field"><input name="${name}" type="checkbox" ${remember?'checked':''} ${canRemember||storage.saved?'':'disabled'}><span>Remember this key on this computer<small>${canRemember?`Uses ${esc(storage.backend)}. Uncheck and save to keep the key for this session only.`:'Secure storage is unavailable. Use a session-only key or a launch environment variable.'}</small></span></label>`;
+}
 function openSetup() {
   const d=dialog(`${modalHeader('GET CONNECTED','Choose a connection')}<p class="modal-description">Connect, open a project, then send your request.</p><div class="button-row"><button class="primary-button" data-setup="omni">OmniRoute · recommended</button><button class="outline-button" data-setup="local">Models on this computer</button></div><section id="setup-status" aria-live="polite"></section><p class="form-error" role="alert"></p><div class="modal-footer"><button class="text-link" data-setup="advanced">Advanced connections</button><button class="subtle-button" data-setup="history">Return to saved work</button></div>`,'project-modal setup-modal');
   let timer=null,busy=false,last='',readiness={},selected='';
@@ -208,12 +222,12 @@ function openSetup() {
   d.addEventListener('close',stop);
   const perform=async operation=>{if(busy)return;busy=true;$('.form-error',d).textContent='';try{await operation()}catch(e){$('.form-error',d).textContent=e.message}finally{busy=false}};
   const render=()=>{
-    const guide=CheapOSGuide.setupGuide(readiness), key=$('[name="setup_key"]',d)?.value||'';
+    const guide=CheapOSGuide.setupGuide(readiness), key=$('[name="setup_key"]',d)?.value||'', remember=$('[name="setup_remember"]',d)?.checked;
     const signature=JSON.stringify([readiness.status,readiness.gateway,readiness.prerequisites]);if(signature===last)return;
     if(document.activeElement?.name==='setup_key')return;last=signature;
     const node=readiness.prerequisites?.node, cli=readiness.prerequisites?.omniroute;
-    $('#setup-status',d).innerHTML=`<h3>${esc(guide.title)}</h3><p>${esc(guide.detail)}</p>${guide.install?`${!node?.installed?'<p><a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer">Install Node.js LTS and npm</a>, then restart cheapoS so it can find them.</p>':''}<p>Run this in your terminal. It installs the version used for the cheapoS integration.</p><code class="approval-command">npm install -g omniroute@3.8.49</code><button class="subtle-button" data-setup="copy">Copy install command</button>`:''}${cli?.installed?`<p class="small muted">Installed OmniRoute: ${esc(cli.version||'version unknown')}${cli.compatibility==='unverified'?' · compatibility unverified':''}</p>`:''}${guide.dashboard?`<p><a href="${esc(readiness.gateway.dashboard_url)}" target="_blank" rel="noopener noreferrer">Open OmniRoute dashboard ↗</a></p><p class="small muted">Sign in there if requested, then use Providers for provider credentials. Dashboard login and provider credentials are separate from a client API key.</p>`:''}${guide.key?'<form id="setup-key-form"><label>Gateway client API key<input name="setup_key" type="password" autocomplete="new-password" required></label><button class="outline-button" type="submit">Save client key and retry</button></form>':''}<div class="button-row">${guide.start?'<button class="primary-button" data-setup="start">Connect / start</button>':''}<button class="outline-button" data-setup="recheck">Re-check / I’m back</button>${guide.ready?'<button class="primary-button" data-setup="continue">Use this connection</button>':''}</div>${guide.ready?'<p class="small muted">Uses current eligible free routes. Automatic coding selects and checks a different reviewer. A saved explicit model pair is preserved. No project work starts until you send a request.</p>':''}`;
-    if($('#setup-key-form',d)){ $('[name="setup_key"]',d).value=key;$('#setup-key-form',d).onsubmit=e=>{e.preventDefault();perform(async()=>{await api('/gateway/config',{api_key:$('[name="setup_key"]',d).value});$('[name="setup_key"]',d).value='';await api('/gateway/refresh',{});last='';await check()})}; }
+    $('#setup-status',d).innerHTML=`<h3>${esc(guide.title)}</h3><p>${esc(guide.detail)}</p>${guide.install?`${!node?.installed?'<p><a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer">Install Node.js LTS and npm</a>, then restart cheapoS so it can find them.</p>':''}<p>Run this in your terminal. It installs the version used for the cheapoS integration.</p><code class="approval-command">npm install -g omniroute@3.8.49</code><button class="subtle-button" data-setup="copy">Copy install command</button>`:''}${cli?.installed?`<p class="small muted">Installed OmniRoute: ${esc(cli.version||'version unknown')}${cli.compatibility==='unverified'?' · compatibility unverified':''}</p>`:''}${guide.dashboard?`<p><a href="${esc(readiness.gateway.dashboard_url)}" target="_blank" rel="noopener noreferrer">Open OmniRoute dashboard ↗</a></p><p class="small muted">Sign in there if requested, then use Providers for provider credentials. Dashboard login and provider credentials are separate from a client API key.</p>`:''}${guide.key?`<form id="setup-key-form"><label>Gateway client API key<input name="setup_key" type="password" autocomplete="new-password" required></label>${gatewayRememberField(readiness.gateway,"setup_remember",remember)}<p class="small muted">${esc(gatewayKeyStatus(readiness.gateway))}</p><button class="outline-button" type="submit">Save client key and retry</button></form>`:''}<div class="button-row">${guide.start?'<button class="primary-button" data-setup="start">Connect / start</button>':''}<button class="outline-button" data-setup="recheck">Re-check / I’m back</button>${guide.ready?'<button class="primary-button" data-setup="continue">Use this connection</button>':''}</div>${guide.ready?'<p class="small muted">Uses current eligible free routes. Automatic coding selects and checks a different reviewer. A saved explicit model pair is preserved. No project work starts until you send a request.</p>':''}`;
+    if($('#setup-key-form',d)){ $('[name="setup_key"]',d).value=key;$('#setup-key-form',d).onsubmit=e=>{e.preventDefault();perform(async()=>{await api('/gateway/config',{api_key:$('[name="setup_key"]',d).value,remember_key:$('[name="setup_remember"]',d).checked});$('[name="setup_key"]',d).value='';await api('/gateway/refresh',{});last='';await check()})}; }
   };
   const check=async()=>{stop();if(!d.open||selected!=='omni')return;try{readiness=await api('/readiness?refresh=1');if(d.open)render()}catch(e){if(d.open)$('.form-error',d).textContent=e.message}finally{if(d.open&&selected==='omni')timer=setTimeout(check,4000)}};
   d.addEventListener('click',e=>{const action=e.target.closest('[data-setup]')?.dataset.setup;if(!action)return;
@@ -275,6 +289,7 @@ async function loadStartup() {
 function renderComposer() {
   branchUI?.sync();
   const task=state.task, busy=task&&taskBusy(task);
+  renderConnectionNotice();
   $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&(state.taskPermissions.commands.length||state.taskPermissions.project_grants?.length));
   $('#composer-permissions').textContent=state.taskPermissions?.project_grants?.length?'Tests allowed this session':'Commands allowed this session';
   $('#composer-permissions').title=state.taskPermissions?.project_grants?.length?'This project · until cheapoS restarts':'This chat · until cheapoS restarts';
@@ -908,7 +923,9 @@ function openConnections(afterSave, taskContext=null) {
       <div class="included-access"><label class="full-field">Models included in my account<textarea id="included-model-ids" rows="4" spellcheck="false" placeholder="One exact gateway model ID per line">${esc((settings.included_models||[]).join('\n'))}</textarea></label><p class="small muted">Authorize only models covered by your existing account. This applies to this gateway connection. New models and changed connections need new authorization. Included access uses a $0 marginal estimate; it is not public-free pricing or a billing receipt.</p><button type="button" class="outline-button" id="save-included-models">Save included access</button><p id="included-access-status" class="small" role="status"></p></div><div class="gateway-actions"><button type="button" class="outline-button" data-gateway-action="start">Connect / start</button><button type="button" class="subtle-button" data-gateway-action="refresh">Refresh models</button><button type="button" class="subtle-button" data-gateway-action="stop" hidden>Stop instance</button></div>
       <details class="advanced"><summary>Startup & connection settings</summary><label class="full-field">Local API URL<input name="gateway_url" type="url" value="${esc(settings.base_url)}" required></label>
         <label class="full-field">Gateway client API key · optional<input name="gateway_key" type="password" placeholder="${gateway.key_configured?'Configured · leave blank to keep':'Only if OmniRoute requires a client key'}" autocomplete="new-password"></label>
-        <p class="small muted">Manage provider credentials in OmniRoute. This client key is separate from your dashboard password and stays in cheapoS memory.</p>
+        ${gatewayRememberField(gateway,'gateway_remember')}
+        <p id="gateway-key-status" class="small muted" role="status">${esc(gatewayKeyStatus(gateway))}</p>
+        <button type="button" class="text-link" id="gateway-forget-key" ${gateway.key_configured||gateway.key_storage?.saved?'':'hidden'}>Forget client key</button>
         <label class="checkbox-field"><input name="auto_start" type="checkbox" ${settings.auto_start?'checked':''}><span>Start installed OmniRoute when cheapoS launches<small>Reuses an existing instance. Does not install or update software.</small></span></label>
         <label class="checkbox-field"><input name="keep_running" type="checkbox" ${settings.keep_running?'checked':''}><span>Keep OmniRoute running when cheapoS closes<small>cheapoS only stops an instance it started in this session.</small></span></label>
         <button class="outline-button gateway-save" type="submit">Save gateway settings</button></details><p class="form-error" role="alert"></p></form>
@@ -952,6 +969,9 @@ function openConnections(afterSave, taskContext=null) {
     if(includedRevision!==g.settings?.connection_revision){includedRevision=g.settings?.connection_revision;$('#included-model-ids',d).value=(g.settings?.included_models||[]).join('\n');for(const role of ['worker','reviewer'])$(`[data-included="${role}"]`,d).checked=false;}
     const badge=$('#gateway-status',d);badge.textContent=({ready:'Catalog connected',checking:'Connecting…',starting:'Starting…',offline:'Offline',auth_required:'Client key needed',not_installed:'Not installed',unavailable:'Unavailable',error:'Startup failed'})[g.status]||'Not checked';badge.dataset.status=g.status||'unchecked';
     $('#gateway-message',d).textContent=g.message||'Connect your local gateway to load its model catalog.';
+    $('#gateway-key-status',d).textContent=gatewayKeyStatus(g);
+    const forget=$('#gateway-forget-key',d);forget.hidden=!g.key_configured&&!g.key_storage?.saved;forget.disabled=Boolean(g.busy);
+    $('[name="gateway_key"]',d).placeholder=g.key_configured?'Configured · leave blank to keep':'Only if OmniRoute requires a client key';
     $('#gateway-instance',d).textContent=g.status==='ready'?`${g.model_count} models · ${g.owned?'Started by cheapoS':'Reusing an existing instance'}`:'';
     const freeModels=state.gatewayModels.filter(m=>(m.free||m.access_class==='included')&&m.tool_calling===true&&!m.local&&!m.id.startsWith('auto/'));
     const cooling=freeModels.filter(m=>(m.health?.retry_at||0)*1000>Date.now()).length;
@@ -971,9 +991,15 @@ function openConnections(afterSave, taskContext=null) {
     $('#included-access-status',d).textContent='Included access saved for these exact IDs. No model request was made.';
     updateGateway();await loadGateway();
   });
+  $('#gateway-forget-key',d).onclick=()=>formAction(gatewayForm,async()=>{
+    state.gateway=await api('/gateway/config',{api_key:'',remember_key:false});
+    $('[name="gateway_key"]',d).value='';$('[name="gateway_remember"]',d).checked=false;
+    updateGateway();toast('Client key removed from cheapoS and its credential store. Launch environment variables are unchanged.');
+    state.gateway=await api('/gateway/refresh',{});updateGateway();
+  });
   gatewayForm.onsubmit=e=>{e.preventDefault();formAction(gatewayForm,async()=>{
-    const f=new FormData(gatewayForm), values={base_url:String(f.get('gateway_url')).trim(),auto_start:f.has('auto_start'),keep_running:f.has('keep_running')},key=String(f.get('gateway_key')).trim();if(key)values.api_key=key;
-    state.gateway=await api('/gateway/config',values);$('[name="gateway_key"]',d).value='';
+    const f=new FormData(gatewayForm), values={base_url:String(f.get('gateway_url')).trim(),auto_start:f.has('auto_start'),keep_running:f.has('keep_running'),remember_key:f.has('gateway_remember')},key=String(f.get('gateway_key')).trim();if(key)values.api_key=key;
+    state.gateway=await api('/gateway/config',values);$('[name="gateway_key"]',d).value='';$('[name="gateway_remember"]',d).checked=Boolean(state.gateway.key_storage?.saved);
     state.gateway=await api('/gateway/refresh',{});updateGateway();toast('Gateway settings saved. Use Connect / start if it is offline.');
   })};
   for(const role of ['worker','reviewer']) {
@@ -1019,6 +1045,24 @@ function openConnections(afterSave, taskContext=null) {
   updateGateway();
   api('/gateway/refresh',{}).then(g=>{state.gateway=g;updateGateway();return loadGateway()}).catch(e=>toast(e.message));
 }
+function renderConnectionNotice() {
+  const element=$('#connection-notice');if(!element)return;
+  element.hidden=Boolean(state.task); // This check describes defaults for new chats, not a pinned task's models.
+  const notice=CheapOSGuide.connectionNotice(state.readiness,state.gateway,state.preferences.execution,state.config);
+  const html=`<div><strong>${esc(notice.title)}</strong><p>${esc(notice.detail)}</p></div>${notice.tone==='attention'?'<div class="button-row"><button class="text-link" data-connection-setup>Fix setup</button><button class="text-link" data-connection-recheck>Re-check</button></div>':''}`;
+  element.dataset.tone=notice.tone;
+  if(element.dataset.rendered!==html){element.innerHTML=html;element.dataset.rendered=html;}
+  const setup=$('[data-connection-setup]',element);if(setup)setup.onclick=openSetup;
+  const recheck=$('[data-connection-recheck]',element);if(recheck)recheck.onclick=()=>loadReadiness(true).catch(e=>toast(e.message));
+}
+async function loadReadiness(force=false) {
+  const selection=JSON.stringify([state.preferences.execution,state.config]);
+  if(!force&&state.readinessSelection===selection&&Date.now()-(state.readinessAt||0)<(state.readiness?.checking?1500:15000))return;
+  state.readinessSelection=selection;
+  try{state.readiness=await api('/readiness'+(force?'?refresh=1':''));state.readinessAt=Date.now();}
+  catch{state.readiness={diagnostic_code:'readiness_request_failed'};state.readinessAt=Date.now();}
+  renderConnectionNotice();renderSidebar();
+}
 async function loadGateway() {
   const previous=state.gateway, g=await api('/gateway');state.gateway=g;
   if(state.catalogRevision!==g.revision){const catalog=await api('/gateway/models');state.gatewayModels=catalog.models;state.catalogRevision=catalog.revision}
@@ -1032,7 +1076,7 @@ async function openSearch() {
 async function loadTasks() {const [tasks,projects,hidden]=await Promise.all([api('/tasks?view='+(state.historyView||'active')),api('/projects'),api('/projects/hidden')]);const changed=JSON.stringify([tasks,projects,hidden])!==JSON.stringify([state.tasks,state.projects,state.hiddenProjects]);state.tasks=tasks;state.projects=projects;state.hiddenProjects=hidden;if(changed){renderSidebar();renderComposer();if(!state.task)renderHome()}}
 async function refresh() {
   if(state.loading)return;
-  await loadStartup();await loadGateway();await loadTasks();const selected=state.task?.id;if(!selected)return;
+  await loadStartup();await loadGateway();await loadReadiness();await loadTasks();const selected=state.task?.id;if(!selected)return;
   const task=await api('/tasks/'+selected);if(state.task?.id!==selected)return;
   if(state.renderFailed||['updated_at','status','title','custom_title','pinned','archived_at','trashed_at'].some(key=>task[key]!==state.task[key])){state.task=task;renderTask();state.renderFailed=false}
 }
@@ -1049,7 +1093,7 @@ async function resumeBranchRun(task,savedResult) {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{await api('/tasks/'+task.id+'/branch-resume',{proposal_id:result.proposal_id,approved:true});d.close();await refresh();});};
 }
 async function bootstrap() {
-  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();}
+  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);}
   catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start cheapoS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh()}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}

@@ -401,3 +401,7 @@ svg, svg * {
 .sidebar-menu button:focus-visible{outline:1px solid var(--mint);outline-offset:-1px}
 .toast:not(.visible){visibility:hidden}
 .toast.visible{pointer-events:auto;visibility:visible}
+
+/* Metadata readiness stays beside a new-chat composer, independent of greetings. */
+.connection-notice{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;margin-bottom:10px;padding:10px 14px;border:1px solid var(--border);border-radius:9px;font-size:.8125rem;color:var(--secondary)}
+.connection-notice strong{font-weight:550}.connection-notice p{margin:4px 0 0;line-height:1.5;max-width:75ch}.connection-notice[data-tone="attention"]{border-color:var(--amber);background:#28251f}.connection-notice[data-tone="attention"] strong{color:var(--amber)}.connection-notice[data-tone="available"]{border-color:transparent;padding:4px 0;color:var(--muted)}

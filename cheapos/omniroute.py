@@ -17,10 +17,11 @@ from .gateways import OmniRouteGateway
 from .model_pool import FreeModelPool
 from .providers import ProviderError
 from .storage import write_json
+from .credentials import CredentialStore, CredentialError
 from . import access_policy, route_health
 
 
-DEFAULT_SETTINGS = {"base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True}
+DEFAULT_SETTINGS = {"base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True, "remember_key": False}
 
 
 def validate_settings(values):
@@ -38,11 +39,11 @@ def validate_settings(values):
     if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
             or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path != "/v1" or not 1 <= port <= 65535):
         raise ValueError("Use a loopback OmniRoute URL such as http://127.0.0.1:20128/v1")
-    for key in ("auto_start", "keep_running"):
+    for key in ("auto_start", "keep_running", "remember_key"):
         if not isinstance(settings[key], bool):
             raise ValueError("Gateway startup preferences must be true or false")
     key = values.get("api_key")
-    if key is not None and (not isinstance(key, str) or len(key) > 4096 or "\n" in key or "\r" in key):
+    if 'api_key' in values and (not isinstance(key, str) or len(key) > 4096 or any(ord(c) < 32 or ord(c) == 127 for c in key)):
         raise ValueError("Invalid gateway client API key")
     settings["base_url"] = url.rstrip("/")
     if 'connection_revision' in values:
@@ -67,8 +68,9 @@ def find_executable():
 
 
 class OmniRouteManager:
-    def __init__(self, directory):
+    def __init__(self, directory, credential_store=None):
         self.path = Path(directory) / "gateway.json"
+        self.credentials = credential_store if credential_store is not None else CredentialStore(directory)
         self.pool = FreeModelPool(directory)
         try:
             self.settings = validate_settings(json.loads(self.path.read_text()))
@@ -78,6 +80,9 @@ class OmniRouteManager:
             self.settings.update(connection_revision=uuid.uuid4().hex, included_models=[])
             write_json(self.path, self.settings)
         self.api_key = os.environ.get("CHEAPOS_GATEWAY_API_KEY", "")
+        self.key_source = 'environment' if self.api_key else 'none'
+        self.key_error = None
+        self._restore_key()
         self.lock = threading.RLock()
         self.closed = threading.Event()
         self.process = None
@@ -88,6 +93,22 @@ class OmniRouteManager:
         self.state = "unchecked"
         self.message = "Checking your local model gateway"
         self.diagnostic_code = None
+
+    def _restore_key(self):
+        if self.api_key or not self.settings['remember_key']:
+            return
+        try:
+            key = self.credentials.get(self.settings['base_url'])
+            validate_settings({'api_key':key or ''})
+            self.api_key = key or ''
+            self.key_source = 'saved' if key else 'none'
+            self.key_error = None if key else 'The saved gateway key was not found. Enter it again and save it on this computer.'
+        except ValueError:
+            self.key_error = 'The saved gateway key could not be loaded. Unlock your credential store, then refresh the connection. CHEAPOS_GATEWAY_API_KEY can also supply a key at launch.'
+
+    def key_storage(self):
+        return {'available':bool(self.credentials.backend), 'backend':self.credentials.backend,
+                'saved':self.settings['remember_key'], 'source':self.key_source, 'error':self.key_error}
 
     def matches(self, url):
         def identity(value):
@@ -105,6 +126,7 @@ class OmniRouteManager:
                     "busy": self.thread is not None and self.thread.is_alive(), "owned": owned,
                     "pid": self.process.pid if owned else None, "model_count": len(self.models),
                     "revision": self.revision + self.pool.revision, "key_configured": bool(self.api_key),
+                    "key_storage": self.key_storage(),
                     "free_count": sum(m.get("free") and m.get("tool_calling") is True and not m.get("local") for m in self.models),
                     "dashboard_url": self.settings["base_url"][:-3], "diagnostic_code": self.diagnostic_code}
 
@@ -115,7 +137,13 @@ class OmniRouteManager:
             if 'connection_revision' in values:
                 raise ValueError('Connection revision is read-only')
             settings = validate_settings({**self.settings, **values})
-            connection_changed = (settings['base_url'] != self.settings['base_url']
+            endpoint_changed = settings['base_url'] != self.settings['base_url']
+            if endpoint_changed and 'remember_key' not in values:
+                settings['remember_key'] = False
+            key = values.get('api_key', '' if endpoint_changed else self.api_key)
+            if not key and not (self.settings['remember_key'] and not endpoint_changed and 'api_key' not in values):
+                settings['remember_key'] = False
+            connection_changed = (endpoint_changed
                                   or ('api_key' in values and values['api_key'] != self.api_key))
             if 'included_models' in values:
                 if connection_changed or values.get('expected_connection_revision') != self.settings['connection_revision']:
@@ -127,17 +155,44 @@ class OmniRouteManager:
                 settings.update(connection_revision=uuid.uuid4().hex, included_models=[])
             if self.thread and self.thread.is_alive():
                 raise ValueError("Wait for the current gateway connection attempt to finish")
-            if settings["base_url"] != self.settings["base_url"]:
+            if endpoint_changed:
                 if self.process is not None and self.process.poll() is None:
                     raise ValueError("Stop the OmniRoute instance started by cheapoS before changing its endpoint")
+
+            # Validate first, then update the OS store and settings together. Capture only
+            # the affected slots so a disk failure can restore their previous values.
+            updates = {}
+            if self.settings['remember_key'] and (endpoint_changed or not settings['remember_key']):
+                updates[self.settings['base_url']] = None
+            if settings['remember_key'] and key and ('api_key' in values or not self.settings['remember_key'] or endpoint_changed):
+                if self.key_source == 'environment' and 'api_key' not in values:
+                    raise ValueError('Environment keys are not saved automatically. Enter a client key to remember it on this computer.')
+                updates[settings['base_url']] = key
+            previous = {url:self.credentials.get(url) for url in updates}
+            changed = []
+            try:
+                for url, value in updates.items():
+                    changed.append(url)  # Also recover an uncertain store operation (e.g. timeout).
+                    if value is None: self.credentials.delete(url)
+                    else: self.credentials.set(url, value)
+                write_json(self.path, settings)
+            except (OSError, ValueError):
+                for url in reversed(changed):
+                    try:
+                        if previous[url] is None: self.credentials.delete(url)
+                        else: self.credentials.set(url, previous[url])
+                    except CredentialError:
+                        self.key_error = 'Saving failed and credential recovery needs attention. Re-enter and save the gateway key before restarting.'
+                raise
+            if endpoint_changed:
                 self.models = []
                 self.state = "unchecked"
                 self.revision += 1
-                # A credential for the previous origin must not follow an endpoint change.
-                self.api_key = ""
-            if "api_key" in values:
-                self.api_key = values["api_key"]
-            write_json(self.path, settings)
+            self.api_key = key
+            if 'api_key' in values or endpoint_changed or self.key_source != 'environment':
+                self.key_source = ('saved' if settings['remember_key'] else 'session') if key else 'none'
+            if updates or 'api_key' in values or endpoint_changed:
+                self.key_error = None
             self.settings = settings
             self.revision += 1
             return self.snapshot()
@@ -155,6 +210,7 @@ class OmniRouteManager:
         return self.refresh(start=self.settings["auto_start"])
 
     def _probe(self):
+        self._restore_key()
         config = {"base_url": self.settings["base_url"], "key_env": "CHEAPOS_GATEWAY_API_KEY"}
         return OmniRouteGateway(config, self.api_key).list_models()
 

@@ -1,6 +1,29 @@
 /* Translate saved execution evidence into a clear next step. No model calls. */
 const CheapOSGuide = (() => {
   const active = new Set(['running', 'reviewing', 'waiting_approval', 'waiting_retry', 'stopping']);
+  function connectionNotice(readiness, gateway={}, execution={}, config={}) {
+    if(readiness?.diagnostic_code==='readiness_request_failed'||readiness?.diagnostic_code==='readiness_probe_failed')return {tone:'attention',title:'Connection check could not finish',detail:'Re-check your connections or open setup. Availability has not been verified.'};
+    const mode=execution.mode||'manual', roles=[config.worker,config.reviewer].filter(Boolean);
+    const needsGateway=['remote','delegate'].includes(mode)||(mode==='manual'&&roles.some(p=>p.gateway==='omniroute'));
+    const needsLocal=['local','delegate'].includes(mode);
+    const problems=[];
+    if(needsGateway){
+      if(gateway.key_storage?.error)problems.push(gateway.key_storage.error);
+      else if(gateway.status==='auth_required')problems.push('OmniRoute needs its client API key. Enter it in Models and choose Remember to keep it after restart.');
+      else if(['offline','not_installed','unavailable','error'].includes(gateway.status))problems.push('OmniRoute is unavailable. Open connection setup to reconnect.');
+    }
+    if(needsLocal&&readiness?.paths?.local){
+      const selected=execution.local_model, installed=readiness.paths.local.models||[];
+      if(!selected)problems.push('Choose an installed Ollama model for local chat.');
+      else if(!installed.includes(selected))problems.push(`Ollama is unavailable or ${selected} is not available with tool support. Your saved choice is kept; start Ollama or check Models.`);
+      if(mode==='local'&&execution.local_reviewer&&!installed.includes(execution.local_reviewer))problems.push(`Local reviewer ${execution.local_reviewer} is unavailable.`);
+    }
+    if(problems.length)return {tone:'attention',title:'Your connections need attention',detail:problems.join(' ')};
+    if(!readiness?.paths||(needsGateway&&['unchecked','checking','starting',undefined].includes(gateway.status)))return {tone:'checking',title:'Checking your saved connections…',detail:'Reading gateway and local-model metadata. No inference or model loading.'};
+    if(mode==='manual'&&roles.length<2)return {tone:'attention',title:'Choose your model connections',detail:'Open setup to connect OmniRoute or choose a local model.'};
+    const direct=mode==='manual'&&roles.some(p=>p.gateway!=='omniroute');
+    return {tone:'available',title:direct?'Model settings saved':'Connections available',detail:direct?'Direct-provider access has not been tested.':'Metadata checked · model responses and coding tools are verified when work runs.'};
+  }
   const workPresets={interactive:{run_minutes:15,worker_turns:40,iterations:5},extended:{run_minutes:45,worker_turns:120,iterations:10}};
   function workPreset(limits){const standard={reviewer_tokens:200000,output_tokens:2048,checkpoint_turns:12,check_seconds:360};return Object.keys(workPresets).find(name=>Object.entries({...standard,...workPresets[name]}).every(([key,value])=>limits[key]===value))||'custom'}
   function presetLimits(limits,name){return {...limits,...(workPresets[name]||{})}}
@@ -517,7 +540,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {connectionNotice,metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 

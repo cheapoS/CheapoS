@@ -1,5 +1,6 @@
 import copy
 import json
+import unittest
 import threading
 from unittest.mock import patch
 
@@ -201,3 +202,16 @@ class LocalDiscoveryTests(LocalCase):
             models=local_candidates()
         self.assertEqual([m['config']['model'] for m in models],['loaded','small'])
         self.assertTrue(all('/api/' in url and not url.endswith('/pull') for url,body in seen))
+
+
+class PreferredLocalDiscoveryTests(unittest.TestCase):
+    def test_saved_local_choice_is_inspected_even_with_six_smaller_models(self):
+        def respond(url, body=None):
+            if url.endswith('/tags'):
+                return {'models':[{'name':'small-'+str(i),'size':1} for i in range(7)]+[{'name':'gemma4:31b','size':100}]}
+            if url.endswith('/ps'): return {'models':[]}
+            return {'capabilities':['completion','tools']}
+        with patch('cheapos.startup.local_json',side_effect=respond):
+            candidates=local_candidates(preferred=['gemma4:31b'])
+        self.assertEqual(candidates[0]['config']['model'],'gemma4:31b')
+        self.assertEqual(len(candidates),6)
