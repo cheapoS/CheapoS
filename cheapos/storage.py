@@ -84,7 +84,7 @@ class Store:
             tasks = sorted(self.tasks.values(), key=lambda t: t["created_at"], reverse=True)
             if summary:
                 keys = ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage")
-                return [{**{key: copy.deepcopy(t[key]) for key in keys},
+                return [{**{key: copy.deepcopy(t.get(key)) for key in keys if key in t},
                          **({"branch_run": branch_runs.summary(t["branch_run"])} if "branch_run" in t else {})} for t in tasks]
             return [copy.deepcopy(t) for t in tasks]
 
@@ -157,3 +157,19 @@ class Store:
                 metadata["trash_archived_at"] = None
             write_json(self.root / "tasks" / task_id / "metadata.json", metadata)
             return metadata
+
+    def delete_task(self, task_id):
+        with self.lock:
+            if task_id in self.tasks:
+                del self.tasks[task_id]
+            import shutil
+            task_path = self.root / "tasks" / task_id
+            if task_path.exists():
+                shutil.rmtree(task_path)
+
+    def empty_trash(self):
+        with self.lock:
+            trashed_tasks = self.visible(view="trash")
+            for task in trashed_tasks:
+                self.delete_task(task["id"])
+

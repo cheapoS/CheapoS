@@ -161,7 +161,9 @@ function compactMenu(anchor,label,actions) {
   sidebarMenu={key,menu,close};$('button',menu)?.focus();
 }
 function historyMenu(anchor) {
-  compactMenu(anchor,'Show chats',[['active','Active chats'],['archived','Archived chats'],['trash','Trash']].map(([view,label])=>({label,checked:(state.historyView||'active')===view,run:async()=>{const previous=state.historyView;state.historyView=view;try{await loadTasks();renderSidebar()}catch(error){state.historyView=previous;renderSidebar();throw error}}})));
+  const actions=[['active','Active chats'],['archived','Archived chats'],['trash','Trash']].map(([view,label])=>({label,checked:(state.historyView||'active')===view,run:async()=>{const previous=state.historyView;state.historyView=view;try{await loadTasks();renderSidebar()}catch(error){state.historyView=previous;renderSidebar();throw error}}}));
+  if(state.historyView==='trash') actions.push({label:'Empty Trash',danger:true,run:async()=>{await api('/api/trash/empty',{});state.historyView='active';await loadTasks();renderSidebar();toast('Trash emptied.');}});
+  compactMenu(anchor,'Show chats',actions);
 }
 function taskMenu(task,anchor) {
   if(!task)return;

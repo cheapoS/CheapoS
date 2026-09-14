@@ -620,6 +620,9 @@ class Engine:
             task = self.store.get(task_id)
             self.store.set_trashed(task_id, False)
             return self.store.present(task)
+    def empty_trash(self):
+        with self.lock:
+            return self.store.empty_trash()
 
     def update_branch_run(self, task_id, operation):
         """Controller-only state mutation; never take a replacement record from HTTP."""

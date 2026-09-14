@@ -215,6 +215,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.branch.prepare(values)
             elif path == "/api/tasks":
                 result = public_task(engine.create(values))
+            elif path == "/api/trash/empty":
+                if values:
+                    raise ValueError("This action does not accept fields")
+                engine.empty_trash()
+                result = {"status": "ok"}
             elif path == "/api/demo":
                 result = public_task(engine.create_demo())
             elif path == "/api/sample":
