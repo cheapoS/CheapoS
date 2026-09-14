@@ -22,3 +22,5 @@
 .branch-operation-actions .branch-actions:empty{display:none}
 .branch-operation-actions .branch-pause{margin:12px 0}
 @media(max-width:640px){.operation-item-title{font-size:13px}.branch-operation-actions .branch-actions{flex-wrap:wrap}}
+
+.planning-overrides{font-size:14px;line-height:1.6;margin:8px 0}.planning-overrides summary{cursor:pointer}.planning-overrides label{margin:8px 0}.planning-measurement{display:flex!important;gap:8px!important;align-items:center}.planning-measurement input{width:auto!important}.branch-input-error{color:var(--amber,#e4c99c);font-size:14px}.branch-input-error:empty{display:none}.review-limit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.branch-review-body{min-width:0}.branch-review-body h3{margin:14px 0 4px}.branch-review-body [aria-invalid=true]{border-color:#efab9f}.branch-actions [hidden]{display:none}@media(max-width:600px){.review-limit-grid{grid-template-columns:1fr}}

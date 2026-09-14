@@ -10,13 +10,13 @@ Changing the selector alone does not request a model, create a branch, or author
 ## Start with a prompt
 
 1. Open a local Git project and choose **Work mode → Unattended**.
-2. Enter: “Implement a CSV reader, Markdown output, and a CLI on a feature branch. Add deterministic tests for each part.” Send it, then choose **Start** in the form. The form closes immediately and opens the chat while cheapoS prepares the proposal. No document is required.
-3. Follow progress in chat and reply to any questions or errors there. When ready, choose **Inspect proposal** to review the complete item list, criteria, checks, committed base, feature branch, target, model placement, and cumulative limits. Edit the proposal if needed; edited proposals must be prepared again before starting.
+2. Enter: “Implement a CSV reader, Markdown output, and a CLI on a feature branch. Add deterministic tests for each part.” Send it to prepare the proposal directly in Chat. No setup popup or document is required. Optional **Planning settings** beside the composer expose committed-base, target, feature-branch, and measurement overrides before Send.
+3. Follow progress in chat and reply to any questions or errors there. When ready, choose **Review & start** to review the complete item list, criteria, checks, committed base, feature branch, target, model placement, and cumulative limits. Edit the plan, checks, branches, or execution allowances in that screen. **Validate changes** checks the edited contract and keeps Start disabled until it is current.
 4. Click **Start run** to authorize exactly that proposal and its displayed test scope.
 
 You can add details while planning or reply after a question, error, or pause. Replies revise the proposal in the same chat using the original captured document and remaining planning allowance. A reply received during a model request is included before a proposal can be started. Changing a ready proposal through chat invalidates its previous Start approval token.
 
-Editing an unstarted proposal preserves its conversation and planning usage. Replacing the project, committed base, captured prompt/document, or model placement requires a fresh planning request. The selected document is not silently reread when you reply. The form’s **Start** begins planning; **Start run** still authorizes the inspected proposal.
+Editing an unstarted proposal preserves its conversation and planning usage. Replacing the project, committed base, captured prompt/document, or model placement requires a fresh planning request. The selected document is not silently reread when you reply. **Send** begins planning with the configured planner and existing allowance; **Start run** authorizes the inspected execution proposal. Later execution-budget or measurement edits cannot enlarge the original planning allowance.
 
 A distinct, named reviewer is required. A second request to the same model does not count as independent review.
 
@@ -67,7 +67,7 @@ Unattended does not schedule wakeups or keep executing after the server stops. D
 ## Measurement runs for live trials
 
 When gathering baseline evidence, select **Measurement run · track usage without
-work limits** in the planning dialog. This applies during planning and execution
+work limits** under the composer’s optional **Planning settings**, before Send. This applies during planning and execution
 and is displayed again before Start. The run summary identifies measurement runs.
 For operator-driven trials through the API, pass `measurement: true` to
 `POST /api/branch-runs/plan-start` (returns `task_id` before inference completes),

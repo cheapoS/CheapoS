@@ -1,6 +1,6 @@
 # T75 — Submit directly and approve Unattended work in one screen
 
-Status: Ready
+Status: Complete
 Priority: High — remove duplicate setup and approval friction
 Depends on: T65, T69, T70, T74 (completed foundations)
 Size: M
@@ -140,6 +140,35 @@ before proposing anything heavy. Record any unverified browser scenarios.
 
 ## Completion record
 
-Pending. Record implementation commit, which first-dialog fields moved where,
-proposal revalidation behavior, focused checks and new-test timings, browser
-evidence, and limitations. Update TASKS.md and commit only the scoped changes.
+Implemented on `work/single-review-start`; included in the implementation commit that closes this card.
+
+- Send prepares directly in Chat. Project document stays beside the composer;
+  base/target/feature overrides and explicit measurement moved into optional
+  Planning settings. Saved configured models and limits remain the defaults.
+- Review & start combines captured source, plan, checks, model identity, spent
+  planning usage, branches and execution allowances. Edits disable Start;
+  validation replaces the proposal identity in the same screen. Late responses
+  cannot authorize edits made while validation was pending.
+- Scope discussion reuses the same chat and captured document/private snapshot.
+  Restoring the original planning allowance prevents execution edits from
+  funding more planning. Usage and reservations remain cumulative.
+- Focused validation: 133 frontend cases passed in 95.737 ms; existing proposal
+  reprepare cases passed in 10.245 s; two existing asynchronous planning HTTP
+  cases passed in 3.383 s. Three new pure planning-allowance cases passed in
+  0.001 s. No live inference or new heavyweight fixture was used.
+
+Browser verification used the existing disposable app fixture with synthetic
+responses, without provider requests or personal tasks. Combined prompt/document
+Send reached planning directly with discovered defaults and one request ID.
+Review & start remained one dialog through an invalid-target error and corrected
+validation. The invalid value was retained and Start stayed disabled; corrected
+validation produced a new token. Start dismissed immediately to Chat and a
+synthetic rejected response remained visible with recovery guidance. The saved
+Draft Plan retained its prompt, tasks and checks after reload. The desktop
+six-item review remained readable with its sticky Start action. Successful Start
+followed by an approved Plan reload was not repeated in this browser fixture;
+existing T69/T70 saved-plan/start coverage remains in place.
+
+The three new JS payload/validation cases use pure data and controlled promises;
+the selected frontend suite completes in under 0.1 seconds. No new browser suite,
+real sleeps, or full agent-run fixture was added.

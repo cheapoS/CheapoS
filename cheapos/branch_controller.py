@@ -27,6 +27,27 @@ def policy_for_saved(current, saved):
     return result
 
 
+def restore_planning_allowance(task):
+    """Execution edits cannot retroactively authorize more planning work."""
+    from .engine import limits_from
+    limits=copy.deepcopy(task['planning_limits'])
+    if run_limits(limits,3)!=limits:
+        raise ValueError('Saved planning allowance is incomplete')
+    measurement=task.get('planning_request',{}).get('measurement',False)
+    if type(measurement) is not bool:raise ValueError('Saved planning measurement choice is invalid')
+    original=task.get('planning_task_limits')
+    if original is None:
+        original=limits_from({'dollars':limits['dollars'],
+            'run_minutes':max(1,(limits['working_seconds']+59)//60),
+            'reviewer_tokens':limits['reviewer_tokens'],'output_tokens':limits['output_tokens']})
+    if not isinstance(original,dict) or limits_from(original)!=original or any(original[key]!=limits[key] for key in ('dollars','reviewer_tokens','output_tokens')):
+        raise ValueError('Saved planning provider allowance is invalid')
+    task['limits']=copy.deepcopy(original)
+    run=task['branch_run'];run['limits']=limits;run['plan']['limits']=copy.deepcopy(limits)
+    if task.get('planning_request',{}).get('measurement') is True:run['plan']['measurement']=True
+    else:run['plan'].pop('measurement',None)
+
+
 def run_limits(values, count):
     defaults = {'dollars':0, 'working_seconds':max(900,count*300), 'worker_turns':count*40,
                 'requests':count*60+16, 'tool_actions':count*200, 'reviewer_tokens':max(20000,count*10000),
@@ -81,8 +102,23 @@ class BranchController:
                     raise ValueError('Unattended work requires two distinct named models')
             task_id=planning_task['id'] if planning_task else uuid.uuid4().hex
             if planning_task and planning_task['planning_policy']!=policy_for_saved(policy, planning_task['planning_policy']): raise ValueError('Model policy changed during planning; inspect a fresh proposal')
-            mapping=work.prepare(values.get('repository',''), self.engine.store.root/'tasks'/task_id/'workspace',
-                                 values.get('base_ref'),values.get('feature_ref'),values.get('target_ref'),task_id)
+            previous=(planning_task or {}).get('branch_run',{}).get('workspace_mapping')
+            if previous:
+                # A scope follow-up reuses the inspected, unstarted snapshot.
+                # Never overwrite a private copy or adopt a changed source/base.
+                mapping=copy.deepcopy(previous)
+                if mapping.get('stage')!='prepared' or (planning_task or {}).get('branch_run',{}).get('authorization'):
+                    raise ValueError('Only an unstarted snapshot can be replanned')
+                if work.inspect_source(values.get('repository'))!={k:mapping[k] for k in ('source','source_identity','common_identity')} or values.get('base_ref')!=mapping['base_ref']:
+                    raise ValueError('Captured source or base changed; submit a new planning request')
+                if not work._tip(mapping['source'],mapping['target_ref']):
+                    raise ValueError('Integration target must be an existing local branch')
+                if work._tip(mapping['source'],mapping['feature_ref']):
+                    raise ValueError('Feature branch already exists')
+                # Preserve execution branch edits while revising the captured scope.
+            else:
+                mapping=work.prepare(values.get('repository',''), self.engine.store.root/'tasks'/task_id/'workspace',
+                                     values.get('base_ref'),values.get('feature_ref'),values.get('target_ref'),task_id)
             # This private preparation performs no source mutation or execution.
             preparation=self.engine.store.root/'tasks'/task_id/'preparation.json'
             mapping=work.materialize(mapping,lambda m:write_json(preparation,m))
@@ -102,7 +138,7 @@ class BranchController:
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id)
             task['branch_run']=run
             if planning_task:
-                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','transport_retries'):
+                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
@@ -412,6 +448,7 @@ class BranchController:
             if planning_task:
                 task=planning_task
                 if task['planning_policy']!=policy_for_saved(self.model_policy(), task['planning_policy']):raise ValueError('Model policy changed; start a new planning chat with the selected models.')
+                restore_planning_allowance(task)
                 task['branch_run']['status']='draft'
                 task['branch_run']['pause_reason']=None
             else:
@@ -420,7 +457,7 @@ class BranchController:
                 task=self.engine.create({'repository':source,'prompt':inputs['prompt'] or 'Plan work from '+inputs['document']['path'], 'conversational':True,
                                           'limits':{'dollars':limits['dollars'],'run_minutes':max(1,(limits['working_seconds']+59)//60),'reviewer_tokens':limits['reviewer_tokens'],'output_tokens':limits['output_tokens']}},
                                          task_id=task_id,snapshot_override=(Workspace(directory),{'source':source,'files':0,'skipped':[]}))
-                task['planning_limits']=limits;task['planning_policy']=self.model_policy()
+                task['planning_limits']=limits;task['planning_task_limits']=copy.deepcopy(task['limits']);task['planning_policy']=self.model_policy()
                 task['branch_run']=state.new_run({'items':[{'id':'planning','title':'Prepare run proposal','instructions':'Prepare a bounded plan','acceptance_criteria':['A complete proposal is ready']}],'limits':limits,**({'measurement':True} if measurement else {})},original_request=inputs['prompt'],inputs=inputs,
                                                 base_ref=values.get('base_ref',''),target_ref=values.get('target_ref',''),feature_ref=values.get('feature_ref',''),run_id=task_id)
             task['planning_request']=copy.deepcopy(values)
@@ -683,4 +720,4 @@ class BranchController:
             with self.proposals.lock:
                 self.proposals.proposals={token:proposal for token,proposal in self.proposals.proposals.items() if proposal['task_id']!=task_id}
                 proposal=self.proposals.prepare(task_id,self.contract(task))
-            return {'task_id':task_id,**proposal}
+            return {'task_id':task_id,**proposal,'readiness':self.readiness(task)}

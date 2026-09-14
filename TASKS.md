@@ -10,7 +10,7 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
-**Next up: [T75 — one Review & start screen for Unattended work](docs/tasks/T75-single-unattended-approval.md).**
+**Completed: [T75 — one Review & start screen for Unattended work](docs/tasks/T75-single-unattended-approval.md).**
 Submit the job directly from the composer, let cheapoS plan visibly in Chat,
 then inspect the plan and execution settings together before clicking Start.
 Remove the initial mandatory Start unattended work dialog. Use the open project
@@ -20,7 +20,7 @@ and allowance; the final approval authorizes execution, not earlier spending.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T75](docs/tasks/T75-single-unattended-approval.md) | Submit directly, plan in Chat, and approve the whole run in one screen | T65, T69, T70, T74 | M | Ready |
+| [T75](docs/tasks/T75-single-unattended-approval.md) | Submit directly, plan in Chat, and approve the whole run in one screen | T65, T69, T70, T74 | M | Complete |
 
 T62–T74 below are completed foundations. Extend their saved-plan, immediate-Start,
 inline-error, and unified-conversation behavior rather than rebuilding them.

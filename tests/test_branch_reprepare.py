@@ -1,5 +1,6 @@
 import copy
 import unittest
+from unittest.mock import patch
 from cheapos.branch_workspace import _tip
 import test_branch_start as fixtures
 
@@ -31,6 +32,19 @@ class BranchReprepareTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.engine.branch.authorize(task_id,{'proposal_id':proposal['proposal_id'],'approved':True})
         self.assertIsNone(_tip(self.source,self.values['feature_ref']))
         self.assertIsNone(_tip(self.source,values['feature_ref']))
+        saved['planning_policy']=self.engine.branch.model_policy()
+        for tips,message in (([None],'Integration target'),(['base','existing'],'Feature branch')):
+            with patch('cheapos.branch_controller.work._tip',side_effect=tips),self.assertRaisesRegex(ValueError,message):
+                self.engine.branch.prepare(values,planning_task=saved)
+            self.assertEqual(self.engine.store.get(task_id)['usage'],saved['usage'])
+        with patch('cheapos.branch_controller.work.prepare', side_effect=AssertionError('Existing snapshot must be reused')):
+            replanned=self.engine.branch.prepare(values,planning_task=saved)
+        after=self.engine.store.get(task_id)
+        self.assertEqual(after['workspace'],saved['workspace'])
+        self.assertEqual(after['usage'],saved['usage'])
+        self.assertEqual(after['branch_run']['consumption'],saved['branch_run']['consumption'])
+        self.assertTrue(replanned['readiness']['ready'])
+        edited=replanned
         self.engine.branch.launch=lambda identity:self.engine.store.get(identity)
         started=self.engine.branch.authorize(task_id,{'proposal_id':edited['proposal_id'],'approved':True})
         self.assertEqual(started['branch_run']['consumption']['requests'],2)
