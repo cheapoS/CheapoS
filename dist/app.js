@@ -1150,3 +1150,23 @@ bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);
 $('#rename-task').onclick=()=>renameTask();
 
 $('#composer-permissions').onclick=sessionPermissions;
+
+// Restart modal wiring
+(function(){
+  const btn=$('#restart-button');
+  const modal=document.getElementById('restart-modal');
+  const closeBtn=$('#restart-modal-close');
+  if(!btn||!modal)return;
+  btn.onclick=()=>modal.showModal();
+  if(closeBtn)closeBtn.onclick=()=>modal.close();
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.close();});
+  const restartWebapp=$('#restart-webapp');
+  const restartBoth=$('#restart-webapp-omni');
+  const restartOmniroute=$('#restart-omni');
+  async function callGatewayRefresh(){
+    try{await fetch('/api/gateway/refresh',{method:'POST'});}catch(e){console.warn('OmniRoute refresh failed',e);}
+  }
+  if(restartWebapp)restartWebapp.onclick=()=>{modal.close();window.location.reload();};
+  if(restartBoth)restartBoth.onclick=async()=>{modal.close();await callGatewayRefresh();window.location.reload();};
+  if(restartOmniroute)restartOmniroute.onclick=async()=>{modal.close();await callGatewayRefresh();toast('OmniRoute restarted');};
+})();
