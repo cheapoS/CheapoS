@@ -71,4 +71,17 @@ adding a nonfunctional placeholder. Chat and Activity stay chronological.
 
 ## Completion record
 
-Implemented persistent read-only Plan from saved authorization contract (draft uses saved proposal), original scope separate from revision provenance and live status. Tabs reordered with keyboard navigation, per-task expansion/scroll retention. Focused Node: 19 cases, 68.8 ms total; two new pure cases 0.24 ms. Browser verification shared with T70–T72 remains pending until their integration.
+Implemented persistent read-only Plan from saved authorization contract (draft uses saved proposal), original scope separate from revision provenance and live status. Tabs reordered with keyboard navigation, per-task expansion/scroll retention. Focused Node: 19 cases, 68.8 ms total; two new pure cases 0.24 ms. Shared browser results below.
+
+
+Browser evidence (September 14): isolated synthetic HTTP fixture on loopback,
+no personal tasks or model inference. Verified real-app six-tab order, draft Plan
+expansion across tab switches, approved Plan after reload, keyboard ArrowRight
+Plan → Activity, concrete Chat failure → Technical logs shortcut, equal-timestamp
+saved events in 3/2/1 order and concrete failure above housekeeping. Long proposal
+was readable at measured CSS viewport widths 1440, 1024, and 390; modal widths
+1080, 976, and 366 respectively, 16px body font, no modal horizontal overflow.
+Close and sticky Start controls remained visible; keyboard focus was visible.
+A 720 CSS-pixel desktop-equivalent layout was exercised; literal 200% browser
+zoom remains unverified. Synthetic stale Start dismissed into Chat and retained
+the specific recoverable error. Controlled promises cover pending/unknown states.

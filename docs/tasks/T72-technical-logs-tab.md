@@ -1,6 +1,6 @@
 # T72 — Expose Technical logs as the last tab, newest first
 
-Status: Ready after dependencies
+Status: Implemented
 Priority: High — diagnose stopped work without digging
 Depends on: T69, T73
 Size: S/M
@@ -93,4 +93,18 @@ Coordinate with T69's view lifecycle and T68's planner identity/trace work.
 
 ## Completion record
 
-Pending.
+Direct Technical logs tab last with immutable reverse append order, safe bounded field projection, specific canonical stop summary and Chat shortcut. Reading anchor, open details and keyboard focus persist across progress renders; return-to-latest control; Activity remains chronological.
+
+Change-scoped check.py selected zero Python modules; syntax/diff checks and121
+existing/extended Node cases passed in102.6ms. Four added controlled promise/log
+cases are individually below1ms; no heavy fixtures, sleeps or inference.
+
+Browser: isolated synthetic HTTP fixture exercised full real app. Verified Plan
+persistence, keyboard tab navigation, stale Start → Chat rejection, specific
+failure shortcut, newest-first equal-timestamp events and expanded error fields.
+Measured CSS viewport widths1440/1024/390 produced modal widths1080/976/366 with
+16px text and no horizontal overflow. Screenshots showed readable text and
+reachable sticky Start/Close controls.720CSS desktop-equivalent layout exercised;
+literal200% browser zoom remains unverified. Pure fixtures cover event ordering,
+escaping/redaction and old-record limitations. Browser live-event reading-anchor
+updates are implemented but not separately exercised with mid-scroll injection.

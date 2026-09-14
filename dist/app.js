@@ -359,7 +359,7 @@ function openProject(afterOpen) {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const project=await api('/projects',{repository:new FormData(form).get('repository')});state.projects=await api('/projects');d.close();chooseProject(project);if(afterOpen)afterOpen()})};
 }
 async function selectTask(id) {
-  saveDraft();const request=++state.selection;state.loading=true;
+  saveDraft();rememberView();const request=++state.selection;state.loading=true;
   try {const task=await api('/tasks/'+id);if(request!==state.selection)return;if(!task.demo&&(state.hiddenProjects||[]).some(p=>p.path===task.source)){reopenHiddenProject(task.source,task.id);return;}state.task=task;state.project={path:task.source,name:basename(task.source)};state.file=0;state.run=-1;state.view='chat';try{localStorage.setItem('cheapos-selected',id)}catch{}renderTask({resetScroll:true});restoreDraft();renderSidebar();panelLayout.closeMobileSidebar();}
   catch(e){toast(e.message)}finally{if(request===state.selection)state.loading=false}
 }
@@ -376,7 +376,8 @@ function renderTask({resetScroll=false}={}) {
   const task=state.task;if(!task)return;$('.main-pane').classList.remove('new-conversation');
   loadTaskPermissions(task);
   $('.task-heading').hidden=false;$('.tabs').hidden=false;$('#compact-session').hidden=false;$('#toggle-inspector').hidden=false;$('#inspector').classList.remove('home-hidden');
-  const scroller=$('#view-container'), oldScroll=scroller.scrollTop, bottom=scroller.scrollHeight-scroller.clientHeight-oldScroll<60;
+  const scroller=$('#view-container'), oldScroll=scroller.scrollTop, logAnchor=state.view==='logs'&&oldScroll>60?$$('#logs-view details[data-event]').find(d=>d.getBoundingClientRect().bottom>scroller.getBoundingClientRect().top):null, logPosition=logAnchor?.getBoundingClientRect().top, logKey=logAnchor?.dataset.event, bottom=scroller.scrollHeight-scroller.clientHeight-oldScroll<60;
+  const focusedDetail=['plan','logs'].includes(state.view)?document.activeElement?.closest('details[data-event]')?.dataset.event:null;
   const expanded=new Map((resetScroll?[]:$$('details[data-event]')).map(d=>[d.dataset.event,d.open]));
   const outputScroll=new Map((resetScroll?[]:$$('[data-thinking], [data-command-output]')).map(el=>[el.dataset.thinking||el.dataset.commandOutput,{top:el.scrollTop,bottom:el.scrollHeight-el.clientHeight-el.scrollTop<30}]));
   $('#task-title').textContent=task.title;$('#task-title').title=task.title;$('#rename-task').hidden=Boolean(task.trashed_at);document.title=task.title+' — cheapoS';
@@ -398,8 +399,11 @@ function renderTask({resetScroll=false}={}) {
   }
   renderView();renderInspector();renderComposer();bindTerminalCopy();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
+  if(focusedDetail&&!resetScroll)$$('details[data-event]').find(d=>d.dataset.event===focusedDetail)?.querySelector('summary')?.focus({preventScroll:true});
   for(const el of $$('[data-thinking], [data-command-output]')){const saved=outputScroll.get(el.dataset.thinking||el.dataset.commandOutput);el.scrollTop=!saved||saved.bottom?el.scrollHeight:saved.top}
   scroller.scrollTop=resetScroll?scroller.scrollHeight:state.view==='chat'&&bottom?scroller.scrollHeight:oldScroll;
+  if(state.view==='logs'&&logKey){const anchor=$$('#logs-view details[data-event]').find(d=>d.dataset.event===logKey);if(anchor)scroller.scrollTop+=anchor.getBoundingClientRect().top-logPosition;const latest=document.createElement('button');latest.className='logs-latest outline-button';latest.textContent='Return to latest events';latest.onclick=()=>{scroller.scrollTop=0;latest.remove();};$('#logs-view').prepend(latest);}
+
 }
 function renderView() {
   $('#compact-session').hidden=true;
@@ -407,7 +411,7 @@ function renderView() {
   $$('.tab').forEach(b=>{const selected=b.dataset.view===state.view;b.classList.toggle('active',selected);b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;b.id='tab-'+b.dataset.view;b.setAttribute('aria-controls',b.dataset.view+'-view')});
   $$('.view').forEach(v=>{v.classList.toggle('hidden',v.id!==state.view+'-view');v.setAttribute('aria-labelledby','tab-'+v.id.replace(/-view$/,''));if(v.id!==state.view+'-view')v.innerHTML=''});
   if(!state.task){renderHome();return}
-  if(state.view==='plan')$('#plan-view').innerHTML=CheapOSBranchUI.planMarkup(state.task);else if(state.view==='chat')renderChat();else if(state.view==='activity')renderActivity();else if(state.view==='changes')renderChanges();else renderTests();
+  if(state.view==='logs')renderTechnicalLogs();else if(state.view==='plan')$('#plan-view').innerHTML=CheapOSBranchUI.planMarkup(state.task);else if(state.view==='chat')renderChat();else if(state.view==='activity')renderActivity();else if(state.view==='changes')renderChanges();else renderTests();
   bindTerminalCopy();
   if(state.task.archived_at||state.task.trashed_at){
     const view=$('#'+state.view+'-view');
@@ -550,6 +554,7 @@ function renderChat() {
     if(d.dataset.event===focused)$('summary',d)?.focus({preventScroll:true});
   }
   if(task.branch_run&&!task.archived_at&&!task.trashed_at)branchUI.render(task);
+  if(task.error&&!task.branch_run){const logs=document.createElement('button');logs.className='text-link';logs.textContent='View technical logs';logs.onclick=()=>setView('logs');$('#chat-view').append(logs);}
   updateProgressClock();bindCommitDecision(task);bindTerminalCopy();bindPermissions(task);
   $$('[data-chat-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.chatAction;
@@ -574,10 +579,10 @@ function reviewDisputeMarkup(task){
 function renderActivity() {
   const task=state.task,a=CheapOSGuide.activity(task),guide=CheapOSGuide.taskGuide(task),pause=CheapOSBranchUI.pausePresentation(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
   const action=(view,label)=>`<button class="outline-button" data-activity-view="${view}">${label}</button>`;
-  const timeline=a.items.slice(0,40).map(item=>`<details class="activity-step ${item.failed?'failed':''}" data-event="step-${item.event.id}"><summary><span class="step-icon">${icon(item.icon)}</span><span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span><time>${new Date(item.event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="step-body">${eventDetail(item.event)}${item.path&&task.changes.some(c=>c.path===item.path)?`<button class="text-link" data-activity-file="${esc(item.path)}">View current diff →</button>`:''}</div></details>`).join('');
-  const technical=task.events.map(e=>`<details class="activity-card" data-event="raw-${e.id}"><summary><strong>${esc(CheapOSGuide.activityItem(e)?.title||e.title)}</strong>${icon('chevron')}</summary><div class="detail-body">${eventDetail(e)}</div></details>`).join('');
+  const timeline=a.items.slice(0,40).reverse().map(item=>`<details class="activity-step ${item.failed?'failed':''}" data-event="step-${item.event.id}"><summary><span class="step-icon">${icon(item.icon)}</span><span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span><time>${new Date(item.event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="step-body">${eventDetail(item.event)}${item.path&&task.changes.some(c=>c.path===item.path)?`<button class="text-link" data-activity-file="${esc(item.path)}">View current diff →</button>`:''}</div></details>`).join('');
+
   const status=task.pending_approval?permissionMarkup(task):taskBusy(task)?progressMarkup(task):`<section class="activity-status"><span class="activity-eyebrow">${['approved','completed'].includes(task.status)?'RESULT':'CURRENT STATUS'}</span><h3>${esc(failure?.title||guide.title)}</h3><p>${esc(failure?.description||guide.description)}</p>${task.error&&task.error!==guide.description?`<p>${esc(task.error)}</p>`:''}<div class="button-row">${['approved','completed'].includes(task.status)?action('changes','Review changes'):''}${action('chat','Back to chat')}${['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)?`<button class="outline-button" id="activity-resume">${pause?'Review pause in chat':task.status==='error'?'Retry':guide.primaryLabel}</button>`:''}${task.error_code==='routing_unavailable'?'<button class="outline-button" id="activity-models">Models</button>':''}</div></section>`;
-  $('#activity-view').innerHTML=`<div class="view-title"><div><h2>What’s happening</h2><p>${task.demo?'Scripted demo · real files and checks':'Real actions and saved results from this chat.'}</p></div></div>${status}${reviewDisputeMarkup(task)}${task.check_stream?commandMarkup(task.check_stream,{live:true}):''}<div class="activity-facts"><button data-activity-view="changes"><span>Saved changes · whole chat</span><strong>${a.files} file${a.files===1?'':'s'}</strong><small>Inspect the diff →</small></button><button data-activity-view="tests"><span>Checks · this request</span><strong>${esc(a.checks)}</strong><small>View command output →</small></button><button id="activity-review" ${!a.checkpoint?'disabled':''}><span>Review · this request</span><strong>${esc(a.review)}</strong><small>${a.checkpoint?'Inspect the decision →':'A passing check alone is not approval'}</small></button></div><section class="activity-timeline"><h3>Latest request</h3><p class="activity-request">${esc(a.request)}</p><p class="small muted">Newest actions first${a.items.length>40?' · showing the latest 40':''}</p>${timeline||'<p class="activity-empty">No file actions yet. Conversation and live model output are in Chat.</p>'}</section><details class="technical-log" data-event="technical"><summary>${icon('code')}Technical log <span>${task.events.length} events</span>${icon('chevron')}</summary><div>${technical}</div></details>`;
+  $('#activity-view').innerHTML=`<div class="view-title"><div><h2>What’s happening</h2><p>${task.demo?'Scripted demo · real files and checks':'Real actions and saved results from this chat.'}</p></div></div>${status}${reviewDisputeMarkup(task)}${task.check_stream?commandMarkup(task.check_stream,{live:true}):''}<div class="activity-facts"><button data-activity-view="changes"><span>Saved changes · whole chat</span><strong>${a.files} file${a.files===1?'':'s'}</strong><small>Inspect the diff →</small></button><button data-activity-view="tests"><span>Checks · this request</span><strong>${esc(a.checks)}</strong><small>View command output →</small></button><button id="activity-review" ${!a.checkpoint?'disabled':''}><span>Review · this request</span><strong>${esc(a.review)}</strong><small>${a.checkpoint?'Inspect the decision →':'A passing check alone is not approval'}</small></button></div><section class="activity-timeline"><h3>Latest request</h3><p class="activity-request">${esc(a.request)}</p><p class="small muted">Chronological actions${a.items.length>40?' · showing the latest 40':''}</p>${timeline||'<p class="activity-empty">No file actions yet. Conversation and live model output are in Chat.</p>'}</section><button class="text-link" data-activity-view="logs">View technical logs →</button>`;
   $$('[data-activity-view]').forEach(b=>b.onclick=()=>setView(b.dataset.activityView));
   $$('[data-chat-action]').forEach(b=>b.onclick=()=>b.dataset.chatAction==='stop'?stopTask():b.dataset.chatAction==='connections'?openConnections():setView('chat'));
   $$('[data-activity-file]').forEach(b=>b.onclick=()=>{state.file=task.changes.findIndex(c=>c.path===b.dataset.activityFile);setView('changes')});
@@ -587,6 +592,9 @@ function renderActivity() {
   if($('#activity-resume'))$('#activity-resume').onclick=e=>guide.primary==='retry-wait'?startTask(task.id,{retry_when_available:true}):guide.primary==='clarify'?(setView('chat'),$('#chat-input')?.focus()):resumeTask(e.currentTarget);
   if($('#activity-models'))$('#activity-models').onclick=openConnections;
   updateProgressClock();
+}
+function renderTechnicalLogs(){
+ const view=$('#logs-view');view.innerHTML=CheapOSBranchUI.technicalMarkup(state.task);const back=$('[data-log-chat]',view);if(back)back.onclick=()=>setView('chat');
 }
 function checkpointDialog(number) {
   const checkpoint=state.task.checkpoints.find(c=>c.number===number);if(!checkpoint)return;
@@ -1115,7 +1123,7 @@ $$('.tab').forEach(b=>{b.onclick=()=>setView(b.dataset.view);b.onkeydown=e=>{if(
 $('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=sampleDialog;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopFromComposer;
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
-const branchUI=CheapOSBranchUI.mount({api,getState:()=>state,selectTask,refresh,toast,renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
+const branchUI=CheapOSBranchUI.mount({api,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}});
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);
 

@@ -69,4 +69,25 @@ Immediate dismissal is not a claim that the server has accepted the request.
 
 ## Completion record
 
-Start now dismisses synchronously and shows a task-bound pending Chat state. Captured proposal identity and explicit approval remain exact; duplicate pending/unknown starts are suppressed; failures reconcile saved authorization via a read before another Start can be offered. New composer input is preserved. Backend inspection: authorize saves and launch schedules a thread; no model-pickup await was added. Focused Node 21 cases in 68.6 ms; two new controlled-promise cases 0.33 ms. Shared browser flow pending T71/T72 integration.
+Start now dismisses synchronously and shows a task-bound pending Chat state. Captured proposal identity and explicit approval remain exact; duplicate pending/unknown starts are suppressed; failures reconcile saved authorization via a read before another Start can be offered. New composer input is preserved. Backend inspection: authorize saves and launch schedules a thread; no model-pickup await was added. Focused Node 21 cases in 68.6 ms; two new controlled-promise cases 0.33 ms. Shared browser results below.
+
+
+Browser evidence (September 14): isolated synthetic HTTP fixture on loopback,
+no personal tasks or model inference. Verified real-app six-tab order, draft Plan
+expansion across tab switches, approved Plan after reload, keyboard ArrowRight
+Plan → Activity, concrete Chat failure → Technical logs shortcut, equal-timestamp
+saved events in 3/2/1 order and concrete failure above housekeeping. Long proposal
+was readable at measured CSS viewport widths 1440, 1024, and 390; modal widths
+1080, 976, and 366 respectively, 16px body font, no modal horizontal overflow.
+Close and sticky Start controls remained visible; keyboard focus was visible.
+A 720 CSS-pixel desktop-equivalent layout was exercised; literal 200% browser
+zoom remains unverified. Synthetic stale Start dismissed into Chat and retained
+the specific recoverable error. Controlled promises cover pending/unknown states.
+
+Partial startup audit: authorization alone is not acceptance. UI retains the
+captured proposal/error, exposes explicit Retry saved startup, and restores
+Finish saved startup through the existing resume path after reload. Unknown
+outcomes remain read-only reconciliation. Backend finishes the same journaled
+workspace/authorization, revalidating readiness and grants; it does not create
+a second run. Existing start coverage is reused (root measured three cases
+14.885s and a final single-case recheck6.530s), no new heavy fixture.

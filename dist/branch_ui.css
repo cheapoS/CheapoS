@@ -2,3 +2,14 @@
 .branch-file-diff{margin:12px 0}.branch-file-diff summary{font:12px/1.5 ui-monospace,monospace;cursor:pointer;overflow-wrap:anywhere;padding:7px 0}.branch-diff-pages{min-width:0}
 
 .tabs{overflow-x:auto;flex-wrap:nowrap}.tabs .tab{flex-shrink:0}.tabs .tab[hidden]{display:none}.saved-plan{font-size:16px;line-height:1.6;overflow-wrap:anywhere}.saved-plan details{margin:12px 0}.saved-plan summary{cursor:pointer}.saved-plan .plan-instructions{white-space:pre-wrap}.saved-plan code{white-space:pre-wrap;overflow-wrap:anywhere}.saved-plan li{margin:8px 0}
+
+/* Planning has its own readable layout; unrelated modal widths are unchanged. */
+.planner-dialog{width:min(1080px,calc(100vw - 48px));max-width:1080px;max-height:calc(100dvh - 48px);box-sizing:border-box;padding:24px;overflow:auto;overflow-wrap:anywhere;font-size:16px;line-height:1.6;scroll-padding-block:88px}
+.planner-dialog p,.planner-dialog label,.planner-dialog input,.planner-dialog textarea,.planner-dialog button{font-size:16px;line-height:1.6}
+.planner-dialog .branch-dialog-heading{position:sticky;top:-24px;background:var(--panel,#242424);z-index:2;padding:12px 0;border-bottom:1px solid var(--border,#414141)}
+.planner-dialog .branch-dialog-heading h2{font-size:22px;margin:0}
+.planner-dialog .branch-actions{position:sticky;bottom:-24px;padding:16px 0;background:var(--panel,#242424);border-top:1px solid var(--border,#414141);z-index:2}
+.planner-dialog form,.planner-dialog li,.planner-dialog label{min-width:0}.planner-dialog textarea{min-height:100px}.planner-dialog .branch-plan-items{gap:24px}.planner-dialog code{white-space:pre-wrap;overflow-wrap:anywhere}.planner-dialog pre{overflow:auto;max-width:100%}.planner-dialog :focus-visible,.saved-plan summary:focus-visible{outline:2px solid var(--accent,#bde5c8);outline-offset:3px}
+@media(max-width:600px){.planner-dialog{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:16px}.planner-dialog .branch-dialog-heading{top:-16px}.planner-dialog .branch-actions{bottom:-16px}}
+
+#logs-view .activity-card summary{display:flex;flex-wrap:wrap;gap:8px;overflow-wrap:anywhere}#logs-view .activity-card time{color:var(--muted)}#logs-view pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}#logs-view dd{margin:0}.logs-latest{position:sticky;top:0;z-index:3;background:var(--panel,#242424)}

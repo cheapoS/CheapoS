@@ -1,6 +1,6 @@
 # T71 — Widen the planner and improve proposal readability
 
-Status: Ready
+Status: Implemented
 Priority: High — readable planning and approval
 Depends on: current planner/proposal dialog; coordinate with T69/T70
 Size: S
@@ -55,4 +55,18 @@ easy to find without reducing font size or hiding requirements.
 
 ## Completion record
 
-Pending. Update TASKS.md and commit only the scoped changes after validation.
+Dedicated planning-only responsive1080px layout,16px text, sticky header/actions, wrapping paths and bounded scrolling. Unrelated modal widths unchanged.
+
+Change-scoped check.py selected zero Python modules; syntax/diff checks and121
+existing/extended Node cases passed in102.6ms. Four added controlled promise/log
+cases are individually below1ms; no heavy fixtures, sleeps or inference.
+
+Browser: isolated synthetic HTTP fixture exercised full real app. Verified Plan
+persistence, keyboard tab navigation, stale Start → Chat rejection, specific
+failure shortcut, newest-first equal-timestamp events and expanded error fields.
+Measured CSS viewport widths1440/1024/390 produced modal widths1080/976/366 with
+16px text and no horizontal overflow. Screenshots showed readable text and
+reachable sticky Start/Close controls.720CSS desktop-equivalent layout exercised;
+literal200% browser zoom remains unverified. Pure fixtures cover event ordering,
+escaping/redaction and old-record limitations. Browser live-event reading-anchor
+updates are implemented but not separately exercised with mid-scroll injection.
