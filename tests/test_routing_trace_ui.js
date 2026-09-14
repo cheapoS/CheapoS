@@ -19,17 +19,17 @@ test('metadata distinguishes observation provenance, stale and unavailable dates
  assert.match(result,/Stale metadata.*catalog.*2026-09-13.*context_length/);
  assert.match(result,/does not verify current availability/);
 });
-test('routing details stay inside reply disclosure with stable key and escaped labels',()=>{
+test('routing diagnostics are available separately without burying a chat reply',()=>{
  const vm=require('node:vm'),fs=require('node:fs');
  const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8').split("\n'use strict';\nconst $ =")[0];
  const context={CheapOSGuide:require('../dist/guidance.js'),esc:x=>String(x??'').replaceAll('<','&lt;'),icon:()=>'',messageText:x=>x};
  vm.createContext(context);vm.runInContext(source+'\nthis.view=CheapOSChatView;',context);
  const t={routing_traces:[{id:'trace',role:'worker',requested_route:'<alias>',selected_model:'b'}]};
  const e={kind:'assistant',id:'reply-1',steps:[],reply:'',live:false};
- const html=context.view.message(e,t,'',true);
- assert.match(html,/data-event="routing-reply-1"/);assert.match(html,/<summary>Details<\/summary>/);
+ const html=context.view.routingDetails(t);
+ assert.match(html,/data-event="routing-log"/);assert.match(html,/Routing &amp; request diagnostics/);
  assert.match(html,/&lt;alias>/);assert.doesNotMatch(html,/<alias>/);
- assert.equal(context.view.message(e,t,'',false),'');
+ assert.equal(context.view.message(e,t),'');
 });
 test('all 64 retained rows remain visible and partial evidence is disclosed',()=>{
  const candidates=Array.from({length:64},(_,i)=>({model:'model-'+i,reason:i===63?'cached_probe':'eligible'}));

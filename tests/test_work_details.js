@@ -1,0 +1,67 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const vm=require('node:vm'),fs=require('node:fs');
+const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
+const extract=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
+const ctx={CheapOSGuide:require('../dist/guidance.js'),state:{task:null}};
+vm.createContext(ctx);
+vm.runInContext(source.split("\n'use strict';\nconst $ =")[0]+
+  extract('const esc =','const taskBusy=')+
+  extract('function eventDetail(','function progressMarkup(')+
+  extract('function thinkingMarkup(','function permissionMarkup(')+'\nthis.view=CheapOSChatView;',ctx);
+const event=(id,kind,title,detail={})=>({id,kind,title,detail,time:'2026-09-14T17:00:00Z'});
+const tool=(id,title,path)=>event(id,'tool',title,{arguments:{path},result:{content:'saved content'}});
+const step=(events,more={})=>({id:'work-1',role:'worker',phase:'work',model:'worker-model',outcome:'done',title:'Worked on your request',detail:'Saved work',events,...more});
+function render(events,{live=false,stream=null,task={},phase='work'}={}){
+ return ctx.view.message({kind:'assistant',id:'reply',steps:[step(events,{live,phase})],live,stream,reply:''},task);
+}
+
+test('large routing history never displaces thinking or edits from chat',()=>{
+ const routing=Array.from({length:120},(_,i)=>event('route-'+i,'routing','Checking candidates',{model:'candidate-noise'}));
+ const thinking=event('think','generation','Model output',{request_id:'r',model:'worker',thinking:'I will make the focused change.'});
+ const task={routing_traces:[{id:'route',role:'worker',candidates:[{model:'image-model',reason:'capability_missing'}],attempts:[{request_id:'private-request-id'}]}]};
+ const html=render([thinking,tool('edit','replace text','target.py'),...routing],{task});
+ assert.match(html,/I will make the focused change/);assert.match(html,/Edited target.py/);
+ assert.doesNotMatch(html,/candidate-noise|image-model|private-request-id|Showing the latest 80/);
+ assert.match(html,/data-workflow-logs/);
+ assert.match(ctx.view.routingDetails(task),/image-model.*capability missing/);
+});
+test('consecutive exploration collapses without hiding edits or crossing thinking',()=>{
+ const html=render([tool('a','read file','first.py'),event('request','model','Requesting worker'),tool('b','search','second.py'),
+   tool('edit','replace text','first.py'),tool('c','list files','.'),
+   event('think','generation','Output',{request_id:'r',thinking:'Verify the change'}),tool('d','read file','last.py')]);
+ assert.match(html,/data-event="explore-a"/);assert.match(html,/Explored the project · 2 actions/);
+ assert.equal((html.match(/class="workflow-exploration"/g)||[]).length,3);
+ assert.ok(html.indexOf('Edited first.py')>html.indexOf('Read first.py'));
+ assert.match(html,/data-event="generation-r" open/);
+});
+test('failure and complete reviewer feedback are readable before another disclosure',()=>{
+ const feedback='The UI is still missing. Add the control before resubmitting.';
+ const html=render([event('error','tool_error','Action failed',{error:'File hash changed'}),
+   event('review','review','Changes requested',{decision:'REQUEST_CHANGES',feedback}),
+   event('check','checks','Failed tests',{passed:false,command:['python3','-m','unittest'],output:'FAIL: boundary',exit_code:1,run_id:'check'})]);
+ assert.match(html,/class="workflow-failure"/);assert.match(html,/File hash changed/);
+ assert.match(html,/data-event="work-event-review" open/);assert.match(html,/Add the control before resubmitting/);
+ assert.match(html,/data-event="command-check" open/);assert.match(html,/FAIL: boundary/);
+});
+test('live output opens immediately and has an escaped preview for collapsed steps',()=>{
+ const stream={phase:'thinking',request_id:'live',thinking:'Actual thought <script>unsafe</script>'};
+ const html=render([],{live:true,stream});
+ assert.match(html,/data-step="work-1" open/);assert.match(html,/class="workflow-preview"/);
+ assert.match(html,/Actual thought &lt;script&gt;unsafe&lt;\/script&gt;/);assert.doesNotMatch(html,/<script>/);
+ const waiting=render([],{live:true,stream:{phase:'waiting'}});
+ assert.doesNotMatch(waiting,/workflow-preview/);assert.match(waiting,/Waiting for the next chunk/);
+});
+test('only the latest recorded thinking opens by default, and interruptions stay labeled',()=>{
+ const html=render([event('a','generation','Output',{request_id:'old',thinking:'First thought'}),
+   event('b','generation','Output',{request_id:'new',thinking:'Partial thought',interrupted:true})]);
+ assert.doesNotMatch(html,/data-event="generation-old" open/);
+ assert.match(html,/data-event="generation-new" open/);assert.match(html,/Thinking · interrupted/);
+});
+test('technical routing view keeps every retained attempt, newest first with unknown identity',()=>{
+ const html=ctx.view.routingDetails({routing_traces:[{id:'old',role:'worker',requested_route:'old-route'},
+   {id:'new',role:'reviewer',selected_model:'new-route',attempts:[{request_id:'first'},{request_id:'last'}],attempts_truncated:true}]});
+ assert.ok(html.indexOf('new-route')<html.indexOf('old-route'));
+ assert.ok(html.indexOf('Request last')<html.indexOf('Request first'));
+ assert.match(html,/Attempt evidence is partial/);assert.match(html,/served unknown/);
+});

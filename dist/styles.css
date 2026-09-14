@@ -299,6 +299,7 @@ svg, svg * {
 .workflow-heading strong { font-size: 14px; line-height: 1.5; font-weight: 550; color: #d9e3dd; }
 .workflow-step.is-live .workflow-heading strong { color: var(--mint); }
 .workflow-status { font-size: 13px; line-height: 1.5; color: #a3b0a8; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.outcome-failed > summary .workflow-status, .outcome-revision > summary .workflow-status { white-space: normal; overflow-wrap: anywhere; }
 .workflow-last-action { font-size: 12px; line-height: 1.5; color: #94a29a; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .workflow-elapsed { color: #aebeb4; font: 12px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .workflow-toggle { display: flex; align-items: center; gap: 5px; color: #b4c4ba; font-size: 13px; white-space: nowrap; }
@@ -324,6 +325,23 @@ svg, svg * {
 .workflow-details .command-panel > summary { padding: 10px; }
 .workflow-details .terminal-viewport { max-height: 280px; }
 .workflow-details .terminal-body { font-size: 12px; }
+.workflow-preview { color: #c4d6cb; font-size: 14px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.workflow-step[open] .workflow-preview { display: none; }
+.workflow-exploration { margin: 8px 0; padding: 0 12px; border: 1px solid #29352e; border-radius: 8px; }
+.workflow-exploration > summary { display: flex; align-items: center; gap: 9px; padding: 12px 0; font-size: 13px; color: #aabdb1; }
+.workflow-exploration > summary span { flex: 1; min-width: 0; }
+.workflow-exploration > summary small { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.workflow-exploration svg { width: 14px; height: 14px; }
+.workflow-event.needs-reading { border-left: 2px solid var(--amber); margin: 12px 0; padding-left: 12px; }
+.workflow-failure { border-left: 2px solid var(--amber); margin: 12px 0; padding: 8px 12px; color: #e0c79e; }
+#chat-view .workflow-failure p { font-size: 14px; margin: 8px 0; }
+.workflow-log-link { display: flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 12px; }
+.workflow-log-link svg { width: 14px; height: 14px; }
+.routing-trace { margin-top: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; overflow-wrap: anywhere; }
+.routing-trace summary { padding: 10px 0; }
+.routing-trace > details { border-top: 1px solid var(--border); padding: 8px 0; }
+.routing-trace li { margin: 10px 0; }
+.workflow-exploration summary:focus-visible, .workflow-event summary:focus-visible, .routing-trace summary:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
 .workflow-history > summary { display: flex; gap: 8px; align-items: center; padding: 12px 16px; font-size: 13px; color: #a5b5ab; cursor: pointer; list-style: none; }
 .workflow-history > summary svg { width: 14px; height: 14px; }
 .workflow-history > summary svg:last-child { margin-left: auto; }
