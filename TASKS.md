@@ -10,6 +10,81 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+**Next up: T62–T73 — reliable planning, readable plans, and clear failure explanations.**
+These are the next implementation cards, based on the planner review at
+`db774c7` (September 14, 2026) and the operator's follow-up UI requests. Start
+with T62. Read current code before implementing; the review is a reproduction
+record, not a reason to undo newer fixes. T01–T61 completion records below are
+historical, not the next work queue.
+
+### T62–T73 next implementation queue
+
+The dedicated planner should let an operator choose a stronger planning model
+while retaining the existing worker/reviewer loop and authorized spending policy.
+After approval, the accepted plan must remain easy to inspect throughout the run.
+Clicking Start should immediately return to a visibly starting conversation.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T62](docs/tasks/T62-planner-access-binding.md) | Bind planner requests to the authorized gateway and access policy | Current planner implementation | S/M | Ready |
+| [T63](docs/tasks/T63-planner-role-selection.md) | Preserve working two-model routes when a planner is configured | T62 | S/M | Ready after dependency |
+| [T64](docs/tasks/T64-planner-fallback-credentials.md) | Resolve fallback credentials without losing their provider identity | T62 | S | Ready after dependency |
+| [T65](docs/tasks/T65-planner-configuration.md) | Configure, save, and restore a dedicated planner | T63, T64 | M | Ready after dependencies |
+| [T66](docs/tasks/T66-planner-task-migration.md) | Resume older planning tasks without losing usage or authorization | T64 | S | Ready after dependency |
+| [T67](docs/tasks/T67-complete-final-plan-checks.md) | Repair plan schema without silently dropping verification coverage | Current plan parser | S | Ready |
+| [T68](docs/tasks/T68-planner-usage-visibility.md) | Include planner usage and identity in totals, traces, and the UI | T65, T66 | S/M | Ready after dependencies |
+| [T73](docs/tasks/T73-specific-stop-explanations.md) | Show the actual saved failure and next action directly in Chat | Existing T53/T54 pause contract | M | Ready |
+| [T69](docs/tasks/T69-persistent-plan-tab.md) | Keep the approved plan visible and reorder task tabs | Current saved plan contract | M | Ready |
+| [T70](docs/tasks/T70-responsive-run-start.md) | Close Start immediately and report startup progress in chat | T69 | M | Ready after dependency |
+| [T71](docs/tasks/T71-readable-planner-dialog.md) | Widen the planner and make long proposals easier to read | Current planner dialog | S | Ready |
+| [T72](docs/tasks/T72-technical-logs-tab.md) | Put Technical logs last and show the newest events first | T69, T73 | S/M | Ready after dependencies |
+
+**Required tab order:** without a plan, **Chat → Changes → Activity → Tests → Technical logs**;
+with a plan, **Chat → Changes → Plan → Activity → Tests → Technical logs**. The current Checks
+label becomes Tests; existing internal view IDs and verification semantics can
+stay unchanged. Do not move the operator away from Chat when Start is clicked.
+Technical logs show newest entries first, with the latest saved stop/failure
+cause easy to inspect. Chat and Activity retain their normal chronological order.
+**The main stop banner must already explain the actual recorded issue.** T73
+replaces generic “unclassified reason; inspect the diagnostic” copy whenever a
+specific safe diagnostic exists. Technical logs provide supporting detail, not
+the only way to learn why the task stopped. T73 is listed ahead of the UI cards
+because this is an immediate operator blocker; existing task IDs stay stable.
+
+Shared completion conditions:
+
+- Preserve explicit Start authorization, reviewer independence from patch
+  authors, command consent, exact approved scope, saved work, and accounting.
+  A more capable planner does not authorize paid fallback or a larger budget.
+- Implement only the selected card. Update its completion record and this board,
+  validate the changed paths, and commit only that card's changes before handoff.
+- Follow the new-test cost rule below. Use deterministic fixtures and controlled
+  promises/events; do not add full agent/Git runs or real sleeps by default.
+- For T69–T73, record an isolated browser pass with a saved synthetic proposal,
+  a pending Start response, successful start, rejected start, reload, and a task
+  without a plan. Verify Technical logs are last, newest-first, and show the
+  saved failure detail without changing Chat/Activity order. Reuse one fixture
+  across these cards. No personal task or live inference is needed. If
+  unavailable, record the exact scenario as pending.
+- A stop banner must identify the observed failure, stage, saved-work state, and
+  supported next action without requiring Details or another tab. Preserve safe
+  diagnostics through persistence and public serialization; never guess a root
+  cause or leak raw private provider content just to replace generic wording.
+- This task-board update authorizes documentation, not automatic execution of
+  all cards or a live trial. A later selected live trial must use measurement
+  mode and the operator's existing model/spending policy.
+
+Review evidence: the three reviewed commits are `debbc35`, `0a365d6`, and
+`db774c7`; the preceding baseline is `3aa9397`. Local reproductions confirmed
+the seven issues in T62–T68. The focused review ran 57 existing tests in 28.790s:
+55 passed. The two failures also reproduce at `3aa9397`:
+`test_model_pool.FailoverTests.test_unavailable_tool_during_action_recovery_hands_off_without_executing_any_calls`
+and `test_branch_planning_http.BranchPlanningHTTPTests.test_missing_runner_retains_complete_plan_and_identifies_executable`.
+Do not attribute them to the planner commits or weaken their assertions to obtain
+a green report. Record whether they remain when exercising an affected path.
+
+### Previous milestone status
+
 **T49–T60 implemented and validated; browser scenarios remain pending where recorded.** See [review correctness closeout](docs/development/review-correctness.md). T49–T60 turn the halfway assessment and review-loop inspection into bounded implementation and evidence tasks. T49–T55 were planned against `4b6ed68`; T56–T60 against `5a463b4` on `main` (September 14, 2026). Both baselines include the trial's engine fixes. Read current code before assuming a reported issue remains unfixed.
 
 T41–T43 and T45–T48 are recorded below; T44 remains deferred by the operator.
@@ -127,7 +202,7 @@ do not move the report-export milestone behind a new broad benchmark campaign.
 ### Current handoff template
 
 ```text
-Implement only T56 from docs/tasks/T56-explicit-review-decisions.md.
+Implement only T62 from docs/tasks/T62-planner-access-binding.md.
 Read AGENTS.md, CONTRIBUTING.md, TASKS.md, and that card first.
 Inspect the current code and verify dependencies; do not restart completed work.
 Follow the card's scope, acceptance criteria, and focused validation instructions.
@@ -140,7 +215,17 @@ Update the card's completion record and its TASKS.md status. Commit only this
 task's changes. Report the commit, actual checks, and remaining limitations.
 Do not execute the next card automatically.
 
-For T49–T60, distinguish trial workarounds already in main from remaining gaps.
+For T62–T73, use the reproduction and acceptance contract in the selected card.
+Preserve the authorized model and spending policy when adding a stronger planner.
+Keep approved plans visible and immutable through the Plan view. Start should
+close immediately with honest progress and errors in chat, never fabricated
+success or duplicate dispatch. No live model calls are needed for these cards.
+Technical logs are the final tab, newest first; never reverse the saved event
+array or the chronological conversation to achieve that presentation.
+The primary stop banner must surface the recorded problem and next action;
+Technical logs are supplementary, not the required route to a useful explanation.
+
+For historical T49–T60 work, distinguish trial workarounds already in main from remaining gaps.
 Do not raise global limits, discard acceptance criteria, enable paid fallback,
 or start a live qualification run to make a card pass. Keep browser checks
 isolated from personal tasks, and record unavailable scenarios as pending.
