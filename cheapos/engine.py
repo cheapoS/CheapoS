@@ -1788,7 +1788,7 @@ class Engine:
             self.event(task,"tool","read check output",{"arguments":args,"result":result})
             return result
         workspace = Workspace(task["workspace"])
-        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
+        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda **kwargs: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
         if name not in methods:
             raise ValueError("Unknown tool: " + name)
         if 'branch_run' in task and name in {'write_file', 'replace_text', 'replace_lines'}:

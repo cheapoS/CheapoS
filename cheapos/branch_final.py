@@ -111,11 +111,17 @@ def build_manifest(run):
 
 def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
     from .engine import tool, ToolArgumentsError
+    chunk_prop = {'type': 'array', 'items': {'type': 'string'}, 'description': f"Must be exact chunk_ids: {json.dumps(chunk_ids)}"}
+    if chunk_ids: chunk_prop['enum'] = [chunk_ids]
+    else: chunk_prop['maxItems'] = 0
+    criteria_prop = {'type': 'array', 'items': {'type': 'string'}, 'description': f"Must be exact criteria_ids: {json.dumps(criterion_ids)}"}
+    if criterion_ids: criteria_prop['enum'] = [criterion_ids]
+    else: criteria_prop['maxItems'] = 0
     tools = [tool('final_review_decision', 'Review this exact final packet; missing coverage cannot approve.',
                   {'decision': {'type': 'string', 'enum': ['APPROVE', 'REQUEST_CHANGES']},
                    'manifest_id': {'type': 'string', 'enum':[manifest['id']], 'description': f"Must be exact manifest_id: {manifest['id']}"},
-                   'chunk_ids': {'type': 'array', 'items': {'type': 'string'}, 'enum':[chunk_ids], 'description': f"Must be exact chunk_ids: {json.dumps(chunk_ids)}"},
-                   'criteria_ids': {'type': 'array', 'items': {'type': 'string'}, 'enum':[criterion_ids], 'description': f"Must be exact criteria_ids: {json.dumps(criterion_ids)}"},
+                   'chunk_ids': chunk_prop,
+                   'criteria_ids': criteria_prop,
                    'feedback': {'type': 'string', 'description': 'Nonempty string of at most 4000 characters summarizing your evaluation.'}, 'defects': disagreement.schema([r['id'] for r in manifest.get('requirements', []) if isinstance(r, dict) and 'id' in r] or None)},
                   ['decision', 'manifest_id', 'chunk_ids', 'criteria_ids', 'feedback'])]
     tools[0]['function']['parameters']['properties']['suggestions']={'type':'array','maxItems':8,'items':{'type':'string'}}
