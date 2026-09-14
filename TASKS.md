@@ -35,10 +35,10 @@ Clicking Start should immediately return to a visibly starting conversation.
 | [T67](docs/tasks/T67-complete-final-plan-checks.md) | Repair plan schema without silently dropping verification coverage | Current plan parser | S | Complete |
 | [T68](docs/tasks/T68-planner-usage-visibility.md) | Include planner usage and identity in totals, traces, and the UI | T65, T66 | S/M | Complete |
 | [T73](docs/tasks/T73-specific-stop-explanations.md) | Show the actual saved failure and next action directly in Chat | Existing T53/T54 pause contract | M | Completed |
-| [T69](docs/tasks/T69-persistent-plan-tab.md) | Keep the approved plan visible and reorder task tabs | Current saved plan contract | M | Ready |
-| [T70](docs/tasks/T70-responsive-run-start.md) | Close Start immediately and report startup progress in chat | T69 | M | Ready after dependency |
-| [T71](docs/tasks/T71-readable-planner-dialog.md) | Widen the planner and make long proposals easier to read | Current planner dialog | S | Ready |
-| [T72](docs/tasks/T72-technical-logs-tab.md) | Put Technical logs last and show the newest events first | T69, T73 | S/M | Ready after dependencies |
+| [T69](docs/tasks/T69-persistent-plan-tab.md) | Keep the approved plan visible and reorder task tabs | Current saved plan contract | M | Complete |
+| [T70](docs/tasks/T70-responsive-run-start.md) | Close Start immediately and report startup progress in chat | T69 | M | Complete |
+| [T71](docs/tasks/T71-readable-planner-dialog.md) | Widen the planner and make long proposals easier to read | Current planner dialog | S | Complete |
+| [T72](docs/tasks/T72-technical-logs-tab.md) | Put Technical logs last and show the newest events first | T69, T73 | S/M | Complete |
 | [T74](docs/tasks/T74-unified-orchestration-reply.md) | Keep planning, worker, and reviewer progress inside the owning cheapoS reply | T68, T69, T70, T73; coordinate with T71/T72 | M | Ready after dependencies |
 
 **Required tab order:** without a plan, **Chat → Changes → Activity → Tests → Technical logs**;
