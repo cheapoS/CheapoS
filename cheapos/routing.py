@@ -86,15 +86,18 @@ def setup_task(task, execution, config, gateway):
         local = local_config(model, "worker")
         if mode == "local":
             reviewer = local_config(execution["local_reviewer"] or model, "reviewer")
-            task["providers"] = {"worker": local, "reviewer": reviewer}
+            planner = local_config(execution.get("local_planner") or execution.get("local_reviewer") or model, "planner")
+            task["providers"] = {"worker": local, "reviewer": reviewer, "planner": planner}
             return
-        task["providers"] = {"coordinator": local, "worker": None, "reviewer": None}
+        planner = copy.deepcopy(config.get("planner") or config.get("reviewer"))
+        task["providers"] = {"coordinator": local, "worker": None, "reviewer": None, "planner": planner}
         task["usage"]["coordinator"] = {"tokens": 0, "cost": 0}
         task["active_role"] = "coordinator"
     else:
-        task["providers"] = {"worker": None, "reviewer": None}
+        planner = copy.deepcopy(config.get("planner") or config.get("reviewer"))
+        task["providers"] = {"worker": None, "reviewer": None, "planner": planner}
     task["route"] = {"ready": False, "base_url": gateway.settings["base_url"],
-                     "preferred": {r: (config.get(r) or {}).get("model") for r in ("worker", "reviewer")}}
+                     "preferred": {r: (config.get(r) or {}).get("model") for r in ("worker", "reviewer", "planner")}}
     if policy is not None: task['route']['access_policy'] = copy.deepcopy(policy)
 
 
@@ -114,7 +117,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
     if catalog["status"] != "ready":
         raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Your saved work is kept.")
     used = {cfg["model"] for cfg in task["providers"].values() if cfg}
-    if role == "reviewer":
+    if role in {"reviewer", "planner"}:
         # A previous worker may have authored part of the patch before a handoff.
         used.update(e["detail"]["model"] for e in task["events"] if e["kind"] == "tool"
                     and e["title"] in {"write file", "replace text", "replace lines"} and isinstance(e.get("detail"), dict)
