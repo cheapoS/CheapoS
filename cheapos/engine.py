@@ -121,7 +121,23 @@ def worker_system(task):
 
 
 DEFAULT_LIMITS = {"dollars": 1.0, "reviewer_tokens": 200000, "worker_turns": 40, "iterations": 5, "output_tokens": 2048, "checkpoint_turns": 12, "run_minutes": 15, "check_seconds": 360}
+AUTOMATIC_ROUTE_CHARGE_CUTOFF = 0.01
 ACTIVE = {"running", "reviewing", "waiting_approval", "waiting_retry", "stopping"}
+
+
+def guard_automatic_route_cost(task):
+    """Tolerate sub-cent reports, cumulatively; never renew on retry/resume."""
+    if task.get("execution", {}).get("mode") in {"delegate", "remote"}:
+        cost = task["usage"]["cost"]
+        if cost >= AUTOMATIC_ROUTE_CHARGE_CUTOFF:
+            raise BudgetError(
+                "Automatic free/included routing reached its $0.01 cumulative charge cutoff "
+                f"(${cost:.6f} accounted). Work stopped before further requests or returned tools. "
+                "Check the gateway's billing and fallback settings.")
+        allowed = task["limits"]["dollars"]
+        if cost > allowed:
+            raise BudgetError("The reported charge exceeded the task's dollar limit. Work stopped before further requests or returned tools.",
+                              "dollars", cost, allowed)
 
 
 def limits_from(value):
@@ -1540,6 +1556,7 @@ class Engine:
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
         runtime.guard()
+        guard_automatic_route_cost(task)
         if work_policy.read_only(task) and role != 'coordinator' and not purpose:
             messages = copy.deepcopy(messages)
             messages[0]['content'] += '\n' + work_policy.instruction('explanation')
@@ -1673,8 +1690,7 @@ class Engine:
         metrics.record_usage(record,usage,known)
         self.store.save(task)
         ensure_independent(task,record)
-        if task.get("execution", {}).get("mode") in {"delegate", "remote"} and task["usage"]["cost"] > 0:
-            raise BudgetError("An automatic free route reported a charge. Work stopped before executing any returned tools. Check the gateway's billing and fallback settings.")
+        guard_automatic_route_cost(task)
         if not known:
             raise BudgetError("Provider omitted token usage. The conservative reservation is retained; review the budget before resuming.")
         if runtime.stop.is_set():
@@ -1698,8 +1714,7 @@ class Engine:
             task["usage"]["cost"] += extra
             task["usage"][reservation["role"]]["cost"] += extra
         self.store.save(task)
-        if task.get("execution", {}).get("mode") in {"delegate", "remote"} and task["usage"]["cost"] > 0:
-            raise BudgetError("An automatic free route reported a charge. Work stopped before retrying or executing any returned tools.")
+        guard_automatic_route_cost(task)
         if not known:
             raise BudgetError("Provider omitted complete token usage. The conservative reservation is retained; review the budget before resuming.")
 

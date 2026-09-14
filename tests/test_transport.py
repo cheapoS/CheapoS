@@ -148,3 +148,99 @@ class TransportTests(unittest.TestCase):
         with self.assertRaises(BudgetError):engine._request(runtime,[],[],'reviewer')
         self.assertEqual(calls,['sse'])
         self.assertEqual(runtime.task['pending_review']['review_requests'],8)
+
+
+class AutomaticRouteChargeTests(unittest.TestCase):
+    """Exercise the real request boundary with the existing in-memory harness."""
+    harness = TransportTests.harness
+
+    def automatic(self, outcomes, mode='remote', dollars=.5):
+        engine, runtime, _ = self.harness()
+        runtime.task['execution'] = {'mode': mode}
+        runtime.task['limits']['dollars'] = dollars
+        from cheapos.access_policy import bind_provider
+        config = {**runtime.task['providers']['worker'], 'gateway': 'omniroute'}
+        policy = {'version': 1, 'base_url': config['base_url'], 'connection_revision': 'a' * 32,
+                  'included_models': [config['model']]}
+        model = {'id': config['model'], 'free': False, 'tool_calling': True}
+        runtime.task.update(access_policy=policy, route={'access_policy': policy})
+        runtime.task['providers']['worker'] = bind_provider(config, policy, model)
+        engine.gateway.settings = policy
+        engine.gateway.catalog = Mock(return_value={'models': [model]})
+        message = {'tool_calls': [{'id': 'edit', 'function': {'name': 'write_file', 'arguments': '{"path":"example.py","content":"done"}'}}]}
+        queue = iter(outcomes)
+
+        def complete(*args):
+            outcome = next(queue)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return message, {'prompt_tokens': 2, 'completion_tokens': 3, 'cost': outcome}
+
+        provider = SimpleNamespace(complete=Mock(side_effect=complete))
+        engine.provider_factory = lambda *args: provider
+        return engine, runtime, provider, message
+
+    def test_subcent_report_returns_tools_and_preserves_exact_accounting(self):
+        for mode in ('remote', 'delegate'):
+            with self.subTest(mode=mode):
+                engine, runtime, provider, message = self.automatic([.00627968], mode)
+                result = engine._request(runtime, [], [], 'worker')
+                self.assertEqual(result, message)
+                self.assertEqual(provider.complete.call_count, 1)
+                self.assertAlmostEqual(runtime.task['usage']['cost'], .00627968)
+                self.assertAlmostEqual(runtime.task['usage']['worker']['cost'], .00627968)
+                self.assertEqual(runtime.task['request_metrics'][0]['reported_cost'], .00627968)
+                self.assertEqual(runtime.task['request_metrics'][0]['cost_provenance'], 'provider_reported')
+                self.assertEqual(runtime.task['usage']['uncertain_requests'], 0)
+
+    def test_cumulative_cent_stops_response_and_remains_exhausted_after_reload(self):
+        engine, runtime, provider, _ = self.automatic([.00627968, .00372032])
+        engine._request(runtime, [], [], 'worker')
+        with self.assertRaisesRegex(BudgetError, r'\$0\.01 cumulative'):
+            engine._request(runtime, [], [], 'worker')
+        self.assertAlmostEqual(runtime.task['usage']['cost'], .01)
+        self.assertEqual(runtime.task['request_metrics'][-1]['status'], 'failed')
+        runtime.task = json.loads(json.dumps(runtime.task))
+        with self.assertRaisesRegex(BudgetError, r'\$0\.01 cumulative'):
+            engine._request(runtime, [], [], 'worker')
+        self.assertEqual(provider.complete.call_count, 2)
+        self.assertFalse(runtime.task['request_metrics'][-1]['dispatched'])
+
+    def test_failure_usage_accumulates_toward_cutoff_before_retry(self):
+        def failure(cost):
+            return ProviderError('Output incomplete', code='output_limit',
+                                 usage={'prompt_tokens': 2, 'completion_tokens': 3, 'cost': cost})
+        engine, runtime, provider, _ = self.automatic([failure(.006), failure(.004)])
+        with self.assertRaises(ProviderError):
+            engine._request(runtime, [], [], 'worker')
+        with self.assertRaisesRegex(BudgetError, r'\$0\.01 cumulative'):
+            engine._request(runtime, [], [], 'worker')
+        self.assertAlmostEqual(runtime.task['usage']['cost'], .01)
+        with self.assertRaises(BudgetError):
+            engine._request(runtime, [], [], 'worker')
+        self.assertEqual(provider.complete.call_count, 2)
+
+    def test_tolerance_does_not_override_lower_task_budget_or_missing_usage(self):
+        for dollars in (0, .005):
+            with self.subTest(dollars=dollars):
+                engine, runtime, provider, _ = self.automatic([.00627968], dollars=dollars)
+                with self.assertRaises(BudgetError) as error:
+                    engine._request(runtime, [], [], 'worker')
+                self.assertEqual(error.exception.limit_hit['allowed'], dollars)
+                self.assertAlmostEqual(runtime.task['usage']['cost'], .00627968)
+                self.assertEqual(provider.complete.call_count, 1)
+        error = ProviderError('Incomplete usage', code='output_limit', usage={'cost': .00627968})
+        engine, runtime, provider, _ = self.automatic([error])
+        with self.assertRaisesRegex(BudgetError, 'omitted complete token usage'):
+            engine._request(runtime, [], [], 'worker')
+        self.assertAlmostEqual(runtime.task['usage']['cost'], .00627968)
+        self.assertEqual(runtime.task['usage']['uncertain_requests'], 1)
+        self.assertEqual(provider.complete.call_count, 1)
+
+    def test_manual_and_local_requests_keep_their_existing_task_budget(self):
+        for mode in ('manual', 'local'):
+            with self.subTest(mode=mode):
+                engine, runtime, provider, message = self.automatic([.02], mode)
+                self.assertEqual(engine._request(runtime, [], [], 'worker'), message)
+                self.assertAlmostEqual(runtime.task['usage']['cost'], .02)
+                self.assertEqual(provider.complete.call_count, 1)
