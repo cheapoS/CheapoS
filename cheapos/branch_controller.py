@@ -145,6 +145,8 @@ class BranchController:
                 # A repeated same-proposal action returns the existing run, never starts another worker.
                 auth=self.proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),self.contract(task))
                 if auth['id']!=run['authorization']['id']: raise ValueError('A different authorization already owns this run')
+                if run['status'] == 'awaiting_authorization':
+                    return self._finish_start(task)
                 return task
             mapping=run['workspace_mapping']
             if work.inspect_source(mapping['source'])!={k:mapping[k] for k in ('source','source_identity','common_identity')}:
@@ -160,16 +162,31 @@ class BranchController:
             auth=self.proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),self.contract(task))
             run['authorization']=auth;run['authorization_ref']=auth['id']
             self.engine.store.save(task)
-            def save_mapping(value):
-                run['workspace_mapping']=value
-                self.engine.store.save(task)
-            mapping=work.create(mapping,save_mapping)
+            return self._finish_start(task)
+
+    def _finish_start(self, task):
+        """Retry only journaled setup under the same inspected authorization."""
+        run=task['branch_run'];self.validate_authority(task,run)
+        for scope in run['check_scope']:
+            if self.scopes.prepare(task,scope['command'])!=scope:
+                raise ValueError('Check scope changed; inspect task setup before continuing')
+        from .unattended_setup import require_ready
+        require_ready(task,run['check_scope'])
+        def save_mapping(value):
+            run['workspace_mapping']=value
+            self.engine.store.save(task)
+        try:
+            mapping=work.create(run['workspace_mapping'],save_mapping)
             run['workspace_mapping']=mapping;run['expected_feature_tip']=mapping['feature_tip']
             for scope in run['check_scope']: self.scopes.consent(task,scope)
-            state.transition(run,'running')
-            task['status']='running';task['error']=None
+        except (OSError,ValueError) as error:
+            task['error']=branch_pause.classify(error,task,stage='planning')['explanation']
             self.engine.store.save(task)
-            return self.launch(task_id)
+            raise
+        state.transition(run,'running')
+        task['status']='running';task['error']=None
+        self.engine.store.save(task)
+        return self.launch(task['id'])
 
     def validate_authority(self, task, run):
         self.proposals.validate(run.get('authorization',{}),self.contract(task))
@@ -553,7 +570,7 @@ class BranchController:
             if missing:
                 self.resume_proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),contract)
                 for scope in scopes:self.scopes.consent(task,scope)
-            return {'needs_consent':False,'task':self.launch(task_id)}
+            return {'needs_consent':False,'task':self._finish_start(task) if run['status']=='awaiting_authorization' else self.launch(task_id)}
 
     def proposal(self, task_id):
         with self.engine.lock:

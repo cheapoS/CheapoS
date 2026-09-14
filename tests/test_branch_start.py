@@ -40,7 +40,15 @@ class BranchStartTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'before Start'):
                 self.engine.branch.authorize(proposal['task_id'],decision)
         self.assertIsNone(_tip(self.source,'refs/heads/feature/job'))
-        task=self.engine.branch.authorize(proposal['task_id'],decision)
+        with patch('cheapos.branch_controller.work.create', side_effect=OSError('Synthetic setup interruption')):
+            with self.assertRaisesRegex(OSError, 'setup interruption'):
+                self.engine.branch.authorize(proposal['task_id'],decision)
+        saved=self.engine.store.get(proposal['task_id'])
+        self.assertEqual(saved['branch_run']['status'],'awaiting_authorization')
+        self.assertTrue(saved['branch_run']['authorization_ref'])
+        consent=self.engine.branch.resume(proposal['task_id'],{})
+        self.assertTrue(consent['needs_consent'])
+        task=self.engine.branch.resume(proposal['task_id'],{'proposal_id':consent['proposal_id'],'approved':True})['task']
         self.assertEqual(task,self.engine.branch.authorize(task['id'],decision))
         self.assertEqual(_tip(self.source,'refs/heads/feature/job'),task['branch_run']['base_sha'])
         self.assertEqual(before,(git(self.source,'status','--porcelain'),git(self.source,'write-tree'),git(self.source,'rev-parse','HEAD')))
