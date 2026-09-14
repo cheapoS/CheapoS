@@ -435,7 +435,7 @@ class Engine:
     def provider_key(self, role, config):
         if config.get("gateway") == "omniroute":
             return self.gateway.api_key if self.gateway.matches(config["base_url"]) else ""
-        return (self.secrets.get((role, config["base_url"]), "")
+        return (self.secrets.get((config.get("credential_role", role), config["base_url"]), "")
                 or os.environ.get(config["key_env"], "")
                 or (self.gateway.api_key if self.gateway.matches(config["base_url"]) else ""))
 
@@ -1457,9 +1457,14 @@ class Engine:
             return config_override
         providers = task.get('providers') or {}
         if role == 'planner':
-            return (providers.get('planner') or providers.get('reviewer')
-                    or self.config.get('planner') or self.config.get('reviewer')
-                    or providers.get('worker') or self.config.get('worker') or {})
+            # Saved connections win over mutable global settings. The source role
+            # selects an endpoint-bound credential, never an arbitrary other key.
+            for source in ('planner', 'reviewer', 'worker'):
+                if providers.get(source):
+                    config = copy.deepcopy(providers[source])
+                    config.setdefault('credential_role', source)
+                    return config
+            return {}
         return providers.get(role) or self.config.get(role) or {}
 
     def _request(self, runtime, messages, tools, role, config_override=None, purpose=None):

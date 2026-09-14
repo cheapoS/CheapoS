@@ -1,6 +1,6 @@
 # T64 — Preserve credentials when planning falls back to another role
 
-Status: Ready after dependency
+Status: Complete
 Priority: P1 — authenticated planning
 Depends on: T62
 Size: S
@@ -54,5 +54,7 @@ OmniRoute keys and reviewer environment variables can mask this failure.
 
 ## Completion record
 
-Pending. Record commit, credential-resolution contract, validation, and timing;
-update TASKS.md and commit the scoped changes.
+Completed in the T64 scoped commit. Provider resolution retains a non-secret
+credential_role and pins fallback to saved reviewer/worker settings. Endpoint-bound
+keys and environment/shared-gateway flows are preserved; global planner changes
+cannot replace a saved fallback. Two deterministic tests passed in 0.007s.
