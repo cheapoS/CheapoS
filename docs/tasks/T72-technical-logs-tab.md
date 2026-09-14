@@ -106,5 +106,7 @@ Measured CSS viewport widths1440/1024/390 produced modal widths1080/976/366 with
 16px text and no horizontal overflow. Screenshots showed readable text and
 reachable sticky Start/Close controls.720CSS desktop-equivalent layout exercised;
 literal200% browser zoom remains unverified. Pure fixtures cover event ordering,
-escaping/redaction and old-record limitations. Browser live-event reading-anchor
-updates are implemented but not separately exercised with mid-scroll injection.
+escaping/redaction and old-record limitations. Browser live-event injection with 52 saved events verified that expanded older
+entry 20 keeps the same viewport position after a new event arrives. Return to
+latest reaches the top and newest entry. This revealed and fixed native scroll
+anchoring and a control-insertion offset; no test sleeps or inference were used.

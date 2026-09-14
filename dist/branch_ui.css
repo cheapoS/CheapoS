@@ -13,3 +13,12 @@
 @media(max-width:600px){.planner-dialog{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:16px}.planner-dialog .branch-dialog-heading{top:-16px}.planner-dialog .branch-actions{bottom:-16px}}
 
 #logs-view .activity-card summary{display:flex;flex-wrap:wrap;gap:8px;overflow-wrap:anywhere}#logs-view .activity-card time{color:var(--muted)}#logs-view pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}#logs-view dd{margin:0}.logs-latest{position:sticky;top:0;z-index:3;background:var(--panel,#242424)}
+
+#view-container:has(#logs-view:not(.hidden)){overflow-anchor:none;scroll-behavior:auto}
+/* One conversation reply owns the live operation and its run actions. */
+.operation-item-title{font-size:14px;font-weight:600;line-height:1.5;margin:0 0 12px;color:var(--text)}
+.branch-operation-actions{margin-top:16px;max-width:100%;overflow-wrap:anywhere}
+.branch-operation-actions:empty{display:none}
+.branch-operation-actions .branch-actions:empty{display:none}
+.branch-operation-actions .branch-pause{margin:12px 0}
+@media(max-width:640px){.operation-item-title{font-size:13px}.branch-operation-actions .branch-actions{flex-wrap:wrap}}

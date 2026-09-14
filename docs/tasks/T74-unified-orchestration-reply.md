@@ -1,6 +1,6 @@
 # T74 — Keep orchestration and live work inside one cheapoS reply
 
-Status: Ready after dependencies
+Status: Complete
 Priority: High — coherent conversational workflow
 Depends on: T68, T69, T70, T73; coordinate with T71/T72 UI integration
 Size: M
@@ -212,7 +212,34 @@ Reuse T68 role identity, T69 Plan view, T70 startup state, and T73 pause mapping
 
 ## Completion record
 
-Pending. Record implementation commit, affected render paths, measured checks,
-browser outcomes, and limitations. Update TASKS.md and commit only this task's
-changes after validation. Do not mark complete just because duplicate text was
-hidden; live work must be visibly contained in the owning reply.
+Completed in the T74 integration commit (recorded in Git history).
+
+- `CheapOSConversation.branchBuild` owns planning, item, attempt, guidance and
+  final-integration replies. Stable phase keys preserve expanded Details across
+  polling; explicit item identity (including nested commit receipts) keeps prior
+  checks/review/commits out of the next item. Current saved ready receipts select
+  commit-pending presentation; intermediate selection names the next action.
+- `CheapOSChatView` contains real streamed thinking/content and recorded command
+  output, role/model identity, routing evidence and inline run controls.
+  `branch_ui.render` now mounts controls inside the owning reply rather than
+  appending another narrator. Plan retains overall tasks and branch metadata.
+  Recorded questions and T73 specific failure actions remain visible.
+- Completed receipts require matching item/run, completed stage and valid commit
+  identity or a reviewed no-change outcome. Final integration names its actual
+  target and feature tip. Whitespace checks, including reused checks, are labeled
+  precisely. Missing historical model identity is unavailable, never guessed from
+  today's selected provider.
+
+Validation: 110 existing and extended conversation/branch/routing/guidance JS
+cases passed in 0.090 seconds; syntax and diff checks passed. Nine added pure or
+VM-render cases each measured below 2 ms. No model requests, workflow fixtures,
+real-time sleeps, paid escalation, or authorization changes were introduced.
+
+The shared isolated browser fixture verified one owning reply through planner
+selection, waiting, real synthetic streaming, ready/Review plan, item checks,
+independent review, commit and next-item transitions, a specific pause, and reload.
+Expanded Details retained state and actual output remained nested. Browser review
+caught and fixed stale waiting text and a stale live review label at commit. The
+terminal fixture verifies merged outcome in the same owner; target/commit use the
+actual saved receipt schema. These are synthetic presentation checks, not claims
+that a live restart-button task or model qualification was run.

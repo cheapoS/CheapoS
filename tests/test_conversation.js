@@ -107,3 +107,71 @@ test('a failed final file action is marked as needing attention',()=>{
  const [reply]=replies(task({status:'error',events:[event(1,'model','Requesting worker: worker-model',{}),event(2,'tool_error','Action failed',{error:'File changed'})]}));
  assert.equal(reply.steps[0].outcome,'failed');assert.equal(reply.steps[0].title,'Work needs attention');
 });
+
+const branchTask=overrides=>task({id:'branch-task',status:'running',planning_request:{prompt:'Build restart'},branch_run:{id:'run1',status:'draft',items:[{id:'planning',title:'Prepare plan',status:'working'}],current_item_id:'planning'},...overrides});
+test('one planning operation retains stable identity through selection stream and proposal readiness',()=>{
+ const t=branchTask();let [reply]=replies(t);const id=reply.id,step=reply.steps[0].id;
+ assert.equal(reply.label,'Planning');assert.match(reply.steps[0].title,/Selecting a planner/);
+ t.events=[{...event(1,'model','Requesting planner: planner-model',{}),branch_run_id:'run1',item_id:null}];
+ t.stream={role:'planner',phase:'thinking',thinking:'Inspect current project',model:'planner-model'};
+ [reply]=replies(t);assert.equal(reply.id,id);assert.equal(reply.steps[0].id,step);assert.equal(reply.steps[0].role,'planner');assert.equal(reply.stream.thinking,'Inspect current project');
+ t.status='ready';t.branch_run.status='awaiting_authorization';delete t.stream;
+ [reply]=replies(t);assert.equal(reply.id,id);assert.equal(reply.owner,true);assert.equal(reply.live,false);assert.equal(reply.steps[0].title,'Your plan is ready');
+});
+test('item results remain scoped across review commit and next item without stale review stream',()=>{
+ const items=[{id:'one',title:'Build restart button',status:'reviewing'},{id:'two',title:'Style restart button',status:'pending'},{id:'three',title:'Document restart',status:'pending'}];
+ const e=(id,item,kind,title,detail)=>({...event(id,kind,title,detail),item_id:item});
+ const t=branchTask({planning_request:null,status:'approved',branch_run:{id:'run1',authorization_ref:'auth',status:'running',items,current_item_id:'one'},events:[
+ e(1,'one','tool','replace text',{arguments:{path:'app.js'}}),e(2,'one','checks','Verification passed',{passed:true,command:['git','diff','--check']}),e(3,'one','review','Independent item review passed',{decision:'APPROVE',feedback:'Matches item one'})]});
+ items[0].ready_receipt={candidate:{id:'candidate'}};
+ let list=replies(t),last=list.at(-1);assert.match(last.itemTitle,/Item 1 of 3/);assert.equal(last.steps.at(-1).phase,'commit');assert.equal(last.steps.at(-1).live,true);assert.equal(last.steps.find(s=>s.phase==='review').title,'Independent review passed');assert.equal(last.steps.find(s=>s.phase==='checks').title,'Whitespace check passed');
+ items[0].status='committed';items[0].commit_receipt={stage:'completed',item_id:'one',run_id:'run1',new_tip:'a'.repeat(40)};
+ items[1].status='working';t.branch_run.current_item_id='two';t.status='running';t.active_role='worker';
+ t.events.push({...e(4,null,'branch_commit','Committed first',{detail:{item_id:'one'}}),branch_run_id:'run1'},e(5,'one','branch_item','Working on style',{item_id:'two'}));
+ t.stream={role:'reviewer',phase:'thinking',thinking:'Old review output'};
+ list=replies(t);last=list.at(-1);assert.match(last.itemTitle,/Item 2 of 3 · Style/);assert.equal(last.steps.at(-1).phase,'work');assert.equal(last.stream,null);assert.ok(last.steps.every(s=>!['checks','review','commit'].includes(s.phase)));
+ assert.equal(list.flatMap(r=>r.steps).filter(s=>s.title==='Item committed').length,1);
+ assert.equal(list.find(r=>r.operation==='one').steps.find(s=>s.phase==='review').outcome,'passed');
+ assert.equal(list.find(r=>r.operation==='one').steps.find(s=>s.phase==='review').title,'Independent review passed');
+});
+test('mid-item guidance remains chronological with only one completed receipt and current pause has no spinner',()=>{
+ const t=branchTask({planning_request:null,status:'paused',branch_run:{id:'run1',authorization_ref:'auth',status:'paused',current_item_id:'two',waiting_for_user:'Which restart target?',items:[{id:'one',title:'First',status:'committed',commit_receipt:{stage:'completed',item_id:'one',run_id:'run1',new_tip:'a'.repeat(40)}},{id:'two',title:'Second',status:'committing',ready_receipt:{}}]},events:[
+ {...event(1,'tool','read file',{arguments:{path:'a'}}),item_id:'one'},event(2,'steer','User Guidance','Keep the UI compact'),{...event(3,'tool','replace text',{arguments:{path:'a'}}),item_id:'one'}]});
+ const result=build(t),list=result.filter(e=>e.kind==='assistant');
+ assert.equal(list.filter(e=>e.owner).length,1);
+ assert.equal(result.find(e=>e.steer).text,'Keep the UI compact');assert.equal(list.flatMap(r=>r.steps).filter(s=>s.title==='Item committed').length,1);
+ assert.ok(list.every(r=>!r.live));assert.equal(list.at(-1).reply,'Which restart target?');
+});
+test('rendered operation contains live details and action slot without routing narration',()=>{
+ const vm=require('node:vm'),fs=require('node:fs');
+ const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8').split("\n'use strict';\nconst $ =")[0];
+ const context={CheapOSGuide:require('../dist/guidance.js'),esc:x=>String(x??'').replaceAll('<','&lt;'),icon:()=>'',messageText:x=>x,thinkingMarkup:()=>'',eventDetail:()=>''};vm.createContext(context);vm.runInContext(source+'\nthis.view=CheapOSChatView;',context);
+ const t=branchTask({stream:{role:'planner',phase:'thinking',thinking:'Actual planner output',model:'planner-model'},events:[event(1,'model','Requesting planner: planner-model',{})],routing_traces:[{role:'unknown',selected_model:'chosen'}]});
+ const [entry]=replies(t),html=context.view.message(entry,t,'',true);
+ assert.equal((html.match(/<article/g)||[]).length,1);assert.match(html,/data-operation-actions/);assert.match(html,/Actual planner output/);assert.match(html,/workflow-details/);assert.doesNotMatch(html,/unknown: selected/);assert.match(html,/<span>Planner<\/span>/);
+});
+test('final checks and review with explicit null item ownership cannot join the last item',()=>{
+ const t=branchTask({planning_request:null,status:'reviewing',branch_run:{id:'run1',status:'finalizing',authorization_ref:'auth',current_item_id:null,items:[{id:'one',title:'Only item',status:'committed',commit_receipt:{stage:'completed',item_id:'one',run_id:'run1',new_tip:'a'.repeat(40)}}]},events:[
+ {...event(1,'tool','replace text',{arguments:{path:'a'}}),branch_run_id:'run1',item_id:'one'},
+ {...event(2,'checks','Final verification',{passed:true,command:['python3','-m','unittest']}),branch_run_id:'run1',item_id:null},
+ {...event(3,'model','Requesting reviewer: final-reviewer',{}),branch_run_id:'run1',item_id:null}]});
+ const list=replies(t);assert.equal(list.at(-1).operation,'final');assert.match(list.at(-1).itemTitle,/Final integration/);assert.equal(list.at(-1).steps.find(s=>s.phase==='checks').outcome,'passed');assert.ok(list.find(e=>e.operation==='one').steps.every(s=>s.phase!=='checks'));assert.equal(list.filter(e=>e.owner).length,1);
+});
+test('branch streamed narration stays visible inside its owning work details',()=>{
+ const t=branchTask({planning_request:null,branch_run:{id:'run1',authorization_ref:'auth',status:'running',current_item_id:'one',items:[{id:'one',title:'Implement restart',status:'working'}]},stream:{role:'worker',phase:'answer',content:'Inspecting the implementation now',model:'worker-model'},events:[{...event(1,'model','Requesting worker: worker-model',{}),item_id:'one'}]});
+ const reply=replies(t).at(-1);assert.equal(reply.steps.length,1);assert.equal(reply.steps[0].live,true);assert.equal(reply.stream.content,'Inspecting the implementation now');
+});
+test('invalid item receipt cannot announce a committed result and missing historical identity stays unavailable',()=>{
+ const t=branchTask({planning_request:null,status:'paused',providers:{worker:{model:'new-global-model'}},branch_run:{id:'run1',authorization_ref:'auth',status:'paused',current_item_id:'one',items:[{id:'one',title:'Work',status:'committed',commit_receipt:{stage:'completed',item_id:'one',run_id:'run1',new_tip:'bad'}}]},events:[{...event(1,'tool','read file',{arguments:{path:'a'}}),item_id:'one'}]});
+ const reply=replies(t).at(-1);assert.ok(reply.steps.every(s=>s.title!=='Item committed'));assert.equal(reply.steps[0].model,'');
+});
+test('reused whitespace evidence keeps its precise check description',()=>{
+ const [reply]=replies(task({events:[event(1,'check_reused','Reused verification',{command:['git','diff','--check']})]}));
+ assert.equal(reply.steps[0]?.title,'Whitespace check passed');
+});
+test('confirmed integration names actual target and commit while intermediate selection stays item-neutral',()=>{
+ const t=branchTask({planning_request:null,status:'completed',branch_run:{id:'run1',authorization_ref:'auth',status:'merged',current_item_id:null,target_ref:'refs/heads/main',merge_receipt:{stage:'completed',feature_tip:'b'.repeat(40)},items:[]},events:[{...event(1,'branch_merged','Merged locally',{target_ref:'refs/heads/main',sha:'b'.repeat(40)}),branch_run_id:'run1',item_id:null}]});
+ let reply=replies(t).at(-1);assert.match(reply.intro,/into main/);assert.equal(reply.steps.at(-1).title,'Local integration complete');assert.match(reply.steps.at(-1).detail,/main · bbbbbbbb/);assert.equal(reply.live,false);
+ t.branch_run.status='running';t.status='running';t.branch_run.items=[{id:'next',title:'Not selected yet',status:'pending'}];t.events=[];
+ reply=replies(t).at(-1);assert.equal(reply.operation,'run');assert.equal(reply.steps.at(-1).title,'Preparing the next item');assert.equal(reply.itemTitle,'');
+});

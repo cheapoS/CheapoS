@@ -10,15 +10,14 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
-**Next up: T62–T74 — reliable planning, one continuous conversation, and clear failure explanations.**
-These are the next implementation cards, based on the planner review at
-`db774c7` (September 14, 2026) and the operator's follow-up UI requests. Start
-with the first unfinished card whose dependencies are available. Read current
-code before implementing; the review is a reproduction record, not a reason
-to undo newer fixes. T01–T61 completion records below are
+**Completed: T62–T74 — reliable planning, one continuous conversation, and clear failure explanations.**
+These completed implementation cards are based on the planner review at
+`db774c7` (September 14, 2026) and the operator's follow-up UI requests.
+See [validation and browser evidence](docs/development/planner-reliability.md).
+The review is a historical reproduction record, not a reason to undo newer fixes. T01–T61 completion records below are
 historical, not the next work queue.
 
-### T62–T74 next implementation queue
+### T62–T74 completed implementation queue
 
 The dedicated planner should let an operator choose a stronger planning model
 while retaining the existing worker/reviewer loop and authorized spending policy.
@@ -39,7 +38,7 @@ Clicking Start should immediately return to a visibly starting conversation.
 | [T70](docs/tasks/T70-responsive-run-start.md) | Close Start immediately and report startup progress in chat | T69 | M | Complete |
 | [T71](docs/tasks/T71-readable-planner-dialog.md) | Widen the planner and make long proposals easier to read | Current planner dialog | S | Complete |
 | [T72](docs/tasks/T72-technical-logs-tab.md) | Put Technical logs last and show the newest events first | T69, T73 | S/M | Complete |
-| [T74](docs/tasks/T74-unified-orchestration-reply.md) | Keep planning, worker, and reviewer progress inside the owning cheapoS reply | T68, T69, T70, T73; coordinate with T71/T72 | M | Ready after dependencies |
+| [T74](docs/tasks/T74-unified-orchestration-reply.md) | Keep planning, worker, and reviewer progress inside the owning cheapoS reply | T68, T69, T70, T73; coordinate with T71/T72 | M | Complete |
 
 **Required tab order:** without a plan, **Chat → Changes → Activity → Tests → Technical logs**;
 with a plan, **Chat → Changes → Plan → Activity → Tests → Technical logs**. The current Checks

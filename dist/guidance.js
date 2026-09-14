@@ -558,14 +558,14 @@ const CheapOSConversation = (() => {
     if (event.kind === 'checks' || event.kind === 'check_reused' || event.kind === 'permission' || event.title === 'Running verification') return 'checks';
     if (event.kind === 'review' || event.kind === 'checkpoint' || event.detail?.role === 'reviewer' || event.title?.startsWith('Requesting reviewer:')) return 'review';
     if (event.kind === 'commit') return 'commit';
-    if (event.detail?.role === 'coordinator' || event.title?.startsWith('Requesting coordinator:')) return 'plan';
+    if (event.actor?.role === 'planner' || event.detail?.role === 'planner' || event.title?.startsWith('Requesting planner:') || event.detail?.role === 'coordinator' || event.title?.startsWith('Requesting coordinator:')) return 'plan';
     if (event.kind === 'tool' || event.title?.startsWith('Requesting worker:') || event.kind === 'handoff' && event.detail?.role === 'worker') return 'work';
     return previous;
   }
   function currentPhase(task, fallback) {
     if (task.check_stream || task.pending_approval) return 'checks';
     if (task.status === 'reviewing' || task.stream?.role === 'reviewer') return 'review';
-    if (task.active_role === 'coordinator') return 'plan';
+    if (task.active_role === 'coordinator' || task.active_role === 'planner') return 'plan';
     return fallback || 'work';
   }
   function stepView(step, task, at) {
@@ -577,7 +577,7 @@ const CheapOSConversation = (() => {
     const edits = new Set(toolEvents.filter(e => ['write file','replace text','replace lines'].includes(e.title)).map(e => e.detail.arguments.path));
     const request = events.findLast(e => e.kind === 'model');
     const role = phase === 'review' ? 'reviewer' : phase === 'plan' ? 'planner' : 'worker';
-    const model = (live && task.stream?.model) || request?.title?.replace(/^Requesting (worker|reviewer|coordinator|planner): /,'') || events.findLast(e => e.detail?.model)?.detail.model || task.providers?.[role]?.model || '';
+    const model = (live && task.stream?.model) || request?.title?.replace(/^Requesting (worker|reviewer|coordinator|planner): /,'') || events.findLast(e => e.detail?.model)?.detail.model || (live?task.providers?.[role]?.model:'') || '';
     const elapsed = live ? guide.progress(task, at)?.elapsed || '0s' : '';
     let title = {work:'Worked on your request',checks:'Ran checks',review:'Requested independent review',plan:'Prepared the next step',commit:'Commit needs attention'}[phase];
     let detail = edits.size ? `${edits.size} file${edits.size === 1 ? '' : 's'} updated` : `${toolEvents.length} action${toolEvents.length === 1 ? '' : 's'}`;
@@ -588,7 +588,7 @@ const CheapOSConversation = (() => {
     }
     if (phase === 'checks') {
       outcome = check ? check.passed ? 'passed' : 'failed' : events.some(e => e.kind === 'check_reused') ? 'passed' : 'pending';
-      title = outcome === 'passed' ? 'Checks passed' : outcome === 'failed' ? 'Checks found something to fix' : 'Checks pending';
+      title = outcome === 'passed' ? ((check?.command||last(events, 'check_reused')?.detail?.command||[]).join(' ')==='git diff --check'?'Whitespace check passed':'Checks passed') : outcome === 'failed' ? 'Checks found something to fix' : 'Checks pending';
       detail = (check?.command || last(events, 'check_reused')?.detail?.command || []).join(' ');
     }
     if (phase === 'review') {
@@ -611,7 +611,7 @@ const CheapOSConversation = (() => {
       else if (task.stream?.phase === 'tool') detail = `Preparing ${String(task.stream.tool || 'the next action').replaceAll('_',' ')}`;
       else if (task.stream?.phase === 'answer') detail = 'Writing a response';
       else if (task.web_read) detail = `Reading ${task.web_read.url}`;
-      else if (request) detail = 'Waiting for the model to respond';
+      else if (request) {detail = 'Waiting for the model to respond';if(task.branch_run&&!['checks','commit'].includes(phase))title=`Waiting for the ${role}’s response`;}
     }
     const lastAction = toolEvents.at(-1);
     const activity = lastAction ? guide.activityItem(lastAction)?.title || lastAction.title : '';
@@ -661,7 +661,7 @@ const CheapOSConversation = (() => {
     const substantive = events.filter(e => !['generation','state','model','context'].includes(e.kind));
     const final = substantive.at(-1);
     const reply = committed(final) && !task.demo ? 'What would you like to work on next?' : final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
-    if (onlyChat || !live && !events.some(e => ['tool','checks','review','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
+    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
     let intro = '';
     if (steps.length) {
       intro = live ? {work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';
@@ -674,7 +674,95 @@ const CheapOSConversation = (() => {
     }
     return {kind:'assistant',id:key,latest,live,intro,reply:onlyChat ? stream.content || reply : reply,stream:live && !onlyChat ? stream : null,steps:steps.map(s => stepView(s,task,at))};
   }
+  function branchBuild(task, at) {
+    const run=task.branch_run, items=run.items||[], planning=Boolean(task.planning_request&&!run.authorization_ref);
+    const finalOperation=['finalizing','ready_for_merge','merging','merged','left_on_branch'].includes(run.status)||(!run.current_item_id&&items.length&&items.every(i=>['committed','satisfied_without_change'].includes(i.status)));
+    const current=planning?'planning':finalOperation?'final':run.current_item_id||'run';
+    const entries=[];
+    let inherited=task.planning_request?'planning':'run';
+    function owner(event) {
+      const explicit=event.detail?.item_id||event.detail?.detail?.item_id||event.item_id;
+      if(items.some(item=>item.id===explicit))return explicit;
+      if(event.actor?.role==='planner'||event.detail?.role==='planner'||event.title?.startsWith('Requesting planner:'))return 'planning';
+      if(['branch_final','branch_merged'].includes(event.kind)||(event.branch_run_id===run.id&&event.item_id===null&&inherited!=='planning'))return 'final';
+      return inherited;
+    }
+    function emit(events,key,id,latest) {
+      const item=items.find(i=>i.id===id), active=latest&&id===current;
+      const receipt=item?.commit_receipt,validReceipt=receipt?.stage==='completed'&&receipt.item_id===item.id&&receipt.run_id===run.id;
+      const committed=validReceipt&&(item.status==='committed'&&/^[a-f0-9]{40,64}$/.test(receipt.new_tip||'')||item.status==='satisfied_without_change'&&receipt.outcome==='satisfied_without_change');
+      const commitPending=active&&run.status==='running'&&item&&!committed&&(item.status==='committing'||Boolean(item.ready_receipt));
+      const streamedMetric=(task.request_metrics||[]).find(r=>r.id===task.stream?.request_id);
+      const streamBelongs=active&&events.some(e=>e.kind==='model')&&(!streamedMetric?.branch_item_id||streamedMetric.branch_item_id===id)&&!(item?.status==='working'&&task.stream?.role==='reviewer');
+      const view={...task,events,stream:streamBelongs?task.stream:null,check_stream:active?task.check_stream:null,pending_approval:active?task.pending_approval:null,
+        status:active?(commitPending&&run.status==='running'?'running':task.status):'awaiting_reply'};
+      let reply=response(events,key,view,active,at);
+      reply.operation=id;reply.itemTitle=item?`Item ${items.indexOf(item)+1} of ${items.length} · ${item.title}`:id==='final'?'Final integration':'';
+      reply.owner=active;reply.label=active?(id==='planning'?'Planning':commitPending?'Committing':task.status==='reviewing'?'Reviewing':task.check_stream?'Checking':guide.isActive(task.status)?'Working':''):'';
+      const question=active&&run.pause_detail?.cause!=='essential_clarification'&&(run.waiting_for_user||task.clarification?.question);
+      reply.reply=question||''; // Narration is retained inside its step; explicit questions remain visible.
+      if(id==='planning') {
+        const busy=active&&guide.isActive(task.status),ready=active&&run.status==='awaiting_authorization';
+        const step=stepView({id:`${key}-plan`,phase:'plan',events,live:busy},view,at);
+        const request=events.findLast(e=>e.kind==='model');
+        step.title=ready?'Your plan is ready':busy?task.stream?.phase==='waiting'||request?'Waiting for the planner’s response':'Selecting a planner':active?'Planning paused':'Plan prepared';
+        if(busy&&task.stream&&task.stream.phase!=='waiting')step.title=task.stream.phase==='tool'?'Reading project context':'Preparing your proposal';
+        step.detail=ready?'Review the plan before authorizing work.':busy?'You can add guidance while I work.':active?'The saved planning work is retained.':'The proposal is retained in Plan.';
+        if(!busy){step.live=false;step.outcome=ready?'done':active?'pending':'done';}
+        reply.steps=[step];reply.live=busy;reply.stream=busy?task.stream:null;
+        reply.intro=busy?'I’m preparing a plan for your request.':ready?'Your plan is ready to review.':active?'Planning has stopped. The saved details are below.':'I prepared the plan for this work.';
+        reply.label=busy?'Planning':'';
+      } else {
+        if(!reply.steps.length&&(active||events.some(e=>['assistant','generation'].includes(e.kind)))){const live=active&&guide.isActive(view.status);reply.steps=[stepView({id:key+'-work',phase:currentPhase(view,'work'),events,live},view,at)];reply.live=live;reply.stream=live?view.stream:null;}
+        if(commitPending) {
+          reply.steps=reply.steps.map(step=>stepView({...step,live:false},{...view,stream:null,check_stream:null},at));
+          reply.steps.push(stepView({id:`${key}-commit`,phase:'commit',events:[],live:true},{...view,stream:null,check_stream:null,pending_approval:null},at));
+          reply.live=true;reply.stream=null;reply.intro='Independent item review is complete. I’m recording this item’s approved result.';
+        } else if(committed) {
+          reply.steps=reply.steps.map(step=>stepView({...step,live:false},{...view,stream:null,check_stream:null},at));
+          const unchanged=item.status==='satisfied_without_change';
+          reply.steps.push({id:`${key}-receipt`,receipt:true,phase:'commit',events:[],live:false,role:'controller',model:'Local Git',title:unchanged?'Item already satisfied':'Item committed',detail:unchanged?'Reviewed; no change was needed.':`${item.commit_receipt.new_tip?.slice(0,8)||''} · ${item.title}`,outcome:'passed'});
+          reply.live=false;reply.stream=null;reply.intro=unchanged?'This item was reviewed and already satisfied.':'This item’s reviewed changes are committed.';
+        }
+        if(active&&id==='run'&&run.status==='running'&&!run.current_item_id){reply.label='Preparing next item';reply.intro='I’m preparing the next item in your approved plan.';reply.stream=null;reply.steps=[{id:key+'-transition',phase:'work',events:[],live:true,role:'controller',model:'cheapoS controller',title:'Preparing the next item',detail:'Completed item evidence remains with its item above.',outcome:'live',elapsed:guide.progress(task,at)?.elapsed||'0s'}];reply.live=true;}
+        if(active&&id==='final'&&run.status==='ready_for_merge'){reply.live=false;reply.intro='Final checks and independent review are complete. Inspect the cumulative changes before merging.';}
+        if(active&&id==='final'&&run.status==='merged'){
+          const merged=run.merge_receipt?.stage==='completed',record=events.findLast(e=>e.kind==='branch_merged');
+          const target=String(run.target_ref||record?.detail?.target_ref||'').replace(/^refs\/heads\//,'');
+          const sha=run.merge_receipt?.feature_tip||record?.detail?.sha;
+          reply.live=false;reply.stream=null;reply.intro=merged?`The reviewed run has been merged locally${target?' into '+target:''}.`:'The saved integration is awaiting confirmation.';
+          reply.steps=reply.steps.filter(step=>step.events.some(e=>['tool','checks','check_reused','review'].includes(e.kind)));
+          reply.steps.push({id:key+'-integration',phase:'commit',events:[],live:false,role:'controller',model:'Local Git',title:merged?'Local integration complete':'Confirming local integration',detail:merged?`${target||'Target retained in Plan'} · ${/^[a-f0-9]{40,64}$/.test(sha||'')?sha.slice(0,8):'Commit identity unavailable'}`:'Inspect the saved integration status before continuing.',outcome:merged?'passed':'pending'});
+        }
+      }
+      const phaseCounts={};
+      reply.steps=reply.steps.map(step=>({...step,id:`${key}-${step.phase}-${phaseCounts[step.phase]=(phaseCounts[step.phase]||0)+1}`}));
+      entries.push(reply);
+    }
+    const turns=guide.turns(task,at);
+    for(const turn of turns) {
+      entries.push({kind:'user',id:`user-${turn.index}`,text:turn.userPrompt});
+      let batch=[],id=inherited,part=0,attempt=null;
+      const flush=(latest=false)=>{emit(batch,`operation-${turn.index}-${id}-${part++}`,id,latest);batch=[];};
+      for(const event of turn.events) {
+        if(event.kind==='steer') {
+          if(batch.length)flush();
+          entries.push({kind:'user',id:`steer-${turn.index}-${event.id}`,text:typeof event.detail==='string'?event.detail:event.detail?.message||event.title,steer:true});
+          continue;
+        }
+        const next=owner(event);
+        if((next!==id||(attempt&&event.run_id&&attempt!==event.run_id))&&batch.length)flush();
+        if(event.run_id)attempt=event.run_id;
+        id=next;inherited=next;batch.push(event);
+      }
+      if(turn.isLatest&&id!==current){if(batch.length)flush();id=current;}
+      flush(turn.isLatest);
+    }
+    for(const entry of entries){if(entry.kind==='assistant'&&entries.findLast(e=>e.kind==='assistant'&&e.operation===entry.operation)!==entry){entry.steps=entry.steps.filter(s=>!s.receipt);if(entry.intro.includes('committed')||entry.intro.includes('already satisfied'))entry.intro='Earlier work on this item.';}}
+    return entries;
+  }
   function build(task, at = Date.now()) {
+    if(task.branch_run)return branchBuild(task,at);
     const entries = [];
     for (const turn of guide.turns(task, at)) {
       entries.push({kind:'user',id:`user-${turn.index}`,text:turn.userPrompt});

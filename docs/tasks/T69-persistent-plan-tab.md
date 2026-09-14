@@ -85,3 +85,8 @@ Close and sticky Start controls remained visible; keyboard focus was visible.
 A 720 CSS-pixel desktop-equivalent layout was exercised; literal 200% browser
 zoom remains unverified. Synthetic stale Start dismissed into Chat and retained
 the specific recoverable error. Controlled promises cover pending/unknown states.
+
+Compatibility follow-up: older authorized records without their original contract
+show an explicit Approved plan unavailable limitation. Mutable current items are
+never substituted as approved scope. Existing pure fixture extended;25Node cases
+passed72.1ms, changed case0.26ms.

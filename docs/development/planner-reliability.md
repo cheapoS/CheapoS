@@ -7,7 +7,9 @@ credential-source preservation, persistent optional planner configuration,
 legacy task/policy compatibility, complete final-check derivation, planner
 accounting, specific stop explanations, persistent Plan, immediate Start,
 responsive proposal dialogs, and a directly accessible Technical logs view.
-T74 continues the conversation ownership work described in the task board.
+T74 keeps each operation inside one owning cheapoS reply, with item-scoped
+checks/reviews/commits, retained streaming Details, truthful historical model
+identity, and explicit whitespace-only check wording.
 
 ## Focused evidence
 
@@ -28,7 +30,8 @@ T74 continues the conversation ownership work described in the task board.
   extended with a deterministic setup interruption, then explicit saved-authority
   resume and consent recovery; final affected case passed in 6.530s. No new
   expensive workflow fixture was added.
-- Frontend selector: 121 tests passed in 94.706ms, plus JS syntax checks.
+- Final frontend selector: 130 tests passed in 99.217ms, plus JS syntax checks.
+  Nine new conversation/render cases each took under 2ms.
 - Specific pause cases: 9 passed in 0.005s; review validation: 7 in 0.003s.
 
 These are measured focused runs, not a full-suite claim. No live inference,
@@ -45,8 +48,16 @@ reopened successfully. Dialogs measured 1080px at a 1440px viewport, 976px at
 1024px, and 366px at 390px, with 16px text and reachable controls.
 
 Literal browser 200% zoom was not separately set; a 720 CSS-pixel equivalent
-viewport was checked. The older-log reading-position update was covered in code
-but not separately exercised in the browser. Card records retain these limits.
+viewport was checked. A 52-event browser fixture verified an expanded older
+entry stayed at the same viewport position when a new event arrived, and Return
+to latest showed the newest entry. This caught and fixed native scroll anchoring
+and control-insertion offsets. Card records retain the literal-zoom limitation.
+
+T74 browser transitions passed for planner selection, waiting, streaming, plan
+readiness, item-one commit into item-two work, specific pause, reload, and
+merged outcome. One owning reply retained actual output and controls throughout.
+Older authorized records missing their original plan show an explicit limitation
+in Plan instead of presenting mutable scope as approved.
 
 ## Integration
 
