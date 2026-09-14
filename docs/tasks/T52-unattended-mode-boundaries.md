@@ -1,6 +1,6 @@
 # T52 — Keep unattended execution separate from conversational behavior
 
-Status: Not started
+Status: Completed
 Priority: High
 Depends on: current unattended setup and independent-item scheduling
 Size: M
@@ -80,3 +80,29 @@ cases in `test_chat.py`, `test_answer_recovery.py`, `test_compaction_observation
 multi-item workflow by default. Report new-case timing and get acceptance before
 adding a heavy test. Record the mode/tool contract, blocker behavior, checks,
 remaining limitations, and commit in the completion record.
+
+## Implemented behavior and validation
+
+Completed September 14, 2026. `execution_context.py` distinguishes interactive,
+pre-authorization planning, authorized unattended work, and review without
+changing the saved conversational UI flag. Initial, compact/recovery and resumed
+worker policy retain the unattended completion and authority boundaries. Near-end
+handling cannot finish an unattended item as a conversational answer.
+
+Authorized workers get `report_blocker(question, inspected_evidence,
+why_blocked)` rather than `ask_user`, plus scoped check-command requests. The
+existing once-per-item repository reconsideration is preserved. A genuine
+blocker stores evidence on the item and uses the existing waiting-for-user and
+clean-independent-item scheduling path. New commands retain command approval.
+Every worker response is checked against its exact offered tools before any
+call executes; an unoffered mixed batch executes nothing and receives bounded
+corrective feedback (two durable corrections, then a visible pause). Normal
+interactive and proposal questions remain supported.
+
+Validation: three new table/policy cases with no network/Git fixture, plus
+existing chat (11 cases, 14.169s), answer recovery (14 cases, 22.273s), compacted
+observations (2 cases, under 0.001s) and branch exclusions (6 cases, 3.436s).
+The final 10-case T50/T51/T52 lightweight run passed in 0.006s. Root integration
+validation owns the adapted branch-execution suite; a duplicate in-flight run
+was stopped rather than repeated. No live trial was added. Genuine unresolved
+scope or new authority can still pause, with evidence preserved.

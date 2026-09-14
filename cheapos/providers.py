@@ -125,8 +125,6 @@ class ChatProvider:
 
     @property
     def streams_output(self):
-        if "gemini" in self.config.get("model", "").lower():
-            return False
         return self.config.get("gateway") == "omniroute" or is_local_ollama(self.config)
 
     def complete_with_progress(self, messages, tools, max_tokens, emit, stopped):

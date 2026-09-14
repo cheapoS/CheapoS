@@ -1,6 +1,6 @@
 # T50 — Make transport fallback explicit, scoped, and fully accounted
 
-Status: Not started
+Status: Completed
 Priority: High
 Depends on: current provider/streaming implementation
 Size: M
@@ -97,3 +97,28 @@ Record supported transport scopes, retry/error rules, per-attempt accounting,
 focused checks and timing, and visual verification or its explicit limitation.
 No paid model trial or change to the operator's selected access policy is part
 of this card.
+
+## Implemented behavior and validation
+
+Completed September 14, 2026. `transport.py` selects JSON only for the observed
+OmniRoute `openrouter/google/gemini-2.5-flash` reviewer route with tools (not
+probes). Other roles/models retain their normal streaming capability. This
+workaround is a compatibility preference, not universal model qualification.
+
+Only an explicit structured `streaming_unsupported`/`unsupported_streaming`
+signal permits a transport retry. Generic stream errors, malformed arguments,
+quota, refusal, cancellation and connection failures do not. One durable retry
+per endpoint/model/role/purpose passes through the ordinary request boundary;
+item/final review no longer add local sleep/retry loops. Each actual attempt
+retains its own metric ID, transport, reservation, usage, outcome, timing and
+`retry_of` linkage. Logical worker turns are not incremented for transport only.
+Brief probes retain their brief method and output limit on JSON fallback.
+Non-streaming calls expose the real waiting state; no thinking is invented.
+The readiness fingerprint now includes the transport contract version.
+
+Validation: six new deterministic transport cases, plus existing streaming,
+metrics and branch-budget modules. The initial 30-case combined run passed in
+2.305 seconds; the subsequently added failed-fallback/reviewer-budget case and
+all six transport cases passed in the 10-case lightweight run (0.006 seconds
+including T51/T52 cases). No live calls, sleeps, or new Git workflows. Browser
+visual verification of the existing waiting display remains unverified.

@@ -1,6 +1,6 @@
 # T51 — Make successive compact edits predictable
 
-Status: Not started
+Status: Completed
 Priority: Medium
 Depends on: current version-bound line editing
 Size: S/M
@@ -78,3 +78,24 @@ small temporary-file or in-memory case for a demonstrated gap. Do not duplicate
 the full recovery/handoff scenario. Report new-case timing and disclose any heavy
 addition before implementation. Commit changes, update the task board, and record
 what improved plus any remaining large-edit friction.
+
+## Implemented behavior and validation
+
+Completed September 14, 2026. The existing shifted-lines regression confirmed
+that queued edits already could not adopt a post-edit hash. The historical
+trial report is descriptive; no new offset-corruption path was reproduced.
+The improvement makes rejection deliberate: one successful mutation per
+canonical file per response, including no-ops and aliases and all exposed file
+mutation tools. The second call gets its own saved-earlier/rejected-current
+feedback and refreshed numbered evidence. A new response can use that evidence;
+independent files remain editable in the original response.
+
+The existing 100-line refreshed window, total/incomplete metadata, version checks,
+UTF-8 limits, path boundaries and newline behavior remain intact. No fuzzy offsets
+or multi-edit transaction were introduced. The shifted-lines integration case
+passes with its assertion updated to the more precise rejection code (1.459s).
+Nineteen other existing compact-edit cases passed in the initial module run;
+its only failure was that old rejection-code assertion. A new temporary-file
+case covers no-op, alias, independent-file and next-response behavior in 0.002s
+in the final lightweight run. Large architectural edits still require several
+coherent sequential responses and full final verification.

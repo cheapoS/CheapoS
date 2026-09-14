@@ -8,7 +8,7 @@ METADATA_FIELDS = ('context_length', 'max_output_tokens', 'tool_calling', 'reaso
 
 
 def probe_identity(endpoint, model, connection_revision):
-    value = {'version': PROBE_VERSION, 'endpoint': endpoint.replace('localhost', '127.0.0.1').rstrip('/'),
+    value = {'version': PROBE_VERSION, 'transport_contract': 1, 'endpoint': endpoint.replace('localhost', '127.0.0.1').rstrip('/'),
              'model': model['id'], 'connection_revision': connection_revision,
              'requirements': {'tool': 'routing_ready', 'marker': PROBE_MARKER},
              'metadata': {k: model.get(k) for k in METADATA_FIELDS}}

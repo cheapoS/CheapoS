@@ -25,6 +25,8 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
             data = json.loads(payload)
         except json.JSONDecodeError as error:
             raise error_type(f'The provider sent malformed JSON in a stream event ({error.msg}, line {error.lineno}, column {error.colno}). No tool calls from this response were executed.', code='invalid_stream_json') from None
+        if isinstance(data, dict) and isinstance(data.get('usage'), dict):
+            usage = data['usage']
         if not isinstance(data, dict) or data.get('error'):
             # Gateways can deliver quota failures inside HTTP-200 SSE frames.
             # Recognize this narrow provider signal without echoing a raw body
@@ -37,7 +39,9 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
                 # A connection can have separate model quota pools. Without an
                 # explicit provider-wide signal, do not exclude every model.
                 raise error_type('The model route reported a rate limit or exhausted quota. Retry when its allowance resets; the stream supplied no reset time. Partial tool calls were not executed.', code='gateway_cooldown', scope='model')
-            raise error_type('The model reported an error while streaming.', code='stream_error')
+            if isinstance(failure, dict) and failure.get('code') in {'streaming_unsupported', 'unsupported_streaming'}:
+                raise error_type('The route explicitly reports that streaming is unsupported.', code='streaming_unsupported', usage=usage or None)
+            raise error_type('The model reported an error while streaming.', code='stream_error', usage=usage or None)
         if 'model' in data:
             model=safe_model(data['model'])
             if model is None or reported_model is not None and model!=reported_model:identity_conflict=True
@@ -54,10 +58,8 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
                     # message/tool calls from a limited response will be returned.
                     limited = True
                 elif not isinstance(reason, str) or reason not in {'stop', 'tool_calls', 'function_call'}:
-                    import sys
-                    print('DEBUG STREAM ERROR DATA:', json.dumps(data), file=sys.stderr)
                     label = reason if isinstance(reason, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', reason) else 'unrecognized'
-                    raise error_type(f'The provider ended the response with finish_reason={label}. Partial tool calls were not executed; saved files are unchanged by this response.', code='stream_error' if label == 'error' else 'model_refusal')
+                    raise error_type(f'The provider ended the response with finish_reason={label}. Partial tool calls were not executed; saved files are unchanged by this response.', code='stream_error' if label == 'error' else 'model_refusal', usage=usage or None)
                 finished = True
             delta = choice.get('delta') or {}
             thought = delta.get('reasoning') or delta.get('reasoning_content') or delta.get('thinking')
@@ -113,7 +115,7 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
     if limited:
         raise error_type('The model reached its output limit before finishing. Partial tool calls were not executed.', code='output_limit', usage=usage or None)
     if not done or not finished:
-        raise error_type('The model stream ended before its response was complete. Partial tool calls were not executed.', code='stream_interrupted')
+        raise error_type('The model stream ended before its response was complete. Partial tool calls were not executed.', code='stream_interrupted', usage=usage or None)
     message = {'role':'assistant', 'content':''.join(content) or None}
     if thinking:
         message['reasoning'] = ''.join(thinking)

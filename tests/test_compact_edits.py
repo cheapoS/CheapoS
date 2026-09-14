@@ -272,7 +272,8 @@ class CompactRecoveryTests(LocalCase):
                          '# first\ndef clamp(value, lower, upper):\n    return max(lower, min(value, upper))\n')
         errors = [e for e in result['events'] if e['kind'] == 'tool_error']
         self.assertEqual(len(errors), 1)
-        self.assertEqual(errors[0]['detail']['code'], 'stale_file_version')
+        self.assertEqual(errors[0]['detail']['code'], 'same_response_file_mutation')
+        self.assertIn('earlier mutation', errors[0]['detail']['error'])
         self.assertIn('3:     return min(value, upper)', json.dumps(requests[2]['messages']))
 
     def test_unseen_file_edit_is_rejected_and_refreshed_without_user_input(self):
