@@ -10,7 +10,7 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
-**Next up: explicit reviewer decisions and correctly enforced findings. Start with T56, then T57.** T49–T60 turn the halfway assessment and review-loop inspection into bounded implementation and evidence tasks. T49–T55 were planned against `4b6ed68`; T56–T60 against `5a463b4` on `main` (September 14, 2026). Both baselines include the trial's engine fixes. Read current code before assuming a reported issue remains unfixed.
+**T49–T60 implemented and validated; browser scenarios remain pending where recorded.** See [review correctness closeout](docs/development/review-correctness.md). T49–T60 turn the halfway assessment and review-loop inspection into bounded implementation and evidence tasks. T49–T55 were planned against `4b6ed68`; T56–T60 against `5a463b4` on `main` (September 14, 2026). Both baselines include the trial's engine fixes. Read current code before assuming a reported issue remains unfixed.
 
 T41–T43 and T45–T48 are recorded below; T44 remains deferred by the operator.
 The expanded automatic-routing trial passed, with browser verification pending
@@ -29,7 +29,7 @@ Live trials are explicitly selected experiments, not additions to everyday tests
 
 ### Current ordered backlog
 
-Implement one card at a time. This board is a handoff plan, not authorization to
+The operator authorized completion of T49–T60 on September 14. Their completion records below supersede the original ordering notes. This board alone is not authorization to
 execute the whole backlog, make live model calls, or change spending policy.
 Mark each card Done only against its own acceptance criteria.
 The table is ordered by implementation priority, not task number. Existing IDs
@@ -39,16 +39,16 @@ stay stable for handoffs; T55 is the final evidence closeout after the new work.
 | --- | --- | --- | --- | --- |
 | [T56](docs/tasks/T56-explicit-review-decisions.md) | Require explicit approval; reject missing or contradictory decisions | Current review implementation | S | Done |
 | [T57](docs/tasks/T57-canonical-review-findings.md) | Enforce the validated findings throughout repair | T56 | S/M | Done |
-| [T49](docs/tasks/T49-complete-repair-coverage.md) | Repair late-item requirements without truncating coverage | T57 | M | Not started |
-| [T50](docs/tasks/T50-accounted-transport-recovery.md) | Scope transport compatibility and account every retry | Current provider/streaming implementation | M | Not started |
-| [T51](docs/tasks/T51-predictable-compact-edits.md) | Verify edit sequencing and improve stale-edit recovery | Existing version-bound edits | S/M | Not started |
-| [T52](docs/tasks/T52-unattended-mode-boundaries.md) | Separate unattended execution from chat while preserving real blockers | Current setup/scheduling | M | Not started |
-| [T53](docs/tasks/T53-structured-pause-causes.md) | Persist safe, specific pause causes and next actions | Current branch state/errors | M | Not started |
-| [T58](docs/tasks/T58-focused-review-repairs.md) | Localize repairs and distinguish defects from non-blocking advice | T49, T51, T57 | M | Not started |
-| [T59](docs/tasks/T59-candidate-bound-review-context.md) | Resolve missing reviewer context against the exact candidate | T56, T57 | M | Not started |
-| [T60](docs/tasks/T60-review-dispute-progress.md) | Track repeated disputes, progress, and counterevidence | T53, T57, T58, T59 | M | Not started |
-| [T54](docs/tasks/T54-actionable-pause-ui.md) | Explain pauses and recovery inside the conversation | T53, T60 | M | Not started |
-| [T55](docs/tasks/T55-halfway-evidence-closeout.md) | Reconcile milestone claims and close focused verification gaps | T49–T54, T56–T60 | S/M | Not started |
+| [T49](docs/tasks/T49-complete-repair-coverage.md) | Repair late-item requirements without truncating coverage | T57 | M | Done |
+| [T50](docs/tasks/T50-accounted-transport-recovery.md) | Scope transport compatibility and account every retry | Current provider/streaming implementation | M | Done |
+| [T51](docs/tasks/T51-predictable-compact-edits.md) | Verify edit sequencing and improve stale-edit recovery | Existing version-bound edits | S/M | Done |
+| [T52](docs/tasks/T52-unattended-mode-boundaries.md) | Separate unattended execution from chat while preserving real blockers | Current setup/scheduling | M | Done |
+| [T53](docs/tasks/T53-structured-pause-causes.md) | Persist safe, specific pause causes and next actions | Current branch state/errors | M | Done |
+| [T58](docs/tasks/T58-focused-review-repairs.md) | Localize repairs and distinguish defects from non-blocking advice | T49, T51, T57 | M | Done |
+| [T59](docs/tasks/T59-candidate-bound-review-context.md) | Resolve missing reviewer context against the exact candidate | T56, T57 | M | Done |
+| [T60](docs/tasks/T60-review-dispute-progress.md) | Track repeated disputes, progress, and counterevidence | T53, T57, T58, T59 | M | Done |
+| [T54](docs/tasks/T54-actionable-pause-ui.md) | Explain pauses and recovery inside the conversation | T53, T60 | M | Done |
+| [T55](docs/tasks/T55-halfway-evidence-closeout.md) | Reconcile milestone claims and close focused verification gaps | T49–T54, T56–T60 | S/M | Done |
 
 ### What the assessment changes
 

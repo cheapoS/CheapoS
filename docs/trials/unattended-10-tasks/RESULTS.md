@@ -99,3 +99,31 @@ During Tasks 1–5 supervision, four key CheapOS platform/engine issues were ide
 - **Task 8:** File-Based Atomic Queue (`queue_pipeline.py`) with lockfile concurrency safety.
 - **Task 9:** Configuration Schema Validator (`validator.py`) with type and constraint checking.
 - **Task 10:** SQLite Task Storage with Migrations (`storage.py`).
+
+
+## September 14 correction and evidence reconciliation (T55)
+
+The earlier sections are retained historical observations, not an independently audited outcome or billing statement. The T49–T60 follow-up fixes correctness and accounting boundaries; it does not retroactively qualify earlier approvals.
+
+Read-only inspection of the five corresponding saved task records on September 14 found:
+
+| Task | Saved task prefix | Worker turns | Stored review counter | Valid review decision events | APPROVE / REQUEST_CHANGES | Recorded dispatched requests | User-message events |
+| --- | --- | ---: | ---: | ---: | --- | ---: | ---: |
+| Labels | 30ee66fb | 18 | 13 | 8 | 7 / 1 | 58 | 2 |
+| Expenses | 2ce67038 | 79 | 16 | 11 | 7 / 4 | 105 | 0 |
+| Cache | 5398b941 | 51 | 4 | 18 | 16 / 2 | 81 | 3 |
+| Table | c129bc44 | 23 | 3 | 4 | 4 / 0 | 36 | 0 |
+| CLI | 4dba6d90 | 156 | 24 | 15 | 7 / 8 | 185 | 10 |
+| Total | | 327 | 60 | 56 | 41 / 15 | 465 | 15 |
+
+Here a decision event means an event with kind `review` and an explicit decision in its detail. These include item and final-packet decisions. The older item-review counter is incremented for reviewer requests, including inspection/correction, while final packets use a separate path. Therefore the 60 counter total is not 60 substantive decisions. The pasted 13/11/4/3/15 table totals 46 (30 approvals, 16 rejections); it does not match this retained event extraction. Its exact provenance remains unresolved. New review-context events, correction events, disposition records, and linked transport attempts provide clearer future counting.
+
+The 465 dispatched records replace neither an actual wire-level audit nor the historical 445 estimate: old internal transport retries may be unrecorded, and additional unsuccessful planning attempts exist outside these five records. There were 44 retained review-feedback events across these runs. Cache has two final-revision events; CLI has ten user-message events, and the earlier narrative documents runtime fixes/restarts. These are assisted experiments, not demonstrated zero-intervention execution. User-message counts alone do not enumerate every intervention or repair turn. Exact per-request application revisions were not persisted (`app_revision` absent), so the report's implementation commits identify development history rather than proving each task ran one unchanged revision. No evidence supports assigning 80% of loops to one edit failure mode.
+
+The private trial repository still contains the CLI commits through `9ba83b6` and merge `635093c` (not the headline `f4fbeae`). Its corresponding task is saved paused without a completed app merge receipt; Git merge existence and app completion are distinct evidence. The first four saved tasks have completed merge receipts. The retained `test_acceptance.py` is an artifact; its historical 19/19 result was not rerun for this documentation task, and independence of its authorship was not established here. The earlier claim of zero regressions is limited to the checks actually reported.
+
+Recorded usage costs sum to $0.01903114 for these five records: three record zero, table records $0.00478981, CLI records $0.01424133. These are app accounting values, not independently verified provider bills. A zero record does not establish free inference. Unknown/unrecorded historical fallback charges cannot be recovered by T50. The priced model IDs do not establish eligibility for a public-free request allowance, so the historical “safely under 1,000/day” conclusion is unverified. Universal streaming stability, best-in-class comparisons, or an exact savings ratio are not established by this trial.
+
+The old first-12-criteria workaround preserved only a clipped repair subset, not complete repair coverage. [T49](../../tasks/T49-complete-repair-coverage.md) now selects original requirement references explicitly while final review still covers all originals. Historical clipped amendments are not rewritten or labeled complete.
+
+Next optional experiment: one small two-item task with a known localized defect and independent acceptance check, using measurement mode and explicitly approved access/spending. Measure real decisions, context reads, repairs, repeated findings, actual recorded transport attempts, independent acceptance, and operator interventions separately. This is a proposal only; Tasks 6–10, T44 and paid escalation were not dispatched.

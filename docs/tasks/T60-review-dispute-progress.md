@@ -1,6 +1,6 @@
 # T60 — Detect repeated review disputes and preserve counterevidence
 
-Status: Not started
+Status: Done
 Priority: High — convergence
 Depends on: T53, T57, T58, T59
 Size: M
@@ -77,3 +77,12 @@ coverage; do not run dozens of worker turns or introduce real sleeps. Report
 new-case timings and disclose any heavy addition before adding it. Record matching
 limitations explicitly; do not claim universal semantic-loop detection. Commit
 the implementation and update this card and TASKS.md.
+
+
+## Completion record — September 14, 2026
+
+Implementation: `e0fcc51` (with foundations `abe2545`, `226b604`, `3b48cef`).
+
+A versioned bounded dispute ledger retains original criterion IDs, path, candidate attempts, allegations and worker counterevidence. Explicit finding references survive paraphrasing, shifted lines and appended repair items. Structural matches without a reference flag possible repeats; distinct expected/observed/reproduction signatures remain distinct. Only independent approval resolves a record; later regressions get a new occurrence. Changed file hashes, Resume and restart do not renew the existing three-attempt allowance. Exhaustion uses a typed review-dispute pause, not approval or paid escalation. Activity displays escaped allegations/counterevidence (up to eight unresolved records), and explicit request/context/correction/repair/decision events support future counts.
+
+Validation: six small ledger/repair cases cover persistence, original-ID mapping, distinct claims, regressions, tampered pending criteria, localized diffs and optional advice. Combined final deterministic selection: 27 tests in 0.011s. The added Activity markup test passes in about 1ms; existing Node cases remain passed. Browser rendering remains pending. Matching is deliberately conservative and does not claim universal semantic-loop detection.

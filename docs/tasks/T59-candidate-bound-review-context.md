@@ -1,6 +1,6 @@
 # T59 — Let final review resolve missing context against the exact candidate
 
-Status: Not started
+Status: Done
 Priority: High — review accuracy
 Depends on: T56, T57
 Size: M
@@ -69,3 +69,12 @@ candidate/Git identity case if the read source changes; do not duplicate full
 finalization workflows. Measure new-case time and disclose any proposed heavy
 test before adding it. Record context/coverage semantics, checked failure cases,
 remaining uncertainty, and commit. No real model call is needed for this card.
+
+
+## Completion record — September 14, 2026
+
+Implementation: `e0fcc51` (with foundations `abe2545`, `226b604`, `3b48cef`).
+
+Final chunks prefer file/hunk/line boundaries while retaining every character and digest. Packets include a file index; reviewers can request up to six bounded context ranges per packet from immutable Git blobs at the exact feature tip/tree. Reads validate literal path, regular-file mode, secret boundaries, range and candidate identity, and return provenance, numbered lines and truncation. Reads do not approve chunks or expand coverage. Identical reads and malformed responses consume bounded correction policy; an unavailable read can support a typed context blocker. Synthesis retains context references in chunk decisions.
+
+Validation: three pure context/chunk/scripted-decision cases pass below 1ms each; the existing final readiness fixture now reads the actual immutable candidate and checks provenance. Two affected final/completion cases passed in 25.293s. No live inference. Very large single records/hunks may still require bounded splits; excerpts explicitly do not establish whole-file or other-chunk coverage.

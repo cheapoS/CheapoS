@@ -1,6 +1,6 @@
 # T58 — Turn review findings into focused repairs and evidence-based decisions
 
-Status: Not started
+Status: Done
 Priority: High — convergence
 Depends on: T49, T51, T57
 Size: M
@@ -80,3 +80,12 @@ multi-item live or Git workflow to demonstrate prompt construction. Report which
 behavior is controller-enforced versus model guidance, actual new-case timing,
 and any untested live convergence hypothesis. Preserve the no-heavy-test rule,
 commit the change, and update this card and TASKS.md.
+
+
+## Completion record — September 14, 2026
+
+Implementation: `e0fcc51` (with foundations `abe2545`, `226b604`, `3b48cef`).
+
+Canonical findings now produce compact persistent repair briefs with original references, candidate, location, expected/observed behavior and check evidence. A checkpoint requires a concrete per-finding disposition; the controller binds it to the new candidate and retains counterevidence for independent judgment. The next item reviewer sees the prior claims and patch difference since the claim. Changed files outside finding locations require a broader-edit explanation; preserving unaffected functions within a file is model guidance, not a semantic proof. Optional advice is separate from blocking defects; advice alone cannot authorize repair. Current verification reuse retains the existing candidate/command/environment identity guards.
+
+Validation: pure localized-patch, evidence, optional-advice and persistence cases pass; existing branch review/execution selection passed eight cases in 130.610s, including scripted repair/commit and verification reuse. No live convergence claim; broader repair justification and truth of counterevidence still require independent review.

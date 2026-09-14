@@ -1,6 +1,6 @@
 # T49 — Preserve original requirements during final repair
 
-Status: Not started
+Status: Done
 Priority: High
 Depends on: T57
 Size: M
@@ -87,3 +87,12 @@ Record the implementation commit, reference/legacy format decision, focused
 checks and timings, and any pending revision-preview browser check. Update the
 trial report's claim that truncation preserves the repair contract, linking the
 correction without rewriting the historical attempt as a different run.
+
+
+## Completion record — September 14, 2026
+
+Implementation: `e0fcc51` (with foundations `abe2545`, `226b604`, `3b48cef`).
+
+Implemented original item/criterion reference selection in repair_scope and amendment validation. Automatic final findings select their original requirements, including later criteria; operator revisions over twelve originals return a selectable preview before dispatch. Mapping, source observation digest, commands, scheduling policy and cumulative limits are validated. Duplicate wording keeps separate original references. Legacy clipped amendments are retained under their historical projection, not relabeled complete. The complete original manifest remains mandatory. A saved legacy repair without a usable mapping needs inspected revision.
+
+Validation: pure 20-criterion selection/tampering case passes below 1ms; six existing completion and ten final-review cases passed (combined parallel wall time 148.688s). After context/amendment integration, two affected existing cases passed in 25.293s. UI syntax/Node checks pass; revision-selection browser interaction is pending under the existing loopback browser blocker. Historical clipping claim corrected in the trial report.

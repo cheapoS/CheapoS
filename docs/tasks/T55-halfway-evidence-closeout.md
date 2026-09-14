@@ -1,6 +1,6 @@
 # T55 — Close the reliability follow-ups with honest, focused evidence
 
-Status: Not started
+Status: Done
 Priority: Medium
 Depends on: T49–T54, T56–T60
 Size: S/M
@@ -84,3 +84,12 @@ Documentation-only selection: inspect links, examples, references and
 the five-task trial to write a report. If analysis reveals a new code defect,
 document a separate bounded task rather than making an unreviewed engine patch
 inside this card. Commit the evidence update and summarize what is proven.
+
+
+## Completion record — September 14, 2026
+
+Implementation: `e0fcc51` (with foundations `abe2545`, `226b604`, `3b48cef`).
+
+Reconciled the five selected saved task records with retained trial Git history in docs/trials/unattended-10-tasks/RESULTS.md, appending dated corrections. Stored counters total 60, while valid decision events total 56 (41 approvals/15 rejections); the pasted 46-decision table remains unmatched. There are 465 dispatched records, not proof of exact network attempts. Recorded cost is not audited billing; failed additional attempts and runtime interventions remain visible. CLI has a Git merge but no completed app merge receipt in its saved paused task. Exact per-request app revisions were not retained. No historical approvals were requalified and no new live trial was launched.
+
+The completion matrix in docs/development/review-correctness.md links implementation and focused validation. Browser gaps are listed explicitly. Documentation links and git diff --check were checked; unchanged runtime checks were reused. One optional measured two-item follow-up is proposed, with access/spending approval required before dispatch. T44 and Tasks 6–10 remain deferred/proposed.
