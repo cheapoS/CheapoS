@@ -129,7 +129,8 @@ not mutated. A projected scope must equal the materialized prepare() result.
         profile = self.project_grants.proposal(task, argv)
         executable = executable_identity(argv[0], task['workspace'])
         if not executable:
-            raise ValueError('Verification executable is unavailable: ' + repr(argv[0][:200]) + '. Configure the test environment first')
+            from .branch_pause import PauseError
+            raise PauseError('missing_setup', diagnostic={'kind':'missing_executable','executable':argv[0]})
         stat = os.stat(executable)
         binding = {'source': identity(task['source']), 'workspace': identity(task['workspace']),
                    'executable': [executable, stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns],

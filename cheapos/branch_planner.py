@@ -273,7 +273,8 @@ def plan(engine, runtime, inputs):
                     # Keep a complete blocked draft when repair cannot resolve
                     # an unavailable environment. prepare() still blocks Start.
                     return error.plan
-                raise ValueError('Planner could not produce a complete valid proposal after two repairs: ' + str(error)) from error
+                from .branch_pause import PauseError
+                raise PauseError('malformed_output',stage='planning',diagnostic={'kind':'safe_message','message':'Planning remains unfinished because the planner could not produce a complete valid proposal after two repairs.'}) from error
             # Invalid side-effect tool calls are data only and are never dispatched.
             # Preserve the rejected answer so the model can repair its actual
             # mistake instead of seeing the same request with a generic error.

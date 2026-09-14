@@ -34,3 +34,38 @@ class PauseDetails(unittest.TestCase):
    self.assertNotIn('SECRET',str(result));self.assertEqual(result['branch_run']['pause_detail']['cause'],'provider_quota')
   t['branch_run']['status']='merged'
   self.assertIsNone(public_task(t)['branch_run']['pause_detail']);self.assertIsNone(public_task(t)['error'])
+
+ def test_specific_diagnostic_round_trip_and_new_attempt(self):
+  import json
+  from cheapos.server import public_task
+  t=self.task();t.update(id='task',usage={},patch='')
+  error=pause.PauseError('unknown',diagnostic={'kind':'safe_message','message':'The saved candidate receipt does not match the selected item.'})
+  pause.apply(t,error)
+  t=json.loads(json.dumps(t))
+  self.assertIn('candidate receipt',public_task(t)['error'])
+  self.assertIn('candidate receipt',pause.classify(ValueError('wrapper'),t)['explanation'])
+  t['request_metrics'].append({'id':'r2','role':'reviewer'})
+  self.assertNotIn('candidate receipt',pause.classify(ValueError('new failure'),t)['explanation'])
+ def test_structured_runner_limit_and_review_details(self):
+  t=self.task()
+  d=pause.classify(pause.PauseError('missing_setup',diagnostic={'kind':'missing_executable','executable':'/private/operator/python-not-installed'}),t)
+  self.assertIn('python-not-installed',d['explanation']);self.assertNotIn('/private',str(d));self.assertEqual(d['next_action'],'environment')
+  d=pause.classify(LimitExceeded('requests',3,2),t)
+  self.assertIn('3 used / 2 allowed',d['explanation'])
+  d=pause.classify(ProviderError('private body',code='invalid_response_json'),t)
+  self.assertIn('Review remains unfinished',d['explanation']);self.assertNotIn('private body',str(d))
+ def test_diagnostic_contract_filters_private_markup_and_extra_fields(self):
+  for message in ('<script>alert(1)</script>','Bearer token: abc','api_key=secret','https://user:pass@host','x'*401):
+   d=pause.public({'version':1,'cause':'unknown','diagnostic':{'kind':'safe_message','message':message}})
+   self.assertNotIn('diagnostic',d)
+  d=pause.public({'version':1,'cause':'unknown','diagnostic':{'kind':'safe_message','message':'A saved receipt is missing.','private':'SECRET'}})
+  self.assertNotIn('SECRET',str(d))
+
+ def test_review_source_and_unidentified_attempt_never_reuse_old_failure(self):
+  from cheapos.branch_disagreement import decision
+  t=self.task()
+  try:decision({'decision':'not-a-decision'})
+  except ValueError as error:pause.apply(t,error)
+  self.assertIn('explicit valid review decision',t['error'])
+  t.pop('request_metrics');t['branch_run']['pause_detail'].pop('diagnostic_id',None)
+  self.assertNotIn('explicit valid review decision',pause.classify(ValueError('new unrelated failure'),t)['explanation'])

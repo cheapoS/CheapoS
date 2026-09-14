@@ -1,6 +1,6 @@
 # T73 — Explain the actual stop reason directly in Chat
 
-Status: Ready
+Status: Completed
 Priority: High — stop hiding actionable failures
 Depends on: existing T53/T54 structured pause implementation
 Size: M
@@ -103,4 +103,17 @@ same specificity gap here; do not erase the assertion or blame the new planner.
 
 ## Completion record
 
-Pending.
+Implemented a canonical bounded diagnostic contract, retained through public
+serialization and pause persistence. Trusted missing-executable, planner repair,
+review validation, and work-limit builders now explain the observed failure;
+raw exceptions/provider bodies remain private. Request identity prevents an
+unrelated later attempt from inheriting an old failure. Generic wrappers of the
+same recorded request retain the concrete cause. Actions remain advisory and
+retain existing permission, retry, and allowance semantics.
+
+Validation: nine pure pause tests passed in 0.005s (four new cases); seven existing
+review disagreement tests passed in 0.003s; fifteen existing planner tests passed
+in 1.910s. The existing missing-runner HTTP case passed in 1.601s, including its
+unchanged assertion naming the absent executable. UI presentation scenarios and
+isolated browser availability are recorded with the shared T69–T72 UI work.
+No new heavy fixture, live provider call, or retry authority was introduced.

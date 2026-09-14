@@ -188,7 +188,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
         engine.event(runtime.task,'review','Final packet review completed',{'decision':result['decision'],'feedback':result['feedback'],'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'defects':result.get('defects')})
         return result
     disagreement.ensure_available(runtime.task, key)
-    raise ValueError('Final review coverage could not be validated after three invalid responses. Saved work is retained; Resume does not renew correction attempts.')
+    raise disagreement.invalid_review('Final review coverage could not be validated after three invalid responses. Resume does not renew correction attempts.')
 
 
 def final_check_review(engine, runtime):
