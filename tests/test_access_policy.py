@@ -125,6 +125,29 @@ class AccessTests(unittest.TestCase):
         routing.select_remote(engine,runtime)
         self.assertEqual(engine.request.call_count,1)  # Matching scoped probe can be reused.
 
+    def test_planning_model_does_not_reserve_independent_reviewer(self):
+        policy = self.policy()
+        for planner_id in ('B', 'C'):
+            task = {'providers': {'worker': None, 'reviewer': None, 'planner': {'model': planner_id}},
+                    'events': [], 'route': {'base_url': policy['base_url'], 'access_policy': policy,
+                                           'preferred': {'worker': 'A', 'reviewer': 'B'}}}
+            models = [{'id': name, 'free': True, 'tool_calling': True} for name in ('A', 'B')]
+            pool = SimpleNamespace(observation=lambda *a: {'cooling_down': False},
+                                   rank=lambda base, model, role, preferred, revision: model['id'] != preferred,
+                                   fresh_probe=lambda *a: True)
+            gateway = SimpleNamespace(settings=policy, matches=lambda url: True, pool=pool,
+                                      catalog=lambda **k: {'status': 'ready', 'models': models})
+            engine = SimpleNamespace(gateway=gateway, event=Mock(), store=SimpleNamespace(save=Mock()), request=Mock())
+            runtime = SimpleNamespace(task=task, failed_models=set())
+            routing.select_remote(engine, runtime, 'worker')
+            routing.select_remote(engine, runtime, 'reviewer')
+            self.assertEqual(task['providers']['worker']['model'], 'A')
+            self.assertEqual(task['providers']['reviewer']['model'], 'B')
+            task['events'] = [{'kind': 'tool', 'title': 'write file', 'detail': {'model': 'B'}}]
+            with self.assertRaises(routing.RoutingPause):
+                routing.select_remote(engine, runtime, 'reviewer', replace=True)
+            engine.request.assert_not_called()
+
     def test_proposal_binds_connection_scope_without_rewriting_legacy_contracts(self):
         from cheapos.branch_controller import BranchController
         from cheapos.branch_authorization import ProposalRegistry

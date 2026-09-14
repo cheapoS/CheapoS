@@ -1,6 +1,6 @@
 # T63 — Preserve working routes when a planner is configured
 
-Status: Ready after dependency
+Status: Complete
 Priority: P1 — worker/reviewer availability
 Depends on: T62
 Size: S/M
@@ -58,5 +58,4 @@ affects ordinary chats that never invoke planning.
 
 ## Completion record
 
-Pending. Record commit, validation, route-policy decisions, and limitations;
-update TASKS.md and commit the scoped changes.
+Completed in the scoped T63 commit. Planner-only models no longer reserve worker/reviewer capacity. Review still excludes the current worker and persisted prior patch authors, including replacement selection. Cached synthetic A/B and A/B/C selection passes without dispatch. Nine access tests passed in 0.009s (new case 0.001s). Existing routing/model-pool checks: 45/46 passed in 26.893s; the documented baseline unavailable-tool action-recovery failure remains unchanged (worker a instead of b). No inference or new integration fixture.

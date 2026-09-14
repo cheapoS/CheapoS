@@ -125,8 +125,10 @@ def select_remote(engine, runtime, role="worker", replace=False):
     catalog = gateway.catalog(fresh=True)
     if catalog["status"] != "ready":
         raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Your saved work is kept.")
-    used = {cfg["model"] for cfg in task["providers"].values() if cfg}
-    if role in {"reviewer", "planner"}:
+    # Read-only planning does not reserve a model or make it a patch author.
+    other = "worker" if role == "reviewer" else "reviewer" if role == "worker" else None
+    used = {task["providers"][other]["model"]} if other and task["providers"].get(other) else set()
+    if role == "reviewer":
         # A previous worker may have authored part of the patch before a handoff.
         used.update(e["detail"]["model"] for e in task["events"] if e["kind"] == "tool"
                     and e["title"] in {"write file", "replace text", "replace lines"} and isinstance(e.get("detail"), dict)
