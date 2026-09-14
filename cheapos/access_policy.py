@@ -8,6 +8,8 @@ def model_ids(value):
     if any(not isinstance(v, str) or not v.strip() or v != v.strip() or len(v) > 200
            or any(c in v for c in '*?\n\r') or v.startswith('auto/') for v in value):
         raise ValueError('Included access requires exact model IDs, not aliases, wildcards or automatic pools')
+    if any(v.startswith('openrouter/') and not v.endswith(':free') for v in value):
+        raise ValueError('OpenRouter models without :free cannot be authorized as included account models')
     return sorted(set(value))
 
 
@@ -20,6 +22,8 @@ def snapshot(settings):
 
 
 def included(policy, model):
+    if model['id'].startswith('openrouter/') and not model['id'].endswith(':free'):
+        return False
     return bool(policy and model['id'] in policy.get('included_models', [])
                 and not model['id'].startswith('auto/') and model.get('provider') != 'combo'
                 and not model.get('local'))

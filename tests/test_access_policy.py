@@ -78,7 +78,7 @@ class AccessTests(unittest.TestCase):
             self.assertNotEqual(manager.settings['connection_revision'],revision)
 
     def test_exact_scope_excludes_alias_expansion_new_models_and_stale_bindings(self):
-        for ids in (['auto/anything'],['provider/*'],[' provider/model'],['provider/?'],['a\nb']):
+        for ids in (['auto/anything'],['provider/*'],[' provider/model'],['provider/?'],['a\nb'],['openrouter/deepseek/deepseek-chat']):
             with self.assertRaises(ValueError): access.model_ids(ids)
         model={'id':'account/model','free':False,'tool_calling':True}
         self.assertTrue(access.eligible(model,self.policy()))
