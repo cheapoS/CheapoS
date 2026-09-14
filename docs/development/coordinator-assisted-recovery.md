@@ -67,6 +67,13 @@ remaining limits. Excerpts and omitted context are identified. Changed and
 previously inspected files take priority in the index. Repository/model text is
 untrusted evidence; missing excerpts never prove missing code.
 
+The latest review is projected as decision and feedback first, without nested
+checks or old diffs crowding out the actual findings. A bounded current patch
+across up to four files is supplied separately; file excerpts start near the
+latest changed hunk instead of always showing imports. Omitted sections remain
+explicit. Worker continuation also receives this current patch/review summary,
+so advisory inspection suggestions cannot override already completed work.
+
 Output is strict JSON at most **2,048 characters**, with nonempty supplied evidence
 references and no extra fields:
 
@@ -82,6 +89,20 @@ policy-bypass suggestions and read-only modifying advice are rejected. The engin
 never executes coordinator code, commands, tool calls or file edits. Schema and
 bounded lexical validation are not a semantic proof of advice quality; ordinary
 worker permissions, scope checks and independent review remain decisive.
+
+Prose may use an unambiguous basename of a supplied file (for example `server.py`
+for `cheapos/server.py`). A clearly described `/api/...` endpoint or route is not
+treated as a filesystem target; traversal and file-like absolute paths remain
+rejected. A typed `need_context.path` still requires the exact permitted workspace
+path. This changes validation of advisory prose, not file or command permissions.
+
+A previously path-rejected, fully retained reply can be revalidated against its
+original packet after a validator fix. **Continue with saved guidance** is offered
+only when the reply now passes the full contract and task identity still matches.
+Applying it rechecks current file hashes, keeps the existing episode and request
+IDs, and records the previous rejection. It makes no coordinator request and
+cannot renew consultations. Truncated, still-invalid, already reused and stale
+replies remain ineligible; app startup never starts a worker for this action.
 
 ## Inference lifecycle and accounting
 
@@ -211,3 +232,24 @@ record added calls/tokens/latency and accepted outcomes, and preserve spending p
   lets the worker edit the same workspace. The original episode/request ID,
   duration, prompt, counters and earlier saved file remain. Changes still require
   verification and review. No personal task was resumed during validation.
+
+### API-reference validation and saved-guidance reuse
+
+- A live retained reply exposed two false rejections: a unique source basename
+  and an API endpoint described in prose were both treated as unknown filesystem
+  targets. The prior packet also truncated the review before its actual feedback.
+- Focused contract/configuration/dispatch/progress checks: **20 passing / 9.64s**.
+  Two new pure contract cases cover route versus file references, ambiguous names,
+  unsafe/context paths, retained reviewer feedback and changed-hunk selection.
+  The entire six-case contract module took **0.005s**. An existing reload fixture
+  now checks saved-reply reuse, no inference, no repeated application and unchanged
+  usage/counters. No new heavy test or live-model trial was added.
+- Frontend: **174 passing / 0.109s**; final affected projection cases **8 passing**.
+  Disposable real engine/API browser test: a legacy path-rejected reply offers
+  **Continue with saved guidance**, displays immediate pending feedback, and sends
+  guidance plus current evidence to the worker. The synthetic provider rejects
+  any coordinator call. The worker saved an edit in the original workspace;
+  verification and review remained required. The original episode/request ID,
+  consumed format-repair marker, duration and earlier saved file stayed intact.
+- These checks establish recovery control flow and packet content, not that a
+  particular live worker will successfully complete the remaining feature.

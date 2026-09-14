@@ -32,6 +32,10 @@ test('a malformed coordinator reply names the failure and offers its one format 
  const c={CheapOSGuide:guide,state:{},esc:String};vm.createContext(c);const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
  vm.runInContext(source.slice(source.indexOf('function coordinatorReassessmentMarkup'),source.indexOf('async function reassessCoordinator')),c);
  assert.match(c.coordinatorReassessmentMarkup(t),/Retry coordinator format/);assert.match(c.coordinatorReassessmentMarkup(t),/original attempt and usage remain counted/);
+ const reusable={...t,coordinator_reassessment:{available:true,reuse_saved:true,model:'local-helper'},coordinator_recovery:[{state:'failed',diagnostic:'Advice references a path outside supplied evidence'}]};
+ assert.equal(guide.taskGuide(reusable).title,'Saved coordinator guidance is ready.');
+ assert.match(c.coordinatorReassessmentMarkup(reusable),/Continue with saved guidance/);
+ assert.match(c.coordinatorReassessmentMarkup(reusable),/without another coordinator call/);
  t.events.push({id:'failed',kind:'coordinator_recovery',time:stamp,detail:{state:'failed',diagnostic:'Coordinator must return one JSON object'}});
  assert.equal(steps(t).at(-1).title,'Coordinator reply could not be used');assert.equal(steps(t).at(-1).outcome,'failed');
 });

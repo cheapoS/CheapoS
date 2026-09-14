@@ -283,6 +283,12 @@ shows that step. A still-eligible failure saved by an older version offers
 attempts count toward existing limits. The actual error and newly received reply
 are retained in Details. Restarting does not retry a failed consultation.
 
+If an app validator previously rejected a retained reply that now passes all
+checks, **Continue with saved guidance** reuses that reply without calling the
+coordinator again. The worker receives the current edits and latest reviewer
+feedback alongside it. This is a continuation of the same saved request, with
+unchanged usage, limits and review requirements; it does not mean the work is done.
+
 Enter and Send show **Sending…** immediately. The draft stays saved until cheapoS
 accepts the message; rejected delivery leaves the draft editable and shows the
 error. Acceptance no longer waits for the gateway/sidebar refresh.

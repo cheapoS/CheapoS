@@ -96,5 +96,36 @@ class RecoveryContractTests(unittest.TestCase):
                        dict(outcome='unresolved', blocker='The existing handler contract remains inconsistent with tests.', failed_approach='Repeated inspection did not establish the intended behavior.')]:
             recovery.validate({**fields, 'evidence':['e1']}, packet)
 
+    def test_api_routes_and_unique_file_names_are_not_outside_workspace_reads(self):
+        packet = self.packet()
+        packet['permitted_paths'] = ['cheapos/server.py', 'dist/app.js']
+        advice = dict(self.advice(), action='inspect',
+                      next_step='Inspect cheapos/server.py to locate the existing request handler.',
+                      expected_result='Find routing in server.py for a new /api/tasks/empty-trash (or similar) route.')
+        self.assertEqual(recovery.validate(advice,packet),advice)
+        for text in ('Inspect /etc/passwd to resolve this endpoint.',
+                     'Inspect /api/../secret to resolve this endpoint.',
+                     'Inspect /api/config.py to resolve this endpoint.',
+                     'Inspect absent.py to resolve this endpoint.'):
+            with self.subTest(text=text), self.assertRaises(recovery.PathReferenceError):
+                recovery.validate(dict(advice,next_step=text),packet)
+        packet['permitted_paths'].append('other/server.py')
+        with self.assertRaises(recovery.PathReferenceError): recovery.validate(advice,packet)
+        context=dict(outcome='need_context',path='/api/tasks/empty-trash',start_line=1,end_line=5,
+                     reason='Need context for the existing route.',decision='Choose the next implementation step.',evidence=['e2'])
+        with self.assertRaises(ValueError): recovery.validate(context,packet)
+
+    def test_packet_prioritizes_review_feedback_and_changed_lines(self):
+        task=self.task()
+        task['patch']='diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -210,3 +210,5 @@\n+handler = existing_handler\n'
+        task['checkpoints']=[{'checks':{'output':'x'*20000},'diff':'x'*20000,'decision':'REQUEST_CHANGES','feedback':'Wire the existing handler to the sidebar control.'}]
+        packet=self.packet(task)
+        review=next(e for e in packet['evidence'] if e['kind']=='last_review')
+        self.assertIn('Wire the existing handler',review['text'])
+        self.assertIn('REQUEST_CHANGES',review['text'])
+        self.assertIn('handler = existing_handler',next(e for e in packet['evidence'] if e['kind']=='current_patch')['text'])
+        self.assertEqual(recovery.excerpt_start(task,'app.py'),210)
+        self.assertLessEqual(len(json.dumps(packet)),recovery.MAX_PACKET)
+
 
 if __name__ == '__main__': unittest.main()

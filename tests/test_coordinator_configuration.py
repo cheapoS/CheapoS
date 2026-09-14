@@ -30,6 +30,13 @@ class CoordinatorConfigurationTests(unittest.TestCase):
         self.assertFalse(reassessment_availability({**legacy_task,'patch':'changed'})['available'])
         legacy['format_repair']={'state':'prepared'}
         self.assertFalse(reassessment_availability(legacy_task)['available'])
+        legacy.update(diagnostic='Advice references a path outside supplied evidence',
+                      packet={'evidence':[{'id':'e1'}],'permitted_paths':['cheapos/server.py']},
+                      responses=[{'text':'{"outcome":"continue","action":"inspect","next_step":"Inspect server.py for the /api/tasks endpoint.","expected_result":"Locate the existing request handler.","evidence":["e1"]}','truncated':False}])
+        self.assertTrue(reassessment_availability(legacy_task)['reuse_saved'])
+        self.assertFalse(reassessment_availability({**legacy_task,'patch':'changed'})['available'])
+        legacy['responses'][0]['truncated']=True
+        self.assertFalse(reassessment_availability(legacy_task)['available'])
         exclusions=[{'status':'running'}, {'demo':True}, {'branch_run':{'id':'run'}},
                     {'pending_approval':{'id':'command'}}, {'pending_review':{'id':'review'}},
                     {'pending_checkpoint':{'summary':'saved'}}, {'pending_verification':True},

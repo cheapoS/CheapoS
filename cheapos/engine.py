@@ -790,7 +790,7 @@ class Engine:
             if reassess:
                 self.event(task, 'coordinator_recovery', 'Coordinator reassessment requested', {
                     'state':'queued', 'model':reassessment_model,
-                    'summary':'You enabled coordinator assistance for this chat. Reassessing saved work before asking the worker to continue; existing limits and attempts are retained.'})
+                    'summary':'Checking available coordinator guidance before the worker continues; existing limits and attempts are retained.'})
             runtime.thread = threading.Thread(target=self._run, args=(runtime,), daemon=True)
             runtime.thread.start()
         return self.store.get(task_id)

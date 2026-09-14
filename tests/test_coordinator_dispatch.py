@@ -173,6 +173,26 @@ class CoordinatorDispatchTests(LocalCase):
         self.assertTrue(recovery.consult(self.engine,runtime,'Repeated evidence'))
         self.assertFalse(recovery.consult(self.engine,runtime,'Repeated evidence'))
 
+        # Reuse the same fixture for a retained reply rejected by the old path
+        # validator. Revalidation adds no request, reset, or second consultation.
+        episode=task['coordinator_recovery'][0]
+        episode.update(state='failed',diagnostic='Advice references a path outside supplied evidence',
+                       responses=[{'text':json.dumps(self.answer(next_step='Inspect math_utils.py to connect the /api/clamp endpoint.')),'truncated':False}],
+                       request_ids=['old-request'])
+        episode.pop('advice',None)
+        before=copy.deepcopy(task)
+        with patch.object(self.engine,'request') as request:
+            self.assertTrue(recovery.consult(self.engine,runtime,'Repeated evidence'))
+            self.assertFalse(recovery.consult(self.engine,runtime,'Repeated evidence'))
+            request.assert_not_called()
+        for key in ('limits','worker_turns','usage','request_metrics','patch'):
+            self.assertEqual(task.get(key),before.get(key))
+        self.assertEqual(episode['request_ids'],['old-request'])
+        self.assertEqual(episode['revalidation']['state'],'completed')
+        self.assertIn('current_evidence',recovery.continuation(task))
+        episode['state']='failed'
+        self.assertIsNone(recovery.reusable_advice(task,episode))
+
     def test_real_worker_loop_uses_guidance_then_normal_edit(self):
         task,runtime=self.prepare()
         task.update(status='ready',action_pending=False,requests=[task['prompt']])
