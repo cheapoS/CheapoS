@@ -206,6 +206,10 @@ No tokenizer estimate is presented as exact fit or quality evidence.
 Validation: three new pure trace tests take under 0.001 seconds; four new identity
 cases take 0.010 seconds. Existing streaming12 and engine20 pass in 0.646 and
 4.637 seconds. 74 focused Node checks pass in about 84ms, including actual Details
-markup. Draft/scroll/disclosure handlers remain unchanged. Additional identity
-fixture verification is recorded with its follow-up commit. No new heavy test.
+markup. Draft/scroll/disclosure handlers remain unchanged. Follow-up commit e06e98d passed all six argument tests in 1.498 seconds, eight
+catalog tests in 0.002 seconds and four identity tests in 0.008 seconds. It
+preserves manual Interactive configured-model policy when served identity is
+unknown. Post-trial truncation repair shows every retained row and explicit
+partial-evidence notices; 75 Node checks pass in 86ms and three trace tests in
+0.001 seconds. The frozen trial itself was not rewritten. No new heavy test.
 Browser verification remains pending due to the previously recorded client block.

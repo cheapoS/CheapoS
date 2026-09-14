@@ -10,7 +10,7 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
-**Next up: trustworthy acceptance, a useful feature delivered by cheapoS, then better automatic model selection. Start with T41.** The two original implementation boards are complete; T41–T48 below are the active backlog. Their planning baseline is `69ab884` on `main` (September 13, 2026). Read current code before assuming anything remains missing.
+**Current milestone: T41–T43 and T45–T48 are recorded below; T44 is deferred by the operator. The expanded automatic-routing trial passed. Browser verification remains pending where noted.** The two original implementation boards are complete; T41–T48 below are the active backlog. Their planning baseline is `69ab884` on `main` (September 13, 2026). Read current code before assuming anything remains missing.
 
 The [live qualification matrix](docs/trials/matrix/RESULTS.md) establishes that the workflow can complete real work: 30 execution attempts, 18 app-ready outcomes, and no operator interventions after Start in those attempts. Three app-ready results failed independent checks. Models, fixtures, and revisions differed, so these are observations, not a production success-rate estimate. The next iteration should improve correctness and useful completion, not merely raise caps or count more tokens.
 
@@ -34,9 +34,9 @@ The cards are instructions for future work, not authorization to execute the ent
 | [T43](docs/tasks/T43-actionable-review-disagreement.md) | Make review disagreements concrete before changing passing work | T41 | M | Done |
 | [T44](docs/tasks/T44-live-report-export.md) | Have cheapoS implement the three-item report exporter | T42, T43 | L | Deferred by operator — two live attempts retained |
 | [T45](docs/tasks/T45-report-export-qualification.md) | Verify the real download and record the feature trial outcome | T44 attempted; feature checks require its complete candidate | M | Done — both attempts recorded; feature unqualified |
-| [T46](docs/tasks/T46-connection-access-policy.md) | Distinguish free, included, local, priced, and unknown access | T45 findings recorded | M | Done — expanded code; browser verification pending |
-| [T47](docs/tasks/T47-outcome-aware-routing.md) | Select eligible models using completed-work evidence | T46 | M | Done — expanded code; browser verification pending |
-| [T48](docs/tasks/T48-controlled-routing-trial.md) | Qualify automatic selection on a fixed small task | T47 | M | In progress — expanded requirements |
+| [T46](docs/tasks/T46-connection-access-policy.md) | Explicit access, cached health, and scoped failures | T45 findings recorded | M | Done — expanded code; browser verification pending |
+| [T47](docs/tasks/T47-outcome-aware-routing.md) | Completed-work selection, served identity, and visible traces | T46 | M | Done — expanded code; browser verification pending |
+| [T48](docs/tasks/T48-controlled-routing-trial.md) | Qualify the real gateway path and automatic selection | T47 | M | Done — automatic task independently qualified |
 
 T46–T48 incorporate design lessons from
 [free-coding-models](https://github.com/vava-nessa/free-coding-models/tree/536af716263e514723594dd13e755fb06fcdec2d):

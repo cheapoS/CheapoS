@@ -1,0 +1,1007 @@
+{
+  "access_config_hash": "0ce6558cab3ff1d4ede9e6ae8f4e064ff7fbc50339c6be0110ff8fc066d762fa",
+  "access_config_unchanged": true,
+  "accounting": {
+    "consumption": {
+      "dollars": 0,
+      "output_tokens": 0,
+      "requests": 10,
+      "reviewer_tokens": 43542,
+      "worker_tokens": 41596,
+      "working_seconds": 50.988408708
+    },
+    "request_history_truncated": false,
+    "retained_cost_provenance_counts": {
+      "estimated": 10
+    },
+    "retained_requests": 10,
+    "usage": {
+      "coordinator": {},
+      "cost": 0.0,
+      "reviewer": {
+        "cost": 0.0,
+        "tokens": 43542
+      },
+      "worker": {
+        "cost": 0.0,
+        "tokens": 41596
+      }
+    }
+  },
+  "app_sha": "e06e98d175de0db601f8c1c16af328b0f9ce6d14",
+  "app_unchanged": true,
+  "cached_probe_events": [
+    {
+      "model": "kiro/claude-sonnet-4.5",
+      "role": "worker",
+      "tool_check": "recent cached observation"
+    },
+    {
+      "model": "kiro/claude-haiku-4.5",
+      "role": "reviewer",
+      "tool_check": "recent cached observation"
+    }
+  ],
+  "candidate_tests_unchanged": true,
+  "checks": [
+    {
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "-v",
+        "test_acceptance"
+      ],
+      "duration": 0.12,
+      "outcome": "passed",
+      "passed": true
+    },
+    {
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "-v",
+        "test_acceptance"
+      ],
+      "duration": 0.11,
+      "outcome": "passed",
+      "passed": true
+    }
+  ],
+  "combined_accounted_tokens": 94691,
+  "completed_receipts": [
+    {
+      "is_commit": true,
+      "item_id": "labels",
+      "parent": "a02c78a61b1f7b162b6c5a02b43a991519c802d2",
+      "parent_matches": true,
+      "sha": "ec05b3f3b98cdf7af8cde54bc4073eea3af0587c",
+      "tree": "834195ba7ceb0b073c66024cfebffc6503072209"
+    }
+  ],
+  "completion_observations": [
+    {
+      "evidence": {
+        "accepted": 0,
+        "checkpoints": 1,
+        "checks_passed": 2,
+        "completed": 1,
+        "completion_samples": 1,
+        "edits": 2,
+        "human_integrated": 0,
+        "independently_disproved": 0,
+        "independently_validated": 1,
+        "invalid_output": 0,
+        "last_observed": 1789343856.700907,
+        "reviews_completed": 0,
+        "samples": 1,
+        "valid_calls": 4
+      },
+      "model": "kiro/claude-sonnet-4.5",
+      "role": "worker"
+    },
+    {
+      "evidence": {
+        "accepted": 0,
+        "checkpoints": 0,
+        "checks_passed": 0,
+        "completed": 1,
+        "completion_samples": 1,
+        "edits": 0,
+        "human_integrated": 0,
+        "independently_disproved": 0,
+        "independently_validated": 1,
+        "invalid_output": 0,
+        "last_observed": 1789343856.70137,
+        "reviews_completed": 4,
+        "samples": 1,
+        "valid_calls": 4
+      },
+      "model": "kiro/claude-haiku-4.5",
+      "role": "reviewer"
+    }
+  ],
+  "diagnostic_requests": 2,
+  "dispatch_scopes": [
+    {
+      "access_class": "included",
+      "model": "kiro/claude-haiku-4.5",
+      "role": "reviewer",
+      "scope_hash": "bb6754004eac111c79812d372ddabd6369e4e1910a1ac15a1664fbac31cbaf23"
+    },
+    {
+      "access_class": "included",
+      "model": "kiro/claude-sonnet-4.5",
+      "role": "worker",
+      "scope_hash": "ead5e96ccc998889814a4881f90c8b0f65915e983de8cc2e068b02bbc12d2471"
+    }
+  ],
+  "elapsed_seconds": 53.325002958000006,
+  "execution_probes": 0,
+  "fixture_hash": "a27155debeec3a8f94f1ad0871b85e237c28ceefbae5c13dd18d30a760b695f5",
+  "independent_evidence_sha256": "f2d03be44243e652205afb903a4722e628b4e117953a440cf4a84ced8577662b",
+  "independently_qualified": true,
+  "interventions_after_start": 0,
+  "merge_available": true,
+  "models": {
+    "reviewer": [
+      "kiro/claude-haiku-4.5"
+    ],
+    "worker": [
+      "kiro/claude-sonnet-4.5"
+    ]
+  },
+  "operator_prepared_plan": true,
+  "phase": "start",
+  "provider_seconds": 44.349291542,
+  "qualified": true,
+  "request_count": 10,
+  "request_metrics": [
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "9c51c57996bd48c3854ec892c5c05168",
+      "identity_provenance": "response_model",
+      "input_tokens": 7382,
+      "model": "kiro/claude-sonnet-4.5",
+      "output_tokens": 21,
+      "purpose": "work",
+      "role": "worker",
+      "seconds": 2.3987498749999996,
+      "served_model": "claude-sonnet-4.5",
+      "status": "responded"
+    },
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "f54c12eccab844ba9f8cc8dcf4ef1f26",
+      "identity_provenance": "response_model",
+      "input_tokens": 8100,
+      "model": "kiro/claude-sonnet-4.5",
+      "output_tokens": 33,
+      "purpose": "work",
+      "role": "worker",
+      "seconds": 4.805189042,
+      "served_model": "claude-sonnet-4.5",
+      "status": "responded"
+    },
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "f99d47382322446da778971548efd6b7",
+      "identity_provenance": "response_model",
+      "input_tokens": 8411,
+      "model": "kiro/claude-sonnet-4.5",
+      "output_tokens": 21,
+      "purpose": "work",
+      "role": "worker",
+      "seconds": 4.0520125,
+      "served_model": "claude-sonnet-4.5",
+      "status": "responded"
+    },
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "33f8b9fe42b64d18880f7a02ac61441c",
+      "identity_provenance": "response_model",
+      "input_tokens": 8519,
+      "model": "kiro/claude-sonnet-4.5",
+      "output_tokens": 18,
+      "purpose": "work",
+      "role": "worker",
+      "seconds": 2.4103997919999998,
+      "served_model": "claude-sonnet-4.5",
+      "status": "responded"
+    },
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "234d00898c494d59aaa69e14a5475bdc",
+      "identity_provenance": "response_model",
+      "input_tokens": 9091,
+      "model": "kiro/claude-sonnet-4.5",
+      "output_tokens": 0,
+      "purpose": "work",
+      "role": "worker",
+      "seconds": 2.9813494580000004,
+      "served_model": "claude-sonnet-4.5",
+      "status": "responded"
+    },
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "94d1f9d5d6f44efd8a74af21f514fddf",
+      "identity_provenance": "response_model",
+      "input_tokens": 7941,
+      "model": "kiro/claude-haiku-4.5",
+      "output_tokens": 31,
+      "purpose": "work",
+      "role": "reviewer",
+      "seconds": 1.7251179589999985,
+      "served_model": "claude-haiku-4.5",
+      "status": "responded"
+    },
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "4e86d4e2632441edace495c810434b8b",
+      "identity_provenance": "response_model",
+      "input_tokens": 10131,
+      "model": "kiro/claude-haiku-4.5",
+      "output_tokens": 503,
+      "purpose": "work",
+      "role": "reviewer",
+      "seconds": 9.607384916,
+      "served_model": "claude-haiku-4.5",
+      "status": "responded"
+    },
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "c8cd6b5947ee4e3895a7ef031af5a6eb",
+      "identity_provenance": "response_model",
+      "input_tokens": 9841,
+      "model": "kiro/claude-haiku-4.5",
+      "output_tokens": 324,
+      "purpose": "branch_final",
+      "role": "reviewer",
+      "seconds": 5.484784875000003,
+      "served_model": "claude-haiku-4.5",
+      "status": "responded"
+    },
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "d4ad2fd8691a4e5084f13a3020e7218d",
+      "identity_provenance": "response_model",
+      "input_tokens": 6899,
+      "model": "kiro/claude-haiku-4.5",
+      "output_tokens": 451,
+      "purpose": "branch_final",
+      "role": "reviewer",
+      "seconds": 5.908101166999998,
+      "served_model": "claude-haiku-4.5",
+      "status": "responded"
+    },
+    {
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "id": "ee4553c63cd04831a3d88726d7c7d51f",
+      "identity_provenance": "response_model",
+      "input_tokens": 7072,
+      "model": "kiro/claude-haiku-4.5",
+      "output_tokens": 349,
+      "purpose": "branch_final",
+      "role": "reviewer",
+      "seconds": 4.976201958000004,
+      "served_model": "claude-haiku-4.5",
+      "status": "responded"
+    }
+  ],
+  "route_events": [
+    {
+      "detail": {
+        "model": "kiro/claude-sonnet-4.5",
+        "role": "worker"
+      },
+      "kind": "routing",
+      "title": "Checking included worker"
+    },
+    {
+      "detail": {
+        "completed": 0,
+        "independently_disproved": 0,
+        "model": "kiro/claude-sonnet-4.5",
+        "role": "worker"
+      },
+      "kind": "routing",
+      "title": "No prior completion evidence"
+    },
+    {
+      "detail": {
+        "model": "kiro/claude-sonnet-4.5",
+        "role": "worker",
+        "tool_check": "recent cached observation"
+      },
+      "kind": "routing",
+      "title": "Included worker is ready"
+    },
+    {
+      "detail": {
+        "model": "kiro/claude-haiku-4.5",
+        "role": "reviewer"
+      },
+      "kind": "routing",
+      "title": "Checking included reviewer"
+    },
+    {
+      "detail": {
+        "completed": 0,
+        "independently_disproved": 0,
+        "model": "kiro/claude-haiku-4.5",
+        "role": "reviewer"
+      },
+      "kind": "routing",
+      "title": "No prior completion evidence"
+    },
+    {
+      "detail": {
+        "model": "kiro/claude-haiku-4.5",
+        "role": "reviewer",
+        "tool_check": "recent cached observation"
+      },
+      "kind": "routing",
+      "title": "Included reviewer is ready"
+    }
+  ],
+  "routing_traces": [
+    {
+      "attempts": [
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-sonnet-4.5",
+          "purpose": "work",
+          "request_id": "9c51c57996bd48c3854ec892c5c05168",
+          "seconds": 2.3987498749999996,
+          "served_model": "claude-sonnet-4.5",
+          "status": "responded"
+        },
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-sonnet-4.5",
+          "purpose": "work",
+          "request_id": "f54c12eccab844ba9f8cc8dcf4ef1f26",
+          "seconds": 4.805189042,
+          "served_model": "claude-sonnet-4.5",
+          "status": "responded"
+        },
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-sonnet-4.5",
+          "purpose": "work",
+          "request_id": "f99d47382322446da778971548efd6b7",
+          "seconds": 4.0520125,
+          "served_model": "claude-sonnet-4.5",
+          "status": "responded"
+        },
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-sonnet-4.5",
+          "purpose": "work",
+          "request_id": "33f8b9fe42b64d18880f7a02ac61441c",
+          "seconds": 2.4103997919999998,
+          "served_model": "claude-sonnet-4.5",
+          "status": "responded"
+        },
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-sonnet-4.5",
+          "purpose": "work",
+          "request_id": "234d00898c494d59aaa69e14a5475bdc",
+          "seconds": 2.9813494580000004,
+          "served_model": "claude-sonnet-4.5",
+          "status": "responded"
+        }
+      ],
+      "candidates": [
+        {
+          "model": "antigravity/claude-opus-4-6-thinking",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-opus-4-6-thinking-high",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-opus-4-6-thinking-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-opus-4-6-thinking-medium",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-sonnet-4-6",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-sonnet-4-6-high",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-sonnet-4-6-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-sonnet-4-6-medium",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-2.5-flash",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-2.5-flash-lite",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-2.5-flash-thinking",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3-flash-agent",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.1-flash-image",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.1-flash-lite",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.1-pro-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.5-flash-extra-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.5-flash-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.6-flash-high",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.6-flash-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.6-flash-medium",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-pro-agent",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gpt-oss-120b-medium",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/fable-5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gemini-3.1-pro-preview",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/glm-5.2",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.1",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.2",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.4",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.4-mini",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.6-luna",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.6-sol",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.6-terra",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/haiku4.5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/kimi-k2.6",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/kimi-k2.7",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.6",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.6-500k",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.7",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.7-500k",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.8",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/prism-a",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/prism-b",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet4.5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet4.6",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet4.6-500k",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet5-500k",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet5-high",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-chaos",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-chat",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-coding",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-coding-fast",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-fast",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-free",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-reasoning",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-vision",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/chaos",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/chat",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/cheap",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/claude-opus",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/claude-sonnet",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/coding",
+          "reason": "access_excluded"
+        }
+      ],
+      "candidates_truncated": true,
+      "gateway_attempts": "unavailable",
+      "id": "1",
+      "requested_route": "kiro/claude-sonnet-4.5",
+      "role": "worker",
+      "run_id": "c6f8680a13af4ef893854ab95cf76aea",
+      "selected_model": "kiro/claude-sonnet-4.5"
+    },
+    {
+      "attempts": [
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-haiku-4.5",
+          "purpose": "work",
+          "request_id": "94d1f9d5d6f44efd8a74af21f514fddf",
+          "seconds": 1.7251179589999985,
+          "served_model": "claude-haiku-4.5",
+          "status": "responded"
+        },
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-haiku-4.5",
+          "purpose": "work",
+          "request_id": "4e86d4e2632441edace495c810434b8b",
+          "seconds": 9.607384916,
+          "served_model": "claude-haiku-4.5",
+          "status": "responded"
+        },
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-haiku-4.5",
+          "purpose": "branch_final",
+          "request_id": "c8cd6b5947ee4e3895a7ef031af5a6eb",
+          "seconds": 5.484784875000003,
+          "served_model": "claude-haiku-4.5",
+          "status": "responded"
+        },
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-haiku-4.5",
+          "purpose": "branch_final",
+          "request_id": "d4ad2fd8691a4e5084f13a3020e7218d",
+          "seconds": 5.908101166999998,
+          "served_model": "claude-haiku-4.5",
+          "status": "responded"
+        },
+        {
+          "failure_category": null,
+          "identity_provenance": "response_model",
+          "model": "kiro/claude-haiku-4.5",
+          "purpose": "branch_final",
+          "request_id": "ee4553c63cd04831a3d88726d7c7d51f",
+          "seconds": 4.976201958000004,
+          "served_model": "claude-haiku-4.5",
+          "status": "responded"
+        }
+      ],
+      "candidates": [
+        {
+          "model": "antigravity/claude-opus-4-6-thinking",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-opus-4-6-thinking-high",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-opus-4-6-thinking-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-opus-4-6-thinking-medium",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-sonnet-4-6",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-sonnet-4-6-high",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-sonnet-4-6-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/claude-sonnet-4-6-medium",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-2.5-flash",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-2.5-flash-lite",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-2.5-flash-thinking",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3-flash-agent",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.1-flash-image",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.1-flash-lite",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.1-pro-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.5-flash-extra-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.5-flash-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.6-flash-high",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.6-flash-low",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-3.6-flash-medium",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gemini-pro-agent",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "antigravity/gpt-oss-120b-medium",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/fable-5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gemini-3.1-pro-preview",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/glm-5.2",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.1",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.2",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.4",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.4-mini",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.6-luna",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.6-sol",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/gpt5.6-terra",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/haiku4.5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/kimi-k2.6",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/kimi-k2.7",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.6",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.6-500k",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.7",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.7-500k",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/opus4.8",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/prism-a",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/prism-b",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet4.5",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet4.6",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet4.6-500k",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet5-500k",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "aug/sonnet5-high",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-chaos",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-chat",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-coding",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-coding-fast",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-fast",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-free",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-reasoning",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/best-vision",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/chaos",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/chat",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/cheap",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/claude-opus",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/claude-sonnet",
+          "reason": "access_excluded"
+        },
+        {
+          "model": "auto/coding",
+          "reason": "access_excluded"
+        }
+      ],
+      "candidates_truncated": true,
+      "gateway_attempts": "unavailable",
+      "id": "2",
+      "requested_route": "kiro/claude-haiku-4.5",
+      "role": "reviewer",
+      "run_id": "c6f8680a13af4ef893854ab95cf76aea",
+      "selected_model": "kiro/claude-haiku-4.5"
+    }
+  ],
+  "runtime_hash": "f8308e194927cb69c13ff43dcdd1718c908aa5a02c40729d1e54202d69dc5ec1",
+  "source_clean": true,
+  "source_main_unchanged": true,
+  "source_tests_unchanged": true,
+  "status": "ready_for_merge",
+  "task_id": "0b7be4142fc342b296004c7bfd90925d",
+  "tests_hash": "3aba67772f00a6d25a40487c7f4b8324c41644e52eb10e4a4c97329bf60df2b4"
+}

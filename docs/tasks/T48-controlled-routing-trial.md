@@ -1,6 +1,6 @@
 # T48 — Qualify selection through the actual gateway path
 
-Status: In progress — expanded requirements
+Status: Done — targeted path checks and automatic task independently qualified
 Depends on: T47
 Size: M (a small live experiment, not a new broad benchmark suite)
 
@@ -123,4 +123,20 @@ Update this card and TASKS.md; commit only the sanitized experiment record.
 
 ## Expanded requirements completion
 
-Pending implementation and qualification.
+[Expanded qualification report](../trials/routing-20260913-v2/RESULTS.md) retains
+all identities, diagnostics, usage, checks and receipts. App e06e98d; task
+0b7be4142fc342b296004c7bfd90925d. Two targeted configured-route diagnostics passed
+through the app adapter/parser; automatic selection reused both cached observations
+and completed the unchanged easy task with zero execution probes/interventions.
+Gateway-reported Sonnet/Haiku identities differed; internal fallback remained
+unavailable, so no qualified pinned-model diagnostic is claimed.
+
+Diagnostics: 2 requests, 9,553 reported tokens, 3.431s. Execution: 10 requests,
+85,138 accounted tokens, 53.325s. Combined12 requests/94,691 tokens. Included
+marginal estimate $0 is not a billing receipt. Supplied checks passed (0.12s/0.11s),
+README example passed independently (0.0011s), matching commit receipt and merge
+preview verified. Source main/app/configuration/acceptance unchanged; no merge/push.
+
+A post-run trace truncation display/retention issue was separately repaired and
+validated with tiny tests; the original evidence remains unchanged. Browser
+verification remains pending; no visual pass claimed. T44 stays deferred.
