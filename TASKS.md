@@ -10,6 +10,17 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+**Deferred follow-up: Interactive work while an Unattended run continues.**
+The September 14, 4:11 PM report exposed the current app-wide single-runtime
+restriction and confusing saved-but-not-started feedback. Capture both issues;
+do not interrupt a live run or enable concurrency merely by removing the Send
+button check. These cards are for later selection, not automatic execution.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T79](docs/tasks/T79-blocked-submission-feedback.md) | Make Send, Enter, and saved-but-not-started feedback agree | Current composer/start flow | S | Deferred |
+| [T80](docs/tasks/T80-concurrent-interactive-unattended.md) | Run Interactive and Unattended tasks concurrently with isolated ownership | T79; existing workspace, budget, and commit contracts | L; implement in bounded increments | Deferred |
+
 **Completed: [T78 — planner source excerpts and accurate response diagnostics](docs/tasks/T78-planner-source-excerpts.md).**
 The planner can search and page through source files larger than the 64 KB
 complete-document limit. Plain-text replies retain their repair context and are
@@ -84,7 +95,7 @@ Clicking Start should immediately return to a visibly starting conversation.
 | [T74](docs/tasks/T74-unified-orchestration-reply.md) | Keep planning, worker, and reviewer progress inside the owning cheapoS reply | T68, T69, T70, T73; coordinate with T71/T72 | M | Complete |
 
 **Required tab order:** without a plan, **Chat → Changes → Activity → Tests → Technical logs**;
-with a plan, **Chat → Changes → Plan → Activity → Tests → Technical logs**. The current Checks
+with a plan, **Chat → Changes → Plan & review → Activity → Tests → Technical logs**. The current Checks
 label becomes Tests; existing internal view IDs and verification semantics can
 stay unchanged. Do not move the operator away from Chat when Start is clicked.
 Technical logs show newest entries first, with the latest saved stop/failure
