@@ -156,6 +156,8 @@ Task data defaults to `.cheapos/` beside the launcher. When asking CheapoS to wo
 
 **Recommended for OpenRouter free-model use:** buy at least **$10 in OpenRouter credits** to raise the free-model allowance from **50 to 1,000 requests per day**. You **do not need to spend those credits** on inference to qualify. This optional purchase also helps when accessing OpenRouter through OmniRoute. [OpenRouter's policy](https://openrouter.ai/docs/faq) · [Setup details](docs/USER_GUIDE.md#openrouter-free-request-allowance)
 
+Protect that balance with a **dedicated OpenRouter key for OmniRoute**, an explicit provider-side spending cap, and free-only model choices. A positive key cap permits spending up to that allowance; it does not make a paid route free. [Protect your credits](docs/USER_GUIDE.md#protect-the-credits-you-keep)
+
 Provider access, availability, and costs depend on your configuration. A free-model filter or estimated $0 cap does not override gateway fallbacks or establish a provider billing limit.
 
 ## Built in the open. Measured in the open.

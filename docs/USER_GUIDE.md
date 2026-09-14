@@ -128,8 +128,18 @@ availability and rate limits still apply. [OpenRouter limits](https://openrouter
 Keep using explicit `:free` variants for both roles and the $0 task cap; review
 OmniRoute's fallback settings so paid routes do not consume the purchased credits.
 OpenRouter charges a credit-purchase fee, so the checkout total may exceed $10.
-Policy checked September 13, 2026; check the current
+Policy checked September 14, 2026; check the current
 [OpenRouter FAQ](https://openrouter.ai/docs/faq) before purchasing.
+
+### Protect the credits you keep
+
+1. Create a **dedicated OpenRouter inference key for OmniRoute**. Enter it in OmniRoute's OpenRouter provider settings. The client key entered in cheapoS is a different credential; limiting that client key alone does not set the OpenRouter key's budget.
+2. Set an explicit spending cap on the **OpenRouter key**, chosen by you. Prefer **no reset** for a development allowance unless you deliberately want it renewed. OpenRouter supports USD limits and optional daily, weekly, or monthly resets. A $0.10 or $0.25 cap still allows paid usage; it is not a free-only setting. [OpenRouter key settings](https://openrouter.ai/docs/api/api-reference/api-keys/create-keys)
+3. Inspect that key's `limit`, `limit_remaining`, `limit_reset`, and usage in OpenRouter. A `null` limit means unlimited. Do not assume a zero key limit will preserve free-model access; that combination has not been qualified by cheapoS. [Credit limits](https://openrouter.ai/docs/api_reference/limits)
+4. Keep explicit, currently free model IDs for the worker and reviewer, and the $0 cheapoS task cap when no spending is authorized. Inspect every gateway fallback target. An **included** label is your account-access declaration, not proof that OpenRouter won't bill the request.
+5. Keep this provider key and any administrative credentials out of assistant prompts, repository files, and other agents' tool configurations. cheapoS's routing restriction cannot control a separate agent using its own credentials.
+
+The existing one-cent automatic-route cutoff is checked against accounted usage after responses as well as before new requests. It cannot reverse a charge already incurred, and Manual mode uses its task budget. No setup step here increases either allowance. For the proposed stronger policy and the limits of automatic combos, see [Free routing and spending authorization](development/free-routing-policy.md).
 
 ## Open a project and chat
 
@@ -151,7 +161,7 @@ If another chat or commit changed the same files, choose **Reconcile in this cha
 
 The spending control below the message box edits the current chat's limits, or defaults for new chats. Saving limits does not run a model. Model settings apply to new chats. Automatic remote chats can replace failing models, with the reason and both model names visible in Chat. Manual and local chats retain their model choices.
 
-Direct local Ollama connections on port `11434` and OmniRoute connections stream output into the conversation. Models that expose reasoning show an expandable **Thinking** panel while the answer appears separately as it arrives. A progress card shows elapsed time, the last completed action, and saved file changes. Thinking is model output, not evidence that a file was edited or a check passed. Completed and interrupted thinking previews are saved locally, capped at 16,000 characters per response; they are excluded from reviewer checkpoints. Other direct connections currently show progress while waiting for a complete response. Endpoints that return ordinary JSON instead of a stream still work, with output shown on completion.
+Direct local Ollama connections on port `11434` and OmniRoute connections stream output into the conversation. Models that expose reasoning show an expandable **Thinking** panel while the answer appears separately as it arrives. A progress card shows elapsed time, the last completed action, and saved file changes. Thinking is model output, not evidence that a file was edited or a check passed. Completed and interrupted thinking previews are saved locally, capped at 16,000 characters per response; they are excluded from reviewer checkpoints. Endpoints that return ordinary JSON instead of a stream still work, with output shown on completion.
 
 The reviewer can approve, request revisions, or request takeover. Takeover requires your explicit approval and uses the same remaining budget. Its final patch still needs your review. Plain answers and clarification questions do not count as reviewer approval; saved edits remain available in **Changes**.
 
