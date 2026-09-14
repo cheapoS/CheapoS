@@ -175,15 +175,16 @@ Run B is an instrumented qualification trial, not an untouched zero-intervention
    - *Event:* OmniRoute's background auto-sync dropped non-free models from the active live connection catalog while session authentication was inactive, returning 400 Bad Request on model queries.
    - *Intervention:* Operator signed back into OmniRoute; catalog access for `deepseek/deepseek-chat` and `google/gemini-2.5-flash` was restored.
 
-2. **Review Packet Overflow Guard & Engine Fix (Task 2, Commit `fa1988f`):**
+2. **Review Packet Overflow Guard, Retries, & Engine Fix (Task 2, Commit `fa1988f`):**
    - *Event:* During Task 2 repair review, the candidate passed all 4 test assertions. However, when submitting the candidate checkpoint, `cheapos/branch_review.py` raised `ProgressPause('Item review exceeds 30,000 characters')` because the raw, un-briefed `item['review_repair']` structure (~12,000 characters containing historical check output and patches) was duplicated inside `packet['item']` alongside `packet['repair_review']`.
-   - *Retries:* The supervisor script made **10 automated resume retries** before hitting the retry limit.
+   - *Retries & Deterministic Failure Limitation:* The supervisor script made **10 automated resume retries** before halting. Because this was a deterministic structural failure (overflow of fixed character bounds), repeating `branch-resume` could never resolve it and simply re-triggered the same error 10 times. Deterministic exceptions require a specific repair amendment or clean pause rather than automated retry loops.
    - *Intervention:* Implemented engine fix in commit `fa1988f` (`cheapos/branch_review.py`) to strip redundant `review_repair` from `packet['item']` and `packet['plan']` while retaining the canonical `packet['repair_review']` brief. Scoped test `test_branch_review` verified 5/5 passing in 19.044s. CheapOS daemon was restarted. Task 2 was resumed with operator scope consent (`needs_consent: true`), completed independent item review and 4 final packet approvals, and merged successfully.
    - *Methodological Significance:* This engine fix (`fa1988f`), its 10 automated resume retries, and the associated daemon restart represent an explicit mid-run intervention. This remains highly useful empirical evidence of system behavior, repair cycles, and turn efficiency under live conditions, but Run B is not an untouched unattended run.
 
-3. **Task 3 Zero-Dollar Cap Exhaustion & Allowance Adjustment:**
-   - *Event:* Task 3 initial planning passed `"dollars": 0`. When OpenRouter reported an actual completion cost of $0.0027759 for DeepSeek tokens, CheapOS's hard dollar guard stopped the run with `Run limit reached: dollars (0.0027759 / 0)`.
-   - *Intervention:* Per `AGENTS.md` trial policy, arbitrary zero caps censor the baseline; spending allowance was updated to a bounded measured default of `$1.00` (well above the Run A 5-task cumulative spend of $0.019) for Tasks 3–5 execution.
+3. **Task 3 Spending Cap Adjustment & Accounting Reconciliation:**
+   - *Event:* Task 3 initial planning draft was submitted with `"dollars": 0`. When OpenRouter reported an initial token completion charge of $0.0027759, CheapOS's hard dollar guard halted the draft with `Run limit reached: dollars (0.0027759 / 0)`.
+   - *Operator Authorization:* While `AGENTS.md` trial policy specifies measurement mode to avoid arbitrary deadline censorship, measurement mode strictly preserves the authorized spending policy and does not grant automatic spending cap raises. The operator explicitly authorized increasing the spending cap to a bounded default of `$1.00` for Tasks 3–5.
+   - *Cost Reconciliation ($0.00 vs. $0.0028):* The discarded initial draft incurred $0.0027759 on OpenRouter. The subsequent fresh run (`7c722f0ed5674250a705c24463b3a941`) executed under the authorized $1.00 cap and recorded $0.00 in its final consumption ledger, which is the figure reflected in the comparison table.
 
 4. **Task 3 OpenRouter Transient Rate Limit Resumption:**
    - *Event:* During Task 3 candidate review, OpenRouter momentarily returned a rate limit / quota exhaustion notice (`The provider reported a rate limit or exhausted quota`), pausing the run.
@@ -196,3 +197,10 @@ Run B is an instrumented qualification trial, not an untouched zero-intervention
 6. **Task 5 Pre-flight Executable Identity & Prompt Specification:**
    - *Event:* During Task 5 initial planning, the prompt did not explicitly name `python3`, and DeepSeek proposed check commands beginning with `python`. Because macOS does not include a `python` symlink in PATH, CheapOS's pre-flight authorization guard safely blocked the draft with `missing_setup` / `Verification executable is unavailable: 'python'`.
    - *Intervention:* Clarified the prompt to explicitly specify `python3 -m unittest -v test_acceptance` per repository standard, and dispatched a fresh plan.
+
+### Request Count Audit Reconciliation (445 vs. 465)
+
+In the executive summary table, Run A records `445 / 465` requests:
+- **445 Requests:** The historical executive estimate derived from worker turns, tool calls, and review turns during initial monitoring.
+- **465 Requests:** The audited number of dispatched HTTP requests extracted directly from the saved task records during the September 14 T55 review.
+- **Run B Comparison:** Run B dispatched **258 requests**, representing a **42.0% reduction** against the historical 445 estimate, or a **44.5% reduction** against the 465 audited dispatches.
