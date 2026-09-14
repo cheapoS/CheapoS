@@ -134,18 +134,18 @@ Next optional experiment: one small two-item task with a known localized defect 
 
 A fresh benchmark run on Tasks 1–5 was initiated on `/private/tmp/cheapoS-unattended-trial-repo` with `measurement: true` to empirically measure turn efficiency, review convergence, and tool stability with all reviewer correctness and reliability fixes in place (`docs/development/review-correctness.md`).
 
-### Tasks 1–3 Progress & Side-by-Side Comparison
+### Tasks 1–4 Progress & Side-by-Side Comparison
 
-| Metric | Task 1 Run A (Baseline) | Task 1 Run B (Post-Fix) | Task 2 Run A (Baseline) | Task 2 Run B (Post-Fix) | Task 3 Run A (Baseline) | Task 3 Run B (Post-Fix) | Notes |
-|---|---|---|---|---|---|---|---|
-| **Status** | ✅ Passed & Merged (`a4ef58c`) | ✅ Passed & Merged (`d1683ba`) | ✅ Passed & Merged (`e7c336d`) | ✅ Passed & Merged (`ae8be617`) | ✅ Passed & Merged (`71f45a1`) | ✅ Passed & Merged (`0b5e733`) | Clean acceptance passes |
-| **Acceptance Tests** | 4/4 passing | 4/4 passing | 8/8 passing | 8/8 passing | 12/12 passing | 12/12 passing | Zero regressions |
-| **Worker Turns** | 18 | 9 (**-50%**) | 79 | 59 (**-25%**) | 51 | 13 (**-74.5%**) | Focused, direct single-item planning |
-| **Tool Actions** | 23 | 13 (**-43%**) | 60 | 69 | 45 | 7 (**-84.4%**) | Fast test-driven implementation |
-| **Stored Review Counter** | 13 | 11 (**-15%**) | 16 | 4 (**-75%**) | 4 | 5 | Controller review request rounds |
-| **Valid Review Decisions** | 8 | 4 (**-50%**) | 11 | 6 (**-45%**) | 18 | 5 (**-72%**) | Substantive decision events |
-| **API Requests** | 54 | 24 (**-55%**) | 100 | 71 (**-29%**) | 80 | 20 (**-75%**) | Substantial prompt & turn savings |
-| **Cost (USD)** | $0.00 | $0.00 | $0.00 | $0.00 | $0.00 | $0.00 | Measured OpenRouter usage |
+| Metric | Task 1 Run A | Task 1 Run B | Task 2 Run A | Task 2 Run B | Task 3 Run A | Task 3 Run B | Task 4 Run A | Task 4 Run B | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| **Status** | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | Clean acceptance passes |
+| **Acceptance Tests** | 4/4 passing | 4/4 passing | 8/8 passing | 8/8 passing | 12/12 passing | 12/12 passing | 16/16 passing | 16/16 passing | Zero regressions |
+| **Worker Turns** | 18 | 9 (**-50%**) | 79 | 59 (**-25%**) | 51 | 13 (**-74.5%**) | 23 | 66 | Deeper 3-item plan with edge-case parsing |
+| **Tool Actions** | 23 | 13 (**-43%**) | 60 | 69 | 45 | 7 (**-84.4%**) | 17 | 61 | Multi-file table generator & parser |
+| **Stored Review Counter** | 13 | 11 (**-15%**) | 16 | 4 (**-75%**) | 4 | 5 | 3 | 12 | Controller review request rounds |
+| **Valid Review Decisions** | 8 | 4 (**-50%**) | 11 | 6 (**-45%**) | 18 | 5 (**-72%**) | 4 | 9 | Substantive decision events (7 APPROVE, 2 REQUEST_CHANGES) |
+| **API Requests** | 54 | 24 (**-55%**) | 100 | 71 (**-29%**) | 80 | 20 (**-75%**) | 30 | 85 | Accounted model prompts & tool responses |
+| **Cost (USD)** | $0.00 | $0.00 | $0.00 | $0.00 | $0.00 | $0.00 | $0.0048 | $0.0084 | Accounted model usage |
 
 ### Review Count Accounting & Stage Reconciliation (11 vs. 16 Reviews)
 
@@ -189,3 +189,11 @@ Run B is an instrumented qualification trial, not an untouched zero-intervention
 4. **Task 3 OpenRouter Transient Rate Limit Resumption:**
    - *Event:* During Task 3 candidate review, OpenRouter momentarily returned a rate limit / quota exhaustion notice (`The provider reported a rate limit or exhausted quota`), pausing the run.
    - *Intervention:* Supervisor script automatically resumed the run upon backoff; the reviewer immediately picked up the candidate checkpoint and approved it.
+
+5. **Task 4 T60 Dispute Ledger Activation & Inline Command Permission:**
+   - *Event:* During Task 4 Item 1, Gemini 2.5 Flash rejected the initial candidate with 5 discrete findings concerning markdown table separator rows and alignment indicators (`86f1c8f4eaab...` through `b522432e661b...`), which were durably recorded in CheapOS's T60 dispute ledger under criterion `3:1`. While repairing the code, the worker issued an ad-hoc inline Python verification command (`python3 -c "from table_formatter import ..."`) rather than standard `unittest`, entering `waiting_approval` (`scope_reason: 'Command is not the approved unittest entry point'`).
+   - *Intervention:* The supervisor script approved the command with `remember: True` session scope. DeepSeek corrected the separator row formatting, and Gemini independently verified and approved the candidate checkpoint, successfully clearing the disputes.
+
+6. **Task 5 Pre-flight Executable Identity & Prompt Specification:**
+   - *Event:* During Task 5 initial planning, the prompt did not explicitly name `python3`, and DeepSeek proposed check commands beginning with `python`. Because macOS does not include a `python` symlink in PATH, CheapOS's pre-flight authorization guard safely blocked the draft with `missing_setup` / `Verification executable is unavailable: 'python'`.
+   - *Intervention:* Clarified the prompt to explicitly specify `python3 -m unittest -v test_acceptance` per repository standard, and dispatched a fresh plan.
