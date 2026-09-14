@@ -1,6 +1,6 @@
 # T67 — Preserve complete final verification during plan repair
 
-Status: Ready
+Status: Complete
 Priority: P2 — verification coverage
 Depends on: current plan parser
 Size: S
@@ -54,4 +54,4 @@ work; per-item checks do not replace complete final integration coverage.
 
 ## Completion record
 
-Pending.
+Completed in the scoped T67 commit. Missing final checks are deduplicated without truncation; more than twelve unique commands trigger the existing bounded repair path with explicit full-coverage guidance. Planner instructions distinguish discovery/whitespace checks from behavioral verification. All 15 parser tests passed in 2.100s; the new pure parser case took under 0.001s. No commands or inference executed.

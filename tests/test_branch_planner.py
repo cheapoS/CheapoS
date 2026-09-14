@@ -234,3 +234,21 @@ class PlannerTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class FinalCheckParserTests(unittest.TestCase):
+    def test_derivation_preserves_all_unique_checks_or_requires_repair(self):
+        limits = {'dollars': 0, 'working_seconds': 900, 'requests': 30}
+        items = [{'id': 'item'+str(i), 'title': 'Item', 'instructions': 'Implement',
+                  'acceptance_criteria': ['Works'], 'required_checks': ['python3 -m unittest test_'+str(i)]}
+                 for i in range(13)]
+        def parse(candidate):
+            message = {'tool_calls': [{'function': {'name': 'propose_branch_plan', 'arguments': json.dumps(
+                {'status': 'plan', 'clarification': '', 'plan': {'items': candidate, 'limits': limits}})}}]}
+            return planner._parse(message, limits)
+        with self.assertRaisesRegex(ValueError, 'consolidated final integration'):
+            parse(items)
+        items[-1]['required_checks'] = items[0]['required_checks']
+        result = parse(items)
+        self.assertEqual(len(result['final_checks']), 12)
+        self.assertEqual(result['final_checks'], [i['required_checks'][0] for i in items[:12]])
