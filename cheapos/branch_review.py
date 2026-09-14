@@ -47,7 +47,13 @@ def checkpoint(engine, runtime, args):
     if item.get('review_repair'):
         disagreement.pending(task,item)
         review_disputes.dispositions(task,item,args,current['id'])
-    packet = evidence.review_packet(current, item, run['plan'], checks, str(args.get('uncertainties', ''))[:2000])
+    plan_for_review = copy.deepcopy(run['plan'])
+    if isinstance(plan_for_review, dict) and 'items' in plan_for_review:
+        for it in plan_for_review.get('items', []):
+            if isinstance(it, dict):
+                it.pop('review_repair', None)
+    item_for_review = {k: v for k, v in item.items() if k != 'review_repair'}
+    packet = evidence.review_packet(current, item_for_review, plan_for_review, checks, str(args.get('uncertainties', ''))[:2000])
     if item.get('review_repair'):
         packet['repair_review']=review_disputes.brief(item['review_repair'])
         import difflib
