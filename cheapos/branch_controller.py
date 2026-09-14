@@ -199,7 +199,10 @@ class BranchController:
             if run['status'] in {'paused','blocked'}:state.transition(run,'running')
             runtime=Runtime(task)
             runtime.branch_authority=lambda:self.validate_authority(task,run)
+            run.pop('final_review_corrections', None)
+            run.pop('review_disagreements', None)
             task.update(status='running',error=None,error_code=None,stream=None,check_stream=None,pending_approval=None)
+            self.engine.store.save(task)
             self.engine.runtimes[task_id]=runtime
             runtime.thread=threading.Thread(target=self.execute,args=(runtime,),daemon=True)
             runtime.thread.start()
@@ -303,6 +306,7 @@ class BranchController:
                     if result['decision']=='REQUEST_CHANGES':
                         task['messages'].append({'role':'user','content':json.dumps(result)})
                         self.engine._run_with_wait(runtime)
+                        continue
                 from .branch_worker_recovery import queue as queue_worker_recovery
                 if queue_worker_recovery(self,runtime,item):
                     continue
@@ -500,6 +504,9 @@ class BranchController:
         with self.engine.lock:
             self.engine.require_active_task(task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            run.pop('final_review_corrections', None)
+            run.pop('review_disagreements', None)
+            self.engine.store.save(task)
             from .model_pool import observe_completions
             observe_completions(self.engine.gateway.pool,task)
             if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):raise ValueError('A task is already running')
@@ -549,6 +556,11 @@ class BranchController:
             if sum(len(g['message']) for g in guidance)+len(message)>24000:
                 raise ValueError('Guidance is full; prepare an explicit revision')
             guidance.append({'item_id':run['current_item_id'],'message':message.strip()})
+            task.pop('pending_review', None)
+            if run.get('current_item_id'):
+                current_item = next((i for i in run['items'] if i['id'] == run['current_item_id']), None)
+                if current_item and current_item['status'] == 'reviewing':
+                    state.transition_item(run, current_item['id'], 'working')
             answering_blocker=bool(run.pop('waiting_for_user',None))
             if answering_blocker:
                 for item in run['items']:

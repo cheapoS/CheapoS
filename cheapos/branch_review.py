@@ -48,9 +48,11 @@ def checkpoint(engine, runtime, args):
     decision = next(t for t in tools if t['function']['name'] == 'review_decision')['function']['parameters']
     outcome = {'type':'object','properties':{'passed':{'type':'boolean'},'evidence':{'type':'string'}},'required':['passed','evidence'],'additionalProperties':False}
     decision['properties'].update(candidate_id={'type':'string','enum':[current['id']]}, criteria_outcomes={'type':'object', 'description':'Use every exact criterion key. passed is a JSON boolean, evidence is a nonempty string.', 'properties':{c:copy.deepcopy(outcome) for c in criteria},'required':list(criteria),'additionalProperties':False})
-    decision['properties']['defects'] = disagreement.schema()
+    decision['properties']['defects'] = disagreement.schema(criteria)
     decision['required'] += ['candidate_id','criteria_outcomes']
-    messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.' + disagreement.REVIEW_INSTRUCTION}, {'role':'user','content':json.dumps(packet)}]
+    diff_notice = ' If packet diff is empty, the change may already be present in the repository from earlier commits; if files and passing checks satisfy the criteria, call review_decision with APPROVE.' if not packet.get('diff') else ''
+    direct_call = ' Do not output conversational text or preamble. Call review_decision directly as your tool call.'
+    messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.' + diff_notice + direct_call + disagreement.REVIEW_INSTRUCTION}, {'role':'user','content':json.dumps(packet)}]
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
         task['pending_review']={'branch_candidate_id':current['id'],'review_requests':0}
     task['status'] = 'reviewing'

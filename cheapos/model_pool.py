@@ -59,7 +59,7 @@ def observe_task(pool,task,run_id):
         scopes=provenance.get((role,model),set())
         if len(scopes)==1:
             endpoint,revision=next(iter(scopes));pool.record_outcome(endpoint,model,role,run_id,task['id'],signals,revision)
-        elif not scopes and not task.get('access_policy') and endpoint:
+        elif not scopes and (not task.get('access_policy') or task['access_policy'].get('base_url') != endpoint) and endpoint:
             pool.record_outcome(endpoint,model,role,run_id,task['id'],signals)
 
 

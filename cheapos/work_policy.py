@@ -77,6 +77,8 @@ def stage(task):
         current=hashlib.sha256(task.get('patch','').encode()).hexdigest()
         if (check.get('passed') and check.get('digest')==current and check.get('verification_identity')
                 and check.get('generation',0)==task.get('workspace_generation',0)):return 'review'
+        if check.get('digest') != current:
+            return 'verification'
         return 'verification' if not check or check.get('passed') else 'implementation'
     # Reading is not authorization to implement. Ordinary chat retains all
     # tools, but the controller must not turn inspection into a repair order.

@@ -1660,6 +1660,8 @@ class Engine:
         task["tool_actions"] += 1
         if name in {"write_file", "replace_text", "replace_lines"}:
             self.refresh_changes(task)
+            if isinstance(result, dict) and "guidance" not in result:
+                result["guidance"] = "Edits saved. Run run_checks to verify."
         role = "reviewer" if task["status"] == "reviewing" else task["active_role"]
         model = (task["providers"].get(role) or {}).get("model", "Scripted demo")
         self.event(task, "tool", name.replace("_", " "), {"arguments": args, "result": result, "role": role, "model": model})
@@ -2175,7 +2177,17 @@ class Engine:
                     raise ProviderError("Model requested too many tools in one turn")
                 if not calls:
                     self.refresh_changes(task)
-                    if task.get("conversational") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
+                    if task.get("branch_run"):
+                        if task.get("patch"):
+                            last_check = (task.get("checks") or [{}])[-1]
+                            current_digest = hashlib.sha256(task.get("patch", "").encode()).hexdigest()
+                            if last_check.get("passed") and last_check.get("digest") == current_digest:
+                                task["messages"].append({"role": "user", "content": "Verification has passed for all current edits. Call checkpoint directly to submit for review. Do not repeat edits or output conversational text."})
+                            else:
+                                task["messages"].append({"role": "user", "content": "Edits are present in the workspace. Call run_checks directly to verify your changes. Outputting text does not verify code."})
+                        else:
+                            task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
+                    elif task.get("conversational") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
                         task["status"] = "awaiting_reply"
                         task["action_pending"] = False
                     elif task.get("conversational") and message.get("content") and task["patch"] and task["check_command"]:
