@@ -11,7 +11,8 @@ def choice(config, role, purpose, tools, streaming):
     known = (config.get('gateway') == 'omniroute'
              and config.get('model') == 'openrouter/google/gemini-2.5-flash'
              and role == 'reviewer' and bool(tools) and purpose != 'probe')
-    return 'json' if known or not streaming else 'sse'
+    planning = (purpose == 'branch_planning' and bool(tools))
+    return 'json' if known or planning or not streaming else 'sse'
 
 
 def retry_key(config, role, purpose):
@@ -22,5 +23,5 @@ def retry_key(config, role, purpose):
 
 
 def eligible(error, record):
-    return (getattr(error, 'code', None) == 'streaming_unsupported'
+    return (getattr(error, 'code', None) in {'streaming_unsupported', 'empty_response'}
             and record.get('dispatched') and record.get('transport') == 'sse')
