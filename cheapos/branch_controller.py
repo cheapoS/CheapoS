@@ -15,6 +15,18 @@ from .storage import write_json
 from .workspace import Workspace
 
 
+def policy_for_saved(current, saved):
+    """Match only newly optional empty defaults, retaining old contract digests."""
+    result = copy.deepcopy(current)
+    if isinstance(saved, dict):
+        for section, field, empty in (('execution', 'local_planner', ''), ('providers', 'planner', None)):
+            old = saved.get(section)
+            new = result.get(section)
+            if isinstance(old, dict) and isinstance(new, dict) and field not in old and new.get(field) == empty:
+                new.pop(field, None)
+    return result
+
+
 def run_limits(values, count):
     defaults = {'dollars':0, 'working_seconds':max(900,count*300), 'worker_turns':count*40,
                 'requests':count*60+16, 'tool_actions':count*200, 'reviewer_tokens':max(20000,count*10000),
@@ -68,7 +80,7 @@ class BranchController:
                 if evidence.model_identity(policy['providers']['worker'])==evidence.model_identity(policy['providers']['reviewer']):
                     raise ValueError('Unattended work requires two distinct named models')
             task_id=planning_task['id'] if planning_task else uuid.uuid4().hex
-            if planning_task and planning_task['planning_policy']!=policy: raise ValueError('Model policy changed during planning; inspect a fresh proposal')
+            if planning_task and planning_task['planning_policy']!=policy_for_saved(policy, planning_task['planning_policy']): raise ValueError('Model policy changed during planning; inspect a fresh proposal')
             mapping=work.prepare(values.get('repository',''), self.engine.store.root/'tasks'/task_id/'workspace',
                                  values.get('base_ref'),values.get('feature_ref'),values.get('target_ref'),task_id)
             # This private preparation performs no source mutation or execution.
@@ -118,6 +130,7 @@ class BranchController:
         from .branch_completion import authorization_run
         policy = self.model_policy()
         if 'gateway_access' not in run.get('model_policy', {}): policy.pop('gateway_access', None)
+        policy = policy_for_saved(policy, run.get('model_policy', {}))
         return contract_builder(authorization_run(run),run['authorization_workspace'],policy,run['check_scope'])
 
     def authorize(self, task_id, values):
@@ -381,7 +394,7 @@ class BranchController:
             limits=planning_task['planning_limits'] if planning_task else run_limits(values.get('limits',{}),3)
             if planning_task:
                 task=planning_task
-                if task['planning_policy']!=self.model_policy():raise ValueError('Model policy changed; start a new planning chat with the selected models.')
+                if task['planning_policy']!=policy_for_saved(self.model_policy(), task['planning_policy']):raise ValueError('Model policy changed; start a new planning chat with the selected models.')
                 task['branch_run']['status']='draft'
                 task['branch_run']['pause_reason']=None
             else:
@@ -482,7 +495,7 @@ class BranchController:
     def planning_message(self, task, message):
         from .branch_planner import _digest
         run=task['branch_run']
-        if task['planning_policy']!=self.model_policy():raise ValueError('Model policy changed; start a new planning chat with the selected models.')
+        if task['planning_policy']!=policy_for_saved(self.model_policy(), task['planning_policy']):raise ValueError('Model policy changed; start a new planning chat with the selected models.')
         messages=run['inputs'].get('followups',[])
         if sum(map(len,messages))+len(message)>24000:raise ValueError('Planning conversation is full; start a new chat.')
         runtime=self.engine.runtimes.get(task['id'])
@@ -608,7 +621,7 @@ class BranchController:
             if values.get('base_ref',mapping['base_ref'])!=mapping['base_ref'] or work._tip(mapping['source'],mapping['base_ref'])!=mapping['base_sha']:
                 raise ValueError('Committed base changed; submit a fresh planning request')
             policy=self.model_policy()
-            if policy!=old['model_policy']:
+            if policy_for_saved(policy, old['model_policy'])!=old['model_policy']:
                 raise ValueError('Model placement changed; submit a fresh planning request')
             plan=state.validate_plan(values.get('plan'))
             plan['limits']=run_limits(plan['limits'],len(plan['items']))

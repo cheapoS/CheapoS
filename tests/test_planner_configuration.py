@@ -55,3 +55,19 @@ class PlannerConfigurationTests(unittest.TestCase):
         e.save_preferences({'execution':{'local_planner':'installed:1'}})
         self.assertEqual(restored.preferences()['execution']['local_planner'],'installed:1')
         with self.assertRaises(ValueError):e.save_preferences({'execution':{'local_planner':False}})
+
+    def test_legacy_policy_defaults_preserve_digest_but_not_changed_authorization(self):
+        from cheapos.branch_controller import policy_for_saved
+        old={'execution':{'mode':'manual'},'providers':{'reviewer':self.provider},'gateway_access':{'connection_revision':'old'}}
+        current=copy.deepcopy(old)
+        current['execution']['local_planner']=''
+        current['providers']['planner']=None
+        self.assertEqual(policy_for_saved(current,old),old)
+        self.assertIn('local_planner',current['execution'])
+        for field,value in (('local_planner','strong'),):
+            changed=copy.deepcopy(current);changed['execution'][field]=value
+            self.assertNotEqual(policy_for_saved(changed,old),old)
+        changed=copy.deepcopy(current);changed['providers']['planner']=self.provider
+        self.assertNotEqual(policy_for_saved(changed,old),old)
+        changed=copy.deepcopy(current);changed['gateway_access']['connection_revision']='new'
+        self.assertNotEqual(policy_for_saved(changed,old),old)

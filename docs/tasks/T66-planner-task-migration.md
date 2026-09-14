@@ -54,3 +54,5 @@ Old tasks contain worker/reviewer usage buckets only. A new planner request call
 ## Completion record
 
 Reservation idempotently initializes an absent planner bucket before accounting. Existing malformed amounts fail clearly instead of resetting; historical totals, uncertainty and authorization remain intact. One pure reserve/reconcile fixture passed as part of four cases in 0.011s; no workflow or live model used.
+
+Legacy policy comparison ignores only newly optional empty local_planner/planner defaults, preserving original contract shape and digest. Changed model, nonempty planner, or gateway authorization remains unequal. Pure compatibility fixture passed with configuration cases (4 tests, 0.013s).

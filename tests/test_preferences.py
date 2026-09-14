@@ -11,7 +11,7 @@ class PreferencePersistenceTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.engine = self.restart()
-        self.execution = {'mode':'delegate','local_model':'gemma4:31b','local_reviewer':'fixture-reviewer'}
+        self.execution = {'mode':'delegate','local_model':'gemma4:31b','local_reviewer':'fixture-reviewer','local_planner':''}
 
     def restart(self):
         engine = Engine(self.temp.name)
