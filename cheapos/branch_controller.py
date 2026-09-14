@@ -424,6 +424,7 @@ class BranchController:
     def _plan_background(self, values, runtime, identity):
         try:self._finish_plan(values,runtime,identity)
         except Exception:
+            import traceback; traceback.print_exc()
             # _finish_plan persists the concrete failure in the conversation.
             # Background exceptions cannot be returned by the kickoff response.
             pass
@@ -470,7 +471,7 @@ class BranchController:
                     saved=task;saved['status']='paused';saved['branch_run']['status']='paused'
                     branch_pause.apply(saved,error,cause='operator' if runtime.stop.is_set() else 'essential_clarification' if type(error).__name__=='ClarificationRequired' else None,stage='planning')
                 saved['stream']=None
-                self.engine.event(saved,'assistant','Planning needs attention',saved['error'] or str(error))
+                self.engine.event(saved,'assistant','Planning needs attention',str(error) or saved['error'])
                 self.engine.runtimes.pop(task['id'],None)
             raise
         finally:
