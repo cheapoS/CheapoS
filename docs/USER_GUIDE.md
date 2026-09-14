@@ -255,3 +255,13 @@ Existing `cheapos` imports, `.cheapos` data folders, `CHEAPOS_*` environment
 variables, API identifiers, and the `Start CheapOS.command` launcher remain
 compatible. Renaming the local project folder does not require renaming these
 identifiers.
+
+### Optional local help for stalled workers
+
+Open execution settings and enable **Coordinator assistance — recommended** to
+let an installed local model suggest a next step when a worker stalls. Select the
+model once; the setting is saved for new tasks. Off remains available, and remote
+workers keep their selected placement. Saving does not download or run a model.
+The helper stays idle between bounded consultations. See
+[coordinator recovery](unattended-runs.md#optional-coordinator-recovery) for behavior
+and limits.

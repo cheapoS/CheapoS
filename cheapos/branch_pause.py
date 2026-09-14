@@ -120,6 +120,8 @@ def classify(error=None, task=None, cause=None, stage=None):
         return public(run['pause_detail']) or public({'version':1,'cause':'unknown'})
     item=next((i for i in run.get('items',[]) if i.get('id')==run.get('current_item_id')), {})
     requests=task.get('request_metrics') or [];request=requests[-1] if requests else {}
+    if explicit=='repeated_work' and task.get('active_role')=='worker':
+        request=next((r for r in reversed(requests) if r.get('role')=='worker'),request)
     detail={'version':1,'cause':explicit,'stage':stage or getattr(error,'stage',None) or (run.get('status') if run.get('status') in STAGES else 'reviewing' if task.get('active_role')=='reviewer' else item.get('status')),
             'item_id':item.get('id'),'role':request.get('role') or task.get('active_role'),'model':request.get('model'),
             'diagnostic_id':getattr(error,'diagnostic_id',None) or request.get('id')}

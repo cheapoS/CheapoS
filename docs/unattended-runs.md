@@ -148,3 +148,23 @@ it does not automatically resume them.
 
 Installation-wide accounting is available from **Usage & savings** in the sidebar;
 see [coverage and export details](development/lifetime-usage.md).
+
+## Optional coordinator recovery
+
+In **Execution settings**, choose **Coordinator assistance — recommended → On**
+and an installed local model. Off remains fully supported. The choice applies to
+new tasks and proposals; it does not change the worker/reviewer placement or opt
+an existing run into local inference. Saving makes no inference request.
+
+After repeated worker inspection has resisted a focused recovery step, the
+coordinator may inspect a bounded packet of saved evidence and suggest one useful
+next action. It can request a genuinely new file excerpt through the worker;
+you should not have to paste repository code merely because the worker repeated
+another read. Advice does not authorize commands or replace independent review.
+
+There is at most one consultation per Interactive request or Unattended item.
+**Coordinator helping** appears in the same reply with actual output and Details.
+The coordinator returns to idle afterward. Unavailable or ignored assistance
+falls back to existing recovery. A real unanswered question still needs your reply;
+a worker stall is labeled separately. Resume does not renew consumed attempts.
+See the [recovery contract and validation](development/coordinator-assisted-recovery.md).

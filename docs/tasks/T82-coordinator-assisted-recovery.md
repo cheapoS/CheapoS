@@ -1,6 +1,6 @@
 # T82 — Optional coordinator-assisted recovery
 
-Status: Ready — next implementation task
+Status: Complete — deterministic implementation and browser validation passed
 Depends on: Existing progress recovery; T65, T73, T74, T77, T80, T81
 Size: M/L — implement the ordered increments below as one coherent capability
 Evidence: September 14, 2026 operator report and discussion; source inspected at
@@ -284,3 +284,10 @@ and known limitations in `docs/development/coordinator-assisted-recovery.md`.
 Update setup/workflow docs and mark this card and `TASKS.md` complete only after
 the acceptance scenarios are verified. Commit only this feature's own changes;
 preserve unrelated user/worker edits. If a scenario remains unverified, say so.
+
+## Completion
+
+Implemented in `2ab0367` with integration/documentation follow-up. See the
+[completion record](../development/coordinator-assisted-recovery.md) for contracts,
+limits, focused timings, browser evidence and transport/live-trial limitations.
+No personal task was altered and no live model inference or app restart was performed.

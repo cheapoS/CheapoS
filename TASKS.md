@@ -10,7 +10,7 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
-**Next up: [T82 — optional coordinator-assisted recovery](docs/tasks/T82-coordinator-assisted-recovery.md).**
+**Completed: [T82 — optional coordinator-assisted recovery](docs/tasks/T82-coordinator-assisted-recovery.md).**
 Make a configured local coordinator useful after delegation: when a worker gets
 stuck, brief the coordinator on saved evidence and let it propose a concrete next
 step before asking the operator to invent a correction. Recommend this option in
@@ -23,7 +23,7 @@ between interventions and returns to idle as soon as its consultation finishes.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T82](docs/tasks/T82-coordinator-assisted-recovery.md) | Give an optional local coordinator saved evidence to help recover stalled workers | Existing progress recovery, T65/T73/T74/T77, T80/T81 | M/L | Ready — next task |
+| [T82](docs/tasks/T82-coordinator-assisted-recovery.md) | Give an optional local coordinator saved evidence to help recover stalled workers | Existing progress recovery, T65/T73/T74/T77, T80/T81 | M/L | Complete — [validation](docs/development/coordinator-assisted-recovery.md) |
 
 This card is an implementation handoff, not authorization to start a live trial
 or change existing model/spending settings. Complete its ordered increments and
