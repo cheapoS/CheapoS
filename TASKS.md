@@ -26,7 +26,7 @@ Clicking Start should immediately return to a visibly starting conversation.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T62](docs/tasks/T62-planner-access-binding.md) | Bind planner requests to the authorized gateway and access policy | Current planner implementation | S/M | Ready |
+| [T62](docs/tasks/T62-planner-access-binding.md) | Bind planner requests to the authorized gateway and access policy | Current planner implementation | S/M | Complete |
 | [T63](docs/tasks/T63-planner-role-selection.md) | Preserve working two-model routes when a planner is configured | T62 | S/M | Ready after dependency |
 | [T64](docs/tasks/T64-planner-fallback-credentials.md) | Resolve fallback credentials without losing their provider identity | T62 | S | Ready after dependency |
 | [T65](docs/tasks/T65-planner-configuration.md) | Configure, save, and restore a dedicated planner | T63, T64 | M | Ready after dependencies |

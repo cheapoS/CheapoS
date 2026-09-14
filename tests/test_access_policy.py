@@ -23,6 +23,25 @@ class AccessTests(unittest.TestCase):
         return {'version': 1, 'base_url': 'http://127.0.0.1:20128/v1',
                 'connection_revision': 'a'*32, 'included_models': ['account/model']}
 
+    def test_planner_binding_is_captured_at_creation_and_enforced(self):
+        policy = self.policy()
+        for included in (False, True):
+            model = {'id': 'account/model' if included else 'free', 'free': not included, 'tool_calling': True}
+            config = {'gateway': 'omniroute', 'base_url': policy['base_url'], 'model': model['id']}
+            task = {'conversational': True}
+            routing.setup_task(task, {'mode': 'remote'}, {'reviewer': config}, SimpleNamespace(settings=policy))
+            planner = task['providers']['planner']
+            access.guard(task, planner, policy, [model], role='planner')
+            for change in ({'base_url': 'http://127.0.0.1:20129/v1'}, {'access_binding': None},
+                           {'access_binding': {**policy, 'connection_revision': 'stale'}}):
+                with self.subTest(included=included, change=change), self.assertRaises(ValueError):
+                    access.guard(task, {**planner, **change}, policy, [model], role='planner')
+            with self.assertRaises(ValueError):
+                access.guard(task, planner, policy, [{**model, 'tool_calling': False}], role='planner')
+            with self.assertRaises(ValueError):
+                access.guard(task, planner, {**policy, 'included_models': []}, [model], role='planner')
+        access.guard({}, {'model': 'paid', 'input_rate': 10}, policy, role='planner')
+
     def test_classification_never_rewrites_catalog_pricing(self):
         models = normalize_models({'data': [
             {'id':'unknown'}, {'id':'account/model','pricing':{'prompt':'.00001','completion':'.00002'}},

@@ -1392,6 +1392,8 @@ class Engine:
             if not model or not access_policy.eligible(model, task['route'].get('access_policy')):
                 self.defer_route(task, role, "This model is no longer eligible under the captured access policy with tool support.")
                 continue
+            if role == 'planner':
+                access_policy.guard(task, cfg, self.gateway.settings, catalog['models'], role=role)
             if access_policy.classify(model, task['route'].get('access_policy')) == 'included':
                 cfg = access_policy.bind_provider(cfg, task['route']['access_policy'], model)
                 task['providers'][role] = cfg

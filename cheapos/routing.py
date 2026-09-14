@@ -99,6 +99,15 @@ def setup_task(task, execution, config, gateway):
     task["route"] = {"ready": False, "base_url": gateway.settings["base_url"],
                      "preferred": {r: (config.get(r) or {}).get("model") for r in ("worker", "reviewer", "planner")}}
     if policy is not None: task['route']['access_policy'] = copy.deepcopy(policy)
+    planner = task['providers'].get('planner')
+    if policy is not None and planner and planner.get('gateway') == 'omniroute' and planner.get('base_url') == policy['base_url']:
+        # Capture authorization once, at task creation. Never repair a saved
+        # missing or stale binding at dispatch time.
+        if planner.get('access_binding') is None:
+            planner['access_binding'] = copy.deepcopy(policy)
+        access_policy.validate_current(planner['access_binding'], gateway.settings)
+        if planner['model'] in policy['included_models']:
+            planner.update(access_policy.bind_provider(planner, policy))
 
 
 def select_remote(engine, runtime, role="worker", replace=False):

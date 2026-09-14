@@ -69,10 +69,10 @@ def guard(task, config, settings, models=None, role=None):
             raise ValueError('Included provider access is not bound to this saved task')
         bind_provider(config, policy)
     route = task.get('route') or {}
-    if role != 'planner' and route.get('access_policy') is not None and config.get('gateway') == 'omniroute':
+    if route.get('access_policy') is not None and (config.get('gateway') == 'omniroute' or role == 'planner'):
         validate_current(route['access_policy'], settings)
         if config.get('access_binding') != route['access_policy']:
-            raise ValueError('Automatic provider is not bound to the captured access policy')
+            raise ValueError('Automatic provider is not bound to the captured access policy. Inspect Models and authorize a new run.')
         model = next((m for m in (models or []) if m['id'] == config['model']), None)
         if model is None or not eligible(model, route['access_policy']):
             raise ValueError('Automatic candidate is outside the captured access/capability policy')

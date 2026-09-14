@@ -41,6 +41,31 @@ class TransportTests(unittest.TestCase):
         engine.event=lambda t,*args:t['events'].append({'id':str(len(t['events'])), 'detail':args})
         return engine,runtime,calls
 
+    def test_planner_override_cannot_dispatch_outside_captured_connection(self):
+        engine, runtime, calls = self.harness()
+        policy = {'version': 1, 'base_url': 'http://localhost:1/v1',
+                  'connection_revision': 'a' * 32, 'included_models': []}
+        config = {**runtime.task['providers']['worker'], 'gateway': 'omniroute',
+                  'access_binding': policy}
+        runtime.task.update(access_policy=policy, route={'access_policy': policy})
+        runtime.task['usage']['planner'] = {'tokens': 0, 'cost': 0}
+        engine.gateway.settings = policy
+        engine.gateway.catalog = Mock(return_value={'models': [
+            {'id': config['model'], 'free': True, 'tool_calling': True}]})
+        factory = Mock(wraps=engine.provider_factory)
+        engine.provider_factory = factory
+        for change in ({'base_url': 'http://localhost:2/v1'}, {'access_binding': None},
+                       {'access_binding': {**policy, 'connection_revision': 'stale'}}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                engine.request(runtime, [{'role': 'user', 'content': 'plan'}], [], 'planner',
+                               config_override={**config, **change}, purpose='branch_planning')
+        factory.assert_not_called()
+        self.assertEqual(runtime.task['usage']['cost'], 0)
+        engine.request(runtime, [{'role': 'user', 'content': 'plan'}], [], 'planner',
+                       config_override=config, purpose='branch_planning')
+        self.assertTrue(factory.called)
+        self.assertEqual(runtime.task['request_metrics'][-1]['status'], 'responded')
+
     def test_each_dispatch_is_accounted_without_counting_an_extra_worker_turn(self):
         engine,runtime,calls=self.harness()
         result=engine._request(runtime,[{'role':'user','content':'hi'}],[],'worker')

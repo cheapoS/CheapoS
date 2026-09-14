@@ -1,6 +1,6 @@
 # T62 — Bind planner requests to the authorized connection
 
-Status: Ready
+Status: Complete
 Priority: P1 — connection and access correctness
 Depends on: current dedicated planner implementation
 Size: S/M
@@ -57,5 +57,14 @@ not establish authorization for the endpoint actually used.
 
 ## Completion record
 
-Pending. Record implementation commit, actual validation and timings, and any
-remaining limitations. Update TASKS.md; commit only this card's scoped changes.
+Implemented on `work/planner-reliability` in the commit containing this record.
+Planner dispatch now enforces captured connection/access bindings, including
+overrides and probes. Task creation captures matching gateway planner bindings
+and included access; dispatch never repairs missing or stale authorization.
+Manual provider configurations retain their existing budget policy.
+
+Validation: 15 access/transport tests passed in 0.013s and 25 existing routing
+tests passed in 25.374s. The two new dictionary/synthetic dispatch cases took
+under 0.002s combined. `git diff --check` passed. The selector plan was inspected;
+its broad engine dependency selection was narrowed to these affected modules.
+No live inference or full unattended run was used. T63–T73 remain separate cards.
