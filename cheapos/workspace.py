@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 
 
 MAX_FILE_BYTES = 256_000
-MAX_EDIT_BYTES = 3000
+MAX_EDIT_BYTES = 3_000
 MAX_EDIT_LINES = 80
 MAX_SNAPSHOT_BYTES = 100_000_000
 MAX_FILES = 5000
@@ -159,7 +159,7 @@ class Workspace:
             raise ValueError("Invalid line range. Lines are 1-based and inclusive; end_line = start_line - 1 inserts before start_line.")
         if (not isinstance(new_text, str) or len(new_text.encode("utf-8")) > MAX_EDIT_BYTES
                 or len(new_text.splitlines()) > MAX_EDIT_LINES or end_line - start_line + 1 > MAX_EDIT_LINES):
-            raise ValueError("Edit is too large. Replace at most 80 lines with at most 80 lines / 3000 UTF-8 bytes per call.")
+            raise ValueError(f"Edit is too large. Replace at most {MAX_EDIT_LINES} lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes per call.")
         if "\x00" in new_text:
             raise ValueError("Binary content cannot be written by the text tools")
         prefix, suffix = "".join(lines[:start_line - 1]), "".join(lines[end_line:])

@@ -47,7 +47,7 @@ def tool(name, description, properties=None, required=None):
 
 TEXT = {"type": "string"}
 MAX_CREATE_BYTES = 24_000
-LINE_EDIT = tool("replace_lines", "Replace a small inclusive line range from the latest numbered file supplied to you. cheapoS tracks its version automatically; do not supply a hash. Send ONLY the replacement text, never the old file. At most 80 old/new lines and 3000 UTF-8 bytes of new text per call. To insert before start_line, set end_line = start_line - 1. Send one edit per file per response; inspect returned lines before the next edit.",
+LINE_EDIT = tool("replace_lines", f"Replace a small inclusive line range from the latest numbered file supplied to you. cheapoS tracks its version automatically; do not supply a hash. Send ONLY the replacement text, never the old file. At most {MAX_EDIT_LINES} old/new lines and {MAX_EDIT_BYTES} UTF-8 bytes of new text per call. To insert before start_line, set end_line = start_line - 1. Send one edit per file per response; inspect returned lines before the next edit.",
                  {"path": TEXT, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 0},
                   "new_text": {"type": "string", "maxLength": MAX_EDIT_BYTES}},
                  ["path", "start_line", "end_line", "new_text"])
@@ -935,7 +935,7 @@ class Engine:
         if activity:
             summary["recent_activity"] = list(reversed(activity))
             summary["continuation"] = "Continue from these completed observations and the current diff. Use targeted reads for missing context. This is a partial history; do not repeat completed edits or assume earlier checks are still current."
-        messages = [{"role": "system", "content": CHAT_SYSTEM if task.get("conversational") else WORKER_SYSTEM}, {"role": "user", "content": json.dumps(summary)}]
+        messages = [{"role": "system", "content": CHAT_SYSTEM if (task.get("conversational") and not task.get("branch_run")) else WORKER_SYSTEM}, {"role": "user", "content": json.dumps(summary)}]
         if task.get("loop_guidance"):
             messages.append({"role": "user", "content": "Controller direction: " + task["loop_guidance"]})
         if task.get("steer_guidance"):
@@ -1189,7 +1189,7 @@ class Engine:
             summary["recent_actions"] = list(reversed(activity))
             summary["check_command"] = task["check_command"]
             summary["available_files"] = workspace.list_files()[:500]
-        return [{"role": "system", "content": CHAT_SYSTEM if task.get("conversational") else WORKER_SYSTEM},
+        return [{"role": "system", "content": CHAT_SYSTEM if (task.get("conversational") and not task.get("branch_run")) else WORKER_SYSTEM},
                 {"role": "user", "content": json.dumps(summary)},
                 {"role": "user", "content": (COMPACT_GUIDANCE + ("\n" + ACTION_GUIDANCE if task.get("action_pending") else "")) if compact else ACTION_GUIDANCE}]
 
@@ -1664,7 +1664,7 @@ class Engine:
             if any(isinstance(value, str) and (len(value.encode("utf-8")) > byte_limit or
                     (name != 'write_file' and len(value.splitlines()) > MAX_EDIT_LINES)) for value in texts):
                 self.prepare_compact_edits(task)
-                raise ValueError("Edit is too large. New files allow at most 24000 UTF-8 bytes; existing files use replace_lines with at most 80 lines / 3000 UTF-8 bytes. No edit was made.")
+                raise ValueError(f"Edit is too large. New files allow at most {MAX_CREATE_BYTES} UTF-8 bytes; existing files use replace_lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes. No edit was made.")
         result = methods[name](**args)
         task["tool_actions"] += 1
         if name in {"write_file", "replace_text", "replace_lines"}:
@@ -2143,7 +2143,7 @@ class Engine:
                 task["worker_turns"] += 1
                 if task.get("conversational"):
                     task["request_worker_turns"] += 1
-                offered_tools = CHAT_TOOLS if task.get("conversational") else WORKER_TOOLS
+                offered_tools = CHAT_TOOLS if (task.get("conversational") and not task.get("branch_run")) else WORKER_TOOLS
                 reason = work_policy.small_edit_reason(task)
                 if reason:
                     self.prepare_compact_edits(task)
@@ -2205,7 +2205,7 @@ class Engine:
                                 task["messages"].append({"role": "user", "content": "Edits are present in the workspace. Call run_checks directly to verify your changes. Outputting text does not verify code."})
                         else:
                             task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
-                    elif task.get("conversational") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
+                    elif task.get("conversational") and not task.get("branch_run") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
                         task["status"] = "awaiting_reply"
                         task["action_pending"] = False
                     elif task.get("conversational") and message.get("content") and task["patch"] and task["check_command"]:
@@ -2216,7 +2216,7 @@ class Engine:
                         result = self.checkpoint_feedback(runtime, {"summary": str(message["content"])[:4000], "uncertainties": "The controller submitted this checkpoint after the worker's final response."})
                         task["messages"].append({"role": "user", "content": "Checkpoint result: " + json.dumps(result)})
                     else:
-                        task["messages"].append({"role": "user", "content": "Changes need verification and checkpoint review. Continue with tools, or use ask_user if you need a decision." if task.get("conversational") else "Continue with tools, or call checkpoint when ready for review. Text alone does not complete this task."})
+                        task["messages"].append({"role": "user", "content": "Changes need verification and checkpoint review. Continue with tools, or use ask_user if you need a decision." if (task.get("conversational") and not task.get("branch_run")) else "Continue with tools, or call checkpoint when ready for review. Text alone does not complete this task."})
                 for call in calls:
                     if runtime.stop.is_set():
                         raise InterruptedError("Task stopped")

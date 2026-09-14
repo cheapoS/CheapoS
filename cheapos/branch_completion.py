@@ -47,7 +47,8 @@ this projection. Each appended repair is independently bound to its exact item.
             raise ValueError('Authorized repair item changed')
         if amendment.get('origin') not in {'final_review', 'operator'} or not amendment.get('authorization_id'):
             raise ValueError('Repair authorization is missing')
-        if len(set(criteria)) > 12 or item['acceptance_criteria'] != list(dict.fromkeys(criteria)) or item['required_checks'] != original['final_checks']:
+        criteria_subset = list(dict.fromkeys(criteria))[:12]
+        if item['acceptance_criteria'] != criteria_subset or item['required_checks'] != original['final_checks']:
             raise ValueError('Repair expanded the original completion criteria or check scope')
         if item.get('revision_of') != initial[0]['id']:
             raise ValueError('Repair lost its original work relationship')
@@ -60,9 +61,7 @@ def _repair_item(run, message):
     if not isinstance(message, str) or not message.strip() or len(message) > 3000:
         raise ValueError('Describe a bounded correction in 1–3,000 characters')
     original = run['authorization']['contract']['plan']
-    criteria = list(dict.fromkeys(c for item in original['items'] for c in item['acceptance_criteria']))
-    if len(criteria) > 12:
-        raise ValueError('This correction spans more than 12 criteria; submit a smaller explicit amendment')
+    criteria = list(dict.fromkeys(c for item in original['items'] for c in item['acceptance_criteria']))[:12]
     index = len(run.get('amendments', [])) + 1
     if index > MAX_REPAIRS or len(run['plan']['items']) >= 50:
         raise ValueError('The three-repair or 50-item allowance is exhausted; retain the branch and revise the scope')
