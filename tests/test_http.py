@@ -1,5 +1,6 @@
 from cheapos.verification import evidence_identity
 import http.client
+from html.parser import HTMLParser
 import io
 import json
 import tempfile
@@ -121,8 +122,26 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(headers['Cache-Control'], 'no-store')
         self.assertEqual(headers['X-Frame-Options'], 'DENY')
         self.assertNotIn('Access-Control-Allow-Origin', headers)
-        for path in ['/', '/styles.css', '/guidance.js', '/panels.js', '/app.js', '/brand-icon.svg']:
-            self.assertEqual(self.request('GET', path)[0], 200)
+        class Assets(HTMLParser):
+            def __init__(self):
+                super().__init__();self.paths=[]
+            def handle_starttag(self, tag, attributes):
+                attrs=dict(attributes)
+                path=attrs.get('src') if tag=='script' else attrs.get('href') if tag=='link' else None
+                if path and path.startswith('./'):self.paths.append('/'+path[2:])
+        status,_,page=self.request('GET','/')
+        self.assertEqual(status,200)
+        assets=Assets();assets.feed(page.decode())
+        self.assertIn('/lifetime_usage.js',assets.paths)
+        self.assertIn('/lifetime_usage.css',assets.paths)
+        for path in assets.paths:
+            with self.subTest(asset=path):
+                status,headers,body=self.request('GET',path)
+                self.assertEqual(status,200)
+                self.assertTrue(body)
+                self.assertNotIn('text/html',{key.lower():value for key,value in headers.items()}['content-type'])
+        for path in ('/lifetime_usage.js','/lifetime_usage.css'):
+            self.assertEqual(self.request('HEAD',path)[0],200)
 
     def test_cross_site_and_dns_rebinding_blocked(self):
         for headers in [{'Host': 'evil.example'}, {'Origin': 'https://evil.example'}, {'Sec-Fetch-Site': 'cross-site'}]:

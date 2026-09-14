@@ -83,3 +83,14 @@ capacity-fetch failures fail closed without replacing the application with a
 startup error. Lifetime statistics on an older server explain that they become
 available after a later restart; no restart is triggered. This matters when
 merging static assets while an operator's long-running task remains active.
+
+## Follow-up: usage button asset delivery
+
+The initial browser mock did not enforce the real server's static-file allowlist.
+The usage JavaScript and CSS were missing from that allowlist, leaving the button
+inert in the actual app. Both explicit assets are now allowed; the allowlist stays
+closed to other files. The existing HTTP test discovers the page's script/link
+assets and verifies actual GET delivery, plus HEAD for the usage files. It and
+the same-origin rejection check passed in 0.042 seconds, without a new fixture.
+Activating this server-code fix requires a Python server restart, not just the
+Restart webapp page reload. No running application was restarted for this repair.
