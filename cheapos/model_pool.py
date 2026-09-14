@@ -97,7 +97,7 @@ class FreeModelPool:
         completed=[item for item in record.pop('completions',[]) if item.get('time',0)>=time.time()-30*86400 and item.get('connection_revision')==connection_revision]
         record['role_evidence']={role:{'samples':len([h for h in history if h['role']==role]),
             **{key:sum(h.get(key,0) for h in history if h['role']==role) for key in ('valid_calls','edits','checks_passed','checkpoints','reviews_completed','invalid_output','accepted')},
-            'last_observed':max((h['time'] for h in history if h['role']==role),default=None)} for role in ('worker','reviewer')}
+            'last_observed':max((h['time'] for h in history if h['role']==role),default=None)} for role in ('worker','reviewer','planner')}
         for role in ('worker','reviewer'):
             values=[c for c in completed if c['role']==role]
             record['role_evidence'][role].update(completion_samples=len(values),
@@ -187,7 +187,7 @@ class FreeModelPool:
         health = self.observation(endpoint, model["id"], connection_revision)
         evidence=health['role_evidence'].get(role,{})
         enough=evidence.get('samples',0)>=3
-        successes=evidence.get('checkpoints',0) if role=='worker' else evidence.get('plans_completed',0) if role=='planner' else evidence.get('reviews_completed',0)
+        successes=evidence.get('checkpoints',0) if role=='worker' else 0 if role=='planner' else evidence.get('reviews_completed',0)
         invalid=evidence.get('invalid_output',0)
         tier=1 if enough and invalid>=3 and invalid>successes else -1 if enough and successes>=3 and invalid==0 else 0
         if connection_revision is not None and tier < 0: tier = 0

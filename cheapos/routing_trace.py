@@ -20,7 +20,7 @@ def model_label(value):
 def begin(task, role, requested_route=None):
     traces=task.setdefault('routing_traces',[])
     sequence=task.get('routing_trace_sequence',0)+1;task['routing_trace_sequence']=sequence
-    trace={'id':str(sequence),'role':role if role in ('worker','reviewer','coordinator') else 'unknown',
+    trace={'id':str(sequence),'role':role if role in ('worker','reviewer','coordinator','planner') else 'unknown',
            'requested_route':model_label(requested_route),'candidates':[],'attempts':[],
            'selected_model':None,'gateway_attempts':'unavailable'}
     run_id=task.get('metric_run_id')

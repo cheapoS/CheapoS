@@ -74,7 +74,7 @@ class Ledger:
             observed[name] = current
         consumed['worker_tokens'] = _number(usage.get('worker', {}).get('tokens', 0))
         consumed['check_seconds'] = sum(_number(check.get('duration', 0)) for check in self.task.get('checks', []))
-        self.data['usage'] = {role: dict(usage.get(role, {})) for role in ('worker', 'reviewer')}
+        self.data['usage'] = {role: dict(usage.get(role, {})) for role in ('worker', 'reviewer', 'planner', 'coordinator')}
         self.data['uncertain_requests'] = usage.get('uncertain_requests', 0)
         return before != json.dumps([consumed, self.data], sort_keys=True)
 

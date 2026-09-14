@@ -32,7 +32,7 @@ Clicking Start should immediately return to a visibly starting conversation.
 | [T65](docs/tasks/T65-planner-configuration.md) | Configure, save, and restore a dedicated planner | T63, T64 | M | Complete |
 | [T66](docs/tasks/T66-planner-task-migration.md) | Resume older planning tasks without losing usage or authorization | T64 | S | Complete |
 | [T67](docs/tasks/T67-complete-final-plan-checks.md) | Repair plan schema without silently dropping verification coverage | Current plan parser | S | Complete |
-| [T68](docs/tasks/T68-planner-usage-visibility.md) | Include planner usage and identity in totals, traces, and the UI | T65, T66 | S/M | Ready after dependencies |
+| [T68](docs/tasks/T68-planner-usage-visibility.md) | Include planner usage and identity in totals, traces, and the UI | T65, T66 | S/M | Complete |
 | [T73](docs/tasks/T73-specific-stop-explanations.md) | Show the actual saved failure and next action directly in Chat | Existing T53/T54 pause contract | M | Completed |
 | [T69](docs/tasks/T69-persistent-plan-tab.md) | Keep the approved plan visible and reorder task tabs | Current saved plan contract | M | Ready |
 | [T70](docs/tasks/T70-responsive-run-start.md) | Close Start immediately and report startup progress in chat | T69 | M | Ready after dependency |

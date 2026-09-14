@@ -58,3 +58,5 @@ Completed in the T64 scoped commit. Provider resolution retains a non-secret
 credential_role and pins fallback to saved reviewer/worker settings. Endpoint-bound
 keys and environment/shared-gateway flows are preserved; global planner changes
 cannot replace a saved fallback. Two deterministic tests passed in 0.007s.
+
+Captured gateway constructor verification now covers reviewer-key planning dispatch and retries with planner metrics, without secret leakage: 8 existing transport cases passed in 0.004s; new case under 0.001s.

@@ -1,6 +1,6 @@
 # T68 — Show planner usage and identity consistently
 
-Status: Ready after dependencies
+Status: Complete
 Priority: P2 — trustworthy accounting and observability
 Depends on: T65, T66
 Size: S/M
@@ -57,4 +57,10 @@ cost; preserve it. Routing traces also label an unrecognized planner role as
 
 ## Completion record
 
-Pending.
+Planner now participates in aggregate token/call totals, per-role costs, budget
+ledger copies, routing traces, pool observations and session UI. Recorded served
+identity wins over current configuration. Unsupported plans_completed ranking
+credit is removed; review completion semantics stay unchanged. Pure planner
+accounting/configuration: 5 cases 0.013s; existing metrics/traces 7 cases 0.052s;
+59 guidance/routing UI cases 0.104s and JS syntax passed. The new aggregate fixture
+adds under 0.001s. Browser visual pass pending; no live inference used.

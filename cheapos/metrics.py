@@ -46,7 +46,8 @@ def aggregate(task):
             'checks':{'runs':len(checks),'passed':sum(bool(c.get('passed')) for c in checks),'outcomes':[c.get('outcome','unknown') for c in checks]},
             'reviews':{'requests':sum(r.get('role')=='reviewer' and r.get('dispatched',False) for r in records) if complete else None,
                        'decisions':[r.get('decision','unknown') for r in reviews]},
-            'calls':{role:sum(r.get('role')==role and r.get('dispatched',False) for r in records) if complete else None for role in ('worker','reviewer','coordinator')},
+            'calls':{role:sum(r.get('role')==role and r.get('dispatched',False) for r in records) if complete else None for role in ('worker','reviewer','coordinator','planner')},
+            'roles':{role:{'tokens':number((usage.get(role) or {}).get('tokens')), 'cost':number((usage.get(role) or {}).get('cost'))} for role in ('worker','reviewer','coordinator','planner')},
             'tool_failures':sum(e['kind']=='tool_error' for e in events) if complete else None,
             'repeated_read_warnings':sum(e['kind']=='guard' and e['title']=='Asking the worker to use what it found' for e in events) if complete else None,
             'handoffs':sum(e['kind']=='handoff' for e in events) if complete else None,
@@ -55,7 +56,7 @@ def aggregate(task):
                         'resumes':sum(e['kind']=='state' and isinstance(e.get('detail'),dict) and e['detail'].get('run_kind')=='resume' for e in events) if complete else None,
                         'accepted_commits':len(task.get('commits',[]))},
             'tokens':{**{key:total(key) for key in ('input_tokens','output_tokens','reasoning_tokens','cached_tokens')},
-                      'accounted_total':sum(usage[r]['tokens'] for r in ('worker','reviewer','coordinator') if isinstance(usage.get(r),dict) and number(usage[r].get('tokens')) is not None) if usage else None},
+                      'accounted_total':sum(usage[r]['tokens'] for r in ('worker','reviewer','coordinator','planner') if isinstance(usage.get(r),dict) and number(usage[r].get('tokens')) is not None) if usage else None},
             'cost':{'accounted':number(usage.get('cost')),'provenance':provenance,'uncertain_requests':usage.get('uncertain_requests'),'billing_receipt':False},
             'time':timing,'model_failure':False if cancelled else True if task.get('error_code') in {'invalid_tool_envelope','unsupported_tool','output_limit'} else None,
             'limitations':'Request time includes provider generation and network latency. Controller time excludes measured request/cooldown/operator waits. Historical or unreported fields are unknown; reviewer approval is not human acceptance.'}

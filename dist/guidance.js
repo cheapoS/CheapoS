@@ -109,10 +109,10 @@ const CheapOSGuide = (() => {
     else if(task.check_stream){stage='checks';title='Running checks';detail=task.check_stream.command.join(' ');since=task.check_stream.started_at}
     else if(task.web_read){stage='web';title='Opening web page';detail=task.web_read.url;since=task.web_read.started_at}
     else if(latest?.kind==='model'){
-      stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':latest.title.startsWith('Requesting coordinator:')?'coordinator':'worker';
+      stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':latest.title.startsWith('Requesting coordinator:')?'coordinator':latest.title.startsWith('Requesting planner:')?'planner':'worker';
       title=role==='reviewer'?'Waiting for the reviewer’s response':'Waiting for the model’s response';
       if(task.answer_pending)title='Preparing an answer from gathered evidence';
-      detail=latest.title.replace(/^Requesting (worker|reviewer|coordinator): /,'');since=latest.time;
+      detail=latest.title.replace(/^Requesting (worker|reviewer|coordinator|planner): /,'');since=latest.time;
     }else if(latest?.kind==='routing'||latest?.kind==='handoff'){stage='routing';title=latest.title;detail=latest.detail?.summary||latest.detail?.error||latest.detail?.model||''}
     else if(latest?.title==='Running verification'){stage='checks';title='Running checks';detail=(latest.detail?.command||task.check_command||[]).join(' ')}
     const timestamp=Date.parse(since),seconds=Number.isFinite(timestamp)?Math.max(0,(at-timestamp)/1000):0;
@@ -576,8 +576,8 @@ const CheapOSConversation = (() => {
     const toolEvents = events.filter(e => e.kind === 'tool' && e.detail?.arguments);
     const edits = new Set(toolEvents.filter(e => ['write file','replace text','replace lines'].includes(e.title)).map(e => e.detail.arguments.path));
     const request = events.findLast(e => e.kind === 'model');
-    const role = phase === 'review' ? 'reviewer' : phase === 'plan' ? 'coordinator' : 'worker';
-    const model = (live && task.stream?.model) || request?.title?.replace(/^Requesting (worker|reviewer|coordinator): /,'') || events.findLast(e => e.detail?.model)?.detail.model || task.providers?.[role]?.model || '';
+    const role = phase === 'review' ? 'reviewer' : phase === 'plan' ? 'planner' : 'worker';
+    const model = (live && task.stream?.model) || request?.title?.replace(/^Requesting (worker|reviewer|coordinator|planner): /,'') || events.findLast(e => e.detail?.model)?.detail.model || task.providers?.[role]?.model || '';
     const elapsed = live ? guide.progress(task, at)?.elapsed || '0s' : '';
     let title = {work:'Worked on your request',checks:'Ran checks',review:'Requested independent review',plan:'Prepared the next step',commit:'Commit needs attention'}[phase];
     let detail = edits.size ? `${edits.size} file${edits.size === 1 ? '' : 's'} updated` : `${toolEvents.length} action${toolEvents.length === 1 ? '' : 's'}`;

@@ -19,3 +19,18 @@ class PlannerAccountingTests(unittest.TestCase):
         self.assertEqual(task['usage']['planner']['tokens'],102)
         task['usage']['planner']={'tokens':'bad','cost':0}
         with self.assertRaises(ValueError):reserve(task,cfg,[],[],'planner')
+
+    def test_planner_totals_traces_and_unknown_history(self):
+        from cheapos.metrics import aggregate
+        from cheapos.routing_trace import request
+        task={'metrics_schema':1,'usage':{'planner':{'tokens':100,'cost':0},'cost':0},'request_metrics':[{'id':'plan1','role':'planner','model':'actual/model','served_model':'actual/model','dispatched':True,'input_tokens':60,'output_tokens':40,'status':'responded'}]}
+        metrics=aggregate(task)
+        self.assertEqual(metrics['tokens']['accounted_total'],100)
+        self.assertEqual(metrics['calls']['planner'],1)
+        self.assertEqual(metrics['cost']['accounted'],0)
+        request(task,task['request_metrics'][0])
+        self.assertEqual(task['routing_traces'][0]['role'],'planner')
+        task['usage']['worker']={'tokens':20,'cost':0}
+        self.assertEqual(aggregate(task)['tokens']['accounted_total'],120)
+        del task['metrics_schema']
+        self.assertIsNone(aggregate(task)['calls']['planner'])

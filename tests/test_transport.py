@@ -4,7 +4,7 @@ import json
 import threading
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from cheapos.engine import Engine
 from cheapos.providers import ProviderError, BudgetError
@@ -40,6 +40,22 @@ class TransportTests(unittest.TestCase):
         engine.provider_factory=lambda *args:Provider()
         engine.event=lambda t,*args:t['events'].append({'id':str(len(t['events'])), 'detail':args})
         return engine,runtime,calls
+
+    def test_planner_dispatch_uses_saved_reviewer_credentials(self):
+        engine,runtime,calls=self.harness()
+        provider=engine.provider_factory()
+        engine.provider_factory=None
+        config=dict(runtime.task['providers']['worker'],base_url='https://provider.example/v1',key_env='CHEAPOS_REVIEWER_API_KEY')
+        runtime.task['providers']={'reviewer':config}
+        engine.config={}
+        engine.secrets={('reviewer',config['base_url']):'reviewer-fixture-key'}
+        engine.gateway.matches=lambda url:False
+        with patch('cheapos.engine.gateway_for',return_value=provider) as factory:
+            engine._request(runtime,[],[],'planner',purpose='branch_planning')
+        self.assertEqual(factory.call_args.args[1],'reviewer-fixture-key')
+        self.assertEqual(factory.call_args.args[0]['credential_role'],'reviewer')
+        self.assertTrue(all(r['role']=='planner' for r in runtime.task['request_metrics']))
+        self.assertNotIn('reviewer-fixture-key',json.dumps(runtime.task))
 
     def test_planner_override_cannot_dispatch_outside_captured_connection(self):
         engine, runtime, calls = self.harness()

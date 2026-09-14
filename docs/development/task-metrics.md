@@ -21,3 +21,11 @@ python3 -B scripts/task_metrics.py --benchmark --output /tmp/benchmark.json
 ```
 
 Fixtures cover a README edit, new utility, bounds bug, public-link answer with mocked public content, failed-check repair, reviewer revision and source commit conflict. Fixed source contents and requirements are fingerprinted. Actual check processes and source/patch assertions verify outcomes independently of provider prose. The README fixture simulates a human commit only inside its disposable repository. Fixture providers report synthetic usage; their results validate controller behavior, not real-model quality or savings. Running real models remains a separate explicit operator action with selected placement and budget.
+
+Planner is a separate role in calls, role token/cost breakdowns, accounted totals,
+routing traces and session details. Planning reservations and failures use the
+same provenance as other roles. Existing worker attribution is historical and is
+not redistributed. Missing role history stays unknown. Session identity prefers
+the saved provider-reported model, falling back to the recorded requested route.
+Planner compatibility observations do not imply a validated plan outcome;
+`plans_completed` is not used for ranking without a durable outcome contract.
