@@ -10,6 +10,25 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+**Next up: [T82 — optional coordinator-assisted recovery](docs/tasks/T82-coordinator-assisted-recovery.md).**
+Make a configured local coordinator useful after delegation: when a worker gets
+stuck, brief the coordinator on saved evidence and let it propose a concrete next
+step before asking the operator to invent a correction. Recommend this option in
+setup, but keep cheapoS fully usable without it. Start with worker stalls in both
+Interactive and Unattended work, including implementation of reviewer feedback.
+Keep existing reviewer coaching, permissions, spending policy, and independent
+approval intact. Coordinator consultations must be bounded, persisted, accounted,
+and visible inside the owning cheapoS reply. The local coordinator stays idle
+between interventions and returns to idle as soon as its consultation finishes.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T82](docs/tasks/T82-coordinator-assisted-recovery.md) | Give an optional local coordinator saved evidence to help recover stalled workers | Existing progress recovery, T65/T73/T74/T77, T80/T81 | M/L | Ready — next task |
+
+This card is an implementation handoff, not authorization to start a live trial
+or change existing model/spending settings. Complete its ordered increments and
+focused validation; do not restart the completed milestones below.
+
 **Completed: T81 — lifetime Usage & savings, plus T79/T80 submission and concurrency.**
 The sidebar summary records this installation's reported free/local/included/paid
 usage, costs and historical coverage, with explicit local exports. One Interactive
