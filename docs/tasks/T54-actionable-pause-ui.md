@@ -1,6 +1,6 @@
 # T54 — Explain pauses inside the conversation with a useful next action
 
-Status: Not started
+Status: Implemented — browser acceptance pending
 Priority: Medium
 Depends on: T53, T60
 Size: M
@@ -78,3 +78,10 @@ restart, and a clarification, including refresh and one action-error path. This
 is a focused browser check, not a new heavy agent/Git regression test. If browser
 access fails, record the exact missing scenarios as pending; Node checks are not
 a visual pass. Report new-case timing, browser evidence, and commit.
+
+
+## Implementation record — September 14, 2026
+
+Added a pure pause mapper and escaped conversation banner with retained Details and existing action handlers. Reviewer quota goes to Models, restart to saved Resume, questions to the composer, setup/permission to their existing controls, and unknown/dispute evidence to Activity. Generic Resume is suppressed for typed blockers; no saved edits/checks/commits are invented.
+
+Validation: 74 focused branch/guidance Node cases passed in about 0.095 seconds, including three new pure pause cases. Syntax checks passed. Browser acceptance remains pending for reviewer quota, restart, clarification, refresh/tab retention and one action-error path: prior CUA loopback navigation returned `net::ERR_BLOCKED_BY_CLIENT`; in-app browser was unavailable and native inspection returned no state before interruption. No bypass or browser-pass claim was made.

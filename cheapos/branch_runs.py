@@ -4,6 +4,7 @@ These helpers grant no execution authority. Evidence fields are controller-owned
 receipts, never assertions accepted from a plan or an HTTP request.
 """
 import copy
+from . import branch_pause
 import hashlib
 import json
 import math
@@ -202,6 +203,7 @@ def transition(run, status, reason=None, now=None):
     if status == 'merged' and not run.get('merge_receipt'):
         raise ValueError('A completed merge receipt is required')
     run['status'], run['pause_reason'] = status, reason if status in {'paused', 'blocked'} else None
+    if status not in {'paused','blocked'}:branch_pause.clear(run)
     append_event(run, 'run_transition', {'from': old, 'to': status, 'reason': run['pause_reason']}, now=now)
     return run
 
@@ -249,6 +251,7 @@ def summary(run):
             'compatible': True, 'status': run.get('status') if run.get('status') in RUN_STATES else 'blocked',
             'plan_revision': run.get('plan_revision') if type(run.get('plan_revision')) is int and 0 <= run['plan_revision'] <= 10 ** 9 else None, 'current_item_id': str(run.get('current_item_id') or '')[:80] or None,
             'pause_reason': run.get('pause_reason') if run.get('pause_reason') in PAUSE_REASONS else None,
+            'pause_detail': branch_pause.public(run.get('pause_detail')) if run.get('status') in {'paused','blocked'} else None,
             'item_count': len(items), 'completed_count': sum(i.get('status') in DONE for i in items),
             'items': [{'id': str(i.get('id', ''))[:80], 'title': str(i.get('title', ''))[:120],
                        'status': i.get('status') if i.get('status') in ITEM_STATES else 'blocked'} for i in items[:50]]}
@@ -270,5 +273,6 @@ def recover_restart(run, now=None):
         old = run['status']
         run['status'] = 'paused'
         run['pause_reason'] = 'restart'
+        run['pause_detail']=branch_pause.public({'version':1,'cause':'restart','stage':old,'item_id':run.get('current_item_id')})
         append_event(run, 'run_transition', {'from': old, 'to': 'paused', 'reason': 'restart'}, now=now)
     return run

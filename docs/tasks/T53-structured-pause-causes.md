@@ -1,6 +1,6 @@
 # T53 — Preserve a specific, safe pause cause
 
-Status: Not started
+Status: Implemented
 Priority: Medium
 Depends on: current branch state and request-error metadata
 Size: M
@@ -74,3 +74,10 @@ serialization cases. Reuse relevant existing `test_branch_runs.py`,
 cases; avoid real restarts and sleeps for a projection test. Report the schema,
 legacy behavior, selected checks and new-case timing. Disclose any proposed
 heavy case before adding it, then commit and update the task board.
+
+
+## Implementation record — September 14, 2026
+
+Added version-1 `pause_detail` with controlled cause/explanation/action, stage/item, role/model, diagnostic reference and recorded cooldown metadata. Typed errors replace exception-word guessing; unknown failures stay unknown. Public projections re-template the record, restart retains already paused causes, and valid transitions clear active details. Next-action fields grant no authority.
+
+Validation: five new pure cases passed in 0.004 seconds; existing branch state/storage cases passed, seven recovery cases passed in 66.267 seconds, and five HTTP cases passed in 17.019 seconds after granting test loopback access. No new agent/Git workflow test or live inference was added.

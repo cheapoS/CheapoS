@@ -10,12 +10,17 @@ from urllib.parse import unquote, urlsplit, parse_qs
 from . import __version__
 from .gateways import gateway_for
 from .providers import validate_provider, ProviderError
-from . import metrics, check_output, branch_runs
+from . import metrics, check_output, branch_runs, branch_pause
 
 
 def public_task(task, summary=False, store=None):
     if store is not None:
         task = store.present(task)
+    if task.get('branch_run',{}).get('pause_detail'):
+        task={**task,'branch_run':dict(task['branch_run'])}
+        detail=branch_pause.public(task['branch_run']['pause_detail']) if task['branch_run'].get('status') in {'paused','blocked'} else None
+        task['branch_run']['pause_detail']=detail
+        task['error']=detail['explanation'] if detail else None
     if summary:
         result = {key: task[key] for key in ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage", "custom_title", "pinned", "archived_at", "trashed_at") if key in task}
         if "branch_run" in task:

@@ -1,3 +1,4 @@
+from . import branch_pause
 """Operator-facing branch-run proposals. Models cannot call this service."""
 import copy
 import hashlib
@@ -89,7 +90,7 @@ class BranchController:
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id)
             task['branch_run']=run
             if planning_task:
-                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions'):
+                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','transport_retries'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
@@ -97,7 +98,8 @@ class BranchController:
                 scopes=[self.scopes.prepare(task,argv) for argv in commands]
             except (OSError,ValueError) as error:
                 run['status']='blocked';run['pause_reason']='missing_setup'
-                task['status']='paused';task['error']=str(error)
+                branch_pause.apply(task,error,cause='missing_setup',stage='planning')
+                run['status']='blocked'
                 self.engine.store.save(task)
                 raise ValueError('Run draft saved; verification setup needs attention: '+str(error)) from error
             run['check_scope']=scopes
@@ -176,6 +178,16 @@ class BranchController:
             return task
 
     def launch(self, task_id):
+        try:return self._launch(task_id)
+        except (ValueError,OSError) as error:
+            with self.engine.lock:
+                task=self.engine.store.get(task_id)
+                if task.get('branch_run',{}).get('status') in {'running','paused','blocked','finalizing'}:
+                    branch_pause.apply(task,error)
+                    self.engine.store.save(task)
+            raise
+
+    def _launch(self, task_id):
         from .engine import Runtime
         import threading
         with self.engine.lock:
@@ -253,19 +265,21 @@ class BranchController:
             while True:
                 if runtime.stop.is_set():raise InterruptedError('Run paused by you')
                 runtime.guard()
-                self.validate_authority(task,run)
+                try:self.validate_authority(task,run)
+                except ValueError as error:raise branch_pause.PauseError('authority_changed') from error
                 # Finish a durable operation before asking any model for more work.
                 if run['pending_operations']:
                     item=next(i for i in run['items'] if i['id']==run['pending_operations'][0]['item_id'])
                     self.commit_item(runtime,item)
                     continue
-                work.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
+                try:work.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
+                except ValueError as error:raise branch_pause.PauseError('branch_drift') from error
                 from .unattended_items import next_item, defer
                 item=next_item(run)
                 if item is None and any(i['status'] not in state.DONE for i in run['items']):
                     questions=[i.get('question') for i in run['items'] if i.get('question')]
                     run['waiting_for_user']='; '.join(questions) or 'Remaining tasks depend on blocked work.'
-                    raise ValueError(run['waiting_for_user'])
+                    raise branch_pause.PauseError('essential_clarification')
                 if item is None:
                     if run['status']!='finalizing':state.transition(run,'finalizing')
                     from .branch_completion import finalize
@@ -298,7 +312,7 @@ class BranchController:
                         self.engine.event(task,'branch_blocked','Continuing independent work',{'item_id':item['id'],'question':item['question']})
                         self.engine.store.save(task)
                         continue
-                    raise ValueError(run['waiting_for_user'])
+                    raise branch_pause.PauseError('essential_clarification')
                 if task['status']=='awaiting_reply':
                     # Even an unchanged outcome requires actual criteria review.
                     from .branch_review import checkpoint
@@ -317,10 +331,7 @@ class BranchController:
         except Exception as error:
             if run['status'] not in {'merged','left_on_branch'}:
                 error=getattr(runtime,'branch_budget_error',None) or error
-                reason='exhausted_work' if 'limit' in str(error).lower() else 'operator' if runtime.stop.is_set() else 'branch_drift' if any(word in str(error).lower() for word in ('branch changed','ownership','identity changed')) else 'missing_information'
-                run['status']='paused';run['pause_reason']=reason
-                task['status']='paused';task['error']=str(error)
-                state.append_event(run,'paused',{'reason':reason,'message':str(error)[:1000]})
+                branch_pause.apply(task,error,cause='operator' if runtime.stop.is_set() and not getattr(runtime,'branch_budget_error',None) and not getattr(error,'code',None) and not task.get('error_code') else None)
         finally:
             runtime.branch_ledger.end()
             elapsed=time.monotonic()-started
@@ -457,8 +468,7 @@ class BranchController:
                 # Keep a complete plan when verification setup failed in prepare().
                 if not (saved_run.get('workspace_mapping') and saved_run.get('status')=='blocked' and saved_run.get('pause_reason')=='missing_setup'):
                     saved=task;saved['status']='paused';saved['branch_run']['status']='paused'
-                    saved['branch_run']['pause_reason']='operator' if runtime.stop.is_set() else 'missing_information'
-                    saved['error']=str(error)
+                    branch_pause.apply(saved,error,cause='operator' if runtime.stop.is_set() else 'essential_clarification' if type(error).__name__=='ClarificationRequired' else None,stage='planning')
                 saved['stream']=None
                 self.engine.event(saved,'assistant','Planning needs attention',saved['error'] or str(error))
                 self.engine.runtimes.pop(task['id'],None)
