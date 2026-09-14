@@ -10,7 +10,11 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
-**Current milestone: T41–T43 and T45–T48 are recorded below; T44 is deferred by the operator. The expanded automatic-routing trial passed. Browser verification remains pending where noted.** The two original implementation boards are complete; T41–T48 below are the active backlog. Their planning baseline is `69ab884` on `main` (September 13, 2026). Read current code before assuming anything remains missing.
+**Next up: complete repair coverage, fully accounted transport recovery, predictable edits, and actionable unattended pauses. Start with T49.** T49–T55 turn the five-task halfway assessment into bounded implementation and evidence tasks. Their planning baseline is `4b6ed68` on `main` (September 14, 2026), which already includes the trial's engine fixes. Read current code before assuming a reported issue remains unfixed.
+
+T41–T43 and T45–T48 are recorded below; T44 remains deferred by the operator.
+The expanded automatic-routing trial passed, with browser verification pending
+where noted. Those earlier cards are not a request to restart completed work.
 
 The [live qualification matrix](docs/trials/matrix/RESULTS.md) establishes that the workflow can complete real work: 30 execution attempts, 18 app-ready outcomes, and no operator interventions after Start in those attempts. Three app-ready results failed independent checks. Models, fixtures, and revisions differed, so these are observations, not a production success-rate estimate. The next iteration should improve correctness and useful completion, not merely raise caps or count more tokens.
 
@@ -25,7 +29,48 @@ Live trials are explicitly selected experiments, not additions to everyday tests
 
 ### Current ordered backlog
 
-The cards are instructions for future work, not authorization to execute the entire backlog now. Mark each card Done only against its own acceptance criteria. T44 is deliberately a live cheapoS implementation task; the observing agent must not silently write the feature itself.
+Implement one card at a time. This board is a handoff plan, not authorization to
+execute the whole backlog, make live model calls, or change spending policy.
+Mark each card Done only against its own acceptance criteria.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T49](docs/tasks/T49-complete-repair-coverage.md) | Repair late-item requirements without truncating coverage | Current branch-run implementation | M | Not started |
+| [T50](docs/tasks/T50-accounted-transport-recovery.md) | Scope transport compatibility and account every retry | Current provider/streaming implementation | M | Not started |
+| [T51](docs/tasks/T51-predictable-compact-edits.md) | Verify edit sequencing and improve stale-edit recovery | Existing version-bound edits | S/M | Not started |
+| [T52](docs/tasks/T52-unattended-mode-boundaries.md) | Separate unattended execution from chat while preserving real blockers | Current setup/scheduling | M | Not started |
+| [T53](docs/tasks/T53-structured-pause-causes.md) | Persist safe, specific pause causes and next actions | Current branch state/errors | M | Not started |
+| [T54](docs/tasks/T54-actionable-pause-ui.md) | Explain pauses and recovery inside the conversation | T53 | M | Not started |
+| [T55](docs/tasks/T55-halfway-evidence-closeout.md) | Reconcile milestone claims and close focused verification gaps | T49–T54 | S/M | Not started |
+
+### What the assessment changes
+
+- The first-12-criteria repair workaround exists in both construction and
+  authorization validation. T49 replaces clipping with explicit original
+  requirement references while retaining complete final coverage.
+- Non-streaming Gemini handling and a stream-error retry are already present.
+  T50 makes their scope deliberate and gives every actual attempt its own guards,
+  accounting, and visible outcome.
+- Shifted-offset protection already exists, including a regression for two edits
+  in one response. T51 investigates any remaining path and improves recovery;
+  it does not assume the reported corruption still occurs.
+- Several unattended prompt/tool gates are fixed. T52 covers the remaining
+  lifecycle/dispatch boundaries without removing legitimate blocker reporting.
+- T53/T54 address pause diagnosis and operator action separately so the UI has a
+  reliable backend contract. T55 qualifies the report's cost/reliability claims
+  using retained evidence; the assessment is not an independent billing audit.
+
+Exit for this follow-up: no silent loss of repair requirements, no unaccounted
+transport fallback, version-safe successive edits, consistent execution mode,
+and a clear next action when paused. Keep new checks small and measured. A new
+heavy test still requires advance disclosure and acceptance under AGENTS.md.
+The existing exporter deferral and Tasks 6–10 trial proposals remain unchanged.
+
+### T41–T48 implementation record
+
+Earlier planning baseline: `69ab884` on `main`, September 13, 2026. T44 is
+deliberately a live cheapoS implementation task; an observing agent must not
+silently write that feature itself when it is eventually resumed.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
@@ -49,7 +94,7 @@ do not move the report-export milestone behind a new broad benchmark campaign.
 ### Current handoff template
 
 ```text
-Implement only T41 from docs/tasks/T41-current-validation-docs.md.
+Implement only T49 from docs/tasks/T49-complete-repair-coverage.md.
 Read AGENTS.md, CONTRIBUTING.md, TASKS.md, and that card first.
 Inspect the current code and verify dependencies; do not restart completed work.
 Follow the card's scope, acceptance criteria, and focused validation instructions.
@@ -62,6 +107,11 @@ Update the card's completion record and its TASKS.md status. Commit only this
 task's changes. Report the commit, actual checks, and remaining limitations.
 Do not execute the next card automatically.
 
+For T49–T55, distinguish trial workarounds already in main from remaining gaps.
+Do not raise global limits, discard acceptance criteria, enable paid fallback,
+or start a live qualification run to make a card pass. Keep browser checks
+isolated from personal tasks, and record unavailable scenarios as pending.
+
 For T44/T48, operate cheapoS as the trial driver. Follow their separate live-run
 instructions; do not substitute observer-written code or a scripted model for
 a live success. Keep any unsuccessful or assisted attempt in the evidence.
@@ -72,7 +122,7 @@ measurement mode follows current AGENTS.md; retain the authorized access and
 spending policy, Pause, command consent, usage accounting, and honest failure
 reporting. Included account access is not automatically a public free route.
 
-Milestone exit: one useful feature implemented through cheapoS, with independent
+Original T41–T48 milestone target (exporter still deferred): one useful feature implemented through cheapoS, with independent
 acceptance evidence, a working operator-facing download, and recorded commit
 receipts. A reviewed feature branch remains for the operator's merge decision.
 Later routing trials must distinguish a usable endpoint from demonstrated work.
