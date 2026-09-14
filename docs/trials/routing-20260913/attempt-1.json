@@ -1,0 +1,270 @@
+{
+  "access_config_hash": "ae4285f392604f93959081472fd98c6929e4289794542959daf99f43420f6d06",
+  "access_config_unchanged": true,
+  "accounting": {
+    "consumption": {
+      "dollars": 0,
+      "output_tokens": 0,
+      "requests": 3,
+      "reviewer_tokens": 0,
+      "worker_tokens": 13296,
+      "working_seconds": 30.504374625
+    },
+    "request_history_truncated": false,
+    "retained_cost_provenance_counts": {
+      "estimated": 2,
+      "uncertain_reservation": 1
+    },
+    "retained_requests": 3,
+    "usage": {
+      "coordinator": {},
+      "cost": 0.0,
+      "reviewer": {
+        "cost": 0,
+        "tokens": 0
+      },
+      "worker": {
+        "cost": 0.0,
+        "tokens": 13296
+      }
+    }
+  },
+  "app_sha": "019af67ac4671cf73b3f55e997359bf1ddc416e4",
+  "app_unchanged": true,
+  "automatic_selection_exercised": true,
+  "candidate_tests_unchanged": true,
+  "check_seconds": 0,
+  "checks": [],
+  "completed_receipts": [],
+  "dispatch_scopes": [
+    {
+      "access_class": "included",
+      "model": "kiro/claude-sonnet-4.5",
+      "role": "worker",
+      "scope_hash": "3eaa828491201bd743114785507cd83a5b35e09c2ba2ab9463cda6636891f12c"
+    },
+    {
+      "access_class": "public_free",
+      "model": "openrouter/cohere/north-mini-code:free",
+      "role": "worker",
+      "scope_hash": "83388a778cf9d364968d08f87a14c8797352a9a597a358792e82b26fbbbfe938"
+    },
+    {
+      "access_class": "included",
+      "model": "kiro/claude-haiku-4.5",
+      "role": "worker",
+      "scope_hash": "9cd2ee25edeaa582e35f15851a421285aa13aa3ef66c2cd4332f8113ad8ca5b7"
+    }
+  ],
+  "elapsed_seconds": 31.604038125,
+  "error_code": "routing_unavailable",
+  "failure_categories": [
+    {
+      "category": "invalid_tool_arguments",
+      "detail": "Expected JSON value at line 1 column 1; no quota signal.",
+      "model": "kiro/claude-sonnet-4.5",
+      "probe": "routing_ready"
+    },
+    {
+      "category": "invalid_tool_arguments",
+      "detail": "Expected JSON value at line 1 column 1; no quota signal.",
+      "model": "kiro/claude-haiku-4.5",
+      "probe": "routing_ready"
+    },
+    {
+      "category": "gateway_cooldown",
+      "detail": "Provider reports daily free-model quota exhausted, reset time unknown.",
+      "model": "openrouter/cohere/north-mini-code:free",
+      "scope": "provider"
+    }
+  ],
+  "fixture_hash": "a27155debeec3a8f94f1ad0871b85e237c28ceefbae5c13dd18d30a760b695f5",
+  "implementation_started": false,
+  "interventions_after_start": 0,
+  "merge_available": false,
+  "models": {
+    "reviewer": [],
+    "worker": [
+      "kiro/claude-haiku-4.5",
+      "kiro/claude-sonnet-4.5",
+      "openrouter/cohere/north-mini-code:free"
+    ]
+  },
+  "operator_prepared_plan": true,
+  "pause_reason": "missing_information",
+  "phase": "start",
+  "post_run_role_evidence": [
+    {
+      "completion_evidence": {
+        "accepted": 0,
+        "checkpoints": 0,
+        "checks_passed": 0,
+        "completed": 0,
+        "completion_samples": 0,
+        "edits": 0,
+        "human_integrated": 0,
+        "independently_disproved": 0,
+        "independently_validated": 0,
+        "invalid_output": 0,
+        "last_observed": null,
+        "reviews_completed": 0,
+        "samples": 0,
+        "valid_calls": 0
+      },
+      "model": "kiro/claude-sonnet-4.5",
+      "role": "worker",
+      "tool_check_passed": false
+    },
+    {
+      "completion_evidence": {
+        "accepted": 0,
+        "checkpoints": 0,
+        "checks_passed": 0,
+        "completed": 0,
+        "completion_samples": 0,
+        "edits": 0,
+        "human_integrated": 0,
+        "independently_disproved": 0,
+        "independently_validated": 0,
+        "invalid_output": 0,
+        "last_observed": null,
+        "reviews_completed": 0,
+        "samples": 0,
+        "valid_calls": 0
+      },
+      "model": "kiro/claude-haiku-4.5",
+      "role": "worker",
+      "tool_check_passed": false
+    },
+    {
+      "completion_evidence": {
+        "accepted": 0,
+        "checkpoints": 0,
+        "checks_passed": 0,
+        "completed": 0,
+        "completion_samples": 0,
+        "edits": 0,
+        "human_integrated": 0,
+        "independently_disproved": 0,
+        "independently_validated": 0,
+        "invalid_output": 0,
+        "last_observed": null,
+        "reviews_completed": 0,
+        "samples": 0,
+        "valid_calls": 0
+      },
+      "model": "openrouter/cohere/north-mini-code:free",
+      "role": "worker",
+      "tool_check_passed": false
+    }
+  ],
+  "provider_seconds": 29.895549582999998,
+  "qualified": false,
+  "raw_model_arguments_retained": false,
+  "readme_example_verified": false,
+  "request_count": 3,
+  "request_metrics": [
+    {
+      "access_class": "included",
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "input_tokens": 4944,
+      "model": "kiro/claude-sonnet-4.5",
+      "output_tokens": 15,
+      "purpose": "probe",
+      "requested_output_limit": 1024,
+      "role": "worker",
+      "seconds": 2.106005166,
+      "status": "responded"
+    },
+    {
+      "access_class": "included",
+      "cost_provenance": "estimated",
+      "dispatched": true,
+      "input_tokens": 4930,
+      "model": "kiro/claude-haiku-4.5",
+      "output_tokens": 0,
+      "purpose": "probe",
+      "requested_output_limit": 1024,
+      "role": "worker",
+      "seconds": 0.9503076670000001,
+      "status": "responded"
+    },
+    {
+      "access_class": "public_free",
+      "cost_provenance": "uncertain_reservation",
+      "dispatched": true,
+      "error_code": "gateway_cooldown",
+      "model": "openrouter/cohere/north-mini-code:free",
+      "purpose": "probe",
+      "requested_output_limit": 1024,
+      "role": "worker",
+      "seconds": 26.839236749999998,
+      "status": "failed"
+    }
+  ],
+  "route_events": [
+    {
+      "detail": {
+        "model": "kiro/claude-sonnet-4.5",
+        "role": "worker"
+      },
+      "kind": "routing",
+      "title": "Checking included worker"
+    },
+    {
+      "detail": {
+        "model": "kiro/claude-sonnet-4.5",
+        "role": "worker"
+      },
+      "kind": "routing",
+      "title": "Model check failed"
+    },
+    {
+      "detail": {
+        "model": "kiro/claude-haiku-4.5",
+        "role": "worker"
+      },
+      "kind": "routing",
+      "title": "Checking included worker"
+    },
+    {
+      "detail": {
+        "model": "kiro/claude-haiku-4.5",
+        "role": "worker"
+      },
+      "kind": "routing",
+      "title": "Model check failed"
+    },
+    {
+      "detail": {
+        "model": "openrouter/cohere/north-mini-code:free",
+        "role": "worker"
+      },
+      "kind": "routing",
+      "title": "Checking a free worker"
+    },
+    {
+      "detail": {
+        "model": "openrouter/cohere/north-mini-code:free",
+        "role": "worker",
+        "scope": "provider"
+      },
+      "kind": "routing",
+      "title": "Provider is cooling down"
+    }
+  ],
+  "runtime_hash": "15c11746e63781f8b96e22035faf7ed7380bd45647cbe7e3437c2ed545488836",
+  "selected_providers": {
+    "reviewer": null,
+    "worker": null
+  },
+  "source_clean": true,
+  "source_main_unchanged": true,
+  "source_readme_unchanged": true,
+  "source_sha": "4d0d29062ef65e33d3e339a1bf9653ca54228249",
+  "source_tests_unchanged": true,
+  "status": "paused",
+  "task_id": "2b4ed33dc6174bbda46e06a6107cc714",
+  "tests_hash": "3aba67772f00a6d25a40487c7f4b8324c41644e52eb10e4a4c97329bf60df2b4"
+}

@@ -1,6 +1,6 @@
 # T43 — Concrete review disagreements before repair
 
-Status: Not started
+Status: Done
 Depends on: T41
 Size: M
 
@@ -73,9 +73,73 @@ run relevant Node/browser checks using disposable data.
 
 ## Completion record
 
-Behavior delivered and feedback contract: pending
-Acceptance evidence: pending
-Commands/browser results: pending
-Remaining limitations: pending
+Behavior delivered and feedback contract:
+
+- New Unattended `REQUEST_CHANGES` decisions need additive `defects` (1–8):
+  `criterion`, `location`, `expected`, `observed`, `kind` (`static` or
+  `executable`), `support`, and `reproduction`. Executable claims require a
+  concrete reproduction; static claims may leave it empty. Item claims bind to
+  the exact candidate; final claims bind to the manifest and assigned coverage.
+  No historical receipt or decision is rewritten or given fabricated evidence.
+- Missing support returns through existing reviewer correction messages. Three
+  unsupported attempts persist under `branch_run.review_disagreements`; Resume
+  cannot renew them, including in measurement mode. Identical actionable item
+  claims are limited to three repair handoffs under `repair_claims`; final
+  amendments retain their existing three-repair limit.
+- Runtime items retain `review_repair`: original claim, candidate ID, bound check
+  records, reproduction-first instruction, and check baseline. This survives
+  restart and is supplied to the worker. Final amendments retain it before the
+  amendment is saved. Activity distinguishes unsupported feedback from an
+  actionable claim; neither is described as independently proven fact.
+- For executable claims, the file-tool gate permits conventional test-file edits
+  but blocks implementation edits until an actual nontruncated failed check on
+  current inputs is recorded after the claim. Failed required checks release
+  this gate too. A passing counterprobe can return to independent checkpoint
+  without rewriting correct implementation. Read tools and normal approval
+  paths remain available; reviewer commands and snippets never execute directly.
+
+Acceptance evidence:
+
+- Tiny deterministic item/final provider sequences reject unsupported claims,
+  retain attempts across serialized restart, preserve actionable static claims,
+  and prevent endless identical repairs. A Decimal large-value probe verifies
+  `.2f` preserves `9007199254740993.01` while float conversion loses it; the
+  unsupported rewrite never reaches the worker.
+- The executable gate rejects stale or passing records and accepts a current
+  actual failure. Existing command-consent coverage is extended with an immediate
+  declined reviewer-style probe: no subprocess runs. Existing three-item and CSV
+  end-to-end fixtures still exercise actual failure, repair, independent review,
+  commits, and explicit local integration.
+
+Commands/browser results:
+
+- Inspected `python3 -B scripts/check.py --plan` and explicit changed-file plan.
+  The engine import fanout selects 56 modules, so focused indirect coverage was
+  chosen instead of running the broad selection.
+- Ran `scripts/dev_tests.py` for `test_branch_disagreement`, `test_branch_review`,
+  `test_branch_final`, `test_branch_evidence`, `test_branch_completion`,
+  `test_branch_execution`, `test_branch_end_to_end`, `test_permissions`, and
+  `test_branch_exclusions`: 49 distinct tests pass. An initial missing limit in
+  the new mocked fixture was corrected and that module rerun successfully.
+- Five new no-Git/no-subprocess/no-wait unit cases take **0.002 seconds total**.
+  Existing module timings: review 7.95s, final 42.61s, evidence 6.70s, completion
+  33.91s, execution 42.16s, end-to-end 34.39s, permissions 6.76s, exclusions 1.06s
+  (parallel wall times). No new heavy workflow, full suite, live inference, or UI
+  changes; no browser validation required. `git diff --check` passes.
+
+Remaining limitations:
+
+- The controller validates claim structure and candidate/check binding, not the
+  semantic truth of a model's explanation. A precise invented static claim is
+  not proven by filling these fields. Independent review still must assess it.
+- A real failed check is a prerequisite for executable implementation repair,
+  not proof that its failure demonstrates the claimed defect. Relevance of the
+  regression and preservation of original/new assertion meaning remain explicit
+  worker and independent-review obligations. Conventional test path recognition
+  permits creating the probe; it is not a security sandbox or an assertion
+  equivalence checker. Passing tests never automatically approve a claim or job.
+- Historical records without these additive fields remain readable; historical
+  evidence is unavailable rather than inferred. New decisions use the contract.
+
 
 Update this card and TASKS.md; commit this repair separately from the exporter.

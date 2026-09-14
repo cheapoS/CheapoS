@@ -1,6 +1,6 @@
 # T48 — Qualify selection through the actual gateway path
 
-Status: Not started
+Status: Done — targeted path checks and automatic task independently qualified
 Depends on: T47
 Size: M (a small live experiment, not a new broad benchmark suite)
 
@@ -96,13 +96,47 @@ Preflight must not become an all-model sweep, recurring background benchmark, or
 per-chat full test. Tests for diagnostic routing should use fake transports/clocks
 and complete quickly; real model latency belongs only to this selected trial.
 
-## Completion record
+## Previous completion record (before expanded requirements)
 
-Fixture/app/configuration identity: pending
-Task IDs, selected routes, and actual outcome: pending
-Gateway-path diagnostics, pins/fallback behavior, and served identities: pending
-Independent checks and receipts: pending
-Timing/usage/interventions: pending
-Remaining limitations and next recommendation: pending
+The single planned run is recorded in [the dated report](../trials/routing-20260913/RESULTS.md)
+and [sanitized machine evidence](../trials/routing-20260913/attempt-1.json).
+App `019af67ac4671cf73b3f55e997359bf1ddc416e4`; task
+`2b4ed33dc6174bbda46e06a6107cc714`. Full fixture/test/configuration hashes are
+retained in both records. Operator-prepared plan; automatic remote selection.
+
+Two included Kiro probes failed argument validation; one public-free OpenRouter
+probe reported provider-wide daily quota exhaustion. Sibling routes were skipped.
+No pair was selected, implementation began, checks ran, or receipts appeared.
+Source/app/configuration/acceptance unchanged; no merge/push. Zero interventions.
+
+31.604 seconds wall, 29.896 provider seconds, three requests, 13,296 accounted
+tokens including an uncertain reservation. Included $0 marginal estimate is not
+an invoice. No reviewer usage. Completion-quality counters stayed zero.
+
+Next recommendation: an explicit required marker in the routing probe, keeping
+strict argument validation, followed by one separately proposed same-fixture
+trial. Raw returned arguments were not retained, so the omission's origin is
+unproven. No live retry or new heavy regression added. Observer syntax/help and
+diff checks pass; failure-report completion does not qualify automatic delivery.
 
 Update this card and TASKS.md; commit only the sanitized experiment record.
+
+## Expanded requirements completion
+
+[Expanded qualification report](../trials/routing-20260913-v2/RESULTS.md) retains
+all identities, diagnostics, usage, checks and receipts. App e06e98d; task
+0b7be4142fc342b296004c7bfd90925d. Two targeted configured-route diagnostics passed
+through the app adapter/parser; automatic selection reused both cached observations
+and completed the unchanged easy task with zero execution probes/interventions.
+Gateway-reported Sonnet/Haiku identities differed; internal fallback remained
+unavailable, so no qualified pinned-model diagnostic is claimed.
+
+Diagnostics: 2 requests, 9,553 reported tokens, 3.431s. Execution: 10 requests,
+85,138 accounted tokens, 53.325s. Combined12 requests/94,691 tokens. Included
+marginal estimate $0 is not a billing receipt. Supplied checks passed (0.12s/0.11s),
+README example passed independently (0.0011s), matching commit receipt and merge
+preview verified. Source main/app/configuration/acceptance unchanged; no merge/push.
+
+A post-run trace truncation display/retention issue was separately repaired and
+validated with tiny tests; the original evidence remains unchanged. Browser
+verification remains pending; no visual pass claimed. T44 stays deferred.

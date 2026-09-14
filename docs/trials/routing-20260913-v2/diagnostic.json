@@ -1,0 +1,48 @@
+{
+  "app_sha": "e06e98d175de0db601f8c1c16af328b0f9ce6d14",
+  "billing_verified": false,
+  "elapsed_seconds": 3.430959792,
+  "note": "Gateway fallback control/internal chain unavailable. These are configured-route diagnostics, not qualified pinned-model tests.",
+  "phase": "targeted_gateway_diagnostic",
+  "request_count": 2,
+  "results": [
+    {
+      "app_fallback_disabled": true,
+      "gateway_fallback_disabled": false,
+      "gateway_internal_attempts": "unavailable",
+      "identity_provenance": "response_model",
+      "output_token_allowance": 1024,
+      "qualified_pinned_model": false,
+      "requested_model": "kiro/claude-sonnet-4.5",
+      "requests": 1,
+      "role": "worker",
+      "seconds": 2.088993625,
+      "served_model": "claude-sonnet-4.5",
+      "status": "structured_tool_support",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 4776,
+        "total_tokens": 4776
+      }
+    },
+    {
+      "app_fallback_disabled": true,
+      "gateway_fallback_disabled": false,
+      "gateway_internal_attempts": "unavailable",
+      "identity_provenance": "response_model",
+      "output_token_allowance": 1024,
+      "qualified_pinned_model": false,
+      "requested_model": "kiro/claude-haiku-4.5",
+      "requests": 1,
+      "role": "reviewer",
+      "seconds": 1.0795262500000002,
+      "served_model": "claude-haiku-4.5",
+      "status": "structured_tool_support",
+      "usage": {
+        "completion_tokens": 0,
+        "prompt_tokens": 4777,
+        "total_tokens": 4777
+      }
+    }
+  ]
+}

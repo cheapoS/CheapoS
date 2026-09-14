@@ -80,6 +80,9 @@ def _append_repair(engine, task, item, origin, authorization_id, observation):
     run.setdefault('amendments', []).append(amendment)
     run['plan'] = plan; run['plan_revision'] += 1; run['plan_digest'] = digest(plan)
     run['items'].append(dict(copy.deepcopy(item), status='pending', recovery={'attempts':0}, evidence={}, outcome_summary='', commit_receipt=None))
+    if origin == 'final_review':
+        from .branch_disagreement import attach
+        attach(task, run['items'][-1], observation)
     run['final_evidence'] = {}; run.pop('readiness', None); run.pop('merge_preview', None)
     run['status'] = 'running'; run['pause_reason'] = None; task['status'] = 'running'; task['error'] = None
     state.append_event(run, 'revision_proposed', {'item_id': item['id'], 'origin': origin})
@@ -117,6 +120,8 @@ def preview(controller, task_id, values=None):
     if values: raise ValueError('Final preview accepts no fields')
     with controller.engine.lock:
         task = _task(controller, task_id); run = task['branch_run']
+        from .model_pool import observe_completions
+        observe_completions(controller.engine.gateway.pool,task)
         readiness = run.get('readiness')
         if not readiness: raise ValueError('Run final verification before opening the merge preview')
         blocker = None
@@ -249,6 +254,7 @@ def merge(controller, task_id, values):
             raise
         run['merge_receipt'] = finished; run.pop('merge_operation', None)
         run['status'] = 'merged'; task['status'] = 'completed'; task['error'] = None
+        controller.engine.gateway.pool.mark_integrated(task['id'],run['id'])
         state.append_event(run, 'merged', {'target_ref':run['target_ref'], 'sha':finished['feature_tip']}, event_key=finished['id'])
         controller.engine.event(task, 'branch_merged', 'Merged locally. What would you like to work on next?', {'target_ref':run['target_ref'], 'sha':finished['feature_tip']})
         controller.engine.store.save(task)

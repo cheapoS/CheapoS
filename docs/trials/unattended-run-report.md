@@ -10,8 +10,8 @@ to implement this feature through the Unattended workflow.
 Implement the three dependent items below, including each item's tests. Keep the
 change small: standard-library Python and the existing vanilla frontend, with no
 new dependencies. Read current code rather than assuming proposed APIs exist.
-Do not implement unrelated cards from TASKS.md or BRANCH_RUNS.md; those milestones
-are complete. This document defines the entire feature for this trial.
+Do not implement unrelated cards from TASKS.md or BRANCH_RUNS.md. The original
+milestones are complete; T41–T48 coordinate this trial and its later follow-ups. This document defines the entire feature for this trial.
 
 ## Existing integration points
 
@@ -56,8 +56,10 @@ Acceptance criteria:
    credential-bearing fields that must be omitted, invalid/non-run input, and
    unchanged input data after rendering. Use small representative dictionaries.
 
-Required check:
+Required checks:
 `python3 -B scripts/dev_tests.py --pattern test_run_report.py`
+
+`python3 -B scripts/dev_tests.py --directory docs/trials/run-report-acceptance --pattern test_formatter_acceptance.py`
 
 ## Item 2 — read-only Markdown download endpoint
 
@@ -83,6 +85,8 @@ Acceptance criteria:
 Required checks:
 `python3 -B scripts/dev_tests.py --pattern test_run_report.py`
 `python3 -B scripts/dev_tests.py --pattern test_run_report_http.py`
+
+`python3 -B scripts/dev_tests.py --directory docs/trials/run-report-acceptance --pattern test_endpoint_acceptance.py`
 
 ## Item 3 — discoverable export control and documentation
 
@@ -113,20 +117,56 @@ Required checks:
 
 ## Final integration checks and boundaries
 
-Run the complete existing gate once on the final combined candidate:
+Validate the final combined candidate with the focused formatter/HTTP tests,
+T42's independent acceptance pack, and the relevant frontend checks. No full
+Python suite or fixed 30-minute check allowance is required by this trial.
 
-- `python3 -B scripts/dev_tests.py --suite full --timings`
+Implementation checks (the named feature tests are created by Items 1–3):
+
+- `python3 -B scripts/dev_tests.py --pattern test_run_report.py --pattern test_run_report_http.py`
+- `node --check dist/branch_ui.js`
 - `node --check dist/app.js`
 - `node --test tests/test_branch_ui.js tests/test_conversation.js tests/test_guidance.js tests/test_panels.js tests/test_run_report.js`
 
-The app runs a program directly, without a shell. The final Node command above
-explicitly lists the current Node test files plus this feature's new test file.
-`node --test tests` does not work on the installed Node version, and shell
-wildcards are not expanded by CheapOS. Preserve the explicit command in the
-proposal; do not use pipes, chaining, redirects, or a consent-bypassing wrapper.
-The last full Python gate took about 18.5 minutes; a 30-minute per-check allowance
-is intentional. During implementation run the listed focused checks, not the
-full suite for every item or again merely because an approval screen is opened.
+**T42 independent acceptance pack is finalized** under
+`docs/trials/run-report-acceptance/`. Its README maps saved fields to checks;
+DIGEST.json fixes the independent tests and runnable example before Start.
+The observing driver must compare that captured manifest and every file afterward.
+Baseline execution currently fails because the exporter/endpoint do not exist;
+that expected failure is not a feature pass.
+
+| Scope | Required independent command |
+| --- | --- |
+| Item 1 and final | `python3 -B scripts/dev_tests.py --directory docs/trials/run-report-acceptance --pattern test_formatter_acceptance.py` |
+| Item 2 and final | `python3 -B scripts/dev_tests.py --directory docs/trials/run-report-acceptance --pattern test_endpoint_acceptance.py` |
+
+Keep each command as a separate exact argv in the inspected proposal. The app
+runs a program directly without a shell: use explicit filenames, not globs,
+pipes, redirects, chained commands, or a consent-bypassing wrapper. Do not use
+`node --test tests`; the installed runner needs the explicit file list above.
+
+For development, inspect `python3 -B scripts/check.py --plan` and choose relevant
+checks under [CONTRIBUTING](../../CONTRIBUTING.md). A clean working tree selects
+nothing; it is not a tested feature. For committed changes, inspect
+`python3 -B scripts/check.py --base main --plan` or use explicit paths, for example
+`python3 -B scripts/check.py --files dist/branch_ui.js --plan` for frontend work.
+Documentation-only selection needs link/example inspection and a whitespace
+check, without Python regressions. A deliberate comprehensive check remains an
+option for a release or justified broad risk, not an automatic exporter gate.
+
+Development selection is not the approved run's verification contract. Capture
+the exact implementation and independent commands in each item's/final checks
+before Start; later selection cannot silently replace that consent. Reuse saved
+check evidence only when the candidate, exact command, and environment identities
+still match. Do not rerun unchanged passing checks merely to open review or merge.
+
+The earlier 18.5-minute full-suite observation and 30-minute allowance were
+historical trial settings, not current requirements. The historical 46.329-second
+measurement covers only 26 commit tests, not the whole suite; see the
+[test-performance record](../development/test-performance.md). Keep failed trial
+evidence and accounting. Live T44 uses explicit measurement mode per
+[AGENTS.md](../../AGENTS.md), retaining spending policy, command consent, Pause,
+transport guards, and usage records rather than substituting larger numeric caps.
 
 Do not change model routing, limits, permissions, branch execution, commit/review
 rules, Git internals, test-runner policy, or task schema to make this trial pass.

@@ -1,3 +1,5 @@
+from cheapos.route_health import probe_identity
+from cheapos.routing import PROBE_MARKER
 """Automatic free recovery preserves work, accounting, and human control."""
 import copy
 import sys
@@ -52,7 +54,7 @@ class PoolTests(unittest.TestCase):
             pool=FreeModelPool(directory);endpoint='http://localhost:20128/v1'
             models=[model('a-mini-8b',reasoning=False),model('z-550b',reasoning=True)]
             self.assertEqual(sorted(models,key=lambda m:pool.rank(endpoint,m,'reviewer'))[0]['id'],'z-550b')
-            pool.record(endpoint,'a-mini-8b','reviewer',probe=True)
+            pool.record(endpoint,'a-mini-8b','reviewer',probe=True,probe_identity=probe_identity(endpoint,models[0],None))
             self.assertEqual(sorted(models,key=lambda m:pool.rank(endpoint,m,'reviewer'))[0]['id'],'a-mini-8b')
             pool.record(endpoint,'a-mini-8b','reviewer',seconds=1)
             self.assertEqual(sorted(models,key=lambda m:pool.rank(endpoint,m,'reviewer'))[0]['id'],'a-mini-8b')
@@ -83,10 +85,10 @@ class FailoverTests(LocalCase):
         self.engine.gateway.catalog.return_value['models']=[model('openrouter/a'),model('openrouter/b')]
         error=ProviderError('The provider daily free-model quota is exhausted.',code='gateway_cooldown',scope='provider')
         with patch.object(self.engine,'request',side_effect=error) as request:
-            with self.assertRaisesRegex(RoutingPause,'daily free-model quota'):select_remote(self.engine,runtime)
+            with self.assertRaisesRegex(RoutingPause,'reported reset'):select_remote(self.engine,runtime)
             self.assertEqual(request.call_count,1)
         self.assertEqual(runtime.failed_models,set())
-        self.assertFalse(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/b')['retry_known'])
+        self.assertFalse(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/b',task['route']['access_policy']['connection_revision'])['retry_known'])
 
     def test_probe_provider_cooldown_skips_siblings_but_can_use_other_provider(self):
         from cheapos.routing import select_remote
@@ -98,7 +100,7 @@ class FailoverTests(LocalCase):
             def request(rt,messages,tools,role,config_override=None,**kw):
                 if config_override['model'].startswith('openrouter/'):
                     raise ProviderError('Provider cooldown',code='gateway_cooldown',retry_after=120,scope='provider')
-                return call('routing_ready')
+                return call('routing_ready', {'marker': PROBE_MARKER})
             # Use a separate endpoint each iteration so a persisted wait cannot mask the first probe.
             task['route']['base_url']='http://localhost:' + str(2200+int(available_other)) + '/v1'
             self.engine.gateway.matches=Mock(return_value=True)
@@ -122,8 +124,8 @@ class FailoverTests(LocalCase):
         task=self.chat('remote');url=task['route']['base_url'];pool=self.engine.gateway.pool
         self.engine.gateway.catalog.return_value['models']=[model('a',free=False),model('b'),model('c')]
         for name in ('a','b','c','retired'):
-            pool.record(url,name,'worker',probe=True)
-            for i in range(3):pool.record_outcome(url,name,'worker',str(i),'fixture',{'checkpoints':1})
+            pool.record(url,name,'worker',probe=True,connection_revision=task['route']['access_policy']['connection_revision'],probe_identity=probe_identity(url,model(name),task['route']['access_policy']['connection_revision']))
+            for i in range(3):pool.record_outcome(url,name,'worker',str(i),'fixture',{'checkpoints':1},task['route']['access_policy']['connection_revision'])
         with patch.object(self.engine,'request') as request:
             select_remote(self.engine,Runtime(task),'worker')
             select_remote(self.engine,Runtime(task),'reviewer')
@@ -152,7 +154,7 @@ class FailoverTests(LocalCase):
             def __init__(self,role,cfg):self.role,self.cfg=role,cfg
             def complete(self,messages,tools,maximum):
                 requests.append({'role':self.role,'model':self.cfg['model'],'messages':copy.deepcopy(messages),'tools':copy.deepcopy(tools)})
-                if messages==PROBE_MESSAGES:return call('routing_ready'),{'prompt_tokens':3,'completion_tokens':1,'cost':0}
+                if messages==PROBE_MESSAGES:return call('routing_ready', {'marker': PROBE_MARKER}),{'prompt_tokens':3,'completion_tokens':1,'cost':0}
                 reply=next(queue)
                 if isinstance(reply,Exception):raise reply
                 return reply,{'prompt_tokens':10,'completion_tokens':5,'cost':0}

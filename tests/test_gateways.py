@@ -91,6 +91,17 @@ class CatalogTests(unittest.TestCase):
         with self.assertRaises(ProviderError):
             normalize_models({'data': 'invalid'})
 
+    def test_output_limit_metadata_is_optional_positive_and_not_invented(self):
+        entries=[{'id':'top','max_output_tokens':2048},
+                 {'id':'nested','top_provider':{'max_completion_tokens':4096}},
+                 {'id':'precedence','max_output_tokens':1024,'top_provider':{'max_completion_tokens':4096}}]
+        for i,value in enumerate((None,0,-1,True,'2048',float('nan'),float('inf'),1.5)):
+            entries.append({'id':'invalid'+str(i),'max_output_tokens':value})
+        models={m['id']:m for m in normalize_models({'data':entries})}
+        self.assertEqual([models[k]['max_output_tokens'] for k in ('top','nested','precedence')],[2048,4096,1024])
+        for key in models:
+            if key.startswith('invalid'):self.assertIsNone(models[key]['max_output_tokens'])
+
     def test_gateway_keeps_direct_provider_credentials_separate(self):
         config = {'base_url': 'http://127.0.0.1:20128/v1', 'key_env': 'CHEAPOS_WORKER_API_KEY', 'gateway': 'omniroute'}
         with patch.dict(os.environ, {'CHEAPOS_WORKER_API_KEY': 'fixture-provider-key'}):

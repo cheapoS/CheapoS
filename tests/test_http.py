@@ -26,10 +26,12 @@ class CooldownErrorTests(unittest.TestCase):
 
     def test_gateway_cached_404_and_model_cooldown_are_distinguished(self):
         error=http_failure(self.error(),{'gateway':'omniroute'})
-        self.assertEqual((error.code,error.scope,error.retry_after),('gateway_cooldown','provider',120))
+        self.assertEqual((error.code,error.scope,error.retry_after),('gateway_cooldown','model',120))
         self.assertNotIn('secret',str(error))
         error=http_failure(self.error(429,body={'error':{'code':'model_cooldown'}}),{'gateway':'omniroute'})
         self.assertEqual(error.scope,'model')
+        error=http_failure(self.error(429,body={'error':{'code':'provider_cooldown'}}),{'gateway':'omniroute'})
+        self.assertEqual(error.scope,'provider')
 
     def test_auth_direct_and_invalid_retry_metadata_keep_original_failure(self):
         for status in (401,402,403):

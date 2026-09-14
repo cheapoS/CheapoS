@@ -1,0 +1,46 @@
+{
+  "acceptance_hash": "3aba67772f00a6d25a40487c7f4b8324c41644e52eb10e4a4c97329bf60df2b4",
+  "acceptance_unchanged": true,
+  "candidate_sha": "ec05b3f3b98cdf7af8cde54bc4073eea3af0587c",
+  "example_sha256": "c12b6c37106869649f45ee86a0f6e82d6258dc66aba960e28ea76aad3bfe921b",
+  "independent_code_inspection": "str type validation and split/join preserve non-whitespace Unicode and collapse Python whitespace; supplied four acceptance methods passed unchanged.",
+  "observed_output": "hello world\ncaf\u00e9 \u6771\u4eac\n\n",
+  "readme_example_passed": true,
+  "receipt": {
+    "is_commit": true,
+    "item_id": "labels",
+    "parent": "a02c78a61b1f7b162b6c5a02b43a991519c802d2",
+    "parent_matches": true,
+    "sha": "ec05b3f3b98cdf7af8cde54bc4073eea3af0587c",
+    "tree": "834195ba7ceb0b073c66024cfebffc6503072209"
+  },
+  "required_checks": [
+    {
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "-v",
+        "test_acceptance"
+      ],
+      "duration": 0.12,
+      "outcome": "passed",
+      "passed": true
+    },
+    {
+      "command": [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "-v",
+        "test_acceptance"
+      ],
+      "duration": 0.11,
+      "outcome": "passed",
+      "passed": true
+    }
+  ],
+  "seconds": 0.0010960420000000002
+}

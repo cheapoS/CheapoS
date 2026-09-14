@@ -1,0 +1,132 @@
+{
+  "acceptance_digest": "52c06e0106644de232214e1284c17117c0ffbf2aa9f0e7a9671ade9a899ca060",
+  "acceptance_pack_digest": "58630b139a9c8a69402bd4eda5f67f312ff924e7136b818f57befb36ec2844b0",
+  "acceptance_unchanged": true,
+  "access_basis": "operator_authorized_included",
+  "accounting": {
+    "consumption": {
+      "dollars": 0,
+      "output_tokens": 0,
+      "requests": 27,
+      "reviewer_tokens": 0,
+      "worker_tokens": 676148,
+      "working_seconds": 208.247902584
+    },
+    "request_history_truncated": false,
+    "retained_cost_provenance_counts": {
+      "estimated": 27
+    },
+    "retained_requests": 27,
+    "usage": {
+      "coordinator": {},
+      "cost": 0.0,
+      "reviewer": {
+        "cost": 0,
+        "tokens": 0
+      },
+      "worker": {
+        "cost": 0.0,
+        "tokens": 676148
+      }
+    }
+  },
+  "app_runtime_unchanged": true,
+  "app_sha": "d1bc3a36c622d3860358214e3508c5d4961d8945",
+  "candidate_acceptance_unchanged": true,
+  "checks": [
+    {
+      "duration": 0.17,
+      "passed": false
+    }
+  ],
+  "completed_receipts": [],
+  "configured_models": {
+    "reviewer": "kiro/claude-haiku-4.5",
+    "worker": "kiro/claude-sonnet-4.5"
+  },
+  "elapsed_seconds": 185.701098708,
+  "execution_accounting_delta": {
+    "consumption": {
+      "dollars": 0,
+      "output_tokens": 0,
+      "requests": 26,
+      "reviewer_tokens": 0,
+      "worker_tokens": 665226,
+      "working_seconds": 180.188704584
+    },
+    "retained_cost_provenance_counts": {
+      "estimated": 26
+    },
+    "retained_requests": 26,
+    "usage": {
+      "coordinator": {},
+      "cost": 0.0,
+      "reviewer": {
+        "cost": 0,
+        "tokens": 0
+      },
+      "worker": {
+        "cost": 0.0,
+        "tokens": 665226
+      }
+    }
+  },
+  "interventions_after_start": 0,
+  "phase": "start",
+  "planning_accounting": {
+    "consumption": {
+      "dollars": 0,
+      "output_tokens": 0,
+      "requests": 1,
+      "reviewer_tokens": 0,
+      "worker_tokens": 10922,
+      "working_seconds": 28.059198000000002
+    },
+    "request_history_truncated": false,
+    "retained_cost_provenance_counts": {
+      "estimated": 1
+    },
+    "retained_requests": 1,
+    "usage": {
+      "coordinator": {},
+      "cost": 0.0,
+      "reviewer": {
+        "cost": 0,
+        "tokens": 0
+      },
+      "worker": {
+        "cost": 0.0,
+        "tokens": 10922
+      }
+    }
+  },
+  "planning_assisted": true,
+  "run_status": "paused",
+  "source_clean": true,
+  "source_main_unchanged": true,
+  "source_sha": "d1bc3a36c622d3860358214e3508c5d4961d8945",
+  "status": "paused",
+  "task_id": "9362b4ce0c1740679d5f0a5cfc581748",
+  "failure_code": "progress_limit",
+  "candidate_patch_sha256": "b977939549b89b681fb7b1865aad13b1fef7c5a9cb498933fffb7ab2b0bc7508",
+  "qualification": "incomplete",
+  "observer_feature_edits": 0,
+  "post_run_observer_checks": {
+    "worker_unit_tests": {
+      "tests": 41,
+      "failures": 1,
+      "test_seconds": 0.001
+    },
+    "independent_v2": {
+      "tests": 7,
+      "failures": 5,
+      "test_seconds": 0.003
+    },
+    "independent_v3_external": {
+      "tests": 7,
+      "failures": 5,
+      "test_seconds": 0.003,
+      "frozen_in_run_pack_replaced": false
+    }
+  }
+}

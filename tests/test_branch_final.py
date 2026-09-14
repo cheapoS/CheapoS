@@ -50,6 +50,10 @@ class BranchFinalTests(unittest.TestCase):
         packet = json.loads(messages[1]['content']); self.requests.append(packet)
         result = {'decision':'REQUEST_CHANGES' if self.request_changes else 'APPROVE', 'manifest_id':packet['manifest_id'],
                   'chunk_ids':[] if self.omit_coverage else packet['chunk_ids'], 'criteria_ids':packet['criteria_ids'], 'feedback':'Read all supplied contents and checked the evidence.'}
+        if self.request_changes:
+            result['defects'] = [{'criterion': 'one:1', 'location': 'code:1', 'kind': 'static',
+                                  'expected': 'Required content', 'observed': 'Missing edge handling',
+                                  'support': 'The code path has no edge guard.', 'reproduction': ''}]
         return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
 
     def test_cumulative_diff_clean_private_copy_and_actual_final_check(self):

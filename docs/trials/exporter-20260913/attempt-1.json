@@ -1,0 +1,120 @@
+{
+  "acceptance_digest": "c97de2c5d0007f7ff487967ae93f164248cf91a520c6f497cf733deba6cecd34",
+  "acceptance_pack_digest": "ce21e1075fc06d9f7810ca6a41d5f133cfcb4c6acc38a92de5385169fa473397",
+  "acceptance_unchanged": true,
+  "access_basis": "operator_authorized_included",
+  "accounting": {
+    "consumption": {
+      "dollars": 0,
+      "output_tokens": 0,
+      "requests": 51,
+      "reviewer_tokens": 0,
+      "worker_tokens": 1297239,
+      "working_seconds": 313.328472916
+    },
+    "request_history_truncated": false,
+    "retained_cost_provenance_counts": {
+      "estimated": 50,
+      "uncertain_reservation": 1
+    },
+    "retained_requests": 51,
+    "usage": {
+      "coordinator": {},
+      "cost": 0.0,
+      "reviewer": {
+        "cost": 0,
+        "tokens": 0
+      },
+      "worker": {
+        "cost": 0.0,
+        "tokens": 1297239
+      }
+    }
+  },
+  "app_runtime_unchanged": true,
+  "app_sha": "0c3375954042d3a1ff71587612bbed4d655c3b9f",
+  "candidate_acceptance_unchanged": true,
+  "checks": [
+    {
+      "duration": 0.18,
+      "passed": true
+    },
+    {
+      "duration": 0.18,
+      "passed": false
+    }
+  ],
+  "completed_receipts": [],
+  "configured_models": {
+    "reviewer": "kiro/claude-haiku-4.5",
+    "worker": "kiro/claude-sonnet-4.5"
+  },
+  "elapsed_seconds": 295.896796792,
+  "execution_accounting_delta": {
+    "consumption": {
+      "dollars": 0,
+      "output_tokens": 0,
+      "requests": 50,
+      "reviewer_tokens": 0,
+      "worker_tokens": 1286731,
+      "working_seconds": 290.20010175
+    },
+    "retained_cost_provenance_counts": {
+      "estimated": 49,
+      "uncertain_reservation": 1
+    },
+    "retained_requests": 50,
+    "usage": {
+      "coordinator": {},
+      "cost": 0.0,
+      "reviewer": {
+        "cost": 0,
+        "tokens": 0
+      },
+      "worker": {
+        "cost": 0.0,
+        "tokens": 1286731
+      }
+    }
+  },
+  "interventions_after_start": 0,
+  "phase": "start",
+  "planning_accounting": {
+    "consumption": {
+      "dollars": 0,
+      "output_tokens": 0,
+      "requests": 1,
+      "reviewer_tokens": 0,
+      "worker_tokens": 10508,
+      "working_seconds": 23.128371166
+    },
+    "request_history_truncated": false,
+    "retained_cost_provenance_counts": {
+      "estimated": 1
+    },
+    "retained_requests": 1,
+    "usage": {
+      "coordinator": {},
+      "cost": 0.0,
+      "reviewer": {
+        "cost": 0,
+        "tokens": 0
+      },
+      "worker": {
+        "cost": 0.0,
+        "tokens": 10508
+      }
+    }
+  },
+  "planning_assisted": true,
+  "run_status": "paused",
+  "source_clean": true,
+  "source_main_unchanged": true,
+  "source_sha": "0c3375954042d3a1ff71587612bbed4d655c3b9f",
+  "status": "paused",
+  "task_id": "4c8ac1a25ab44f45a005a9dd79c6890e",
+  "failure_code": "stream_error",
+  "candidate_patch_sha256": "8ed3d1873b35478bac9960b9eb66bb5c376f149808bbe98c113cdeb831fa9ed5",
+  "qualification": "incomplete",
+  "observer_feature_edits": 0
+}

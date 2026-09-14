@@ -11,20 +11,22 @@ const CheapOSChatView = (() => {
     const title=action?.title||event.title||'Action';
     return `<details class="workflow-event" data-event="work-event-${event.id}"><summary>${icon(event.kind==='tool_error'?'x':'chevron')}<span>${esc(title)}</span>${event.time?`<time>${new Date(event.time).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</time>`:''}</summary>${eventDetail(event)}</details>`;
   }
-  function stepMarkup(step,task,stream) {
+  function stepMarkup(step,task,stream,traceDetails='') {
     const live=step.live;
     const symbol=step.outcome==='live'?'<span class="spinner"></span>':icon(['failed','revision','pending'].includes(step.outcome)?'clock':'check');
     const role={worker:'Worker',reviewer:'Reviewer',coordinator:'Chat model',controller:'cheapoS'}[step.role];
     const events=step.events.filter(e=>e.kind!=='model');
     const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span>${stream.phase==='thinking'?'Thinking':stream.phase==='answer'?'Writing':'Waiting for output'}<span>Live</span></div><pre data-thinking="workflow-stream-${stream.request_id||step.id}">${esc(stream.thinking||stream.content||'Waiting for the next chunk…')}</pre>${stream.thinking&&stream.content?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
-    return `<details class="workflow-step ${live?'is-live':''} outcome-${step.outcome}" data-event="workflow-${step.id}" data-step="${step.id}"><summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(step.title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(step.detail)}</span>${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary><div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||'Scripted local model')}</strong></div>${liveOutput}${events.length>80?'<p class="small muted">Showing the latest 80 events in this step. The full history is in Activity.</p>':''}<div class="workflow-events">${events.slice(-80).map(detailEvent).join('')||(!liveOutput?'<p class="small muted">Waiting for the first action…</p>':'')}</div></div></details>`;
+    return `<details class="workflow-step ${live?'is-live':''} outcome-${step.outcome}" data-event="workflow-${step.id}" data-step="${step.id}"><summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(step.title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(step.detail)}</span>${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary><div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||'Scripted local model')}</strong></div>${traceDetails}${liveOutput}${events.length>80?'<p class="small muted">Showing the latest 80 events in this step. The full history is in Activity.</p>':''}<div class="workflow-events">${events.slice(-80).map(detailEvent).join('')||(!liveOutput?'<p class="small muted">Waiting for the first action…</p>':'')}</div></div></details>`;
   }
-  function message(entry,task,decision='') {
+  function message(entry,task,decision='',showTraces=false) {
     if(entry.kind==='user') return `<article class="chat-message from-user ${entry.steer?'steer-bubble':''}" data-message="${entry.id}"><div class="chat-author"><strong>You</strong>${entry.steer?'<span>Follow-up while working</span>':''}</div><div class="chat-message-body">${messageText(entry.text)}</div></article>`;
+    const trace=CheapOSGuide.routingTraceView(showTraces?task:{});
+    const traceDetails=trace.rows.length||trace.historyNotice?`<section class="routing-trace" aria-label="Routing decisions"><h4>Routing decisions</h4>${trace.historyNotice?`<p class="small muted">${esc(trace.historyNotice)}</p>`:''}<ol>${trace.rows.map(r=>`<li><strong>${esc(r.role)} · requested ${esc(r.requested)}</strong><p>Selected: ${esc(r.selected||'none')}</p>${r.notice?`<p class="small muted">${esc(r.notice)}</p>`:''}<ol>${r.candidates.map(c=>`<li>${esc(c)}</li>`).join('')}</ol><ol>${r.attempts.map(a=>`<li>${esc(a)}</li>`).join('')}</ol><p>${esc(r.gateway)}</p></li>`).join('')}</ol></section>`:'';
     const steps=entry.steps, older=steps.length>4?steps.slice(0,-3):[], visible=older.length?steps.slice(-3):steps;
-    if(!steps.length&&!entry.reply&&!decision&&!entry.live)return '';
+    if(!steps.length&&!entry.reply&&!decision&&!entry.live&&!traceDetails)return '';
     const history=older.length?`<details class="workflow-history" data-event="history-${entry.id}"><summary>${icon('clock')}Earlier steps <span>${older.length}</span>${icon('chevron')}</summary>${older.map(s=>stepMarkup(s,task,null)).join('')}</details>`:'';
-    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':'Working'}</span>`:''}</div><div class="chat-message-body">${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream)).join('')}</div>`:''}${entry.reply?`<div class="cheapos-answer">${messageText(entry.reply)}</div>`:''}${decision}</div></article>`;
+    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':'Working'}</span>`:''}</div><div class="chat-message-body">${trace.summary?`<p class="orchestration-intro">${esc(trace.summary)}</p>`:''}${!steps.length&&traceDetails?`<details class="workflow-step" data-event="routing-${entry.id}"><summary>Details</summary>${traceDetails}</details>`:''}${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map((s,i)=>stepMarkup(s,task,entry.stream,i===visible.length-1?traceDetails:'')).join('')}</div>`:''}${entry.reply?`<div class="cheapos-answer">${messageText(entry.reply)}</div>`:''}${decision}</div></article>`;
   }
   return {message};
 })();
@@ -513,7 +515,7 @@ function renderChat() {
   else if(!taskBusy(task)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(guide.primary==='retry-wait'?'retry-wait':guide.primary==='clarify'?'clarify':task.status==='error'?'start':'resume',guide.primary==='retry-wait'?'Retry when available':guide.primary==='clarify'?'Add a correction':task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?guide.primaryLabel:'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
   if(task.archived_at||task.trashed_at||task.branch_run)decision=task.branch_run&&task.pending_approval?permissionMarkup(task):'';
   const lastReply=conversation.findLast(entry=>entry.kind==='assistant');
-  $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('');
+  $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'',entry===lastReply)).join('');
   if($('[data-sample-diagnostics]'))$('[data-sample-diagnostics]').onclick=()=>openConnections();
   $$('[data-environment]').forEach(b=>b.onclick=async()=>{try{if(b.dataset.environment==='recheck'){b.disabled=true;await api('/tasks/'+task.id+'/environment-recheck',{});await refresh()}else{await navigator.clipboard.writeText(b.dataset.environment==='path'?task.workspace:task.environment_setup.setup_commands[Number(b.dataset.environment)]);toast('Copied')}}catch(e){toast(e.message)}finally{b.disabled=false}});
   for(const d of $$('#chat-view details[data-event]')){
@@ -881,17 +883,17 @@ function openConnections(afterSave, taskContext=null) {
     return `<fieldset class="provider-fields" data-role="${role}"><legend>${role==='worker'?'Worker · does the work':'Reviewer · checks the evidence'}</legend>
       <label class="full-field">Connection<select data-preset="${role}">${[['omniroute','OmniRoute (shared local gateway)'],['openrouter','OpenRouter (direct)'],['ollama','Ollama (local)'],['custom','OpenAI-compatible endpoint']].map(([v,n])=>`<option value="${v}" ${v===preset?'selected':''}>${n}</option>`).join('')}</select></label>
       <div data-direct="${role}"><label class="full-field">API base URL<input type="url" name="${role}_url" value="${esc(p.base_url||settings.base_url)}" required></label><label class="full-field">API key ${p.key_configured?'· configured':''}<input name="${role}_key" type="password" placeholder="Leave blank to keep the current key" autocomplete="new-password"></label></div>
-      <div data-catalog="${role}"><label class="checkbox-field"><input type="checkbox" data-free="${role}" checked><span>Show free models only</span></label><label class="full-field">Available models<select data-model-picker="${role}"><option value="">Loading catalog…</option></select></label></div>
+      <div data-catalog="${role}"><label class="checkbox-field"><input type="checkbox" data-free="${role}" checked><span>Show public-free and included models</span></label><label class="full-field">Catalog models<select data-model-picker="${role}"><option value="">Loading catalog…</option></select></label></div>
       <label class="full-field">Model ID<input name="${role}_model" type="text" value="${esc(p.model||'')}" placeholder="Choose above or enter an exact model ID" required autocomplete="off"></label>
       <p class="model-capabilities small" data-capabilities="${role}"></p>
-      <div class="field-grid">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
-      <p class="small muted">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
+      <label class="checkbox-field" data-included-label="${role}"><input type="checkbox" data-included="${role}" ${p.access==='included'?'checked':''}><span>Use included access for this exact model<small>Authorize its ID in the gateway list above first.</small></span></label><div class="field-grid" data-prices="${role}">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
+      <p class="small muted" data-price-note="${role}">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
   };
   const d=dialog(`${modalHeader('MODEL CONNECTIONS','Choose where the work runs.')}<button class="outline-button" id="models-execution">Execution: ${esc(executionLabel(state.preferences.execution?.mode))} →</button><p class="modal-description">OmniRoute handles provider access. cheapoS handles the work, checks, and review.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>Automatic remote chats check another free model after a recoverable failure when you resume. Manual and local chats keep their selected models; choices below apply to new chats.</p></div>`:''}
     <form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong>OmniRoute</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
       <p id="gateway-message" class="small muted"></p><p id="gateway-instance" class="small muted"></p>
-      <details class="advanced"><summary id="free-pool-title">Free model pool</summary><p class="small muted">Refreshes every five minutes, including OpenRouter’s current free models. Failed models cool down for 15–60 minutes. Provider cooldowns follow the gateway’s retry time and do not count as individual model failures. A response or tool check does not prove coding quality.</p><div id="free-model-pool" class="free-model-pool"></div></details>
-      <div class="gateway-actions"><button type="button" class="outline-button" data-gateway-action="start">Connect / start</button><button type="button" class="subtle-button" data-gateway-action="refresh">Refresh models</button><button type="button" class="subtle-button" data-gateway-action="stop" hidden>Stop instance</button></div>
+      <details class="advanced"><summary id="free-pool-title">Authorized remote model pool</summary><p class="small muted">Refreshes every five minutes, including OpenRouter’s current free models. Failed models cool down for 15–60 minutes. Provider cooldowns follow the gateway’s retry time and do not count as individual model failures. A response or tool check does not prove coding quality.</p><div id="free-model-pool" class="free-model-pool"></div></details>
+      <div class="included-access"><label class="full-field">Models included in my account<textarea id="included-model-ids" rows="4" spellcheck="false" placeholder="One exact gateway model ID per line">${esc((settings.included_models||[]).join('\n'))}</textarea></label><p class="small muted">Authorize only models covered by your existing account. This applies to this gateway connection. New models and changed connections need new authorization. Included access uses a $0 marginal estimate; it is not public-free pricing or a billing receipt.</p><button type="button" class="outline-button" id="save-included-models">Save included access</button><p id="included-access-status" class="small" role="status"></p></div><div class="gateway-actions"><button type="button" class="outline-button" data-gateway-action="start">Connect / start</button><button type="button" class="subtle-button" data-gateway-action="refresh">Refresh models</button><button type="button" class="subtle-button" data-gateway-action="stop" hidden>Stop instance</button></div>
       <details class="advanced"><summary>Startup & connection settings</summary><label class="full-field">Local API URL<input name="gateway_url" type="url" value="${esc(settings.base_url)}" required></label>
         <label class="full-field">Gateway client API key · optional<input name="gateway_key" type="password" placeholder="${gateway.key_configured?'Configured · leave blank to keep':'Only if OmniRoute requires a client key'}" autocomplete="new-password"></label>
         <p class="small muted">Manage provider credentials in OmniRoute. This client key is separate from your dashboard password and stays in cheapoS memory.</p>
@@ -899,20 +901,27 @@ function openConnections(afterSave, taskContext=null) {
         <label class="checkbox-field"><input name="keep_running" type="checkbox" ${settings.keep_running?'checked':''}><span>Keep OmniRoute running when cheapoS closes<small>cheapoS only stops an instance it started in this session.</small></span></label>
         <button class="outline-button gateway-save" type="submit">Save gateway settings</button></details><p class="form-error" role="alert"></p></form>
     <form id="models-form"><details class="advanced" ${(state.preferences.execution?.mode||'manual')==='manual'?'open':''}><summary>Explicit model choices · Manual mode and remote preferences</summary><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div>
-      <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. These explicit choices apply in Manual mode. Automatic remote modes prefer eligible choices here, check free candidates, and replace failing models with visible handoffs.</p>
+      <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. These explicit choices apply in Manual mode. Automatic remote modes select only authorized eligible routes. Access labels do not establish remaining quota or successful inference.</p>
       <label class="checkbox-field" id="share-key-field"><input type="checkbox" name="share_key" checked><span>Use the entered worker key for the reviewer when their direct API URLs match</span></label>
       </details><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">${taskContext?'Save & prepare new chat':'Save connections'} ${icon('check')}</button></div></form>`,'connections-modal');
   $('#models-execution',d).onclick=()=>{d.close();executionPreferences()};
   const field=(role,name)=>$(`[name="${role}_${name}"]`,d);
   const usingOmni=role=>$(`[data-preset="${role}"]`,d).value==='omniroute';
+  let includedRevision=settings.connection_revision;
+  const includedSelected=role=>$(`[data-included="${role}"]`,d).checked;
   function capability(role) {
     const model=usingOmni(role)?state.gatewayModels.find(m=>m.id===field(role,'model').value.trim()):null;
-    $(`[data-capabilities="${role}"]`,d).textContent=model?`${model.tool_calling===true?'Tool calling advertised':model.tool_calling===false?'Tool calling not advertised':'Tool support unknown'}${model.context_length?' · '+Intl.NumberFormat().format(model.context_length)+' context':''}${model.free?' · Free variant':''}`:'Use a model that supports tool calling. Availability has not been tested.';
+    const included=usingOmni(role)&&includedSelected(role);
+    $(`[data-prices="${role}"]`,d).hidden=included;
+    for(const name of ['input','output'])field(role,name).disabled=included;
+    $(`[data-included-label="${role}"]`,d).hidden=!usingOmni(role);
+    $(`[data-price-note="${role}"]`,d).textContent=included?'Included account access · $0 marginal estimate, not a provider price. Exact ID must be authorized above.':'Unknown prices need your input. Verify them with the provider.';
+    $(`[data-capabilities="${role}"]`,d).textContent=model?`${CheapOSGuide.modelAccess(model)} · `+`${model.tool_calling===true?'Tool calling advertised':model.tool_calling===false?'Tool calling not advertised':'Tool support unknown'}${model.context_length?' · '+Intl.NumberFormat().format(model.context_length)+' context':''}${model.free?' · Free variant':''}`:'Use a model that supports tool calling. Availability has not been tested.';
   }
   function picker(role) {
     const select=$(`[data-model-picker="${role}"]`,d), free=$(`[data-free="${role}"]`,d).checked, current=field(role,'model').value.trim();
-    const models=state.gatewayModels.filter(m=>!free||m.free);
-    select.innerHTML=`<option value="">${models.length?'Choose from '+models.length+' models':'No matching models · refresh or enter an ID'}</option>`+models.map(m=>`<option value="${esc(m.id)}">${esc(m.id)}${m.tool_calling===true?' · tools':m.tool_calling===false?' · no tools advertised':''}</option>`).join('');
+    const models=state.gatewayModels.filter(m=>!free||m.free||m.access_class==='included');
+    select.innerHTML=`<option value="">${models.length?'Choose from '+models.length+' models':'No matching models · refresh or enter an ID'}</option>`+models.map(m=>`<option value="${esc(m.id)}">${esc(m.id)} · ${esc(CheapOSGuide.modelAccess(m))}${m.tool_calling===true?' · tools':m.tool_calling===false?' · no tools advertised':''}</option>`).join('');
     select.value=models.some(m=>m.id===current)?current:'';
     capability(role);
   }
@@ -928,13 +937,14 @@ function openConnections(afterSave, taskContext=null) {
   function updateGateway() {
     if(!d.open)return;
     const g=state.gateway||{};
+    if(includedRevision!==g.settings?.connection_revision){includedRevision=g.settings?.connection_revision;$('#included-model-ids',d).value=(g.settings?.included_models||[]).join('\n');for(const role of ['worker','reviewer'])$(`[data-included="${role}"]`,d).checked=false;}
     const badge=$('#gateway-status',d);badge.textContent=({ready:'Catalog connected',checking:'Connecting…',starting:'Starting…',offline:'Offline',auth_required:'Client key needed',not_installed:'Not installed',unavailable:'Unavailable',error:'Startup failed'})[g.status]||'Not checked';badge.dataset.status=g.status||'unchecked';
     $('#gateway-message',d).textContent=g.message||'Connect your local gateway to load its model catalog.';
     $('#gateway-instance',d).textContent=g.status==='ready'?`${g.model_count} models · ${g.owned?'Started by cheapoS':'Reusing an existing instance'}`:'';
-    const freeModels=state.gatewayModels.filter(m=>m.free&&m.tool_calling===true&&!m.local&&!m.id.startsWith('auto/'));
+    const freeModels=state.gatewayModels.filter(m=>(m.free||m.access_class==='included')&&m.tool_calling===true&&!m.local&&!m.id.startsWith('auto/'));
     const cooling=freeModels.filter(m=>(m.health?.retry_at||0)*1000>Date.now()).length;
-    $('#free-pool-title',d).textContent=`Free model pool · ${freeModels.length-cooling} candidates${cooling?' · '+cooling+' cooling down':''}`;
-    $('#free-model-pool',d).innerHTML=freeModels.map(m=>`<div class="pool-model"><strong>${esc(m.id)}</strong><span>${esc(CheapOSGuide.modelHealth(m))}${m.reasoning===true?' · reasoning advertised':''}</span>${m.health?.last_error?`<small>${esc(m.health.last_error)}</small>`:''}</div>`).join('')||'<p class="small muted">No free remote models advertising tool support are available in this catalog.</p>';
+    $('#free-pool-title',d).textContent=`Authorized remote model pool · ${freeModels.length-cooling} candidates${cooling?' · '+cooling+' cooling down':''}`;
+    $('#free-model-pool',d).innerHTML=freeModels.map(m=>`<div class="pool-model"><strong>${esc(m.id)}</strong><span>${esc(CheapOSGuide.modelAccess(m))} · ${esc(CheapOSGuide.modelHealth(m))}${m.reasoning===true?' · reasoning advertised':''}</span><small>${esc(CheapOSGuide.metadataEvidence(m))}</small>${m.health?.last_error?`<small>${esc(m.health.last_error)}</small>`:''}</div>`).join('')||'<p class="small muted">No public-free or explicitly included remote models advertising tool support are listed in this catalog.</p>';
     $('#gateway-dashboard',d).href=g.dashboard_url||'http://127.0.0.1:20128';
     $$('[data-gateway-action]',d).forEach(b=>{b.disabled=Boolean(g.busy);if(b.dataset.gatewayAction==='stop')b.hidden=!g.owned});
     $('button[type="submit"]',gatewayForm).disabled=Boolean(g.busy);
@@ -943,6 +953,12 @@ function openConnections(afterSave, taskContext=null) {
   state.gatewayListener=updateGateway;
   d.addEventListener('close',()=>{if(state.gatewayListener===updateGateway)state.gatewayListener=null});
   $$('[data-gateway-action]',d).forEach(button=>button.onclick=()=>formAction(gatewayForm,async()=>{state.gateway=await api('/gateway/'+button.dataset.gatewayAction,{});updateGateway();await loadGateway()}));
+  $('#save-included-models',d).onclick=()=>formAction(gatewayForm,async()=>{
+    const included_models=CheapOSGuide.includedScope($('#included-model-ids',d).value);
+    state.gateway=await api('/gateway/config',{included_models,expected_connection_revision:includedRevision});
+    $('#included-access-status',d).textContent='Included access saved for these exact IDs. No model request was made.';
+    updateGateway();await loadGateway();
+  });
   gatewayForm.onsubmit=e=>{e.preventDefault();formAction(gatewayForm,async()=>{
     const f=new FormData(gatewayForm), values={base_url:String(f.get('gateway_url')).trim(),auto_start:f.has('auto_start'),keep_running:f.has('keep_running')},key=String(f.get('gateway_key')).trim();if(key)values.api_key=key;
     state.gateway=await api('/gateway/config',values);$('[name="gateway_key"]',d).value='';
@@ -950,13 +966,15 @@ function openConnections(afterSave, taskContext=null) {
   })};
   for(const role of ['worker','reviewer']) {
     layout(role);
+    $(`[data-included="${role}"]`,d).onchange=()=>capability(role);
     $(`[data-free="${role}"]`,d).onchange=()=>picker(role);
     $(`[data-model-picker="${role}"]`,d).onchange=e=>{
       if(!e.target.value)return;
-      const model=state.gatewayModels.find(m=>m.id===e.target.value);field(role,'model').value=model.id;
+      const model=state.gatewayModels.find(m=>m.id===e.target.value);field(role,'model').value=model.id;$(`[data-included="${role}"]`,d).checked=model.access_class==='included';
       field(role,'input').value=model.input_rate??'';field(role,'output').value=model.output_rate??'';capability(role);
     };
     field(role,'model').oninput=()=>{
+      $(`[data-included="${role}"]`,d).checked=false;
       const model=usingOmni(role)?state.gatewayModels.find(m=>m.id===field(role,'model').value.trim()):null;
       for(const price of ['input','output'])field(role,price).value=model?.[price+'_rate']??'';
       picker(role);
@@ -964,7 +982,7 @@ function openConnections(afterSave, taskContext=null) {
     $(`[data-preset="${role}"]`,d).onchange=e=>{
       const preset=e.target.value, p=c[role]||{};
       field(role,'url').value=preset==='omniroute'?state.gateway.settings.base_url:preset==='ollama'?'http://127.0.0.1:11434/v1':preset==='openrouter'?'https://openrouter.ai/api/v1':'';
-      field(role,'key').value='';field(role,'model').value='';
+      field(role,'key').value='';field(role,'model').value='';$(`[data-included="${role}"]`,d).checked=false;
       for(const price of ['input','output'])field(role,price).value=preset==='ollama'?'0':'';
       if(preset==='omniroute'&&isOmni(p)){field(role,'model').value=p.model||'';field(role,'input').value=p.input_rate??'';field(role,'output').value=p.output_rate??''}
       layout(role);
@@ -977,6 +995,10 @@ function openConnections(afterSave, taskContext=null) {
       const omni=usingOmni(role);
       if(omni&&state.gateway.status!=='ready')throw new Error('Connect OmniRoute before saving its model choices.');
       values[role]={gateway:omni?'omniroute':'openai',base_url:omni?state.gateway.settings.base_url:String(f.get(role+'_url')).trim(),model:String(f.get(role+'_model')).trim(),input_rate:Number(f.get(role+'_input')),output_rate:Number(f.get(role+'_output'))};
+      if(omni&&includedSelected(role)){
+        if(!CheapOSGuide.includedChoice(values[role].model,state.gateway.settings,true))throw new Error('Save included access for this exact model ID first.');
+        values[role].access='included';delete values[role].input_rate;delete values[role].output_rate;
+      }
       const key=omni?'':String(f.get(role+'_key')).trim();if(key)values[role].api_key=key;
     }
     if(!usingOmni('worker')&&!usingOmni('reviewer')&&f.has('share_key')&&values.worker.base_url.replace(/\/$/,'')===values.reviewer.base_url.replace(/\/$/,'')&&values.worker.api_key)values.reviewer.api_key=values.worker.api_key;

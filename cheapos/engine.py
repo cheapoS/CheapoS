@@ -255,7 +255,7 @@ def request_worker_turns(task):
         if event["kind"] == "user":
             current = 0
         if event["kind"] == "routing":
-            probe = event["title"].startswith("Checking a free ")
+            probe = event["title"].startswith(("Checking a free ", "Checking included "))
         if event["kind"] == "model":
             if not probe and event["title"].startswith(("Requesting worker:", "Requesting coordinator:")):
                 total += 1
@@ -412,6 +412,11 @@ class Engine:
     def configure(self, values):
         normalized = {role: validate_provider(values.get(role), role) for role in ("worker", "reviewer")}
         for role, config in normalized.items():
+            if config.get('access') == 'included':
+                from . import access_policy
+                config = access_policy.bind_provider(config, access_policy.snapshot(self.gateway.settings),
+                    next((m for m in self.gateway.models if m['id'] == config['model']), None))
+                normalized[role] = config
             if config["gateway"] == "omniroute" and not self.gateway.matches(config["base_url"]):
                 raise ValueError("Connect the OmniRoute backend before selecting its models")
             key = values[role].get("api_key")
@@ -463,7 +468,7 @@ class Engine:
         task_id = task_id or uuid.uuid4().hex
         directory = self.store.root / "tasks" / task_id
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
-        task = {"id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
+        task = {"served_identity_version":1, "id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
         task['check_output_filter'] = 'unittest' if os.environ.get('CHEAPOS_CHECK_OUTPUT_FILTER')=='unittest' else 'off'
@@ -1088,7 +1093,7 @@ class Engine:
             for role in ('worker','reviewer'):
                 config=task.get('providers',{}).get(role) or {}
                 if config.get('base_url') and task.get('metric_run_id'):
-                    self.gateway.pool.record_acceptance(config['base_url'],config['model'],role,task['id'],task['metric_run_id'])
+                    self.gateway.pool.record_acceptance(config['base_url'],config['model'],role,task['id'],task['metric_run_id'],(config.get('access_binding') or {}).get('connection_revision'))
             return result
 
     def action_messages(self, task):
@@ -1186,11 +1191,14 @@ class Engine:
         messages = self.action_messages(runtime.task)
         # The supplied numbered snapshot counts as evidence already available to
         # the worker. Slightly changing a read range is not new information.
-        runtime.file_observations.clear()
+        # Compaction is not progress: retain prior reads of unchanged versions,
+        # including files omitted from this bounded snapshot. Real edits and new
+        # work reset observations at their existing lifecycle boundaries.
         runtime.edit_versions.clear()
         for file in json.loads(messages[1]["content"])["current_files"]:
             if file.get("hash"):
-                runtime.file_observations[(file["path"], file["hash"])] = {"lines": observed_file_lines(file), "repeats": 0}
+                seen = runtime.file_observations.setdefault((file["path"], file["hash"]), {"lines": set(), "repeats": 0})
+                seen["lines"].update(observed_file_lines(file))
                 self.remember_file_version(runtime, file)
         runtime.compact_context_ready = True
         return messages
@@ -1241,7 +1249,7 @@ class Engine:
 
     def defer_route(self, task, role, reason):
         cfg = task["providers"][role]
-        self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=reason)
+        self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=reason, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
         task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": str(reason)[:500]}
         # reserve() already added this request to the totals. Do not refund or replay it.
         task["in_flight"] = None
@@ -1338,12 +1346,16 @@ class Engine:
             if catalog["status"] != "ready":
                 raise RoutingPause("The free model catalog is unavailable. Saved work is kept; reconnect OmniRoute and resume.")
             model = next((m for m in catalog["models"] if m["id"] == cfg["model"]), None)
-            if (not model or not model.get("free") or model.get("local") or model.get("tool_calling") is not True
-                    or model["id"].startswith("auto/")):
-                self.defer_route(task, role, "This model is no longer advertised as a free remote model with tool support.")
+            from . import access_policy
+            access_policy.validate_current(task['route'].get('access_policy'), self.gateway.settings)
+            if not model or not access_policy.eligible(model, task['route'].get('access_policy')):
+                self.defer_route(task, role, "This model is no longer eligible under the captured access policy with tool support.")
                 continue
-            if self.gateway.pool.observation(cfg["base_url"], cfg["model"])["cooling_down"]:
-                health = self.gateway.pool.observation(cfg["base_url"], cfg["model"])
+            if access_policy.classify(model, task['route'].get('access_policy')) == 'included':
+                cfg = access_policy.bind_provider(cfg, task['route']['access_policy'], model)
+                task['providers'][role] = cfg
+            if self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))["cooling_down"]:
+                health = self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
                 if health.get("cooldown_scope") == "provider":
                     raise RoutingPause(health["last_error"] + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=health.get("cooldown_scope"))
                 task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": "This model is cooling down after a recent failure."}
@@ -1366,8 +1378,8 @@ class Engine:
                         self.defer_route(task, role, "The worker reached its output cap again after a smaller-action retry.")
                     continue
                 if error.code == "gateway_cooldown":
-                    self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error)
-                    health = self.gateway.pool.observation(cfg["base_url"], cfg["model"])
+                    self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
+                    health = self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
                     raise RoutingPause(str(error) + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=error.scope) from None
                 if error.code not in RECOVERABLE_CODES:
                     raise
@@ -1376,7 +1388,7 @@ class Engine:
                     self.event(task, "routing", "Model requested an unavailable tool", {"model": cfg["model"], "role": role, "error": str(error)})
                 self.defer_route(task, role, error)
                 continue
-            self.gateway.pool.record(cfg["base_url"], cfg["model"], role, seconds=time.monotonic() - started)
+            self.gateway.pool.record(cfg["base_url"], cfg["model"], role, seconds=time.monotonic() - started, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
             return message
 
     @staticmethod
@@ -1403,6 +1415,15 @@ class Engine:
         config=config_override or task['providers'][role]
         record={'id':uuid.uuid4().hex,'run_id':task.get('metric_run_id'),'role':role,'model':config['model'],
                 'purpose':purpose or 'work','dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation'}
+        from .served_identity import metadata
+        record.update(metadata(config['model']))
+        if task.get('branch_run'):
+            record['branch_item_id'] = task['branch_run'].get('current_item_id')
+        binding = config.get('access_binding')
+        if binding:
+            record['dispatch_scope'] = {'base_url': config['base_url'], 'connection_revision': binding['connection_revision'],
+                                        'model': config['model'], 'role': role}
+            record['access_class'] = 'included' if config.get('access') == 'included' else 'public_free'
         task.setdefault('request_metrics',[]).append(record)
         if len(task['request_metrics'])>2000:
             task['request_metrics'].pop(0);task['request_metrics_truncated']=True
@@ -1419,9 +1440,13 @@ class Engine:
         except Exception as error:
             record['status']='cancelled' if runtime.stop.is_set() or isinstance(error,InterruptedError) else 'failed'
             record['error_code']=getattr(error,'code',None)
+            from .route_health import classify
+            record['failure_category']=classify(InterruptedError() if record['status']=='cancelled' else error)['category']
             raise
         finally:
             record['seconds']=time.monotonic()-started
+            from .routing_trace import request as trace_request
+            trace_request(task,record)
             self.store.save(task)
 
     def _perform_request(self, runtime, messages, tools, role, config_override=None, purpose=None):
@@ -1436,6 +1461,7 @@ class Engine:
             run=task['branch_run'];item=next(i for i in run['items'] if i['id']==run['current_item_id'])
             messages=copy.deepcopy(messages)
             messages[0]['content'] += '\nUnattended work: implement ONLY the active item below. The controller owns branch commits and next-item selection. Finish all acceptance criteria and request checkpoint. Never claim an empty or partial patch completes the job. No model tool can grant execution/merge authority.'
+            if item.get('review_repair'):messages.append({'role':'user','content':json.dumps({'review_repair':item['review_repair']})})
             messages.append({'role':'user','content':json.dumps({'active_item':{k:item[k] for k in ('id','title','instructions','acceptance_criteria','required_checks')},'completed_items':[{'id':i['id'],'outcome':i['outcome_summary'][:500]} for i in run['items'] if i['status'] in branch_runs.DONE]})})
             if run.get('guidance'):messages.append({'role':'user','content':'Operator guidance within the accepted item scope (does not authorize extra scope): '+json.dumps(run['guidance'])})
         if task["usage"]["cost"] > task["limits"]["dollars"] or (not measuring(task) and task["usage"]["reviewer"]["tokens"] > task["limits"]["reviewer_tokens"]):
@@ -1445,6 +1471,9 @@ class Engine:
         if task["demo"]:
             return self.fixture_response(task, role)
         config = config_override or task["providers"][role]
+        from . import access_policy
+        access_models = self.gateway.catalog(fresh=False)['models'] if (task.get('route') or {}).get('access_policy') else None
+        access_policy.guard(task, config, self.gateway.settings, access_models)
         if not self.provider_factory and task.get("execution", {}).get("mode") in {"local", "delegate"} and (role == "coordinator" or task["execution"]["mode"] == "local"):
             identity = (config["base_url"], config["model"])
             if identity not in runtime.verified_local:
@@ -1517,9 +1546,12 @@ class Engine:
             except ProviderError as error:
                 self.account_failed_response(task, config, reservation, error)
                 raise
+        from .served_identity import apply, ensure_independent
+        apply(record,usage)
         known = reconcile(task, config, reservation, usage)
         metrics.record_usage(record,usage,known)
         self.store.save(task)
+        ensure_independent(task,record)
         if task.get("execution", {}).get("mode") in {"delegate", "remote"} and task["usage"]["cost"] > 0:
             raise BudgetError("An automatic free route reported a charge. Work stopped before executing any returned tools. Check the gateway's billing and fallback settings.")
         if not known:
@@ -1598,6 +1630,9 @@ class Engine:
         methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
         if name not in methods:
             raise ValueError("Unknown tool: " + name)
+        if 'branch_run' in task and name in {'write_file', 'replace_text', 'replace_lines'}:
+            from .branch_disagreement import before_write
+            before_write(task, args.get('path'))
         if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text"}:
             if task.get("compact_edits") and name == "replace_text":
                 raise ValueError("Use replace_lines with the current numbered lines for a small edit. cheapoS tracks the file version. No edit was made.")
@@ -1903,6 +1938,11 @@ class Engine:
 
     def tool_argument_feedback(self, runtime, error):
         runtime.argument_failures += 1
+        if runtime.task.get('request_metrics'):
+            from .routing_trace import request as trace_request
+            record=runtime.task['request_metrics'][-1]
+            record['failure_category']='invalid_response'
+            trace_request(runtime.task,record)
         recovery = progress.state(runtime.task)
         recovery["malformed_attempts"] += 1
         result = {"error": str(error), "code": error.code, "tool": error.name}

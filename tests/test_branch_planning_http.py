@@ -1,3 +1,4 @@
+from cheapos.routing import PROBE_MARKER
 import copy
 import http.client
 import json
@@ -97,7 +98,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
             def complete(inner, messages, tools, max_tokens):
                 dispatched.append([t['function']['name'] for t in tools])
                 if messages == PROBE_MESSAGES:
-                    return call('routing_ready'), {'prompt_tokens': 3, 'completion_tokens': 1, 'cost': 0}
+                    return call('routing_ready', {'marker': PROBE_MARKER}), {'prompt_tokens': 3, 'completion_tokens': 1, 'cost': 0}
                 return provider.complete(messages, tools, max_tokens)
         self.engine.provider_factory = lambda *args: RemoteProvider()
         status, proposal = self.post('/api/branch-runs/plan', self.request_values())

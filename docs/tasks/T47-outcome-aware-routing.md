@@ -1,6 +1,6 @@
 # T47 — Outcome-aware routing with visible decision traces
 
-Status: Not started
+Status: Done — expanded code and focused checks; browser verification pending
 Depends on: T46
 Size: M
 
@@ -119,12 +119,97 @@ Test trace ordering/redaction/identity with tiny synthetic gateway responses and
 fake time. Use pure Node presentation tests plus one relevant disposable UI check
 for Details placement. Do not build a long live failover scenario as a regression.
 
-## Completion record
+## Previous completion record (before expanded requirements)
 
-Outcome fields and ranking rules: pending
-Attribution/compatibility evidence: pending
-Trace schema, identity provenance, and chat presentation: pending
-Commands and measured timing: pending
-Remaining limitations: pending
+Outcome fields and ranking rules: role_evidence adds completion_samples,
+completed (not independently disproved), independently_validated,
+independently_disproved and human_integrated. Existing compatibility samples stay
+separate. Rank preserves a configured preference, then observed independent
+validation/completion, disproof, and compatibility/tie-break evidence. A single
+completion may beat fast invalid work; it is an observation, never an accuracy
+estimate. Eligibility, cooldowns, distinct reviewer and durable exclusions remain
+upstream of ranking. No model names or assumed parameter counts establish quality.
 
-Update this card and TASKS.md; commit before controlled live qualification.
+Attribution: new request metrics capture branch_item_id beside T46 dispatch_scope.
+Completed operation must match run/item/candidate, exact 40/64-character SHA and
+feature-parent continuity; immutable receipt is reconstructed against its original
+required checks and criteria. Only one unambiguous dispatched connection/model
+scope per role earns a sample. Missing historical or truncated provenance is
+unknown, not inferred from current providers. A receipt is counted once across
+Resume/restart/re-read; accepted flags and original observation times survive
+activity rereads. Observation occurs after durable commit publication and during
+Resume/final preview for backfill. No current-workspace test/Git rerun is needed.
+
+Connection isolation: pool keys include optional opaque connection revision for
+health, cooldown, probe, outcome and completion records. Legacy None accesses
+legacy unscoped records only. Engine/routing pass actual dispatch binding and
+Models uses the current gateway revision. Credentials are neither persisted nor
+hashed into a public quality identity.
+
+Trusted independent hook: local Python
+`pool.adjudicate_completion(endpoint, model, role, receipt_id, evidence_digest,
+passed, connection_revision)` accepts only an existing exact receipt and a retained
+independent artifact SHA256 with boolean verdict. It is not exposed through worker
+tools or HTTP. Observer caller must validate the actual candidate before invoking
+it; a hash alone is not proof. Repeated artifacts are idempotent, conflicting
+verdicts for the same artifact fail, disproof stays sticky for that receipt.
+A new candidate requires a new receipt. A completed controller merge separately
+marks human_integrated; review syntax alone never becomes independent validation.
+
+Validation: selector exposed 60 dependent modules because engine imports are
+broad; used focused pool/routing/access/gateway and existing commit/merge coverage
+instead of a full suite. New synthetic receipt tests use no Engine, Git, sockets,
+real waits or model calls. Five new tests measured 0.018 seconds including module
+setup; covers malformed receipts/checks/SHA lengths, handoff-safe scoped identities,
+restart deduplication, invalidation, retained acceptance, rank/pins, and scoped
+cooldown/probe isolation. Existing routing25 passed9.266s; model_pool21 passed9.528s;
+gateways18 passed0.141s; commit-controller2 passed9.992s; outcomes2 passed within
+0.050s with four earlier new cases. Completion fixture now supplies the real small
+pool dependency; final rerun:6 existing completion tests passed33.086s (11 tests including the five
+new tiny cases passed33.168s). Initial gateway
+socket restriction was rerun with loopback permission; initial completion fixture
+lacked gateway, not a product failure. No assertions were removed.
+
+UI by coordinating agent commit528191c: 58 focused Node tests pass88ms; three new
+cases total about0.77ms. Shows observed completions/no prior completion evidence,
+separate independent/human counts, and compatibility without accuracy claims.
+Browser verification is not newly claimed here.
+
+Remaining limitations: independent observations require a trusted local observer;
+there is no automated external verifier or inferred billing/accuracy. History is
+bounded (128 completion receipts per route/connection, 30-day visible window).
+No historical model-quality backfill without captured scope. Core task status,
+files, usage and recovery limits remain unchanged. No live qualification ran in
+this card; T48 owns it. TASKS.md is updated by the coordinating agent.
+
+## Expanded requirements completion
+
+Retained completion-based ranking and added bounded routing traces, correlated
+with task turns and request IDs. Ordered exclusions/probes/cached observations,
+actual dispatch status/time/failure categories and selection are shown inside
+the reply's existing Details. No fabricated usage for uncontacted candidates.
+Trace metadata is allowlisted; prompts, raw errors, endpoints and keys are absent.
+
+Requested model and gateway-reported served model are distinct. Missing or
+conflicting response metadata is unknown; internal gateway attempts are unavailable.
+New-task review guards reject opaque unresolved aliases and detected identical
+worker/reviewer identities before executing review tools. Exact named routes with
+missing metadata retain configured separation, explicitly not proven underlying
+identity. Legacy task policy remains readable. A provider-reported model field is
+not independent attestation of internal gateway routing.
+
+Known explicit context requirements and advertised tool capability are checked
+before ranking. Unmeasured current context remains qualified as unknown; historical
+request token counts are not reused as a false current requirement after compaction.
+No tokenizer estimate is presented as exact fit or quality evidence.
+
+Validation: three new pure trace tests take under 0.001 seconds; four new identity
+cases take 0.010 seconds. Existing streaming12 and engine20 pass in 0.646 and
+4.637 seconds. 74 focused Node checks pass in about 84ms, including actual Details
+markup. Draft/scroll/disclosure handlers remain unchanged. Follow-up commit e06e98d passed all six argument tests in 1.498 seconds, eight
+catalog tests in 0.002 seconds and four identity tests in 0.008 seconds. It
+preserves manual Interactive configured-model policy when served identity is
+unknown. Post-trial truncation repair shows every retained row and explicit
+partial-evidence notices; 75 Node checks pass in 86ms and three trace tests in
+0.001 seconds. The frozen trial itself was not rewritten. No new heavy test.
+Browser verification remains pending due to the previously recorded client block.

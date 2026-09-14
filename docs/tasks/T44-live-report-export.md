@@ -1,6 +1,6 @@
 # T44 — CheapOS implements its report exporter
 
-Status: Not started
+Status: Deferred by operator (two incomplete live attempts)
 Depends on: T42, T43
 Size: L (one three-item feature run, not a controller rewrite)
 
@@ -93,3 +93,5 @@ Remaining limitations: pending
 
 Commit the observer's sanitized record separately from feature work.
 Leave feature integration to the operator. Update T44 in TASKS.md truthfully.
+
+Attempt 1 retained: [qualification record](../trials/exporter-20260913/RESULTS.md). No exporter code was written by the observer.

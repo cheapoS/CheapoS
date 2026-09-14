@@ -1,3 +1,4 @@
+from cheapos.routing import PROBE_MARKER
 import threading
 import time
 from unittest.mock import Mock, patch
@@ -92,8 +93,8 @@ class CooldownWaitTests(LocalCase):
         from test_engine import call
         clock=FakeClock();task=self.chat('remote');runtime=Runtime(task);runtime.started=clock.now();runtime.stop=clock
         self.engine.gateway.catalog.return_value['models']=[test_routing.model('provider/a'),test_routing.model('provider/b')]
-        with patch('cheapos.engine.time.time',clock.now),patch('cheapos.engine.time.monotonic',clock.now),patch.object(self.engine,'request',return_value=call('routing_ready')) as request:
-            self.engine.gateway.pool.record(task['route']['base_url'],'provider/a','worker',error=ProviderError('Cooling',code='gateway_cooldown',retry_after=2,scope='provider'))
+        with patch('cheapos.engine.time.time',clock.now),patch('cheapos.engine.time.monotonic',clock.now),patch.object(self.engine,'request',return_value=call('routing_ready', {'marker': PROBE_MARKER})) as request:
+            self.engine.gateway.pool.record(task['route']['base_url'],'provider/a','worker',error=ProviderError('Cooling',code='gateway_cooldown',retry_after=2,scope='provider'),connection_revision=task['route']['access_policy']['connection_revision'])
             with self.assertRaises(RoutingPause) as stopped:select_remote(self.engine,runtime)
             request.assert_not_called()
             task['route_unavailable']=self.engine.route_wait_info(runtime,stopped.exception)

@@ -41,7 +41,11 @@ class BranchController:
         self.final_proposals=ProposalRegistry()
 
     def model_policy(self):
-        return {'execution':copy.deepcopy(self.engine.preferences()['execution']), 'providers':copy.deepcopy(self.engine.config)}
+        from .access_policy import snapshot
+        result = {'execution':copy.deepcopy(self.engine.preferences()['execution']), 'providers':copy.deepcopy(self.engine.config)}
+        access = snapshot(self.engine.gateway.settings)
+        if access is not None: result['gateway_access'] = access
+        return result
 
     def prepare(self, values, planning_task=None):
         with self.engine.lock:
@@ -105,7 +109,9 @@ class BranchController:
     def contract(self, task):
         run=task['branch_run']
         from .branch_completion import authorization_run
-        return contract_builder(authorization_run(run),run['authorization_workspace'],self.model_policy(),run['check_scope'])
+        policy = self.model_policy()
+        if 'gateway_access' not in run.get('model_policy', {}): policy.pop('gateway_access', None)
+        return contract_builder(authorization_run(run),run['authorization_workspace'],policy,run['check_scope'])
 
     def authorize(self, task_id, values):
         with self.engine.lock:
@@ -218,6 +224,8 @@ class BranchController:
             self.engine.refresh_changes(task)
             task.pop('pending_checkpoint',None);task.pop('pending_review',None)
             self.engine.event(task,'branch_commit','Item already satisfied' if flags['no_change'] else 'Committed '+item['title'],event)
+            from .model_pool import observe_completions
+            observe_completions(self.engine.gateway.pool,task)
 
     def execute(self, runtime):
         from .engine import now
@@ -298,6 +306,8 @@ class BranchController:
             task['metrics_cancelled']=runtime.stop.is_set()
             from .model_pool import observe_task
             observe_task(self.engine.gateway.pool,task,metric_id)
+            from .model_pool import observe_completions
+            observe_completions(self.engine.gateway.pool,task)
             task['stream']=None;task['check_stream']=None;task['updated_at']=now()
             self.engine.store.save(task)
 
@@ -392,6 +402,8 @@ class BranchController:
         with self.engine.lock:
             self.engine.require_active_task(task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            from .model_pool import observe_completions
+            observe_completions(self.engine.gateway.pool,task)
             if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):raise ValueError('A task is already running')
             while run['pending_operations']:
                 item=next(i for i in run['items'] if i['id']==run['pending_operations'][0]['item_id'])

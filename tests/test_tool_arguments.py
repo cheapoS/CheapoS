@@ -33,6 +33,7 @@ class ToolArgumentTests(LocalCase):
 
     def test_streamed_worker_and_reviewer_arguments_can_be_corrected_before_execution(self):
         task=self.fixture(paid=True)
+        task['providers']['reviewer']['model']='test-reviewer'
         task.update(conversational=True,action_pending=True,loop_guidance='Finish the requested edit.')
         self.engine.store.save(task)
         replies=iter([
@@ -50,7 +51,7 @@ class ToolArgumentTests(LocalCase):
                 self.assertFalse((Path(task['workspace'])/'unsafe.txt').exists())
                 self.assertIn('return min(value, upper)',(Path(task['workspace'])/'math_utils.py').read_text())
             return Response(self.stream(next(replies)))
-        self.engine.provider_factory=lambda *args:self.provider()
+        self.engine.provider_factory=lambda role,config:ChatProvider({**self.provider().config,'model':config['model']})
         with patch('cheapos.providers.build_opener') as opener:
             opener.return_value.open.side_effect=respond
             self.engine.start(task['id']);result=self.finish(task)

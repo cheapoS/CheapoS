@@ -1,6 +1,6 @@
 # T45 — Verify the download and report the real outcome
 
-Status: Not started
+Status: Done (two incomplete outcomes documented; browser acceptance pending complete feature)
 Depends on: T44 attempted; feature acceptance needs a complete candidate
 Size: M
 
@@ -53,10 +53,12 @@ acceptance of the extra cost before introducing it.
 
 ## Completion record
 
-Feature qualification: pending (pass / incomplete / independently failed)
-Browser scenarios and actual download evidence: pending
-Evidence/report paths: pending
-Interventions and limitations: pending
+Feature qualification: incomplete in both live attempts
+Browser scenarios and actual download evidence: unavailable; neither candidate has the endpoint/UI
+Evidence/report paths: [dated qualification record](../trials/exporter-20260913/RESULTS.md)
+Interventions and limitations: planning assisted; zero execution interventions. No complete feature or browser qualification.
 
 Update this card and TASKS.md. Commit only sanitized records and scoped repairs,
 not generated personal reports, downloaded artifacts, or credentials.
+
+Attempt 1: [qualification record](../trials/exporter-20260913/RESULTS.md). Incomplete feature; no browser success claimed.
