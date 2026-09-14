@@ -28,3 +28,15 @@ not renew that timestamp or consume a probe. A failed observation prevents reuse
 Models displays role sample counts and observed counters. The deterministic T24
 fixtures replay actual controller events into these observations and verify
 separate operator acceptance. They cannot establish real-model coding quality.
+
+### Dedicated planning
+
+Connections offers an optional expandable **Use a dedicated planner** choice.
+When disabled, planning inherits the saved reviewer connection and credentials.
+Selections apply to new proposals; saved proposals retain their provider policy.
+Saving other roles preserves an existing planner; explicitly disabling it resets
+fallback. Endpoint/model choices survive restart. Direct-provider keys remain in
+memory or their CHEAPOS_* environment variable, never configuration/task JSON.
+Automatic remote placement still admits only authorized free/included models;
+selecting a stronger planner does not authorize paid escalation. Local execution
+has an optional installed local planner preference and never downloads on save.

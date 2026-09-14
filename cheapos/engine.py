@@ -345,7 +345,7 @@ class Engine:
 
     def configuration(self):
         result = copy.deepcopy(self.config)
-        for role in ("worker", "reviewer"):
+        for role in ("worker", "reviewer", "planner"):
             if result.get(role):
                 result[role]["key_configured"] = bool(self.provider_key(role, result[role]))
         return result
@@ -440,8 +440,14 @@ class Engine:
                 or (self.gateway.api_key if self.gateway.matches(config["base_url"]) else ""))
 
     def configure(self, values):
-        normalized = {role: validate_provider(values.get(role), role) for role in ("worker", "reviewer")}
+        normalized = copy.deepcopy(self.config)
+        for role in ("worker", "reviewer", "planner"):
+            if role in values:
+                normalized[role] = None if role == 'planner' and values[role] is None else validate_provider(values[role], role)
+        if not normalized.get('worker') or not normalized.get('reviewer'):
+            raise ValueError('Configure a worker and reviewer')
         for role, config in normalized.items():
+            if config is None or role not in values: continue
             if config.get('access') == 'included':
                 from . import access_policy
                 config = access_policy.bind_provider(config, access_policy.snapshot(self.gateway.settings),
@@ -457,7 +463,7 @@ class Engine:
             if self.startup.busy():
                 raise ValueError("Stop the startup connection check before changing models")
             for role, config in normalized.items():
-                if "api_key" in values[role]:
+                if config and role in values and "api_key" in values[role]:
                     self.secrets[(role, config["base_url"])] = values[role]["api_key"]
             write_json(self.store.root / "config.json", normalized)
             self.config = normalized
@@ -1578,6 +1584,8 @@ class Engine:
                 raise BudgetError("Reviewer reached the eight-turn checkpoint limit, including failed requests and resumed attempts. Saved review work is kept.")
             checkpoint['review_requests'] = checkpoint.get('review_requests', 0) + 1
             runtime.review_requests = checkpoint['review_requests']
+        if role == 'planner' and not self.provider_factory and config['base_url'].startswith('https://') and not self.provider_key(role, config):
+            raise ValueError('Planner credentials are missing. Open Models and configure the selected planner connection or its reviewer fallback.')
         reservation = reserve(account, config, messages, tools, role)
         record=task['request_metrics'][-1]
         reservation['metric_id']=record['id']

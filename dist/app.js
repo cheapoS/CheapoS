@@ -791,10 +791,10 @@ function executionPreferences() {
     ['local','All local','Work and review on your own hardware. No remote model requests.'],
     ['remote','All remote','A responding free OmniRoute model handles chat and work; a different free model reviews.'],
     ['manual','Manual model pair','Use the worker and reviewer selected in Models, including paid models when your spending cap allows.']
-  ].map(([value,title,description])=>`<label class="execution-option"><input type="radio" name="mode" value="${value}" ${(saved.mode||'manual')===value?'checked':''}><span><strong>${title}</strong><small>${description}</small></span></label>`).join('')}</div><div id="execution-local"><label class="full-field">Installed Ollama model<input name="local_model" value="${esc(saved.local_model||local)}" placeholder="Your installed model ID" autocomplete="off"><small>Used for short chat in Delegate mode, and implementation in All local.</small></label><label class="full-field" id="execution-reviewer">Local reviewer model · optional<input name="local_reviewer" value="${esc(saved.local_reviewer||'')}" placeholder="Use the same local model" autocomplete="off"></label></div><p id="execution-remote" class="execution-notice">Uses providers you enabled in OmniRoute. Project context is sent when work is handed off. cheapoS checks up to four free candidates per role without project data. A worker handles chat and edits; a different reviewer is selected at a checkpoint. Failed models cool down; up to two free-model handoffs per request continue saved work automatically. Saved edits wait if review is unavailable. No automatic paid or local fallback.</p><p class="small muted">Free routing uses advertised prices. Check OmniRoute’s fallback and billing settings. Automatic chats can switch between free models after failures. Manual and local choices stay fixed. Saving does not start inference or download anything.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new chats.</span><button class="primary-button" type="submit">Save execution choice</button></div></form>`,'execution-modal');
+  ].map(([value,title,description])=>`<label class="execution-option"><input type="radio" name="mode" value="${value}" ${(saved.mode||'manual')===value?'checked':''}><span><strong>${title}</strong><small>${description}</small></span></label>`).join('')}</div><div id="execution-local"><label class="full-field">Installed Ollama model<input name="local_model" value="${esc(saved.local_model||local)}" placeholder="Your installed model ID" autocomplete="off"><small>Used for short chat in Delegate mode, and implementation in All local.</small></label><label class="full-field" id="execution-reviewer">Local reviewer model · optional<input name="local_reviewer" value="${esc(saved.local_reviewer||'')}" placeholder="Use the same local model" autocomplete="off"></label><label class="full-field">Local planner model · optional<input name="local_planner" value="${esc(saved.local_planner||'')}" placeholder="Use the local reviewer" autocomplete="off"></label></div><p id="execution-remote" class="execution-notice">Uses providers you enabled in OmniRoute. Project context is sent when work is handed off. cheapoS checks up to four free candidates per role without project data. A worker handles chat and edits; a different reviewer is selected at a checkpoint. Failed models cool down; up to two free-model handoffs per request continue saved work automatically. Saved edits wait if review is unavailable. No automatic paid or local fallback.</p><p class="small muted">Free routing uses advertised prices. Check OmniRoute’s fallback and billing settings. Automatic chats can switch between free models after failures. Manual and local choices stay fixed. Saving does not start inference or download anything.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new chats.</span><button class="primary-button" type="submit">Save execution choice</button></div></form>`,'execution-modal');
   const form=$('form',d),layout=()=>{const mode=new FormData(form).get('mode');$('#execution-local',d).hidden=!['local','delegate'].includes(mode);$('#execution-reviewer',d).hidden=mode!=='local';$('#execution-remote',d).hidden=!['remote','delegate'].includes(mode);$('[name="local_model"]',d).required=['local','delegate'].includes(mode)};
   $$('[name="mode"]',d).forEach(input=>input.onchange=layout);layout();
-  form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form);state.preferences=await api('/preferences',{execution:Object.fromEntries(['mode','local_model','local_reviewer'].map(k=>[k,String(f.get(k)||'')]))});d.close();renderComposer();toast('Execution choice saved for new chats.');})};
+  form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form);state.preferences=await api('/preferences',{execution:Object.fromEntries(['mode','local_model','local_reviewer','local_planner'].map(k=>[k,String(f.get(k)||'')]))});d.close();renderComposer();toast('Execution choice saved for new chats.');})};
 }
 function chatLimits({defaults=false}={}) {
   const task=defaults?null:state.task,limits=task?.limits||state.preferences.limits;
@@ -911,7 +911,7 @@ function openConnections(afterSave, taskContext=null) {
   const isOmni=p=>p.gateway==='omniroute'||!p.base_url||p.base_url.replace('localhost','127.0.0.1').replace(/\/$/,'')===settings.base_url.replace('localhost','127.0.0.1');
   const providerFields=role=>{
     const p=c[role]||{}, preset=isOmni(p)?'omniroute':p.base_url.includes('openrouter.ai')?'openrouter':p.base_url.includes('11434')?'ollama':'custom';
-    return `<fieldset class="provider-fields" data-role="${role}"><legend>${role==='worker'?'Worker · does the work':'Reviewer · checks the evidence'}</legend>
+    return `<fieldset class="provider-fields" data-role="${role}"><legend>${role==='worker'?'Worker · does the work':role==='planner'?'Planner · prepares the plan':'Reviewer · checks the evidence'}</legend>
       <label class="full-field">Connection<select data-preset="${role}">${[['omniroute','OmniRoute (shared local gateway)'],['openrouter','OpenRouter (direct)'],['ollama','Ollama (local)'],['custom','OpenAI-compatible endpoint']].map(([v,n])=>`<option value="${v}" ${v===preset?'selected':''}>${n}</option>`).join('')}</select></label>
       <div data-direct="${role}"><label class="full-field">API base URL<input type="url" name="${role}_url" value="${esc(p.base_url||settings.base_url)}" required></label><label class="full-field">API key ${p.key_configured?'· configured':''}<input name="${role}_key" type="password" placeholder="Leave blank to keep the current key" autocomplete="new-password"></label></div>
       <div data-catalog="${role}"><label class="checkbox-field"><input type="checkbox" data-free="${role}" checked><span>Show public-free and included models</span></label><label class="full-field">Catalog models<select data-model-picker="${role}"><option value="">Loading catalog…</option></select></label></div>
@@ -933,7 +933,7 @@ function openConnections(afterSave, taskContext=null) {
         <label class="checkbox-field"><input name="auto_start" type="checkbox" ${settings.auto_start?'checked':''}><span>Start installed OmniRoute when cheapoS launches<small>Reuses an existing instance. Does not install or update software.</small></span></label>
         <label class="checkbox-field"><input name="keep_running" type="checkbox" ${settings.keep_running?'checked':''}><span>Keep OmniRoute running when cheapoS closes<small>cheapoS only stops an instance it started in this session.</small></span></label>
         <button class="outline-button gateway-save" type="submit">Save gateway settings</button></details><p class="form-error" role="alert"></p></form>
-    <form id="models-form"><details class="advanced" ${(state.preferences.execution?.mode||'manual')==='manual'?'open':''}><summary>Explicit model choices · Manual mode and remote preferences</summary><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div>
+    <form id="models-form"><details class="advanced" ${(state.preferences.execution?.mode||'manual')==='manual'?'open':''}><summary>Explicit model choices · Manual mode and remote preferences</summary><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div><label class="checkbox-field"><input type="checkbox" id="dedicated-planner" ${c.planner?'checked':''}><span>Use a dedicated planner</span></label><p id="planner-fallback" class="small muted"></p><details id="planner-options" ${c.planner?'open':''}><summary>Planner connection and model</summary>${providerFields('planner')}</details>
       <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. These explicit choices apply in Manual mode. Automatic remote modes select only authorized eligible routes. Access labels do not establish remaining quota or successful inference.</p>
       <label class="checkbox-field" id="share-key-field"><input type="checkbox" name="share_key" checked><span>Use the entered worker key for the reviewer when their direct API URLs match</span></label>
       </details><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">${taskContext?'Save & prepare new chat':'Save connections'} ${icon('check')}</button></div></form>`,'connections-modal');
@@ -970,7 +970,7 @@ function openConnections(afterSave, taskContext=null) {
   function updateGateway() {
     if(!d.open)return;
     const g=state.gateway||{};
-    if(includedRevision!==g.settings?.connection_revision){includedRevision=g.settings?.connection_revision;$('#included-model-ids',d).value=(g.settings?.included_models||[]).join('\n');for(const role of ['worker','reviewer'])$(`[data-included="${role}"]`,d).checked=false;}
+    if(includedRevision!==g.settings?.connection_revision){includedRevision=g.settings?.connection_revision;$('#included-model-ids',d).value=(g.settings?.included_models||[]).join('\n');for(const role of ['worker','reviewer','planner'])$(`[data-included="${role}"]`,d).checked=false;}
     const badge=$('#gateway-status',d);badge.textContent=({ready:'Catalog connected',checking:'Connecting…',starting:'Starting…',offline:'Offline',auth_required:'Client key needed',not_installed:'Not installed',unavailable:'Unavailable',error:'Startup failed'})[g.status]||'Not checked';badge.dataset.status=g.status||'unchecked';
     $('#gateway-message',d).textContent=g.message||'Connect your local gateway to load its model catalog.';
     $('#gateway-key-status',d).textContent=gatewayKeyStatus(g);
@@ -984,7 +984,7 @@ function openConnections(afterSave, taskContext=null) {
     $('#gateway-dashboard',d).href=g.dashboard_url||'http://127.0.0.1:20128';
     $$('[data-gateway-action]',d).forEach(b=>{b.disabled=Boolean(g.busy);if(b.dataset.gatewayAction==='stop')b.hidden=!g.owned});
     $('button[type="submit"]',gatewayForm).disabled=Boolean(g.busy);
-    for(const role of ['worker','reviewer'])picker(role);
+    for(const role of ['worker','reviewer','planner'])picker(role);
   }
   state.gatewayListener=updateGateway;
   d.addEventListener('close',()=>{if(state.gatewayListener===updateGateway)state.gatewayListener=null});
@@ -1006,7 +1006,7 @@ function openConnections(afterSave, taskContext=null) {
     state.gateway=await api('/gateway/config',values);$('[name="gateway_key"]',d).value='';$('[name="gateway_remember"]',d).checked=Boolean(state.gateway.key_storage?.saved);
     state.gateway=await api('/gateway/refresh',{});updateGateway();toast('Gateway settings saved. Use Connect / start if it is offline.');
   })};
-  for(const role of ['worker','reviewer']) {
+  for(const role of ['worker','reviewer','planner']) {
     layout(role);
     $(`[data-included="${role}"]`,d).onchange=()=>capability(role);
     $(`[data-free="${role}"]`,d).onchange=()=>picker(role);
@@ -1030,10 +1030,20 @@ function openConnections(afterSave, taskContext=null) {
       layout(role);
     };
   }
+  function plannerChoice() {
+    const dedicated=$('#dedicated-planner',d).checked;
+    $('#planner-options',d).hidden=!dedicated;
+    $('[data-role="planner"]',d).disabled=!dedicated;
+    $('#planner-fallback',d).textContent=dedicated?'Dedicated planning applies to new proposals. Automatic remote placement still requires authorized free or included access.':`Planner follows reviewer: ${field('reviewer','model').value||'choose a reviewer model'}.`;
+  }
+  $('#dedicated-planner',d).onchange=plannerChoice;
+  field('reviewer','model').addEventListener('input',plannerChoice);
+  plannerChoice();
   const form=$('#models-form',d);
   form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{
     const f=new FormData(form),values={};
-    for(const role of ['worker','reviewer']) {
+    for(const role of ['worker','reviewer','planner']) {
+      if(role==='planner'&&!$('#dedicated-planner',d).checked){values.planner=null;continue}
       const omni=usingOmni(role);
       if(omni&&state.gateway.status!=='ready')throw new Error('Connect OmniRoute before saving its model choices.');
       values[role]={gateway:omni?'omniroute':'openai',base_url:omni?state.gateway.settings.base_url:String(f.get(role+'_url')).trim(),model:String(f.get(role+'_model')).trim(),input_rate:Number(f.get(role+'_input')),output_rate:Number(f.get(role+'_output'))};
@@ -1105,7 +1115,7 @@ $$('.tab').forEach(b=>{b.onclick=()=>setView(b.dataset.view);b.onkeydown=e=>{if(
 $('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=sampleDialog;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopFromComposer;
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
-const branchUI=CheapOSBranchUI.mount({api,getState:()=>state,selectTask,refresh,toast,openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
+const branchUI=CheapOSBranchUI.mount({api,getState:()=>state,selectTask,refresh,toast,renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}});
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);
 

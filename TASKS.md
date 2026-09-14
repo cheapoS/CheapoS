@@ -28,8 +28,8 @@ Clicking Start should immediately return to a visibly starting conversation.
 | --- | --- | --- | --- | --- |
 | [T62](docs/tasks/T62-planner-access-binding.md) | Bind planner requests to the authorized gateway and access policy | Current planner implementation | S/M | Complete |
 | [T63](docs/tasks/T63-planner-role-selection.md) | Preserve working two-model routes when a planner is configured | T62 | S/M | Complete |
-| [T64](docs/tasks/T64-planner-fallback-credentials.md) | Resolve fallback credentials without losing their provider identity | T62 | S | Ready after dependency |
-| [T65](docs/tasks/T65-planner-configuration.md) | Configure, save, and restore a dedicated planner | T63, T64 | M | Ready after dependencies |
+| [T64](docs/tasks/T64-planner-fallback-credentials.md) | Resolve fallback credentials without losing their provider identity | T62 | S | Complete |
+| [T65](docs/tasks/T65-planner-configuration.md) | Configure, save, and restore a dedicated planner | T63, T64 | M | Complete |
 | [T66](docs/tasks/T66-planner-task-migration.md) | Resume older planning tasks without losing usage or authorization | T64 | S | Complete |
 | [T67](docs/tasks/T67-complete-final-plan-checks.md) | Repair plan schema without silently dropping verification coverage | Current plan parser | S | Complete |
 | [T68](docs/tasks/T68-planner-usage-visibility.md) | Include planner usage and identity in totals, traces, and the UI | T65, T66 | S/M | Ready after dependencies |

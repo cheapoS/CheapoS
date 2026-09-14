@@ -9,7 +9,7 @@ from .providers import ProviderError, is_local_ollama, validate_provider
 
 
 MODES = {"manual", "delegate", "local", "remote"}
-DEFAULT_EXECUTION = {"mode": "manual", "local_model": "", "local_reviewer": ""}
+DEFAULT_EXECUTION = {"mode": "manual", "local_model": "", "local_reviewer": "", "local_planner": ""}
 COORDINATOR_SYSTEM = """You are cheapoS's lightweight local chat assistant.
 Reply briefly to greetings and general discussion. You have no repository access.
 For ANY request needing project files, code, edits, tests, public web links, or project-specific advice,
@@ -42,7 +42,7 @@ def execution_from(value):
     result = {**DEFAULT_EXECUTION, **value}
     if result["mode"] not in MODES:
         raise ValueError("Choose where the work runs")
-    for key in ("local_model", "local_reviewer"):
+    for key in ("local_model", "local_reviewer", "local_planner"):
         if not isinstance(result[key], str) or len(result[key]) > 200:
             raise ValueError("Enter an installed local model ID")
         result[key] = result[key].strip()
@@ -90,11 +90,13 @@ def setup_task(task, execution, config, gateway):
             task["providers"] = {"worker": local, "reviewer": reviewer, "planner": planner}
             return
         planner = copy.deepcopy(config.get("planner") or config.get("reviewer"))
+        if planner: planner["credential_role"] = "planner" if config.get("planner") else "reviewer"
         task["providers"] = {"coordinator": local, "worker": None, "reviewer": None, "planner": planner}
         task["usage"]["coordinator"] = {"tokens": 0, "cost": 0}
         task["active_role"] = "coordinator"
     else:
         planner = copy.deepcopy(config.get("planner") or config.get("reviewer"))
+        if planner: planner["credential_role"] = "planner" if config.get("planner") else "reviewer"
         task["providers"] = {"worker": None, "reviewer": None, "planner": planner}
     task["route"] = {"ready": False, "base_url": gateway.settings["base_url"],
                      "preferred": {r: (config.get(r) or {}).get("model") for r in ("worker", "reviewer", "planner")}}
