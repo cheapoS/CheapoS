@@ -99,3 +99,17 @@ class VerificationTests(LocalCase):
         result = self.engine.checks(Runtime(task))
         self.assertTrue(result['passed'])
         self.assertEqual(result['allowed_seconds'], 1)
+
+    def test_repeated_check_failure_guidance(self):
+        task = self.fixture()
+        task['check_command'] = [sys.executable, '-c', 'assert False, "demo failure"']
+        runtime = Runtime(task)
+        first = self.engine.checks(runtime)
+        self.assertFalse(first['passed'])
+        self.assertEqual(first['outcome'], 'test_failure')
+        self.assertEqual(first['next_action'], 'Inspect the failing assertion or process error before changing code.')
+        second = self.engine.checks(runtime)
+        self.assertFalse(second['passed'])
+        self.assertEqual(second['outcome'], 'test_failure')
+        self.assertTrue(second['next_action'].startswith('Repeated test failure:'))
+
