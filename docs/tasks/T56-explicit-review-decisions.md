@@ -1,6 +1,6 @@
 # T56 — Require an explicit, consistent reviewer decision
 
-Status: Not started
+Status: Done
 Priority: First — correctness
 Depends on: current review implementation
 Size: S
@@ -62,3 +62,9 @@ manifest dictionaries to exercise `_review` directly. Reuse affected existing
 branch/Git workflow to test a missing field. Report actual new-case timing and
 get acceptance before introducing any heavy test. Commit the fix, record checks
 and limitations here, and update TASKS.md. Do not run a live trial in this card.
+
+## Completion record
+
+Implemented explicit typed decisions and contradiction checks at item/final acceptance and receipt validation. Canonical findings are retained by both callers and revalidated before saved repair edits. Supported legacy aliases require explicit, consistent values; missing kind only normalizes with a nonempty reproduction. Ambiguous legacy findings stop edits for validation; historical receipts are not rewritten. Item instructions use the schema’s exact criterion values.
+
+Validation: seven pure disagreement tests passed in 0.002s (new cases below a millisecond each); six existing evidence tests passed in 14.812s. No live inference or new heavy fixture. Existing historical approval provenance remains unqualified.

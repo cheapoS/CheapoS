@@ -153,16 +153,10 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
                 raise ValueError('Correct these coverage fields exactly: '+_json({field:expected[field] for field in wrong}))
             if not isinstance(result.get('feedback'),str) or not result['feedback'].strip() or len(result['feedback']) > 4000:
                 raise ValueError('feedback must be a nonempty string of at most 4000 characters.')
-            dec = str(result.get('decision', '')).strip().upper()
-            if dec in {'APPROVE', 'REQUEST_CHANGES'}:
-                result['decision'] = dec
-            elif not result.get('decision') and not result.get('defects'):
-                result['decision'] = 'APPROVE'
-            else:
-                raise ValueError(f"decision must be 'APPROVE' or 'REQUEST_CHANGES' (got {result.get('decision')!r}).")
+            result['decision'] = disagreement.decision(result)
             if result['decision'] == 'REQUEST_CHANGES':
                 try:
-                    disagreement.validate(result, [r['id'] for r in manifest['requirements']])
+                    result['defects'] = disagreement.validate(result, [r['id'] for r in manifest['requirements']])
                 except ValueError as error:
                     disagreement.unsupported(engine, runtime.task, key, result, error)
                     raise
@@ -265,7 +259,10 @@ def validate(readiness, task):
     reviews = saved['reviews']
     if len(reviews) != len(chunks) or any(r.get('manifest_id') != manifest['id'] or r.get('decision') != 'APPROVE' or r.get('chunk_ids') != [chunk] or r.get('criteria_ids') != [] for chunk, r in zip(chunks, reviews)):
         raise ValueError('Final chunk coverage is incomplete')
+    for review in reviews:
+        disagreement.decision(review)
     overall = saved['review']
+    disagreement.decision(overall)
     if overall.get('manifest_id') != manifest['id'] or overall.get('decision') != 'APPROVE' or overall.get('chunk_ids') != chunks or overall.get('criteria_ids') != criteria:
         raise ValueError('Final requirement coverage is incomplete')
     if evidence.model_identity(saved['worker_model']) == evidence.model_identity(saved['reviewer_model']):

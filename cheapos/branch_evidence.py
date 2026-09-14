@@ -116,6 +116,8 @@ def ready_receipt(current, checks, review, worker_model, reviewer_model, criteri
     worker, reviewer = model_identity(worker_model), model_identity(reviewer_model)
     if worker == reviewer:
         raise ValueError('Automatic commits require a distinct reviewer model')
+    from .branch_disagreement import decision
+    decision(review)
     if review.get('candidate_id') != current['id'] or review.get('decision') != 'APPROVE' or not isinstance(review.get('feedback'), str):
         raise ValueError('Independent APPROVE for this candidate is required')
     if not isinstance(criteria_outcomes, dict):

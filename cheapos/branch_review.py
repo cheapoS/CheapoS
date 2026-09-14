@@ -88,7 +88,13 @@ def checkpoint(engine, runtime, args):
             if runtime.stop.is_set(): raise InterruptedError('Task stopped')
             name, params = engine.parse_call(call)
             if name == 'review_decision':
-                choice = params.get('decision')
+                try:
+                    choice = disagreement.decision(params, takeover=True)
+                    params['decision'] = choice
+                except ValueError as error:
+                    result = disagreement.unsupported(engine, task, current['id'], params, error)
+                    messages.append({'role':'tool','tool_call_id':call['id'],'content':json.dumps(result)})
+                    continue
                 if choice == 'APPROVE':
                     try:
                         receipt = evidence.ready_receipt(current, checks, params, task['providers']['worker'], task['providers']['reviewer'], params.get('criteria_outcomes'))
@@ -109,7 +115,7 @@ def checkpoint(engine, runtime, args):
                         if params.get('candidate_id') != current['id']:
                             raise ValueError('Review disagreement belongs to a stale candidate.')
                         if choice == 'REQUEST_CHANGES':
-                            disagreement.validate(params, criteria)
+                            params['defects'] = disagreement.validate(params, criteria)
                             # A reviewer read tool cannot silently change the reviewed inputs.
                             if evidence.candidate(task, ctx, specs, criteria) != current:
                                 raise ValueError('Candidate changed during review disagreement.')

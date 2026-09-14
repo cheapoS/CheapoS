@@ -18,6 +18,36 @@ def defect(kind='static'):
 
 
 class DisagreementTests(unittest.TestCase):
+    def test_explicit_decision_and_bounded_final_corrections(self):
+        for value in (None, '', False, True, 1, [], {}, 'unknown'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                disagreement.decision({'decision':value,'feedback':'Looks good'})
+        self.assertEqual(disagreement.decision({'decision':' approve '}),'APPROVE')
+        with self.assertRaises(ValueError):
+            disagreement.decision({'decision':'APPROVE','defects':[defect()]})
+        runtime=SimpleNamespace(task={'branch_run':{}},guard=lambda:None)
+        response={'manifest_id':'m','chunk_ids':[],'criteria_ids':[],'feedback':'Looks good'}
+        engine=SimpleNamespace(store=SimpleNamespace(save=Mock()),event=Mock(),
+            request=Mock(return_value={'tool_calls':[{'id':'d','result':response}]}),
+            parse_call=lambda c:('final_review_decision',c['result']))
+        for _ in range(2):
+            with self.assertRaises(ValueError):branch_final._review(engine,runtime,{'id':'m'}, {}, [], [])
+        self.assertEqual(engine.request.call_count,3)
+
+    def test_legacy_findings_normalize_and_cannot_bypass_saved_guard(self):
+        finding=defect('executable');finding.pop('kind')
+        repair=disagreement.repair({'defects':[finding]},'candidate',[])
+        self.assertEqual(repair['defects'][0]['kind'],'executable')
+        item={'id':'one','review_repair':{'defects':[finding]}}
+        task={'branch_run':{'items':[item],'current_item_id':'one'},'checks':[]}
+        with self.assertRaisesRegex(ValueError,'Demonstrate'):disagreement.before_write(task,'report.py')
+        for change in ({'kind':[]},{'reproduction':False},{'kind':None},{'location':'../secret:1'},
+                       {'code_location':{'path':'x'}},{'expected_behavior':'conflicting'}):
+            with self.subTest(change=change),self.assertRaises(ValueError):
+                disagreement.validate({'defects':[{**defect(),**change}]},['exact values'])
+        ambiguous=defect();ambiguous.pop('kind')
+        with self.assertRaises(ValueError):disagreement.validate({'defects':[ambiguous]},['exact values'])
+
     def test_contract_static_executable_and_historical_decisions(self):
         finding = {'defects': [defect()]}
         self.assertEqual(disagreement.validate(finding, ['exact values']), finding['defects'])

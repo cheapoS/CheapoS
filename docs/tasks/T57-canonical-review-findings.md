@@ -1,6 +1,6 @@
 # T57 — Carry validated findings through repair and write guards
 
-Status: Not started
+Status: Done
 Priority: Second — correctness
 Depends on: T56
 Size: S/M
@@ -68,3 +68,9 @@ The reproduction needs no Engine runtime, network, repository, or real check
 command. Reuse existing integration coverage for persisted repair behavior.
 Report new-case timings, supported normalization/legacy decisions, and the commit.
 Any new heavy test requires advance disclosure and acceptance.
+
+## Completion record
+
+Implemented explicit typed decisions and contradiction checks at item/final acceptance and receipt validation. Canonical findings are retained by both callers and revalidated before saved repair edits. Supported legacy aliases require explicit, consistent values; missing kind only normalizes with a nonempty reproduction. Ambiguous legacy findings stop edits for validation; historical receipts are not rewritten. Item instructions use the schema’s exact criterion values.
+
+Validation: seven pure disagreement tests passed in 0.002s (new cases below a millisecond each); six existing evidence tests passed in 14.812s. No live inference or new heavy fixture. Existing historical approval provenance remains unqualified.

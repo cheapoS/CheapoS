@@ -37,8 +37,8 @@ stay stable for handoffs; T55 is the final evidence closeout after the new work.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T56](docs/tasks/T56-explicit-review-decisions.md) | Require explicit approval; reject missing or contradictory decisions | Current review implementation | S | Not started |
-| [T57](docs/tasks/T57-canonical-review-findings.md) | Enforce the validated findings throughout repair | T56 | S/M | Not started |
+| [T56](docs/tasks/T56-explicit-review-decisions.md) | Require explicit approval; reject missing or contradictory decisions | Current review implementation | S | Done |
+| [T57](docs/tasks/T57-canonical-review-findings.md) | Enforce the validated findings throughout repair | T56 | S/M | Done |
 | [T49](docs/tasks/T49-complete-repair-coverage.md) | Repair late-item requirements without truncating coverage | T57 | M | Not started |
 | [T50](docs/tasks/T50-accounted-transport-recovery.md) | Scope transport compatibility and account every retry | Current provider/streaming implementation | M | Not started |
 | [T51](docs/tasks/T51-predictable-compact-edits.md) | Verify edit sequencing and improve stale-edit recovery | Existing version-bound edits | S/M | Not started |
