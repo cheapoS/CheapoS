@@ -282,6 +282,8 @@ def main():
     parser = argparse.ArgumentParser(description="Run cheapoS 100-task unattended stress test suite.")
     parser.add_argument("--start", default="ST-001", help="Start task ID (e.g. ST-001)")
     parser.add_argument("--end", default="ST-100", help="End task ID (e.g. ST-100)")
+    parser.add_argument("--ids", default=None, help="Comma-separated list of specific task IDs (e.g. ST-016,ST-025,ST-051)")
+    parser.add_argument("--shuffle", action="store_true", help="Shuffle selected tasks")
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of tasks to run")
     parser.add_argument("--dry-run", action="store_true", help="Print task plan and initialize repo without dispatching")
     parser.add_argument("--repo-dir", default=DEFAULT_REPO_DIR, help="Isolated test repository directory")
@@ -293,7 +295,16 @@ def main():
         all_tasks = json.load(f)
 
     # Filter tasks
-    selected = [t for t in all_tasks if args.start <= t["id"] <= args.end]
+    if args.ids:
+        target_ids = {tid.strip() for tid in args.ids.split(",") if tid.strip()}
+        selected = [t for t in all_tasks if t["id"] in target_ids]
+    else:
+        selected = [t for t in all_tasks if args.start <= t["id"] <= args.end]
+
+    if args.shuffle:
+        import random
+        random.shuffle(selected)
+
     if args.limit:
         selected = selected[:args.limit]
 
