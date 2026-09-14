@@ -6,6 +6,7 @@ import shlex
 
 from . import branch_evidence as evidence, branch_workspace as work, branch_runs, branch_disagreement as disagreement
 from .workspace import Workspace, git
+from .unattended_items import completion_order
 
 CHUNK_SIZE = 20000
 MAX_CONTENT = 1000000
@@ -34,10 +35,11 @@ def build_manifest(run):
     if len(actual) != len(run['items']) or not set(planned).issubset(actual):
         raise ValueError('Accepted plan items are missing or duplicated')
     for key, item in planned.items():
-        if any(actual[key].get(field) != item.get(field) for field in ('title', 'instructions', 'acceptance_criteria', 'required_checks')):
+        if any(actual[key].get(field) != item.get(field) for field in ('title', 'instructions', 'acceptance_criteria', 'required_checks', 'dependencies')):
             raise ValueError('Accepted plan requirements changed')
     previous = run['base_sha']; commits = []; requirements = []
-    for item in run['items']:
+    ordered_items = completion_order(run)
+    for item in ordered_items:
         operation = item.get('commit_receipt') or {}
         if operation.get('stage') != 'completed' or operation.get('run_id') != run['id'] or operation.get('item_id') != item['id'] or operation.get('old_tip') != previous:
             raise ValueError('Missing or discontinuous item commit receipt')
@@ -67,7 +69,7 @@ def build_manifest(run):
                                  'instructions': item['instructions'], 'criterion': criterion,
                                  'outcome': saved['criteria_outcomes'][criterion], 'review': saved['review'],
                                  'check_evidence': saved['checks'], 'commit': new_tip, 'receipt_id': receipt_id})
-    if run['items'][-1]['commit_receipt']['private_new'] != mapping['workspace_head']:
+    if ordered_items[-1]['commit_receipt']['private_new'] != mapping['workspace_head']:
         raise ValueError('Private baseline does not match the final item receipt')
     if previous != tip:
         raise ValueError('Feature tip includes work outside the accepted item receipts')
