@@ -82,6 +82,8 @@ class DisagreementTests(unittest.TestCase):
             task['branch_run'] = json.loads(json.dumps(task['branch_run']))
             with self.assertRaisesRegex(ProgressPause, 'Unsupported'): branch_review.checkpoint(engine, runtime, {})
         self.assertEqual(engine.request.call_count, 3)
+        self.assertEqual(task['pending_review']['coaching']['reason'], 'invalid_decision')
+        self.assertEqual(task['pending_review']['stop_diagnostic']['reason'], 'invalid_decision')
         self.assertNotIn('review_repair', task['branch_run']['items'][0])
         engine.file_tool.assert_not_called()
         # Concrete counterprobe disproves the proposed float conversion.
@@ -136,6 +138,79 @@ class DisagreementTests(unittest.TestCase):
         self.assertEqual(item['review_repair']['probe_observed']['input_identity'], 'current')
         self.assertIn('Preserve original assertions', item['review_repair']['repair_instruction'])
         self.assertIn('not execution consent', item['review_repair']['repair_instruction'])
+
+
+class ReviewCoachingTests(unittest.TestCase):
+    def fixture(self):
+        from contextlib import ExitStack
+        run = branch_runs.new_run({'items':[{'id':'one','title':'Read report','instructions':'Verify exact values',
+            'acceptance_criteria':['exact values'],'required_checks':['python tests.py']}], 'limits':{'working_seconds':600}})
+        run.update(status='running', expected_feature_tip='tip', current_item_id='one')
+        run['items'][0]['status']='working'
+        task={'branch_run':run,'active_role':'worker','checks':[],'review_count':0,'checkpoints':[],
+              'events':[],'providers':{'worker':{'model':'worker'},'reviewer':{'model':'reviewer'}}}
+        engine=SimpleNamespace(store=SimpleNamespace(save=Mock()),event=lambda t,k,title,d:t['events'].append({'kind':k,'title':title,'detail':d}),
+            checks=Mock(),file_tool=Mock(return_value={'content':'Same exact values'}),
+            parse_call=lambda c:(c['name'],c.get('result',{})),request=Mock())
+        runtime=SimpleNamespace(task=task,guard=Mock(),stop=SimpleNamespace(is_set=lambda:False))
+        stack=ExitStack();self.addCleanup(stack.close)
+        for name,value in [('candidate',{'id':'candidate','checks':[],'patch':'saved diff'}),('current_checks',[]),
+                           ('review_packet',{'candidate_id':'candidate','diff':'saved diff'}),('ready_receipt','receipt'),('revalidate',None)]:
+            stack.enter_context(patch.object(branch_review.evidence,name,return_value=value))
+        return task,engine,runtime
+
+    def test_nudge_after_repeated_reads_converges_through_normal_receipt_path(self):
+        task,engine,runtime=self.fixture();seen=[]
+        def respond(runtime,messages,tools,role):
+            seen.append(copy.deepcopy(messages))
+            if len(seen)<3:return {'tool_calls':[{'id':'read','name':'read_file','result':{'path':'report.py'}}]}
+            guidance=json.loads(messages[-1]['content'])
+            self.assertEqual(guidance['candidate_id'],'candidate')
+            self.assertIn('counterevidence',guidance['instruction'])
+            self.assertIn('passing tests alone are not proof',guidance['instruction'])
+            self.assertEqual(len([e for e in task['events'] if e['kind']=='review_coaching']),1)
+            self.assertTrue(engine.store.save.called)
+            return {'tool_calls':[{'id':'decision','name':'review_decision','result':{'decision':'APPROVE','candidate_id':'candidate',
+                'feedback':'Evidence meets exact values','criteria_outcomes':{'exact values':{'passed':True,'evidence':'Source and checks'}}}}]}
+        engine.request.side_effect=respond
+        self.assertEqual(branch_review.checkpoint(engine,runtime,{})['decision'],'APPROVE')
+        self.assertEqual(len(seen),3);branch_review.evidence.ready_receipt.assert_called_once()
+        self.assertNotIn('pending_review',task);engine.checks.assert_not_called()
+
+    def test_ignored_coaching_stops_with_specific_saved_diagnostic_without_resume_renewal(self):
+        from cheapos import branch_pause
+        task,engine,runtime=self.fixture()
+        engine.request.return_value={'tool_calls':[{'id':'read','name':'read_file','result':{'path':'report.py'}}]}
+        with self.assertRaises(ProgressPause) as failure:branch_review.checkpoint(engine,runtime,{})
+        detail=branch_pause.classify(failure.exception,task)
+        self.assertIn('same unchanged evidence three times',detail['explanation'])
+        self.assertIn('already requested a focused reassessment',detail['explanation'])
+        self.assertEqual(detail['next_action'],'inspect');self.assertEqual(detail['stage'],'reviewing')
+        self.assertEqual(engine.request.call_count,3)
+        restored=json.loads(json.dumps(task));runtime.task=restored
+        # Mirrors the engine wrapper which retains only progress_limit and saved task state.
+        restored['error_code']='progress_limit'
+        detail=branch_pause.classify(ValueError('outer wrapper'),restored)
+        self.assertIn('same unchanged evidence',detail['explanation'])
+        with self.assertRaises(ProgressPause):branch_review.checkpoint(engine,runtime,{})
+        self.assertEqual(engine.request.call_count,3)
+        self.assertEqual(len([e for e in restored['events'] if e['kind']=='review_coaching']),1)
+        self.assertNotIn('ready_receipt',restored['branch_run']['items'][0])
+
+    def test_repeated_tool_error_does_not_claim_the_same_file_was_read_successfully(self):
+        task,engine,runtime=self.fixture()
+        engine.file_tool.return_value={'error':'Requested directory is missing'}
+        engine.request.return_value={'tool_calls':[{'id':'read','name':'list_files','result':{'path':'missing'}}]}
+        with self.assertRaisesRegex(ProgressPause,'same failed tool action'):branch_review.checkpoint(engine,runtime,{})
+        self.assertEqual(task['pending_review']['coaching']['reason'],'repeated_tool_error')
+        self.assertEqual(engine.request.call_count,3)
+
+    def test_empty_responses_receive_guidance_but_never_count_as_approval(self):
+        task,engine,runtime=self.fixture();engine.request.return_value={'content':'Still considering it.'}
+        with self.assertRaisesRegex(ProgressPause,'no usable review action'):branch_review.checkpoint(engine,runtime,{})
+        self.assertEqual(engine.request.call_count,3)
+        self.assertEqual(task['pending_review']['stop_diagnostic']['reason'],'missing_decision')
+        branch_review.evidence.ready_receipt.assert_not_called()
 
 
 if __name__ == '__main__': unittest.main()

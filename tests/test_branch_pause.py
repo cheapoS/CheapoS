@@ -69,3 +69,12 @@ class PauseDetails(unittest.TestCase):
   self.assertIn('explicit valid review decision',t['error'])
   t.pop('request_metrics');t['branch_run']['pause_detail'].pop('diagnostic_id',None)
   self.assertNotIn('explicit valid review decision',pause.classify(ValueError('new unrelated failure'),t)['explanation'])
+
+ def test_review_stall_is_specific_and_preserves_inspection_action_after_public_round_trip(self):
+  t=self.task();t['error_code']='progress_limit';t['pending_review']={'stop_diagnostic':{'kind':'review_stall','reason':'invalid_decision','coached':True}}
+  d=pause.classify(ValueError('private outer exception'),t)
+  self.assertIn('failed validation three times',d['explanation']);self.assertIn('already requested',d['explanation'])
+  self.assertEqual(d['next_action'],'inspect');self.assertEqual(pause.public(d),d)
+  for malformed in ({'kind':'review_stall','reason':[],'coached':True},{'kind':'review_stall','reason':'bad reason','coached':True},'not a diagnostic'):
+   t['pending_review']['stop_diagnostic']=malformed
+   self.assertNotIn('diagnostic',pause.classify(ValueError('private'),t))

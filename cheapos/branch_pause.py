@@ -49,6 +49,18 @@ def safe_text(value):
 def specific(diagnostic):
     if not isinstance(diagnostic,dict):return None
     kind=diagnostic.get('kind')
+    if kind=='review_stall':
+        if not isinstance(diagnostic.get('reason'),str) or type(diagnostic.get('coached')) is not bool:return None
+        reasons={
+            'repeated_evidence':'The reviewer repeated the same unchanged evidence three times without a decision.',
+            'repeated_tool_error':'The reviewer repeated the same failed tool action three times without resolving its error.',
+            'missing_decision':'The reviewer returned no usable review action three times.',
+            'invalid_decision':'Unsupported review responses failed validation three times.',
+            'request_limit':'The reviewer reached the item-review request limit without a valid decision.'}
+        reason=reasons.get(diagnostic.get('reason'))
+        if reason is None:return None
+        recovery=' cheapoS already requested a focused reassessment using saved findings and check evidence.' if diagnostic['coached'] else ''
+        return reason+recovery+' Review remains unfinished. Inspect the review attempts or choose another reviewer.'
     if kind=='missing_executable':
         runner=diagnostic.get('executable')
         # Display just a conventional executable basename, never a private path.
@@ -69,8 +81,10 @@ def public(value):
     explanation,action=TEMPLATES[cause]
     diagnostic=value.get('diagnostic')
     if specific(diagnostic):explanation=specific(diagnostic)
+    if isinstance(diagnostic,dict) and diagnostic.get('kind')=='review_stall' and specific(diagnostic):action='inspect'
     result={'version':1,'cause':cause,'explanation':explanation,'next_action':action,'stage':value.get('stage') if value.get('stage') in STAGES else 'unknown'}
-    if specific(diagnostic):result['diagnostic']={'kind':'safe_message','message':explanation}
+    if specific(diagnostic):result['diagnostic']=({'kind':'review_stall','reason':diagnostic['reason'],'coached':diagnostic['coached']}
+        if diagnostic.get('kind')=='review_stall' else {'kind':'safe_message','message':explanation})
     for key in ('item_id','model','diagnostic_id'):
         if label(value.get(key)):result[key]=label(value[key])
     if value.get('role') in ('worker','reviewer','coordinator','planner'):result['role']=value['role']
@@ -102,6 +116,8 @@ def classify(error=None, task=None, cause=None, stage=None):
             'item_id':item.get('id'),'role':request.get('role') or task.get('active_role'),'model':request.get('model'),
             'diagnostic_id':getattr(error,'diagnostic_id',None) or request.get('id')}
     diagnostic=getattr(error,'safe_diagnostic',None)
+    if explicit=='repeated_work' and not diagnostic:
+        diagnostic=(task.get('pending_review') or {}).get('stop_diagnostic')
     if isinstance(error,LimitExceeded):diagnostic={'kind':'limit','key':error.key,'used':error.used,'allowed':error.allowed}
     if diagnostic:detail['diagnostic']=diagnostic
     if explicit=='malformed_output' and not specific(diagnostic):

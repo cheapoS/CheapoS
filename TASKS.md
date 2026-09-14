@@ -10,6 +10,15 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+**Completed: [T77 — automatic reviewer reassessment before a routine stall](docs/tasks/T77-reviewer-coaching.md).**
+The engine gives an unattended item reviewer one focused, evidence-based nudge
+before stopping repeated reads, failed actions, or invalid/no decisions. Chat
+shows the recovery attempt; an exhausted attempt retains its specific diagnostic.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T77](docs/tasks/T77-reviewer-coaching.md) | Coach a stalled item reviewer automatically within the existing allowance | T60, T73, T74 | S | Complete |
+
 **Completed: [T76 — visible progress from approval to the first worker response](docs/tasks/T76-visible-startup-progress.md).**
 Start now applies the returned task immediately, keeps elapsed waiting feedback
 visible, and refreshes Chat independently of gateway/sidebar readiness checks.
@@ -236,7 +245,7 @@ do not move the report-export milestone behind a new broad benchmark campaign.
 ### Current handoff template
 
 ```text
-T62–T76 are complete. Select the next agreed incomplete card before starting;
+T62–T77 are complete. Select the next agreed incomplete card before starting;
 do not reimplement these completed fixes.
 Read AGENTS.md, CONTRIBUTING.md, TASKS.md, and that card first.
 Inspect the current code and verify dependencies; do not restart completed work.
@@ -250,7 +259,7 @@ Update the card's completion record and its TASKS.md status. Commit only this
 task's changes. Report the commit, actual checks, and remaining limitations.
 Do not execute the next card automatically.
 
-For T62–T76, use the reproduction and acceptance contract in the selected card.
+For T62–T77, use the reproduction and acceptance contract in the selected card.
 Preserve the authorized model and spending policy when adding a stronger planner.
 Keep approved plans visible and immutable through the Plan view. Start should
 close immediately with honest progress and errors in chat, never fabricated

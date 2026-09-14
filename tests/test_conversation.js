@@ -189,3 +189,12 @@ test('accepted plan stays visibly active before any worker output and then yield
  t.status='paused';t.branch_run.status='paused';t.stream=null;
  reply=build(t,at).filter(e=>e.kind==='assistant').at(-1);assert.equal(reply.live,false);assert.ok(reply.steps.every(s=>!s.live));
 });
+
+test('automatic reviewer guidance appears inside the review with inspectable evidence and no false approval',()=>{
+ const t=branchTask({planning_request:null,status:'reviewing',branch_run:{id:'run1',authorization_ref:'auth',status:'running',current_item_id:'one',items:[{id:'one',title:'Review report',status:'reviewing'}]},events:[
+  {...event(1,'model','Requesting reviewer: reviewer-model',{}),item_id:'one'},
+  {...event(2,'review_coaching','Helping the reviewer reach a decision',{role:'reviewer',summary:'I’m asking for a focused reassessment.'}),item_id:'one'}]});
+ let reply=replies(t).at(-1);assert.equal(reply.owner,true);assert.equal(reply.steps.at(-1).title,'Reassessing the review');assert.equal(reply.steps.at(-1).role,'reviewer');assert.equal(reply.steps.at(-1).outcome,'live');
+ assert.ok(reply.steps.at(-1).events.some(e=>e.kind==='review_coaching'));
+ t.status='paused';t.branch_run.status='paused';reply=replies(t).at(-1);assert.equal(reply.live,false);assert.equal(reply.steps.at(-1).outcome,'pending');
+});

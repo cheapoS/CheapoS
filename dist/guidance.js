@@ -158,6 +158,7 @@ const CheapOSGuide = (() => {
     else if(event.kind==='human_decision'){icon='shield';note=d.decision==='defer'?'Edits remain saved. Continue chatting or reopen your decision.':'The reviewed patch is ready for your decision again.'}
     else if(event.kind==='checks'){icon='tests';note=(d.command||[]).join(' ')}
     else if(event.kind==='review'){icon='shield';note=d.feedback||''}
+    else if(event.kind==='review_coaching'){icon='shield';note=d.summary||''}
     else if(event.kind==='handoff'){icon='branch';note=`${d.from} → ${d.to}`}
     else if(event.kind==='checkpoint'){icon='shield';note=d.worker_summary||''}
     else if(event.kind==='tool_error'){icon='x';title=d.code==='invalid_tool_arguments'?'Asking the model to correct its tool call':'Action could not finish';note=d.error||''}
@@ -612,6 +613,10 @@ const CheapOSConversation = (() => {
       else if (task.stream?.phase === 'answer') detail = 'Writing a response';
       else if (task.web_read) detail = `Reading ${task.web_read.url}`;
       else if (request) {detail = 'Waiting for the model to respond';if(task.branch_run&&!['checks','commit'].includes(phase))title=`Waiting for the ${role}’s response`;}
+      if(phase==='review'&&!review&&events.some(e=>e.kind==='review_coaching')&&!task.pending_approval&&!['stopping','waiting_retry'].includes(task.status)){
+        title='Reassessing the review';
+        if(!task.stream||task.stream.phase==='waiting')detail='I’m asking the reviewer to identify the remaining blocker from the saved evidence.';
+      }
     }
     const lastAction = toolEvents.at(-1);
     const activity = lastAction ? guide.activityItem(lastAction)?.title || lastAction.title : '';
@@ -626,7 +631,7 @@ const CheapOSConversation = (() => {
         if (steps.length) steps.at(-1).events.push(event);
         continue;
       }
-      if (!['tool','model','checks','check_reused','checkpoint','review','handoff','routing','tool_error','guard','permission','commit','web'].includes(event.kind)) continue;
+      if (!['tool','model','checks','check_reused','checkpoint','review','review_coaching','handoff','routing','tool_error','guard','permission','commit','web'].includes(event.kind)) continue;
       if (event.kind === 'guard' && event.title === 'Applied User Guidance') continue;
       phase = eventPhase(event, phase);
       if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-${event.id ?? events.indexOf(event)}`,phase,events:[],live:false});
@@ -635,7 +640,7 @@ const CheapOSConversation = (() => {
     const live = latest && guide.isActive(task.status);
     const stream = latest ? task.stream : null;
     // A simple streamed chat answer needs no execution row.
-    const onlyChat = stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','tool_error'].includes(e.kind));
+    const onlyChat = stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','review_coaching','tool_error'].includes(e.kind));
     if (live && !onlyChat) {
       phase = currentPhase(task, steps.at(-1)?.phase);
       if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-live-${phase}`,phase,events:[],live:false});
@@ -661,7 +666,7 @@ const CheapOSConversation = (() => {
     const substantive = events.filter(e => !['generation','state','model','context'].includes(e.kind));
     const final = substantive.at(-1);
     const reply = committed(final) && !task.demo ? 'What would you like to work on next?' : final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
-    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
+    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_coaching','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
     let intro = '';
     if (steps.length) {
       intro = live ? {work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';
