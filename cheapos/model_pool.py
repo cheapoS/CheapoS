@@ -20,7 +20,7 @@ MAX_HANDOFFS = 2
 
 def automatic(task, role):
     return (not task.get("demo") and task.get("execution", {}).get("mode") in {"delegate", "remote"}
-            and bool(task.get("route")) and role in {"worker", "reviewer"})
+            and bool(task.get("route")) and role in {"worker", "reviewer", "planner"})
 
 
 def observe_task(pool,task,run_id):
@@ -30,7 +30,7 @@ def observe_task(pool,task,run_id):
     for request in task.get('request_metrics',[]):
         if request.get('run_id')!=run_id or request.get('purpose')=='probe' or not request.get('dispatched'):continue
         role,model=request['role'],request['model']
-        if role not in {'worker','reviewer'}:continue
+        if role not in {'worker','reviewer','planner'}:continue
         scope=request.get('dispatch_scope')
         if scope and scope.get('role')==role and scope.get('model')==model:
             provenance.setdefault((role,model),set()).add((scope['base_url'],scope['connection_revision']))
@@ -187,20 +187,20 @@ class FreeModelPool:
         health = self.observation(endpoint, model["id"], connection_revision)
         evidence=health['role_evidence'].get(role,{})
         enough=evidence.get('samples',0)>=3
-        successes=evidence.get('checkpoints',0) if role=='worker' else evidence.get('reviews_completed',0)
+        successes=evidence.get('checkpoints',0) if role=='worker' else evidence.get('plans_completed',0) if role=='planner' else evidence.get('reviews_completed',0)
         invalid=evidence.get('invalid_output',0)
         tier=1 if enough and invalid>=3 and invalid>successes else -1 if enough and successes>=3 and invalid==0 else 0
         if connection_revision is not None and tier < 0: tier = 0
         # Observed compatibility first. Metadata only breaks ties; it is not a quality rating.
         return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3), min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0, -min(health.get(role + "_responses", 0), 1) if connection_revision is None else 0,
                 -self.fresh_probe(endpoint, model["id"], connection_revision, route_health.probe_identity(endpoint,model,connection_revision)),
-                -(model.get("reasoning") is True) if role == "reviewer" else 0,
-                -min(model.get("context_length") or 0, 65536) if role == "reviewer" else 0,
+                -(model.get("reasoning") is True) if role in {"reviewer", "planner"} else 0,
+                -min(model.get("context_length") or 0, 65536) if role in {"reviewer", "planner"} else 0,
                 health.get(role + "_seconds", float("inf")) if connection_revision is None else float("inf"), model["id"])
 
     def record_outcome(self, endpoint, model, role, run_id, task_id, signals, connection_revision=None):
         """One bounded, idempotent observation per role/model/run; no raw output."""
-        if role not in {'worker','reviewer'}:return
+        if role not in {'worker','reviewer','planner'}:return
         with self.lock:
             record=self.records.setdefault(self.key(endpoint,model,connection_revision),{})
             history=record.setdefault('outcomes',[])

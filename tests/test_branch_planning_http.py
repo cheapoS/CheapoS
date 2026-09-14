@@ -68,7 +68,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
                 self.assertEqual(task['branch_run']['inputs']['prompt'], prompt)
                 self.assertEqual(task['branch_run']['inputs']['document']['path'] if document else task['branch_run']['inputs']['document'], document)
                 self.assertGreaterEqual(task['branch_run']['consumption']['requests'], 1)
-                self.assertEqual(task['usage']['worker']['tokens'], 30)
+                self.assertEqual(task['usage']['planner']['tokens'], 30)
                 self.assertIsNone(_tip(self.source, 'refs/heads/feature/' + str(n)))
                 self.assertFalse(self.engine.runtimes)
                 # Ordinary draft selection/planning never authorizes a branch.
@@ -107,7 +107,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertEqual(dispatched, [['routing_ready'], ['propose_branch_plan', 'inspect_project_file']])
         self.assertEqual(task['branch_run']['status'], 'awaiting_authorization')
         self.assertEqual([r['purpose'] for r in task['request_metrics']], ['probe', 'branch_planning'])
-        self.assertEqual(task['usage']['worker']['tokens'], 34)
+        self.assertEqual(task['usage']['planner']['tokens'], 34)
         self.assertEqual(task['usage']['cost'], 0)
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
         self.assertFalse(self.engine.runtimes)
@@ -121,7 +121,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         task = self.engine.store.get(proposal['task_id'])
         self.assertIs(task['branch_run']['plan']['measurement'], True)
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
-        self.assertGreater(task['usage']['worker']['tokens'], 0)
+        self.assertGreater(task['usage']['planner']['tokens'], 0)
 
     def test_missing_runner_retains_complete_plan_and_identifies_executable(self):
         self.provider.command = 'cheapos-missing-test-runner --verify'
@@ -134,7 +134,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertEqual(task['branch_run']['plan']['items'][0]['id'], 'utility')
         self.assertEqual(task['branch_run']['plan']['final_checks'], [self.provider.command])
         self.assertIn('cheapos-missing-test-runner', task['error'])
-        self.assertEqual(task['usage']['worker']['tokens'], 90)
+        self.assertEqual(task['usage']['planner']['tokens'], 90)
         self.assertEqual(len([e for e in task['events'] if e['kind'] == 'planning_repair']), 3)
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
         self.assertFalse(self.engine.runtimes)
@@ -190,7 +190,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertFalse(self.engine.runtimes)
         task = next(iter(self.engine.store.tasks.values()))
         self.assertEqual(task['branch_run']['status'], 'paused')
-        self.assertGreaterEqual(task['usage']['worker']['tokens'], 30)
+        self.assertGreaterEqual(task['usage']['planner']['tokens'], 30)
 
     def test_async_start_returns_chat_before_inference_finishes_and_pause_retains_usage(self):
         self.provider.release = threading.Event()
@@ -210,7 +210,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertFalse(runtime.thread.is_alive())
         task = self.engine.store.get(task_id)
         self.assertEqual(task['status'], 'paused')
-        self.assertEqual(task['usage']['worker']['tokens'], 30)
+        self.assertEqual(task['usage']['planner']['tokens'], 30)
         self.assertEqual(task['events'][-1]['kind'], 'assistant')
         self.assertEqual(task['events'][-1]['detail'], 'Stopped after the in-flight model request completed')
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
@@ -241,7 +241,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertEqual(task['branch_run']['inputs']['document']['contents'], 'Remove the original utility.')
         self.assertEqual(self.provider.inputs[-1]['followups'], ['Keep it and add the new utility beside it.'])
         self.assertEqual(task['branch_run']['limits'], limits)
-        self.assertEqual(task['usage']['worker']['tokens'], 60)
+        self.assertEqual(task['usage']['planner']['tokens'], 60)
         self.assertEqual(task['branch_run']['consumption']['requests'], 2)
         self.assertIn('proposal is ready', task['events'][-1]['detail'])
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
@@ -255,7 +255,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertFalse(runtime.thread.is_alive())
         status, _ = self.post('/api/tasks/' + task_id + '/branch-start', {'proposal_id': old['proposal_id'], 'approved': True})
         self.assertEqual(status, 400)
-        self.assertEqual(self.engine.store.get(task_id)['usage']['worker']['tokens'], 90)
+        self.assertEqual(self.engine.store.get(task_id)['usage']['planner']['tokens'], 90)
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
 
     def test_reply_during_inference_supersedes_old_proposal_without_parallel_planners(self):
@@ -276,7 +276,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertEqual(len(self.provider.inputs), 2)
         self.assertEqual(self.provider.inputs[-1]['followups'], ['Preserve the existing behavior too.'])
         self.assertEqual(task['branch_run']['inputs']['followups'], self.provider.inputs[-1]['followups'])
-        self.assertEqual(task['usage']['worker']['tokens'], 60)
+        self.assertEqual(task['usage']['planner']['tokens'], 60)
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
 
 

@@ -236,7 +236,7 @@ def reconcile(task, config, reservation, usage):
     reported_cost = isinstance(cost, (int, float)) and not isinstance(cost, bool) and math.isfinite(cost) and cost >= 0
     if not reported_cost:
         cost = (prompt * config["input_rate"] + completion * config["output_rate"]) / 1_000_000
-    bucket = task["usage"][reservation["role"]]
+    bucket = task["usage"].setdefault(reservation["role"], {"tokens": 0, "cost": 0})
     bucket["tokens"] += prompt + completion - reservation["tokens"]
     bucket["cost"] += cost - reservation["cost"]
     task["usage"]["cost"] += cost - reservation["cost"]

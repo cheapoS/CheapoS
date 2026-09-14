@@ -60,7 +60,7 @@ def bind_provider(config, policy, model=None):
             'catalog_pricing': {k: model.get(k) if model else None for k in ('input_rate', 'output_rate')}}
 
 
-def guard(task, config, settings, models=None):
+def guard(task, config, settings, models=None, role=None):
     """Check before reservations/probes. Never grants access from a catalog alone."""
     policy = task.get('access_policy')
     if config.get('access') == 'included':
@@ -69,7 +69,7 @@ def guard(task, config, settings, models=None):
             raise ValueError('Included provider access is not bound to this saved task')
         bind_provider(config, policy)
     route = task.get('route') or {}
-    if route.get('access_policy') is not None and config.get('gateway') == 'omniroute':
+    if role != 'planner' and route.get('access_policy') is not None and config.get('gateway') == 'omniroute':
         validate_current(route['access_policy'], settings)
         if config.get('access_binding') != route['access_policy']:
             raise ValueError('Automatic provider is not bound to the captured access policy')

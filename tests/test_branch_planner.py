@@ -30,7 +30,7 @@ class PlannerTests(unittest.TestCase):
     def engine(self, responses):
         def request(runtime, messages, tools, role, purpose):
             self.requests.append(copy.deepcopy(messages))
-            self.assertEqual(role, 'worker')
+            self.assertEqual(role, 'planner')
             self.assertEqual(purpose, 'branch_planning')
             self.assertEqual(tools[0]['function']['name'], 'propose_branch_plan')
             if getattr(self, 'validate_tools', False):
@@ -201,6 +201,36 @@ class PlannerTests(unittest.TestCase):
             self.runtime.stop.set()
             return self.reply()
         with self.assertRaises(InterruptedError): planner.plan(SimpleNamespace(request=request), self.runtime, captured)
+
+
+    def test_auto_healing_missing_limits_and_final_checks(self):
+        # 1. Model omits limits and final_checks
+        bare_plan = {
+            'items': [{
+                'id': 'one', 'title': 'Add reader', 'instructions': 'Implement reader',
+                'dependencies': [], 'acceptance_criteria': ['Reader parses a row'],
+                'required_checks': [shlex.join([sys.executable, '-m', 'unittest'])]
+            }]
+        }
+        reply1 = {'tool_calls': [{'id': 'call1', 'function': {'name': 'propose_branch_plan', 'arguments': json.dumps({'status': 'plan', 'plan': bare_plan})}}]}
+        captured = planner.capture_inputs(self.root, 'Work')
+        output1 = planner.plan(self.engine([reply1]), self.runtime, captured)
+        self.assertEqual(output1['limits'], self.limits)
+        self.assertEqual(output1['final_checks'], [shlex.join([sys.executable, '-m', 'unittest'])])
+
+        # 2. Model outputs items at root instead of nested under plan
+        root_items = {
+            'status': 'plan',
+            'items': [{
+                'id': 'one', 'title': 'Add reader', 'instructions': 'Implement reader',
+                'dependencies': [], 'acceptance_criteria': ['Reader parses a row'],
+                'required_checks': [shlex.join([sys.executable, '-m', 'unittest'])]
+            }]
+        }
+        reply2 = {'tool_calls': [{'id': 'call2', 'function': {'name': 'propose_branch_plan', 'arguments': json.dumps(root_items)}}]}
+        output2 = planner.plan(self.engine([reply2]), self.runtime, captured)
+        self.assertEqual(output2['items'][0]['title'], 'Add reader')
+        self.assertEqual(output2['limits'], self.limits)
 
 
 if __name__ == '__main__': unittest.main()

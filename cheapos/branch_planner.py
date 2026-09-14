@@ -119,7 +119,7 @@ TOOLS = [{'type': 'function', 'function': {'name': 'propose_branch_plan',
                          'properties': {'status': {'type': 'string', 'enum': ['plan', 'clarification']},
                                         'clarification': {'type': ['string', 'null'], 'maxLength': 2000},
                                         'plan': {'type': ['object', 'null'], 'additionalProperties': False,
-                                                 'required': ['items', 'limits', 'final_checks'],
+                                                 'required': ['items'],
                                                  'properties': {'items': {'type': 'array', 'minItems': 1, 'maxItems': 50, 'items': _ITEM},
                                                                 'limits': {'type': 'object', 'properties': {key: {'type': 'number'} for key in ('dollars', 'working_seconds', 'worker_turns', 'requests', 'tool_actions', 'reviewer_tokens', 'check_seconds', 'output_tokens')}, 'additionalProperties': False},
                                                                 'final_checks': _CHECKS}}}}}}]
@@ -151,8 +151,11 @@ def _parse(message, limits, source=None, assumptions=None):
     # Some compatible providers omit empty optional text or serialize it as
     # null. This field carries no scope when an explicit plan is supplied;
     # normalize only that absence, never a missing status/plan or a question.
-    if isinstance(value, dict) and value.get('status') == 'plan' and isinstance(value.get('plan'), dict) and value.get('clarification') is None:
-        value['clarification'] = ''
+    if isinstance(value, dict) and value.get('status') == 'plan':
+        if 'plan' not in value and 'items' in value:
+            value['plan'] = {'items': value.pop('items')}
+        if isinstance(value.get('plan'), dict) and value.get('clarification') is None:
+            value['clarification'] = ''
     if isinstance(value, dict):
         choices = value.pop('assumptions', [])
         if not isinstance(choices, list) or len(choices) > 12 or any(not isinstance(x, str) or not x.strip() or len(x) > 500 for x in choices):
@@ -171,6 +174,13 @@ def _parse(message, limits, source=None, assumptions=None):
     if value['status'] != 'plan' or question.strip():
         raise ValueError('Conflicting or incomplete proposal response')
     proposed = copy.deepcopy(value['plan'])
+    if isinstance(proposed, dict):
+        if not proposed.get('limits'):
+            proposed['limits'] = copy.deepcopy(limits)
+        if not proposed.get('final_checks'):
+            item_checks = [c for it in proposed.get('items', []) if isinstance(it, dict) for c in it.get('required_checks', []) if isinstance(c, str) and c.strip()]
+            if item_checks:
+                proposed['final_checks'] = list(dict.fromkeys(item_checks))[:12]
     if choices and isinstance(proposed, dict) and isinstance(proposed.get('items'), list) and proposed['items']:
         first = proposed['items'][0]
         if isinstance(first, dict) and isinstance(first.get('instructions'), str):
@@ -221,7 +231,7 @@ def plan(engine, runtime, inputs):
         # Keep the tool name recognized so exhausted discovery is a planner
         # repair, not a provider failure that consumes model handoffs.
         available = TOOLS
-        response = engine.request(runtime, messages, available, 'worker', purpose='branch_planning')
+        response = engine.request(runtime, messages, available, 'planner', purpose='branch_planning')
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         try:
             calls = response.get('tool_calls') or []

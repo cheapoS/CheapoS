@@ -498,7 +498,7 @@ class Engine:
         task_id = task_id or uuid.uuid4().hex
         directory = self.store.root / "tasks" / task_id
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
-        task = {"served_identity_version":1, "id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
+        task = {"served_identity_version":1, "id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "planner": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
         task['check_output_filter'] = 'unittest' if os.environ.get('CHEAPOS_CHECK_OUTPUT_FILTER')=='unittest' else 'off'
@@ -1131,7 +1131,7 @@ class Engine:
             self.refresh_changes(task)
             task.update(status="awaiting_reply", turn_start_patch=task["patch"], error=None, error_code=None, messages=[], answer_pending=False)
             self.event(task, "commit", "Changes committed to your project", result)
-            for role in ('worker','reviewer'):
+            for role in ('worker', 'reviewer', 'planner'):
                 config=task.get('providers',{}).get(role) or {}
                 if config.get('base_url') and task.get('metric_run_id'):
                     self.gateway.pool.record_acceptance(config['base_url'],config['model'],role,task['id'],task['metric_run_id'],(config.get('access_binding') or {}).get('connection_revision'))
@@ -1450,6 +1450,16 @@ class Engine:
             if name not in allowed:
                 raise ProviderError("The model requested " + name[:100] + ", which is not available in this step. No calls from this response were executed.", code="unsupported_tool")
 
+    def _resolve_provider_config(self, task, role, config_override=None):
+        if config_override:
+            return config_override
+        providers = task.get('providers') or {}
+        if role == 'planner':
+            return (providers.get('planner') or providers.get('reviewer')
+                    or self.config.get('planner') or self.config.get('reviewer')
+                    or providers.get('worker') or self.config.get('worker') or {})
+        return providers.get(role) or self.config.get(role) or {}
+
     def _request(self, runtime, messages, tools, role, config_override=None, purpose=None):
         from . import transport
         task = runtime.task
@@ -1459,7 +1469,7 @@ class Engine:
             record = (task.get('request_metrics') or [{}])[-1]
             if not transport.eligible(error, record):
                 raise
-            config = config_override or task['providers'][role]
+            config = self._resolve_provider_config(task, role, config_override)
             key = transport.retry_key(config, role, purpose)
             attempts = task.setdefault('transport_retries', {})
             if key in attempts:
@@ -1475,7 +1485,7 @@ class Engine:
         if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_request=True)
         task=runtime.task
         if task.get('demo'):return self._perform_request(runtime,messages,tools,role,config_override,purpose)
-        config=config_override or task['providers'][role]
+        config = self._resolve_provider_config(task, role, config_override)
         record={'id':uuid.uuid4().hex,'run_id':task.get('metric_run_id'),'role':role,'model':config['model'],
                 'purpose':purpose or 'work','retry_of':retry_of,'dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation'}
         from .served_identity import metadata
@@ -1545,10 +1555,10 @@ class Engine:
             raise BudgetError("The provider's reported usage reached the task limit. No further requests will be made.", key, used, task['limits'][key])
         if task["demo"]:
             return self.fixture_response(task, role)
-        config = config_override or task["providers"][role]
+        config = self._resolve_provider_config(task, role, config_override)
         from . import access_policy
         access_models = self.gateway.catalog(fresh=False)['models'] if (task.get('route') or {}).get('access_policy') else None
-        access_policy.guard(task, config, self.gateway.settings, access_models)
+        access_policy.guard(task, config, self.gateway.settings, access_models, role=role)
         if not self.provider_factory and task.get("execution", {}).get("mode") in {"local", "delegate"} and (role == "coordinator" or task["execution"]["mode"] == "local"):
             identity = (config["base_url"], config["model"])
             if identity not in runtime.verified_local:
