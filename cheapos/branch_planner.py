@@ -218,7 +218,9 @@ def plan(engine, runtime, inputs):
     while attempt < 3:
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         runtime.guard()
-        available = TOOLS if discovery < MAX_DISCOVERY_REQUESTS else TOOLS[:1]
+        # Keep the tool name recognized so exhausted discovery is a planner
+        # repair, not a provider failure that consumes model handoffs.
+        available = TOOLS
         response = engine.request(runtime, messages, available, 'worker', purpose='branch_planning')
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         try:
@@ -238,6 +240,9 @@ def plan(engine, runtime, inputs):
                 except (ValueError, OSError, TypeError) as error:
                     result = {'error': str(error)[:500]}
                 messages.append({'role': 'assistant', 'content': '', 'tool_calls': [call]})
+                if discovery == MAX_DISCOVERY_REQUESTS:
+                    result['next_step'] = 'Discovery is complete. Do not inspect more files. Use the collected evidence to call propose_branch_plan now; report a specific essential blocker there only if needed.'
+                    messages[0]['content'] += '\nDiscovery is now complete: no further file reads are permitted. Call propose_branch_plan using collected evidence.'
                 messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result)})
                 continue
             assumptions = []

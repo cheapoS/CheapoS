@@ -821,6 +821,7 @@ async function boostHeadroom(button) {
 }
 async function startTask(id,changes={}) {try{await api('/tasks/'+id+'/start',changes);await refresh()}catch(e){toast(e.message)}}
 async function resumeTask(button) {
+  if(CheapOSGuide.taskGuide(state.task).primary==='new-planning'){await newTask();return;}
   if(state.task?.branch_run){try{await resumeBranchRun(state.task);}catch(e){toast(e.message);}return;}
   const task=state.task;if(!task)return;
   if(['budget_paused','takeover_requested'].includes(task.status)){resumeDialog();return}

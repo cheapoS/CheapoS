@@ -33,6 +33,7 @@ const CheapOSGuide = (() => {
       you:['approved','completed'].includes(task.status)?'Review and apply':'Review comes last'
     };
     const result={facts,tone:'neutral',eyebrow:'NEXT STEP',title:'Your task is saved.',description:'Open the activity log to see the saved work.',primary:'activity',primaryLabel:'View activity',secondary:hasPatch?'changes':null,secondaryLabel:'Inspect saved changes',retry:false};
+    if(task.status==='paused'&&task.planning_request&&task.branch_run&&!task.branch_run.authorization_ref&&/handoffs were tried/.test(task.error||'')) return {...result,tone:'attention',title:'Planning stopped before a proposal was ready.',description:'Automatic model recovery was exhausted. Resume cannot retry this saved attempt. Start a new planning chat with the same request; this attempt and its usage remain saved.',primary:'new-planning',primaryLabel:'New planning chat'};
     if(task.status==='paused'&&task.recovery_blocked!=null&&task.pause_summary){
       const p=task.pause_summary,attempts=(p.attempted||[]).join(', ');
       return {...result,tone:'attention',title:'A specific correction is needed.',description:`${p.saved_files.length} saved file${p.saved_files.length===1?'':'s'}. ${attempts?`Tried ${attempts}. `:''}${p.blocker} ${p.next_action}`,primary:'clarify',primaryLabel:'Add a correction'};

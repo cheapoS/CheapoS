@@ -548,3 +548,9 @@ test('model evidence exposes role sample counts without quality scores',()=>{
   const label=require('../dist/guidance.js').modelHealth({health:{role_evidence:{worker:{samples:3,valid_calls:8,invalid_output:1,accepted:0}}}});
   assert.match(label,/3 activity samples/);assert.match(label,/1 invalid outputs/);
 });
+
+test('exhausted planning recovery offers a fresh chat instead of inert resume',()=>{
+ const g=taskGuide(task({status:'paused',planning_request:{},branch_run:{},error:'Two automatic model handoffs were tried for this request.'}));
+ assert.equal(g.primary,'new-planning');
+ assert.match(g.description,/Resume cannot retry/);
+});

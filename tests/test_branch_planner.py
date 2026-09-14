@@ -33,6 +33,9 @@ class PlannerTests(unittest.TestCase):
             self.assertEqual(role, 'worker')
             self.assertEqual(purpose, 'branch_planning')
             self.assertEqual(tools[0]['function']['name'], 'propose_branch_plan')
+            if getattr(self, 'validate_tools', False):
+                from cheapos.engine import Engine
+                Engine.validate_offered_tools(responses[0], tools)
             self.assertTrue(all(t['function']['name'] in {'propose_branch_plan', 'inspect_project_file'} for t in tools))
             runtime.task['request_metrics'].append({'id': str(len(self.requests)), 'purpose': purpose})
             return responses.pop(0)
@@ -175,12 +178,14 @@ class PlannerTests(unittest.TestCase):
         self.assertIn(value['assumptions'][0], result['items'][0]['instructions'])
 
     def test_discovery_is_bounded_and_unsafe_reads_return_only_error(self):
+        self.validate_tools = True
         (self.root / '.env').write_text('TOP_SECRET')
         inspect = {'tool_calls': [{'function': {'name': 'inspect_project_file', 'arguments': '{"path":".env"}'}}]}
-        result = planner.plan(self.engine([inspect] * planner.MAX_DISCOVERY_REQUESTS + [self.reply()]), self.runtime,
+        result = planner.plan(self.engine([inspect] * (planner.MAX_DISCOVERY_REQUESTS + 1) + [self.reply()]), self.runtime,
                               planner.capture_inputs(self.root, 'Improve existing controls'))
         self.assertEqual(result, self.valid)
-        self.assertEqual(len(self.requests), planner.MAX_DISCOVERY_REQUESTS + 1)
+        self.assertEqual(len(self.requests), planner.MAX_DISCOVERY_REQUESTS + 2)
+        self.assertIn('Discovery is now complete', self.requests[-1][0]['content'])
         self.assertNotIn('TOP_SECRET', json.dumps(self.requests))
         self.assertIn('error', self.requests[-1][-1]['content'])
         with self.assertRaises(ValueError):
