@@ -100,6 +100,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
         try:
             if path == "/api/bootstrap":
                 self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.visible(), "projects": engine.projects(), "hidden_projects": [p for p in engine.projects(include_hidden=True) if p["path"] in engine.hidden_project_paths()], "preferences": engine.preferences()})
+            elif path == "/api/lifetime-usage":
+                period=parse_qs(urlsplit(self.path).query).get("days", ["all"])[0]
+                if period not in {"all","7","30"}:return self.reply({"error":"Usage period must be all, 7 or 30 days"},400)
+                self.reply(engine.store.lifetime.summary(days=int(period) if period != "all" else "all"))
+            elif path == "/api/admission":
+                self.reply(engine.admission.snapshot())
             elif path == "/api/readiness":
                 self.reply(engine.readiness.snapshot(refresh=parse_qs(urlsplit(self.path).query).get("refresh") == ["1"]))
             elif path == "/api/startup":
@@ -177,7 +183,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 with engine.lock:
                     if engine.startup.busy():
                         raise ValueError("Stop the startup connection check before changing its gateway")
-                    if any(r.thread and r.thread.is_alive() for r in engine.runtimes.values()):
+                    if engine.admission.snapshot()['active']:
                         raise ValueError("Pause the active task before changing its gateway connection")
                     result = engine.gateway.configure(values)
             elif path in {"/api/gateway/start", "/api/gateway/refresh"}:
@@ -186,7 +192,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 with engine.lock:
                     if engine.startup.busy():
                         raise ValueError("Stop the startup connection check before stopping its gateway")
-                    if any(r.thread and r.thread.is_alive() for r in engine.runtimes.values()):
+                    if engine.admission.snapshot()['active']:
                         raise ValueError("Pause the active task before stopping OmniRoute")
                     result = engine.gateway.stop_owned()
             elif path == "/api/models":

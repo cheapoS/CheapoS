@@ -12,6 +12,8 @@ from urllib.request import ProxyHandler, Request, build_opener
 from .gateways import gateway_for
 from .providers import NoRedirects, ProviderError, is_local_ollama, reconcile, reserve, validate_provider
 from .storage import write_json
+from . import metrics
+from .served_identity import apply, metadata
 
 
 DEFAULTS = {"enabled": True, "allow_cloud": False}
@@ -120,7 +122,7 @@ class StartupManager:
             if automatic and not self.settings["enabled"]:
                 self._set(status="disabled", message="Automatic free-model startup is off.")
                 return self.snapshot()
-            if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):
+            if self.engine.admission.snapshot()["active"]:
                 raise ValueError("Wait for the active chat or pause it before testing a startup model")
             self.cancelled.clear()
             self._set(status="discovering", message="Looking for an available free model…", model=None, thinking="", content="", attempts=[], started_at=timestamp(), usage=None)
@@ -191,6 +193,7 @@ class StartupManager:
                 yield candidate
 
     def _record(self, account):
+        self.engine.store.lifetime.ingest_task(account)
         self._set(usage=copy.deepcopy(account["usage"]))
         # No project contents, credentials, or prompts enter this connection-check record.
         record = self.snapshot()
@@ -204,6 +207,7 @@ class StartupManager:
 
     def _run(self, automatic):
         account = {"limits":{"output_tokens":512, "dollars":0}, "usage":{"worker":{"tokens":0,"cost":0}, "reviewer":{"tokens":0,"cost":0}, "cost":0, "uncertain_requests":0, "estimated_requests":0}}
+        account.update(id="startup-"+uuid.uuid4().hex, metrics_schema=1, created_at=timestamp(), request_metrics=[], synthetic=self.engine.provider_factory is not None)
         try:
             saved = copy.deepcopy(self.engine.config.get("worker"))
             if saved and self.engine.preferences()["execution"]["mode"] == "manual" and (saved["input_rate"] or saved["output_rate"] or saved["model"].startswith("auto/")):
@@ -227,6 +231,18 @@ class StartupManager:
                     self.state["attempts"].append(attempt)
                 self.engine.guard_route(config)
                 reservation = reserve(account, config, GREETING, [], "worker")
+                record = {'id':uuid.uuid4().hex,'role':'coordinator','purpose':'startup_greeting',
+                          'model':config['model'],**metadata(config['model']),'requested_at':timestamp(),
+                          'access_class':'local' if candidate['local'] else 'public_free',
+                          'input_rate':config['input_rate'],'output_rate':config['output_rate'],
+                          'reservation':{k:reservation[k] for k in ('tokens','cost','prompt_tokens','completion_tokens')},
+                          'reservation_tokens':reservation['tokens'],'reservation_cost':reservation['cost'],
+                          'cost_provenance':'uncertain_reservation','dispatched':False,'status':'pending',
+                          'synthetic':self.engine.provider_factory is not None}
+                # Greeting accounting historically used worker; retain that role
+                # for consistency with the existing cumulative account buckets.
+                record['role']='worker'
+                account['request_metrics'].append(record)
                 self._record(account)
                 def emit(kind, value):
                     self._check_stop()
@@ -236,8 +252,14 @@ class StartupManager:
                             self._set(**{key:(self.state[key] + value)[:4000]})
                 try:
                     provider = self.engine.provider_factory("worker", config) if self.engine.provider_factory else gateway_for(config, self.engine.provider_key("worker", config))
+                    record["dispatched"]=True
+                    self._record(account)
                     message, usage = provider.greet(GREETING, emit, self.cancelled.is_set)
                     known = reconcile(account, config, reservation, usage)
+                    apply(record,usage)
+                    metrics.record_usage(record,usage,known)
+                    metrics.record_accounted(record,config,reservation,usage,known)
+                    record["status"]="responded"
                     reported_cost = usage.get("cost")
                     if not known and isinstance(reported_cost, (int, float)) and not isinstance(reported_cost, bool) and math.isfinite(reported_cost) and reported_cost > 0:
                         account["usage"]["cost"] += reported_cost
@@ -266,6 +288,16 @@ class StartupManager:
                     self._set(status="ready", message="The model answered. Open a project to start.", content=content.strip()[:2000], thinking="", verified_at=timestamp())
                     return
                 except ProviderError as error:
+                    record['status']='failed'
+                    if isinstance(error.usage,dict) and error.usage and not record.get('usage_reconciled'):
+                        usage=error.usage
+                        known=reconcile(account,config,reservation,usage)
+                        apply(record,usage)
+                        metrics.record_usage(record,usage,known)
+                        metrics.record_accounted(record,config,reservation,usage,known)
+                        extra=max(0,(metrics.number(usage.get('cost')) or 0)-reservation['cost']) if not known else 0
+                        account['usage']['cost']+=extra
+                        account['usage']['worker']['cost']+=extra
                     self._attempt(attempt, status="failed", error=str(error)[:500], finished_at=timestamp())
                     self._set(content="", thinking="")
                 finally:

@@ -31,6 +31,8 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock = threading.RLock()
         self.tasks = {}
+        from .lifetime_usage import LifetimeUsage
+        self.lifetime = LifetimeUsage(self.root)
         for path in self.root.glob("tasks/*/task.json"):
             try:
                 task = json.loads(path.read_text(encoding="utf-8"))
@@ -55,6 +57,7 @@ class Store:
                         task["error"] = branch_runs.compatibility(task["branch_run"])["message"]
                     write_json(path, task)
                 self.tasks[task["id"]] = task
+                self.lifetime.ingest_task(task)
             except (OSError, ValueError, KeyError):
                 # A damaged record cannot prevent other tasks from opening.
                 continue
@@ -63,6 +66,7 @@ class Store:
         with self.lock:
             write_json(self.root / "tasks" / task["id"] / "task.json", task)
             self.tasks[task["id"]] = copy.deepcopy(task)
+            self.lifetime.ingest_task(task)
 
     def get(self, task_id):
         with self.lock:

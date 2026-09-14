@@ -10,30 +10,22 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
-**Near-term priority: lifetime Usage & savings.** Add a bottom-left entry for
-this installation's accumulated free, local, included-access, and paid usage,
-with a readable summary suitable for sharing in the README. Build on existing
-accounting to show how much usage is served without paid-model tokens. Keep
-measured free/paid usage, cost estimates, and comparisons distinct. Select this before
-the deferred concurrency expansion; it does not depend on T79/T80.
+**Completed: T81 — lifetime Usage & savings, plus T79/T80 submission and concurrency.**
+The sidebar summary records this installation's reported free/local/included/paid
+usage, costs and historical coverage, with explicit local exports. One Interactive
+task can now run alongside one Unattended task; local inference and checks retain
+one shared slot each. Capacity errors preserve drafts and saved tasks.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T81](docs/tasks/T81-lifetime-usage-savings.md) | Show durable lifetime usage, free versus paid breakdown, and shareable evidence | Existing T24 metrics and role accounting | M; deliver in increments | Ready — near-term priority |
+| [T81](docs/tasks/T81-lifetime-usage-savings.md) | Durable lifetime usage, free versus paid breakdown, and shareable evidence | Existing T24 metrics and role accounting | M | Complete |
+| [T79](docs/tasks/T79-blocked-submission-feedback.md) | Make Send, Enter, and saved-but-not-started feedback agree | Current composer/start flow | S | Complete |
+| [T80](docs/tasks/T80-concurrent-interactive-unattended.md) | Interactive and Unattended tasks with isolated ownership | T79; existing workspace, budget, and commit contracts | L | Complete |
 
-This entry records the next implementation task; it does not start a live trial
-or authorize implementation of every card below.
-
-**Deferred follow-up: Interactive work while an Unattended run continues.**
-The September 14, 4:11 PM report exposed the current app-wide single-runtime
-restriction and confusing saved-but-not-started feedback. Capture both issues;
-do not interrupt a live run or enable concurrency merely by removing the Send
-button check. These cards are for later selection, not automatic execution.
-
-| ID | Task | Depends on | Size | Status |
-| --- | --- | --- | --- | --- |
-| [T79](docs/tasks/T79-blocked-submission-feedback.md) | Make Send, Enter, and saved-but-not-started feedback agree | Current composer/start flow | S | Deferred |
-| [T80](docs/tasks/T80-concurrent-interactive-unattended.md) | Run Interactive and Unattended tasks concurrently with isolated ownership | T79; existing workspace, budget, and commit contracts | L; implement in bounded increments | Deferred |
+See [usage coverage](docs/development/lifetime-usage.md) and
+[validation evidence](docs/development/usage-and-concurrency-validation.md).
+The earlier live T44 trial remains operator-deferred; this batch used no live
+models and did not restart the application or disturb the concurrent stress test.
 
 **Completed: [T78 — planner source excerpts and accurate response diagnostics](docs/tasks/T78-planner-source-excerpts.md).**
 The planner can search and page through source files larger than the 64 KB

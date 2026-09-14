@@ -1,6 +1,6 @@
 # T81 — Lifetime Usage & savings, with shareable evidence
 
-Status: Ready — near-term priority; implement when selected
+Status: Complete
 Depends on: Existing T24 metrics and role-separated accounting; not T79/T80
 Size: M — ship durable totals and the summary first, then history/export polish
 Evidence: September 14, 2026, 4:21 PM operator request and account-stats screenshot;
@@ -153,6 +153,7 @@ do not block delivery on choosing both locations.
    during tests. Follow CONTRIBUTING.md and report new-test timing. Any new
    heavy test needs the operator's explicit acceptance of its disclosed cost.
 
-Completion: Not implemented. Record supported coverage, migration/retention
-behavior, UI/export evidence, selected checks, test timing, and remaining gaps.
-Update this card and [TASKS.md](../../TASKS.md); commit only this task's changes.
+Completion: Implemented in `work/pending-tasks`; the closing implementation commit
+contains this card. See [validation, browser evidence and measured test costs](../development/usage-and-concurrency-validation.md)
+and [the work-mode guide](../unattended-runs.md). No live inference or application
+restart was performed.

@@ -153,7 +153,7 @@ class EngineTests(LocalCase):
         wait_for(lambda: self.engine.store.get(task['id'])['status'] == 'waiting_approval')
         self.assertEqual(self.engine.store.get(task['id'])['checks'], [])
         other = self.fixture()
-        with self.assertRaisesRegex(ValueError, 'Another task'):
+        with self.assertRaisesRegex(ValueError, 'interactive slot is occupied'):
             self.engine.start(other['id'])
         self.engine.approve_check(task['id'], False)
         result = self.finish(task)

@@ -1,0 +1,216 @@
+"""Deidentified local usage journal. Task deletion does not erase accounted work."""
+import copy
+import hashlib
+import json
+import os
+import threading
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from .metrics import number
+from . import __version__
+from .served_identity import safe_model, normalized
+
+ROLES = ('coordinator', 'planner', 'worker', 'reviewer', 'unknown')
+CATEGORIES = ('public_free', 'local', 'included', 'paid', 'unknown')
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def digest(value):
+    return hashlib.sha256(str(value).encode()).hexdigest()
+
+
+def date(value):
+    try:
+        return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone(timezone.utc).date().isoformat()
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def clean(record):
+    if not record.get('dispatched') or record.get('synthetic'):
+        return None
+    result = {key: number(record.get(key)) for key in (
+        'input_tokens', 'output_tokens', 'reasoning_tokens', 'cached_tokens', 'reported_cost',
+        'accounted_cost', 'accounted_tokens', 'reservation_tokens', 'reservation_cost', 'input_rate', 'output_rate')}
+    reservation = record.get('reservation') or {}
+    for field, source in [('reservation_tokens', 'tokens'), ('reservation_cost', 'cost')]:
+        if result[field] is None:
+            result[field] = number(reservation.get(source))
+    result.update(role=record.get('role') if record.get('role') in ROLES else 'unknown',
+                  date=date(record.get('requested_at', record.get('created_at'))), category=record.get('access_class') if record.get('access_class') in CATEGORIES else 'unknown',
+                  reconciled=bool(record.get('usage_reconciled') or record.get('cost_provenance') in {'provider_reported', 'estimated'}),
+                  requested_model=safe_model(record.get('requested_model', record.get('model'))),
+                  served_model=safe_model(record.get('served_model')))
+    if result['served_model'] and result['requested_model'] and normalized(result['served_model']) != normalized(result['requested_model']):
+        result['category'] = 'unknown'
+    result['charged_free'] = result['category'] == 'public_free' and (result['reported_cost'] or 0) > 0
+    if result['charged_free']:
+        result['category'] = 'paid'
+    known = result['input_tokens'] is not None and result['output_tokens'] is not None
+    if result['accounted_tokens'] is None:
+        result['accounted_tokens'] = result['input_tokens'] + result['output_tokens'] if known and result['reconciled'] else result['reservation_tokens']
+    if result['accounted_cost'] is None:
+        if result['reconciled'] and result['reported_cost'] is not None:
+            result['accounted_cost'] = result['reported_cost']
+        elif known and result['reconciled'] and all(result[k] is not None for k in ('input_rate', 'output_rate')):
+            result['accounted_cost'] = (result['input_tokens'] * result['input_rate'] + result['output_tokens'] * result['output_rate']) / 1_000_000
+        else:
+            result['accounted_cost'] = result['reservation_cost']
+    return result
+
+
+class LifetimeUsage:
+    def __init__(self, path):
+        self.path = Path(path)
+        if self.path.suffix != '.json':
+            self.path = self.path / 'lifetime-usage.json'
+        self.lock = threading.RLock()
+        self._summaries = {}
+        if self.path.exists():
+            # Never silently replace a damaged lifetime journal with zero totals.
+            self.state = json.loads(self.path.read_text())
+            if self.state.get('schema_version') != 1:
+                raise ValueError('Unsupported lifetime usage journal version')
+        else:
+            stamp = now()
+            self.state = dict(schema_version=1, recorded_since=stamp, updated_at=stamp, tasks={})
+
+    def ingest(self, task):
+        if task.get('demo') or task.get('synthetic'):
+            return
+        with self.lock:
+            key = digest(task['id'])
+            previous = self.state['tasks'].get(key, {})
+            entry = copy.deepcopy(previous) or {'requests': {}, 'residual': {}, 'partial': False}
+            for record in task.get('request_metrics', []):
+                sanitized = clean(record)
+                if sanitized is not None and record.get('id'):
+                    entry['requests'][digest(record['id'])] = sanitized
+            usage = copy.deepcopy(task.get('usage') or {})
+            for record in task.get('request_metrics', []):
+                if record.get('synthetic'):
+                    synthetic = clean({**record, 'synthetic': False})
+                    if synthetic:
+                        bucket = usage.get(synthetic['role']) or {}
+                        for source, field in [('tokens', 'accounted_tokens'), ('cost', 'accounted_cost')]:
+                            if number(bucket.get(source)) is not None:
+                                bucket[source] = max(0, bucket[source] - (synthetic[field] or 0))
+                        if number(usage.get('cost')) is not None:
+                            usage['cost'] = max(0, usage['cost'] - (synthetic['accounted_cost'] or 0))
+            # Residual is the task's retained total minus ALL recorded requests,
+            # including ones subsequently evicted from capped task history.
+            for role in ROLES:
+                bucket = usage.get(role) or {}
+                records = [r for r in entry['requests'].values() if r['role'] == role]
+                entry['residual'][role] = {
+                    field: max(0, (number(bucket.get(source)) or 0) - sum(r.get(accounted) or 0 for r in records))
+                    for field, source, accounted in [('tokens', 'tokens', 'accounted_tokens'), ('cost', 'cost', 'accounted_cost')]}
+            role_cost = sum(v['cost'] for v in entry['residual'].values()) + sum(r.get('accounted_cost') or 0 for r in entry['requests'].values())
+            entry['residual']['unknown']['cost'] += max(0, (number(usage.get('cost')) or 0) - role_cost)
+            entry['partial'] = bool(entry['partial'] or task.get('metrics_schema') != 1 or task.get('request_metrics_truncated') or task.get('metrics_history_truncated') or
+                                    any(v['tokens'] or v['cost'] for v in entry['residual'].values()) or
+                                    any(not r['date'] for r in entry['requests'].values()))
+            run = task.get('branch_run') or {}
+            latest = {role: next((r for r in reversed(list(entry['requests'].values())) if r['role'] == role), {}) for role in ('worker', 'reviewer')}
+            worker, reviewer = latest['worker'].get('served_model'), latest['reviewer'].get('served_model')
+            independent = bool(worker and reviewer and normalized(worker) != normalized(reviewer))
+            entry['completion'] = {
+                'merged_runs': bool(previous.get('completion', {}).get('merged_runs') or run.get('status') == 'merged' and run.get('merge_receipt')),
+                'human_accepted_jobs': bool(previous.get('completion', {}).get('human_accepted_jobs') or not run and task.get('commits')),
+                'independent_review_approved_jobs': bool(previous.get('completion', {}).get('independent_review_approved_jobs') or
+                    run.get('final_evidence', {}).get('review_approved') is True or
+                    task.get('status') == 'approved' and independent and any(c.get('decision') == 'APPROVE' for c in task.get('checkpoints', [])))}
+            if entry == previous:
+                return
+            state = copy.deepcopy(self.state)
+            state['tasks'][key] = entry
+            state['updated_at'] = now()
+            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            temporary = self.path.with_suffix('.tmp')
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w') as stream:
+                json.dump(state, stream, allow_nan=False, separators=(',', ':'))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+            self.state = state
+            self._summaries.clear()
+
+    ingest_task = ingest
+
+    def summary(self, days=None):
+        if days not in (None, 'all', 7, 30):
+            raise ValueError('Usage period must be all, 7 or 30 days')
+        with self.lock:
+            cache_key = (days, datetime.now(timezone.utc).date().isoformat())
+            if cache_key in self._summaries:
+                return copy.deepcopy(self._summaries[cache_key])
+            state = copy.deepcopy(self.state)
+        cutoff = (datetime.now(timezone.utc).date() - timedelta(days=days - 1)).isoformat() if isinstance(days, int) else None
+        result = {k: state[k] for k in ('schema_version', 'recorded_since', 'updated_at')}
+        result.update(app_version=__version__, scope='Local installation', period=days or 'all', partial_earlier_history=any(t['partial'] for t in state['tasks'].values()),
+                      tokens=dict(reported=0, accounted_historical=0, estimated=0, reserved=0, input=0, output=0, reasoning=0, cached=0, unknown_requests=0, unknown_reasoning_requests=0, unknown_cached_requests=0),
+                      categories={k: dict(tokens=0, requests=0) for k in CATEGORIES}, roles={k: dict(tokens=0, requests=0) for k in ROLES},
+                      cost=dict(provider_reported=0, configured_estimate=0, reserved=0, historical_accounted=0, accounted=0),
+                      charged_free_requests=0, charged_free_tokens=0, missing_identity_requests=0, undated_requests=0, history=[],
+                      completion=dict(human_accepted_jobs=0, merged_runs=0, independent_review_approved_jobs=0), savings_comparison='not configured')
+        history = {}
+        for task in state['tasks'].values():
+            # Completion receipts have no reliable date; show lifetime only.
+            if not cutoff:
+                for k, v in task['completion'].items():
+                    result['completion'][k] += int(v)
+                for role, residual in task['residual'].items():
+                    result['tokens']['accounted_historical'] += residual['tokens']
+                    result['cost']['historical_accounted'] += residual['cost']
+            for r in task['requests'].values():
+                if not r['date']:
+                    result['undated_requests'] += 1
+                if cutoff and (not r['date'] or r['date'] < cutoff):
+                    continue
+                known = r['input_tokens'] is not None and r['output_tokens'] is not None
+                tokens = (r['input_tokens'] or 0) + (r['output_tokens'] or 0)
+                result['tokens']['reported'] += tokens
+                result['tokens']['unknown_requests'] += int(not known)
+                result['tokens']['unknown_reasoning_requests'] += int(r['reasoning_tokens'] is None)
+                result['tokens']['unknown_cached_requests'] += int(r['cached_tokens'] is None)
+                for target, source in [('input', 'input_tokens'), ('output', 'output_tokens'), ('reasoning', 'reasoning_tokens'), ('cached', 'cached_tokens')]:
+                    result['tokens'][target] += r[source] or 0
+                for target, key in [('categories', 'category'), ('roles', 'role')]:
+                    result[target][r[key]]['tokens'] += tokens
+                    result[target][r[key]]['requests'] += 1
+                result['charged_free_requests'] += int(r['charged_free'])
+                result['charged_free_tokens'] += tokens if r['charged_free'] else 0
+                result['missing_identity_requests'] += int(not r['served_model'])
+                cost = r['accounted_cost'] or 0
+                if r['reported_cost'] is not None:
+                    result['cost']['provider_reported'] += r['reported_cost']
+                if r['reconciled']:
+                    if r['reported_cost'] is None:
+                        result['cost']['configured_estimate'] += cost
+                else:
+                    result['tokens']['reserved'] += r['reservation_tokens'] or 0
+                    result['cost']['reserved'] += max(0, cost - (r['reported_cost'] or 0))
+                if r['date']:
+                    day = history.setdefault(r['date'], dict(date=r['date'], tokens=0, cost=0))
+                    day['tokens'] += tokens
+                    day['cost'] += max(cost, r['reported_cost'] or 0)
+        result['cost']['accounted'] = sum(result['cost'][k] for k in ('provider_reported', 'configured_estimate', 'reserved', 'historical_accounted'))
+        result['history'] = sorted(history.values(), key=lambda d: d['date'])[-366:]
+        result['history_truncated'] = len(history) > 366
+        result['limitations'] = [
+            'Local installation usage only; no account-wide or other-tool activity. Historical startup/probe usage may be unavailable.',
+            'Reported tokens are input plus output; reasoning and cached tokens are subsets, not additional tokens. Missing usage remains unknown.',
+            'Undated historical accounted totals are excluded from date filters and have unknown access classification; reservations are not reported usage.',
+            'Categories use saved request-time access evidence, never current settings or a zero configured price. Missing served identity does not prove the underlying model.',
+            'Local API usage excludes hardware/electricity; included access excludes subscription costs. Accounted cost is not a billing receipt.',
+            'Deidentified request accounting and completion counts remain after chat deletion. Prompts, paths, outputs and task titles are not retained here.',
+            'Completion counts are lifetime distinct jobs: merged runs separate from human-accepted interactive jobs; independent review is not human acceptance.',
+            'Missing daily history is a gap, not zero. Free tokens used do not establish tokens saved or equivalent outcomes.']
+        with self.lock:
+            if state['updated_at'] == self.state['updated_at']:
+                self._summaries[cache_key] = copy.deepcopy(result)
+        return result

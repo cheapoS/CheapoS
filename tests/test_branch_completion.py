@@ -30,6 +30,8 @@ class BranchCompletionTests(unittest.TestCase):
         def save_task(task): self.saved_task=copy.deepcopy(task)
         self.engine.store=SimpleNamespace(save=save_task,get=lambda _:copy.deepcopy(self.saved_task))
         self.engine.lock=threading.RLock();self.engine.runtimes={}
+        from cheapos.admission import Admission
+        self.engine.admission=Admission(self.engine)
         self.engine.gateway=SimpleNamespace(pool=FreeModelPool(self.root/'state'))
         self.engine.require_active_task=lambda _:None
         self.engine.event=lambda task,kind,title,detail:task['events'].append({'kind':kind,'title':title,'detail':detail})

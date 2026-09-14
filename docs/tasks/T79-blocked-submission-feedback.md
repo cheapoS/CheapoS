@@ -1,6 +1,6 @@
 # T79 — Explain blocked submissions and make every Send path agree
 
-Status: Deferred — implement when selected
+Status: Complete
 Priority: Usability before concurrency
 Depends on: Current composer, task creation/start, and saved-status presentation
 Size: S
@@ -55,5 +55,7 @@ do not claim the screenshot proves that the current `sendChat()` gate was absent
 - Follow CONTRIBUTING.md; record timing of new cases. Propose any heavy test
   separately before adding it. Do not run the full suite for presentation alone.
 
-Completion: Not implemented. Record behavior, selected checks, browser evidence,
-remaining limitations, and new-test timing when this card is completed.
+Completion: Implemented in `work/pending-tasks`; the closing implementation commit
+contains this card. See [validation, browser evidence and measured test costs](../development/usage-and-concurrency-validation.md)
+and [the work-mode guide](../unattended-runs.md). No live inference or application
+restart was performed.

@@ -1,6 +1,6 @@
 # T80 — Use Interactive chat while an Unattended job keeps working
 
-Status: Deferred — design and implement when selected
+Status: Complete
 Depends on: T79; existing task workspaces, authorization, accounting, and Git receipts
 Size: L — deliver the bounded case before expanding concurrency
 Evidence: September 14, 2026 operator report; source inspected at `72532b4`.
@@ -80,5 +80,7 @@ within one approved Unattended plan still execute in their supported order.
   paid calls, or alteration of a live run. A later live qualification trial must
   use explicit measurement mode while preserving its authorized model/spend policy.
 
-Completion: Not implemented. Record supported concurrency, resource policy,
-ownership/locking evidence, scoped checks, browser results, and test timing.
+Completion: Implemented in `work/pending-tasks`; the closing implementation commit
+contains this card. See [validation, browser evidence and measured test costs](../development/usage-and-concurrency-validation.md)
+and [the work-mode guide](../unattended-runs.md). No live inference or application
+restart was performed.

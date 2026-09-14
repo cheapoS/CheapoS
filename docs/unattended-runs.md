@@ -117,3 +117,28 @@ New proposals include `continue_independent: true` in their signed plan. A quest
 Validation for this change used focused scripted/pure checks without live inference. The 24-test setup, scheduling, start, reprepare, execution and state selection passed in 43.257 seconds; the new pure setup and scheduling cases took milliseconds. Existing planner, command-permission and UI markup checks also passed. Browser rendering and the next live easy-task trial remain to be verified.
 
 Planner discovery exhaustion is handled as a proposal correction, not a model-routing failure. The final permitted read explicitly directs the planner to propose from collected evidence. A stale extra read is rejected locally without executing it or consuming a model handoff. Already-exhausted planning attempts remain saved; Activity offers New planning chat rather than a Resume action that cannot renew recovery.
+
+## Using another chat while work runs
+
+One Interactive conversation can run alongside one Unattended run or planning
+conversation. Each has its own task copy, model binding, usage, command approvals
+and Pause state. Items within an Unattended plan still run in order. This does not
+raise either task's authorized spending limit or enable a paid fallback.
+
+The server admits at most one live task of each mode. A further task stays a
+draft, or **Saved, not started** if creation already succeeded. Send, Enter and
+the saved-task retry use the same capacity decision. Follow the displayed link to
+the occupying task, or wait for its slot to become available and retry explicitly.
+There is no automatic queue. A lost start response is checked against that same
+saved task, rather than creating another one.
+
+Local inference and verification commands each have one shared execution slot.
+A waiting task shows its resource wait and can be paused independently; waiting
+does not refill its budget. Remote requests retain shared provider cooldowns and
+probe coalescing. Integration into the same Git repository is serialized and
+still requires fresh expected-tip, cleanliness and approval checks. No task can
+merge another task's patch under its own approval. Restart pauses saved tasks;
+it does not automatically resume them.
+
+Installation-wide accounting is available from **Usage & savings** in the sidebar;
+see [coverage and export details](development/lifetime-usage.md).

@@ -65,7 +65,7 @@ class CooldownWaitTests(LocalCase):
         self.engine.store.save(task)
         self.engine.start(task['id'],{'retry_when_available':True})
         wait_for(lambda:self.engine.store.get(task['id'])['status']=='waiting_retry')
-        with self.assertRaisesRegex(ValueError,'Another task'):self.engine.start(other['id'])
+        with self.assertRaisesRegex(ValueError,'interactive slot is occupied'):self.engine.start(other['id'])
         self.engine.stop(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'paused')
         self.assertIn('Waiting paused',result['error'])

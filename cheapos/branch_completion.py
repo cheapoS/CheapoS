@@ -13,8 +13,7 @@ MAX_REPAIRS = 3
 def _task(controller, task_id, idle=True):
     engine = controller.engine
     engine.require_active_task(task_id)
-    if idle and any(r.thread and r.thread.is_alive() for r in engine.runtimes.values()):
-        raise ValueError('Pause active work before changing final review')
+    if idle: engine.admission.require_idle(task_id)
     task = engine.store.get(task_id)
     state.require_supported(task['branch_run'])
     return task
@@ -226,7 +225,8 @@ def merge(controller, task_id, values):
     if 'preview_id' in values:
         if 'proposal_id' in values: raise ValueError('Use only one preview ID')
         values['proposal_id'] = values.pop('preview_id')
-    with controller.engine.lock:
+    source = controller.engine.store.get(task_id)['branch_run']['workspace_mapping']['source']
+    with controller.engine.admission.integration(task_id, source):
         task = _task(controller, task_id); run = task['branch_run']
         if run['status'] == 'merged':
             # Successful duplicate actions identify the same inspected proposal.

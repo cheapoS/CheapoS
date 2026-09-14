@@ -17,6 +17,15 @@ def record_usage(record,usage,known):
     record['cost_provenance']='provider_reported' if known and record['reported_cost'] is not None else 'estimated' if known else 'uncertain_reservation'
 
 
+def record_accounted(record, config, reservation, usage, known):
+    """Freeze accounting provenance at dispatch/reconciliation, never today's prices."""
+    reported = number(usage.get('cost'))
+    record['usage_reconciled'] = bool(known)
+    record['accounted_tokens'] = usage['prompt_tokens'] + usage['completion_tokens'] if known else reservation['tokens']
+    record['accounted_cost'] = (reported if reported is not None else
+        (usage['prompt_tokens'] * config['input_rate'] + usage['completion_tokens'] * config['output_rate']) / 1_000_000) if known else max(reservation['cost'], reported or 0)
+
+
 def aggregate(task):
     events=task.get('events',[]);records=task.get('request_metrics',[]);runs=task.get('run_metrics',[])
     complete=task.get('metrics_schema')==1 and not task.get('request_metrics_truncated') and not task.get('metrics_history_truncated')

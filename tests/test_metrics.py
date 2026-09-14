@@ -17,6 +17,10 @@ class MetricsTests(unittest.TestCase):
         usage={'prompt_tokens':20,'completion_tokens':10,'cost':0.05,'prompt_tokens_details':{'cached_tokens':4},'completion_tokens_details':{'reasoning_tokens':3}}
         known=reconcile(task,config,reservation,usage)
         record={'dispatched':True,'role':'worker'};metrics.record_usage(record,usage,known);task['request_metrics']=[record]
+        metrics.record_accounted(record,config,reservation,usage,known)
+        self.assertEqual(record['accounted_tokens'],30)
+        self.assertEqual(record['accounted_cost'],.05)
+        self.assertTrue(record['usage_reconciled'])
         result=metrics.aggregate(task)
         self.assertAlmostEqual(result['cost']['accounted'],.05)
         self.assertEqual(result['cost']['provenance'],'provider_reported')

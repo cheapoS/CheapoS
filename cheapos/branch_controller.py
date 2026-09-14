@@ -202,6 +202,7 @@ class BranchController:
 
     def _finish_start(self, task):
         """Retry only journaled setup under the same inspected authorization."""
+        self.engine.admission.require('unattended', task['id'])
         run=task['branch_run'];self.validate_authority(task,run)
         for scope in run['check_scope']:
             if self.scopes.prepare(task,scope['command'])!=scope:
@@ -231,6 +232,7 @@ class BranchController:
 
     def revoke(self, task_id):
         with self.engine.lock:
+            self.engine.admission.require_mutable(task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             if not run.get('authorization'): raise ValueError('Run is not authorized')
             run['authorization']['status']='revoked'
@@ -248,7 +250,8 @@ class BranchController:
         except (ValueError,OSError) as error:
             with self.engine.lock:
                 task=self.engine.store.get(task_id)
-                if task.get('branch_run',{}).get('status') in {'running','paused','blocked','finalizing'}:
+                runtime=self.engine.runtimes.get(task_id)
+                if not (runtime and runtime.thread and runtime.thread.is_alive()) and task.get('branch_run',{}).get('status') in {'running','paused','blocked','finalizing'}:
                     branch_pause.apply(task,error)
                     self.engine.store.save(task)
             raise
@@ -258,8 +261,7 @@ class BranchController:
         import threading
         with self.engine.lock:
             self.engine.require_active_task(task_id)
-            if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):
-                raise ValueError('Another task is running. Pause it before starting this run.')
+            self.engine.admission.require('unattended', task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             # Reconcile exact journaled commits before limits, grants or new work.
             while run['pending_operations']:
@@ -436,7 +438,8 @@ class BranchController:
         if not isinstance(identity,str) or not identity or len(identity)>100:raise ValueError('Provide a planning request ID')
         with self.engine.lock:
             if identity in self.planning:raise ValueError('This planning request already exists')
-            if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):raise ValueError('Pause the active task before planning another run')
+            self.engine.admission.require('unattended', (planning_task or {}).get('id'))
+            self.engine.admission.pending[identity]='unattended'
             self.planning[identity]={'runtime':None,'cancelled':False}
         task=None;runtime=None;dispatched=False
         try:
@@ -465,8 +468,8 @@ class BranchController:
             runtime.branch_ledger=Ledger(runtime,lambda:self.engine.store.save(task),lock=self.engine.lock)
             runtime.thread=threading.Thread(target=self._plan_background,args=(values,runtime,identity),daemon=True,name='cheapos-planner') if background else threading.current_thread()
             with self.engine.lock:
-                if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):
-                    raise ValueError('Another task started while preparing this draft. Pause it, then submit the planning request again.')
+                self.engine.admission.pending.pop(identity, None)
+                self.engine.admission.require('unattended', task['id'])
                 self.planning[identity]['runtime']=runtime
                 self.engine.runtimes[task['id']]=runtime
                 if self.planning[identity]['cancelled']:runtime.stop.set()
@@ -482,6 +485,7 @@ class BranchController:
             if not dispatched:
                 with self.engine.lock:
                     self.planning.pop(identity,None)
+                    self.engine.admission.pending.pop(identity,None)
                     if runtime and self.engine.runtimes.get(task['id']) is runtime:self.engine.runtimes.pop(task['id'],None)
                     if task:
                         task['status']='paused';task['branch_run']['status']='paused';task['error']=str(error)
@@ -554,8 +558,7 @@ class BranchController:
         if sum(map(len,messages))+len(message)>24000:raise ValueError('Planning conversation is full; start a new chat.')
         runtime=self.engine.runtimes.get(task['id'])
         active=runtime and runtime.thread and runtime.thread.is_alive()
-        if not active and any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):
-            raise ValueError('Pause the active task before continuing this proposal.')
+        if not active:self.engine.admission.require('unattended', task['id'])
         if active and runtime.stop.is_set():raise ValueError('Planning is pausing. Send your reply once it has stopped.')
         run['inputs']['followups']=[*messages,message]
         captured={k:v for k,v in run['inputs'].items() if k!='hash'}
@@ -581,13 +584,13 @@ class BranchController:
         from .engine import Runtime
         with self.engine.lock:
             self.engine.require_active_task(task_id)
+            self.engine.admission.require('unattended', task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             run.pop('final_review_corrections', None)
             run.pop('review_disagreements', None)
             self.engine.store.save(task)
             from .model_pool import observe_completions
             observe_completions(self.engine.gateway.pool,task)
-            if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):raise ValueError('A task is already running')
             while run['pending_operations']:
                 item=next(i for i in run['items'] if i['id']==run['pending_operations'][0]['item_id'])
                 self.commit_item(Runtime(task),item)
@@ -661,8 +664,7 @@ class BranchController:
             task=self.engine.store.get(task_id);old=state.require_supported(task['branch_run'])
             if old['status']!='awaiting_authorization' or old.get('authorization'):
                 raise ValueError('Only an unstarted proposal can be edited')
-            if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):
-                raise ValueError('Pause active work before editing a proposal')
+            self.engine.admission.require_idle(task_id)
             allowed={'plan','repository','base_ref','target_ref','feature_ref','prompt','inputs'}
             if not isinstance(values,dict) or set(values)-allowed:
                 raise ValueError('Unknown proposal edit field')

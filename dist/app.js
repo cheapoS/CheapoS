@@ -39,7 +39,7 @@ const icon = name => `<svg aria-hidden="true" focusable="false" tabindex="-1"><u
 const taskBusy=task=>CheapOSBranchUI.isBusy(task);
 const activeStatuses = new Set(['running', 'reviewing', 'waiting_approval', 'waiting_retry', 'stopping']);
 const labels = {awaiting_reply:'Ready for your message',ready:'Ready to start',running:'cheapoS is working',reviewing:'Checking your changes',waiting_approval:'Command approval needed',waiting_retry:'Waiting for a free route',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
-const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,pausingTask:null,stoppingStartup:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',run:-1,online:false,loading:false};
+const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,pendingSends:new Set(),startErrors:new Map(),admission:null,pausingTask:null,stoppingStartup:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',run:-1,online:false,loading:false};
 const money = value => '$' + Number(value || 0).toFixed(Number(value || 0) > 0 && value < .01 ? 4 : 2);
 const date = value => new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
@@ -48,7 +48,7 @@ function toast(message) { clearTimeout(toastTimer); $('#toast').textContent=mess
 async function api(path, body) {
   const response = await fetch('/api' + path, body === undefined ? {cache:'no-store'} : {method:'POST',headers:{'Content-Type':'application/json','X-CheapOS-Token':state.token},body:JSON.stringify(body)});
   const data = await response.json();
-  if (!response.ok) throw Object.assign(new Error(data.error || 'The local server could not complete this action'),{code:data.code,files:data.files});
+  if (!response.ok) throw Object.assign(new Error(data.error || 'The local server could not complete this action'),{status:response.status,code:data.code,files:data.files});
   return data;
 }
 function dialog(html, cls='') {
@@ -286,6 +286,18 @@ async function loadStartup() {
   state.startup=data;state.config=config;
   if(changed){renderSidebar();renderComposer();if(!state.task)renderHome()}
 }
+function submissionAvailability(task=state.task,mode=branchUI?.getMode()||'interactive') {
+  if(task&&taskBusy(task))return {allowed:true};
+  if(state.startup.busy)return {allowed:false,reason:'Checking your free model. This draft has not been sent.'};
+  if(!state.admission)return {allowed:false,reason:'Checking task capacity. This draft has not been sent.'};
+  if(state.admission.legacy){const other=state.tasks.find(t=>t.id!==task?.id&&taskBusy(t));return {allowed:!other,task_id:other?.id,reason:other?'Another task is running: '+other.title+'. This draft has not been sent. Concurrent tasks become available after a later app restart.':''};}
+  const kind=task?.branch_run?'unattended':mode,decision=state.admission[kind]||{allowed:false,reason:'Task capacity is unavailable.'};
+  const active=state.admission.active?.find(t=>t.mode===kind),other=state.tasks.find(t=>t.id===active?.task_id);
+  return {...decision,task_id:active?.task_id,reason:decision.allowed?'':`${decision.reason||'Task capacity is full.'}${other?' Running: '+other.title+'.':''} This draft has not been sent.`};
+}
+function sendingHere(){return state.pendingSends.has(draftKey());}
+async function loadAdmission({render=true}={}){try{state.admission=await api('/admission');}catch(e){state.admission=e.status===404?{legacy:true}:null;}if(render)renderComposer();}
+function clearOwnedDraft(key,message){if(state.drafts.get(key)===message)state.drafts.delete(key);if(draftKey()===key&&$('#chat-input').value.trim()===message)$('#chat-input').value='';}
 function renderComposer() {
   branchUI?.sync();
   const task=state.task, busy=task&&taskBusy(task);
@@ -300,14 +312,14 @@ function renderComposer() {
   $('#composer-area').hidden=Boolean(task?.demo||task?.archived_at||task?.trashed_at)||state.view!=='chat';
   $('#composer-project span').textContent=task?CheapOSGuide.projectName(task):state.project?CheapOSGuide.projectName({source:state.project.path}):'Open project';
   $('#composer-project').disabled=Boolean(task);
-  $('#chat-input').disabled=state.sending;
+  $('#chat-input').disabled=sendingHere();
   $('#chat-input').placeholder=state.project?'Ask about your project or describe a change…':'Open a project to get started…';
-  const other=state.tasks.find(t=>t.id!==task?.id&&taskBusy(t));
+  const availability=submissionAvailability(task);
   if(busy){
     $('#chat-send').hidden=true;
     if($('#chat-steer')){
       $('#chat-steer').hidden=false;
-      $('#chat-steer').disabled=pausing||state.sending||Boolean(other)||!$('#chat-input').value.trim();
+      $('#chat-steer').disabled=pausing||sendingHere()||!$('#chat-input').value.trim();
     }
     $('#chat-input').placeholder='Add a detail or change direction…';
     $('#composer-note').textContent=pausing?'Pausing the current step. Your work and draft stay saved.':'Keep talking to cheapoS. Your message will guide the next step.';
@@ -315,13 +327,14 @@ function renderComposer() {
     const next=CheapOSConversation.readyForNext(task);
     $('#chat-send').hidden=false;
     if($('#chat-steer'))$('#chat-steer').hidden=true;
-    $('#chat-send').disabled=state.sending||branchUI?.isSubmitting()||Boolean(other)||state.startup.busy||(!$('#chat-input').value.trim()&&!branchUI?.hasDocument());
+    $('#chat-send').disabled=sendingHere()||branchUI?.isSubmitting()||!availability.allowed||(!$('#chat-input').value.trim()&&!branchUI?.hasDocument());
     $('#chat-input').placeholder=next?'What should we work on next?':state.project?'Ask about your project or describe a change…':'Open a project to get started…';
-    $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':other?'Another chat is running. Open it in the sidebar to continue or pause it.':next?'Ready when you are. We’ll continue from the committed changes.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
+    $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':!availability.allowed?availability.reason:next?'Ready when you are. We’ll continue from the committed changes.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
   }
   if(task?.branch_run){$('#chat-input').placeholder='Add guidance within the accepted scope…';$('#composer-note').textContent='Guidance stays within this run’s accepted plan. Use Request changes for a reviewed revision.';}
   if(task?.branch_run&&!task.branch_run.authorization_ref&&!CheapOSBranchUI.isPlanning(task)){$('#chat-input').disabled=true;$('#chat-input').placeholder='Inspect the proposal to edit or start this run.';$('#chat-send').disabled=true;if($('#chat-steer'))$('#chat-steer').hidden=true;$('#composer-note').textContent='This is an Unattended proposal. Inspect its captured plan before editing or starting work.';}
   if(CheapOSBranchUI.isPlanning(task)){$('#chat-input').placeholder=busy?'Add details for the proposal…':'Reply or describe changes to the proposal…';$('#composer-note').textContent=busy?'Planning continues here. Your reply will guide the proposal.':'Questions and issues stay in this chat. Reply to continue planning, or inspect the ready proposal.';}
+  if(!busy&&!availability.allowed){$('#composer-note').textContent=availability.reason;if(availability.task_id){const link=document.createElement('button');link.className='text-link';link.textContent='Open running task';link.onclick=()=>selectTask(availability.task_id);$('#composer-note').append(' ',link);}}
   if(['merged','left_on_branch'].includes(task?.branch_run?.status)){$('#chat-input').disabled=true;$('#chat-input').placeholder='Start a new chat to continue';$('#chat-send').disabled=true;if($('#chat-steer'))$('#chat-steer').hidden=true;$('#composer-note').textContent=task.branch_run.status==='merged'?'This run is merged. Start a new chat for the next job; its scope and approvals will be separate.':'Work is saved on its feature branch. Start a new chat for another job, or inspect the saved review above.';}
   if(task&&!task.demo)$('#composer-note').textContent+=` · Est. ${money(task.usage.cost)} used.`;
   const stop=$('#chat-stop');
@@ -537,7 +550,7 @@ function renderChat() {
   }
   else if(task.pending_approval)decision=permissionMarkup(task);
   else if(CheapOSBranchUI.pausePresentation(task))decision='';
-  else if(task.status==='ready')decision=(`<div class="chat-decision"><p>Your message is saved and ready to send.</p>${button('start','Send to cheapoS',true)}</div>`);
+  else if(task.status==='ready')decision=(`<div class="chat-decision"><p><strong>Saved, not started.</strong> ${esc(task.start_error||state.startErrors.get(task.id)||submissionAvailability(task,'interactive').reason||'Send when you are ready.')}</p>${button('start','Retry start',true)}</div>`);
   else if(CheapOSGuide.canCommit(task))decision=(commitDecisionMarkup(task));
   else if(task.changes.length&&['approved','completed','awaiting_reply'].includes(task.status))decision=(`<section class="chat-result">${icon('file')}<div><strong>Changes are saved; review isn’t finished yet.</strong><p>You can keep chatting. To finish this saved patch, cheapoS can complete the missing verification and review.</p><div class="button-row">${button('request-review','Finish review',true)}${button('changes','View diff')}</div></div></section>`);
   else if(!taskBusy(task)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(guide.primary==='retry-wait'?'retry-wait':guide.primary==='clarify'?'clarify':task.status==='error'?'start':'resume',guide.primary==='retry-wait'?'Retry when available':guide.primary==='clarify'?'Add a correction':task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?guide.primaryLabel:'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
@@ -811,39 +824,33 @@ function chatLimits({defaults=false}={}) {
   const d=dialog(`<form>${modalHeader('SPENDING & LIMITS',task?'Limits for this chat':'Defaults for new chats')}<p class="modal-description">Choose a bounded work session. Presets change working time and task turns; they keep your spending cap and model placement.</p>${limitFields(limits)}<p class="small muted">Free only uses configured prices; it is not a provider billing guarantee.</p>${task?'<button type="button" class="text-link" data-new-defaults>Edit defaults for new chats</button>':''}<p class="small muted">${task?'Usage is cumulative across this chat. Saving does not resume it.':'These defaults apply when you send the first message in a new chat.'}</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Cost estimates use your configured prices.</span><button class="primary-button" type="submit">Save limits</button></div></form>`);
   const form=$('form',d);bindLimitFields(form);if($('[data-new-defaults]',d))$('[data-new-defaults]',d).onclick=()=>{d.close();chatLimits({defaults:true})};if(task&&taskBusy(task)){ $('[type="submit"]',form).disabled=true;$('.form-error',form).textContent='Pause this chat before changing its limits. New-chat defaults can be edited separately.';}form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const limits=readLimits(new FormData(form));if(task){state.task=await api('/tasks/'+task.id+'/limits',{limits})}else state.preferences=await api('/preferences',{limits});d.close();renderComposer();if(state.task)renderInspector()})};
 }
-async function sendChat() {
+const submissionEntries=new Set();
+async function sendChat(){const owner=draftKey();if(submissionEntries.has(owner))return;submissionEntries.add(owner);try{await dispatchChat();}finally{submissionEntries.delete(owner);}}
+async function dispatchChat() {
+  const task=state.task,busy=task&&taskBusy(task);
+  if(sendingHere())return;
+  if(!busy&&!submissionAvailability(task).allowed){renderComposer();return;}
   if(await branchUI.interceptSubmit())return;
-  if(state.task?.branch_run){await steerTask();return;}
-  const task=state.task, busy=task&&taskBusy(task);
-  $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&(state.taskPermissions.commands.length||state.taskPermissions.project_grants?.length));
-  $('#composer-permissions').textContent=state.taskPermissions?.project_grants?.length?'Tests allowed this session':'Commands allowed this session';
-  $('#composer-permissions').title=state.taskPermissions?.project_grants?.length?'This project · until cheapoS restarts':'This chat · until cheapoS restarts';
-  if(busy){
-    await steerTask();
-    return;
-  }
-  if(state.sending||state.startup.busy||state.tasks.some(t=>taskBusy(t)))return;
+  if(state.task!==task)return;
+  if(task?.branch_run||busy){await steerTask();return;}
+  if(task?.status==='ready'){await startTask(task.id);return;}
   const message=$('#chat-input').value.trim();if(!message)return;
-  if(!state.project){openProject(()=>{$('#chat-input').value=message;saveDraft();renderComposer()});return}
-  if((state.preferences.execution?.mode||'manual')==='manual'&&(!state.config.worker||!state.config.reviewer)){openConnections(()=>{$('#chat-input').focus()});return}
-  const key=draftKey();state.sending=true;renderComposer();
+  if(!state.project){openProject(()=>{$('#chat-input').value=message;saveDraft();renderComposer()});return;}
+  if((state.preferences.execution?.mode||'manual')==='manual'&&(!state.config.worker||!state.config.reviewer)){openConnections(()=>{$('#chat-input').focus()});return;}
+  const key=draftKey(),selection=state.selection,repository=state.project.path;state.pendingSends.add(key);saveDraft();renderComposer();
   try {
-    if(state.task){await api('/tasks/'+state.task.id+(state.task.branch_run?'/branch-message':'/message'),{message});state.drafts.delete(key);$('#chat-input').value='';await refresh()}
-    else {const task=await api('/tasks',{repository:state.project.path,prompt:message,conversational:true,limits:state.preferences.limits});state.drafts.delete(key);$('#chat-input').value='';await loadTasks();await selectTask(task.id);await startTask(task.id)}
-    $('#view-container').scrollTop=$('#view-container').scrollHeight;
-  }catch(e){toast(e.message)}finally{state.sending=false;renderComposer();$('#chat-input').focus()}
+    if(task){await api('/tasks/'+task.id+'/message',{message});clearOwnedDraft(key,message);await refresh();}
+    else {const created=await api('/tasks',{repository,prompt:message,conversational:true,limits:state.preferences.limits});await loadTasks();if(state.selection===selection){await selectTask(created.id);}state.pendingSends.add(created.id);try{const started=await startTask(created.id);if(started)clearOwnedDraft(key,message);}finally{state.pendingSends.delete(created.id);}}
+    if(state.selection===selection)$('#view-container').scrollTop=$('#view-container').scrollHeight;
+  }catch(e){if(state.selection===selection){$('#composer-note').textContent=e.message+' Your draft remains saved.';}toast(e.message);}
+  finally{state.pendingSends.delete(key);renderComposer();if(state.selection===selection)$('#chat-input').focus();}
 }
 async function steerTask(text) {
-  const message=text||$('#chat-input').value.trim();
-  if(!state.task||!message||state.sending||state.task.status==='stopping'||state.pausingTask===state.task.id)return;
-  const key=draftKey();state.sending=true;renderComposer();
-  try {
-    await api('/tasks/'+state.task.id+(state.task.branch_run?'/branch-message':'/steer'),{message});
-    state.drafts.delete(key);$('#chat-input').value='';
-    toast('cheapoS will use your update on the next step.');
-    await refresh();
-    $('#view-container').scrollTop=$('#view-container').scrollHeight;
-  }catch(e){toast(e.message)}finally{state.sending=false;renderComposer();$('#chat-input').focus()}
+  const task=state.task,message=text||$('#chat-input').value.trim();
+  if(!task||!message||sendingHere()||task.status==='stopping'||state.pausingTask===task.id)return;
+  const key=draftKey(),selection=state.selection;state.pendingSends.add(key);saveDraft();renderComposer();
+  try {await api('/tasks/'+task.id+(task.branch_run?'/branch-message':'/steer'),{message});clearOwnedDraft(key,message);await refresh();if(state.selection===selection){toast('cheapoS will use your update on the next step.');$('#view-container').scrollTop=$('#view-container').scrollHeight;}}
+  catch(e){toast(e.message);}finally{state.pendingSends.delete(key);renderComposer();if(state.selection===selection)$('#chat-input').focus();}
 }
 async function boostHeadroom(button) {
   const task=state.task;if(!task)return;
@@ -854,7 +861,18 @@ async function boostHeadroom(button) {
     await startTask(task.id);
   }catch(e){toast(e.message);if(button)button.disabled=false}
 }
-async function startTask(id,changes={}) {try{await api('/tasks/'+id+'/start',changes);await refresh()}catch(e){toast(e.message)}}
+async function startTask(id,changes={}) {
+  const task=state.task?.id===id?state.task:state.tasks.find(t=>t.id===id),availability=submissionAvailability(task,'interactive');
+  if(!availability.allowed){state.startErrors.set(id,availability.reason);if(state.task?.id===id)renderTask();return false;}
+  try{await api('/tasks/'+id+'/start',changes);state.startErrors.delete(id);await refresh();return true;}
+  catch(e){
+    // A lost response may hide a successful start. Reconcile the same saved task.
+    let saved;try{saved=await api('/tasks/'+id);}catch{}
+    if(saved&&saved.status!=='ready'&&!saved.start_error){state.startErrors.delete(id);if(state.task?.id===id){state.task=saved;renderTask();}return true;}
+    state.startErrors.set(id,saved?.start_error||e.message||'Could not confirm start. Retry this saved task.');
+    if(state.task?.id===id){if(saved)state.task=saved;renderTask();}return false;
+  }
+}
 async function resumeTask(button) {
   const paused=CheapOSBranchUI.pausePresentation(state.task);
   if(paused&&state.task?.branch_run?.pause_detail?.next_action!=='resume'){setView('chat');return;}
@@ -906,12 +924,14 @@ async function sessionPermissions() {
   }catch(error){toast(error.message)}
 }
 async function startDemo() {
+  const availability=submissionAvailability(null,'interactive');if(!availability.allowed){toast(availability.reason);return;}
   if(!state.online){toast('The local server is unavailable. Start it with python3 run.py');return}
   try{const task=await api('/demo',{});await loadTasks();await selectTask(task.id);await startTask(task.id)}catch(e){toast(e.message)}
 }
 function sampleDialog() {
   const d=dialog(`${modalHeader('SAMPLE TASK','Try the complete workflow')}<p>Fix a small clamp function in a new disposable repository. Your selected project is untouched. Saved results stay available in history and can be moved to Trash.</p><h3>Scripted demonstration</h3><p>Predetermined worker and reviewer responses, actual local checks, no model requests. This demonstrates the interface; it does not validate your models.</p><button class="outline-button" data-sample="scripted">Run scripted demonstration</button><h3>Real loop with selected models</h3><p>Uses your current placement and models for file edits, actual unittest checks, and a separate review request. Up to 5 minutes, 20 worker turns, 3 iterations, and the smaller of your current spending cap or $0.25. Free only remains $0. A same-model local review is labeled as such.</p><p>Starting authorizes only the sample’s exact Python unittest discovery command in its disposable task copy for this server session. Other commands and projects still ask. You approve any final commit.</p><button class="primary-button" data-sample="real">Start real sample</button><p class="form-error" role="alert"></p>`,'project-modal setup-modal');
   $$('[data-sample]',d).forEach(button=>button.onclick=async()=>{
+    const availability=submissionAvailability(null,'interactive');if(!availability.allowed){$('.form-error',d).textContent=availability.reason;return;}
     $$('[data-sample]',d).forEach(b=>b.disabled=true);
     try{if(button.dataset.sample==='scripted'){d.close();await startDemo();return}const task=await api('/sample',{});d.close();await loadTasks();await selectTask(task.id);await startTask(task.id)}catch(e){$('.form-error',d).textContent=e.message;$$('[data-sample]',d).forEach(b=>b.disabled=false)}
   });
@@ -1099,7 +1119,7 @@ async function loadTasks() {const [tasks,projects,hidden]=await Promise.all([api
 let contextRefresh=null;
 function refreshContext() {
   if(!contextRefresh)contextRefresh=Promise.allSettled([
-    (async()=>{await loadStartup();await loadReadiness();})(),loadGateway(),loadTasks()
+    (async()=>{await loadStartup();await loadReadiness();})(),loadGateway(),loadTasks(),loadAdmission()
   ]).then(results=>{
     const failure=results.find(result=>result.status==='rejected');
     if(failure){console.error('cheapoS connection/sidebar refresh failed',failure.reason);toast('Could not refresh connection or sidebar status. Retrying…');}
@@ -1136,7 +1156,7 @@ async function resumeBranchRun(task,savedResult) {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{await api('/tasks/'+task.id+'/branch-resume',{proposal_id:result.proposal_id,approved:true});d.close();await refresh();});};
 }
 async function bootstrap() {
-  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);}
+  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;await loadAdmission({render:false});try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);}
   catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start cheapoS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh({background:true})}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
@@ -1171,3 +1191,5 @@ $('#composer-permissions').onclick=sessionPermissions;
   if(restartBoth)restartBoth.onclick=async()=>{modal.close();await callGatewayRefresh();window.location.reload();};
   if(restartOmniroute)restartOmniroute.onclick=async()=>{modal.close();await callGatewayRefresh();toast('OmniRoute restarted');};
 })();
+
+$('#lifetime-usage-trigger').onclick=()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader});

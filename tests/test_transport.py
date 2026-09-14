@@ -37,6 +37,9 @@ class TransportTests(unittest.TestCase):
                 if emit is not None: raise ProviderError('unsupported',code='streaming_unsupported')
                 return self.complete(messages,tools,maximum)
         engine=Engine.__new__(Engine)
+        from cheapos.admission import Admission
+        engine.lock=threading.RLock();engine.runtimes={}
+        engine.admission=Admission(engine)
         engine.store=Mock();engine.gateway=SimpleNamespace(settings={'base_url':'http://localhost:20128/v1'})
         engine.provider_factory=lambda *args:Provider()
         engine.event=lambda t,*args:t['events'].append({'id':str(len(t['events'])), 'detail':args})

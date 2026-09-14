@@ -344,6 +344,8 @@ class Engine:
         self.store = Store(data_directory)
         self.lock = threading.RLock()
         self.runtimes = {}
+        from .admission import Admission
+        self.admission = Admission(self)
         self.command_permissions = {}
         self.project_test_grants = ProjectTestGrants(self.store)
         self.commit_previews = {}
@@ -398,6 +400,7 @@ class Engine:
             for task in self.store.list():
                 if task["source"] != source:
                     continue
+                self.admission.require_mutable(task["id"])
                 runtime = self.runtimes.get(task["id"])
                 if runtime and runtime.thread and runtime.thread.is_alive():
                     raise ValueError("Pause the running chat first")
@@ -533,6 +536,7 @@ class Engine:
         task = {"served_identity_version":1, "id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "planner": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
+        task['synthetic'] = self.provider_factory is not None
         task['check_output_filter'] = 'unittest' if os.environ.get('CHEAPOS_CHECK_OUTPUT_FILTER')=='unittest' else 'off'
         task.update({"conversational": conversational, "requests": [prompt.strip()], "turn_start_patch": ""})
         if conversational:
@@ -572,12 +576,14 @@ class Engine:
         return task
 
     def require_active_task(self, task_id):
+        self.admission.require_mutable(task_id)
         metadata = self.store.metadata(task_id)
         if metadata["archived_at"] or metadata["trashed_at"]:
             raise ValueError("Restore this task from history before continuing its work")
 
     def update_task_metadata(self, task_id, values):
         with self.lock:
+            self.admission.require_mutable(task_id)
             if self.store.metadata(task_id)["trashed_at"]:
                 raise ValueError("Restore this task from Trash before changing it")
             task = self.store.get(task_id)
@@ -592,6 +598,7 @@ class Engine:
 
     def trash_task(self, task_id):
         with self.lock:
+            self.admission.require_mutable(task_id)
             task = self.store.get(task_id)
             runtime = self.runtimes.get(task_id)
             if runtime and runtime.thread and runtime.thread.is_alive():
@@ -607,6 +614,7 @@ class Engine:
 
     def restore_task(self, task_id):
         with self.lock:
+            self.admission.require_mutable(task_id)
             task = self.store.get(task_id)
             self.store.set_trashed(task_id, False)
             return self.store.present(task)
@@ -616,6 +624,7 @@ class Engine:
         with self.lock:
             runtime = self.runtimes.get(task_id)
             task = runtime.task if runtime and runtime.thread and runtime.thread.is_alive() else self.store.get(task_id)
+            self.admission.require_mutable(task_id)
             operation(task)
             if "branch_run" in task:
                 task["status"] = branch_runs.task_status(task["branch_run"])
@@ -631,9 +640,15 @@ class Engine:
             previous = self.runtimes.get(task_id)
             if previous and previous.thread and previous.thread.is_alive():
                 raise ValueError("This task is already running")
-            if any(r.thread and r.thread.is_alive() for r in self.runtimes.values()):
-                raise ValueError("Another task is running. Pause it before starting this one.")
+            try:
+                self.admission.require("interactive", task_id)
+            except ValueError as error:
+                task = self.store.get(task_id)
+                task["start_error"] = str(error)
+                self.store.save(task)
+                raise
             task = self.store.get(task_id)
+            task.pop("start_error", None)
             if "branch_run" in task:
                 compatibility = branch_runs.compatibility(task["branch_run"])
                 raise ValueError(compatibility["message"] if not compatibility["supported"] else
@@ -1012,8 +1027,7 @@ class Engine:
             raise BudgetError("The patch is too large for a reliable compact review. Split this task into smaller changes.")
 
     def commit_task(self, task_id):
-        if any(r.thread and r.thread.is_alive() for r in self.runtimes.values()):
-            raise ValueError("Wait for the active task to finish or pause it before applying changes")
+        self.admission.require_idle(task_id)
         task = self.store.get(task_id)
         if "branch_run" in task:
             raise ValueError("Use the Unattended run final review; manual apply cannot commit a branch run.")
@@ -1118,7 +1132,8 @@ class Engine:
                     "retry": bool(pending)}
 
     def apply_commit(self, task_id, values):
-        with self.lock:
+        source = self.store.get(task_id)["source"]
+        with self.admission.integration(task_id, source):
             self.require_active_task(task_id)
             if values.get("approved") is not True:
                 raise ValueError("Approve the displayed patch and commit message before committing")
@@ -1500,6 +1515,13 @@ class Engine:
         return providers.get(role) or self.config.get(role) or {}
 
     def _request(self, runtime, messages, tools, role, config_override=None, purpose=None):
+        config = self._resolve_provider_config(runtime.task, role, config_override)
+        if config and is_local_ollama(config):
+            with self.admission.resource("local_inference", runtime):
+                return self._request_with_transport(runtime, messages, tools, role, config_override, purpose)
+        return self._request_with_transport(runtime, messages, tools, role, config_override, purpose)
+
+    def _request_with_transport(self, runtime, messages, tools, role, config_override=None, purpose=None):
         from . import transport
         task = runtime.task
         try:
@@ -1526,7 +1548,9 @@ class Engine:
         if task.get('demo'):return self._perform_request(runtime,messages,tools,role,config_override,purpose)
         config = self._resolve_provider_config(task, role, config_override)
         record={'id':uuid.uuid4().hex,'run_id':task.get('metric_run_id'),'role':role,'model':config['model'],
-                'purpose':purpose or 'work','retry_of':retry_of,'dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation'}
+                'purpose':purpose or 'work','retry_of':retry_of,'dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation',
+                'requested_at':now(),'synthetic':self.provider_factory is not None,
+                'input_rate':config['input_rate'],'output_rate':config['output_rate']}
         from .served_identity import metadata
         record.update(metadata(config['model']))
         if task.get('branch_run'):
@@ -1536,6 +1560,8 @@ class Engine:
             record['dispatch_scope'] = {'base_url': config['base_url'], 'connection_revision': binding['connection_revision'],
                                         'model': config['model'], 'role': role}
             record['access_class'] = 'included' if config.get('access') == 'included' else 'public_free'
+        elif is_local_ollama(config):record['access_class']='local'
+        elif config['input_rate'] > 0 or config['output_rate'] > 0:record['access_class']='paid'
         task.setdefault('request_metrics',[]).append(record)
         if len(task['request_metrics'])>2000:
             task['request_metrics'].pop(0);task['request_metrics_truncated']=True
@@ -1621,6 +1647,7 @@ class Engine:
         record=task['request_metrics'][-1]
         reservation['metric_id']=record['id']
         record['reservation'] = {k: reservation[k] for k in ('tokens', 'cost', 'prompt_tokens', 'completion_tokens')}
+        record.update(reservation_tokens=reservation['tokens'],reservation_cost=reservation['cost'])
         task["in_flight"] = reservation
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
         from . import transport
@@ -1702,6 +1729,7 @@ class Engine:
         apply(record,usage)
         known = reconcile(task, config, reservation, usage)
         metrics.record_usage(record,usage,known)
+        metrics.record_accounted(record, config, reservation, usage, known)
         self.store.save(task)
         ensure_independent(task,record)
         guard_automatic_route_cost(task)
@@ -1722,6 +1750,7 @@ class Engine:
             from .served_identity import apply
             apply(record, usage)
             metrics.record_usage(record,usage,known)
+            metrics.record_accounted(record, config, reservation, usage, known)
         cost = usage.get("cost")
         if not known and isinstance(cost, (int, float)) and not isinstance(cost, bool) and math.isfinite(cost) and cost > 0:
             extra = max(0, cost - reservation["cost"])
@@ -1942,7 +1971,9 @@ class Engine:
         def retain_raw(data,truncated):
             raw_info.update(check_output.retain(self.store.root,task["id"],live["run_id"],data,truncated))
         try:
-            result = workspace.run_checks(argv, runtime.stop, timeout=effective, on_output=emit, on_raw=retain_raw)
+            with self.admission.resource("checks", runtime):
+                runtime.guard()
+                result = workspace.run_checks(argv, runtime.stop, timeout=effective, on_output=emit, on_raw=retain_raw)
         finally:
             task["check_stream"] = None
             task["updated_at"] = now()
