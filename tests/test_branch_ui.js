@@ -119,7 +119,7 @@ test('late polling cannot undo an accepted Start or overwrite a different select
 });
 test('actual startup renderer covers pending, accepted-stale, running and paused states',()=>{
  const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/branch_ui.js'),'utf8');
- const snippet=source.slice(source.indexOf(' function render(task)'),source.indexOf(' async function showFinal(task)'));
+ const snippet=source.slice(source.indexOf(' function render(task)'),source.indexOf(' function renderPlan(task)'));
  let record={status:'pending',started_at:'2026-09-14T12:00:00Z'};const panel={innerHTML:'',querySelector:()=>null};
  const context={sync:()=>{},document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
  vm.createContext(context);vm.runInContext(snippet,context);

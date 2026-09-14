@@ -78,6 +78,114 @@ function planMarkup(task){
 }
 const HELP=`<details class="branch-help"><summary>How work modes and triggers work</summary><p><strong>Interactive</strong> keeps the ordinary chat and approval flow. <strong>Unattended</strong> prepares a bounded plan from your submitted prompt, project document, or both. Send prepares the plan directly in Chat. Review & start authorizes the inspected plan.</p><p>Prompt example: “Implement a CSV reader and its CLI on a feature branch.” Document example: select <code>docs/utility-plan.md</code>, choose Unattended, then submit. No pasted copy or checkboxes needed.</p><p>Explicit requests to start a branch run in Interactive offer the mode choice. Mentioning a branch, quoting a request, selecting a document, or opening this selector does not start work. Document instructions cannot authorize execution.</p><p>Pause stops the current run; Resume revalidates it. Request changes proposes revision work. Approve &amp; merge locally authorizes only the inspected final integration; a prompt saying “merge when done” does not replace that button.</p></details>`;
 function diffSections(text){return String(text||'').split(/(?=^diff --git )/m).filter(Boolean).map(part=>({title:part.startsWith('diff --git ')?part.split('\n',1)[0].slice(11):'Diff continuation',text:part}));}
+// Git quotes non-ASCII paths as UTF-8 octal bytes, not JSON escapes.
+function diffPath(value,stripPrefix=true){
+ let path=String(value||'');
+ if(path.startsWith('"')&&path.endsWith('"')){
+  const bytes=[];const body=path.slice(1,-1);
+  for(let i=0;i<body.length;i++){
+   if(body[i]==='\\'){
+    const octal=body.slice(i+1).match(/^[0-7]{1,3}/);
+    if(octal){bytes.push(parseInt(octal[0],8));i+=octal[0].length;continue;}
+    i++;bytes.push(...new TextEncoder().encode(({t:'\t',n:'\n',r:'\r',b:'\b',f:'\f',v:'\v',a:'\x07'}[body[i]])??body[i]));
+   }else {const point=String.fromCodePoint(body.codePointAt(i));bytes.push(...new TextEncoder().encode(point));i+=point.length-1;}
+  }
+  path=new TextDecoder().decode(new Uint8Array(bytes));
+ }
+ return path==='/dev/null'?null:stripPrefix?path.replace(/^[ab]\//,''):path;
+}
+function reviewDiffs(text){
+ return diffSections(text).map(section=>{
+  const lines=section.text.split('\n'),header=lines[0].match(/^diff --git ("(?:\\.|[^"\\])*"|a\/.*?) ("(?:\\.|[^"\\])*"|b\/.*)$/);
+  let oldPath=header?diffPath(header[1]):null,path=header?diffPath(header[2]):null;
+  const same=lines[0].match(/^diff --git a\/(.*) b\/\1$/);if(same)oldPath=path=same[1];
+  for(const line of lines){if(line.startsWith('@@'))break;if(line.startsWith('--- '))oldPath=diffPath(line.slice(4).replace(/\t$/,''));if(line.startsWith('+++ '))path=diffPath(line.slice(4).replace(/\t$/,''));if(line.startsWith('rename from '))oldPath=diffPath(line.slice(12),false);if(line.startsWith('rename to '))path=diffPath(line.slice(10),false);}
+  return {...section,path:path||oldPath,oldPath,binary:lines.some(l=>l==='GIT binary patch'||l.startsWith('Binary files '))};
+ });
+}
+function reviewFiles(preview){return (Array.isArray(preview.manifest)?preview.manifest:preview.manifest?.files||preview.files||[]).map(f=>typeof f==='string'?{path:f}:f);}
+function fileStats(file){return file.binary||file.added_lines===null?'Binary':Number.isInteger(file.added_lines)?`+${file.added_lines} −${file.removed_lines}`:'Stats unavailable';}
+function reviewDiffMarkup(section,raw=false){
+ if(!section)return '<p class="review-empty">This file’s diff has not loaded yet.</p>';
+ if(raw||section.binary)return `${section.binary?'<p class="review-empty">Binary content cannot be displayed as a text diff. The saved Git patch is shown below.</p>':''}<pre class="review-raw">${escape(section.text)}</pre>`;
+ let old=null,next=null;const lines=section.text.split('\n');if(lines.at(-1)==='')lines.pop();
+ return '<div class="review-code" aria-label="Unified diff; old and new line numbers">'+lines.map(line=>{
+  const hunk=line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+  if(hunk){old=Number(hunk[1]);next=Number(hunk[2]);return `<div class="review-diff-meta hunk">${escape(line)}</div>`;}
+  if(old===null&&/^(diff --git |index |--- |\+\+\+ )/.test(line))return '';
+  if(old===null||![' ','+','-'].includes(line[0]))return `<div class="review-diff-meta">${escape(line)}</div>`;
+  const kind=line[0]==='+'?'add':line[0]==='-'?'remove':'context',before=kind==='add'?'':old++,after=kind==='remove'?'':next++;
+  return `<div class="review-diff-line ${kind}"><span class="review-line-number">${before}</span><span class="review-line-number">${after}</span><span class="review-sign">${escape(line[0])}</span><code>${escape(line.slice(1))||' '}</code></div>`;
+ }).join('')+'</div>';
+}
+function finalReviewMarkup(task,preview){
+ const files=reviewFiles(preview),checks=task.branch_run.readiness?.checks||[],review=task.branch_run.readiness?.review;
+ const passed=checks.filter(c=>c.record?.passed===true).length;
+ const command=c=>{const v=c?.command||c?.argv||[];return Array.isArray(v)?v.join(' '):String(v);};
+ const total=key=>files.reduce((n,f)=>n+(Number.isInteger(f[key])?f[key]:0),0);
+ return `<div class="review-overview"><p class="review-task-title">${escape(task.title||'Saved branch changes')}</p><p class="review-branch-route"><strong>${escape(short(task.branch_run.feature_ref))}</strong><span>→</span><strong>${escape(short(preview.target_ref||task.branch_run.target_ref))}</strong><span>Local merge · no push</span></p><div class="review-summary"><span>${files.length} files</span><span class="review-add">+${total('added_lines')}</span><span class="review-remove">−${total('removed_lines')}</span><button type="button" data-evidence aria-expanded="false">${checks.length?`${passed}/${checks.length} checks passed`:'Check evidence unavailable'} · ${review?.decision==='APPROVE'?'Final review approved':'Inspect final review'}</button></div><p class="review-blocker" role="status" ${preview.blocker?'':'hidden'}>${escape(preview.blocker)}</p></div>
+ <div class="review-workspace"><aside class="review-sidebar" aria-label="Changed files"><label class="review-filter">Find a file<input type="search" data-file-search placeholder="Filter files…"></label><p class="review-progress" data-review-progress></p><nav class="review-file-list" aria-label="Files in this branch"></nav><p class="review-session-note">Review marks are a checklist for this open preview.</p></aside><section class="review-main" aria-label="Selected change"><div class="review-file-toolbar"><div><strong data-file-title></strong><span data-file-stats></span></div><div class="review-diff-controls"><button type="button" data-previous aria-label="Previous file">←</button><button type="button" data-next aria-label="Next file">→</button><button type="button" data-viewed aria-pressed="false">Mark reviewed</button><button type="button" data-raw aria-pressed="false">Raw patch</button><button type="button" data-wrap aria-pressed="true">Wrap lines</button></div></div><div class="review-diff-viewport wraps" tabindex="0" aria-label="File changes"></div></section></div>
+ <section class="review-evidence" hidden tabindex="-1" aria-label="Verification and review evidence"><h3>Verification and final review</h3><p>Evidence saved for feature <code>${escape((preview.feature_tip||'').slice(0,12))}</code>. Opening this preview does not rerun checks.</p><ul>${checks.map(c=>`<li><strong>${c.record?.passed===true?'Passed':c.record?.passed===false?'Failed':'Result unavailable'}</strong><code>${escape(command(c))}</code></li>`).join('')||'<li>No check evidence is available.</li>'}</ul><h4>Independent final review · ${escape(review?.decision||'unavailable')}</h4><p class="review-feedback">${escape(review?.feedback||'No final reviewer feedback was saved.')}</p><h4>Completed work</h4><ul>${(task.branch_run.items||[]).map(i=>`<li>${escape(i.title)} · ${escape(String(i.status||'unknown').replace(/_/g,' '))}${i.commit_receipt?.new_tip?` · <code>${escape(i.commit_receipt.new_tip.slice(0,12))}</code>`:''}</li>`).join('')}</ul><details><summary>Exact revisions and complete manifest</summary><p>Feature <code>${escape(preview.feature_tip)}</code><br>Inspected target <code>${escape(preview.target_tip)}</code><br>Base <code>${escape(preview.base_sha)}</code></p><ul>${files.map(f=>`<li><code>${escape(f.path)}</code> · ${escape(f.status||'Changed')} · ${fileStats(f)}</li>`).join('')}</ul></details><button type="button" data-back-diff>Back to files</button></section>
+ <footer class="review-footer"><div><span data-load-status role="status"></span><button type="button" data-retry-diff hidden>Retry loading diff</button><p class="branch-error" role="alert"></p></div><div class="branch-actions"><button type="button" data-refresh>Refresh preview</button><button type="button" data-recheck>Recheck changes</button><button type="button" data-leave>Leave on branch</button><button type="button" data-revise>Request changes</button><button type="button" class="primary" data-merge>Approve &amp; merge locally</button></div></footer>`;
+}
+function finalDiffState(preview){
+ let text=typeof preview.diff==='string'?preview.diff:'',cursor=preview.next_cursor??null;
+ const complete=()=>cursor===null&&typeof preview.diff==='string'&&(!Number.isInteger(preview.diff_length)||Array.from(text).length===preview.diff_length);
+ return {get:()=>({text,cursor,complete:complete()}),append(page){
+  if(page.offset!==cursor||typeof page.diff!=='string'||(preview.manifest?.id&&page.manifest_id!==preview.manifest.id)||page.total!==preview.diff_length)throw Error('The saved diff changed. Refresh the preview before merging.');
+  if(page.next_cursor!==null&&(!Number.isInteger(page.next_cursor)||page.next_cursor<=cursor))throw Error('Invalid diff page. Refresh the preview.');
+  text+=page.diff;cursor=page.next_cursor;
+  if(cursor===null&&!complete())throw Error('The complete diff was not received. Refresh the preview before merging.');
+ }};
+}
+function mountFinalDiff(d,task,preview,api){
+ const files=reviewFiles(preview),state=finalDiffState(preview),viewed=new Set(),positions=new Map();
+ const nav=d.querySelector('.review-file-list'),viewport=d.querySelector('.review-diff-viewport'),merge=d.querySelector('[data-merge]'),status=d.querySelector('[data-load-status]'),retry=d.querySelector('[data-retry-diff]');
+ let selected=0,raw=false,loading=false,invalid=false,blocked=Boolean(preview.blocker),sections=[];
+ function update(){
+  const current=state.get();merge.disabled=terminalRun(task)||Boolean(task.archived_at||task.trashed_at)||!preview.preview_id||preview.merge_available!==true||blocked||invalid||!current.complete;
+  d.querySelector('[data-viewed]').disabled=!current.complete||!files.length||!sections.some(s=>s.path===files[selected]?.path||s.oldPath===files[selected]?.path);
+  status.textContent=loading?'Loading the complete saved diff…':current.complete?(terminalRun(task)?'Complete diff loaded · saved branch is read-only.':'Complete diff loaded · merge uses the inspected revisions.'):'Diff incomplete · merge is unavailable until it finishes loading.';
+  d.querySelector('[data-review-progress]').textContent=`${viewed.size} of ${files.length} files reviewed`;
+ }
+ function navigation(){
+  const filter=d.querySelector('[data-file-search]').value.toLowerCase();
+  nav.innerHTML=files.map((f,i)=>({f,i})).filter(({f})=>f.path.toLowerCase().includes(filter)).map(({f,i})=>`<button type="button" data-file="${i}" ${selected===i?'aria-current="true"':''}><span class="review-file-name">${escape(f.path)}</span><span class="review-file-meta">${escape(({A:'Added',M:'Modified',D:'Deleted',T:'Type changed'}[f.status])||'Changed')} · ${fileStats(f)}${viewed.has(i)?' · Reviewed':''}</span></button>`).join('')||'<p class="review-empty">No matching files.</p>';
+  for(const button of nav.querySelectorAll('[data-file]'))button.onclick=()=>{positions.set(selected,viewport.scrollTop);selected=Number(button.dataset.file);navigation();content();viewport.scrollTop=positions.get(selected)||0;nav.querySelector('[aria-current]')?.focus({preventScroll:true});};
+ }
+ function content(){
+  const file=files[selected],section=sections.find(s=>s.path===file?.path||s.oldPath===file?.path);
+  d.querySelector('[data-file-title]').textContent=file?.path||'No changed files';d.querySelector('[data-file-stats]').textContent=file?fileStats(file):'';
+  const button=d.querySelector('[data-viewed]');button.textContent=viewed.has(selected)?'Reviewed ✓':'Mark reviewed';button.setAttribute('aria-pressed',String(viewed.has(selected)));
+  d.querySelector('[data-previous]').disabled=selected===0;d.querySelector('[data-next]').disabled=selected>=files.length-1;
+  viewport.innerHTML=file?reviewDiffMarkup(section,raw):'<p class="review-empty">There are no file changes in this saved branch.</p>';update();
+ }
+ function move(delta){const index=selected+delta;if(index<0||index>=files.length)return;positions.set(selected,viewport.scrollTop);selected=index;navigation();content();viewport.scrollTop=positions.get(selected)||0;nav.querySelector('[aria-current]')?.scrollIntoView({block:'nearest'});}
+ d.querySelector('[data-previous]').onclick=()=>move(-1);d.querySelector('[data-next]').onclick=()=>move(1);
+ d.querySelector('[data-file-search]').oninput=navigation;
+ d.querySelector('[data-viewed]').onclick=()=>{const top=viewport.scrollTop;viewed.has(selected)?viewed.delete(selected):viewed.add(selected);navigation();content();viewport.scrollTop=top;};
+ d.querySelector('[data-raw]').onclick=e=>{raw=!raw;e.currentTarget.setAttribute('aria-pressed',String(raw));content();};
+ d.querySelector('[data-wrap]').onclick=e=>{const wrap=viewport.classList.toggle('wraps');e.currentTarget.setAttribute('aria-pressed',String(wrap));};
+ const evidence=d.querySelector('.review-evidence'),workspace=d.querySelector('.review-workspace');
+ d.querySelector('[data-evidence]').onclick=e=>{workspace.hidden=true;evidence.hidden=false;e.currentTarget.setAttribute('aria-expanded','true');evidence.focus();};
+ d.querySelector('[data-back-diff]').onclick=()=>{evidence.hidden=true;workspace.hidden=false;d.querySelector('[data-evidence]').setAttribute('aria-expanded','false');viewport.focus();};
+ async function load(){
+  if(loading)return;loading=true;retry.hidden=true;update();
+  try{
+   while(state.get().cursor!==null&&d.isConnected){
+    const page=await api('/tasks/'+task.id+'/branch-final-diff',{preview_id:preview.preview_id,cursor:state.get().cursor});
+    if(!d.isConnected)return;
+    state.append(page);if(page.blocker){blocked=true;const banner=d.querySelector('.review-blocker');banner.hidden=false;banner.textContent=page.blocker;}
+    const top=viewport.scrollTop;sections=reviewDiffs(state.get().text);content();viewport.scrollTop=top;
+   }
+   if(!state.get().complete)throw Error('The complete diff is unavailable. Refresh this preview before merging.');
+  }catch(error){invalid=true;if(d.isConnected){d.querySelector('.branch-error').textContent=error.message||String(error);retry.hidden=state.get().cursor===null;}}
+  finally{loading=false;if(d.isConnected)update();}
+ }
+ retry.onclick=()=>{invalid=false;d.querySelector('.branch-error').textContent='';load();};
+ sections=reviewDiffs(state.get().text);navigation();content();load();
+ return {state,viewed};
+}
 function technicalEvents(task){return [...(task?.events||[])].reverse();}
 function technicalText(value){return String(value??'').slice(0,8192).replace(/((?:api[_ -]?key|authorization|password|secret|access[_ -]?token)\s*[=:]\s*)[^\s,;]+/gi,'$1[redacted]').replace(/Bearer\s+[^\s,;]+/gi,'Bearer [redacted]').replace(/sk-[A-Za-z0-9_-]{8,}/g,'[redacted]');}
 function technicalMarkup(task){
@@ -183,13 +291,38 @@ function mount(options){
  const preview=panel.querySelector('[data-preview]');if(preview)preview.onclick=()=>guarded(preview,()=>showFinal(task),panel);
  const inspect=panel.querySelector('[data-proposal]');if(inspect)inspect.onclick=()=>guarded(inspect,async()=>{const result=await api('/tasks/'+task.id+'/branch-proposal',{});proposal={...result,request:{repository:task.source,prompt:result.contract.original_request,document:result.contract.inputs?.document?.path||''}};showProposal();},panel);
  }
- async function showFinal(task){finalPreview=await api('/tasks/'+task.id+'/branch-final-preview',{});const preview=finalPreview;
- const d=dialog(preview.merge_available?'Ready for your review':'Review saved branch',`<p>${preview.merge_available?'Integrate':'Saved changes from'} <strong>${escape(short(task.branch_run.feature_ref))}</strong> at <code>${escape((preview.feature_tip||'').slice(0,12))}</code> into <strong>${escape(short(preview.target_ref||task.branch_run.target_ref))}</strong> locally. No push or pull request.</p>${preview.blocker?`<p class="branch-run-reason" role="status">${escape(preview.blocker)}</p>`:''}<p>${(preview.manifest?.files||[]).length} files in the cumulative diff.</p><details><summary>Final verification and review evidence</summary><ul>${(task.branch_run.readiness?.checks||[]).map(check=>`<li><code>${escape(commandText(check))}</code> · ${check.record?.passed===true?'passed':'result unavailable'}</li>`).join('')}</ul><p>Independent final review: ${escape(task.branch_run.readiness?.review?.decision||'See saved run evidence')}</p></details><details><summary>Complete change manifest and inspected target</summary><p>Feature <code>${escape(preview.feature_tip)}</code><br>Target <code>${escape(preview.target_tip||'')}</code></p><ul>${(Array.isArray(preview.manifest)?preview.manifest:preview.manifest?.files||[]).map(file=>`<li>${escape(typeof file==='string'?file:file.path)} ${file.binary||file.added_lines===null?'· binary content':Number.isInteger(file.added_lines)?`· +${file.added_lines} −${file.removed_lines}`:''}</li>`).join('')}</ul></details><div class="branch-diff-pages"></div><button type="button" data-more hidden>Load next diff page</button><div class="branch-actions"><button type="button" class="primary" data-merge>Approve &amp; merge locally</button><button type="button" data-revise>Request changes</button><button type="button" data-leave>Leave on feature branch</button><button type="button" data-refresh>Refresh preview</button><button type="button" data-recheck>Recheck changes</button></div>`);
- const diff=d.querySelector('.branch-diff-pages');function appendDiff(text){for(const section of diffSections(text)){const entry=document.createElement('details');entry.className='branch-file-diff';entry.open=true;const heading=document.createElement('summary');heading.textContent=section.title;const content=document.createElement('pre');content.className='branch-cumulative-diff';content.tabIndex=0;content.textContent=section.text;entry.append(heading,content);diff.append(entry);}}appendDiff(typeof preview.diff==='string'?preview.diff:'Preview content is unavailable.');let cursor=preview.next_cursor;const more=d.querySelector('[data-more]');more.hidden=!cursor;more.onclick=()=>guarded(more,async()=>{const page=await api('/tasks/'+task.id+'/branch-final-diff',{preview_id:preview.preview_id,cursor});appendDiff(page.diff);cursor=page.next_cursor;more.hidden=!cursor;},d);
- const merge=d.querySelector('[data-merge]');merge.disabled=terminalRun(task)||!preview.preview_id||preview.merge_available!==true;for(const selector of ['[data-revise]','[data-recheck]','[data-leave]'])d.querySelector(selector).hidden=terminalRun(task);merge.onclick=()=>guarded(merge,async()=>{await api('/tasks/'+task.id+'/branch-merge',{preview_id:preview.preview_id,approved:true});d.close();await refresh();},d);
- const leave=d.querySelector('[data-leave]');leave.onclick=()=>guarded(leave,async()=>{await api('/tasks/'+task.id+'/branch-leave',{});d.close();await refresh();},d);
- d.querySelector('[data-recheck]').onclick=()=>guarded(d.querySelector('[data-recheck]'),async()=>{const result=await api('/tasks/'+task.id+'/branch-final-recheck',{});d.close();await options.handleResumeResult?.(task,result);await refresh();},d);
- d.querySelector('[data-revise]').onclick=()=>{d.close();input.focus();input.placeholder='Describe the changes you want in this run…';group.dataset.revising=task.id;};d.querySelector('[data-refresh]').onclick=()=>{d.close();showFinal(task).catch(e=>toast(e.message));};
+ function renderPlan(task){
+  const panel=document.querySelector('#plan-view');if(!panel)return;
+  if(panel.dataset.task!==task.id||!panel.querySelector('[data-plan-content]')){panel.dataset.task=task.id;panel.innerHTML='<div class="plan-review-heading"><div><h2>Plan &amp; review</h2><p>Compare the completed work with the plan you approved.</p></div><button type="button" data-jump-review>Jump to results ↓</button></div><details class="plan-contract" data-event="review-plan" open><summary>Plan and acceptance criteria</summary><div data-plan-content></div></details><div data-review-slot></div>';panel.querySelector('[data-jump-review]').onclick=()=>panel.querySelector('[data-review-slot]').scrollIntoView({block:'start',behavior:'instant'});}
+  const plan=panel.querySelector('[data-plan-content]'),markup=planMarkup(task);if(plan._markup!==markup){plan._markup=markup;plan.innerHTML=markup;}
+  const slot=panel.querySelector('[data-review-slot]'),run=task.branch_run;
+  const signature=JSON.stringify([run?.readiness?.id,run?.status,run?.expected_feature_tip,task.archived_at,task.trashed_at]);
+  if(slot.dataset.signature===signature)return;slot.dataset.signature=signature;
+  if(!run?.readiness){slot.innerHTML='<section class="review-pending"><h3>Results will appear here</h3><p>The cumulative changes, verification evidence, and merge decision will be available after final review finishes. You can follow current work in Chat.</p></section>';return;}
+  loadFinal(task,slot);
+ }
+ function showFinal(task){
+  options.showPlan?.();renderPlan(task);
+  document.querySelector('#plan-view [data-review-slot]')?.scrollIntoView({block:'start',behavior:'instant'});
+ }
+ async function loadFinal(task,slot){
+  // Render before awaiting the expensive, server-owned readiness validation.
+  const d=document.createElement('section');d.className='final-review';d.setAttribute('aria-label','Review branch changes');d.setAttribute('aria-busy','true');
+  d.innerHTML='<div class="review-heading"><h2>Review results</h2><button type="button" data-back-plan>Back to plan ↑</button></div><div data-final-content class="review-loading" role="status"><span class="spinner" aria-hidden="true"></span><h3>Preparing your review…</h3><p>Loading the saved changes and checking whether the target branch can accept them.</p><p>You can keep using the other tabs. No merge has started.</p></div><p class="branch-error" role="alert"></p>';
+  slot.replaceChildren(d);d.querySelector('[data-back-plan]').onclick=()=>{const plan=slot.closest('#plan-view')?.querySelector('.plan-contract');if(plan){plan.open=true;plan.scrollIntoView({block:'start',behavior:'instant'});}};let preview;
+  try{preview=await api('/tasks/'+task.id+'/branch-final-preview',{});}
+  catch(e){if(d.isConnected){d.removeAttribute('aria-busy');d.querySelector('[data-final-content]').innerHTML='<h3>Could not load the review</h3><p>The saved branch has not been merged.</p><button type="button" data-retry-preview>Try again</button>';error(d,e);d.querySelector('[data-retry-preview]').onclick=()=>loadFinal(task,slot);}return;}
+  if(!d.isConnected)return;
+  finalPreview=preview;d.removeAttribute('aria-busy');d.querySelector('[data-final-content]').remove();d.querySelector('.branch-error').remove();
+  d.insertAdjacentHTML('beforeend',finalReviewMarkup(task,preview));
+  mountFinalDiff(d,task,preview,api);
+  const merge=d.querySelector('[data-merge]');const readOnly=terminalRun(task)||Boolean(task.archived_at||task.trashed_at);if(readOnly)merge.disabled=true;
+  for(const selector of ['[data-revise]','[data-recheck]','[data-leave]'])d.querySelector(selector).hidden=readOnly;
+  merge.onclick=()=>guarded(merge,async()=>{await api('/tasks/'+task.id+'/branch-merge',{preview_id:preview.preview_id,approved:true});slot.dataset.signature='';await refresh();},d);
+  const leave=d.querySelector('[data-leave]');leave.onclick=()=>guarded(leave,async()=>{await api('/tasks/'+task.id+'/branch-leave',{});slot.dataset.signature='';await refresh();},d);
+  d.querySelector('[data-recheck]').onclick=()=>guarded(d.querySelector('[data-recheck]'),async()=>{const result=await api('/tasks/'+task.id+'/branch-final-recheck',{});await options.handleResumeResult?.(task,result);await refresh();},d);
+  d.querySelector('[data-revise]').onclick=()=>{options.showChat?.();input.focus();input.placeholder='Describe the changes you want in this run…';group.dataset.revising=task.id;};
+  d.querySelector('[data-refresh]').onclick=()=>loadFinal(task,slot);
  }
  async function requestRevision(task,message){
   let result=await api('/tasks/'+task.id+'/branch-revise',{message});
@@ -213,7 +346,7 @@ function mount(options){
  if(selector.value==='unattended'){save();submitPlanning(startState?.error&&getState().selection===startState.selection&&startState.draftSignature===JSON.stringify(drafts[key()])?startState.request:undefined);return true;}
  if(intent(input.value)==='offer'){const d=dialog('Choose how to work',`<p>This sounds like a branch run. Unattended prepares a bounded plan for your approval.</p><div class="branch-actions"><button type="button" data-unattended>Prepare unattended proposal</button><button type="button" data-interactive>Keep Interactive</button></div>`);d.querySelector('[data-unattended]').onclick=()=>{selector.value='unattended';save();sync();d.close();submitPlanning();};d.querySelector('[data-interactive]').onclick=()=>{interactiveOnce=true;d.close();toast('Interactive selected. Send your message to continue conversationally.');};return true;}return false;
  }
- sync();return {isSubmitting:()=>busy,interceptSubmit,render,renderStart,showProposal,showFinal,sync,restoreDraft:()=>{sync();if(!input.value&&drafts[key()]?.prompt)input.value=drafts[key()].prompt;},hasDocument:()=>selector.value==='unattended'&&Boolean(documentInput.value.trim()),getMode:()=>selector.value,newChat:()=>{sync();selector.value='interactive';documentInput.value='';delete group.dataset.revising;save();sync();options.onDraftChange?.();}};
+ sync();return {isSubmitting:()=>busy,interceptSubmit,render,renderPlan,renderStart,showProposal,showFinal,sync,restoreDraft:()=>{sync();if(!input.value&&drafts[key()]?.prompt)input.value=drafts[key()].prompt;},hasDocument:()=>selector.value==='unattended'&&Boolean(documentInput.value.trim()),getMode:()=>selector.value,newChat:()=>{sync();selector.value='interactive';documentInput.value='';delete group.dataset.revising;save();sync();options.onDraftChange?.();}};
 }
-return {planningPayload,proposalValidation,technicalEvents,technicalText,technicalMarkup,startController,savedPlan,planMarkup,pausePresentation,proposalReadiness,mount,intent,terminalRun,hasRun,isPlanning,duration,isBusy,isRevisionTarget,resumeAction,proposedLimits,projectRun,diffSections,escape};
+return {diffPath,reviewDiffs,reviewFiles,reviewDiffMarkup,finalReviewMarkup,finalDiffState,mountFinalDiff,planningPayload,proposalValidation,technicalEvents,technicalText,technicalMarkup,startController,savedPlan,planMarkup,pausePresentation,proposalReadiness,mount,intent,terminalRun,hasRun,isPlanning,duration,isBusy,isRevisionTarget,resumeAction,proposedLimits,projectRun,diffSections,escape};
 });

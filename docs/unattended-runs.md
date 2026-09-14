@@ -58,7 +58,11 @@ Final check failures and reviewer corrections can produce at most three bounded 
 
 Final review covers the cumulative diff, every requirement, all item receipts, and final integration checks. Large reviews use explicit chunk coverage; oversized or incomplete evidence cannot become a passing review.
 
-The final view offers **Request changes**, **Leave on feature branch**, and **Approve & merge locally**. A stale preview, dirty target, or diverged target keeps the saved diff readable while disabling merge. Resolve the stated blocker and refresh or explicitly recheck as needed.
+Open **Plan & review** to compare results with the approved plan and acceptance criteria at the top. **Inspect cumulative changes** takes you straight to the results below it, with immediate loading feedback while the saved preview is prepared. Opening this view does not rerun tests.
+
+Choose a file from the searchable list to read its colored diff with old/new line numbers. **Wrap lines** avoids horizontal scrolling; **Raw patch** shows the original Git patch. Optional **Mark reviewed** controls track your place in the current preview. File selection, scroll position, and marks survive switching tabs; refreshing the preview or opening another task starts a fresh checklist. The check/review summary opens saved commands, results, reviewer feedback, and exact revisions.
+
+The review offers **Request changes**, **Leave on branch**, and **Approve & merge locally**. Request changes returns you to Chat to describe a correction. A stale preview, dirty target, or diverged target keeps the saved diff readable while disabling merge. All diff pages must finish loading before merge is available; review marks are optional and do not authorize integration. Resolve the stated blocker and refresh or explicitly recheck as needed.
 
 Integration supports local fast-forward only. A checked-out target must be clean and in the selected source checkout. External branch movement, another worktree holding the target, or divergence prevents integration; cheapoS does not force-update, rebase, resolve conflicts, push, or open a pull request. After success, it reports the target and SHA and asks what to work on next.
 
