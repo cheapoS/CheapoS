@@ -198,6 +198,12 @@ class ChatProvider:
 
 
 def reserve(task, config, messages, tools, role):
+    # Add new role accounting only at dispatch; never rewrite historical totals.
+    if role == 'planner' and 'planner' not in task['usage']:
+        task['usage']['planner'] = {'tokens': 0, 'cost': 0}
+    bucket = task['usage'].get(role)
+    if not isinstance(bucket, dict) or any(isinstance(bucket.get(k), bool) or not isinstance(bucket.get(k), (int, float)) or not math.isfinite(bucket[k]) or bucket[k] < 0 for k in ('tokens', 'cost')):
+        raise ValueError('Saved role accounting is invalid; inspect the saved task before resuming')
     # A deliberately conservative preflight estimate; provider tokenizers/billing can differ.
     prompt_bound = len(json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False).encode("utf-8")) + 1024
     output = int(task["limits"]["output_tokens"])

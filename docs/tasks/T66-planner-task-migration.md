@@ -1,6 +1,6 @@
 # T66 — Resume pre-planner tasks safely
 
-Status: Ready after dependency
+Status: Complete
 Priority: P2 — saved-task compatibility
 Depends on: T64
 Size: S
@@ -53,4 +53,4 @@ Old tasks contain worker/reviewer usage buckets only. A new planner request call
 
 ## Completion record
 
-Pending.
+Reservation idempotently initializes an absent planner bucket before accounting. Existing malformed amounts fail clearly instead of resetting; historical totals, uncertainty and authorization remain intact. One pure reserve/reconcile fixture passed as part of four cases in 0.011s; no workflow or live model used.
