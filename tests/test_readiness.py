@@ -31,6 +31,12 @@ class ReadinessTests(unittest.TestCase):
                 result=self.describe(**arguments)
                 self.assertEqual((result['schema_version'],result['status'],result['next_step']),(1,status,action))
 
+    def test_local_planner_must_be_available_in_metadata(self):
+        result = self.describe(execution={'mode': 'local', 'local_model': 'fixture-local', 'local_planner': 'missing'})
+        self.assertEqual(result['status'], 'local_unavailable')
+        result = self.describe(execution={'mode': 'local', 'local_model': 'fixture-local', 'local_planner': 'fixture-local'})
+        self.assertEqual(result['status'], 'local_only_ready')
+
     def test_greeting_does_not_claim_completed_work_or_leak_config(self):
         result=self.describe('ready', free_count=2, owned=False, settings={'api_key':'SECRET'},
                              message='SECRET', startup={'status':'ready','verified_at':'now','usage':{'tokens':3}})
@@ -74,6 +80,6 @@ class ReadinessTests(unittest.TestCase):
             self.assertEqual(manager.snapshot(refresh=True)['paths']['local']['status'],'unavailable')
             self.assertEqual(manager.snapshot(refresh=True)['paths']['local']['status'],'ready')
             self.assertEqual(local.call_count,2)
-            self.assertEqual(local.call_args.kwargs['preferred'],('gemma4:31b',None))
+            self.assertEqual(local.call_args.kwargs['preferred'],('gemma4:31b',None,None))
         engine.startup.start.assert_not_called()
         manager.shutdown()

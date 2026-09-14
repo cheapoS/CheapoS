@@ -65,3 +65,5 @@ that key. No planner fields exist in the Connections UI.
 ## Completion record
 
 Dedicated planner settings support partial updates, explicit null reset, durable model/endpoint, and local_planner preferences. Connections exposes an optional expandable planner form and reviewer fallback. Three configuration cases passed in 0.011s combined with T66; JS syntax passed. Browser selection/reopen remains pending: isolated browser fixture unavailable in this session. Keys remain memory/environment-only for direct providers; config JSON never stores them.
+
+Readiness includes planner model/authentication state and local planner cache invalidation. Six readiness cases passed in 0.004s; new pure case under 0.001s.

@@ -42,3 +42,13 @@ test('saved plan keeps approved scope separate from progress and authorized revi
  task.branch_run.authorization=null;assert.equal(ui.savedPlan(task),null);assert.match(ui.planMarkup(task),/No complete saved/);
 });
 test('ordinary chat and planning placeholders omit Plan until persisted proposal exists',()=>{assert.equal(ui.savedPlan({}),null);const task={branch_run:{status:'draft',plan:{items:[{title:'placeholder'}]}}};assert.equal(ui.savedPlan(task),null);task.branch_run.status='awaiting_authorization';assert.equal(ui.savedPlan(task).approved,false);});
+
+test('Start transitions immediately, binds approval, and deduplicates pending submissions',async()=>{
+ let accept,calls=0;const actions=[];const pending=new Promise(r=>accept=r);const controller=ui.startController({api:(url,body)=>{calls++;assert.equal(url,'/tasks/a/branch-start');assert.deepEqual(body,{proposal_id:'inspected',approved:true});return pending;},transition:id=>actions.push(id)});
+ const proposal={task_id:'a',proposal_id:'inspected'},promise=controller.start(proposal);proposal.proposal_id='changed';assert.deepEqual(actions,['a']);assert.equal(controller.get('a').status,'pending');controller.start(proposal);assert.equal(calls,1);accept({});await promise;assert.equal(controller.get('a').status,'accepted');
+});
+test('lost Start responses reconcile saved state without issuing another approval',async()=>{
+ const calls=[];const c=ui.startController({api:async(url,body)=>{calls.push([url,body]);if(body)throw Error('response lost');return {branch_run:{authorization_ref:'saved'}};}});await c.start({task_id:'a',proposal_id:'one'});assert.equal(c.get('a').status,'accepted');assert.equal(calls.length,2);assert.equal(calls[1][1],undefined);
+ const rejected=ui.startController({api:async(url,body)=>{if(body)throw Error('Proposal expired');return {branch_run:{}};}});await rejected.start({task_id:'b',proposal_id:'two'});assert.equal(rejected.get('b').status,'rejected');assert.equal(rejected.get('b').error,'Proposal expired');assert.equal(rejected.get('a'),undefined);
+ const unknown=ui.startController({api:async()=>{throw Error('offline');}});await unknown.start({task_id:'c'});assert.equal(unknown.get('c').status,'unknown');await unknown.start({task_id:'c'});assert.match(unknown.get('c').error,/unknown/);
+});

@@ -68,7 +68,8 @@ def describe(gateway, prerequisites, locals_, execution, startup, direct=False):
         state, action = 'offline', 'inspect_gateway'
     names = [candidate['config']['model'] for candidate in locals_]
     selected = execution.get('local_model')
-    local_ready = bool(names and (not selected or selected in names))
+    required = [execution.get(key) for key in ('local_model','local_reviewer','local_planner')] if execution.get('mode') == 'local' else [selected]
+    local_ready = bool(names and all(not model or model in names for model in required))
     if execution.get('mode') == 'local':
         state, action = ('local_only_ready','open_project') if local_ready else ('local_unavailable','check_local_models')
     greeting = startup.get('status') == 'ready' and bool(startup.get('verified_at'))
@@ -106,13 +107,30 @@ class ReadinessManager:
             refreshed = engine.gateway.refresh(start=False)
             if gateway['status'] == 'unchecked': gateway = refreshed
         execution = engine.preferences()['execution']
-        selection = (execution.get('local_model'), execution.get('local_reviewer'))
+        selection = (execution.get('local_model'), execution.get('local_reviewer'), execution.get('local_planner'))
         if time.monotonic()-self.local_checked_at >= 30 or not self.local_checked_at or selection != self.local_selection:
             self.locals = local_candidates(engine.config.get('worker'), preferred=selection)
             self.local_checked_at = time.monotonic()
             self.local_selection = selection
         direct = all(engine.config.get(role) and engine.config[role].get('gateway') != 'omniroute' for role in ('worker','reviewer'))
-        return describe(gateway, prerequisites_, self.locals, execution, engine.startup.snapshot(), direct)
+        result = describe(gateway, prerequisites_, self.locals, execution, engine.startup.snapshot(), direct)
+        planner = engine.config.get('planner') or engine.config.get('reviewer')
+        if execution.get('mode') == 'local':
+            model = execution.get('local_planner') or execution.get('local_reviewer') or execution.get('local_model')
+            status = 'metadata_ready' if model in result['paths']['local']['models'] else 'model_missing'
+        else:
+            model = (planner or {}).get('model')
+            status = 'not_configured' if not model else 'configured_unverified'
+            if planner and planner.get('gateway') == 'omniroute':
+                if gateway.get('status') == 'auth_required': status = 'client_key_needed'
+                elif gateway.get('status') != 'ready': status = 'gateway_unavailable'
+                else:
+                    models = engine.gateway.catalog(fresh=False).get('models', [])
+                    status = 'metadata_ready' if any(m.get('id') == model and m.get('tool_calling') is True for m in models) else 'model_missing'
+            elif planner and str(planner.get('base_url', '')).startswith('https://') and not engine.provider_key('planner' if engine.config.get('planner') else 'reviewer', planner):
+                status = 'client_key_needed'
+        result['paths']['planner'] = {'model': model, 'status': status, 'fallback': not bool(execution.get('local_planner') if execution.get('mode') == 'local' else engine.config.get('planner'))}
+        return result
 
     def _refresh(self):
         try:

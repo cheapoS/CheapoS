@@ -1,6 +1,6 @@
 # T70 — Close Start immediately and show startup in chat
 
-Status: Ready after dependency
+Status: Implemented
 Priority: High — responsive orchestration
 Depends on: T69
 Size: M
@@ -69,4 +69,4 @@ Immediate dismissal is not a claim that the server has accepted the request.
 
 ## Completion record
 
-Pending.
+Start now dismisses synchronously and shows a task-bound pending Chat state. Captured proposal identity and explicit approval remain exact; duplicate pending/unknown starts are suppressed; failures reconcile saved authorization via a read before another Start can be offered. New composer input is preserved. Backend inspection: authorize saves and launch schedules a thread; no model-pickup await was added. Focused Node 21 cases in 68.6 ms; two new controlled-promise cases 0.33 ms. Shared browser flow pending T71/T72 integration.
