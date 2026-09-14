@@ -57,7 +57,7 @@ The **Activity** tab shows current status, saved file changes, checks, review de
 
 ## Connect models
 
-Open **Models**. OmniRoute is the first-class local gateway, with separate model choices for the worker and reviewer. Direct OpenRouter, Ollama, and other OpenAI-compatible endpoints remain available per role.
+Open **Models**. OmniRoute is the first-class local gateway, with separate model choices for the worker and reviewer. All remote model requests must use the configured local OmniRoute gateway during development. Direct Ollama remains available for installed local models.
 
 ### OmniRoute companion
 
@@ -96,11 +96,13 @@ Under **Models → Startup & connection settings**, the status distinguishes sav
 
 ### Direct connections
 
-- **OpenRouter:** `https://openrouter.ai/api/v1`. Enter exact model IDs and current input/output prices from the provider.
-- **Ollama:** `http://127.0.0.1:11434/v1`, with an installed model supporting tool calling. Local model prices can be zero.
-- **Other endpoints:** HTTPS OpenAI-compatible Chat Completions APIs supporting tools, `max_tokens`, and response token usage. Plain HTTP is allowed only on loopback.
+Only **local Ollama** is available directly: `http://127.0.0.1:11434/v1`, with an installed model supporting tool calling. Local model prices can be zero. cheapoS verifies the installed model before task inference, including Manual mode; Ollama cloud routes must use OmniRoute instead.
 
-Direct API keys entered in the interface remain in server memory until it stops. They are not saved in browser storage, configuration, or task history. You can alternatively supply `CHEAPOS_WORKER_API_KEY` and `CHEAPOS_REVIEWER_API_KEY` through the launch environment. Managed OmniRoute connections use the shared gateway key rather than direct provider keys. CheapoS does not load `.env` files automatically.
+**Direct OpenRouter and other remote endpoints are disabled during development.** Configure their credentials and models inside OmniRoute, then select **OmniRoute (shared local gateway)** for worker, reviewer, and planner. The server enforces this for saved tasks, overrides, model discovery, and startup greetings. It does not silently rewrite an old task's endpoint: saved edits remain available, and blocked settings explain how to start a new chat with gateway models.
+
+Only the OmniRoute client key is accepted in cheapoS, under gateway settings or through `CHEAPOS_GATEWAY_API_KEY`. Direct role keys (`CHEAPOS_WORKER_API_KEY`, `CHEAPOS_REVIEWER_API_KEY`, and `CHEAPOS_PLANNER_API_KEY`) no longer authorize inference and are not forwarded to local Ollama. cheapoS does not load `.env` files automatically.
+
+The public OpenRouter model catalog is still read without credentials to retire stale free model IDs; it is metadata, not an inference route. This restriction governs cheapoS model requests, not other applications or separately approved commands on the computer. OmniRoute can still use paid upstream models: model placement, included-access labels, and spending authorization are separate controls. Gateway-only routing does not itself prevent charges.
 
 Saving settings and refreshing the catalog make no inference requests. The separate startup connection check makes the bounded greeting request described above. Automated tests cover the worker/reviewer workflow through local HTTP fixtures. The initial live free-model experiment reached passing checks but timed out at review. A later [small live delegation test](experiments/2026-09-13-delegation.md) completed edits, verification, and a separate reviewer approval. Cost savings and reliability on larger tasks remain unproven. A chat subscription does not automatically provide API credits.
 
@@ -111,7 +113,7 @@ References: [OmniRoute](https://github.com/diegosouzapw/OmniRoute), [OpenRouter 
 For regular free-model use, we recommend **purchasing at least $10 in OpenRouter
 credits and leaving them unspent**. Buying credits qualifies you for the larger
 allowance; spending them on paid inference is not required. This is optional,
-and applies whether you connect directly or through OmniRoute.
+and applies to OpenRouter models accessed through OmniRoute.
 
 | Total OpenRouter credits purchased (all time) | Free-model requests per day | Requests per minute |
 | --- | --- | --- |

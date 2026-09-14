@@ -183,15 +183,6 @@ class StartupManager:
                 for candidate in omni:
                     if candidate["config"]["model"] == saved["model"]:
                         yield candidate
-            else:
-                try:
-                    models = gateway_for(saved, self.engine.provider_key("worker", saved)).list_models()
-                    for candidate in catalog_candidates(models, saved["base_url"], saved.get("gateway", "openai")):
-                        if candidate["config"]["model"] == saved["model"]:
-                            candidate["config"]["key_env"] = saved["key_env"]
-                            yield candidate
-                except ProviderError:
-                    pass
         yield from locals_
         if omni is None:
             omni = self._omni()
@@ -234,6 +225,7 @@ class StartupManager:
                 attempt = {"model":config["model"], "transport":candidate["transport"], "status":"connecting", "started_at":timestamp()}
                 with self.lock:
                     self.state["attempts"].append(attempt)
+                self.engine.guard_route(config)
                 reservation = reserve(account, config, GREETING, [], "worker")
                 self._record(account)
                 def emit(kind, value):

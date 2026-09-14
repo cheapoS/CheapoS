@@ -186,7 +186,8 @@ class EngineTests(LocalCase):
         self.assertEqual(loaded['in_flight'], reservation)
 
     def test_keys_are_memory_only_and_settings_are_validated_atomically(self):
-        config = {role: dict(CONFIG, api_key='secret-test-key') for role in ['worker', 'reviewer']}
+        self.engine.gateway.configure({'api_key':'secret-test-key'})
+        config = {role: dict(CONFIG, gateway='omniroute', base_url=self.engine.gateway.settings['base_url']) for role in ['worker', 'reviewer']}
         result = self.engine.configure(config)
         self.assertTrue(result['worker']['key_configured'])
         self.assertNotIn('secret-test-key', json.dumps(result))

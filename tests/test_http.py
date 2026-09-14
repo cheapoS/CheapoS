@@ -223,12 +223,19 @@ class HTTPTests(unittest.TestCase):
         status, headers, body = self.request('GET', '/api/tasks/'+task['id']+'/patch')
         self.assertEqual(status, 200)
         self.assertIn('attachment', headers['Content-Disposition'])
-        config = {role: {'base_url': 'https://example.invalid/v1', 'model':'fixture', 'input_rate':0, 'output_rate':0, 'api_key':'private-test-value'} for role in ['worker', 'reviewer']}
+        self.engine.gateway.configure({'api_key':'private-test-value'})
+        config = {role: {'base_url': self.engine.gateway.settings['base_url'], 'gateway':'omniroute', 'model':'fixture', 'input_rate':0, 'output_rate':0} for role in ['worker', 'reviewer']}
         status, _, body = self.post('/api/config', config)
         self.assertEqual(status, 200)
         self.assertNotIn(b'private-test-value', body)
         self.assertNotIn(b'private-test-value', self.request('GET', '/api/bootstrap')[2])
         self.assertNotIn('private-test-value', (self.engine.store.root / 'config.json').read_text())
+        for gateway in ('openai','omniroute'):
+            direct={**config['worker'],'gateway':gateway,'base_url':'https://openrouter.ai/api/v1'}
+            with patch('cheapos.server.gateway_for') as connect:
+                self.assertEqual(self.post('/api/models',{'role':'worker','config':direct})[0],400)
+                self.assertEqual(self.post('/api/config',{'worker':direct})[0],400)
+                connect.assert_not_called()
 
     def test_invalid_json_shape_is_rejected(self):
         self.assertEqual(self.post('/api/config', [1, 2])[0], 400)
@@ -315,7 +322,7 @@ class HTTPTests(unittest.TestCase):
         status, _, body = self.post('/api/projects', {'repository':source})
         self.assertEqual(status,200)
         self.assertEqual(json.loads(body)['path'],source)
-        config = {role:{'base_url':'http://127.0.0.1:1/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']}
+        config = {role:{'base_url':'http://127.0.0.1:11434/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']}
         self.assertEqual(self.post('/api/config', config)[0],200)
         status, _, body = self.post('/api/tasks', {'repository':source,'prompt':'Hi','conversational':True})
         self.assertEqual(status,200)
@@ -543,7 +550,7 @@ class ProviderTests(unittest.TestCase):
             self.provider.complete([], [], 256)
         self.assertEqual(len(self.server.requests), 1)
 
-    def test_full_workflow_through_chat_completions_http(self):
+    def test_full_workflow_through_keyless_gateway_http(self):
         self.run_full_workflow()
 
     def test_full_workflow_through_omniroute_gateway_http(self):
@@ -564,12 +571,11 @@ class ProviderTests(unittest.TestCase):
             self.server.responder = respond
             task['demo'] = False
             task['providers'] = {role: {'base_url':self.provider.config['base_url'], 'model':role, 'key_env':'CHEAPOS_TEST_KEY', 'input_rate':1, 'output_rate':2} for role in ['worker', 'reviewer']}
-            if managed:
-                engine.gateway.configure({'base_url': self.provider.config['base_url'], 'api_key': 'fixture-client-secret'})
-                engine.gateway.startup()
-                engine.gateway.thread.join(5)
-                for provider in task['providers'].values():
-                    provider['gateway'] = 'omniroute'
+            engine.gateway.configure({'base_url': self.provider.config['base_url'], 'api_key': 'fixture-client-secret' if managed else ''})
+            engine.gateway.startup()
+            engine.gateway.thread.join(5)
+            for provider in task['providers'].values():
+                provider['gateway'] = 'omniroute'
             engine.store.save(task)
             engine.start(task['id'])
             engine.runtimes[task['id']].thread.join(20)
@@ -580,6 +586,8 @@ class ProviderTests(unittest.TestCase):
             if managed:
                 self.assertTrue(all(headers.get('Authorization') == 'Bearer fixture-client-secret' for _, headers, _ in self.server.requests))
                 self.assertTrue(all(body['stream'] for _, _, body in self.server.requests))
+            else:
+                self.assertTrue(all(not headers.get('Authorization') for _, headers, _ in self.server.requests))
             self.assertEqual(len(reviews), 2)
             self.assertEqual(result['usage']['worker']['tokens'], 7 * 19)
             self.assertEqual(result['usage']['reviewer']['tokens'], 2 * 19)

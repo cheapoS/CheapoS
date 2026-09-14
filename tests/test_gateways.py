@@ -278,7 +278,9 @@ class LifecycleTests(unittest.TestCase):
         try:
             engine.gateway.configure({'api_key': 'fixture-client'})
             config = {'base_url': engine.gateway.settings['base_url'], 'gateway': 'omniroute', 'model': 'fixture', 'input_rate': 0, 'output_rate': 0}
-            engine.configure({role: {**config, 'api_key': 'fixture-direct'} for role in ['worker', 'reviewer']})
+            with self.assertRaisesRegex(ValueError, 'Direct provider keys are disabled'):
+                engine.configure({role: {**config, 'api_key': 'fixture-direct'} for role in ['worker', 'reviewer']})
+            engine.configure({role: config for role in ['worker', 'reviewer']})
             self.assertEqual(engine.provider_key('worker', engine.config['worker']), 'fixture-client')
             task = engine.create_demo()
             task['demo'] = False

@@ -29,8 +29,14 @@ test('locked key store and failed readiness calls expose recovery instead of cla
     assert.equal(connectionNotice({diagnostic_code},{status:'ready'},delegate).tone,'attention');
   }
 });
-test('direct credentials are unverified, missing roles need setup, and local reviewer absence is visible',()=>{
+test('local models are verified before inference, missing roles need setup, and local reviewer absence is visible',()=>{
   assert.equal(connectionNotice(local,{}, {mode:'manual'},{}).tone,'attention');
-  assert.match(connectionNotice(local,{}, {mode:'manual'}, {worker:{gateway:'openai'},reviewer:{gateway:'openai'}}).detail,/not been tested/);
+  assert.match(connectionNotice(local,{}, {mode:'manual'}, {worker:{gateway:'openai'},reviewer:{gateway:'openai'}}).detail,/identity is checked before inference/);
   assert.match(connectionNotice(local,{}, {...delegate,mode:'local',local_reviewer:'missing'}).detail,/reviewer missing/);
+});
+test('legacy direct remote settings need explicit repair and cannot look ready',()=>{
+  const config={worker:{route_error:'Direct connections disabled'},reviewer:{gateway:'omniroute'}};
+  const notice=connectionNotice(local,{status:'ready'}, {mode:'manual'},config);
+  assert.equal(notice.tone,'attention');assert.match(notice.detail,/Open Models and choose OmniRoute/);
+  assert.equal(connectionNotice(local,{status:'ready'}, {...delegate,mode:'local'},config).tone,'available');
 });

@@ -49,7 +49,7 @@ Make expensive compute the exception. Keep the work visible and the decisions yo
 </td>
 <td width="50%" valign="top">
 <h3>02 · Run where it makes sense</h3>
-<p>Keep everything local, use free remote models, delegate heavy work from a local conversation, or select your own model pair. OmniRoute, direct OpenRouter, Ollama, and compatible endpoints are supported.</p>
+<p>Keep everything local, use free remote models, delegate heavy work from a local conversation, or select your own model pair. Remote models connect through OmniRoute during development. Installed local Ollama models can also connect directly.</p>
 <a href="docs/EXECUTION.md">Choose your execution setup →</a>
 </td>
 </tr>
@@ -151,9 +151,8 @@ Task data defaults to `.cheapos/` beside the launcher. When asking CheapoS to wo
 | Connection | What it gives you | Get connected |
 | :--- | :--- | :--- |
 | **OmniRoute** | A first-class local gateway, provider management, model discovery, and eligible free-model routing. | [Companion setup](docs/USER_GUIDE.md#omniroute-companion) |
-| **OpenRouter** | A direct connection with an explicit worker and reviewer model selection. | [Direct connections](docs/USER_GUIDE.md#direct-connections) |
+| **OpenRouter and other remote providers** | Configure providers in OmniRoute, then choose their gateway model IDs in cheapoS. Direct remote connections are disabled during development. | [Companion setup](docs/USER_GUIDE.md#omniroute-companion) |
 | **Ollama** | Installed tool-capable models running on your own hardware; use directly or through OmniRoute. | [Local setup](docs/USER_GUIDE.md#local-setup-and-sample-tasks) |
-| **Compatible endpoints** | Bring an HTTPS Chat Completions endpoint supporting tools, output limits, and token usage. | [Endpoint requirements](docs/USER_GUIDE.md#direct-connections) |
 
 **Recommended for OpenRouter free-model use:** buy at least **$10 in OpenRouter credits** to raise the free-model allowance from **50 to 1,000 requests per day**. You **do not need to spend those credits** on inference to qualify. This optional purchase also helps when accessing OpenRouter through OmniRoute. [OpenRouter's policy](https://openrouter.ai/docs/faq) · [Setup details](docs/USER_GUIDE.md#openrouter-free-request-allowance)
 

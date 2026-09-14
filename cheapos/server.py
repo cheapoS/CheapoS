@@ -194,6 +194,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 if role not in {"worker", "reviewer", "planner"}:
                     raise ValueError("Choose a worker, reviewer or planner connection")
                 config = validate_provider(values.get("config"), role)
+                engine.guard_route(config)
                 result = {"models": gateway_for(config, engine.provider_key(role, config)).list_models()}
             elif path == "/api/branch-runs/project":
                 result = engine.branch.project(values)

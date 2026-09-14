@@ -29,7 +29,7 @@ class ProjectPermissionTests(LocalCase):
         result=self.finish(task)
         self.assertEqual(len(result['checks']),2)
         self.assertEqual(sum(e['title']=='Permission needed to run the verification command' for e in result['events']),1)
-        self.engine.configure({role:{'base_url':'http://127.0.0.1:1/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']})
+        self.engine.configure({role:{'base_url':'http://127.0.0.1:11434/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']})
         other=self.engine.create({'repository':task['source'],'prompt':'Check the same project','conversational':True})
         self.replies([call('run_checks',{'command':OTHER}),{'content':'Checked.'}])
         self.engine.start(other['id']);result=self.finish(other)

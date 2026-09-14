@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .providers import BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider
+from .providers import BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider, guard_inference_route, is_local_ollama
 from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
 from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, Workspace, git
@@ -347,7 +347,6 @@ class Engine:
         self.command_permissions = {}
         self.project_test_grants = ProjectTestGrants(self.store)
         self.commit_previews = {}
-        self.secrets = {}
         self.provider_factory = provider_factory
         self.gateway = OmniRouteManager(self.store.root)
         try:
@@ -364,6 +363,10 @@ class Engine:
         for role in ("worker", "reviewer", "planner"):
             if result.get(role):
                 result[role]["key_configured"] = bool(self.provider_key(role, result[role]))
+                try:
+                    self.guard_route(result[role])
+                except ValueError as error:
+                    result[role]['route_error'] = str(error)
         return result
 
     def projects(self, include_hidden=False):
@@ -448,12 +451,19 @@ class Engine:
             write_json(self.store.root / "preferences.json", result)
         return result
 
+    def guard_route(self, config):
+        guard_inference_route(config, self.gateway.settings['base_url'])
+
     def provider_key(self, role, config):
+        try:
+            self.guard_route(config)
+        except ValueError:
+            return ''
         if config.get("gateway") == "omniroute":
-            return self.gateway.api_key if self.gateway.matches(config["base_url"]) else ""
-        return (self.secrets.get((config.get("credential_role", role), config["base_url"]), "")
-                or os.environ.get(config["key_env"], "")
-                or (self.gateway.api_key if self.gateway.matches(config["base_url"]) else ""))
+            return self.gateway.api_key
+        # Local Ollama needs no provider credential. Never forward old direct
+        # provider secrets or CHEAPOS_*_API_KEY values to another service.
+        return ""
 
     def configure(self, values):
         normalized = copy.deepcopy(self.config)
@@ -464,6 +474,7 @@ class Engine:
             raise ValueError('Configure a worker and reviewer')
         for role, config in normalized.items():
             if config is None or role not in values: continue
+            self.guard_route(config)
             if config.get('access') == 'included':
                 from . import access_policy
                 config = access_policy.bind_provider(config, access_policy.snapshot(self.gateway.settings),
@@ -475,12 +486,11 @@ class Engine:
             if key is not None:
                 if not isinstance(key, str) or len(key) > 4096 or "\n" in key or "\r" in key:
                     raise ValueError("Invalid API key")
+                if key:
+                    raise ValueError('Enter the OmniRoute client key in gateway settings. Direct provider keys are disabled.')
         with self.lock:
             if self.startup.busy():
                 raise ValueError("Stop the startup connection check before changing models")
-            for role, config in normalized.items():
-                if config and role in values and "api_key" in values[role]:
-                    self.secrets[(role, config["base_url"])] = values[role]["api_key"]
             write_json(self.store.root / "config.json", normalized)
             self.config = normalized
             self.startup.models_changed()
@@ -1586,10 +1596,14 @@ class Engine:
         if task["demo"]:
             return self.fixture_response(task, role)
         config = self._resolve_provider_config(task, role, config_override)
+        if not self.provider_factory:
+            # Injectable providers are deterministic in-process test doubles.
+            # Every production request is checked before accounting or transport.
+            self.guard_route(config)
         from . import access_policy
         access_models = self.gateway.catalog(fresh=False)['models'] if (task.get('route') or {}).get('access_policy') else None
         access_policy.guard(task, config, self.gateway.settings, access_models, role=role)
-        if not self.provider_factory and task.get("execution", {}).get("mode") in {"local", "delegate"} and (role == "coordinator" or task["execution"]["mode"] == "local"):
+        if not self.provider_factory and is_local_ollama(config):
             identity = (config["base_url"], config["model"])
             if identity not in runtime.verified_local:
                 verify_local(config)

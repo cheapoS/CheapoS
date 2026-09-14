@@ -7,6 +7,7 @@ const CheapOSGuide = (() => {
     const needsGateway=['remote','delegate'].includes(mode)||(mode==='manual'&&roles.some(p=>p.gateway==='omniroute'));
     const needsLocal=['local','delegate'].includes(mode);
     const problems=[];
+    if(mode!=='local'&&[...roles,config.planner].some(p=>p?.route_error))problems.push('A saved model connection is disabled. Open Models and choose OmniRoute for remote models, or local Ollama.');
     if(needsGateway){
       if(gateway.key_storage?.error)problems.push(gateway.key_storage.error);
       else if(gateway.status==='auth_required')problems.push('OmniRoute needs its client API key. Enter it in Models and choose Remember to keep it after restart.');
@@ -22,7 +23,7 @@ const CheapOSGuide = (() => {
     if(!readiness?.paths||(needsGateway&&['unchecked','checking','starting',undefined].includes(gateway.status)))return {tone:'checking',title:'Checking your saved connections…',detail:'Reading gateway and local-model metadata. No inference or model loading.'};
     if(mode==='manual'&&roles.length<2)return {tone:'attention',title:'Choose your model connections',detail:'Open setup to connect OmniRoute or choose a local model.'};
     const direct=mode==='manual'&&roles.some(p=>p.gateway!=='omniroute');
-    return {tone:'available',title:direct?'Model settings saved':'Connections available',detail:direct?'Direct-provider access has not been tested.':'Metadata checked · model responses and coding tools are verified when work runs.'};
+    return {tone:'available',title:direct?'Model settings saved':'Connections available',detail:direct?'Local Ollama is selected. Installed model identity is checked before inference.':'Metadata checked · model responses and coding tools are verified when work runs.'};
   }
   const workPresets={interactive:{run_minutes:15,worker_turns:40,iterations:5},extended:{run_minutes:45,worker_turns:120,iterations:10}};
   function workPreset(limits){const standard={reviewer_tokens:200000,output_tokens:2048,checkpoint_turns:12,check_seconds:360};return Object.keys(workPresets).find(name=>Object.entries({...standard,...workPresets[name]}).every(([key,value])=>limits[key]===value))||'custom'}

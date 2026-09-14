@@ -13,7 +13,7 @@ from test_engine import LocalCase, call, wait_for
 class ChatTests(LocalCase):
     def chat(self, prompt='Explain clamp.'):
         source = self.fixture()['source']
-        self.engine.configure({role: {'base_url':'http://127.0.0.1:1/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']})
+        self.engine.configure({role: {'base_url':'http://127.0.0.1:11434/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']})
         return self.engine.create({'repository':source, 'prompt':prompt, 'conversational':True})
 
     def provider(self, responses):

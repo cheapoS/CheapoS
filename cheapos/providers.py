@@ -3,13 +3,12 @@
 import json
 from .measurement import enabled as measuring
 import math
-import os
 import re
 import time
 from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from .streaming import read_chat_stream
 from .served_identity import metadata
 
@@ -18,8 +17,42 @@ REQUEST_TIMEOUT_SECONDS = 180
 
 
 def is_local_ollama(config):
-    endpoint = urlsplit(config.get("base_url", ""))
-    return config.get("gateway") != "omniroute" and endpoint.hostname in {"127.0.0.1", "localhost", "::1"} and endpoint.port == 11434
+    try:
+        endpoint = urlsplit(config.get("base_url", ""))
+        return (config.get("gateway") != "omniroute" and endpoint.scheme == "http"
+                and endpoint.hostname in {"127.0.0.1", "localhost", "::1"} and endpoint.port == 11434
+                and endpoint.path.rstrip("/") == "/v1" and not any((endpoint.username, endpoint.password, endpoint.query, endpoint.fragment)))
+    except ValueError:
+        return False
+
+
+def guard_inference_route(config, gateway_url):
+    """Development policy: remote inference uses the configured local OmniRoute.
+
+    This also checks captured task settings; labels or an old provider API key
+    cannot turn a direct remote endpoint into an authorized gateway.
+    """
+    if is_local_ollama(config):
+        return
+    def identity(url):
+        parsed = urlsplit(url)
+        if (parsed.scheme != 'http' or parsed.hostname not in {'localhost', '127.0.0.1', '::1'}
+                or parsed.path.rstrip('/') != '/v1'
+                or any((parsed.username, parsed.password, parsed.query, parsed.fragment))):
+            return None
+        port = parsed.port if parsed.port is not None else 80
+        if not 1 <= port <= 65535:
+            return None
+        return ('127.0.0.1' if parsed.hostname == 'localhost' else parsed.hostname, port)
+    try:
+        target = identity(config.get('base_url', ''))
+        if config.get('gateway') == 'omniroute' and target is not None and target == identity(gateway_url):
+            return
+    except (TypeError, ValueError):
+        pass
+    raise ValueError('Remote models must use the configured OmniRoute connection during development. '
+                     'Open Models and select OmniRoute; direct OpenRouter and other remote endpoints are disabled. '
+                     'Saved tasks keep their original connection and edits; start a new chat with the gateway model choices.')
 
 
 class ProviderError(Exception):
@@ -118,7 +151,7 @@ def validate_provider(value, role):
 class ChatProvider:
     def __init__(self, config, key=""):
         self.config = config
-        self.key = key or os.environ.get(config["key_env"], "")
+        self.key = key
 
     def complete(self, messages, tools, max_tokens):
         return self._complete(messages, tools, max_tokens)
@@ -153,7 +186,7 @@ class ChatProvider:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
         try:
-            with build_opener(NoRedirects()).open(request, timeout=timeout_seconds) as response:
+            with build_opener(NoRedirects(), ProxyHandler({})).open(request, timeout=timeout_seconds) as response:
                 if emit is not None and response.headers.get_content_type() == "text/event-stream":
                     data = read_chat_stream(response, emit, stopped, ProviderError, max_seconds=stream_seconds)
                 else:

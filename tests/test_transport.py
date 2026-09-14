@@ -10,6 +10,7 @@ from cheapos.engine import Engine
 from cheapos.providers import ProviderError, BudgetError
 from cheapos.streaming import read_chat_stream
 from cheapos import transport
+from cheapos.providers import guard_inference_route, ChatProvider
 
 
 class TransportTests(unittest.TestCase):
@@ -36,7 +37,7 @@ class TransportTests(unittest.TestCase):
                 if emit is not None: raise ProviderError('unsupported',code='streaming_unsupported')
                 return self.complete(messages,tools,maximum)
         engine=Engine.__new__(Engine)
-        engine.store=Mock();engine.gateway=SimpleNamespace(settings={})
+        engine.store=Mock();engine.gateway=SimpleNamespace(settings={'base_url':'http://localhost:20128/v1'})
         engine.provider_factory=lambda *args:Provider()
         engine.event=lambda t,*args:t['events'].append({'id':str(len(t['events'])), 'detail':args})
         return engine,runtime,calls
@@ -45,17 +46,17 @@ class TransportTests(unittest.TestCase):
         engine,runtime,calls=self.harness()
         provider=engine.provider_factory()
         engine.provider_factory=None
-        config=dict(runtime.task['providers']['worker'],base_url='https://provider.example/v1',key_env='CHEAPOS_REVIEWER_API_KEY')
+        config=dict(runtime.task['providers']['worker'],gateway='omniroute',base_url='http://localhost:20128/v1',key_env='CHEAPOS_REVIEWER_API_KEY')
         runtime.task['providers']={'reviewer':config}
         engine.config={}
-        engine.secrets={('reviewer',config['base_url']):'reviewer-fixture-key'}
+        engine.gateway.api_key='shared-fixture-key'
         engine.gateway.matches=lambda url:False
         with patch('cheapos.engine.gateway_for',return_value=provider) as factory:
             engine._request(runtime,[],[],'planner',purpose='branch_planning')
-        self.assertEqual(factory.call_args.args[1],'reviewer-fixture-key')
+        self.assertEqual(factory.call_args.args[1],'shared-fixture-key')
         self.assertEqual(factory.call_args.args[0]['credential_role'],'reviewer')
         self.assertTrue(all(r['role']=='planner' for r in runtime.task['request_metrics']))
-        self.assertNotIn('reviewer-fixture-key',json.dumps(runtime.task))
+        self.assertNotIn('shared-fixture-key',json.dumps(runtime.task))
 
     def test_planner_override_cannot_dispatch_outside_captured_connection(self):
         engine, runtime, calls = self.harness()
@@ -148,6 +149,71 @@ class TransportTests(unittest.TestCase):
         with self.assertRaises(BudgetError):engine._request(runtime,[],[],'reviewer')
         self.assertEqual(calls,['sse'])
         self.assertEqual(runtime.task['pending_review']['review_requests'],8)
+
+
+class GatewayOnlyTests(unittest.TestCase):
+    """No sockets, repository setup, waits, or inference."""
+    def test_only_configured_gateway_and_local_ollama_are_allowed(self):
+        base = 'http://127.0.0.1:20128/v1'
+        for config in ({'gateway':'omniroute', 'base_url':base},
+                       {'gateway':'omniroute', 'base_url':'http://localhost:20128/v1/'},
+                       {'base_url':'http://127.0.0.1:11434/v1'}):
+            guard_inference_route(config, base)
+        for url in ('https://openrouter.ai/api/v1', 'https://other.example/v1',
+                    'http://127.0.0.1:20129/v1', 'http://127.0.0.1:20128/v1?redirect=x',
+                    'http://user:secret@127.0.0.1:20128/v1', 'http://127.0.0.1:11434/proxy',
+                    'http://127.0.0.1:11434/v1?remote=x', 'http://localhost:99999/v1', 'http://localhost:0/v1'):
+            for gateway in ('openai','omniroute'):
+                with self.subTest(url=url, gateway=gateway), self.assertRaisesRegex(ValueError,'must use the configured OmniRoute'):
+                    guard_inference_route({'base_url':url,'gateway':gateway}, base)
+
+    def test_legacy_and_override_remote_requests_never_dispatch_or_reserve(self):
+        for mode in ('manual','remote','delegate','local'):
+            for role in ('worker','reviewer','planner','coordinator'):
+                engine,runtime,_=TransportTests().harness()
+                engine.provider_factory=None
+                runtime.task['execution']={'mode':mode}
+                config=dict(runtime.task['providers']['worker'],base_url='https://openrouter.ai/api/v1',gateway='openai')
+                runtime.task['providers']={role:config}
+                # Both saved settings and direct overrides must hit the same guard.
+                for override in (None, config, dict(config,gateway='omniroute')):
+                    with self.subTest(mode=mode,role=role,override=override), patch('cheapos.engine.gateway_for') as provider:
+                        with self.assertRaisesRegex(ValueError,'must use the configured OmniRoute'):
+                            engine._request(runtime,[],[],role,config_override=override)
+                        provider.assert_not_called()
+                        self.assertEqual(runtime.task['usage']['cost'],0)
+                        self.assertNotIn('in_flight',runtime.task)
+                        self.assertFalse(runtime.task['request_metrics'][-1]['dispatched'])
+
+    def test_local_requests_ignore_direct_provider_environment_keys(self):
+        with patch.dict('os.environ',{'CHEAPOS_WORKER_API_KEY':'must-not-forward'}):
+            provider=ChatProvider({'base_url':'http://127.0.0.1:11434/v1','key_env':'CHEAPOS_WORKER_API_KEY'})
+            self.assertEqual(provider.key,'')
+
+    def test_manual_local_cloud_routes_are_verified_before_dispatch(self):
+        engine,runtime,_=TransportTests().harness()
+        engine.provider_factory=None
+        runtime.verified_local=set()
+        runtime.task['execution']={'mode':'manual'}
+        config=dict(runtime.task['providers']['worker'],base_url='http://127.0.0.1:11434/v1')
+        with patch('cheapos.engine.verify_local',side_effect=ValueError('cloud route')), patch('cheapos.engine.gateway_for') as provider:
+            with self.assertRaisesRegex(ValueError,'cloud route'):
+                engine._request(runtime,[],[],'worker',config_override=config)
+            provider.assert_not_called()
+            self.assertEqual(runtime.task['usage']['cost'],0)
+
+    def test_startup_does_not_discover_or_infer_through_a_legacy_direct_provider(self):
+        from cheapos.startup import StartupManager
+        engine,_,_=TransportTests().harness()
+        engine.preferences=lambda:{'execution':{'mode':'manual'}}
+        startup=StartupManager.__new__(StartupManager)
+        startup.engine=engine
+        startup.settings={'allow_cloud':True}
+        startup._omni=Mock(return_value=[])
+        saved={'base_url':'https://openrouter.ai/api/v1','model':'model:free','gateway':'openai'}
+        with patch('cheapos.startup.local_candidates',return_value=[]), patch('cheapos.startup.gateway_for') as provider:
+            self.assertEqual(list(startup._candidates(saved)),[])
+            provider.assert_not_called()
 
 
 class AutomaticRouteChargeTests(unittest.TestCase):
