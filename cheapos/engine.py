@@ -752,10 +752,21 @@ class Engine:
                 raise ValueError("Task copy changed. Request fresh command approval")
             if (scope is not None or remember or approval_id is not None) and approval_id != pending["id"]:
                 raise ValueError("This approval request changed. Refresh the chat before approving.")
-            if scope == "project_tests_session":
+            branch_scope = None
+            if approved is True and "branch_run" in runtime.task:
+                if approval_id != pending["id"]:
+                    raise ValueError("Inspect the current branch command approval before approving")
+                self.branch.validate_authority(runtime.task, runtime.task["branch_run"])
+                branch_scope = self.branch.scopes.prepare(runtime.task, pending["command"])
+                if branch_scope != pending.get("branch_scope"):
+                    raise ValueError("Command scope changed. Request fresh command approval")
+            if approved is True and scope == "project_tests_session":
                 self.project_test_grants.approve(runtime.task, pending)
-            if remember:
-                self.command_permissions.setdefault(task_id, set()).add((pending["directory"], tuple(pending["command"])))
+            if approved is True and remember:
+                if branch_scope is not None:
+                    self.branch.scopes.consent(runtime.task, branch_scope, exact=True)
+                else:
+                    self.command_permissions.setdefault(task_id, set()).add((pending["directory"], tuple(pending["command"])))
             self.event(runtime.task, "permission", "Project tests allowed for this session" if scope == "project_tests_session" else "Command allowed for this session" if remember else "Command allowed once" if approved else "Command declined", {"command": pending["command"], "directory": pending["directory"], "scope": scope or ("task_exact" if remember else "once")})
             runtime.approved = approved is True
             runtime.approval.set()
@@ -1726,6 +1737,8 @@ class Engine:
             runtime.approved = False
             runtime.approval.clear()
             task["pending_approval"] = {"id": uuid.uuid4().hex, "command": argv, "directory": task["workspace"], "profile": self.project_test_grants.proposal(task, argv), "scope_reason": scope_reason}
+            if "branch_run" in task:
+                task["pending_approval"]["branch_scope"] = self.branch.scopes.prepare(task, argv)
             task["status"] = "waiting_approval"
             self.event(task, "permission", "Permission needed to run the verification command", task["pending_approval"])
             waiting_since = time.monotonic()

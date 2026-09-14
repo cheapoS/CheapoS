@@ -139,14 +139,14 @@ not mutated. A projected scope must equal the materialized prepare() result.
         return {'command': list(argv), 'directory': task['workspace'], 'profile': profile,
                 'fingerprint': digest(binding)}
 
-    def consent(self, task, scope):
+    def consent(self, task, scope, *, exact=False):
         current = self.prepare(task, scope['command'])
         if current != scope:
             raise ValueError('Runner, configuration or workspace changed; inspect fresh command scope')
         existing, _ = self.project_grants.authorize(task, scope['command'])
         if existing:
             return existing
-        if scope['profile']:
+        if scope['profile'] and not exact:
             return self.project_grants.approve(task, scope)['id']
         key = digest(scope)
         self.exact_grants[key] = copy.deepcopy(scope)
