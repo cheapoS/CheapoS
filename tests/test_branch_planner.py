@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import sys
 import shlex
@@ -7,6 +8,7 @@ import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 from cheapos import branch_planner as planner
 from cheapos.workspace import git
 
@@ -252,3 +254,148 @@ class FinalCheckParserTests(unittest.TestCase):
         result = parse(items)
         self.assertEqual(len(result['final_checks']), 12)
         self.assertEqual(result['final_checks'], [i['required_checks'][0] for i in items[:12]])
+
+
+class PlannerExcerptTests(unittest.TestCase):
+    """Small file/provider fixtures; no Git workflow, server, or live inference."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.limits = {'dollars': 0, 'working_seconds': 900, 'requests': 30}
+        self.runtime = SimpleNamespace(task={'planning_limits': self.limits}, stop=threading.Event(), guard=lambda: None)
+
+    def call(self, name, arguments):
+        return {'tool_calls': [{'id': 'call', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
+
+    def run_plan(self, responses):
+        captured = {'version': 1, 'source': str(self.root), 'prompt': 'Add a restart button', 'document': None}
+        captured['hash'] = planner._digest(captured)
+        self.requests, self.events = [], []
+
+        def request(runtime, messages, tools, role, purpose):
+            self.assertEqual((role, purpose), ('planner', 'branch_planning'))
+            self.requests.append(copy.deepcopy(messages))
+            return responses.pop(0)
+
+        engine = SimpleNamespace(request=request, event=lambda *args: self.events.append(args))
+        with patch.object(planner, 'project_context', return_value={'files': ['app.js']}):
+            return planner.plan(engine, self.runtime, captured)
+
+    def test_large_source_query_reads_relevant_context_without_enlarging_spec_limit(self):
+        text = '/* padding */\n' * 5500 + '.restart-button { color: green; }\n' + '/* end */\n' * 2000
+        data = text.encode('utf-8')
+        (self.root / 'styles.css').write_bytes(data)
+        result = planner.inspect_project_file(self.root, 'styles.css', query='.restart-button')
+        self.assertGreater(len(data), planner.MAX_DOCUMENT_BYTES)
+        self.assertEqual(result['source_bytes'], len(data))
+        self.assertEqual(result['hash'], hashlib.sha256(data).hexdigest())
+        self.assertTrue(result['found'])
+        self.assertEqual(result['match_line'], 5501)
+        self.assertIn('.restart-button { color: green; }', result['contents'])
+        self.assertLessEqual(len(result['contents']), 12000)
+        self.assertTrue(result['truncated'])
+        self.assertTrue(result['has_more'])
+        with patch.object(planner.Workspace, 'project_root', return_value=self.root):
+            with self.assertRaises(ValueError):
+                planner.capture_inputs(self.root, document='styles.css')
+
+    def test_excerpts_resume_exactly_across_long_lines_crlf_and_unicode(self):
+        for text in ('x' * 11999 + '\r\n' + 'é' * 13000, 'line\r\n' * 450, 'x' * 25000):
+            with self.subTest(length=len(text)):
+                (self.root / 'app.js').write_bytes(text.encode('utf-8'))
+                position, chunks = {}, []
+                for _ in range(10):
+                    result = planner.inspect_project_file(self.root, 'app.js', **position)
+                    self.assertLessEqual(len(result['contents']), 12000)
+                    chunks.append(result['contents'])
+                    if not result['has_more']:
+                        break
+                    self.assertTrue(result['contents'])
+                    position = {'start_line': result['next_start_line'], 'start_column': result['next_start_column']}
+                else:
+                    self.fail('Continuation did not reach the end of the file')
+                self.assertEqual(''.join(chunks), text)
+
+    def test_ranges_and_queries_are_bounded_and_missing_match_is_explicit(self):
+        (self.root / 'app.js').write_text('one\ntwo target\nthree\nfour target\n')
+        result = planner.inspect_project_file(self.root, 'app.js', start_line=2, end_line=2, query='target')
+        self.assertEqual(result['contents'], 'two target\n')
+        self.assertEqual(result['match_line'], 2)
+        self.assertEqual(result['next_start_line'], 3)
+        missing = planner.inspect_project_file(self.root, 'app.js', end_line=1, query='target')
+        self.assertFalse(missing['found'])
+        self.assertEqual(missing['contents'], '')
+        for arguments in ({'start_line': True}, {'start_line': 0}, {'start_line': 5}, {'start_column': 100},
+                          {'start_line': 3, 'end_line': 2}, {'query': ''}, {'query': 'a' * 201}):
+            with self.subTest(arguments=arguments), self.assertRaises(ValueError):
+                planner.inspect_project_file(self.root, 'app.js', **arguments)
+
+    def test_source_security_and_workspace_byte_ceiling_remain_effective(self):
+        (self.root / 'normal.js').write_text('source')
+        (self.root / '.env').write_text('private')
+        (self.root / 'link').symlink_to('normal.js')
+        (self.root / 'nested-link').symlink_to(self.root, target_is_directory=True)
+        (self.root / 'too-big').write_bytes(b'x' * (planner.MAX_FILE_BYTES + 1))
+        (self.root / 'binary').write_bytes(b'a\0b')
+        (self.root / 'badutf').write_bytes(b'\xff')
+        for path in ('.env', 'link', 'nested-link/normal.js', 'too-big', 'binary', 'badutf', '../outside', str(self.root / 'normal.js')):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                planner.inspect_project_file(self.root, path, query='source')
+
+    def test_large_source_inspection_and_plain_text_repair_lead_to_a_valid_proposal(self):
+        (self.root / 'app.js').write_text('/* padding */\n' * 6000 + 'function restartServer() {}')
+        check = shlex.join([sys.executable, '-m', 'unittest'])
+        proposal = {'items': [{'id': 'restart', 'title': 'Restart button', 'instructions': 'Reuse restartServer',
+                              'acceptance_criteria': ['Button restarts the server'], 'required_checks': [check]}],
+                    'limits': self.limits, 'final_checks': [check]}
+        prose = {'content': 'I need the restartServer handler before proposing a plan.', 'finish_reason': 'stop'}
+        original = copy.deepcopy(prose)
+        result = self.run_plan([prose, self.call('inspect_project_file', {'path': 'app.js', 'query': 'restartServer'}),
+                                self.call('propose_branch_plan', {'status': 'plan', 'plan': proposal, 'clarification': ''})])
+        self.assertEqual(result['items'][0]['id'], 'restart')
+        self.assertEqual(result['limits'], self.limits)
+        self.assertEqual(len(self.requests), 3)
+        self.assertEqual(self.requests[1][-2], {'role': 'assistant', 'content': prose['content']})
+        self.assertIn('plain text instead of', self.requests[1][-1]['content'])
+        excerpt = json.loads(self.requests[2][-1]['content'])
+        self.assertTrue(excerpt['found'])
+        self.assertIn('function restartServer()', excerpt['contents'])
+        self.assertNotIn('error', excerpt)
+        self.assertEqual(len(self.events), 1)
+        self.assertEqual(prose, original)
+
+    def test_response_diagnostics_distinguish_missing_multiple_and_truncated_calls(self):
+        from cheapos.branch_pause import PauseError, public
+        tool = self.call('propose_branch_plan', {})['tool_calls'][0]
+        cases = [({'content': 'Please paste the CSS. PRIVATE_MARKER'}, 'plain text instead of'),
+                 ({'tool_calls': None}, 'neither a proposal'),
+                 ({'tool_calls': [tool, tool]}, 'multiple tool calls'),
+                 ({'tool_calls': [tool], 'finish_reason': 'length'}, 'output limit')]
+        for response, reason in cases:
+            with self.subTest(reason=reason):
+                with self.assertRaises(PauseError) as caught:
+                    self.run_plan([response] * 3)
+                self.assertEqual(len(self.requests), 3)
+                self.assertEqual(len(self.events), 3)
+                self.assertIn(reason, str(caught.exception))
+                self.assertIn('after two repairs', str(caught.exception))
+                banner = public({'version': 1, 'cause': 'malformed_output', 'stage': 'planning',
+                                 'diagnostic': caught.exception.safe_diagnostic})
+                self.assertIn(reason, banner['explanation'])
+                self.assertNotIn('PRIVATE_MARKER', banner['explanation'])
+
+    def test_repair_context_is_bounded_and_truncated_inspection_does_not_run(self):
+        clarification = self.call('propose_branch_plan', {'status': 'clarification', 'plan': None,
+                                                        'clarification': 'Restart the app or the model gateway?'})
+        with self.assertRaises(planner.ClarificationRequired):
+            self.run_plan([{'content': 'x' * 20000}, clarification])
+        self.assertEqual(len(self.requests[1][-2]['content']), 12000)
+        truncated = self.call('inspect_project_file', {'path': 'app.js'})
+        truncated['finish_reason'] = 'length'
+        with patch.object(planner, 'inspect_project_file') as inspect:
+            with self.assertRaises(planner.ClarificationRequired):
+                self.run_plan([truncated, clarification])
+            inspect.assert_not_called()
+        self.assertIn('output limit', self.requests[1][-1]['content'])

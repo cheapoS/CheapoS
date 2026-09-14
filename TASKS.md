@@ -10,6 +10,15 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+**Completed: [T78 — planner source excerpts and accurate response diagnostics](docs/tasks/T78-planner-source-excerpts.md).**
+The planner can search and page through source files larger than the 64 KB
+complete-document limit. Plain-text replies retain their repair context and are
+reported accurately rather than being mislabeled as truncated/multiple plans.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T78](docs/tasks/T78-planner-source-excerpts.md) | Read large source in bounded excerpts and diagnose missing proposal calls | T65, T73 | S | Complete |
+
 **Completed: [T77 — automatic reviewer reassessment before a routine stall](docs/tasks/T77-reviewer-coaching.md).**
 The engine gives an unattended item reviewer one focused, evidence-based nudge
 before stopping repeated reads, failed actions, or invalid/no decisions. Chat
@@ -245,7 +254,7 @@ do not move the report-export milestone behind a new broad benchmark campaign.
 ### Current handoff template
 
 ```text
-T62–T77 are complete. Select the next agreed incomplete card before starting;
+T62–T78 are complete. Select the next agreed incomplete card before starting;
 do not reimplement these completed fixes.
 Read AGENTS.md, CONTRIBUTING.md, TASKS.md, and that card first.
 Inspect the current code and verify dependencies; do not restart completed work.
@@ -259,7 +268,7 @@ Update the card's completion record and its TASKS.md status. Commit only this
 task's changes. Report the commit, actual checks, and remaining limitations.
 Do not execute the next card automatically.
 
-For T62–T77, use the reproduction and acceptance contract in the selected card.
+For T62–T78, use the reproduction and acceptance contract in the selected card.
 Preserve the authorized model and spending policy when adding a stronger planner.
 Keep approved plans visible and immutable through the Plan view. Start should
 close immediately with honest progress and errors in chat, never fabricated
