@@ -46,10 +46,12 @@ class BriefTransportTests(unittest.TestCase):
         with patch('cheapos.providers.build_opener',return_value=opener),patch('cheapos.providers.BriefResponseGuard',return_value=nullcontext()) as guard:
             ChatProvider(dict(cfg,_coordinator_recovery=True)).complete_brief([],[],512,None,lambda:False)
             body=json.loads(opener.open.call_args.args[0].data);self.assertEqual(body['max_tokens'],512)
+            self.assertEqual(body['response_format'],{'type':'json_object'})
             self.assertEqual(opener.open.call_args.kwargs['timeout'],30)
             self.assertEqual(guard.call_args.args[2],30)
             ChatProvider(cfg).greet([],None,lambda:False)
             self.assertEqual(json.loads(opener.open.call_args.args[0].data)['max_tokens'],128)
+            self.assertNotIn('response_format',json.loads(opener.open.call_args.args[0].data))
 
     def test_new_coordinator_bucket_preserves_existing_accounting(self):
         task={'limits':{'output_tokens':512,'dollars':1},'usage':{'worker':{'tokens':7,'cost':.2},'reviewer':{'tokens':9,'cost':.1},'cost':.3,'uncertain_requests':0,'estimated_requests':0}}

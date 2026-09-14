@@ -277,6 +277,12 @@ placement, permissions and review requirements. An already used consultation is
 not renewed; when unavailable, the chat explains why. No usable advice means it
 stays paused, with the coordinator result in Details.
 
+If the local reply cannot be parsed, cheapoS requests one format correction and
+shows that step. A still-eligible failure saved by an older version offers
+**Retry coordinator format** instead. It keeps the same files and request; both
+attempts count toward existing limits. The actual error and newly received reply
+are retained in Details. Restarting does not retry a failed consultation.
+
 Enter and Send show **Sending…** immediately. The draft stays saved until cheapoS
 accepts the message; rejected delivery leaves the draft editable and shows the
 error. Acceptance no longer waits for the gateway/sidebar refresh.

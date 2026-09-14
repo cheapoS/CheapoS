@@ -24,3 +24,14 @@ test('captured task status distinguishes local chat from recovery and new-chat d
  assert.doesNotMatch(c.coordinatorReassessmentMarkup({...ready,coordinator_reassessment:{available:false,reason:'Already attempted'}}),/data-chat-action/);
  assert.match(c.coordinatorReassessmentMarkup({...ready,execution:{coordinator_assistance:true}}),/Reassess with coordinator/);
 });
+test('a malformed coordinator reply names the failure and offers its one format repair',()=>{
+ const t=task({status:'paused',error:'Coordinator reassessment did not produce an applicable next step.',
+ recovery_blocked:0,pause_summary:{},coordinator_reassessment:{available:true,format_repair:true,model:'local-helper'},
+ coordinator_recovery:[{state:'failed',diagnostic:'Coordinator must return one JSON object'}]});
+ const view=guide.taskGuide(t);assert.equal(view.title,'Coordinator reply could not be read.');assert.match(view.description,/Retry coordinator format/);assert.doesNotMatch(view.description,/Worker could not choose/);
+ const c={CheapOSGuide:guide,state:{},esc:String};vm.createContext(c);const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
+ vm.runInContext(source.slice(source.indexOf('function coordinatorReassessmentMarkup'),source.indexOf('async function reassessCoordinator')),c);
+ assert.match(c.coordinatorReassessmentMarkup(t),/Retry coordinator format/);assert.match(c.coordinatorReassessmentMarkup(t),/original attempt and usage remain counted/);
+ t.events.push({id:'failed',kind:'coordinator_recovery',time:stamp,detail:{state:'failed',diagnostic:'Coordinator must return one JSON object'}});
+ assert.equal(steps(t).at(-1).title,'Coordinator reply could not be used');assert.equal(steps(t).at(-1).outcome,'failed');
+});

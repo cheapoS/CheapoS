@@ -168,7 +168,11 @@ next action. It can request a genuinely new file excerpt through the worker;
 you should not have to paste repository code merely because the worker repeated
 another read. Advice does not authorize commands or replace independent review.
 
-There is at most one consultation per Interactive request or Unattended item.
+There is at most one consultation per Interactive request or Unattended item,
+with one announced format correction if the local reply is not valid JSON.
+Both calls use existing limits; failed format correction does not repeat. Older
+eligible paused Interactive chats offer **Retry coordinator format** for an unused
+correction against the same saved work, without another chat prompt.
 **Coordinator helping** appears in the same reply with actual output and Details.
 The coordinator returns to idle afterward. Unavailable or ignored assistance
 falls back to existing recovery. A real unanswered question still needs your reply;

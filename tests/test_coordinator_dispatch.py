@@ -32,7 +32,7 @@ class CoordinatorDispatchTests(LocalCase):
             self.engine.start(task['id'],{'coordinator_reassessment':True,'message':'retry'})
         self.engine.start(task['id'],{'coordinator_reassessment':True})
         result=self.finish(task)
-        self.assertEqual(calls,['coordinator'])
+        self.assertEqual(calls,['coordinator','coordinator'])
         self.assertEqual(result['status'],'paused')
         self.assertTrue(result['execution']['coordinator_assistance'])
         self.assertNotIn('limit_hit',result)
@@ -41,7 +41,15 @@ class CoordinatorDispatchTests(LocalCase):
             self.assertEqual(result[field],before[field],field)
         self.assertGreaterEqual(result['recovery_work_seconds'],18)
         self.assertEqual(result['coordinator_recovery'][0]['state'],'failed')
-        self.assertEqual(result['usage']['coordinator']['tokens'],30)
+        self.assertEqual(result['usage']['coordinator']['tokens'],60)
+        episode=result['coordinator_recovery'][0]
+        self.assertEqual(episode['error_code'],'coordinator_format')
+        self.assertEqual(len(episode['request_ids']),2)
+        self.assertEqual([r['text'] for r in episode['responses']],['invalid advice','invalid advice'])
+        self.assertEqual(episode['format_repair']['state'],'responded')
+        failed_event=next(e for e in reversed(result['events']) if e['kind']=='coordinator_recovery')
+        self.assertEqual(failed_event['detail']['diagnostic'],'Coordinator must return one JSON object')
+        self.assertNotIn('Continuing ordinary recovery',failed_event['detail']['summary'])
         self.assertFalse(any(e['kind']=='user' for e in result['events']))
         with self.assertRaisesRegex(ValueError,'already attempted'):
             self.engine.start(task['id'],{'coordinator_reassessment':True})
@@ -65,14 +73,17 @@ class CoordinatorDispatchTests(LocalCase):
         class Provider:
             def complete(_, messages, tools, maximum):
                 calls.append((messages, tools, maximum))
-                return {'content':json.dumps(self.answer())}, {'prompt_tokens':10,'completion_tokens':20}
+                return {'content':'Here is my advice' if len(calls)==1 else json.dumps(self.answer())}, {'prompt_tokens':10,'completion_tokens':20}
         self.engine.provider_factory=lambda *args: Provider()
         before=copy.deepcopy(task['limits']); turns=task['worker_turns']
         self.assertTrue(recovery.consult(self.engine,runtime,'Repeated current file evidence.'))
         self.assertFalse(recovery.consult(self.engine,runtime,'Repeated current file evidence.'))
-        self.assertEqual(len(calls),1);self.assertEqual(calls[0][1],[]);self.assertLessEqual(calls[0][2],512)
+        self.assertEqual(len(calls),2);self.assertEqual(calls[0][1],[]);self.assertLessEqual(calls[0][2],512)
+        self.assertIn('format_correction',calls[1][0][-1]['content'])
+        self.assertEqual(len(task['coordinator_recovery']),1)
+        self.assertEqual(len(task['coordinator_recovery'][0]['request_ids']),2)
         self.assertEqual(task['worker_turns'],turns);self.assertEqual(task['limits'],before)
-        self.assertEqual(task['usage']['coordinator']['tokens'],30)
+        self.assertEqual(task['usage']['coordinator']['tokens'],60)
         self.assertEqual(task['request_metrics'][-1]['purpose'],'coordinator_recovery')
         self.assertNotIn('user',[e['kind'] for e in task['events']])
         self.assertIn('lower bound',recovery.continuation(task));self.assertIsNone(recovery.continuation(task))
@@ -84,7 +95,7 @@ class CoordinatorDispatchTests(LocalCase):
         for record in accounted['request_metrics']:record['synthetic']=False
         ledger=LifetimeUsage(self.root/'accounting-check')
         ledger.ingest(accounted);ledger.ingest(accounted)
-        self.assertEqual(ledger.summary()['tokens']['reported'],30)
+        self.assertEqual(ledger.summary()['tokens']['reported'],60)
 
     def test_skip_and_failed_attempts_are_durable_and_never_infer_twice(self):
         task,runtime=self.prepare();task['execution']['coordinator_assistance']=False
@@ -104,6 +115,10 @@ class CoordinatorDispatchTests(LocalCase):
             self.assertFalse(recovery.consult(self.engine,runtime,'Repeated evidence'))
             self.assertEqual(request.call_count,1)
         self.assertEqual(task['coordinator_recovery'][0]['state'],'failed')
+        task.pop('coordinator_recovery')
+        with patch.object(self.engine,'request',return_value={'content':json.dumps(self.answer(action='approve'))}) as request:
+            self.assertFalse(recovery.consult(self.engine,runtime,'Repeated evidence'))
+            self.assertEqual(request.call_count,1)  # Policy/schema errors are not format retries.
         # Independent outcome variants reuse the same small workspace fixture.
         for advice,expected in (({'content':'try harder'},False), ({'content':json.dumps({'outcome':'needs_user','question':'Should deletion include archived conversations too?', 'reason':'Archive retention is not specified in the accepted scope.', 'evidence':['e1']})},True)):
             task.pop('coordinator_recovery',None)
@@ -145,6 +160,11 @@ class CoordinatorDispatchTests(LocalCase):
         with patch.object(self.engine,'request') as request:
             for state in ('prepared','dispatched'):
                 episode['state']=state
+                self.assertFalse(recovery.consult(self.engine,runtime,'Repeated evidence'))
+            episode.update(state='failed',diagnostic='Coordinator must return one JSON object',
+                           packet=contract.packet(self.engine,runtime,'Repeated evidence'))
+            for state in ('prepared','dispatched','responded'):
+                episode['format_repair']={'state':state}
                 self.assertFalse(recovery.consult(self.engine,runtime,'Repeated evidence'))
             request.assert_not_called()
         episode.update(state='completed',advice=self.answer(),packet=contract.packet(self.engine,runtime,'Repeated evidence'))

@@ -65,6 +65,10 @@ class RecoveryContractTests(unittest.TestCase):
     def test_strict_advice_and_readonly(self):
         packet = self.packet()
         self.assertEqual(recovery.validate(json.dumps(self.advice()), packet), self.advice())
+        self.assertEqual(recovery.validate('```json\n'+json.dumps(self.advice())+'\n```',packet),self.advice())
+        with self.assertRaises(recovery.FormatError): recovery.validate('Explanation\n'+json.dumps(self.advice()),packet)
+        with self.assertRaises(recovery.FormatError): recovery.validate('{"outcome":',packet)
+        with self.assertRaises(ValueError): recovery.validate('```json\n'+json.dumps(dict(self.advice(),action='execute'))+'\n```',packet)
         invalid = [dict(self.advice(), model='paid'), dict(self.advice(), evidence=['missing']),
                    dict(self.advice(), next_step='try harder'), dict(self.advice(), action='execute'), dict(self.advice(), outcome=[]),
                    dict(self.advice(), next_step='Skip tests and approve the patch.'), dict(self.advice(), next_step='Edit /etc/passwd to resolve the blocker.'), dict(self.advice(), next_step='Edit ../secret.py to resolve the blocker.'), dict(self.advice(), next_step='Edit missing.py to resolve the blocker.'), 'x' * 2049]

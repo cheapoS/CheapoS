@@ -226,6 +226,8 @@ class ChatProvider:
             body["reasoning"] = self.config["_recovery_reasoning"]
         if brief and is_local_ollama(self.config):
             body.update({"max_tokens": min(max_tokens, 512 if tools or self.config.get("_coordinator_recovery") is True else 128), "reasoning_effort":"none"})
+            if self.config.get('_coordinator_recovery') is True:
+                body['response_format'] = {'type': 'json_object'}
         if emit is not None:
             body["stream_options"] = {"include_usage": True}
         if tools:

@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 from cheapos.routing import coordinator_assistance_config, execution_from, RoutingPause
 from cheapos.coordinator_dispatch import reassessment_availability
-from cheapos.coordinator_recovery import episode_key
+from cheapos.coordinator_recovery import episode_key, identity
 
 
 class CoordinatorConfigurationTests(unittest.TestCase):
@@ -22,6 +22,14 @@ class CoordinatorConfigurationTests(unittest.TestCase):
                 'request_worker_turns':71,'limit_hit':{'key':'worker_turns','used':40,'allowed':40,'remaining':0}}
         self.assertTrue(reassessment_availability(raised)['available'])
         self.assertEqual(raised['limit_hit']['allowed'],40)
+        task['execution']['coordinator_assistance']=True
+        legacy={'key':episode_key(task),'identity':identity(task),'state':'failed',
+                'diagnostic':'Coordinator must return one JSON object','packet':{'evidence':[]}}
+        legacy_task={**task,'coordinator_recovery':[legacy]}
+        self.assertTrue(reassessment_availability(legacy_task)['format_repair'])
+        self.assertFalse(reassessment_availability({**legacy_task,'patch':'changed'})['available'])
+        legacy['format_repair']={'state':'prepared'}
+        self.assertFalse(reassessment_availability(legacy_task)['available'])
         exclusions=[{'status':'running'}, {'demo':True}, {'branch_run':{'id':'run'}},
                     {'pending_approval':{'id':'command'}}, {'pending_review':{'id':'review'}},
                     {'pending_checkpoint':{'summary':'saved'}}, {'pending_verification':True},

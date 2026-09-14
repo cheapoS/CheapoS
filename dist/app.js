@@ -875,7 +875,8 @@ function coordinatorReassessmentMarkup(task){
   if(!available)return '';
   if(!available.available)return `<p class="small">${esc(available.reason)}</p>`;
   const busy=state.coordinatorReassessing?.has(task.id),error=state.coordinatorErrors?.get(task.id);
-  return `<p>Use ${esc(available.model)} to reassess these saved files once, then continue only if it provides a next step. Keeps remaining limits, permissions and review requirements. No new prompt needed.</p><button class="primary-button" data-chat-action="coordinator-reassess" ${busy?'disabled':''}>${busy?'Requesting reassessment…':CheapOSGuide.coordinatorStatus(task).enabled?'Reassess with coordinator':'Enable coordinator &amp; reassess'}</button>${error?`<p role="alert">${esc(error)}</p>`:''}`;
+  const explanation=available.format_repair?`Ask ${esc(available.model)} once to return correctly formatted guidance for the same saved work. The original attempt and usage remain counted. No new prompt needed.`:`Use ${esc(available.model)} to reassess these saved files once, then continue only if it provides a next step. Keeps remaining limits, permissions and review requirements. No new prompt needed.`;
+  return `<p>${explanation}</p><button class="primary-button" data-chat-action="coordinator-reassess" ${busy?'disabled':''}>${busy?'Requesting reassessment…':available.format_repair?'Retry coordinator format':CheapOSGuide.coordinatorStatus(task).enabled?'Reassess with coordinator':'Enable coordinator &amp; reassess'}</button>${error?`<p role="alert">${esc(error)}</p>`:''}`;
 }
 async function reassessCoordinator(button,task){
   state.coordinatorReassessing ||= new Set();state.coordinatorErrors ||= new Map();

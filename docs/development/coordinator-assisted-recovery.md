@@ -19,7 +19,8 @@ views, separately from new-chat defaults. An explicit `coordinator_reassessment`
 start option enables one unused consultation for a paused Interactive worker
 progress stop with a captured local model. It rejects mixed start options,
 Unattended tasks, pending approvals/checks/reviews/commits, environment/conflict
-stops, exhausted time/turns and any existing episode for that request. It keeps
+stops, exhausted time/turns and already consumed episodes for that request. The
+single format-correction exception below retains the existing episode. It keeps
 request history, counters, remaining working time, placement and review authority.
 No applicable advice leaves a visible pause instead of dispatching the worker.
 This is the only new current-chat opt-in; ordinary Resume does not enable it.
@@ -85,7 +86,28 @@ worker permissions, scope checks and independent review remain decisive.
 ## Inference lifecycle and accounting
 
 Idle → one consultation → saved result/guidance → idle. No model polling,
-background thinking, periodic consultation or hidden output-repair retry.
+background thinking or periodic consultation. Local recovery requests explicitly
+use Ollama's OpenAI-compatible JSON output mode, plus a concrete schema example.
+A single complete Markdown JSON fence is accepted, then its contents pass the
+same schema, evidence and policy checks. Prose is never mined for an embedded object.
+
+A syntactically malformed JSON reply permits **one format-correction request**
+within that episode, announced as **Correcting the coordinator reply format**.
+The correction marker is saved before dispatch. Reload, Resume, timeout or a
+second malformed reply cannot renew it. Schema/policy rejection, provider failure
+and unavailable local inference do not trigger this correction. Both requests
+use the same local model and ordinary remaining limits; no remote fallback or
+worker-counter reset is added. Current file evidence is checked again first.
+
+An older paused Interactive episode with the exact JSON parse diagnostic and an
+unchanged candidate offers **Retry coordinator format** for this unused correction.
+The operator need not invent a new prompt; the original episode, request IDs,
+duration and usage stay counted. There is no automatic retry on app startup.
+New replies retain up to 2,048 characters each (with an explicit truncation flag),
+the concrete diagnostic and correction outcome in task history/Details. Earlier
+versions discarded the malformed reply, so its exact contents cannot be recovered.
+
+API reference: [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility).
 
 The shared local inference slot waits at most **10 seconds**. Existing brief
 transport uses **30 seconds** for connection/headers and JSON response reads,
@@ -168,3 +190,24 @@ record added calls/tokens/latency and accepted outcomes, and preserve spending p
   delivery; accepted delivery clears it, rejected delivery keeps an editable draft.
 - Browser testing also caught Activity rendering overwriting Chat action handlers;
   handlers now bind within their own tab. No personal task or live model was run.
+
+### Coordinator reply-format follow-up
+
+- Diagnosis from retained request metadata: the local model responded, but JSON
+  parsing failed. The old implementation discarded the reply, preventing a more
+  specific diagnosis of its formatting. The pause now names the parse failure.
+- Focused packet/configuration/transport/dispatch batch: **18 passing / 7.70s**.
+  Final dispatch/recovery/limits/admission/streaming/Unattended handoff batch:
+  **34 passing / 25.72s**, including **25.61s** for the pre-existing full handoff
+  fixture. No new heavy test, live inference, deliberate wait or Git workflow
+  was added. Existing dispatch cases now cover successful/failed format correction,
+  retained accounting, rejection without retry for policy errors, and consumed
+  correction markers after reload.
+- Frontend: **174 passing / 0.106s**. The single new pure projection case took
+  **0.00064s** on its final targeted run. Syntax and diff checks passed.
+- Disposable browser fixture with the real engine/API: an older parse-failed
+  episode displays the actual cause and **Retry coordinator format**. Clicking
+  shows immediate pending feedback, sends one correction, displays guidance, and
+  lets the worker edit the same workspace. The original episode/request ID,
+  duration, prompt, counters and earlier saved file remain. Changes still require
+  verification and review. No personal task was resumed during validation.
