@@ -1,7 +1,7 @@
 # cheapoS 100-Task Stress Test Report
 
-- **Total Executed:** 15
-- **Merged Cleanly:** 15 (100.0%)
+- **Total Executed:** 19
+- **Merged Cleanly:** 19 (100.0%)
 - **Paused / Blocked:** 0
 - **Failed:** 0
 - **Total Spend:** $0.0000 (Strict $0.00 Free Tier)
@@ -23,3 +23,7 @@
 | ST-013 | Deep Dictionary Merger | Data Structures | MERGED | 5 | 199.63 | $0.0000 |
 | ST-014 | Flatten and Unflatten Dictionaries | Data Structures | MERGED | 5 | 179.81 | $0.0000 |
 | ST-015 | Trie Prefix Tree for Autocomplete | Data Structures | MERGED | 4 | 117.85 | $0.0000 |
+| ST-023 | IP Address & CIDR Checker | Validation | MERGED | 16 | 123.58 | $0.0000 |
+| ST-025 | Schema Lite Validator | Validation | MERGED | 4 | 78.11 | $0.0000 |
+| ST-036 | Fraction Arithmetic | Math & Numerical | MERGED | 11 | 144.48 | $0.0000 |
+| ST-039 | Moving Average Stream | Math & Numerical | MERGED | 8 | 116.96 | $0.0000 |

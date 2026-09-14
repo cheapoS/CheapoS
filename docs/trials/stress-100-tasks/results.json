@@ -208,5 +208,61 @@
       "reviewer": 40641,
       "planner": 4572
     }
+  },
+  {
+    "task_id": "ST-023",
+    "title": "IP Address & CIDR Checker",
+    "category": "Validation",
+    "status": "MERGED",
+    "duration": 123.58,
+    "turns": 16,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 146592,
+      "reviewer": 42916,
+      "planner": 4691
+    }
+  },
+  {
+    "task_id": "ST-025",
+    "title": "Schema Lite Validator",
+    "category": "Validation",
+    "status": "MERGED",
+    "duration": 78.11,
+    "turns": 4,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 15965,
+      "reviewer": 30891,
+      "planner": 4507
+    }
+  },
+  {
+    "task_id": "ST-036",
+    "title": "Fraction Arithmetic",
+    "category": "Math & Numerical",
+    "status": "MERGED",
+    "duration": 144.48,
+    "turns": 11,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 74245,
+      "reviewer": 32134,
+      "planner": 4579
+    }
+  },
+  {
+    "task_id": "ST-039",
+    "title": "Moving Average Stream",
+    "category": "Math & Numerical",
+    "status": "MERGED",
+    "duration": 116.96,
+    "turns": 8,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 42744,
+      "reviewer": 30762,
+      "planner": 4617
+    }
   }
 ]
