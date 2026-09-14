@@ -61,7 +61,11 @@ def pause_summary(task, blocker):
         attempts.append(f"{value['handoffs']} free-model handoff(s)")
     if value['malformed_attempts']:
         attempts.append(f"{value['malformed_attempts']} malformed-call correction(s)")
+    from .coordinator_recovery import episode_key
+    assistance = next((e for e in task.get('coordinator_recovery', []) if e.get('key') == episode_key(task)), None)
+    if assistance:
+        attempts.append('coordinator assistance: ' + (assistance.get('summary') or assistance['state']))
     return {'blocker': str(blocker), 'attempted': attempts,
             'saved_files': [f['path'] for f in task.get('changes', [])],
             'check': {'command': check.get('command', []), 'passed': check.get('passed'), 'outcome': check.get('outcome')},
-            'next_action': 'Add a specific correction or missing information in Chat. Resume alone does not replenish recovery attempts.'}
+            'next_action': 'Your saved work can be inspected in Details. You can change the approach in Chat or inspect model settings. Resume alone does not replenish recovery attempts.'}

@@ -30,6 +30,8 @@ def queue(controller, runtime, item):
     recovery['attempts']+=1;per_item['attempts']+=1
     if worker not in recovery['failed_models']:recovery['failed_models'].append(worker)
     reason=task.get('error') or 'Implementation made no further progress.'
+    brief=task.pop('coordinator_handoff_brief',None)
+    if brief: reason += '\nCoordinator continuation (advisory, same scope and permissions): ' + brief
     task['route'].setdefault('recovery',{})['worker']={'from':worker,'reason':reason}
     task.update(status='running',error=None,error_code=None,answer_pending=False,action_pending=True,compact_edits=True)
     task.pop('recovery_blocked',None)

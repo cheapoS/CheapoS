@@ -5,6 +5,9 @@ from .measurement import enabled as measuring
 import math
 import re
 import time
+import socket
+import threading
+from contextlib import nullcontext
 from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -148,6 +151,52 @@ def validate_provider(value, role):
     return result
 
 
+class BriefResponseGuard:
+    """Cancel only an active brief transport, including a blocked response read.
+
+    The watchdog never invokes a model or schedules another consultation. Socket
+    shutdown precedes close so a buffered readline releases its internal lock.
+    """
+    def __init__(self, response, stopped, seconds, clock=None):
+        self.response=response;self.stopped=stopped;self.clock=clock or time.monotonic
+        self.deadline=self.clock()+seconds;self.done=threading.Event()
+        self.thread=None;self.reason=None
+
+    def poll(self):
+        if self.reason or self.done.is_set():return
+        reason='cancelled' if self.stopped() else 'deadline' if self.clock()>=self.deadline else None
+        if not reason:return
+        self.reason=reason
+        for path in (('fp','raw','_sock'),('fp','_sock'),('_sock',)):
+            obj=self.response
+            for name in path:obj=getattr(obj,name,None)
+            if obj is not None:
+                try:obj.shutdown(socket.SHUT_RDWR)
+                except (OSError,AttributeError):pass
+        try:self.response.close()
+        except (OSError,ValueError):pass
+
+    def _watch(self):
+        while not self.done.wait(.05):
+            self.poll()
+            if self.reason:return
+
+    def __enter__(self):
+        self.poll()
+        if not self.reason:
+            self.thread=threading.Thread(target=self._watch,daemon=True,name='cheapos-brief-response')
+            self.thread.start()
+        return self
+
+    def __exit__(self, kind, value, traceback):
+        self.poll()
+        self.done.set()
+        if self.thread:self.thread.join()
+        if self.reason=='cancelled':raise InterruptedError('Brief model request cancelled')
+        if self.reason=='deadline':raise ProviderError('The brief model request reached its response deadline. Uncertain usage remains counted.',code='model_timeout')
+        return False
+
+
 class ChatProvider:
     def __init__(self, config, key=""):
         self.config = config
@@ -176,7 +225,7 @@ class ChatProvider:
         if self.config.get("_recovery_reasoning") is not None:
             body["reasoning"] = self.config["_recovery_reasoning"]
         if brief and is_local_ollama(self.config):
-            body.update({"max_tokens": min(max_tokens, 512 if tools else 128), "reasoning_effort":"none"})
+            body.update({"max_tokens": min(max_tokens, 512 if tools or self.config.get("_coordinator_recovery") is True else 128), "reasoning_effort":"none"})
         if emit is not None:
             body["stream_options"] = {"include_usage": True}
         if tools:
@@ -186,7 +235,7 @@ class ChatProvider:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
         try:
-            with build_opener(NoRedirects(), ProxyHandler({})).open(request, timeout=timeout_seconds) as response:
+            with build_opener(NoRedirects(), ProxyHandler({})).open(request, timeout=timeout_seconds) as response, (BriefResponseGuard(response, stopped, stream_seconds if emit is not None else timeout_seconds) if brief else nullcontext()):
                 if emit is not None and response.headers.get_content_type() == "text/event-stream":
                     data = read_chat_stream(response, emit, stopped, ProviderError, max_seconds=stream_seconds)
                 else:
@@ -232,8 +281,8 @@ class ChatProvider:
 
 def reserve(task, config, messages, tools, role):
     # Add new role accounting only at dispatch; never rewrite historical totals.
-    if role == 'planner' and 'planner' not in task['usage']:
-        task['usage']['planner'] = {'tokens': 0, 'cost': 0}
+    if role in {'planner','coordinator'} and role not in task['usage']:
+        task['usage'][role] = {'tokens': 0, 'cost': 0}
     bucket = task['usage'].get(role)
     if not isinstance(bucket, dict) or any(isinstance(bucket.get(k), bool) or not isinstance(bucket.get(k), (int, float)) or not math.isfinite(bucket[k]) or bucket[k] < 0 for k in ('tokens', 'cost')):
         raise ValueError('Saved role accounting is invalid; inspect the saved task before resuming')

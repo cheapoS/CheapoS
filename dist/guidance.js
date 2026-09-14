@@ -60,7 +60,7 @@ const CheapOSGuide = (() => {
     if(task.status==='paused'&&task.planning_request&&task.branch_run&&!task.branch_run.authorization_ref&&/handoffs were tried/.test(task.error||'')) return {...result,tone:'attention',title:'Planning stopped before a proposal was ready.',description:'Automatic model recovery was exhausted. Resume cannot retry this saved attempt. Start a new planning chat with the same request; this attempt and its usage remain saved.',primary:'new-planning',primaryLabel:'New planning chat'};
     if(task.status==='paused'&&task.recovery_blocked!=null&&task.pause_summary){
       const p=task.pause_summary,attempts=(p.attempted||[]).join(', ');
-      return {...result,tone:'attention',title:'A specific correction is needed.',description:`${p.saved_files.length} saved file${p.saved_files.length===1?'':'s'}. ${attempts?`Tried ${attempts}. `:''}${p.blocker} ${p.next_action}`,primary:'clarify',primaryLabel:'Add a correction'};
+      return {...result,tone:'attention',title:p.question?'A decision is needed from you.':'Worker could not choose the next step after recovery.',description:`${p.saved_files.length} saved file${p.saved_files.length===1?'':'s'}. ${attempts?`Tried ${attempts}. `:''}${p.blocker} ${p.next_action}`,primary:'clarify',primaryLabel:p.question?'Reply in chat':'Review saved work and continue in chat'};
     }
     if(['paused','interrupted'].includes(task.status)&&task.route_unavailable?.can_wait)return {...result,title:'A free route is cooling down.',description:task.route_unavailable.message,primary:'retry-wait',primaryLabel:'Retry when available'};
     if(task.status==='budget_paused'&&task.limit_hit){const hit=task.limit_hit;return {...result,tone:'attention',title:'This task reached its '+({run_minutes:'working-time',worker_turns:'worker-turn',reviewer_tokens:'reviewer-token',iterations:'iteration',dollars:'spending'}[hit.key]||'work')+' limit.',description:`Used ${hit.used} of ${hit.allowed}; ${hit.remaining} remaining. ${task.error||'Review the saved work before explicitly adjusting this allowance.'}`,primary:'resume',primaryLabel:'Review this limit'};}
@@ -557,6 +557,8 @@ const CheapOSConversation = (() => {
     return Boolean(task && !task.demo && task.status === 'awaiting_reply' && !task.commit_pending && !task.changes?.length && committed(finalEvent(task.events || [])));
   }
   function eventPhase(event, previous = 'work') {
+    if(event.kind==='coordinator_recovery')return event.detail?.state==='result'?(['run_checks','checkpoint'].includes(event.detail?.result?.action)?'checks':'work'):'coordinator';
+    if(event.title?.startsWith('Requesting coordinator:')&&previous==='coordinator')return 'coordinator';
     if (event.kind === 'checks' || event.kind === 'check_reused' || event.kind === 'permission' || event.title === 'Running verification') return 'checks';
     if (event.kind === 'review' || event.kind === 'checkpoint' || event.detail?.role === 'reviewer' || event.title?.startsWith('Requesting reviewer:')) return 'review';
     if (event.kind === 'commit') return 'commit';
@@ -565,6 +567,7 @@ const CheapOSConversation = (() => {
     return previous;
   }
   function currentPhase(task, fallback) {
+    if(task.stream?.role==='coordinator'&&task.coordinator_recovery?.some(e=>e.state==='dispatched'))return 'coordinator';
     if (task.check_stream || task.pending_approval) return 'checks';
     if (task.status === 'reviewing' || task.stream?.role === 'reviewer') return 'review';
     if (task.active_role === 'coordinator' || task.active_role === 'planner') return 'plan';
@@ -578,7 +581,7 @@ const CheapOSConversation = (() => {
     const toolEvents = events.filter(e => e.kind === 'tool' && e.detail?.arguments);
     const edits = new Set(toolEvents.filter(e => ['write file','replace text','replace lines'].includes(e.title)).map(e => e.detail.arguments.path));
     const request = events.findLast(e => e.kind === 'model');
-    const role = phase === 'review' ? 'reviewer' : phase === 'plan' ? 'planner' : 'worker';
+    const role = phase === 'coordinator' ? 'coordinator' : phase === 'review' ? 'reviewer' : phase === 'plan' ? 'planner' : 'worker';
     const model = (live && task.stream?.model) || request?.title?.replace(/^Requesting (worker|reviewer|coordinator|planner): /,'') || events.findLast(e => e.detail?.model)?.detail.model || (live?task.providers?.[role]?.model:'') || '';
     const elapsed = live ? guide.progress(task, at)?.elapsed || '0s' : '';
     let title = {work:'Worked on your request',checks:'Ran checks',review:'Requested independent review',plan:'Prepared the next step',commit:'Commit needs attention'}[phase];
@@ -619,6 +622,9 @@ const CheapOSConversation = (() => {
         if(!task.stream||task.stream.phase==='waiting')detail='I’m asking the reviewer to identify the remaining blocker from the saved evidence.';
       }
     }
+    if(phase==='coordinator'){const intervention=last(events,'coordinator_recovery')?.detail||{};title=live?'Coordinator helping':'Coordinator consultation';detail=intervention.summary||'Checking saved evidence to help the worker choose its next step.';if(live&&task.resource_wait)detail=task.resource_wait.reason||'Waiting for the shared local inference slot.';else if(live&&task.stream?.phase==='thinking')detail='Thinking through the saved evidence';else if(live&&task.stream?.phase==='answer')detail='Writing recovery guidance';else if(live)detail='Waiting for the local coordinator to respond';outcome=live?'live':intervention.state==='applied'?'done':'pending';if(!live&&intervention.state==='applied')title='Guidance sent to the worker';}
+    if(phase==='work'&&!live&&!toolEvents.length&&events.some(e=>e.kind==='model')&&task.coordinator_recovery?.length){title='Worker continuation stopped';detail='No further action was recorded in this step.';outcome='pending';}
+    const observed=events.findLast(e=>e.kind==='coordinator_recovery'&&e.detail?.state==='result')?.detail;if(observed){detail=observed.summary||detail;if(!live){title=phase==='checks'?(observed.result?.passed?'Check passed after guidance':'Check did not pass after guidance'):'Worker saved an edit after guidance';outcome=phase==='checks'?(observed.result?.passed?'passed':'failed'):'done';}}
     const lastAction = toolEvents.at(-1);
     const activity = lastAction ? guide.activityItem(lastAction)?.title || lastAction.title : '';
     const controller = ['checks','commit'].includes(phase);
@@ -632,7 +638,7 @@ const CheapOSConversation = (() => {
         if (steps.length) steps.at(-1).events.push(event);
         continue;
       }
-      if (!['tool','model','checks','check_reused','checkpoint','review','review_coaching','handoff','routing','tool_error','guard','permission','commit','web'].includes(event.kind)) continue;
+      if (!['tool','model','checks','check_reused','checkpoint','review','review_coaching','coordinator_recovery','handoff','routing','tool_error','guard','permission','commit','web'].includes(event.kind)) continue;
       if (event.kind === 'guard' && event.title === 'Applied User Guidance') continue;
       phase = eventPhase(event, phase);
       if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-${event.id ?? events.indexOf(event)}`,phase,events:[],live:false});
@@ -641,7 +647,7 @@ const CheapOSConversation = (() => {
     const live = latest && guide.isActive(task.status);
     const stream = latest ? task.stream : null;
     // A simple streamed chat answer needs no execution row.
-    const onlyChat = stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','review_coaching','tool_error'].includes(e.kind));
+    const onlyChat = stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','review_coaching','coordinator_recovery','tool_error'].includes(e.kind));
     if (live && !onlyChat) {
       phase = currentPhase(task, steps.at(-1)?.phase);
       if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-live-${phase}`,phase,events:[],live:false});
@@ -651,7 +657,7 @@ const CheapOSConversation = (() => {
     // Keep its output with the next action instead of showing “0 actions”.
     for (let i=0; i<steps.length; i++) {
       const step=steps[i];
-      if (!step.live && ['work','plan'].includes(step.phase) && !step.events.some(e=>['tool','tool_error','web'].includes(e.kind)) && steps.length>1) {
+      if (!step.live && ['work','plan'].includes(step.phase) && !step.events.some(e=>['tool','tool_error','web'].includes(e.kind)) && steps.length>1 && steps[i-1]?.phase!=='coordinator' && steps[i+1]?.phase!=='coordinator') {
         if (steps[i+1]) steps[i+1].events.unshift(...step.events);
         else steps[i-1].events.push(...step.events);
         steps.splice(i--,1);
@@ -667,10 +673,10 @@ const CheapOSConversation = (() => {
     const substantive = events.filter(e => !['generation','state','model','context'].includes(e.kind));
     const final = substantive.at(-1);
     const reply = committed(final) && !task.demo ? 'What would you like to work on next?' : final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
-    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_coaching','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
+    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_coaching','coordinator_recovery','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
     let intro = '';
     if (steps.length) {
-      intro = live ? {work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';
+      intro = live ? {coordinator:"The worker got stuck. I'm checking the saved work to help it choose the next step.",work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';
       if (live && phase === 'work' && last(events, 'review')?.detail?.decision === 'REQUEST_CHANGES') intro = 'The review found something to improve. I’m addressing that feedback.';
       if (latest && task.status==='waiting_retry') intro='I’m waiting for the free route’s cooldown before checking availability again.';
       else if (latest && task.pending_approval) intro = 'I need your permission to run this check.';

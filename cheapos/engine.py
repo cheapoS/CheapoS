@@ -291,7 +291,7 @@ def request_worker_turns(task):
         if event["kind"] == "routing":
             probe = event["title"].startswith(("Checking a free ", "Checking included "))
         if event["kind"] == "model":
-            if not probe and event["title"].startswith(("Requesting worker:", "Requesting coordinator:")):
+            if not probe and (event.get("detail") or {}).get("purpose") != "coordinator_recovery" and event["title"].startswith(("Requesting worker:", "Requesting coordinator:")):
                 total += 1
                 current += 1
             probe = False
@@ -503,6 +503,8 @@ class Engine:
         progress.observe(task)
         role='worker' if kind=='checkpoint' else 'reviewer' if kind=='review' or task.get('status')=='reviewing' else task.get('active_role','worker')
         actor={'role':role,'model':(task.get('providers',{}).get(role) or {}).get('model')}
+        if kind=='coordinator_recovery':
+            actor={'role':'coordinator','model':(task.get('coordinator_recovery') or [{}])[-1].get('selected_model')}
         if kind=='model' and task.get('request_metrics'):
             actor={key:task['request_metrics'][-1][key] for key in ('role','model')}
         task["events"].append({"id": len(task["events"]) + 1, "time": now(), "kind": kind, "title": title, "detail": detail,'run_id':task.get('metric_run_id'),'actor':actor})
@@ -1517,7 +1519,7 @@ class Engine:
     def _request(self, runtime, messages, tools, role, config_override=None, purpose=None):
         config = self._resolve_provider_config(runtime.task, role, config_override)
         if config and is_local_ollama(config):
-            with self.admission.resource("local_inference", runtime):
+            with self.admission.resource("local_inference", runtime, timeout=10 if purpose == "coordinator_recovery" else None):
                 return self._request_with_transport(runtime, messages, tools, role, config_override, purpose)
         return self._request_with_transport(runtime, messages, tools, role, config_override, purpose)
 
@@ -1528,7 +1530,7 @@ class Engine:
             return self._request_attempt(runtime, messages, tools, role, config_override, purpose)
         except ProviderError as error:
             record = (task.get('request_metrics') or [{}])[-1]
-            if not transport.eligible(error, record):
+            if purpose == 'coordinator_recovery' or not transport.eligible(error, record):
                 raise
             config = self._resolve_provider_config(task, role, config_override)
             key = transport.retry_key(config, role, purpose)
@@ -1663,7 +1665,7 @@ class Engine:
             # This reservation is an estimate until usage arrives, not an upper
             # bound on tokens. Zero rates keep the monetary reservation sound.
             reservation['tokens_are_upper_bound'] = False
-        self.event(task, "model", f"Requesting {role}: {config['model']}", {"reserved_cost": reservation["cost"], "max_output_tokens": maximum, "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
+        self.event(task, "model", f"Requesting {role}: {config['model']}", {"purpose": purpose, "reserved_cost": reservation["cost"], "max_output_tokens": maximum, "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped before dispatch")
         runtime.guard()
@@ -2253,7 +2255,9 @@ class Engine:
 
     def _run_until_pause(self, runtime):
         task = runtime.task
+        from . import coordinator_dispatch
         try:
+            coordinator_dispatch.restore(self, runtime)
             while task["status"] in ACTIVE:
                 if runtime.stop.is_set():
                     raise InterruptedError("Task stopped")
@@ -2355,6 +2359,11 @@ class Engine:
                         })
                         self.event(task, "guard", "Applied User Guidance", steer_text)
                     self.store.save(task)
+                from . import coordinator_dispatch
+                guidance = coordinator_dispatch.continuation(task)
+                if guidance:
+                    task['messages'].append({'role': 'system', 'content': guidance})
+                    self.store.save(task)
                 try:
                     message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
                 except work_policy.ReadOnlyViolation as error:
@@ -2379,6 +2388,8 @@ class Engine:
                                 if len(failures)<=70:break
                     self.event(task, 'tool_error', 'Rejected an unavailable tool before dispatch', {'code': error.code, 'attempt': failures[key]})
                     if failures[key] > 2:
+                        if coordinator_dispatch.consult(self, runtime, 'The worker repeatedly requested a tool that is unavailable in the current scope.'):
+                            continue
                         raise ProgressPause('The model repeatedly requested an unavailable tool. No calls from those responses ran; saved work is preserved.')
                     task['messages'].append({'role': 'user', 'content': 'No calls from your last response ran. Use only these currently offered tools: ' + ', '.join(t['function']['name'] for t in offered_tools) + '. Continue the current scope; text alone does not complete code changes.'})
                     self.store.save(task)
@@ -2418,7 +2429,8 @@ class Engine:
                         task["messages"].append({"role": "user", "content": "Checkpoint result: " + json.dumps(result)})
                     else:
                         task["messages"].append({"role": "user", "content": "Changes need verification and checkpoint review. Continue with tools, or use ask_user if you need a decision." if (task.get("conversational") and not task.get("branch_run")) else "Continue with tools, or call checkpoint when ready for review. Text alone does not complete this task."})
-                for call in calls:
+                coordinator_applied = False
+                for call_index, call in enumerate(calls):
                     if runtime.stop.is_set():
                         raise InterruptedError("Task stopped")
                     try:
@@ -2475,13 +2487,22 @@ class Engine:
                                     self.event(task, "guard", "Asking the worker to use what it found", "The same read returned unchanged information twice. cheapoS asked for an answer, a relevant web read, or a clear explanation of what is missing.")
                                 elif observations >= 3:
                                     if recovering:
-                                        raise ProgressPause('Recovery repeated already available file evidence. Saved edits remain intact; provide the missing requirement or change the approach.')
-                                    self.refresh_changes(task)
-                                    if task.get("conversational"):
-                                        self.prepare_loop_recovery(task)
+                                        blocker = 'Recovery repeated already available file evidence.'
+                                        coordinator_applied = coordinator_dispatch.consult(self, runtime, blocker)
+                                        if not coordinator_applied:
+                                            raise ProgressPause('Worker could not choose the next step after recovery. ' + blocker + ' Saved edits remain intact.')
+                                        result = {'observation': result, 'guidance': 'Follow the saved coordinator guidance on the next ordinary turn.'}
                                     else:
-                                        raise ProgressPause("The worker repeated an unchanged read after being asked to answer or explain the blocker. No new information was found. Your work is saved; give it a more specific instruction or resume to try again.")
-                        if recovering:
+                                        self.refresh_changes(task)
+                                        if task.get("conversational"):
+                                            self.prepare_loop_recovery(task)
+                                        else:
+                                            coordinator_applied = coordinator_dispatch.consult(self, runtime, 'The worker repeated unchanged evidence after deterministic guidance.')
+                                            if not coordinator_applied:
+                                                raise ProgressPause('Worker could not choose the next step after recovery. The same inspection was repeated; saved work is intact.')
+
+                        coordinator_dispatch.observe(self, task, name)
+                        if recovering and not coordinator_applied:
                             task["action_pending"] = False
                             task["loop_guidance"] = None
                             runtime.action_context_ready = False
@@ -2496,7 +2517,11 @@ class Engine:
                         result = {"error": str(error)[:1000]}
                         self.event(task, "tool_error", "Tool could not complete: " + name, result)
                     task["messages"].append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)})
-                    if task["status"] not in ACTIVE or task.get("answer_pending") or task.get("action_pending") and not recovering:
+                    if coordinator_applied:
+                        for skipped in calls[call_index + 1:]:
+                            task['messages'].append({'role':'tool', 'tool_call_id':skipped['id'],
+                                                     'content':'Not executed: recovery changed the next step. Use the saved guidance in the next turn.'})
+                    if coordinator_applied or task["status"] not in ACTIVE or task.get("answer_pending") or task.get("action_pending") and not recovering:
                         break
                 self.store.save(task)
         except (ProgressPause, RoutingPause) as error:

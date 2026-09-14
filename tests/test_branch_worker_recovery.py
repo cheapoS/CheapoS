@@ -56,7 +56,7 @@ class RecoveryPolicyTests(unittest.TestCase):
 class RecoveryExecutionTests(unittest.TestCase):
  setUp=fixture.BranchStartTests.setUp
  def test_stalled_author_hands_saved_file_to_distinct_worker_then_real_commit(self):
-  self.engine.save_preferences({'execution':{'mode':'remote'}})
+  self.engine.save_preferences({'execution':{'mode':'remote','coordinator_assistance':True,'coordinator_model':'local-helper'}})
   self.engine.config['worker']['model']='worker-a';self.engine.config['reviewer']['model']='zzz-reviewer'
   self.engine.gateway.matches=lambda _:True
   self.engine.gateway.catalog=lambda **_: {'status':'ready','models':[model(m) for m in ('worker-a','worker-b','zzz-reviewer')]}
@@ -64,6 +64,9 @@ class RecoveryExecutionTests(unittest.TestCase):
   def factory(role,config):
    def complete(messages,tools,max_tokens):
     names={t['function']['name'] for t in tools};name=config['model'];counters[name]=counters.get(name,0)+1
+    if role=='coordinator':
+     packet=json.loads(messages[1]['content']);self.assertTrue(packet['instruction_sources']['accepted_item']['acceptance_criteria'])
+     return {'content':json.dumps({'outcome':'continue','action':'edit','next_step':'Add a focused regression for the saved work.py value.','expected_result':'A test demonstrates the accepted item behavior.','evidence':['e1']})},{'prompt_tokens':10,'completion_tokens':10,'cost':0}
     if 'routing_ready' in names:return call('routing_ready', {'marker': PROBE_MARKER}),{'prompt_tokens':2,'completion_tokens':2,'cost':0}
     if 'final_review_decision' in names:
      p=json.loads(messages[1]['content']);result={k:p[k] for k in ('manifest_id','chunk_ids','criteria_ids')};result.update(decision='APPROVE',feedback='Actual tests and complete file evidence satisfy the criteria.');return call('final_review_decision',result),{'prompt_tokens':10,'completion_tokens':10,'cost':0}
@@ -87,6 +90,10 @@ class RecoveryExecutionTests(unittest.TestCase):
   task=self.engine.store.get(task['id']);run=task['branch_run']
   self.assertEqual(run['status'],'ready_for_merge',task.get('error'));self.assertEqual(run['implementation_recovery']['attempts'],1)
   self.assertEqual(task['providers']['worker']['model'],'worker-b');self.assertEqual(task['providers']['reviewer']['model'],'zzz-reviewer')
+  self.assertEqual(counters['local-helper'],1);self.assertEqual(task['usage']['coordinator']['tokens'],20)
+  self.assertEqual(task['coordinator_recovery'][0]['state'],'applied')
+  self.assertEqual(len([r for r in task['request_metrics'] if r['purpose']=='coordinator_recovery']),1)
+  self.assertEqual(run['budget_ledger']['usage']['coordinator']['tokens'],20)
   self.assertEqual(len(run['completed_operations']),1);self.assertTrue(task['checks'][-1]['passed']);self.assertGreater(task['usage']['worker']['tokens'],0)
   # Even a fresh runtime cannot select the ineffective former author again.
   fresh=Runtime(task);self.engine.gateway.catalog=lambda **_: {'status':'ready','models':[model('worker-a')]}

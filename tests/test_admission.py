@@ -92,3 +92,15 @@ class AdmissionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'bookkeeping failed'):
                 with self.admission.resource('checks',runtime):pass
         self.assertTrue(lock.released)
+
+    def test_optional_timeout_keeps_owner_and_restores_accounting(self):
+        runtime=self.runtime()
+        from unittest.mock import Mock,patch
+        ledger=Mock(active=True);runtime.branch_ledger=ledger
+        lock=Mock();lock.acquire.return_value=False
+        self.admission.resources['local_inference']=lock
+        with patch('cheapos.admission.time.monotonic',side_effect=[0,11,11]):
+            with self.assertRaises(TimeoutError):
+                with self.admission.resource('local_inference',runtime,timeout=10):self.fail('must not enter')
+        lock.release.assert_not_called();ledger.suspend.assert_called_once();ledger.begin.assert_called_once()
+        self.assertNotIn('resource_wait',runtime.task)

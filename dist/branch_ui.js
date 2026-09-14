@@ -34,7 +34,7 @@ function pausePresentation(task) {
  const details=[d.item_id?'Item: '+d.item_id:'',d.stage?'Stage: '+d.stage:'',d.role?'Role: '+d.role:'',d.model?'Model: '+d.model:'',d.diagnostic_id?'Diagnostic: '+d.diagnostic_id:'',d.cooldown_scope?'Cooldown scope: '+d.cooldown_scope:''].filter(Boolean);
  if(d.cause==='provider_quota')details.push(typeof d.retry_at==='number'&&Number.isFinite(d.retry_at)&&Number.isFinite(new Date(d.retry_at*1000).getTime())?'Reported reset: '+new Date(d.retry_at*1000).toISOString():'Reset time unavailable');
  const saved=task.changes?.length?'Saved edits remain in the task copy.':'The saved task record is retained.';
- return {headline:names[d.cause]||names.unknown,explanation:String(d.explanation||'Inspect the retained diagnostic.'),saved,action:actions[action]?action:'inspect',actionLabel:run.merge_operation?'Finish saved integration':actions[action]||actions.inspect,details,question:d.cause==='essential_clarification'?String(run.waiting_for_user||''):''};
+ return {headline:d.cause==='repeated_work'&&d.role==='worker'?'Worker could not choose the next step after recovery.':names[d.cause]||names.unknown,explanation:String(d.explanation||'Inspect the retained diagnostic.'),saved,action:actions[action]?action:'inspect',actionLabel:run.merge_operation?'Finish saved integration':action==='correction'&&d.cause==='repeated_work'?'Review saved work and continue in chat':actions[action]||actions.inspect,details,question:d.cause==='essential_clarification'?String(run.waiting_for_user||''):''};
 }
 function projectRun(task){
  const run=task?.branch_run;if(!run)return null;

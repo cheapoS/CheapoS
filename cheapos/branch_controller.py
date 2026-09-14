@@ -19,7 +19,7 @@ def policy_for_saved(current, saved):
     """Match only newly optional empty defaults, retaining old contract digests."""
     result = copy.deepcopy(current)
     if isinstance(saved, dict):
-        for section, field, empty in (('execution', 'local_planner', ''), ('providers', 'planner', None)):
+        for section, field, empty in (('execution', 'local_planner', ''), ('providers', 'planner', None), ('execution', 'coordinator_assistance', False), ('execution', 'coordinator_model', '')):
             old = saved.get(section)
             new = result.get(section)
             if isinstance(old, dict) and isinstance(new, dict) and field not in old and new.get(field) == empty:

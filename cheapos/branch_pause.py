@@ -49,6 +49,14 @@ def safe_text(value):
 def specific(diagnostic):
     if not isinstance(diagnostic,dict):return None
     kind=diagnostic.get('kind')
+    if kind=='worker_stall':
+        count=diagnostic.get('saved_files')
+        if type(count) is not int or not 0<=count<=100000 or type(diagnostic.get('assisted')) is not bool:return None
+        reason=safe_text(diagnostic.get('reason'))
+        if not reason:return None
+        return ('Worker could not choose the next step after recovery. ' + reason +
+                (' A local coordinator consultation was attempted.' if diagnostic['assisted'] else '') +
+                ' %s changed file(s) are saved. Inspect the work or continue in Chat; Resume does not renew recovery attempts.' % count)
     if kind=='review_stall':
         if not isinstance(diagnostic.get('reason'),str) or type(diagnostic.get('coached')) is not bool:return None
         reasons={
@@ -118,6 +126,12 @@ def classify(error=None, task=None, cause=None, stage=None):
     diagnostic=getattr(error,'safe_diagnostic',None)
     if explicit=='repeated_work' and not diagnostic:
         diagnostic=(task.get('pending_review') or {}).get('stop_diagnostic')
+        if not diagnostic and task.get('active_role')=='worker':
+            from .coordinator_recovery import episode_key
+            reason=safe_text((task.get('pause_summary') or {}).get('blocker'))
+            if reason:
+                diagnostic={'kind':'worker_stall','reason':reason,'saved_files':len(task.get('changes',[])),
+                            'assisted':any(e.get('key')==episode_key(task) for e in task.get('coordinator_recovery',[]))}
     if isinstance(error,LimitExceeded):diagnostic={'kind':'limit','key':error.key,'used':error.used,'allowed':error.allowed}
     if diagnostic:detail['diagnostic']=diagnostic
     if explicit=='malformed_output' and not specific(diagnostic):

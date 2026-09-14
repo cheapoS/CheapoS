@@ -11,7 +11,7 @@ class PreferencePersistenceTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.engine = self.restart()
-        self.execution = {'mode':'delegate','local_model':'gemma4:31b','local_reviewer':'fixture-reviewer','local_planner':''}
+        self.execution = {'mode':'delegate','local_model':'gemma4:31b','local_reviewer':'fixture-reviewer','local_planner':'','coordinator_assistance':False,'coordinator_model':''}
 
     def restart(self):
         engine = Engine(self.temp.name)
@@ -45,9 +45,20 @@ class PreferencePersistenceTests(unittest.TestCase):
 
     def test_invalid_update_does_not_overwrite_saved_choice(self):
         self.engine.save_preferences({'execution':self.execution})
-        for execution in (None, 'local', {'mode':'invalid'}, {'local_model':False}):
+        for execution in (None, 'local', {'mode':'invalid'}, {'local_model':False},{'coordinator_assistance':'yes'},{'coordinator_model':False}):
             with self.assertRaises(ValueError): self.engine.save_preferences({'execution':execution})
         self.assertEqual(self.restart().preferences()['execution'], self.execution)
+
+    def test_optional_assistance_persists_without_probing_and_missing_defaults_stay_off(self):
+        from unittest.mock import patch
+        with patch('cheapos.routing.verify_local') as verify:
+            self.engine.save_preferences({'execution':{'mode':'remote','coordinator_assistance':True,'coordinator_model':'unavailable-local'}})
+            saved=self.restart().preferences()['execution']
+            self.assertTrue(saved['coordinator_assistance'])
+            self.assertEqual(saved['coordinator_model'],'unavailable-local')
+            verify.assert_not_called()
+        write_json(self.engine.store.root/'preferences.json',{'execution':{'mode':'remote'}})
+        self.assertFalse(self.restart().preferences()['execution']['coordinator_assistance'])
 
 
 if __name__ == '__main__': unittest.main()

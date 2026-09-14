@@ -9,7 +9,7 @@ from .providers import ProviderError, is_local_ollama, validate_provider
 
 
 MODES = {"manual", "delegate", "local", "remote"}
-DEFAULT_EXECUTION = {"mode": "manual", "local_model": "", "local_reviewer": "", "local_planner": ""}
+DEFAULT_EXECUTION = {"mode": "manual", "local_model": "", "local_reviewer": "", "local_planner": "", "coordinator_assistance": False, "coordinator_model": ""}
 COORDINATOR_SYSTEM = """You are cheapoS's lightweight local chat assistant.
 Reply briefly to greetings and general discussion. You have no repository access.
 For ANY request needing project files, code, edits, tests, public web links, or project-specific advice,
@@ -42,7 +42,9 @@ def execution_from(value):
     result = {**DEFAULT_EXECUTION, **value}
     if result["mode"] not in MODES:
         raise ValueError("Choose where the work runs")
-    for key in ("local_model", "local_reviewer", "local_planner"):
+    if type(result["coordinator_assistance"]) is not bool:
+        raise ValueError("Coordinator assistance must be On or Off")
+    for key in ("local_model", "local_reviewer", "local_planner", "coordinator_model"):
         if not isinstance(result[key], str) or len(result[key]) > 200:
             raise ValueError("Enter an installed local model ID")
         result[key] = result[key].strip()
@@ -68,6 +70,32 @@ def verify_local(config):
             raise RoutingPause("The selected local model must advertise completion and tool support. Check the installed model in Ollama.")
     except (OSError, ValueError, TypeError, AttributeError):
         raise RoutingPause("Could not verify the installed local model. Start Ollama and check the model ID, then resume.") from None
+
+
+def coordinator_assistance_config(task, verify=False):
+    """Resolve only the task's explicitly opted-in local recovery assistant.
+
+    Saving preferences never probes or starts inference. A consultation caller
+    verifies metadata at its trigger and handles unavailable local service as an
+    optional skipped intervention, without changing worker/reviewer placement.
+    """
+    execution = task.get('execution') or {}
+    if execution.get('coordinator_assistance') is not True:
+        return None
+    model = execution.get('coordinator_model') or execution.get('local_model')
+    if not model:
+        providers = task.get('providers') or {}
+        for role in ('coordinator', 'worker'):
+            provider = providers.get(role) or {}
+            if is_local_ollama(provider):
+                model = provider.get('model')
+                break
+    if not model:
+        return None
+    config = local_config(model, 'coordinator')
+    if verify:
+        verify_local(config)
+    return config
 
 
 def setup_task(task, execution, config, gateway):

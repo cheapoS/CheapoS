@@ -74,7 +74,7 @@ class Admission:
                     self.operations.pop(task_id, None)
 
     @contextmanager
-    def resource(self, name, runtime):
+    def resource(self, name, runtime, timeout=None):
         lock = self.resources[name]
         acquired = False
         waiting = False
@@ -91,12 +91,14 @@ class Admission:
                 try:
                     while not acquired:
                         if runtime.stop.is_set(): raise InterruptedError('Task stopped while waiting for ' + name)
+                        if timeout is not None and time.monotonic() - started >= timeout:
+                            raise TimeoutError("Local inference slot stayed busy; optional consultation skipped")
                         acquired = lock.acquire(timeout=.1)
                 finally:
                     runtime.started += time.monotonic() - started
                     runtime.task.pop('resource_wait', None)
                     self.engine.store.publish(runtime.task)
-                if was_active and not runtime.stop.is_set(): ledger.begin()
+                    if was_active and not runtime.stop.is_set(): ledger.begin()
             if runtime.stop.is_set(): raise InterruptedError('Task stopped')
             yield
         finally:
