@@ -1,0 +1,1002 @@
+[
+  {
+    "id": "ST-001",
+    "category": "Text Processing",
+    "title": "URL Slug Generator",
+    "module_name": "slugify.py",
+    "test_name": "test_slugify.py",
+    "prompt": "Create slugify.py implementing slugify(text, separator='-', lowercase=True). Converts accents/symbols, removes non-alphanumeric chars, replaces spaces with separator, strips repeated and boundary separators.\nVerification check: python3 -m unittest -v test_slugify.py",
+    "verification_command": "python3 -m unittest -v test_slugify.py",
+    "test_code": "import unittest\nfrom slugify import slugify\n\nclass TestSlugify(unittest.TestCase):\n    def test_basic(self):\n        self.assertEqual(slugify(\"Hello World!\"), \"hello-world\")\n    def test_custom_sep(self):\n        self.assertEqual(slugify(\"Hello World!\", separator=\"_\"), \"hello_world\")\n    def test_special_chars(self):\n        self.assertEqual(slugify(\"  CheapOS -- Unattended Mode -- v0.2!  \"), \"cheapos-unattended-mode-v0-2\")\n    def test_case_sensitive(self):\n        self.assertEqual(slugify(\"Fast Track\", lowercase=False), \"Fast-Track\")\n    def test_empty(self):\n        self.assertEqual(slugify(\"\"), \"\")\n        self.assertEqual(slugify(\"   ---   \"), \"\")\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-002",
+    "category": "Text Processing",
+    "title": "Semantic Version Comparator",
+    "module_name": "semver.py",
+    "test_name": "test_semver.py",
+    "prompt": "Create semver.py implementing parse_semver(version_str) returning a tuple (major, minor, patch, prerelease) and compare_semver(v1, v2) returning -1 if v1 < v2, 0 if v1 == v2, and 1 if v1 > v2. Handle optional 'v' prefix and prerelease tags like '-alpha.1'.\nVerification check: python3 -m unittest -v test_semver.py",
+    "verification_command": "python3 -m unittest -v test_semver.py",
+    "test_code": "import unittest\nfrom semver import parse_semver, compare_semver\n\nclass TestSemver(unittest.TestCase):\n    def test_parse(self):\n        self.assertEqual(parse_semver(\"v1.2.3\"), (1, 2, 3, None))\n        self.assertEqual(parse_semver(\"2.0.0-beta.1\"), (2, 0, 0, \"beta.1\"))\n    def test_compare_equal(self):\n        self.assertEqual(compare_semver(\"1.0.0\", \"v1.0.0\"), 0)\n    def test_compare_patch(self):\n        self.assertEqual(compare_semver(\"1.0.1\", \"1.0.0\"), 1)\n        self.assertEqual(compare_semver(\"1.0.0\", \"1.0.1\"), -1)\n    def test_compare_minor_major(self):\n        self.assertEqual(compare_semver(\"1.2.0\", \"1.1.9\"), 1)\n        self.assertEqual(compare_semver(\"2.0.0\", \"1.9.9\"), 1)\n    def test_invalid(self):\n        with self.assertRaises(ValueError):\n            parse_semver(\"invalid.version\")\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-003",
+    "category": "Text Processing",
+    "title": "Markdown Inline Formatter",
+    "module_name": "md_inline.py",
+    "test_name": "test_md_inline.py",
+    "prompt": "Create md_inline.py implementing parse_inline_markdown(text) converting **bold** to <strong>bold</strong>, *italic* to <em>italic</em>, `code` to <code>code</code>, and [text](url) to <a href=\"url\">text</a>.\nVerification check: python3 -m unittest -v test_md_inline.py",
+    "verification_command": "python3 -m unittest -v test_md_inline.py",
+    "test_code": "import unittest\nfrom md_inline import parse_inline_markdown\n\nclass TestMdInline(unittest.TestCase):\n    def test_bold(self):\n        self.assertEqual(parse_inline_markdown(\"This is **bold** text\"), \"This is <strong>bold</strong> text\")\n    def test_italic(self):\n        self.assertEqual(parse_inline_markdown(\"This is *italic* text\"), \"This is <em>italic</em> text\")\n    def test_code(self):\n        self.assertEqual(parse_inline_markdown(\"Run `git status` here\"), \"Run <code>git status</code> here\")\n    def test_link(self):\n        self.assertEqual(parse_inline_markdown(\"Visit [Google](https://google.com)\"), \"Visit <a href=\\\"https://google.com\\\">Google</a>\")\n    def test_combined(self):\n        self.assertEqual(parse_inline_markdown(\"**Bold** and *italic* with `code`\"), \"<strong>Bold</strong> and <em>italic</em> with <code>code</code>\")\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-004",
+    "category": "Text Processing",
+    "title": "Nested Template String Interpolator",
+    "module_name": "template.py",
+    "test_name": "test_template.py",
+    "prompt": "Create template.py implementing render_template(template_str, context_dict). Replaces {{ key }} and nested {{ user.name }} placeholders with values from context_dict. Supports default empty string for missing keys.\nVerification check: python3 -m unittest -v test_template.py",
+    "verification_command": "python3 -m unittest -v test_template.py",
+    "test_code": "import unittest\nfrom template import render_template\n\nclass TestTemplate(unittest.TestCase):\n    def test_simple(self):\n        self.assertEqual(render_template(\"Hello {{ name }}!\", {\"name\": \"Alice\"}), \"Hello Alice!\")\n    def test_nested(self):\n        ctx = {\"user\": {\"profile\": {\"city\": \"New York\"}}}\n        self.assertEqual(render_template(\"From {{ user.profile.city }}\", ctx), \"From New York\")\n    def test_missing_key(self):\n        self.assertEqual(render_template(\"Hello {{ missing }}!\", {}), \"Hello !\")\n    def test_whitespace_tolerance(self):\n        self.assertEqual(render_template(\"{{a}} {{  b  }}\", {\"a\": 1, \"b\": 2}), \"1 2\")\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-005",
+    "category": "Text Processing",
+    "title": "Identifier Case Converter",
+    "module_name": "case_conv.py",
+    "test_name": "test_case_conv.py",
+    "prompt": "Create case_conv.py implementing to_snake_case(s), to_camel_case(s), to_kebab_case(s), and to_pascal_case(s) handling transitions between camelCase, PascalCase, snake_case, and kebab-case.\nVerification check: python3 -m unittest -v test_case_conv.py",
+    "verification_command": "python3 -m unittest -v test_case_conv.py",
+    "test_code": "import unittest\nfrom case_conv import to_snake_case, to_camel_case, to_kebab_case, to_pascal_case\n\nclass TestCaseConv(unittest.TestCase):\n    def test_to_snake(self):\n        self.assertEqual(to_snake_case(\"camelCaseVar\"), \"camel_case_var\")\n        self.assertEqual(to_snake_case(\"PascalCaseVar\"), \"pascal_case_var\")\n        self.assertEqual(to_snake_case(\"kebab-case-var\"), \"kebab_case_var\")\n    def test_to_camel(self):\n        self.assertEqual(to_camel_case(\"snake_case_var\"), \"snakeCaseVar\")\n        self.assertEqual(to_camel_case(\"kebab-case-var\"), \"kebabCaseVar\")\n    def test_to_kebab(self):\n        self.assertEqual(to_kebab_case(\"camelCaseVar\"), \"camel-case-var\")\n    def test_to_pascal(self):\n        self.assertEqual(to_pascal_case(\"snake_case_var\"), \"SnakeCaseVar\")\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-006",
+    "category": "Text Processing",
+    "title": "Word Wrap Text Column Formatter",
+    "module_name": "word_wrap.py",
+    "test_name": "test_word_wrap.py",
+    "prompt": "Create word_wrap.py implementing wrap_text(text, width=80, break_long_words=False). Wraps paragraphs at whitespace so no line exceeds width characters, preserving existing newline paragraphs.\nVerification check: python3 -m unittest -v test_word_wrap.py",
+    "verification_command": "python3 -m unittest -v test_word_wrap.py",
+    "test_code": "import unittest\nfrom word_wrap import wrap_text\n\nclass TestWordWrap(unittest.TestCase):\n    def test_simple_wrap(self):\n        text = \"The quick brown fox jumps over the lazy dog\"\n        lines = wrap_text(text, width=15).splitlines()\n        for line in lines:\n            self.assertLessEqual(len(line), 15)\n        self.assertEqual(\" \".join(lines), text)\n    def test_preserves_paragraphs(self):\n        text = \"First paragraph.\\n\\nSecond paragraph is longer and wraps nicely.\"\n        res = wrap_text(text, width=20)\n        self.assertIn(\"\\n\\n\", res)\n    def test_exact_width(self):\n        self.assertEqual(wrap_text(\"12345 67890\", width=5), \"12345\\n67890\")\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-007",
+    "category": "Text Processing",
+    "title": "Smart Text Truncator",
+    "module_name": "smart_truncate.py",
+    "test_name": "test_smart_truncate.py",
+    "prompt": "Create smart_truncate.py implementing truncate_words(text, max_chars, suffix='...'). Truncates text so the total length including suffix does not exceed max_chars, breaking only on word boundaries without leaving trailing spaces before the suffix.\nVerification check: python3 -m unittest -v test_smart_truncate.py",
+    "verification_command": "python3 -m unittest -v test_smart_truncate.py",
+    "test_code": "import unittest\nfrom smart_truncate import truncate_words\n\nclass TestSmartTruncate(unittest.TestCase):\n    def test_no_truncate_needed(self):\n        self.assertEqual(truncate_words(\"Short text\", 20), \"Short text\")\n    def test_word_boundary(self):\n        self.assertEqual(truncate_words(\"The quick brown fox\", 15), \"The quick...\")\n    def test_exact_boundary(self):\n        self.assertEqual(truncate_words(\"Hello world\", 11), \"Hello world\")\n    def test_very_short_limit(self):\n        self.assertEqual(truncate_words(\"Hello world\", 4, suffix=\".\"), \"H.\")\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-008",
+    "category": "Text Processing",
+    "title": "Levenshtein String Similarity",
+    "module_name": "similarity.py",
+    "test_name": "test_similarity.py",
+    "prompt": "Create similarity.py implementing levenshtein_distance(s1, s2) returning integer edit distance and similarity_ratio(s1, s2) returning float score from 0.0 to 1.0 (1.0 for identical strings).\nVerification check: python3 -m unittest -v test_similarity.py",
+    "verification_command": "python3 -m unittest -v test_similarity.py",
+    "test_code": "import unittest\nfrom similarity import levenshtein_distance, similarity_ratio\n\nclass TestSimilarity(unittest.TestCase):\n    def test_identical(self):\n        self.assertEqual(levenshtein_distance(\"kitten\", \"kitten\"), 0)\n        self.assertEqual(similarity_ratio(\"kitten\", \"kitten\"), 1.0)\n    def test_classic_kitten_sitting(self):\n        self.assertEqual(levenshtein_distance(\"kitten\", \"sitting\"), 3)\n    def test_empty(self):\n        self.assertEqual(levenshtein_distance(\"\", \"test\"), 4)\n        self.assertEqual(similarity_ratio(\"\", \"\"), 1.0)\n        self.assertEqual(similarity_ratio(\"\", \"abc\"), 0.0)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-009",
+    "category": "Text Processing",
+    "title": "ANSI Color Code Cleaner",
+    "module_name": "ansi_cleaner.py",
+    "test_name": "test_ansi_cleaner.py",
+    "prompt": "Create ansi_cleaner.py implementing strip_ansi(text) which removes ANSI escape sequences (like \\x1b[31m) and visible_length(text) returning the visible character count.\nVerification check: python3 -m unittest -v test_ansi_cleaner.py",
+    "verification_command": "python3 -m unittest -v test_ansi_cleaner.py",
+    "test_code": "import unittest\nfrom ansi_cleaner import strip_ansi, visible_length\n\nclass TestAnsiCleaner(unittest.TestCase):\n    def test_strip_color(self):\n        raw = \"\\x1b[31mRed Text\\x1b[0m\"\n        self.assertEqual(strip_ansi(raw), \"Red Text\")\n        self.assertEqual(visible_length(raw), 8)\n    def test_strip_styles(self):\n        raw = \"\\x1b[1;32;40mBold Green\\x1b[0m\"\n        self.assertEqual(strip_ansi(raw), \"Bold Green\")\n        self.assertEqual(visible_length(raw), 10)\n    def test_no_ansi(self):\n        self.assertEqual(strip_ansi(\"Plain\"), \"Plain\")\n        self.assertEqual(visible_length(\"Plain\"), 5)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-010",
+    "category": "Text Processing",
+    "title": "Query String Parser & Formatter",
+    "module_name": "query_string.py",
+    "test_name": "test_query_string.py",
+    "prompt": "Create query_string.py implementing parse_qs_custom(qs_string) returning a dict with list values, and format_qs_custom(params_dict) returning an escaped query string sorted by key name.\nVerification check: python3 -m unittest -v test_query_string.py",
+    "verification_command": "python3 -m unittest -v test_query_string.py",
+    "test_code": "import unittest\nfrom query_string import parse_qs_custom, format_qs_custom\n\nclass TestQueryString(unittest.TestCase):\n    def test_parse(self):\n        res = parse_qs_custom(\"name=John+Doe&tag=python&tag=cheapos&count=5\")\n        self.assertEqual(res[\"name\"], [\"John Doe\"])\n        self.assertEqual(res[\"tag\"], [\"python\", \"cheapos\"])\n        self.assertEqual(res[\"count\"], [\"5\"])\n    def test_format(self):\n        data = {\"b\": [2], \"a\": [1, 3]}\n        self.assertEqual(format_qs_custom(data), \"a=1&a=3&b=2\")\n    def test_empty(self):\n        self.assertEqual(parse_qs_custom(\"\"), {})\n        self.assertEqual(format_qs_custom({}), \"\")\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-011",
+    "category": "Data Structures",
+    "title": "Capacity-Limited LRU Cache",
+    "module_name": "lru_cache.py",
+    "test_name": "test_lru_cache.py",
+    "prompt": "Create lru_cache.py implementing LRUCache(capacity). Supports get(key, default=None), put(key, value), size(), and items(). When capacity is exceeded, evicts the least recently accessed item.\nVerification check: python3 -m unittest -v test_lru_cache.py",
+    "verification_command": "python3 -m unittest -v test_lru_cache.py",
+    "test_code": "import unittest\nfrom lru_cache import LRUCache\n\nclass TestLRUCache(unittest.TestCase):\n    def test_eviction(self):\n        cache = LRUCache(2)\n        cache.put(\"a\", 1)\n        cache.put(\"b\", 2)\n        self.assertEqual(cache.get(\"a\"), 1)\n        cache.put(\"c\", 3)\n        self.assertIsNone(cache.get(\"b\"))\n        self.assertEqual(cache.get(\"a\"), 1)\n        self.assertEqual(cache.get(\"c\"), 3)\n    def test_overwrite(self):\n        cache = LRUCache(2)\n        cache.put(\"a\", 1)\n        cache.put(\"a\", 10)\n        self.assertEqual(cache.get(\"a\"), 10)\n        self.assertEqual(cache.size(), 1)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-012",
+    "category": "Data Structures",
+    "title": "Priority Queue with FIFO Tie-Breaking",
+    "module_name": "priority_queue.py",
+    "test_name": "test_priority_queue.py",
+    "prompt": "Create priority_queue.py implementing PriorityQueue(). Supports push(item, priority), pop(), peek(), is_empty(), and len(pq). Smaller priority values come first; ties break in FIFO order.\nVerification check: python3 -m unittest -v test_priority_queue.py",
+    "verification_command": "python3 -m unittest -v test_priority_queue.py",
+    "test_code": "import unittest\nfrom priority_queue import PriorityQueue\n\nclass TestPriorityQueue(unittest.TestCase):\n    def test_ordering(self):\n        pq = PriorityQueue()\n        pq.push(\"low\", 10)\n        pq.push(\"high\", 1)\n        pq.push(\"medium\", 5)\n        self.assertEqual(pq.pop(), \"high\")\n        self.assertEqual(pq.pop(), \"medium\")\n        self.assertEqual(pq.pop(), \"low\")\n    def test_fifo_ties(self):\n        pq = PriorityQueue()\n        pq.push(\"first\", 5)\n        pq.push(\"second\", 5)\n        self.assertEqual(pq.pop(), \"first\")\n        self.assertEqual(pq.pop(), \"second\")\n    def test_empty(self):\n        pq = PriorityQueue()\n        self.assertTrue(pq.is_empty())\n        with self.assertRaises(IndexError):\n            pq.pop()\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-013",
+    "category": "Data Structures",
+    "title": "Deep Dictionary Merger",
+    "module_name": "dict_merge.py",
+    "test_name": "test_dict_merge.py",
+    "prompt": "Create dict_merge.py implementing deep_merge(base, override, list_strategy='replace'). Recursively merges nested dictionaries. If list_strategy is 'replace', overrides list; if 'concat', concatenates lists; if 'union', preserves unique items in order.\nVerification check: python3 -m unittest -v test_dict_merge.py",
+    "verification_command": "python3 -m unittest -v test_dict_merge.py",
+    "test_code": "import unittest\nfrom dict_merge import deep_merge\n\nclass TestDictMerge(unittest.TestCase):\n    def test_nested_merge(self):\n        b = {\"app\": {\"theme\": \"dark\", \"port\": 5000}}\n        o = {\"app\": {\"port\": 8080, \"debug\": True}}\n        res = deep_merge(b, o)\n        self.assertEqual(res, {\"app\": {\"theme\": \"dark\", \"port\": 8080, \"debug\": True}})\n    def test_list_concat(self):\n        b = {\"tags\": [1, 2]}\n        o = {\"tags\": [2, 3]}\n        self.assertEqual(deep_merge(b, o, list_strategy=\"concat\")[\"tags\"], [1, 2, 2, 3])\n        self.assertEqual(deep_merge(b, o, list_strategy=\"union\")[\"tags\"], [1, 2, 3])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-014",
+    "category": "Data Structures",
+    "title": "Flatten and Unflatten Dictionaries",
+    "module_name": "dict_flatten.py",
+    "test_name": "test_dict_flatten.py",
+    "prompt": "Create dict_flatten.py implementing flatten_dict(d, sep='.') and unflatten_dict(d, sep='.'). Converts nested dictionary to dot-delimited flat keys and reconstructs the nested structure from flat keys.\nVerification check: python3 -m unittest -v test_dict_flatten.py",
+    "verification_command": "python3 -m unittest -v test_dict_flatten.py",
+    "test_code": "import unittest\nfrom dict_flatten import flatten_dict, unflatten_dict\n\nclass TestDictFlatten(unittest.TestCase):\n    def test_flatten(self):\n        d = {\"a\": {\"b\": 1, \"c\": {\"d\": 2}}, \"e\": 3}\n        flat = flatten_dict(d)\n        self.assertEqual(flat, {\"a.b\": 1, \"a.c.d\": 2, \"e\": 3})\n    def test_unflatten(self):\n        flat = {\"user.name\": \"Carlos\", \"user.settings.theme\": \"dark\"}\n        nested = unflatten_dict(flat)\n        self.assertEqual(nested, {\"user\": {\"name\": \"Carlos\", \"settings\": {\"theme\": \"dark\"}}})\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-015",
+    "category": "Data Structures",
+    "title": "Trie Prefix Tree for Autocomplete",
+    "module_name": "trie.py",
+    "test_name": "test_trie.py",
+    "prompt": "Create trie.py implementing Trie(). Supports insert(word), search(word) -> bool, starts_with(prefix) -> bool, and autocomplete(prefix) -> list[str] in alphabetical order.\nVerification check: python3 -m unittest -v test_trie.py",
+    "verification_command": "python3 -m unittest -v test_trie.py",
+    "test_code": "import unittest\nfrom trie import Trie\n\nclass TestTrie(unittest.TestCase):\n    def test_trie_operations(self):\n        trie = Trie()\n        for w in [\"cheap\", \"cheapo\", \"cheapos\", \"check\", \"cat\"]:\n            trie.insert(w)\n        self.assertTrue(trie.search(\"cheapo\"))\n        self.assertFalse(trie.search(\"cheaposs\"))\n        self.assertTrue(trie.starts_with(\"che\"))\n        self.assertEqual(trie.autocomplete(\"cheap\"), [\"cheap\", \"cheapo\", \"cheapos\"])\n        self.assertEqual(trie.autocomplete(\"z\"), [])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-016",
+    "category": "Data Structures",
+    "title": "Fixed-Size Circular Ring Buffer",
+    "module_name": "ring_buffer.py",
+    "test_name": "test_ring_buffer.py",
+    "prompt": "Create ring_buffer.py implementing RingBuffer(capacity). Supports append(item), to_list(), is_full(), is_empty(), and clear(). When capacity is exceeded, oldest items are overwritten.\nVerification check: python3 -m unittest -v test_ring_buffer.py",
+    "verification_command": "python3 -m unittest -v test_ring_buffer.py",
+    "test_code": "import unittest\nfrom ring_buffer import RingBuffer\n\nclass TestRingBuffer(unittest.TestCase):\n    def test_overflow(self):\n        rb = RingBuffer(3)\n        rb.append(1); rb.append(2); rb.append(3)\n        self.assertTrue(rb.is_full())\n        self.assertEqual(rb.to_list(), [1, 2, 3])\n        rb.append(4)\n        self.assertEqual(rb.to_list(), [2, 3, 4])\n    def test_empty(self):\n        rb = RingBuffer(3)\n        self.assertTrue(rb.is_empty())\n        rb.clear()\n        self.assertEqual(rb.to_list(), [])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-017",
+    "category": "Data Structures",
+    "title": "Disjoint Set Union-Find",
+    "module_name": "union_find.py",
+    "test_name": "test_union_find.py",
+    "prompt": "Create union_find.py implementing UnionFind(elements). Supports find(x), union(x, y), connected(x, y), and count_components(). Uses path compression and union by rank.\nVerification check: python3 -m unittest -v test_union_find.py",
+    "verification_command": "python3 -m unittest -v test_union_find.py",
+    "test_code": "import unittest\nfrom union_find import UnionFind\n\nclass TestUnionFind(unittest.TestCase):\n    def test_connectivity(self):\n        uf = UnionFind([1, 2, 3, 4, 5])\n        self.assertEqual(uf.count_components(), 5)\n        uf.union(1, 2)\n        uf.union(2, 3)\n        self.assertTrue(uf.connected(1, 3))\n        self.assertFalse(uf.connected(1, 4))\n        self.assertEqual(uf.count_components(), 3)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-018",
+    "category": "Data Structures",
+    "title": "Bi-directional Mapping",
+    "module_name": "bimap.py",
+    "test_name": "test_bimap.py",
+    "prompt": "Create bimap.py implementing BiMap(). Supports set(k, v), get_by_key(k), get_by_val(v), delete_by_key(k), delete_by_val(v), and len(). Keys and values must remain unique 1-to-1 mappings.\nVerification check: python3 -m unittest -v test_bimap.py",
+    "verification_command": "python3 -m unittest -v test_bimap.py",
+    "test_code": "import unittest\nfrom bimap import BiMap\n\nclass TestBiMap(unittest.TestCase):\n    def test_bidirectional(self):\n        bm = BiMap()\n        bm.set(\"us\", \"united_states\")\n        bm.set(\"fr\", \"france\")\n        self.assertEqual(bm.get_by_key(\"us\"), \"united_states\")\n        self.assertEqual(bm.get_by_val(\"france\"), \"fr\")\n    def test_delete(self):\n        bm = BiMap()\n        bm.set(\"a\", 1)\n        bm.delete_by_val(1)\n        self.assertIsNone(bm.get_by_key(\"a\"))\n        self.assertEqual(len(bm), 0)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-019",
+    "category": "Data Structures",
+    "title": "Interval Overlap Checker",
+    "module_name": "interval_tree.py",
+    "test_name": "test_interval_tree.py",
+    "prompt": "Create interval_tree.py implementing IntervalSet(). Supports add(start, end), overlaps(start, end) -> bool, and all_overlapping(start, end) -> list[tuple[int, int]]. Intervals are inclusive [start, end].\nVerification check: python3 -m unittest -v test_interval_tree.py",
+    "verification_command": "python3 -m unittest -v test_interval_tree.py",
+    "test_code": "import unittest\nfrom interval_tree import IntervalSet\n\nclass TestIntervalSet(unittest.TestCase):\n    def test_overlaps(self):\n        iset = IntervalSet()\n        iset.add(10, 20)\n        iset.add(30, 40)\n        self.assertTrue(iset.overlaps(15, 25))\n        self.assertFalse(iset.overlaps(21, 29))\n        self.assertEqual(iset.all_overlapping(15, 35), [(10, 20), (30, 40)])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-020",
+    "category": "Data Structures",
+    "title": "Sparse Vector with Cosine Similarity",
+    "module_name": "sparse_vector.py",
+    "test_name": "test_sparse_vector.py",
+    "prompt": "Create sparse_vector.py implementing SparseVector(dimensions, values_dict). Supports dot(other), norm(), and cosine_similarity(other). Efficiently computes without allocating full dense arrays.\nVerification check: python3 -m unittest -v test_sparse_vector.py",
+    "verification_command": "python3 -m unittest -v test_sparse_vector.py",
+    "test_code": "import unittest\nfrom sparse_vector import SparseVector\n\nclass TestSparseVector(unittest.TestCase):\n    def test_dot_product(self):\n        v1 = SparseVector(1000, {0: 3, 500: 4})\n        v2 = SparseVector(1000, {0: 1, 500: 2, 999: 10})\n        self.assertEqual(v1.dot(v2), 3*1 + 4*2)\n    def test_cosine_similarity(self):\n        v1 = SparseVector(100, {1: 1, 2: 1})\n        v2 = SparseVector(100, {1: 1, 2: 1})\n        self.assertAlmostEqual(v1.cosine_similarity(v2), 1.0)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-021",
+    "category": "Validation",
+    "title": "Email Address Validator",
+    "module_name": "email_validator.py",
+    "test_name": "test_email_validator.py",
+    "prompt": "Create email_validator.py implementing Email Address Validator. validate_email(email) -> bool checking syntax, domain, and quotes.\nVerification check: python3 -m unittest -v test_email_validator.py",
+    "verification_command": "python3 -m unittest -v test_email_validator.py",
+    "test_code": "import unittest\nfrom email_validator import validate_email\nclass Test(unittest.TestCase):\n def test_valid(self): self.assertTrue(validate_email('test@example.com'))\n def test_invalid(self): self.assertFalse(validate_email('plainaddress'))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-022",
+    "category": "Validation",
+    "title": "Credit Card Luhn Validator",
+    "module_name": "card_validator.py",
+    "test_name": "test_card_validator.py",
+    "prompt": "Create card_validator.py implementing Credit Card Luhn Validator. validate_card(num) -> bool and detect_brand(num) -> str (Visa, Mastercard, Amex).\nVerification check: python3 -m unittest -v test_card_validator.py",
+    "verification_command": "python3 -m unittest -v test_card_validator.py",
+    "test_code": "import unittest\nfrom card_validator import validate_card, detect_brand\nclass Test(unittest.TestCase):\n def test_visa(self): self.assertEqual(detect_brand('4000000000000'), 'Visa')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-023",
+    "category": "Validation",
+    "title": "IP Address & CIDR Checker",
+    "module_name": "ip_validator.py",
+    "test_name": "test_ip_validator.py",
+    "prompt": "Create ip_validator.py implementing IP Address & CIDR Checker. is_valid_ipv4(ip), is_valid_ipv6(ip), and ip_in_cidr(ip, cidr).\nVerification check: python3 -m unittest -v test_ip_validator.py",
+    "verification_command": "python3 -m unittest -v test_ip_validator.py",
+    "test_code": "import unittest\nfrom ip_validator import is_valid_ipv4, ip_in_cidr\nclass Test(unittest.TestCase):\n def test_ip(self): self.assertTrue(is_valid_ipv4('192.168.1.1'))\n self.assertTrue(ip_in_cidr('192.168.1.5', '192.168.1.0/24'))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-024",
+    "category": "Validation",
+    "title": "HTTP URL Validator",
+    "module_name": "url_validator.py",
+    "test_name": "test_url_validator.py",
+    "prompt": "Create url_validator.py implementing HTTP URL Validator. validate_url(url, require_https=False) -> bool.\nVerification check: python3 -m unittest -v test_url_validator.py",
+    "verification_command": "python3 -m unittest -v test_url_validator.py",
+    "test_code": "import unittest\nfrom url_validator import validate_url\nclass Test(unittest.TestCase):\n def test_url(self): self.assertTrue(validate_url('https://cheapos.local:5173/path'))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-025",
+    "category": "Validation",
+    "title": "Schema Lite Validator",
+    "module_name": "schema_validator.py",
+    "test_name": "test_schema_validator.py",
+    "prompt": "Create schema_validator.py implementing Schema Lite Validator. validate_schema(data, schema) -> list[str] of error messages.\nVerification check: python3 -m unittest -v test_schema_validator.py",
+    "verification_command": "python3 -m unittest -v test_schema_validator.py",
+    "test_code": "import unittest\nfrom schema_validator import validate_schema\nclass Test(unittest.TestCase):\n def test_schema(self): self.assertEqual(validate_schema({'a': 1}, {'a': {'type': 'int'}}), [])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-026",
+    "category": "Validation",
+    "title": "Password Strength Evaluator",
+    "module_name": "password_evaluator.py",
+    "test_name": "test_password_evaluator.py",
+    "prompt": "Create password_evaluator.py implementing Password Strength Evaluator. evaluate_password(pwd) -> dict(score=0..4, feedback=list).\nVerification check: python3 -m unittest -v test_password_evaluator.py",
+    "verification_command": "python3 -m unittest -v test_password_evaluator.py",
+    "test_code": "import unittest\nfrom password_evaluator import evaluate_password\nclass Test(unittest.TestCase):\n def test_pwd(self): self.assertGreaterEqual(evaluate_password('C0mpl3x!Pass#99')['score'], 3)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-027",
+    "category": "Validation",
+    "title": "Cron Expression Parser",
+    "module_name": "cron_validator.py",
+    "test_name": "test_cron_validator.py",
+    "prompt": "Create cron_validator.py implementing Cron Expression Parser. parse_cron(expr) -> dict(minute, hour, dom, month, dow).\nVerification check: python3 -m unittest -v test_cron_validator.py",
+    "verification_command": "python3 -m unittest -v test_cron_validator.py",
+    "test_code": "import unittest\nfrom cron_validator import parse_cron\nclass Test(unittest.TestCase):\n def test_cron(self): self.assertEqual(len(parse_cron('*/5 * * * *')['minute']), 12)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-028",
+    "category": "Validation",
+    "title": "ISO 8601 Duration Parser",
+    "module_name": "iso_duration.py",
+    "test_name": "test_iso_duration.py",
+    "prompt": "Create iso_duration.py implementing ISO 8601 Duration Parser. parse_duration(p_str) -> int total seconds (e.g. PT1H30M).\nVerification check: python3 -m unittest -v test_iso_duration.py",
+    "verification_command": "python3 -m unittest -v test_iso_duration.py",
+    "test_code": "import unittest\nfrom iso_duration import parse_duration\nclass Test(unittest.TestCase):\n def test_dur(self): self.assertEqual(parse_duration('PT1H30M'), 5400)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-029",
+    "category": "Validation",
+    "title": "Phone Number Normalizer",
+    "module_name": "phone_normalizer.py",
+    "test_name": "test_phone_normalizer.py",
+    "prompt": "Create phone_normalizer.py implementing Phone Number Normalizer. normalize_phone(phone_str, default_country='US') -> str E.164.\nVerification check: python3 -m unittest -v test_phone_normalizer.py",
+    "verification_command": "python3 -m unittest -v test_phone_normalizer.py",
+    "test_code": "import unittest\nfrom phone_normalizer import normalize_phone\nclass Test(unittest.TestCase):\n def test_phone(self): self.assertEqual(normalize_phone('(555) 123-4567'), '+15551234567')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-030",
+    "category": "Validation",
+    "title": "HTML Tag Sanitizer",
+    "module_name": "html_sanitizer.py",
+    "test_name": "test_html_sanitizer.py",
+    "prompt": "Create html_sanitizer.py implementing HTML Tag Sanitizer. sanitize_html(raw_html, allowed_tags=None) -> str safe text.\nVerification check: python3 -m unittest -v test_html_sanitizer.py",
+    "verification_command": "python3 -m unittest -v test_html_sanitizer.py",
+    "test_code": "import unittest\nfrom html_sanitizer import sanitize_html\nclass Test(unittest.TestCase):\n def test_html(self): self.assertEqual(sanitize_html('<script>bad()</script><b>Hi</b>', ['b']), '<b>Hi</b>')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-031",
+    "category": "Math & Numerical",
+    "title": "Precise Money Calculator",
+    "module_name": "money_calc.py",
+    "test_name": "test_money_calc.py",
+    "prompt": "Create money_calc.py implementing Precise Money Calculator. Money(amount, currency) with add, sub, mul, and round_cents.\nVerification check: python3 -m unittest -v test_money_calc.py",
+    "verification_command": "python3 -m unittest -v test_money_calc.py",
+    "test_code": "import unittest\nfrom money_calc import Money\nclass Test(unittest.TestCase):\n def test_money(self): self.assertEqual((Money(10.50, 'USD') + Money(5.25, 'USD')).amount, 15.75)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-032",
+    "category": "Math & Numerical",
+    "title": "Running Stream Statistics",
+    "module_name": "running_stats.py",
+    "test_name": "test_running_stats.py",
+    "prompt": "Create running_stats.py implementing Running Stream Statistics. RunningStats with push(val), mean(), variance(), std_dev().\nVerification check: python3 -m unittest -v test_running_stats.py",
+    "verification_command": "python3 -m unittest -v test_running_stats.py",
+    "test_code": "import unittest\nfrom running_stats import RunningStats\nclass Test(unittest.TestCase):\n def test_stats(self): s = RunningStats(); s.push(10); s.push(20); self.assertEqual(s.mean(), 15.0)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-033",
+    "category": "Math & Numerical",
+    "title": "Number to English Words",
+    "module_name": "num_to_words.py",
+    "test_name": "test_num_to_words.py",
+    "prompt": "Create num_to_words.py implementing Number to English Words. number_to_words(n: int) -> str (e.g. 1042 -> 'one thousand forty-two').\nVerification check: python3 -m unittest -v test_num_to_words.py",
+    "verification_command": "python3 -m unittest -v test_num_to_words.py",
+    "test_code": "import unittest\nfrom num_to_words import number_to_words\nclass Test(unittest.TestCase):\n def test_num(self): self.assertEqual(number_to_words(42), 'forty-two')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-034",
+    "category": "Math & Numerical",
+    "title": "Linear Regression Calculator",
+    "module_name": "linear_regression.py",
+    "test_name": "test_linear_regression.py",
+    "prompt": "Create linear_regression.py implementing Linear Regression Calculator. calc_regression(points: list[(x,y)]) -> (slope, intercept, r_squared).\nVerification check: python3 -m unittest -v test_linear_regression.py",
+    "verification_command": "python3 -m unittest -v test_linear_regression.py",
+    "test_code": "import unittest\nfrom linear_regression import calc_regression\nclass Test(unittest.TestCase):\n def test_reg(self): m, b, r = calc_regression([(1, 2), (2, 4), (3, 6)]); self.assertAlmostEqual(m, 2.0)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-035",
+    "category": "Math & Numerical",
+    "title": "Matrix Math Operations",
+    "module_name": "matrix_ops.py",
+    "test_name": "test_matrix_ops.py",
+    "prompt": "Create matrix_ops.py implementing Matrix Math Operations. matrix_multiply(a, b) and matrix_transpose(m).\nVerification check: python3 -m unittest -v test_matrix_ops.py",
+    "verification_command": "python3 -m unittest -v test_matrix_ops.py",
+    "test_code": "import unittest\nfrom matrix_ops import matrix_multiply, matrix_transpose\nclass Test(unittest.TestCase):\n def test_mat(self): self.assertEqual(matrix_transpose([[1, 2], [3, 4]]), [[1, 3], [2, 4]])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-036",
+    "category": "Math & Numerical",
+    "title": "Fraction Arithmetic",
+    "module_name": "fraction_calc.py",
+    "test_name": "test_fraction_calc.py",
+    "prompt": "Create fraction_calc.py implementing Fraction Arithmetic. Fraction(num, denom) with simplify, add, multiply.\nVerification check: python3 -m unittest -v test_fraction_calc.py",
+    "verification_command": "python3 -m unittest -v test_fraction_calc.py",
+    "test_code": "import unittest\nfrom fraction_calc import Fraction\nclass Test(unittest.TestCase):\n def test_frac(self): self.assertEqual((Fraction(1, 2) + Fraction(1, 3)).to_tuple(), (5, 6))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-037",
+    "category": "Math & Numerical",
+    "title": "Compound Growth Calculator",
+    "module_name": "compound_calc.py",
+    "test_name": "test_compound_calc.py",
+    "prompt": "Create compound_calc.py implementing Compound Growth Calculator. calc_compound(principal, rate, years, periods=12).\nVerification check: python3 -m unittest -v test_compound_calc.py",
+    "verification_command": "python3 -m unittest -v test_compound_calc.py",
+    "test_code": "import unittest\nfrom compound_calc import calc_compound\nclass Test(unittest.TestCase):\n def test_compound(self): self.assertAlmostEqual(calc_compound(1000, 0.05, 1, 1), 1050.0)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-038",
+    "category": "Math & Numerical",
+    "title": "Haversine Distance Calculator",
+    "module_name": "haversine.py",
+    "test_name": "test_haversine.py",
+    "prompt": "Create haversine.py implementing Haversine Distance Calculator. haversine_km(lat1, lon1, lat2, lon2) -> float km distance.\nVerification check: python3 -m unittest -v test_haversine.py",
+    "verification_command": "python3 -m unittest -v test_haversine.py",
+    "test_code": "import unittest\nfrom haversine import haversine_km\nclass Test(unittest.TestCase):\n def test_dist(self): self.assertGreater(haversine_km(40.7128, -74.0060, 51.5074, -0.1278), 5500)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-039",
+    "category": "Math & Numerical",
+    "title": "Moving Average Stream",
+    "module_name": "moving_average.py",
+    "test_name": "test_moving_average.py",
+    "prompt": "Create moving_average.py implementing Moving Average Stream. SimpleMovingAverage(window) and ExponentialMovingAverage(alpha).\nVerification check: python3 -m unittest -v test_moving_average.py",
+    "verification_command": "python3 -m unittest -v test_moving_average.py",
+    "test_code": "import unittest\nfrom moving_average import SimpleMovingAverage\nclass Test(unittest.TestCase):\n def test_sma(self): sma = SimpleMovingAverage(2); sma.push(10); self.assertEqual(sma.push(20), 15.0)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-040",
+    "category": "Math & Numerical",
+    "title": "Roman Numeral Converter",
+    "module_name": "roman_numerals.py",
+    "test_name": "test_roman_numerals.py",
+    "prompt": "Create roman_numerals.py implementing Roman Numeral Converter. to_roman(num: int) -> str and from_roman(s: str) -> int.\nVerification check: python3 -m unittest -v test_roman_numerals.py",
+    "verification_command": "python3 -m unittest -v test_roman_numerals.py",
+    "test_code": "import unittest\nfrom roman_numerals import to_roman, from_roman\nclass Test(unittest.TestCase):\n def test_roman(self): self.assertEqual(to_roman(1984), 'MCMLXXXIV'); self.assertEqual(from_roman('MCMLXXXIV'), 1984)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-041",
+    "category": "Serialization & IO",
+    "title": "CSV Dialect Detector",
+    "module_name": "csv_reader.py",
+    "test_name": "test_csv_reader.py",
+    "prompt": "Create csv_reader.py implementing CSV Dialect Detector. detect_delimiter(sample_text) -> str and parse_rows(text).\nVerification check: python3 -m unittest -v test_csv_reader.py",
+    "verification_command": "python3 -m unittest -v test_csv_reader.py",
+    "test_code": "import unittest\nfrom csv_reader import detect_delimiter\nclass Test(unittest.TestCase):\n def test_delim(self): self.assertEqual(detect_delimiter('a\\tb\\tc\\n1\\t2\\t3'), '\\t')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-042",
+    "category": "Serialization & IO",
+    "title": "Lightweight INI Parser",
+    "module_name": "ini_parser.py",
+    "test_name": "test_ini_parser.py",
+    "prompt": "Create ini_parser.py implementing Lightweight INI Parser. parse_ini(text) -> dict and serialize_ini(dict) -> str.\nVerification check: python3 -m unittest -v test_ini_parser.py",
+    "verification_command": "python3 -m unittest -v test_ini_parser.py",
+    "test_code": "import unittest\nfrom ini_parser import parse_ini\nclass Test(unittest.TestCase):\n def test_ini(self): self.assertEqual(parse_ini('[s]\\nk=v')['s']['k'], 'v')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-043",
+    "category": "Serialization & IO",
+    "title": "JSONL Batch Streamer",
+    "module_name": "jsonl_processor.py",
+    "test_name": "test_jsonl_processor.py",
+    "prompt": "Create jsonl_processor.py implementing JSONL Batch Streamer. filter_jsonl(input_lines, predicate_fn) returning matched dicts.\nVerification check: python3 -m unittest -v test_jsonl_processor.py",
+    "verification_command": "python3 -m unittest -v test_jsonl_processor.py",
+    "test_code": "import unittest\nfrom jsonl_processor import filter_jsonl\nclass Test(unittest.TestCase):\n def test_jsonl(self): self.assertEqual(len(filter_jsonl(['{\"x\": 1}', '{\"x\": 2}'], lambda d: d['x'] > 1)), 1)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-044",
+    "category": "Serialization & IO",
+    "title": "File Glob Path Matcher",
+    "module_name": "glob_matcher.py",
+    "test_name": "test_glob_matcher.py",
+    "prompt": "Create glob_matcher.py implementing File Glob Path Matcher. glob_match(path, pattern) supporting * and **.\nVerification check: python3 -m unittest -v test_glob_matcher.py",
+    "verification_command": "python3 -m unittest -v test_glob_matcher.py",
+    "test_code": "import unittest\nfrom glob_matcher import glob_match\nclass Test(unittest.TestCase):\n def test_glob(self): self.assertTrue(glob_match('cheapos/core/app.py', '**/*.py'))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-045",
+    "category": "Serialization & IO",
+    "title": "Unified Diff Parser",
+    "module_name": "diff_parser.py",
+    "test_name": "test_diff_parser.py",
+    "prompt": "Create diff_parser.py implementing Unified Diff Parser. parse_diff_hunks(diff_str) -> list of hunk dicts with old/new lines.\nVerification check: python3 -m unittest -v test_diff_parser.py",
+    "verification_command": "python3 -m unittest -v test_diff_parser.py",
+    "test_code": "import unittest\nfrom diff_parser import parse_diff_hunks\nclass Test(unittest.TestCase):\n def test_diff(self): self.assertTrue(callable(parse_diff_hunks))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-046",
+    "category": "Serialization & IO",
+    "title": "Properties File Parser",
+    "module_name": "props_reader.py",
+    "test_name": "test_props_reader.py",
+    "prompt": "Create props_reader.py implementing Properties File Parser. parse_properties(text) -> dict with escape support.\nVerification check: python3 -m unittest -v test_props_reader.py",
+    "verification_command": "python3 -m unittest -v test_props_reader.py",
+    "test_code": "import unittest\nfrom props_reader import parse_properties\nclass Test(unittest.TestCase):\n def test_props(self): self.assertEqual(parse_properties('app.name=CheapOS\\nport=5173')['port'], '5173')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-047",
+    "category": "Serialization & IO",
+    "title": "Base64 Formatter",
+    "module_name": "base64_util.py",
+    "test_name": "test_base64_util.py",
+    "prompt": "Create base64_util.py implementing Base64 Formatter. safe_b64encode(data, line_wrap=0) and safe_b64decode(s).\nVerification check: python3 -m unittest -v test_base64_util.py",
+    "verification_command": "python3 -m unittest -v test_base64_util.py",
+    "test_code": "import unittest\nfrom base64_util import safe_b64encode, safe_b64decode\nclass Test(unittest.TestCase):\n def test_b64(self): self.assertEqual(safe_b64decode(safe_b64encode(b'hello')), b'hello')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-048",
+    "category": "Serialization & IO",
+    "title": "Byte Size Formatter",
+    "module_name": "byte_format.py",
+    "test_name": "test_byte_format.py",
+    "prompt": "Create byte_format.py implementing Byte Size Formatter. format_bytes(n: int) -> str and parse_bytes(s: str) -> int.\nVerification check: python3 -m unittest -v test_byte_format.py",
+    "verification_command": "python3 -m unittest -v test_byte_format.py",
+    "test_code": "import unittest\nfrom byte_format import format_bytes, parse_bytes\nclass Test(unittest.TestCase):\n def test_bytes(self): self.assertEqual(format_bytes(1024), '1.0 KB'); self.assertEqual(parse_bytes('1KB'), 1024)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-049",
+    "category": "Serialization & IO",
+    "title": "Tar Header Reader",
+    "module_name": "tar_header.py",
+    "test_name": "test_tar_header.py",
+    "prompt": "Create tar_header.py implementing Tar Header Reader. parse_tar_header(header_512_bytes) -> dict(name, size, mode).\nVerification check: python3 -m unittest -v test_tar_header.py",
+    "verification_command": "python3 -m unittest -v test_tar_header.py",
+    "test_code": "import unittest\nfrom tar_header import parse_tar_header\nclass Test(unittest.TestCase):\n def test_tar(self): self.assertTrue(callable(parse_tar_header))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-050",
+    "category": "Serialization & IO",
+    "title": "JSON Deep Diff",
+    "module_name": "json_diff.py",
+    "test_name": "test_json_diff.py",
+    "prompt": "Create json_diff.py implementing JSON Deep Diff. json_diff(obj1, obj2) -> list[dict(op, path, old, new)].\nVerification check: python3 -m unittest -v test_json_diff.py",
+    "verification_command": "python3 -m unittest -v test_json_diff.py",
+    "test_code": "import unittest\nfrom json_diff import json_diff\nclass Test(unittest.TestCase):\n def test_diff(self): self.assertEqual(json_diff({'a': 1}, {'a': 2})[0]['op'], 'replace')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-051",
+    "category": "Datetime & Time",
+    "title": "Date Range Generator",
+    "module_name": "date_range.py",
+    "test_name": "test_date_range.py",
+    "prompt": "Create date_range.py implementing Date Range Generator. date_range(start_str, end_str, skip_weekends=False) -> list[str].\nVerification check: python3 -m unittest -v test_date_range.py",
+    "verification_command": "python3 -m unittest -v test_date_range.py",
+    "test_code": "import unittest\nfrom date_range import date_range\nclass Test(unittest.TestCase):\n def test_range(self): self.assertEqual(len(date_range('2026-09-01', '2026-09-05')), 5)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-052",
+    "category": "Datetime & Time",
+    "title": "Relative Time Formatter",
+    "module_name": "relative_time.py",
+    "test_name": "test_relative_time.py",
+    "prompt": "Create relative_time.py implementing Relative Time Formatter. time_ago(epoch_seconds, now=None) -> str ('2 hours ago').\nVerification check: python3 -m unittest -v test_relative_time.py",
+    "verification_command": "python3 -m unittest -v test_relative_time.py",
+    "test_code": "import unittest\nfrom relative_time import time_ago\nclass Test(unittest.TestCase):\n def test_ago(self): self.assertEqual(time_ago(100, now=160), '1 minute ago')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-053",
+    "category": "Datetime & Time",
+    "title": "Interval Merger",
+    "module_name": "interval_merger.py",
+    "test_name": "test_interval_merger.py",
+    "prompt": "Create interval_merger.py implementing Interval Merger. merge_intervals(intervals: list[(s, e)]) -> list.\nVerification check: python3 -m unittest -v test_interval_merger.py",
+    "verification_command": "python3 -m unittest -v test_interval_merger.py",
+    "test_code": "import unittest\nfrom interval_merger import merge_intervals\nclass Test(unittest.TestCase):\n def test_merge(self): self.assertEqual(merge_intervals([(1, 3), (2, 6), (8, 10)]), [(1, 6), (8, 10)])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-054",
+    "category": "Datetime & Time",
+    "title": "Timezone Offset Parser",
+    "module_name": "tz_parser.py",
+    "test_name": "test_tz_parser.py",
+    "prompt": "Create tz_parser.py implementing Timezone Offset Parser. parse_tz_offset(tz_str) -> int seconds offset.\nVerification check: python3 -m unittest -v test_tz_parser.py",
+    "verification_command": "python3 -m unittest -v test_tz_parser.py",
+    "test_code": "import unittest\nfrom tz_parser import parse_tz_offset\nclass Test(unittest.TestCase):\n def test_tz(self): self.assertEqual(parse_tz_offset('-04:00'), -14400)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-055",
+    "category": "Datetime & Time",
+    "title": "Business Hours Calculator",
+    "module_name": "business_hours.py",
+    "test_name": "test_business_hours.py",
+    "prompt": "Create business_hours.py implementing Business Hours Calculator. business_hours_between(start_dt, end_dt, workday_hours=(9, 17)).\nVerification check: python3 -m unittest -v test_business_hours.py",
+    "verification_command": "python3 -m unittest -v test_business_hours.py",
+    "test_code": "import unittest\nfrom business_hours import business_hours_between\nclass Test(unittest.TestCase):\n def test_bh(self): self.assertTrue(callable(business_hours_between))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-056",
+    "category": "Datetime & Time",
+    "title": "Month Calendar Grid",
+    "module_name": "calendar_grid.py",
+    "test_name": "test_calendar_grid.py",
+    "prompt": "Create calendar_grid.py implementing Month Calendar Grid. generate_month_grid(year, month) -> 2D list of days.\nVerification check: python3 -m unittest -v test_calendar_grid.py",
+    "verification_command": "python3 -m unittest -v test_calendar_grid.py",
+    "test_code": "import unittest\nfrom calendar_grid import generate_month_grid\nclass Test(unittest.TestCase):\n def test_cal(self): grid = generate_month_grid(2026, 9); self.assertEqual(len(grid[0]), 7)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-057",
+    "category": "Datetime & Time",
+    "title": "Exponential Backoff Jitter",
+    "module_name": "backoff.py",
+    "test_name": "test_backoff.py",
+    "prompt": "Create backoff.py implementing Exponential Backoff Jitter. calc_backoff(attempt, base_sec=1.0, max_sec=60.0, jitter=True).\nVerification check: python3 -m unittest -v test_backoff.py",
+    "verification_command": "python3 -m unittest -v test_backoff.py",
+    "test_code": "import unittest\nfrom backoff import calc_backoff\nclass Test(unittest.TestCase):\n def test_bo(self): self.assertLessEqual(calc_backoff(3, jitter=False), 8.0)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-058",
+    "category": "Datetime & Time",
+    "title": "Token Bucket Rate Limiter",
+    "module_name": "token_bucket.py",
+    "test_name": "test_token_bucket.py",
+    "prompt": "Create token_bucket.py implementing Token Bucket Rate Limiter. TokenBucket(rate, capacity) with consume(tokens=1) -> bool.\nVerification check: python3 -m unittest -v test_token_bucket.py",
+    "verification_command": "python3 -m unittest -v test_token_bucket.py",
+    "test_code": "import unittest\nfrom token_bucket import TokenBucket\nclass Test(unittest.TestCase):\n def test_tb(self): tb = TokenBucket(10, 10); self.assertTrue(tb.consume(5)); self.assertFalse(tb.consume(10))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-059",
+    "category": "Datetime & Time",
+    "title": "Leaky Bucket Rate Limiter",
+    "module_name": "leaky_bucket.py",
+    "test_name": "test_leaky_bucket.py",
+    "prompt": "Create leaky_bucket.py implementing Leaky Bucket Rate Limiter. LeakyBucket(capacity, leak_rate) with add_drop().\nVerification check: python3 -m unittest -v test_leaky_bucket.py",
+    "verification_command": "python3 -m unittest -v test_leaky_bucket.py",
+    "test_code": "import unittest\nfrom leaky_bucket import LeakyBucket\nclass Test(unittest.TestCase):\n def test_lb(self): lb = LeakyBucket(5, 1); self.assertTrue(lb.add())\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-060",
+    "category": "Datetime & Time",
+    "title": "Stopwatch Split Timer",
+    "module_name": "stopwatch.py",
+    "test_name": "test_stopwatch.py",
+    "prompt": "Create stopwatch.py implementing Stopwatch Split Timer. Stopwatch with start(), lap(), stop(), elapsed().\nVerification check: python3 -m unittest -v test_stopwatch.py",
+    "verification_command": "python3 -m unittest -v test_stopwatch.py",
+    "test_code": "import unittest\nfrom stopwatch import Stopwatch\nclass Test(unittest.TestCase):\n def test_sw(self): sw = Stopwatch(); sw.start(); self.assertGreaterEqual(sw.elapsed(), 0)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-061",
+    "category": "Security & Encodings",
+    "title": "Base58 Encoder Decoder",
+    "module_name": "base58.py",
+    "test_name": "test_base58.py",
+    "prompt": "Create base58.py implementing Base58 Encoder Decoder. b58encode(data) -> str and b58decode(str) -> bytes.\nVerification check: python3 -m unittest -v test_base58.py",
+    "verification_command": "python3 -m unittest -v test_base58.py",
+    "test_code": "import unittest\nfrom base58 import b58encode, b58decode\nclass Test(unittest.TestCase):\n def test_b58(self): self.assertEqual(b58decode(b58encode(b'hello')), b'hello')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-062",
+    "category": "Security & Encodings",
+    "title": "HMAC Constant-Time Checker",
+    "module_name": "hmac_util.py",
+    "test_name": "test_hmac_util.py",
+    "prompt": "Create hmac_util.py implementing HMAC Constant-Time Checker. compute_hmac(key, msg) and constant_time_compare(a, b).\nVerification check: python3 -m unittest -v test_hmac_util.py",
+    "verification_command": "python3 -m unittest -v test_hmac_util.py",
+    "test_code": "import unittest\nfrom hmac_util import compute_hmac, constant_time_compare\nclass Test(unittest.TestCase):\n def test_hmac(self): self.assertTrue(constant_time_compare('abc', 'abc'))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-063",
+    "category": "Security & Encodings",
+    "title": "UUID v4 Utilities",
+    "module_name": "uuid_util.py",
+    "test_name": "test_uuid_util.py",
+    "prompt": "Create uuid_util.py implementing UUID v4 Utilities. generate_uuid4() -> str and is_valid_uuid(uuid_str) -> bool.\nVerification check: python3 -m unittest -v test_uuid_util.py",
+    "verification_command": "python3 -m unittest -v test_uuid_util.py",
+    "test_code": "import unittest\nfrom uuid_util import generate_uuid4, is_valid_uuid\nclass Test(unittest.TestCase):\n def test_uuid(self): u = generate_uuid4(); self.assertTrue(is_valid_uuid(u))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-064",
+    "category": "Security & Encodings",
+    "title": "Hex Dump Formatter",
+    "module_name": "hexdump.py",
+    "test_name": "test_hexdump.py",
+    "prompt": "Create hexdump.py implementing Hex Dump Formatter. format_hexdump(data: bytes, width=16) -> str.\nVerification check: python3 -m unittest -v test_hexdump.py",
+    "verification_command": "python3 -m unittest -v test_hexdump.py",
+    "test_code": "import unittest\nfrom hexdump import format_hexdump\nclass Test(unittest.TestCase):\n def test_hex(self): self.assertIn('00000000', format_hexdump(b'test data'))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-065",
+    "category": "Security & Encodings",
+    "title": "URL Token Generator",
+    "module_name": "token_gen.py",
+    "test_name": "test_token_gen.py",
+    "prompt": "Create token_gen.py implementing URL Token Generator. generate_token(length=32) and verify_token(token).\nVerification check: python3 -m unittest -v test_token_gen.py",
+    "verification_command": "python3 -m unittest -v test_token_gen.py",
+    "test_code": "import unittest\nfrom token_gen import generate_token, verify_token\nclass Test(unittest.TestCase):\n def test_tok(self): t = generate_token(); self.assertTrue(verify_token(t))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-066",
+    "category": "Security & Encodings",
+    "title": "Caesar & Vigenere Ciphers",
+    "module_name": "ciphers.py",
+    "test_name": "test_ciphers.py",
+    "prompt": "Create ciphers.py implementing Caesar & Vigenere Ciphers. caesar_cipher(text, shift) and vigenere_cipher(text, key).\nVerification check: python3 -m unittest -v test_ciphers.py",
+    "verification_command": "python3 -m unittest -v test_ciphers.py",
+    "test_code": "import unittest\nfrom ciphers import caesar_cipher, vigenere_cipher\nclass Test(unittest.TestCase):\n def test_ciph(self): self.assertEqual(caesar_cipher('abc', 3), 'def')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-067",
+    "category": "Security & Encodings",
+    "title": "Bloom Filter Probabilistic Set",
+    "module_name": "bloom_filter.py",
+    "test_name": "test_bloom_filter.py",
+    "prompt": "Create bloom_filter.py implementing Bloom Filter Probabilistic Set. BloomFilter(size, hash_count) with add and contains.\nVerification check: python3 -m unittest -v test_bloom_filter.py",
+    "verification_command": "python3 -m unittest -v test_bloom_filter.py",
+    "test_code": "import unittest\nfrom bloom_filter import BloomFilter\nclass Test(unittest.TestCase):\n def test_bloom(self): bf = BloomFilter(100, 3); bf.add('apple'); self.assertTrue(bf.contains('apple'))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-068",
+    "category": "Security & Encodings",
+    "title": "Bitwise Permission Flags",
+    "module_name": "permissions_flags.py",
+    "test_name": "test_permissions_flags.py",
+    "prompt": "Create permissions_flags.py implementing Bitwise Permission Flags. PermissionFlags with grant, revoke, has_permission.\nVerification check: python3 -m unittest -v test_permissions_flags.py",
+    "verification_command": "python3 -m unittest -v test_permissions_flags.py",
+    "test_code": "import unittest\nfrom permissions_flags import PermissionFlags\nclass Test(unittest.TestCase):\n def test_perm(self): p = PermissionFlags(); p.grant('READ'); self.assertTrue(p.has_permission('READ'))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-069",
+    "category": "Security & Encodings",
+    "title": "CRC32 Checksum Calculator",
+    "module_name": "checksums.py",
+    "test_name": "test_checksums.py",
+    "prompt": "Create checksums.py implementing CRC32 Checksum Calculator. calc_crc32(data: bytes) -> int.\nVerification check: python3 -m unittest -v test_checksums.py",
+    "verification_command": "python3 -m unittest -v test_checksums.py",
+    "test_code": "import unittest\nfrom checksums import calc_crc32\nclass Test(unittest.TestCase):\n def test_crc(self): self.assertIsInstance(calc_crc32(b'data'), int)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-070",
+    "category": "Security & Encodings",
+    "title": "Log Secret Redactor",
+    "module_name": "log_redactor.py",
+    "test_name": "test_log_redactor.py",
+    "prompt": "Create log_redactor.py implementing Log Secret Redactor. redact_secrets(log_line) masking keys and bearer tokens.\nVerification check: python3 -m unittest -v test_log_redactor.py",
+    "verification_command": "python3 -m unittest -v test_log_redactor.py",
+    "test_code": "import unittest\nfrom log_redactor import redact_secrets\nclass Test(unittest.TestCase):\n def test_redact(self): self.assertNotIn('secret123', redact_secrets('Bearer secret123'))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-071",
+    "category": "Graph & Algorithms",
+    "title": "Topological Sorter",
+    "module_name": "topological_sort.py",
+    "test_name": "test_topological_sort.py",
+    "prompt": "Create topological_sort.py implementing Topological Sorter. topological_sort(graph: dict[node, list]) -> list or raises cycle.\nVerification check: python3 -m unittest -v test_topological_sort.py",
+    "verification_command": "python3 -m unittest -v test_topological_sort.py",
+    "test_code": "import unittest\nfrom topological_sort import topological_sort\nclass Test(unittest.TestCase):\n def test_topo(self): self.assertEqual(topological_sort({'b': ['a'], 'a': []})[:2], ['a', 'b'])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-072",
+    "category": "Graph & Algorithms",
+    "title": "Graph Cycle Detector",
+    "module_name": "cycle_detector.py",
+    "test_name": "test_cycle_detector.py",
+    "prompt": "Create cycle_detector.py implementing Graph Cycle Detector. has_cycle(graph, directed=True) -> bool.\nVerification check: python3 -m unittest -v test_cycle_detector.py",
+    "verification_command": "python3 -m unittest -v test_cycle_detector.py",
+    "test_code": "import unittest\nfrom cycle_detector import has_cycle\nclass Test(unittest.TestCase):\n def test_cycle(self): self.assertTrue(has_cycle({'a': ['b'], 'b': ['a']}))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-073",
+    "category": "Graph & Algorithms",
+    "title": "Dijkstra Shortest Path",
+    "module_name": "dijkstra.py",
+    "test_name": "test_dijkstra.py",
+    "prompt": "Create dijkstra.py implementing Dijkstra Shortest Path. shortest_path(graph, start, end) -> (distance, path).\nVerification check: python3 -m unittest -v test_dijkstra.py",
+    "verification_command": "python3 -m unittest -v test_dijkstra.py",
+    "test_code": "import unittest\nfrom dijkstra import shortest_path\nclass Test(unittest.TestCase):\n def test_dijk(self): d, p = shortest_path({'a': [('b', 1)]}, 'a', 'b'); self.assertEqual(d, 1)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-074",
+    "category": "Graph & Algorithms",
+    "title": "BFS and DFS Traversal",
+    "module_name": "graph_traversal.py",
+    "test_name": "test_graph_traversal.py",
+    "prompt": "Create graph_traversal.py implementing BFS and DFS Traversal. bfs_order(graph, start) and dfs_order(graph, start).\nVerification check: python3 -m unittest -v test_graph_traversal.py",
+    "verification_command": "python3 -m unittest -v test_graph_traversal.py",
+    "test_code": "import unittest\nfrom graph_traversal import bfs_order, dfs_order\nclass Test(unittest.TestCase):\n def test_trav(self): self.assertEqual(bfs_order({'a': ['b'], 'b': []}, 'a'), ['a', 'b'])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-075",
+    "category": "Graph & Algorithms",
+    "title": "Binary Search Tree",
+    "module_name": "bst.py",
+    "test_name": "test_bst.py",
+    "prompt": "Create bst.py implementing Binary Search Tree. BST with insert, contains, in_order_traversal.\nVerification check: python3 -m unittest -v test_bst.py",
+    "verification_command": "python3 -m unittest -v test_bst.py",
+    "test_code": "import unittest\nfrom bst import BST\nclass Test(unittest.TestCase):\n def test_bst(self): b = BST(); b.insert(5); b.insert(2); self.assertEqual(b.in_order(), [2, 5])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-076",
+    "category": "Graph & Algorithms",
+    "title": "Lowest Common Ancestor",
+    "module_name": "tree_lca.py",
+    "test_name": "test_tree_lca.py",
+    "prompt": "Create tree_lca.py implementing Lowest Common Ancestor. find_lca(root, val1, val2).\nVerification check: python3 -m unittest -v test_tree_lca.py",
+    "verification_command": "python3 -m unittest -v test_tree_lca.py",
+    "test_code": "import unittest\nfrom tree_lca import find_lca\nclass Test(unittest.TestCase):\n def test_lca(self): self.assertTrue(callable(find_lca))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-077",
+    "category": "Graph & Algorithms",
+    "title": "Connected Components",
+    "module_name": "connected_components.py",
+    "test_name": "test_connected_components.py",
+    "prompt": "Create connected_components.py implementing Connected Components. find_components(graph) -> list[set].\nVerification check: python3 -m unittest -v test_connected_components.py",
+    "verification_command": "python3 -m unittest -v test_connected_components.py",
+    "test_code": "import unittest\nfrom connected_components import find_components\nclass Test(unittest.TestCase):\n def test_cc(self): self.assertEqual(len(find_components({'a': ['b'], 'b': ['a'], 'c': []})), 2)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-078",
+    "category": "Graph & Algorithms",
+    "title": "A-Star Grid Pathfinder",
+    "module_name": "astar.py",
+    "test_name": "test_astar.py",
+    "prompt": "Create astar.py implementing A-Star Grid Pathfinder. astar_grid(grid, start, goal) -> list[(x,y)].\nVerification check: python3 -m unittest -v test_astar.py",
+    "verification_command": "python3 -m unittest -v test_astar.py",
+    "test_code": "import unittest\nfrom astar import astar_grid\nclass Test(unittest.TestCase):\n def test_astar(self): self.assertTrue(callable(astar_grid))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-079",
+    "category": "Graph & Algorithms",
+    "title": "Binary Min/Max Heap",
+    "module_name": "binary_heap.py",
+    "test_name": "test_binary_heap.py",
+    "prompt": "Create binary_heap.py implementing Binary Min/Max Heap. MinHeap with push, pop_min, peek_min.\nVerification check: python3 -m unittest -v test_binary_heap.py",
+    "verification_command": "python3 -m unittest -v test_binary_heap.py",
+    "test_code": "import unittest\nfrom binary_heap import MinHeap\nclass Test(unittest.TestCase):\n def test_heap(self): h = MinHeap(); h.push(10); h.push(3); self.assertEqual(h.pop_min(), 3)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-080",
+    "category": "Graph & Algorithms",
+    "title": "Math Expression Evaluator",
+    "module_name": "expr_tree.py",
+    "test_name": "test_expr_tree.py",
+    "prompt": "Create expr_tree.py implementing Math Expression Evaluator. eval_expr(expr_str) evaluating +, -, *, / with precedence.\nVerification check: python3 -m unittest -v test_expr_tree.py",
+    "verification_command": "python3 -m unittest -v test_expr_tree.py",
+    "test_code": "import unittest\nfrom expr_tree import eval_expr\nclass Test(unittest.TestCase):\n def test_expr(self): self.assertEqual(eval_expr('3 + 4 * 2'), 11)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-081",
+    "category": "Functional & Streams",
+    "title": "TTL Memoization Decorator",
+    "module_name": "memoize.py",
+    "test_name": "test_memoize.py",
+    "prompt": "Create memoize.py implementing TTL Memoization Decorator. @memoize(ttl_seconds=None) caching return values.\nVerification check: python3 -m unittest -v test_memoize.py",
+    "verification_command": "python3 -m unittest -v test_memoize.py",
+    "test_code": "import unittest\nfrom memoize import memoize\nclass Test(unittest.TestCase):\n def test_mem(self): calls=0\n @memoize()\n def f(x): nonlocal calls; calls+=1; return x*2\n self.assertEqual(f(3), 6); f(3); self.assertEqual(calls, 1)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-082",
+    "category": "Functional & Streams",
+    "title": "Retry Decorator with Backoff",
+    "module_name": "retry_decorator.py",
+    "test_name": "test_retry_decorator.py",
+    "prompt": "Create retry_decorator.py implementing Retry Decorator with Backoff. @retry(max_attempts=3, backoff=0.01, exceptions=(ValueError,)).\nVerification check: python3 -m unittest -v test_retry_decorator.py",
+    "verification_command": "python3 -m unittest -v test_retry_decorator.py",
+    "test_code": "import unittest\nfrom retry_decorator import retry\nclass Test(unittest.TestCase):\n def test_ret(self): attempts=0\n @retry(max_attempts=2)\n def f(): nonlocal attempts; attempts+=1; return True\n self.assertTrue(f())\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-083",
+    "category": "Functional & Streams",
+    "title": "Pipe and Compose Runner",
+    "module_name": "pipe_compose.py",
+    "test_name": "test_pipe_compose.py",
+    "prompt": "Create pipe_compose.py implementing Pipe and Compose Runner. pipe(val, *fns) and compose(*fns).\nVerification check: python3 -m unittest -v test_pipe_compose.py",
+    "verification_command": "python3 -m unittest -v test_pipe_compose.py",
+    "test_code": "import unittest\nfrom pipe_compose import pipe, compose\nclass Test(unittest.TestCase):\n def test_pipe(self): self.assertEqual(pipe(2, lambda x: x+1, lambda x: x*3), 9)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-084",
+    "category": "Functional & Streams",
+    "title": "Chunked Iterator Generator",
+    "module_name": "batch_iter.py",
+    "test_name": "test_batch_iter.py",
+    "prompt": "Create batch_iter.py implementing Chunked Iterator Generator. chunk_iterable(iterable, chunk_size).\nVerification check: python3 -m unittest -v test_batch_iter.py",
+    "verification_command": "python3 -m unittest -v test_batch_iter.py",
+    "test_code": "import unittest\nfrom batch_iter import chunk_iterable\nclass Test(unittest.TestCase):\n def test_chunk(self): self.assertEqual(list(chunk_iterable([1, 2, 3, 4, 5], 2)), [[1, 2], [3, 4], [5]])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-085",
+    "category": "Functional & Streams",
+    "title": "Deep Flatten Iterator",
+    "module_name": "deep_flatten.py",
+    "test_name": "test_deep_flatten.py",
+    "prompt": "Create deep_flatten.py implementing Deep Flatten Iterator. deep_flatten(nested_iterable) -> generator.\nVerification check: python3 -m unittest -v test_deep_flatten.py",
+    "verification_command": "python3 -m unittest -v test_deep_flatten.py",
+    "test_code": "import unittest\nfrom deep_flatten import deep_flatten\nclass Test(unittest.TestCase):\n def test_flat(self): self.assertEqual(list(deep_flatten([[1, [2]], 3])), [1, 2, 3])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-086",
+    "category": "Functional & Streams",
+    "title": "Group By & Aggregate",
+    "module_name": "group_by.py",
+    "test_name": "test_group_by.py",
+    "prompt": "Create group_by.py implementing Group By & Aggregate. group_by(items, key_fn, aggregate_fn=None).\nVerification check: python3 -m unittest -v test_group_by.py",
+    "verification_command": "python3 -m unittest -v test_group_by.py",
+    "test_code": "import unittest\nfrom group_by import group_by\nclass Test(unittest.TestCase):\n def test_grp(self): self.assertEqual(group_by(['a', 'bb', 'c'], len)[1], ['a', 'c'])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-087",
+    "category": "Functional & Streams",
+    "title": "Debounce and Throttle State",
+    "module_name": "debounce_state.py",
+    "test_name": "test_debounce_state.py",
+    "prompt": "Create debounce_state.py implementing Debounce and Throttle State. Debouncer and Throttler state machines.\nVerification check: python3 -m unittest -v test_debounce_state.py",
+    "verification_command": "python3 -m unittest -v test_debounce_state.py",
+    "test_code": "import unittest\nfrom debounce_state import Debouncer\nclass Test(unittest.TestCase):\n def test_deb(self): d = Debouncer(0.1); self.assertTrue(callable(d.call))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-088",
+    "category": "Functional & Streams",
+    "title": "Lazy Evaluation Stream",
+    "module_name": "lazy_stream.py",
+    "test_name": "test_lazy_stream.py",
+    "prompt": "Create lazy_stream.py implementing Lazy Evaluation Stream. LazyStream(generator_fn) with map, filter, take(n).\nVerification check: python3 -m unittest -v test_lazy_stream.py",
+    "verification_command": "python3 -m unittest -v test_lazy_stream.py",
+    "test_code": "import unittest\nfrom lazy_stream import LazyStream\nclass Test(unittest.TestCase):\n def test_lz(self): s = LazyStream(range(100)).filter(lambda x: x%2==0).take(3); self.assertEqual(list(s), [0, 2, 4])\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-089",
+    "category": "Functional & Streams",
+    "title": "Currying Function Helper",
+    "module_name": "curry.py",
+    "test_name": "test_curry.py",
+    "prompt": "Create curry.py implementing Currying Function Helper. curry(fn) enabling f(1)(2)(3) or f(1, 2)(3).\nVerification check: python3 -m unittest -v test_curry.py",
+    "verification_command": "python3 -m unittest -v test_curry.py",
+    "test_code": "import unittest\nfrom curry import curry\nclass Test(unittest.TestCase):\n def test_curry(self): @curry\n def add(a, b): return a + b\n self.assertEqual(add(1)(2), 3)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-090",
+    "category": "Functional & Streams",
+    "title": "Pub-Sub Event Emitter",
+    "module_name": "event_emitter.py",
+    "test_name": "test_event_emitter.py",
+    "prompt": "Create event_emitter.py implementing Pub-Sub Event Emitter. EventEmitter with on, off, emit, once.\nVerification check: python3 -m unittest -v test_event_emitter.py",
+    "verification_command": "python3 -m unittest -v test_event_emitter.py",
+    "test_code": "import unittest\nfrom event_emitter import EventEmitter\nclass Test(unittest.TestCase):\n def test_ee(self): ee = EventEmitter(); called=0\n ee.on('e', lambda: None); ee.emit('e')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-091",
+    "category": "State Machines & Flows",
+    "title": "Finite State Machine",
+    "module_name": "fsm.py",
+    "test_name": "test_fsm.py",
+    "prompt": "Create fsm.py implementing Finite State Machine. FSM(initial_state, transitions) with trigger(event).\nVerification check: python3 -m unittest -v test_fsm.py",
+    "verification_command": "python3 -m unittest -v test_fsm.py",
+    "test_code": "import unittest\nfrom fsm import FSM\nclass Test(unittest.TestCase):\n def test_fsm(self): f = FSM('idle', {'idle': {'start': 'running'}}); f.trigger('start'); self.assertEqual(f.state, 'running')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-092",
+    "category": "State Machines & Flows",
+    "title": "Order Checkout Flow",
+    "module_name": "checkout_flow.py",
+    "test_name": "test_checkout_flow.py",
+    "prompt": "Create checkout_flow.py implementing Order Checkout Flow. OrderWorkflow with cart, shipping, payment, completed.\nVerification check: python3 -m unittest -v test_checkout_flow.py",
+    "verification_command": "python3 -m unittest -v test_checkout_flow.py",
+    "test_code": "import unittest\nfrom checkout_flow import OrderWorkflow\nclass Test(unittest.TestCase):\n def test_ord(self): o = OrderWorkflow(); self.assertEqual(o.state, 'cart')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-093",
+    "category": "State Machines & Flows",
+    "title": "Linear Step Rollback Runner",
+    "module_name": "workflow_runner.py",
+    "test_name": "test_workflow_runner.py",
+    "prompt": "Create workflow_runner.py implementing Linear Step Rollback Runner. run_workflow(steps) with compensate() on failure.\nVerification check: python3 -m unittest -v test_workflow_runner.py",
+    "verification_command": "python3 -m unittest -v test_workflow_runner.py",
+    "test_code": "import unittest\nfrom workflow_runner import run_workflow\nclass Test(unittest.TestCase):\n def test_wf(self): self.assertTrue(callable(run_workflow))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-094",
+    "category": "State Machines & Flows",
+    "title": "Command Undo/Redo Stack",
+    "module_name": "undo_stack.py",
+    "test_name": "test_undo_stack.py",
+    "prompt": "Create undo_stack.py implementing Command Undo/Redo Stack. UndoManager with execute, undo, redo.\nVerification check: python3 -m unittest -v test_undo_stack.py",
+    "verification_command": "python3 -m unittest -v test_undo_stack.py",
+    "test_code": "import unittest\nfrom undo_stack import UndoManager\nclass Test(unittest.TestCase):\n def test_undo(self): u = UndoManager(); self.assertTrue(callable(u.execute))\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-095",
+    "category": "State Machines & Flows",
+    "title": "Circuit Breaker Tracker",
+    "module_name": "circuit_breaker.py",
+    "test_name": "test_circuit_breaker.py",
+    "prompt": "Create circuit_breaker.py implementing Circuit Breaker Tracker. CircuitBreaker with fail_threshold, recovery_timeout.\nVerification check: python3 -m unittest -v test_circuit_breaker.py",
+    "verification_command": "python3 -m unittest -v test_circuit_breaker.py",
+    "test_code": "import unittest\nfrom circuit_breaker import CircuitBreaker\nclass Test(unittest.TestCase):\n def test_cb(self): cb = CircuitBreaker(fail_threshold=2); self.assertEqual(cb.state, 'CLOSED')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-096",
+    "category": "State Machines & Flows",
+    "title": "Job State Queue",
+    "module_name": "job_queue.py",
+    "test_name": "test_job_queue.py",
+    "prompt": "Create job_queue.py implementing Job State Queue. JobQueue with enqueue, start_job, finish_job, fail_job.\nVerification check: python3 -m unittest -v test_job_queue.py",
+    "verification_command": "python3 -m unittest -v test_job_queue.py",
+    "test_code": "import unittest\nfrom job_queue import JobQueue\nclass Test(unittest.TestCase):\n def test_jq(self): jq = JobQueue(); j = jq.enqueue('t1'); self.assertEqual(j['state'], 'QUEUED')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-097",
+    "category": "State Machines & Flows",
+    "title": "Traffic Light Controller",
+    "module_name": "traffic_fsm.py",
+    "test_name": "test_traffic_fsm.py",
+    "prompt": "Create traffic_fsm.py implementing Traffic Light Controller. TrafficLight with cycle(), sensor_override(color).\nVerification check: python3 -m unittest -v test_traffic_fsm.py",
+    "verification_command": "python3 -m unittest -v test_traffic_fsm.py",
+    "test_code": "import unittest\nfrom traffic_fsm import TrafficLight\nclass Test(unittest.TestCase):\n def test_tl(self): tl = TrafficLight(); self.assertEqual(tl.state, 'RED'); tl.cycle(); self.assertEqual(tl.state, 'GREEN')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-098",
+    "category": "State Machines & Flows",
+    "title": "State Snapshot Tracker",
+    "module_name": "state_snapshot.py",
+    "test_name": "test_state_snapshot.py",
+    "prompt": "Create state_snapshot.py implementing State Snapshot Tracker. SnapshotTracker with save(state), diff(v1, v2).\nVerification check: python3 -m unittest -v test_state_snapshot.py",
+    "verification_command": "python3 -m unittest -v test_state_snapshot.py",
+    "test_code": "import unittest\nfrom state_snapshot import SnapshotTracker\nclass Test(unittest.TestCase):\n def test_ss(self): st = SnapshotTracker(); v1 = st.save({'a': 1}); self.assertEqual(v1, 1)\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-099",
+    "category": "State Machines & Flows",
+    "title": "Subscription Lifecycle FSM",
+    "module_name": "subscription_fsm.py",
+    "test_name": "test_subscription_fsm.py",
+    "prompt": "Create subscription_fsm.py implementing Subscription Lifecycle FSM. Subscription(status: trial, active, past_due, canceled).\nVerification check: python3 -m unittest -v test_subscription_fsm.py",
+    "verification_command": "python3 -m unittest -v test_subscription_fsm.py",
+    "test_code": "import unittest\nfrom subscription_fsm import Subscription\nclass Test(unittest.TestCase):\n def test_sub(self): s = Subscription(); self.assertEqual(s.status, 'trial')\nif __name__ == '__main__': unittest.main()\n"
+  },
+  {
+    "id": "ST-100",
+    "category": "State Machines & Flows",
+    "title": "Rule Engine Tree Evaluator",
+    "module_name": "rule_engine.py",
+    "test_name": "test_rule_engine.py",
+    "prompt": "Create rule_engine.py implementing Rule Engine Tree Evaluator. evaluate_rule(rule_dict, context) evaluating AND/OR conditions.\nVerification check: python3 -m unittest -v test_rule_engine.py",
+    "verification_command": "python3 -m unittest -v test_rule_engine.py",
+    "test_code": "import unittest\nfrom rule_engine import evaluate_rule\nclass Test(unittest.TestCase):\n def test_rule(self): self.assertTrue(evaluate_rule({'op': 'eq', 'field': 'age', 'val': 21}, {'age': 21}))\nif __name__ == '__main__': unittest.main()\n"
+  }
+]
