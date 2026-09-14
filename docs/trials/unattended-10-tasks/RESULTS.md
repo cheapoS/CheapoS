@@ -204,3 +204,52 @@ In the executive summary table, Run A records `445 / 465` requests:
 - **445 Requests:** The historical executive estimate derived from worker turns, tool calls, and review turns during initial monitoring.
 - **465 Requests:** The audited number of dispatched HTTP requests extracted directly from the saved task records during the September 14 T55 review.
 - **Run B Comparison:** Run B dispatched **258 requests**, representing a **42.0% reduction** against the historical 445 estimate, or a **44.5% reduction** against the 465 audited dispatches.
+
+---
+
+## Task 4 Regression Analysis & Engine/Planner Improvement Benchmark
+
+### 1. Root Cause Analysis of Task 4 Regression (Run B)
+In Run B, while overall turns dropped -46.2%, Task 4 showed a notable regression:
+- **Worker turns:** 23 (Run A) → 66 (Run B)
+- **Dispatched requests:** 30 (Run A) → 85 (Run B)
+- **Failed check attempts:** 19 repeated failed assertions
+
+Investigation identified two structural causes:
+1. **Planner Anti-Pattern (Trailing Verification Item):**
+   - DeepSeek Chat decomposed the single-file implementation into 3 items:
+     - Item 1: `Implement format_table in table_formatter.py` (checked with dummy `python3 -c "import table_formatter; table_formatter.format_table(...)"`)
+     - Item 2: `Implement parse_table in table_formatter.py` (checked with dummy `python3 -c "..."`)
+     - Item 3: `Verify compatibility with test_acceptance.py` (checked with `python3 -m unittest test_acceptance.TableFormatterTests`)
+   - Because Items 1 & 2 used dummy imports instead of acceptance tests, Item 1 committed a broken alignment implementation with zero test feedback. When Item 3 ran, the worker was forced to debug blind across both functions simultaneously.
+2. **Opaque Unittest Failure Diagnostic Loop:**
+   - Standard `unittest` failure output (`AssertionError: False is not true`) provided no diff or runtime diagnostics. The worker repeatedly ran the exact same test without reading the test assertions or adding print statements, consuming 19 turns in an uninformed guessing loop.
+3. **Transport Stream Chunk Drops During Planning:**
+   - OpenRouter SSE streaming via OmniRoute intermittently dropped chunks of large tool calls during branch planning, leading to `empty_response` pauses.
+
+### 2. Implemented Improvements
+1. **Planner Guard (`cheapos/branch_planner.py`, commit `c9ee5e7`):**
+   - Updated `SYSTEM` instructions to explicitly prohibit creating trailing verification items (e.g. "Verify compatibility with...").
+   - Required binding unit test targets directly to implementation items using verbose mode (`-v`).
+2. **Worker Diagnostic Guidance (`cheapos/engine.py`, commit `c9ee5e7`):**
+   - Added test failure diagnostic guidance to `WORKER_SYSTEM` instructing workers to inspect test files (`read_file`) and use targeted diagnostics upon failure.
+   - Enhanced `checks()` in `engine.py` to inject dynamic diagnostic next-action advice (`Repeated test failure: inspect the test file (read_file) to understand the exact assertion...`) when consecutive test failures occur.
+   - Added test coverage in `tests/test_verification.py` (`test_repeated_check_failure_guidance`).
+3. **Transport Reliability for Branch Planning (`cheapos/transport.py`, commit `c5ef595`):**
+   - Routed branch planning requests with tools directly through `json` (non-streaming) transport to prevent chunk drop issues.
+   - Expanded retry eligibility to include `empty_response` on SSE streams.
+
+### 3. Task 4 Re-Test Results (Baseline Comparison)
+Task 4 was re-tested under identical measurement conditions (`measurement: true`, `$1.00` spending cap, isolated repo):
+
+| Metric | Run A Baseline | Run B (Pre-Fix) | Re-Test (Post-Fix) | Delta vs. Run B |
+| :--- | :---: | :---: | :---: | :---: |
+| **Status** | ✅ Merged | ✅ Merged | ✅ Merged | **Clean merge on main** |
+| **Items Proposed** | 1 | 3 | **2** | **No trailing verification item** |
+| **Worker Turns** | 23 | 66 | **9** | **-86.4% (7.3x reduction)** |
+| **Dispatched Requests** | 30 | 85 | **18** | **-78.8% (4.7x reduction)** |
+| **Tool Actions** | 17 | 61 | **11** | **-82.0%** |
+| **Failed Check Iterations**| 0 | 19 | **0** | **100% elimination of loop** |
+| **Disputes** | 0 | 5 | **0** | **0 disputes** |
+| **Review Decisions** | 4 | 9 | **6** | **100% approved** |
+| **Acceptance Suite** | 16/16 Pass | 16/16 Pass | **16/16 Pass** | **0.085s runtime** |
