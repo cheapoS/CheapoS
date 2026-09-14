@@ -134,18 +134,17 @@ Next optional experiment: one small two-item task with a known localized defect 
 
 A fresh benchmark run on Tasks 1–5 was initiated on `/private/tmp/cheapoS-unattended-trial-repo` with `measurement: true` to empirically measure turn efficiency, review convergence, and tool stability with all reviewer correctness and reliability fixes in place (`docs/development/review-correctness.md`).
 
-### Tasks 1–4 Progress & Side-by-Side Comparison
+### Tasks 1–5 Comprehensive Side-by-Side Comparison
 
-| Metric | Task 1 Run A | Task 1 Run B | Task 2 Run A | Task 2 Run B | Task 3 Run A | Task 3 Run B | Task 4 Run A | Task 4 Run B | Notes |
-|---|---|---|---|---|---|---|---|---|---|
-| **Status** | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | ✅ Merged | Clean acceptance passes |
-| **Acceptance Tests** | 4/4 passing | 4/4 passing | 8/8 passing | 8/8 passing | 12/12 passing | 12/12 passing | 16/16 passing | 16/16 passing | Zero regressions |
-| **Worker Turns** | 18 | 9 (**-50%**) | 79 | 59 (**-25%**) | 51 | 13 (**-74.5%**) | 23 | 66 | Deeper 3-item plan with edge-case parsing |
-| **Tool Actions** | 23 | 13 (**-43%**) | 60 | 69 | 45 | 7 (**-84.4%**) | 17 | 61 | Multi-file table generator & parser |
-| **Stored Review Counter** | 13 | 11 (**-15%**) | 16 | 4 (**-75%**) | 4 | 5 | 3 | 12 | Controller review request rounds |
-| **Valid Review Decisions** | 8 | 4 (**-50%**) | 11 | 6 (**-45%**) | 18 | 5 (**-72%**) | 4 | 9 | Substantive decision events (7 APPROVE, 2 REQUEST_CHANGES) |
-| **API Requests** | 54 | 24 (**-55%**) | 100 | 71 (**-29%**) | 80 | 20 (**-75%**) | 30 | 85 | Accounted model prompts & tool responses |
-| **Cost (USD)** | $0.00 | $0.00 | $0.00 | $0.00 | $0.00 | $0.00 | $0.0048 | $0.0084 | Accounted model usage |
+| Metric | Run | Task 1 (`labels`) | Task 2 (`expenses`) | Task 3 (`cache`) | Task 4 (`table`) | Task 5 (`cliparser`) | Total (1–5) | Delta (%) |
+|---|---|---|---|---|---|---|---|---|
+| **Status** | **A** / **B** | ✅ Merged / ✅ Merged | ✅ Merged / ✅ Merged | ✅ Merged / ✅ Merged | ✅ Merged / ✅ Merged | ✅ Merged / ✅ Merged | **19/19 Passing** | Zero regressions |
+| **Worker Turns** | **Run A**<br>**Run B** | 18<br>9 | 79<br>59 | 51<br>13 | 23<br>66 | 156<br>29 | **327**<br>**176** | **-46.2%** |
+| **Tool Actions** | **Run A**<br>**Run B** | 23<br>13 | 60<br>69 | 45<br>7 | 17<br>61 | 108<br>30 | **253**<br>**180** | **-28.9%** |
+| **Stored Review Rounds** | **Run A**<br>**Run B** | 13<br>11 | 16<br>4 | 4<br>5 | 3<br>12 | 24<br>23 | **60**<br>**55** | **-8.3%** |
+| **Valid Review Decisions** | **Run A**<br>**Run B** | 8<br>4 | 11<br>6 | 18<br>5 | 4<br>9 | 15<br>12 | **56**<br>**36** | **-35.7%** |
+| **Dispatched Requests** | **Run A**<br>**Run B** | 54<br>24 | 100<br>71 | 80<br>20 | 30<br>85 | 181<br>58 | **445 / 465**<br>**258** | **-42.0%** |
+| **Cost (USD)** | **Run A**<br>**Run B** | $0.0000<br>$0.0000 | $0.0000<br>$0.0000 | $0.0000<br>$0.0000 | $0.0048<br>$0.0084 | $0.0142<br>$0.0000 | **$0.0190**<br>**$0.0084** | **-55.8%** |
 
 ### Review Count Accounting & Stage Reconciliation (11 vs. 16 Reviews)
 
