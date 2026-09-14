@@ -27,7 +27,22 @@ frequency, and why cheaper coverage is insufficient; wait for acceptance of that
 extra cost. Report new-test timing at handoff. This applies to every card below.
 Live trials are explicitly selected experiments, not additions to everyday tests.
 
-### Current ordered backlog
+### Upstream maintenance
+
+Use [the upstream compatibility watchlist](docs/upstream-issues.md) to recognize
+relevant OmniRoute/OpenRouter failures and track fixes. Review weekly, before
+gateway upgrades, and after new local failure signatures. This is a manual
+maintenance workflow; no background monitor or automatic routing changes are
+configured. Third-party reports remain leads until matched to our own evidence.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T61](docs/tasks/T61-upstream-issue-triage.md) | Establish upstream issue triage and a scoped compatibility reference | Current gateway/transport behavior | S | Done — initial triage; repeat maintenance as needed |
+
+T61 includes the repeatable handoff instructions. Subsequent passes update the
+watchlist and its review log; any runtime fix gets a separate scoped task.
+
+### T49–T60 implementation record
 
 The operator authorized completion of T49–T60 on September 14. Their completion records below supersede the original ordering notes. This board alone is not authorization to
 execute the whole backlog, make live model calls, or change spending policy.

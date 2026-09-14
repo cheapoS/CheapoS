@@ -2,6 +2,14 @@
 
 Small, reviewable changes are welcome. For significant behavior changes, open an issue describing the problem and your proposed approach first.
 
+## Upstream compatibility maintenance
+
+Review [the upstream issue watchlist](docs/upstream-issues.md) weekly, before
+OmniRoute upgrades, and when investigating a new provider failure. Follow
+[T61's triage steps](docs/tasks/T61-upstream-issue-triage.md); record scope,
+evidence, and when to retire a workaround. Reports guide investigation; they do
+not automatically change routing or establish that a model is unusable.
+
 ## Fast iteration is the default
 
 This is an actively developed private alpha. Run checks that exercise the change;
