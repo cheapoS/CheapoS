@@ -68,5 +68,145 @@
       "reviewer": 25271,
       "planner": 4380
     }
+  },
+  {
+    "task_id": "ST-006",
+    "title": "Word Wrap Text Column Formatter",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 198.25,
+    "turns": 11,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 79508,
+      "reviewer": 28028,
+      "planner": 4310
+    }
+  },
+  {
+    "task_id": "ST-007",
+    "title": "Smart Text Truncator",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 289.98,
+    "turns": 15,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 155693,
+      "reviewer": 66271,
+      "planner": 4480
+    }
+  },
+  {
+    "task_id": "ST-008",
+    "title": "Levenshtein String Similarity",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 178.37,
+    "turns": 4,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 19195,
+      "reviewer": 51550,
+      "planner": 4451
+    }
+  },
+  {
+    "task_id": "ST-009",
+    "title": "ANSI Color Code Cleaner",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 166.16,
+    "turns": 4,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 15884,
+      "reviewer": 33393,
+      "planner": 4432
+    }
+  },
+  {
+    "task_id": "ST-010",
+    "title": "Query String Parser & Formatter",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 173.27,
+    "turns": 4,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 18247,
+      "reviewer": 37172,
+      "planner": 4590
+    }
+  },
+  {
+    "task_id": "ST-011",
+    "title": "Capacity-Limited LRU Cache",
+    "category": "Data Structures",
+    "status": "MERGED",
+    "duration": 169.17,
+    "turns": 5,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 21376,
+      "reviewer": 44243,
+      "planner": 4572
+    }
+  },
+  {
+    "task_id": "ST-012",
+    "title": "Priority Queue with FIFO Tie-Breaking",
+    "category": "Data Structures",
+    "status": "MERGED",
+    "duration": 180.5,
+    "turns": 4,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 18702,
+      "reviewer": 42591,
+      "planner": 4635
+    }
+  },
+  {
+    "task_id": "ST-013",
+    "title": "Deep Dictionary Merger",
+    "category": "Data Structures",
+    "status": "MERGED",
+    "duration": 199.63,
+    "turns": 5,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 21757,
+      "reviewer": 49230,
+      "planner": 4707
+    }
+  },
+  {
+    "task_id": "ST-014",
+    "title": "Flatten and Unflatten Dictionaries",
+    "category": "Data Structures",
+    "status": "MERGED",
+    "duration": 179.81,
+    "turns": 5,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 23694,
+      "reviewer": 38999,
+      "planner": 4579
+    }
+  },
+  {
+    "task_id": "ST-015",
+    "title": "Trie Prefix Tree for Autocomplete",
+    "category": "Data Structures",
+    "status": "MERGED",
+    "duration": 117.85,
+    "turns": 4,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 18623,
+      "reviewer": 40641,
+      "planner": 4572
+    }
   }
 ]
