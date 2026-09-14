@@ -172,6 +172,20 @@ test('reused whitespace evidence keeps its precise check description',()=>{
 test('confirmed integration names actual target and commit while intermediate selection stays item-neutral',()=>{
  const t=branchTask({planning_request:null,status:'completed',branch_run:{id:'run1',authorization_ref:'auth',status:'merged',current_item_id:null,target_ref:'refs/heads/main',merge_receipt:{stage:'completed',feature_tip:'b'.repeat(40)},items:[]},events:[{...event(1,'branch_merged','Merged locally',{target_ref:'refs/heads/main',sha:'b'.repeat(40)}),branch_run_id:'run1',item_id:null}]});
  let reply=replies(t).at(-1);assert.match(reply.intro,/into main/);assert.equal(reply.steps.at(-1).title,'Local integration complete');assert.match(reply.steps.at(-1).detail,/main · bbbbbbbb/);assert.equal(reply.live,false);
- t.branch_run.status='running';t.status='running';t.branch_run.items=[{id:'next',title:'Not selected yet',status:'pending'}];t.events=[];
+ t.branch_run.status='running';t.status='running';t.branch_run.items=[{id:'done',status:'committed',commit_receipt:{stage:'completed'}},{id:'next',title:'Not selected yet',status:'pending'}];t.events=[];
  reply=replies(t).at(-1);assert.equal(reply.operation,'run');assert.equal(reply.steps.at(-1).title,'Preparing the next item');assert.equal(reply.itemTitle,'');
+});
+
+test('accepted plan stays visibly active before any worker output and then yields to actual work or pause',()=>{
+ const t=branchTask({updated_at:stamp,planning_request:null,branch_run:{id:'run1',authorization_ref:'auth',status:'running',current_item_id:null,items:[{id:'one',title:'Build CSV exporter',status:'pending'}]}});
+ const at=Date.parse(stamp)+30000;
+ let reply=build(t,at).filter(e=>e.kind==='assistant').at(-1);
+ assert.equal(reply.owner,true);assert.equal(reply.live,true);assert.equal(reply.steps.at(-1).title,'Starting your approved plan');assert.equal(reply.steps.at(-1).elapsed,'30s');assert.doesNotMatch(reply.steps.at(-1).detail,/Completed/);
+ t.branch_run.current_item_id='one';t.branch_run.items[0].status='working';
+ t.events=[{...event(1,'model','Requesting worker: worker-model',{}),item_id:'one'}];
+ reply=build(t,at).filter(e=>e.kind==='assistant').at(-1);assert.equal(reply.itemTitle,'Item 1 of 1 · Build CSV exporter');assert.equal(reply.live,true);assert.equal(reply.steps.at(-1).elapsed,'30s');
+ t.stream={role:'worker',model:'worker-model',phase:'answer',content:'Reading the CSV parser.'};
+ reply=build(t,at).filter(e=>e.kind==='assistant').at(-1);assert.equal(reply.stream.content,'Reading the CSV parser.');
+ t.status='paused';t.branch_run.status='paused';t.stream=null;
+ reply=build(t,at).filter(e=>e.kind==='assistant').at(-1);assert.equal(reply.live,false);assert.ok(reply.steps.every(s=>!s.live));
 });

@@ -456,6 +456,7 @@ function progressMarkup(task) {
   return `<section class="request-progress ${task.stream&&task.stream.phase!=='waiting'?'is-streaming':''}" aria-label="Current activity"><div class="request-progress-heading"><span class="spinner"></span><strong id="request-stage">${esc(p.title)}</strong><span id="request-elapsed" aria-label="Time in current step">${p.elapsed}</span></div><div class="request-model" id="request-detail">${esc(p.detail)}</div><p class="request-hint" id="request-hint">${esc(p.hint)}</p><div class="request-evidence"><span>${icon('code')}${esc(p.action)}</span><span>${icon('file')}${esc(p.evidence)}</span></div><div class="request-actions"><button class="text-link" data-chat-action="activity">${state.view==='activity'?'View live chat':'View activity'}</button><button class="subtle-button" data-chat-action="stop" ${p.stage==='stopping'?'disabled':''}>${p.stage==='stopping'?'Stopping…':'Pause'}</button>${p.stage==='waiting_retry'?'<button class="text-link" data-chat-action="connections">Inspect Models</button>':''}</div></section>`;
 }
 function updateProgressClock() {
+  for(const el of $$('[data-start-time]'))el.textContent=CheapOSGuide.progress({status:'running',updated_at:el.dataset.startTime})?.elapsed||'0s';
   if(!state.task)return;
   const currentProgress=CheapOSGuide.progress(state.task),elapsed=currentProgress?.elapsed;
   if(state.task.status==='waiting_retry')for(const el of $$('[data-live-status]'))el.textContent=currentProgress.detail;
@@ -1096,11 +1097,32 @@ async function openSearch() {
   const render=(q='')=>{const found=all.filter(t=>(t.title+' '+t.source).toLowerCase().includes(q.toLowerCase()));$('#search-results',d).innerHTML=found.length?found.map(t=>`<button class="search-result" data-result="${t.id}">${icon('chat')}<span><strong>${esc(t.title)}</strong><small>${esc(t.demo?'Local demo':basename(t.source))} · ${(state.hiddenProjects||[]).some(p=>p.path===t.source)?'Hidden project · ':''}${t.archived_at?'Archived · ':''}${esc(labels[t.status])}</small></span>${icon('chevron')}</button>`).join(''):'<div class="no-results">No matching tasks.</div>';$$('[data-result]',d).forEach(b=>b.onclick=()=>{d.close();selectTask(b.dataset.result)})};$('#task-search',d).oninput=e=>render(e.target.value);render();
 }
 async function loadTasks() {const [tasks,projects,hidden]=await Promise.all([api('/tasks?view='+(state.historyView||'active')),api('/projects'),api('/projects/hidden')]);const changed=JSON.stringify([tasks,projects,hidden])!==JSON.stringify([state.tasks,state.projects,state.hiddenProjects]);state.tasks=tasks;state.projects=projects;state.hiddenProjects=hidden;if(changed){renderSidebar();renderComposer();if(!state.task)renderHome()}}
-async function refresh() {
+let contextRefresh=null;
+function refreshContext() {
+  if(!contextRefresh)contextRefresh=Promise.allSettled([
+    (async()=>{await loadStartup();await loadReadiness();})(),loadGateway(),loadTasks()
+  ]).then(results=>{
+    const failure=results.find(result=>result.status==='rejected');
+    if(failure){console.error('cheapoS connection/sidebar refresh failed',failure.reason);toast('Could not refresh connection or sidebar status. Retrying…');}
+  }).finally(()=>{contextRefresh=null});
+  return contextRefresh;
+}
+function receiveStartedTask(task) {
+  if(state.task?.id!==task?.id||!task?.branch_run)return;
+  if(Date.parse(task.updated_at)<Date.parse(state.task.updated_at))return;
+  state.task=task;
+}
+async function refresh({background=false}={}) {
   if(state.loading)return;
-  await loadStartup();await loadGateway();await loadReadiness();await loadTasks();const selected=state.task?.id;if(!selected)return;
-  const task=await api('/tasks/'+selected);if(state.task?.id!==selected)return;
-  if(state.renderFailed||['updated_at','status','title','custom_title','pinned','archived_at','trashed_at'].some(key=>task[key]!==state.task[key])){state.task=task;renderTask();state.renderFailed=false}
+  const context=refreshContext(),previous=state.task,selected=previous?.id,selection=state.selection;
+  if(selected){
+    const task=await api('/tasks/'+selected);
+    // A slow request must not replace a newer Start response or another chat.
+    if(state.selection===selection&&state.task?.id===selected&&!(state.task!==previous&&Date.parse(task.updated_at)<=Date.parse(state.task.updated_at))){
+      if(state.renderFailed||['updated_at','status','title','custom_title','pinned','archived_at','trashed_at'].some(key=>task[key]!==state.task[key])){state.task=task;renderTask();state.renderFailed=false}
+    }
+  }
+  if(!background)await context;
 }
 async function resumeBranchRun(task,savedResult) {
   const result=savedResult||await api('/tasks/'+task.id+'/branch-resume',{});
@@ -1118,12 +1140,12 @@ async function bootstrap() {
   try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);}
   catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start cheapoS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
-async function poll() {try{if(state.online)await refresh()}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
+async function poll() {try{if(state.online)await refresh({background:true})}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>{b.onclick=()=>setView(b.dataset.view);b.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=$$('.tab').filter(t=>!t.hidden),i=tabs.indexOf(b),next=e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];setView(next.dataset.view);next.focus();};});
 $('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=sampleDialog;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopFromComposer;
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
-const branchUI=CheapOSBranchUI.mount({api,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
+const branchUI=CheapOSBranchUI.mount({api,receiveStartedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}});
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);
 

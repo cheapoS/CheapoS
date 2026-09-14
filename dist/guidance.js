@@ -724,7 +724,11 @@ const CheapOSConversation = (() => {
           reply.steps.push({id:`${key}-receipt`,receipt:true,phase:'commit',events:[],live:false,role:'controller',model:'Local Git',title:unchanged?'Item already satisfied':'Item committed',detail:unchanged?'Reviewed; no change was needed.':`${item.commit_receipt.new_tip?.slice(0,8)||''} · ${item.title}`,outcome:'passed'});
           reply.live=false;reply.stream=null;reply.intro=unchanged?'This item was reviewed and already satisfied.':'This item’s reviewed changes are committed.';
         }
-        if(active&&id==='run'&&run.status==='running'&&!run.current_item_id){reply.label='Preparing next item';reply.intro='I’m preparing the next item in your approved plan.';reply.stream=null;reply.steps=[{id:key+'-transition',phase:'work',events:[],live:true,role:'controller',model:'cheapoS controller',title:'Preparing the next item',detail:'Completed item evidence remains with its item above.',outcome:'live',elapsed:guide.progress(task,at)?.elapsed||'0s'}];reply.live=true;}
+        if(active&&id==='run'&&run.status==='running'&&!run.current_item_id){
+          const first=!(run.items||[]).some(item=>item.commit_receipt?.stage==='completed');
+          reply.label=first?'Starting':'Preparing next item';reply.intro=first?'Your plan is approved. I’m preparing the first item.':'I’m preparing the next item in your approved plan.';reply.stream=null;
+          reply.steps=[{id:key+'-transition',phase:'work',events:[],live:true,role:'controller',model:'cheapoS controller',title:first?'Starting your approved plan':'Preparing the next item',detail:first?'Waiting for the first item to start.':'Completed item evidence remains with its item above.',outcome:'live',elapsed:guide.progress(task,at)?.elapsed||'0s'}];reply.live=true;
+        }
         if(active&&id==='final'&&run.status==='ready_for_merge'){reply.live=false;reply.intro='Final checks and independent review are complete. Inspect the cumulative changes before merging.';}
         if(active&&id==='final'&&run.status==='merged'){
           const merged=run.merge_receipt?.stage==='completed',record=events.findLast(e=>e.kind==='branch_merged');

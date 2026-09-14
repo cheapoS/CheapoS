@@ -76,3 +76,56 @@ test('direct composer submission locks before discovery and sends one planning i
  // A lost response preserves the request identity and any newer draft on recovery.
  input.value='Build it';let lostPayload;context.api=async(url,body)=>{if(url.endsWith('/project'))return {base_ref:'refs/heads/main',target_ref:'refs/heads/main'};lostPayload=body;throw Error('Connection lost');};await context.submit();const saved=vm.runInContext('startState.request',context);assert.equal(saved.planning_id,lostPayload.planning_id);assert.equal(input.value,'Build it');input.value='New unsent idea';context.api=async(url,body)=>{assert.equal(body.planning_id,saved.planning_id);input.value='Newer unsent idea';return {task_id:'planned'};};await context.submit(saved);assert.equal(input.value,'Newer unsent idea');
 });
+
+test('accepted Start publishes the saved task before clearing pending feedback',async()=>{
+ let accept;const saved={id:'a',status:'running',branch_run:{status:'running',authorization_ref:'saved'}};
+ const observations=[];let visible={id:'a',status:'awaiting_reply'};
+ const c=ui.startController({api:()=>new Promise(r=>accept=r),onTask:t=>{visible=t;},onChange:id=>observations.push([c.get(id).status,visible.status])});
+ const pending=c.start({task_id:'a',proposal_id:'inspected'});
+ assert.deepEqual(observations,[['pending','awaiting_reply']]);
+ accept(saved);await pending;
+ assert.equal(visible,saved);assert.deepEqual(observations.at(-1),['accepted','running']);
+});
+test('Start reconciliation publishes a saved pause without retrying the approval',async()=>{
+ let visible,calls=0;const saved={id:'a',status:'paused',error:'Missing test runner',branch_run:{status:'paused',authorization_ref:'saved'}};
+ const c=ui.startController({api:async(url,body)=>{calls++;if(body)throw Error('lost response');return saved;},onTask:t=>visible=t});
+ await c.start({task_id:'a',proposal_id:'inspected'});assert.equal(visible,saved);assert.equal(calls,2);assert.equal(c.get('a').status,'accepted');
+});
+function refreshFixture(){
+ const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
+ const snippet=source.slice(source.indexOf('let contextRefresh=null;'),source.indexOf('async function resumeBranchRun'));
+ const state={task:{id:'a',status:'awaiting_reply',updated_at:'2026-09-14T12:00:00Z'},selection:1};let renderCount=0,gatewayCalls=0,releaseGateway,resolveTask;
+ const gateway=new Promise(r=>releaseGateway=r);const replies=[];
+ const context={state,console,toast:()=>{},loadStartup:async()=>{},loadReadiness:async()=>{},loadTasks:async()=>{},loadGateway:()=>{gatewayCalls++;return gateway;},api:()=>replies.length?Promise.resolve(replies.shift()):new Promise(r=>resolveTask=r),renderTask:()=>renderCount++};
+ vm.createContext(context);vm.runInContext(snippet,context);
+ return {state,context,replies,releaseGateway,resolveTask:t=>resolveTask(t),renderCount:()=>renderCount,gatewayCalls:()=>gatewayCalls};
+}
+test('task polling and later output continue while one gateway refresh is unresolved',async()=>{
+ const f=refreshFixture();
+ for(const status of ['running','reviewing','paused']){
+  f.replies.push({id:'a',status,updated_at:`2026-09-14T12:00:0${f.renderCount()+1}Z`});
+  await f.context.refresh({background:true});assert.equal(f.state.task.status,status);
+ }
+ assert.equal(f.renderCount(),3);assert.equal(f.gatewayCalls(),1);f.releaseGateway();await f.context.refreshContext();
+});
+test('late polling cannot undo an accepted Start or overwrite a different selected task',async()=>{
+ const f=refreshFixture(),pending=f.context.refresh({background:true});
+ const saved={id:'a',status:'running',updated_at:'2026-09-14T12:00:02Z',branch_run:{status:'running'}};
+ f.context.receiveStartedTask(saved);f.resolveTask({id:'a',status:'awaiting_reply',updated_at:'2026-09-14T12:00:01Z'});await pending;assert.equal(f.state.task,saved);
+ f.context.receiveStartedTask({...saved,status:'paused',updated_at:'2026-09-14T12:00:01Z'});assert.equal(f.state.task,saved);
+ const next=f.context.refresh({background:true});f.state.task={id:'b'};f.state.selection++;
+ f.resolveTask({...saved,status:'reviewing'});await next;f.context.receiveStartedTask(saved);assert.equal(f.state.task.id,'b');
+ f.releaseGateway();await f.context.refreshContext();
+});
+test('actual startup renderer covers pending, accepted-stale, running and paused states',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/branch_ui.js'),'utf8');
+ const snippet=source.slice(source.indexOf(' function render(task)'),source.indexOf(' async function showFinal(task)'));
+ let record={status:'pending',started_at:'2026-09-14T12:00:00Z'};const panel={innerHTML:'',querySelector:()=>null};
+ const context={sync:()=>{},document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
+ vm.createContext(context);vm.runInContext(snippet,context);
+ const t={id:'a',status:'awaiting_reply',branch_run:{id:'run1',status:'awaiting_authorization',items:[]}};
+ context.render(t);assert.match(panel.innerHTML,/Starting your approved plan/);assert.match(panel.innerHTML,/data-start-time/);assert.doesNotMatch(panel.innerHTML,/data-proposal/);
+ record.status='accepted';context.render(t);assert.match(panel.innerHTML,/Plan accepted. Loading the saved run/);
+ t.branch_run.authorization_ref='auth';t.branch_run.status='running';t.status='running';context.render(t);assert.doesNotMatch(panel.innerHTML,/branch-start-status/);
+ t.branch_run.status='paused';t.status='paused';context.render(t);assert.doesNotMatch(panel.innerHTML,/data-start-time/);
+});

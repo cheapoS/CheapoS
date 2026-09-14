@@ -10,6 +10,16 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+**Completed: [T76 — visible progress from approval to the first worker response](docs/tasks/T76-visible-startup-progress.md).**
+Start now applies the returned task immediately, keeps elapsed waiting feedback
+visible, and refreshes Chat independently of gateway/sidebar readiness checks.
+The accepted first-item wait leads into the actual worker output with Pause
+available. No model or backend execution policy changed.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T76](docs/tasks/T76-visible-startup-progress.md) | Eliminate the apparent idle gap after approving an unattended plan | T70, T74, T75 | S | Complete |
+
 **Completed: [T75 — one Review & start screen for Unattended work](docs/tasks/T75-single-unattended-approval.md).**
 Submit the job directly from the composer, let cheapoS plan visibly in Chat,
 then inspect the plan and execution settings together before clicking Start.
@@ -226,7 +236,8 @@ do not move the report-export milestone behind a new broad benchmark campaign.
 ### Current handoff template
 
 ```text
-Implement only T75 from docs/tasks/T75-single-unattended-approval.md.
+T62–T76 are complete. Select the next agreed incomplete card before starting;
+do not reimplement these completed fixes.
 Read AGENTS.md, CONTRIBUTING.md, TASKS.md, and that card first.
 Inspect the current code and verify dependencies; do not restart completed work.
 Follow the card's scope, acceptance criteria, and focused validation instructions.
@@ -239,7 +250,7 @@ Update the card's completion record and its TASKS.md status. Commit only this
 task's changes. Report the commit, actual checks, and remaining limitations.
 Do not execute the next card automatically.
 
-For T62–T75, use the reproduction and acceptance contract in the selected card.
+For T62–T76, use the reproduction and acceptance contract in the selected card.
 Preserve the authorized model and spending policy when adding a stronger planner.
 Keep approved plans visible and immutable through the Plan view. Start should
 close immediately with honest progress and errors in chat, never fabricated
@@ -255,6 +266,10 @@ For T75, remove the first mandatory setup dialog, not the final execution
 authorization. Collect the job from the composer, plan with existing authorized
 settings, and present one complete Review & start screen. Edited settings must
 produce a current validated proposal; never start with a stale approval token.
+For T76, preserve visible startup between server acknowledgement and first model
+output as well as before acknowledgement. Diagnose missing state transitions;
+do not assume a slow model caused the reported silence. Use controlled promises
+and fake clocks to cover a 30-second wait without adding a real-time sleep test.
 
 For historical T49–T60 work, distinguish trial workarounds already in main from remaining gaps.
 Do not raise global limits, discard acceptance criteria, enable paid fallback,
