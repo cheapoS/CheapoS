@@ -10,6 +10,21 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+**Next up: [T75 — one Review & start screen for Unattended work](docs/tasks/T75-single-unattended-approval.md).**
+Submit the job directly from the composer, let cheapoS plan visibly in Chat,
+then inspect the plan and execution settings together before clicking Start.
+Remove the initial mandatory Start unattended work dialog. Use the open project
+and saved preferences; keep optional overrides near the composer and request
+genuinely missing information inline. Planning uses its already authorized model
+and allowance; the final approval authorizes execution, not earlier spending.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T75](docs/tasks/T75-single-unattended-approval.md) | Submit directly, plan in Chat, and approve the whole run in one screen | T65, T69, T70, T74 | M | Ready |
+
+T62–T74 below are completed foundations. Extend their saved-plan, immediate-Start,
+inline-error, and unified-conversation behavior rather than rebuilding them.
+
 **Completed: T62–T74 — reliable planning, one continuous conversation, and clear failure explanations.**
 These completed implementation cards are based on the planner review at
 `db774c7` (September 14, 2026) and the operator's follow-up UI requests.
@@ -211,7 +226,7 @@ do not move the report-export milestone behind a new broad benchmark campaign.
 ### Current handoff template
 
 ```text
-Implement only T62 from docs/tasks/T62-planner-access-binding.md.
+Implement only T75 from docs/tasks/T75-single-unattended-approval.md.
 Read AGENTS.md, CONTRIBUTING.md, TASKS.md, and that card first.
 Inspect the current code and verify dependencies; do not restart completed work.
 Follow the card's scope, acceptance criteria, and focused validation instructions.
@@ -224,7 +239,7 @@ Update the card's completion record and its TASKS.md status. Commit only this
 task's changes. Report the commit, actual checks, and remaining limitations.
 Do not execute the next card automatically.
 
-For T62–T74, use the reproduction and acceptance contract in the selected card.
+For T62–T75, use the reproduction and acceptance contract in the selected card.
 Preserve the authorized model and spending policy when adding a stronger planner.
 Keep approved plans visible and immutable through the Plan view. Start should
 close immediately with honest progress and errors in chat, never fabricated
@@ -236,6 +251,10 @@ Technical logs are supplementary, not the required route to a useful explanation
 For T74, unify ownership and rendering instead of hiding live output or adding
 another status panel. Keep each phase's details and result inside its cheapoS
 reply, with honest state and actual planner/worker/reviewer attribution.
+For T75, remove the first mandatory setup dialog, not the final execution
+authorization. Collect the job from the composer, plan with existing authorized
+settings, and present one complete Review & start screen. Edited settings must
+produce a current validated proposal; never start with a stale approval token.
 
 For historical T49–T60 work, distinguish trial workarounds already in main from remaining gaps.
 Do not raise global limits, discard acceptance criteria, enable paid fallback,
