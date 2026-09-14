@@ -88,7 +88,7 @@ class BranchController:
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id)
             task['branch_run']=run
             if planning_task:
-                for key in ('usage','request_metrics','events','worker_turns','tool_actions'):
+                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
@@ -117,6 +117,9 @@ class BranchController:
         with self.engine.lock:
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             if set(values)-{'proposal_id','approved'}: raise ValueError('Start accepts only the inspected proposal and operator decision')
+            runtime=self.engine.runtimes.get(task_id)
+            if task.get('planning_request') and not run.get('authorization_ref') and runtime and runtime.thread and runtime.thread.is_alive():
+                raise ValueError('Planning is still in progress. Continue in chat until the proposal is ready.')
             if run.get('authorization'):
                 self.validate_authority(task,run)
                 # A repeated same-proposal action returns the existing run, never starts another worker.
@@ -324,70 +327,146 @@ class BranchController:
         if not target:raise ValueError('Select a committed local integration target')
         return {'base_ref':target,'target_ref':target,'branches':refs,'current_head':work.source_git(source,'rev-parse','HEAD')}
 
-    def plan(self, values):
+    def plan(self, values, *, background=False, planning_task=None):
         import threading
         from .engine import Runtime
         from .branch_budget import Ledger
-        from .branch_planner import capture_inputs, plan
+        from .branch_planner import capture_inputs
         identity=values.get('planning_id')
         if not isinstance(identity,str) or not identity or len(identity)>100:raise ValueError('Provide a planning request ID')
         with self.engine.lock:
             if identity in self.planning:raise ValueError('This planning request already exists')
             if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):raise ValueError('Pause the active task before planning another run')
             self.planning[identity]={'runtime':None,'cancelled':False}
-        task=None;runtime=None;prepared=False;ledger_ended=False;registration_error=None
+        task=None;runtime=None;dispatched=False
         try:
-            inputs=capture_inputs(values.get('repository',''),values.get('prompt',''),values.get('document'))
+            # Follow-ups use the original captured document, never a silent reread.
+            inputs=copy.deepcopy(planning_task['branch_run']['inputs']) if planning_task else capture_inputs(values.get('repository',''),values.get('prompt',''),values.get('document'))
             measurement=values.get('measurement',False)
             if type(measurement) is not bool:raise ValueError('Measurement mode must be a boolean')
-            limits=run_limits(values.get('limits',{}),3)
-            task_id=uuid.uuid4().hex;source=inputs['source']
-            directory=self.engine.store.root/'tasks'/task_id/'workspace'
-            task=self.engine.create({'repository':source,'prompt':inputs['prompt'] or 'Plan work from '+inputs['document']['path'], 'conversational':True,
-                                      'limits':{'dollars':limits['dollars'],'run_minutes':max(1,(limits['working_seconds']+59)//60),'reviewer_tokens':limits['reviewer_tokens'],'output_tokens':limits['output_tokens']}},
-                                     task_id=task_id,snapshot_override=(Workspace(directory),{'source':source,'files':0,'skipped':[]}))
-            task['planning_limits']=limits;task['planning_policy']=self.model_policy()
-            task['branch_run']=state.new_run({'items':[{'id':'planning','title':'Prepare run proposal','instructions':'Prepare a bounded plan','acceptance_criteria':['A complete proposal is ready']}],'limits':limits,**({'measurement':True} if measurement else {})},original_request=inputs['prompt'],inputs=inputs)
-            runtime=Runtime(task);runtime.thread=threading.current_thread()
+            limits=planning_task['planning_limits'] if planning_task else run_limits(values.get('limits',{}),3)
+            if planning_task:
+                task=planning_task
+                if task['planning_policy']!=self.model_policy():raise ValueError('Model policy changed; start a new planning chat with the selected models.')
+                task['branch_run']['status']='draft'
+                task['branch_run']['pause_reason']=None
+            else:
+                task_id=uuid.uuid4().hex;source=inputs['source']
+                directory=self.engine.store.root/'tasks'/task_id/'workspace'
+                task=self.engine.create({'repository':source,'prompt':inputs['prompt'] or 'Plan work from '+inputs['document']['path'], 'conversational':True,
+                                          'limits':{'dollars':limits['dollars'],'run_minutes':max(1,(limits['working_seconds']+59)//60),'reviewer_tokens':limits['reviewer_tokens'],'output_tokens':limits['output_tokens']}},
+                                         task_id=task_id,snapshot_override=(Workspace(directory),{'source':source,'files':0,'skipped':[]}))
+                task['planning_limits']=limits;task['planning_policy']=self.model_policy()
+                task['branch_run']=state.new_run({'items':[{'id':'planning','title':'Prepare run proposal','instructions':'Prepare a bounded plan','acceptance_criteria':['A complete proposal is ready']}],'limits':limits,**({'measurement':True} if measurement else {})},original_request=inputs['prompt'],inputs=inputs,
+                                                base_ref=values.get('base_ref',''),target_ref=values.get('target_ref',''),feature_ref=values.get('feature_ref',''),run_id=task_id)
+            task['planning_request']=copy.deepcopy(values)
+            runtime=Runtime(task)
             runtime.branch_ledger=Ledger(runtime,lambda:self.engine.store.save(task),lock=self.engine.lock)
+            runtime.thread=threading.Thread(target=self._plan_background,args=(values,runtime,identity),daemon=True,name='cheapos-planner') if background else threading.current_thread()
             with self.engine.lock:
                 if any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):
-                    registration_error='Another task started while preparing this draft. Pause it, then submit the planning request again.'
-                    raise ValueError(registration_error)
+                    raise ValueError('Another task started while preparing this draft. Pause it, then submit the planning request again.')
                 self.planning[identity]['runtime']=runtime
-                self.engine.runtimes[task_id]=runtime
+                self.engine.runtimes[task['id']]=runtime
                 if self.planning[identity]['cancelled']:runtime.stop.set()
+                task['status']='running';task['error']=None
+                self.engine.event(task,'planning','Preparing your Unattended run proposal')
+                if background:
+                    runtime.thread.start()
+                    dispatched=True
+                    return {'task_id':task['id']}
+            dispatched=True
+            return self._finish_plan(values,runtime,identity)
+        except Exception as error:
+            if not dispatched:
+                with self.engine.lock:
+                    self.planning.pop(identity,None)
+                    if runtime and self.engine.runtimes.get(task['id']) is runtime:self.engine.runtimes.pop(task['id'],None)
+                    if task:
+                        task['status']='paused';task['branch_run']['status']='paused';task['error']=str(error)
+                        self.engine.event(task,'assistant','Planning needs attention',str(error))
+            raise
+
+    def _plan_background(self, values, runtime, identity):
+        try:self._finish_plan(values,runtime,identity)
+        except Exception:
+            # _finish_plan persists the concrete failure in the conversation.
+            # Background exceptions cannot be returned by the kickoff response.
+            pass
+
+    def _finish_plan(self, values, runtime, identity):
+        from .branch_planner import plan, ClarificationRequired
+        task=runtime.task
+        try:
             runtime.branch_ledger.begin()
-            task['status']='running';self.engine.event(task,'planning','Preparing your Unattended run proposal')
-            proposed=plan(self.engine,runtime,inputs)
-            if measurement:proposed['measurement']=True
-            if runtime.stop.is_set():raise InterruptedError('Planning cancelled')
-            runtime.branch_ledger.end();ledger_ended=True
-            with self.engine.lock:self.engine.runtimes.pop(task_id,None)
-            if runtime.stop.is_set():raise InterruptedError('Planning cancelled')
-            result=self.prepare({**values,'prompt':inputs['prompt'],'inputs':inputs,'plan':proposed},planning_task=task)
+            while True:
+                with self.engine.lock:inputs=copy.deepcopy(task['branch_run']['inputs'])
+                try:proposed=plan(self.engine,runtime,inputs)
+                except ClarificationRequired:
+                    with self.engine.lock:
+                        if inputs!=task['branch_run']['inputs'] and not runtime.stop.is_set():continue
+                    raise
+                with self.engine.lock:
+                    if runtime.stop.is_set():raise InterruptedError('Planning paused. Reply here when you are ready to continue.')
+                    # A reply received during inference supersedes its old scope.
+                    if inputs!=task['branch_run']['inputs']:continue
+                    if values.get('measurement'):proposed['measurement']=True
+                    runtime.branch_ledger.end()
+                result=self.prepare({**values,'prompt':inputs['prompt'],'inputs':inputs,'plan':proposed},planning_task=task)
+                with self.engine.lock:
+                    if runtime.stop.is_set() or self.planning[identity]['cancelled']:
+                        self.proposals.proposals.pop(result['proposal_id'],None)
+                        raise InterruptedError('Planning paused before the proposal was published. Reply here to continue.')
+                    if inputs!=task['branch_run']['inputs']:
+                        self.proposals.proposals.pop(result['proposal_id'],None)
+                        from .branch_budget import Ledger
+                        runtime.branch_ledger=Ledger(runtime,lambda:self.engine.store.save(task),lock=self.engine.lock)
+                        runtime.branch_ledger.begin()
+                        continue
+                    saved=self.engine.store.get(task['id'])
+                    self.engine.event(saved,'assistant','Proposal ready','The proposal is ready. Inspect it below to review the plan and start the run, or reply here to change it.')
+                    self.engine.runtimes.pop(task['id'],None)
+                    return result
+        except Exception as error:
+            if not runtime.branch_ledger.closed.is_set():runtime.branch_ledger.end()
             with self.engine.lock:
-                if runtime.stop.is_set() or self.planning[identity]['cancelled']:
-                    self.proposals.proposals.pop(result['proposal_id'],None)
-                    task=self.engine.store.get(task_id)
-                    raise InterruptedError('Planning cancelled before proposal publication')
-            prepared=True
-            return result
+                saved=self.engine.store.get(task['id']);saved_run=saved.get('branch_run') or {}
+                # Keep a complete plan when verification setup failed in prepare().
+                if not (saved_run.get('workspace_mapping') and saved_run.get('status')=='blocked' and saved_run.get('pause_reason')=='missing_setup'):
+                    saved=task;saved['status']='paused';saved['branch_run']['status']='paused'
+                    saved['branch_run']['pause_reason']='operator' if runtime.stop.is_set() else 'missing_information'
+                    saved['error']=str(error)
+                saved['stream']=None
+                self.engine.event(saved,'assistant','Planning needs attention',saved['error'] or str(error))
+                self.engine.runtimes.pop(task['id'],None)
+            raise
         finally:
-            if runtime:
-                if not ledger_ended:runtime.branch_ledger.end()
-                with self.engine.lock:self.engine.runtimes.pop(task['id'],None)
-            if task and not prepared:
-                saved = self.engine.store.get(task['id'])
-                saved_run = saved.get('branch_run') or {}
-                # prepare() may already have saved the complete plan and its
-                # concrete setup failure. Do not replace it with the earlier
-                # placeholder used to account for proposal generation.
-                if not (saved_run.get('workspace_mapping') and saved_run.get('status') == 'blocked' and saved_run.get('pause_reason') == 'missing_setup'):
-                    task['status']='paused';task['branch_run']['status']='paused';task['branch_run']['pause_reason']='operator' if runtime and runtime.stop.is_set() else 'missing_information'
-                    task['error']=registration_error or 'Planning stopped or needs clarification; submit an updated request to prepare a proposal.'
-                    self.engine.store.save(task)
-            with self.engine.lock:self.planning.pop(identity,None)
+            with self.engine.lock:
+                if self.engine.runtimes.get(task['id']) is runtime:self.engine.runtimes.pop(task['id'],None)
+                self.planning.pop(identity,None)
+
+    def planning_message(self, task, message):
+        from .branch_planner import _digest
+        run=task['branch_run']
+        if task['planning_policy']!=self.model_policy():raise ValueError('Model policy changed; start a new planning chat with the selected models.')
+        messages=run['inputs'].get('followups',[])
+        if sum(map(len,messages))+len(message)>24000:raise ValueError('Planning conversation is full; start a new chat.')
+        runtime=self.engine.runtimes.get(task['id'])
+        active=runtime and runtime.thread and runtime.thread.is_alive()
+        if not active and any(r.thread and r.thread.is_alive() for r in self.engine.runtimes.values()):
+            raise ValueError('Pause the active task before continuing this proposal.')
+        if active and runtime.stop.is_set():raise ValueError('Planning is pausing. Send your reply once it has stopped.')
+        run['inputs']['followups']=[*messages,message]
+        captured={k:v for k,v in run['inputs'].items() if k!='hash'}
+        run['inputs']['hash']=_digest(captured)
+        task['requests'].append(message)
+        # A changed scope always invalidates every prior Start token.
+        with self.proposals.lock:
+            self.proposals.proposals={token:p for token,p in self.proposals.proposals.items() if p['task_id']!=task['id']}
+        self.engine.event(task,'user','You',message)
+        if not active:
+            self.plan({**task['planning_request'],'planning_id':uuid.uuid4().hex},background=True,planning_task=task)
+        return self.engine.store.get(task['id'])
 
     def stop_plan(self, values):
         with self.engine.lock:
@@ -442,6 +521,8 @@ class BranchController:
             runtime=self.engine.runtimes.get(task_id)
             task=runtime.task if runtime and runtime.thread and runtime.thread.is_alive() else self.engine.store.get(task_id)
             run=state.require_supported(task['branch_run'])
+            if task.get('planning_request') and not run.get('authorization_ref'):
+                return self.planning_message(task,message.strip())
             if run['status'] not in {'running','paused','blocked'}:
                 raise ValueError('Use Request changes to revise completed work')
             self.validate_authority(task,run)

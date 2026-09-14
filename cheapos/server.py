@@ -194,6 +194,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.branch.project(values)
             elif path == "/api/branch-runs/plan":
                 result = engine.branch.plan(values)
+            elif path == "/api/branch-runs/plan-start":
+                result = engine.branch.plan(values, background=True)
             elif path == "/api/branch-runs/plan-stop":
                 result = engine.branch.stop_plan(values)
             elif path == "/api/branch-runs/prepare":

@@ -25,3 +25,12 @@ test("measurement status requires explicit plan opt-in", () => {
  base.branch_run.plan.measurement=false;
  assert.equal(ui.projectRun(base).measurement,false);
 });
+
+test('planning chats stay busy and accept follow-up before authorization',()=>{
+ const task={status:'running',planning_request:{planning_id:'request'},branch_run:{status:'draft',items:[],authorization_ref:null}};
+ assert.equal(ui.isBusy(task),true);assert.equal(ui.isPlanning(task),true);assert.equal(ui.projectRun(task).label,'Planning');
+ task.status='paused';assert.equal(ui.isBusy(task),false);assert.equal(ui.isPlanning(task),true);
+ task.branch_run.status='awaiting_authorization';assert.equal(ui.isBusy(task),false);assert.equal(ui.isPlanning(task),true);
+ task.branch_run.authorization_ref='approved';assert.equal(ui.isPlanning(task),false);
+ assert.equal(ui.isBusy({status:'running',branch_run:{status:'draft'}}),true);
+});

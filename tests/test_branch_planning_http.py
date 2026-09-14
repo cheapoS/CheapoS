@@ -192,5 +192,92 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertEqual(task['branch_run']['status'], 'paused')
         self.assertGreaterEqual(task['usage']['worker']['tokens'], 30)
 
+    def test_async_start_returns_chat_before_inference_finishes_and_pause_retains_usage(self):
+        self.provider.release = threading.Event()
+        status, started = self.post('/api/branch-runs/plan-start', self.request_values())
+        self.assertEqual(status, 200, started)
+        task_id = started['task_id']
+        runtime = self.engine.runtimes[task_id]
+        try:
+            self.assertTrue(self.provider.entered.wait(5))
+            task = self.engine.store.get(task_id)
+            self.assertEqual(task['status'], 'running')
+            self.assertFalse(task['branch_run']['authorization_ref'])
+            status, _ = self.post('/api/tasks/' + task_id + '/stop', {})
+            self.assertEqual(status, 200)
+        finally:
+            self.provider.release.set(); runtime.thread.join(10)
+        self.assertFalse(runtime.thread.is_alive())
+        task = self.engine.store.get(task_id)
+        self.assertEqual(task['status'], 'paused')
+        self.assertEqual(task['usage']['worker']['tokens'], 30)
+        self.assertEqual(task['events'][-1]['kind'], 'assistant')
+        self.assertEqual(task['events'][-1]['detail'], 'Stopped after the in-flight model request completed')
+        self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
+
+    def test_async_clarification_reply_keeps_chat_captured_document_and_allowance(self):
+        (self.source / 'scope.md').write_text('Remove the original utility.')
+        self.provider.clarify = True
+        self.provider.release = threading.Event()
+        status, started = self.post('/api/branch-runs/plan-start', self.request_values('Keep the original utility', 'scope.md'))
+        self.assertEqual(status, 200, started)
+        task_id = started['task_id']; runtime = self.engine.runtimes[task_id]
+        self.provider.release.set(); runtime.thread.join(10)
+        self.assertFalse(runtime.thread.is_alive())
+        task = self.engine.store.get(task_id)
+        self.assertIn('Keep or remove', task['events'][-1]['detail'])
+        self.assertEqual(task['status'], 'paused')
+        limits = copy.deepcopy(task['branch_run']['limits'])
+        (self.source / 'scope.md').write_text('Changed after capture; this must not replace the saved document.')
+        self.provider.clarify = False; self.provider.release = threading.Event()
+        status, _ = self.post('/api/tasks/' + task_id + '/branch-message', {'message': 'Keep it and add the new utility beside it.'})
+        self.assertEqual(status, 200)
+        runtime = self.engine.runtimes[task_id]
+        self.provider.release.set(); runtime.thread.join(10)
+        self.assertFalse(runtime.thread.is_alive())
+        task = self.engine.store.get(task_id)
+        self.assertEqual(len(self.engine.store.tasks), 1)
+        self.assertEqual(task['branch_run']['status'], 'awaiting_authorization', task.get('error'))
+        self.assertEqual(task['branch_run']['inputs']['document']['contents'], 'Remove the original utility.')
+        self.assertEqual(self.provider.inputs[-1]['followups'], ['Keep it and add the new utility beside it.'])
+        self.assertEqual(task['branch_run']['limits'], limits)
+        self.assertEqual(task['usage']['worker']['tokens'], 60)
+        self.assertEqual(task['branch_run']['consumption']['requests'], 2)
+        self.assertIn('proposal is ready', task['events'][-1]['detail'])
+        self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
+        # Editing by chat revokes the previously inspectable Start token.
+        old = self.engine.branch.proposal(task_id)
+        self.provider.release = threading.Event()
+        status, _ = self.post('/api/tasks/' + task_id + '/branch-message', {'message': 'Also preserve its command-line flags.'})
+        self.assertEqual(status, 200)
+        runtime = self.engine.runtimes[task_id]
+        self.provider.release.set(); runtime.thread.join(10)
+        self.assertFalse(runtime.thread.is_alive())
+        status, _ = self.post('/api/tasks/' + task_id + '/branch-start', {'proposal_id': old['proposal_id'], 'approved': True})
+        self.assertEqual(status, 400)
+        self.assertEqual(self.engine.store.get(task_id)['usage']['worker']['tokens'], 90)
+        self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
+
+    def test_reply_during_inference_supersedes_old_proposal_without_parallel_planners(self):
+        self.provider.release = threading.Event()
+        status, started = self.post('/api/branch-runs/plan-start', self.request_values())
+        self.assertEqual(status, 200, started)
+        task_id = started['task_id']; runtime = self.engine.runtimes[task_id]
+        try:
+            self.assertTrue(self.provider.entered.wait(5))
+            status, _ = self.post('/api/tasks/' + task_id + '/branch-message', {'message': 'Preserve the existing behavior too.'})
+            self.assertEqual(status, 200)
+            self.assertEqual(len(self.engine.runtimes), 1)
+        finally:
+            self.provider.release.set(); runtime.thread.join(10)
+        self.assertFalse(runtime.thread.is_alive())
+        task = self.engine.store.get(task_id)
+        self.assertEqual(task['branch_run']['status'], 'awaiting_authorization', task.get('error'))
+        self.assertEqual(len(self.provider.inputs), 2)
+        self.assertEqual(self.provider.inputs[-1]['followups'], ['Preserve the existing behavior too.'])
+        self.assertEqual(task['branch_run']['inputs']['followups'], self.provider.inputs[-1]['followups'])
+        self.assertEqual(task['usage']['worker']['tokens'], 60)
+        self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
+
 
 if __name__ == '__main__': unittest.main()

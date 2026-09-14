@@ -10,11 +10,13 @@ Changing the selector alone does not request a model, create a branch, or author
 ## Start with a prompt
 
 1. Open a local Git project and choose **Work mode → Unattended**.
-2. Enter: “Implement a CSV reader, Markdown output, and a CLI on a feature branch. Add deterministic tests for each part.” Send it, then choose **Prepare proposal** in the planning form. No document is required.
-3. Inspect the complete item list, criteria, checks, committed base, feature branch, target, model placement, and cumulative limits. Edit the proposal if needed; edited proposals must be prepared again before starting.
+2. Enter: “Implement a CSV reader, Markdown output, and a CLI on a feature branch. Add deterministic tests for each part.” Send it, then choose **Start** in the form. The form closes immediately and opens the chat while cheapoS prepares the proposal. No document is required.
+3. Follow progress in chat and reply to any questions or errors there. When ready, choose **Inspect proposal** to review the complete item list, criteria, checks, committed base, feature branch, target, model placement, and cumulative limits. Edit the proposal if needed; edited proposals must be prepared again before starting.
 4. Click **Start run** to authorize exactly that proposal and its displayed test scope.
 
-Editing an unstarted proposal preserves its conversation and planning usage. A different project, committed base, captured prompt/document, or model placement requires a fresh planning request.
+You can add details while planning or reply after a question, error, or pause. Replies revise the proposal in the same chat using the original captured document and remaining planning allowance. A reply received during a model request is included before a proposal can be started. Changing a ready proposal through chat invalidates its previous Start approval token.
+
+Editing an unstarted proposal preserves its conversation and planning usage. Replacing the project, committed base, captured prompt/document, or model placement requires a fresh planning request. The selected document is not silently reread when you reply. The form’s **Start** begins planning; **Start run** still authorizes the inspected proposal.
 
 A distinct, named reviewer is required. A second request to the same model does not count as independent review.
 
@@ -28,7 +30,7 @@ For combined input, select the document and add a prompt such as “Complete thi
 
 | Your action | Result |
 | --- | --- |
-| Choose Unattended, submit a prompt/document, then **Prepare proposal** | Request a bounded plan; no implementation or feature branch yet. |
+| Choose Unattended, submit a prompt/document, then **Start** | Open the chat immediately and prepare a bounded plan in the background; no implementation or feature branch yet. |
 | In Interactive, explicitly request “Start a branch run” or “Implement this job on a feature branch” | Offer a work-mode choice. Choosing the unattended proposal opens planning. |
 | Mention a branch, select a document without submitting, quote a trigger, or ask for an explanation/summary | Keep ordinary chat behavior; no automatic run authorization. |
 | **Start run** | Authorize the inspected revision, branch, models, limits, and shown checks. |
@@ -68,7 +70,8 @@ When gathering baseline evidence, select **Measurement run · track usage withou
 work limits** in the planning dialog. This applies during planning and execution
 and is displayed again before Start. The run summary identifies measurement runs.
 For operator-driven trials through the API, pass `measurement: true` to
-`POST /api/branch-runs/plan`; a directly prepared plan uses
+`POST /api/branch-runs/plan-start` (returns `task_id` before inference completes),
+or the synchronous `POST /api/branch-runs/plan`; a directly prepared plan uses
 `plan.measurement: true`. Both prompts and selected documents are supported.
 Models cannot select this option themselves. Start binds the choice into the
 proposal's authorization; it cannot silently change on Resume or final review.
