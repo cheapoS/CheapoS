@@ -6,14 +6,15 @@ This document records the operational telemetry, bug fixes, failure-recovery mec
 
 ## 1. Executive Summary & Benchmark Scorecard
 
-- **Total Tasks Executed:** 18+ (Batch 1: 5, Batch 2: 10, Batch 3: in progress)
+- **Total Tasks Executed:** **25** (Batch 1: 5, Batch 2: 10, Batch 3: 10)
 - **Overall Pass Rate:** **100.0% clean merges** to target branch (`/tmp/cheapoS-stress-repo` on `main`)
 - **Total Dollars Spent:** **$0.0000** (Strict $0.00 Free-Tier Policy strictly verified)
 - **Active Model Pairing:**
   - **Planner & Reviewer:** `antigravity/gemini-3.7-flash-low`
   - **Worker:** `antigravity/gemini-3.1-flash-lite`
   - **Available Free Fallbacks:** `oc/big-pickle`, `kiro` (via OmniRoute combo routing)
-- **Primary Objective:** Stress-test CheapOS unattended execution across 10 software engineering domains to catch, diagnose, and fix all engine bugs, API schema issues, concurrency races, and model quirks prior to public announcement.
+- **Domains Tested Live:** 7 out of 10 categories (Text Processing, Data Structures, Validation, Math & Numerical, Datetime & Time, Security & Encodings, Graph & Algorithms)
+- **Primary Objective:** Stress-test CheapOS unattended execution across diverse engineering domains to catch, diagnose, and fix all engine bugs, API schema issues, concurrency races, and model quirks prior to public announcement.
 
 ---
 
@@ -23,8 +24,9 @@ Quota usage is monitored in real-time via OmniRoute's SQLite database at `/Users
 
 ### Live Telemetry
 - **Starting Quota:** ~67.0%
-- **Quota after 18 Tasks:** ~59.9%
-- **Average Quota Cost per Task:** ~0.39% to 0.45% of total hourly tier budget
+- **Quota after 25 Tasks:** **58.37%**
+- **Net Quota Consumed for 25 Tasks:** **~8.63%** total
+- **Average Quota Cost per Task:** **~0.35% to 0.40%** of total hourly tier budget
 - **Projected Capacity per Hour:** ~60-80 unattended tasks per hourly quota window
 - **Next Quota Reset Time:** `2026-09-14T22:13:38.000Z` (resets every 60 minutes)
 
@@ -90,6 +92,11 @@ CheapOS demonstrated exceptional self-healing across several challenging enginee
 3. **`ST-036` (Fraction Arithmetic — Tool Guard Adaptation):**
    - *Guard Event:* Worker attempted to call `write_file` on an existing file, which was rejected by CheapOS's immutability guards.
    - *Autonomous Healing:* Model immediately caught the tool error, inspected the existing file using `read_file`, and switched to `replace_text` to complete the task.
+4. **`ST-039` (Moving Average Stream — Window Slicing Assertion Fix):**
+   - *Failure:* First verification run failed on exponential decay weighting boundary.
+   - *Autonomous Healing:* Worker parsed unittest failure traceback, applied targeted update via `write_file`, and passed verification on Attempt 2.
+5. **`ST-071` & `ST-076` (Topological Sorter & LCA — Graph Cycle Handling):**
+   - *Execution:* Worker structured recursion base cases, handled disconnected subgraphs, passed peer review on first pass, and merged cleanly.
 
 ---
 
@@ -100,11 +107,11 @@ CheapOS demonstrated exceptional self-healing across several challenging enginee
 | **1. Text Processing** | `ST-001` - `ST-010` | Slugs, semver, markdown, string templates, case conversion, word wrap, truncators, Levenshtein, ANSI codes, query strings. | **10/10 (100%)** |
 | **2. Data Structures** | `ST-011` - `ST-020` | LRU cache, Priority queue, deep merge, dict flattening, Trie, ring buffer, Union-Find, Interval tree, Graph, Skip list. | **5/10 (50%)** (`ST-011`-`ST-015`) |
 | **3. Validation & Parsing** | `ST-021` - `ST-030` | Email validator, Credit card Luhn, IP/CIDR checker, Cron parser, Schema validator, Semver ranges, CSV parser, JSON path, Config parser, HTML sanitizer. | **2/10 (20%)** (`ST-023`, `ST-025`) |
-| **4. Math & Numerical** | `ST-031` - `ST-040` | Matrix multiply, Prime sieve, Roman numerals, Complex numbers, Vector ops, Fraction arithmetic, Expression evaluator, Stats calculator, Moving average, Fast power. | **1/10 (10%)** (`ST-036`, `ST-039` running) |
+| **4. Math & Numerical** | `ST-031` - `ST-040` | Matrix multiply, Prime sieve, Roman numerals, Complex numbers, Vector ops, Fraction arithmetic, Expression evaluator, Stats calculator, Moving average, Fast power. | **2/10 (20%)** (`ST-036`, `ST-039`) |
 | **5. File Formats & Serializers** | `ST-041` - `ST-050` | INI parser, JSON streaming, YAML subset, Struct packing, Tar headers, Base64, Hex dump, KV WAL, CSV-to-Markdown, Bitmap header. | Queued |
-| **6. Datetime & Time** | `ST-051` - `ST-060` | ISO8601 parser, Relative time, Duration formatter, Timezone shift, Business hours, Recurring schedule, Days between, Cron next run, Unix timestamp, Stopwatch timer. | Queued |
-| **7. Security & Encodings** | `ST-061` - `ST-070` | Base58, HMAC checker, Token bucket, Password strength, Caesar/Vigenere, URL percent encoder, JWT parser, Leaked secret scanner, Constant-time compare, Log secret redactor. | Queued |
-| **8. Graph & Algorithms** | `ST-071` - `ST-080` | Topo sorter, Dijkstra, Cycle detector, BFS/DFS, Connected components, Lowest common ancestor, MST, Bipartite check, A* grid, Strongly connected components. | Queued |
+| **6. Datetime & Time** | `ST-051` - `ST-060` | ISO8601 parser, Relative time, Duration formatter, Timezone shift, Business hours, Recurring schedule, Days between, Cron next run, Unix timestamp, Stopwatch timer. | **2/10 (20%)** (`ST-055`, `ST-060`) |
+| **7. Security & Encodings** | `ST-061` - `ST-070` | Base58, HMAC checker, Token bucket, Password strength, Caesar/Vigenere, URL percent encoder, JWT parser, Leaked secret scanner, Constant-time compare, Log secret redactor. | **2/10 (20%)** (`ST-062`, `ST-070`) |
+| **8. Graph & Algorithms** | `ST-071` - `ST-080` | Topo sorter, Dijkstra, Cycle detector, BFS/DFS, Connected components, Lowest common ancestor, MST, Bipartite check, A* grid, Strongly connected components. | **2/10 (20%)** (`ST-071`, `ST-076`) |
 | **9. Functional & Streams** | `ST-081` - `ST-090` | TTL memoize, Retry decorator, Pipe/compose, Chunked iterator, Deep flatten, GroupBy/aggregate, Debounce/throttle, Lazy stream, Curry helper, Event emitter. | Queued |
 | **10. State Machines & Flows**| `ST-091` - `ST-100` | Finite state machine, Order checkout flow, Linear rollback runner, Undo/redo stack, Circuit breaker, Job queue, Traffic light, State snapshot, Subscription FSM, Rule engine. | Queued |
 
@@ -115,25 +122,25 @@ CheapOS demonstrated exceptional self-healing across several challenging enginee
 When the token quota resets (every hour at `:13` UTC) or when starting a new qualification batch, use the following commands:
 
 ### A. Run Remaining Tasks Sequentially
-To resume from the first unfinished task (`ST-016`) and run in batches of 10:
+To resume from the remaining tasks in Data Structures (`ST-016` onward) in batches of 10:
 ```bash
 python3 -u scripts/stress_runner.py --start ST-016 --limit 10
 ```
 
 ### B. Run Cross-Domain Random Batches
-To stress-test novel domain combinations and detect unexpected model failure modes:
+To stress-test novel domain combinations across the remaining unexecuted catalog:
 ```bash
 python3 -u scripts/stress_runner.py --start ST-016 --end ST-100 --shuffle --limit 10
 ```
 
-### C. Run Specific High-Risk Domains
-To target specific algorithmic or security domains:
+### C. Run Specific High-Priority Categories
+To target specific categories like State Machines & Flows or File Formats:
 ```bash
-# Security & Encodings domain
-python3 -u scripts/stress_runner.py --ids ST-061,ST-062,ST-063,ST-064,ST-065,ST-066,ST-067,ST-068,ST-069,ST-070
+# State Machines & Flows domain
+python3 -u scripts/stress_runner.py --ids ST-091,ST-092,ST-093,ST-094,ST-095,ST-096,ST-097,ST-098,ST-099,ST-100
 
-# Graph & Algorithms domain
-python3 -u scripts/stress_runner.py --ids ST-071,ST-072,ST-073,ST-074,ST-075,ST-076,ST-077,ST-078,ST-079,ST-080
+# File Formats & Serializers domain
+python3 -u scripts/stress_runner.py --ids ST-041,ST-042,ST-043,ST-044,ST-045,ST-046,ST-047,ST-048,ST-049,ST-050
 ```
 
 ### D. Model Exhaustion & Fallback Handling

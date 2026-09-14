@@ -264,5 +264,89 @@
       "reviewer": 30762,
       "planner": 4617
     }
+  },
+  {
+    "task_id": "ST-055",
+    "title": "Business Hours Calculator",
+    "category": "Datetime & Time",
+    "status": "MERGED",
+    "duration": 116.07,
+    "turns": 11,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 74098,
+      "reviewer": 18535,
+      "planner": 4730
+    }
+  },
+  {
+    "task_id": "ST-060",
+    "title": "Stopwatch Split Timer",
+    "category": "Datetime & Time",
+    "status": "MERGED",
+    "duration": 149.63,
+    "turns": 13,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 109644,
+      "reviewer": 25336,
+      "planner": 4606
+    }
+  },
+  {
+    "task_id": "ST-062",
+    "title": "HMAC Constant-Time Checker",
+    "category": "Security & Encodings",
+    "status": "MERGED",
+    "duration": 100.94,
+    "turns": 4,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 18585,
+      "reviewer": 33946,
+      "planner": 4809
+    }
+  },
+  {
+    "task_id": "ST-070",
+    "title": "Log Secret Redactor",
+    "category": "Security & Encodings",
+    "status": "MERGED",
+    "duration": 102.68,
+    "turns": 5,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 21759,
+      "reviewer": 37790,
+      "planner": 4758
+    }
+  },
+  {
+    "task_id": "ST-071",
+    "title": "Topological Sorter",
+    "category": "Graph & Algorithms",
+    "status": "MERGED",
+    "duration": 120.68,
+    "turns": 11,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 73874,
+      "reviewer": 25564,
+      "planner": 4789
+    }
+  },
+  {
+    "task_id": "ST-076",
+    "title": "Lowest Common Ancestor",
+    "category": "Graph & Algorithms",
+    "status": "MERGED",
+    "duration": 128.86,
+    "turns": 13,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 84069,
+      "reviewer": 39346,
+      "planner": 4823
+    }
   }
 ]

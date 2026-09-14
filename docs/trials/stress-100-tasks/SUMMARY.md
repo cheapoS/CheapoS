@@ -1,7 +1,7 @@
 # cheapoS 100-Task Stress Test Report
 
-- **Total Executed:** 19
-- **Merged Cleanly:** 19 (100.0%)
+- **Total Executed:** 25
+- **Merged Cleanly:** 25 (100.0%)
 - **Paused / Blocked:** 0
 - **Failed:** 0
 - **Total Spend:** $0.0000 (Strict $0.00 Free Tier)
@@ -27,3 +27,9 @@
 | ST-025 | Schema Lite Validator | Validation | MERGED | 4 | 78.11 | $0.0000 |
 | ST-036 | Fraction Arithmetic | Math & Numerical | MERGED | 11 | 144.48 | $0.0000 |
 | ST-039 | Moving Average Stream | Math & Numerical | MERGED | 8 | 116.96 | $0.0000 |
+| ST-055 | Business Hours Calculator | Datetime & Time | MERGED | 11 | 116.07 | $0.0000 |
+| ST-060 | Stopwatch Split Timer | Datetime & Time | MERGED | 13 | 149.63 | $0.0000 |
+| ST-062 | HMAC Constant-Time Checker | Security & Encodings | MERGED | 4 | 100.94 | $0.0000 |
+| ST-070 | Log Secret Redactor | Security & Encodings | MERGED | 5 | 102.68 | $0.0000 |
+| ST-071 | Topological Sorter | Graph & Algorithms | MERGED | 11 | 120.68 | $0.0000 |
+| ST-076 | Lowest Common Ancestor | Graph & Algorithms | MERGED | 13 | 128.86 | $0.0000 |
