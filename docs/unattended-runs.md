@@ -98,3 +98,16 @@ completion status, model IDs, request counts, tokens, elapsed working time and
 check durations. Use distributions across comparable completed tasks to choose
 later limits; do not infer a cap from one small success or hide retries by
 resetting counters. No default limits have been inferred from the first trial.
+
+
+## Context and readiness before unattended execution
+
+New proposals inspect a bounded repository inventory, manifests and project guidance before planning. The planner can request additional scoped, read-only files. Repository content is evidence, not permission. Existing app type, stack, structure and UI conventions should be discovered from the project; reversible implementation choices follow those conventions. Planning assumptions appear in the proposal and are included in the accepted item instructions.
+
+The proposal shows working-directory readiness and observable prerequisites for every planned check. Start rechecks these prerequisites before granting authority. This is not a test run or a live model probe: undeclared dependencies, later environment changes and provider quota remain unverified. Starting authorizes reads/edits in the private working copy and the displayed commands (including a displayed test profile where applicable). A remembered additional command is granted exactly, rather than silently broadening its scope.
+
+During new unattended runs, the first clarification attempt for each item returns project context and directs the worker to inspect before interrupting. An essential unanswered decision can still pause the run on the next attempt. This check is durable and happens at most once per item. It does not grant new commands, installations, external effects or destructive actions.
+
+New proposals include `continue_independent: true` in their signed plan. A question-blocked item can be deferred when its workspace is clean, no operation is pending, and another item has completed dependencies. Work with unfinished edits remains paused. When no runnable items remain, the questions are surfaced for operator guidance. Final verification checks receipts in actual execution order and enforces dependencies. Setting the plan field to `false` retains sequential execution; previously accepted plans are unchanged.
+
+Validation for this change used focused scripted/pure checks without live inference. The 24-test setup, scheduling, start, reprepare, execution and state selection passed in 43.257 seconds; the new pure setup and scheduling cases took milliseconds. Existing planner, command-permission and UI markup checks also passed. Browser rendering and the next live easy-task trial remain to be verified.

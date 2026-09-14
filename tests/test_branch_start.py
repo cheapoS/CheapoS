@@ -4,6 +4,7 @@ import shlex
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from cheapos.engine import Engine
 from cheapos.workspace import git
@@ -33,7 +34,12 @@ class BranchStartTests(unittest.TestCase):
         proposal=self.engine.branch.prepare(self.values)
         self.assertIsNone(_tip(self.source,'refs/heads/feature/job'))
         self.assertEqual(self.engine.runtimes,{})
+        self.assertTrue(proposal['readiness']['ready'])
         decision={'proposal_id':proposal['proposal_id'],'approved':True}
+        with patch('cheapos.unattended_setup.environment.inspect', return_value={'status':'missing','evidence':'Dependency absent.','next_step':'Prepare environment.'}):
+            with self.assertRaisesRegex(ValueError,'before Start'):
+                self.engine.branch.authorize(proposal['task_id'],decision)
+        self.assertIsNone(_tip(self.source,'refs/heads/feature/job'))
         task=self.engine.branch.authorize(proposal['task_id'],decision)
         self.assertEqual(task,self.engine.branch.authorize(task['id'],decision))
         self.assertEqual(_tip(self.source,'refs/heads/feature/job'),task['branch_run']['base_sha'])

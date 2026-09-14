@@ -50,6 +50,7 @@ class BranchController:
     def prepare(self, values, planning_task=None):
         with self.engine.lock:
             plan=state.validate_plan(values.get('plan'))
+            plan.setdefault('continue_independent',True)
             plan['limits']=run_limits(plan['limits'],len(plan['items']))
             if any(not item['required_checks'] for item in plan['items']) or not plan['final_checks']:
                 raise ValueError('Specify required checks for every item and final integration')
@@ -88,7 +89,7 @@ class BranchController:
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id)
             task['branch_run']=run
             if planning_task:
-                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy'):
+                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
@@ -104,7 +105,11 @@ class BranchController:
             state.transition(run,'awaiting_authorization')
             self.engine.store.save(task)
             proposal=self.proposals.prepare(task_id,self.contract(task))
-            return {'task_id':task_id,**proposal}
+            return {'task_id':task_id,**proposal,'readiness':self.readiness(task)}
+
+    def readiness(self, task):
+        from .unattended_setup import inspect
+        return inspect(task,task['branch_run']['check_scope'])
 
     def contract(self, task):
         run=task['branch_run']
@@ -135,6 +140,8 @@ class BranchController:
             if work._tip(mapping['source'],mapping['feature_ref']): raise ValueError('Feature branch now exists')
             for scope in run['check_scope']:
                 if self.scopes.prepare(task,scope['command'])!=scope: raise ValueError('Check scope changed; prepare a fresh proposal')
+            from .unattended_setup import require_ready
+            require_ready(task,run['check_scope'])
             auth=self.proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),self.contract(task))
             run['authorization']=auth;run['authorization_ref']=auth['id']
             self.engine.store.save(task)
@@ -250,7 +257,12 @@ class BranchController:
                     self.commit_item(runtime,item)
                     continue
                 work.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
-                item=next((i for i in run['items'] if i['status'] not in state.DONE),None)
+                from .unattended_items import next_item, defer
+                item=next_item(run)
+                if item is None and any(i['status'] not in state.DONE for i in run['items']):
+                    questions=[i.get('question') for i in run['items'] if i.get('question')]
+                    run['waiting_for_user']='; '.join(questions) or 'Remaining tasks depend on blocked work.'
+                    raise ValueError(run['waiting_for_user'])
                 if item is None:
                     if run['status']!='finalizing':state.transition(run,'finalizing')
                     from .branch_completion import finalize
@@ -276,7 +288,14 @@ class BranchController:
                         continue
                 task['status']='running';task['messages']=self.engine.initial_messages(task)
                 self.engine._run_with_wait(runtime)
-                if run.get('waiting_for_user'): raise ValueError(run['waiting_for_user'])
+                if run.get('waiting_for_user'):
+                    self.engine.refresh_changes(task)
+                    clean=not task.get('changes') and not Workspace(task['workspace']).patch(validate=True)
+                    if defer(run,item,run['waiting_for_user'],clean):
+                        self.engine.event(task,'branch_blocked','Continuing independent work',{'item_id':item['id'],'question':item['question']})
+                        self.engine.store.save(task)
+                        continue
+                    raise ValueError(run['waiting_for_user'])
                 if task['status']=='awaiting_reply':
                     # Even an unchanged outcome requires actual criteria review.
                     from .branch_review import checkpoint
@@ -510,7 +529,7 @@ class BranchController:
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             if run['status']!='awaiting_authorization' or run.get('authorization'):
                 raise ValueError('Only an unstarted proposal can be refreshed')
-            return {'task_id':task_id,**self.proposals.prepare(task_id,self.contract(task))}
+            return {'task_id':task_id,**self.proposals.prepare(task_id,self.contract(task)),'readiness':self.readiness(task)}
 
     def message(self, task_id, values):
         message=values.get('message')
@@ -530,7 +549,11 @@ class BranchController:
             if sum(len(g['message']) for g in guidance)+len(message)>24000:
                 raise ValueError('Guidance is full; prepare an explicit revision')
             guidance.append({'item_id':run['current_item_id'],'message':message.strip()})
-            run.pop('waiting_for_user',None)
+            answering_blocker=bool(run.pop('waiting_for_user',None))
+            if answering_blocker:
+                for item in run['items']:
+                    if item.get('question'):
+                        item.setdefault('clarification_history',[]).append({'question':item.pop('question'),'guidance':message.strip()})
             self.engine.event(task,'user','You',message.strip())
             self.engine.event(task,'branch_guidance','Guidance saved within the accepted plan', 'The plan and remaining limits are unchanged. Resume when ready.' if task['status']=='paused' else 'The worker will receive this on its next turn.')
             return task

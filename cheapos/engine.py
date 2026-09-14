@@ -1471,9 +1471,12 @@ class Engine:
         if role == "worker" and task.get("branch_run",{}).get("current_item_id"):
             run=task['branch_run'];item=next(i for i in run['items'] if i['id']==run['current_item_id'])
             messages=copy.deepcopy(messages)
+            from .unattended_setup import WORKER_POLICY
+            messages[0]['content'] += '\n'+WORKER_POLICY
             messages[0]['content'] += '\nUnattended work: implement ONLY the active item below. The controller owns branch commits and next-item selection. Finish all acceptance criteria and request checkpoint. Never claim an empty or partial patch completes the job. No model tool can grant execution/merge authority.'
             if item.get('review_repair'):messages.append({'role':'user','content':json.dumps({'review_repair':item['review_repair']})})
             messages.append({'role':'user','content':json.dumps({'active_item':{k:item[k] for k in ('id','title','instructions','acceptance_criteria','required_checks')},'completed_items':[{'id':i['id'],'outcome':i['outcome_summary'][:500]} for i in run['items'] if i['status'] in branch_runs.DONE]})})
+            if item.get('clarification_history'):messages.append({'role':'user','content':'Previous questions and operator guidance for this item: '+json.dumps(item['clarification_history'])})
             if run.get('guidance'):messages.append({'role':'user','content':'Operator guidance within the accepted item scope (does not authorize extra scope): '+json.dumps(run['guidance'])})
         if task["usage"]["cost"] > task["limits"]["dollars"] or (not measuring(task) and task["usage"]["reviewer"]["tokens"] > task["limits"]["reviewer_tokens"]):
             key = 'dollars' if task['usage']['cost'] > task['limits']['dollars'] else 'reviewer_tokens'
@@ -2205,10 +2208,17 @@ class Engine:
                             question = args.get("question")
                             if not isinstance(question, str) or not question.strip() or len(question) > 8000:
                                 raise ValueError("Provide a question of up to 8,000 characters")
-                            task["status"] = "awaiting_reply"
-                            if "branch_run" in task: task["branch_run"]["waiting_for_user"]=question
-                            self.event(task, "assistant", "cheapoS", question)
-                            result = {"waiting_for_user": True}
+                            from .unattended_setup import reconsider_question, WORKER_POLICY
+                            if reconsider_question(task,question):
+                                result={'context_check_required':True,'instruction':WORKER_POLICY,
+                                        'project_context':project_context.brief(task),
+                                        'next_step':'Use repository evidence to resolve this question. If an essential decision remains after inspection, ask again with the specific blocker.'}
+                                self.event(task,'branch_context','Checking project context before interrupting',{'item_id':task['branch_run']['current_item_id']})
+                            else:
+                                task["status"] = "awaiting_reply"
+                                if "branch_run" in task: task["branch_run"]["waiting_for_user"]=question
+                                self.event(task, "assistant", "cheapoS", question)
+                                result = {"waiting_for_user": True}
                         else:
                             result = self.read_url(runtime, args) if name == "read_url" else self.worker_file_tool(runtime, name, args, request_versions)
                             if name in {"write_file", "replace_text", "replace_lines"}:
