@@ -1,0 +1,72 @@
+[
+  {
+    "task_id": "ST-001",
+    "title": "URL Slug Generator",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 124.24,
+    "turns": 5,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 24213,
+      "reviewer": 33407,
+      "planner": 4217
+    }
+  },
+  {
+    "task_id": "ST-002",
+    "title": "Semantic Version Comparator",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 109.43,
+    "turns": 6,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 32042,
+      "reviewer": 35847,
+      "planner": 4536
+    }
+  },
+  {
+    "task_id": "ST-003",
+    "title": "Markdown Inline Formatter",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 102.62,
+    "turns": 5,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 19659,
+      "reviewer": 32692,
+      "planner": 4273
+    }
+  },
+  {
+    "task_id": "ST-004",
+    "title": "Nested Template String Interpolator",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 108.75,
+    "turns": 5,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 22554,
+      "reviewer": 38465,
+      "planner": 4245
+    }
+  },
+  {
+    "task_id": "ST-005",
+    "title": "Identifier Case Converter",
+    "category": "Text Processing",
+    "status": "MERGED",
+    "duration": 108.79,
+    "turns": 6,
+    "cost": 0.0,
+    "tokens": {
+      "worker": 26990,
+      "reviewer": 25271,
+      "planner": 4380
+    }
+  }
+]

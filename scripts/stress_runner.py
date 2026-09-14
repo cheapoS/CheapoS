@@ -56,7 +56,9 @@ def reset_repo_for_task(repo_dir, task):
     test_path = Path(repo_dir) / task["test_name"]
     test_path.write_text(task["test_code"])
     git_run(repo_dir, "add", task["test_name"])
-    git_run(repo_dir, "commit", "-m", f"Add {task['id']} acceptance test contract: {task['test_name']}")
+    status = git_run(repo_dir, "status", "--porcelain", check=False)
+    if status:
+        git_run(repo_dir, "commit", "-m", f"Add {task['id']} acceptance test contract: {task['test_name']}")
     return git_run(repo_dir, "rev-parse", "HEAD")
 
 
@@ -92,7 +94,7 @@ class CheapOSClient:
 
 def run_single_task(client, repo_dir, task, limits=None):
     limits = limits or {
-        "dollars": 0.0,
+        "dollars": 1.0,
         "working_seconds": 3600,
         "worker_turns": 40,
         "requests": 80,
@@ -130,9 +132,23 @@ def run_single_task(client, repo_dir, task, limits=None):
             client.post(f"/api/tasks/{task_id}/branch-resume", {})
         time.sleep(2)
 
-    # 2. Authorize proposal
+    # 2. Normalize and authorize proposal
     prop_data = client.post(f"/api/tasks/{task_id}/branch-proposal", {})
     proposal_id = prop_data["proposal_id"]
+    plan = prop_data.get("contract", {}).get("plan") or prop_data.get("plan", {})
+    modified = False
+    for it in plan.get("items", []):
+        if it.get("required_checks") != [task["verification_command"]]:
+            it["required_checks"] = [task["verification_command"]]
+            modified = True
+    if plan.get("final_checks") != [task["verification_command"]]:
+        plan["final_checks"] = [task["verification_command"]]
+        modified = True
+    if modified:
+        client.post(f"/api/tasks/{task_id}/branch-proposal-edit", {"plan": plan})
+        prop_data = client.post(f"/api/tasks/{task_id}/branch-proposal", {})
+        proposal_id = prop_data["proposal_id"]
+
     client.post(f"/api/tasks/{task_id}/branch-start", {"proposal_id": proposal_id, "approved": True})
     print(f"[{task['id']}] Branch run started. Supervising...", flush=True)
 
@@ -187,9 +203,19 @@ def run_single_task(client, repo_dir, task, limits=None):
                 print(f"  [{task['id']}] Resume failed: {e}", flush=True)
 
     # 4. Final preview and merge
-    prev = client.post(f"/api/tasks/{task_id}/branch-final-preview", {})
-    preview_id = prev.get("preview_id")
-    if not preview_id:
+    prev = None
+    for attempt in range(12):
+        try:
+            prev = client.post(f"/api/tasks/{task_id}/branch-final-preview", {})
+            break
+        except Exception as e:
+            if "Pause active work" in str(e) and attempt < 11:
+                time.sleep(1.0)
+                continue
+            raise
+
+    preview_id = prev.get("preview_id") if prev else None
+    if not preview_id and prev:
         # Check if blocker needs final recheck
         if "revalidate" in str(prev.get("blocker", "")):
             client.post(f"/api/tasks/{task_id}/branch-final-recheck", {})
@@ -299,15 +325,22 @@ def main():
         print(f"==========================================")
         reset_repo_for_task(args.repo_dir, t)
 
+        def record_result(res_item):
+            idx = next((idx for idx, r in enumerate(results) if r.get("task_id") == res_item["task_id"]), None)
+            if idx is not None:
+                results[idx] = res_item
+            else:
+                results.append(res_item)
+
         try:
             outcome = run_single_task(client, args.repo_dir, t)
-            results.append(outcome)
+            record_result(outcome)
         except KeyboardInterrupt:
             print("\nRunner interrupted by operator. Saving progress...")
             break
         except Exception as e:
             print(f"[{t['id']}] Fatal exception: {e}")
-            results.append({"task_id": t["id"], "title": t["title"], "category": t["category"], "status": f"FATAL_ERROR: {e}"})
+            record_result({"task_id": t["id"], "title": t["title"], "category": t["category"], "status": f"FATAL_ERROR: {e}"})
 
         with open(RESULTS_FILE, "w") as f:
             json.dump(results, f, indent=2)
