@@ -10,6 +10,20 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+**Near-term priority: lifetime Usage & savings.** Add a bottom-left entry for
+this installation's accumulated free, local, included-access, and paid usage,
+with a readable summary suitable for sharing in the README. Build on existing
+accounting to show how much usage is served without paid-model tokens. Keep
+measured free/paid usage, cost estimates, and comparisons distinct. Select this before
+the deferred concurrency expansion; it does not depend on T79/T80.
+
+| ID | Task | Depends on | Size | Status |
+| --- | --- | --- | --- | --- |
+| [T81](docs/tasks/T81-lifetime-usage-savings.md) | Show durable lifetime usage, free versus paid breakdown, and shareable evidence | Existing T24 metrics and role accounting | M; deliver in increments | Ready — near-term priority |
+
+This entry records the next implementation task; it does not start a live trial
+or authorize implementation of every card below.
+
 **Deferred follow-up: Interactive work while an Unattended run continues.**
 The September 14, 4:11 PM report exposed the current app-wide single-runtime
 restriction and confusing saved-but-not-started feedback. Capture both issues;
