@@ -299,7 +299,7 @@ function renderHome() {
   $$('.view').forEach(v=>v.classList.toggle('hidden',v.id!=='chat-view'));
   if(branchUI?.renderStart()){renderComposer();return;}
   const opened=new Map($$('#chat-view details[data-event]').map(d=>[d.dataset.event,d.open]));
-  $('#chat-view').innerHTML=`<div class="chat-welcome startup-welcome">${startupMarkup()}${state.project?`<div class="chat-suggestions"><button data-suggestion="Explain how this project works. Start by reading its README and main entry points.">Explain this project ${icon('chevron')}</button><button data-suggestion="Look through this project and suggest one small improvement. Explain it before making changes.">Find a small improvement ${icon('chevron')}</button></div>`:`<button class="primary-button" id="welcome-open">${icon('folder')}Open project</button>`}<button class="text-link startup-preferences" data-startup="preferences">Startup preferences</button></div>`;
+  $('#chat-view').innerHTML=`<div class="chat-welcome startup-welcome">${startupMarkup()}${state.project?`<div class="chat-suggestions"><button data-suggestion="Explain how this project works. Start by reading its README and main entry points.">Explain this project ${icon('chevron')}</button><button data-suggestion="Look through this project and suggest one small improvement. Explain it before making changes.">Find a small improvement ${icon('chevron')}</button></div>`:`<button class="primary-button" id="welcome-open">${icon('folder')}Open project</button>`}<button class="text-link startup-preferences" data-startup="preferences">Startup preferences</button></div>`+pendingMessageMarkup();
   for(const d of $$('#chat-view details[data-event]'))if(opened.has(d.dataset.event))d.open=opened.get(d.dataset.event);
   if($('#welcome-open'))$('#welcome-open').onclick=()=>openProject();
   $$('[data-suggestion]').forEach(b=>b.onclick=()=>{$('#chat-input').value=b.dataset.suggestion;saveDraft();renderComposer();$('#chat-input').focus()});
@@ -323,9 +323,25 @@ function submissionAvailability(task=state.task,mode=branchUI?.getMode()||'inter
 function sendingHere(){return state.pendingSends.has(draftKey());}
 async function loadAdmission({render=true}={}){try{state.admission=await api('/admission');}catch(e){state.admission=e.status===404?{legacy:true}:null;}if(render)renderComposer();}
 function clearOwnedDraft(key,message){if(state.drafts.get(key)===message)state.drafts.delete(key);if(draftKey()===key&&$('#chat-input').value.trim()===message)$('#chat-input').value='';}
+function pendingMessageMarkup(){
+  const pending=state.pendingMessages?.get(draftKey());if(!pending)return '';
+  // A poll can observe server acceptance before the POST response arrives.
+  if(state.task&&(state.task.requests||[]).length>pending.requests)return '';
+  return `<article class="chat-message from-user pending-message" aria-label="Message being sent"><div class="chat-author"><strong>You</strong><span role="status">Sending…</span></div><div class="chat-message-body">${messageText(pending.text)}</div><p class="small muted">Waiting for cheapoS to accept this message. Your draft is saved.</p></article>`;
+}
+function beginMessageSend(key,message){
+  state.pendingMessages ||= new Map();state.sendErrors ||= new Map();
+  state.pendingMessages.set(key,{text:message,requests:(state.task?.requests||[]).length});
+  state.sendErrors.delete(key);state.pendingSends.add(key);saveDraft();
+  if(state.task)renderChat();else renderHome();renderComposer();
+  $('#view-container').scrollTop=$('#view-container').scrollHeight;
+}
 function renderComposer() {
   branchUI?.sync();
   const task=state.task, busy=task&&taskBusy(task);
+  const assistance=CheapOSGuide.coordinatorStatus(task||{execution:state.preferences.execution});
+  $('#execution-choice').textContent=`Coordinator ${assistance.label} · Work setup`;
+  $('#execution-choice').title=`Coordinator assistance: ${assistance.label} ${task?'for this chat':'for new chats'}. Open execution settings.`;
   renderConnectionNotice();
   $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&(state.taskPermissions.commands.length||state.taskPermissions.project_grants?.length));
   $('#composer-permissions').textContent=state.taskPermissions?.project_grants?.length?'Tests allowed this session':'Commands allowed this session';
@@ -362,6 +378,11 @@ function renderComposer() {
   if(!busy&&!availability.allowed){$('#composer-note').textContent=availability.reason;if(availability.task_id){const link=document.createElement('button');link.className='text-link';link.textContent='Open running task';link.onclick=()=>selectTask(availability.task_id);$('#composer-note').append(' ',link);}}
   if(['merged','left_on_branch'].includes(task?.branch_run?.status)){$('#chat-input').disabled=true;$('#chat-input').placeholder='Start a new chat to continue';$('#chat-send').disabled=true;if($('#chat-steer'))$('#chat-steer').hidden=true;$('#composer-note').textContent=task.branch_run.status==='merged'?'This run is merged. Start a new chat for the next job; its scope and approvals will be separate.':'Work is saved on its feature branch. Start a new chat for another job, or inspect the saved review above.';}
   if(task&&!task.demo)$('#composer-note').textContent+=` · Est. ${money(task.usage.cost)} used.`;
+  const sending=sendingHere(),send=$('#chat-send');
+  send.setAttribute('aria-label',sending?'Sending message':'Send message');
+  send.innerHTML=sending?'<span class="spinner" aria-hidden="true"></span>':icon('up');
+  if(sending)$('#composer-note').textContent='Sending your message… Waiting for cheapoS to accept it. Your draft is saved.';
+  else if(state.sendErrors?.has(draftKey()))$('#composer-note').textContent=state.sendErrors.get(draftKey())+' Your draft remains saved.';
   const stop=$('#chat-stop');
   stop.hidden=!busy&&!state.startup.busy;
   stop.disabled=pausing||state.stoppingStartup;
@@ -581,7 +602,7 @@ function renderChat() {
   else if(!taskBusy(task)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(guide.primary==='retry-wait'?'retry-wait':guide.primary==='clarify'?'clarify':task.status==='error'?'start':'resume',guide.primary==='retry-wait'?'Retry when available':guide.primary==='clarify'?guide.primaryLabel||'Continue in chat':task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?guide.primaryLabel:'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
   if(task.archived_at||task.trashed_at||task.branch_run)decision=task.branch_run&&task.pending_approval?permissionMarkup(task):'';
   const lastReply=conversation.findLast(entry=>entry.kind==='assistant');
-  $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('');
+  $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('')+pendingMessageMarkup();
   if($('[data-sample-diagnostics]'))$('[data-sample-diagnostics]').onclick=()=>openConnections();
   $$('[data-environment]').forEach(b=>b.onclick=async()=>{try{if(b.dataset.environment==='recheck'){b.disabled=true;await api('/tasks/'+task.id+'/environment-recheck',{});await refresh()}else{await navigator.clipboard.writeText(b.dataset.environment==='path'?task.workspace:task.environment_setup.setup_commands[Number(b.dataset.environment)]);toast('Copied')}}catch(e){toast(e.message)}finally{b.disabled=false}});
   for(const d of $$('#chat-view details[data-event]')){
@@ -594,15 +615,26 @@ function renderChat() {
     if(d.dataset.event===focused)$('summary',d)?.focus({preventScroll:true});
   }
   if(task.branch_run&&!task.archived_at&&!task.trashed_at)branchUI.render(task);
+  const workerStall=task.error_code==='progress_limit'&&task.active_role==='worker'||task.branch_run?.pause_detail?.cause==='repeated_work'&&task.branch_run?.pause_detail?.role==='worker';
+  if(workerStall&&['paused','interrupted'].includes(task.status)&&!task.demo&&!task.archived_at&&!task.trashed_at){
+    const pause=$('#chat-view .branch-pause')||$('#chat-view .chat-decision');
+    if(pause){
+      const notice=document.createElement('section');notice.className='coordinator-task-notice';
+      notice.innerHTML=coordinatorTaskNotice(task,true)+coordinatorReassessmentMarkup(task)+button('coordinator-settings','Coordinator settings');
+      const details=$('details',pause)||$('.button-row',pause);pause.insertBefore(notice,details);
+    }
+  }
   if(task.error&&!task.branch_run){const logs=document.createElement('button');logs.className='text-link';logs.textContent='View technical logs';logs.onclick=()=>setView('logs');$('#chat-view').append(logs);}
   $$('[data-workflow-logs]').forEach(b=>b.onclick=()=>{setView('logs');const routing=$('#routing-diagnostics');if(routing){routing.open=true;routing.scrollIntoView({block:'start',behavior:'instant'});$('summary',routing)?.focus({preventScroll:true});}});
   updateProgressClock();bindCommitDecision(task);bindTerminalCopy();bindPermissions(task);
-  $$('[data-chat-action]').forEach(b=>b.onclick=async()=>{
+  $$('#chat-view [data-chat-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.chatAction;
     if(action==='changes'||action==='activity'){setView(action);return}
     if(action==='clarify'){setView('chat');$('#chat-input')?.focus();return}
     if(action==='stop'){await stopTask();return}
     if(action==='connections'){openConnections(undefined,task);return}
+    if(action==='coordinator-settings'){executionPreferences();return}
+    if(action==='coordinator-reassess'){await reassessCoordinator(b,task);return}
     if(action==='request-review'){await requestCommitReview(b);return}
     if(action==='boost-headroom'){await boostHeadroom(b);return}
     if(action==='retry-wait'){await startTask(task.id,{retry_when_available:true});return}
@@ -625,7 +657,7 @@ function renderActivity() {
   const status=task.pending_approval?permissionMarkup(task):taskBusy(task)?progressMarkup(task):`<section class="activity-status"><span class="activity-eyebrow">${['approved','completed'].includes(task.status)?'RESULT':'CURRENT STATUS'}</span><h3>${esc(failure?.title||guide.title)}</h3><p>${esc(failure?.description||guide.description)}</p>${task.error&&task.error!==guide.description?`<p>${esc(task.error)}</p>`:''}<div class="button-row">${['approved','completed'].includes(task.status)?action('changes','Review changes'):''}${action('chat','Back to chat')}${['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)?`<button class="outline-button" id="activity-resume">${pause?'Review pause in chat':task.status==='error'?'Retry':guide.primaryLabel}</button>`:''}${task.error_code==='routing_unavailable'?'<button class="outline-button" id="activity-models">Models</button>':''}</div></section>`;
   $('#activity-view').innerHTML=`<div class="view-title"><div><h2>What’s happening</h2><p>${task.demo?'Scripted demo · real files and checks':'Real actions and saved results from this chat.'}</p></div></div>${status}${reviewDisputeMarkup(task)}${task.check_stream?commandMarkup(task.check_stream,{live:true}):''}<div class="activity-facts"><button data-activity-view="changes"><span>Saved changes · whole chat</span><strong>${a.files} file${a.files===1?'':'s'}</strong><small>Inspect the diff →</small></button><button data-activity-view="tests"><span>Checks · this request</span><strong>${esc(a.checks)}</strong><small>View command output →</small></button><button id="activity-review" ${!a.checkpoint?'disabled':''}><span>Review · this request</span><strong>${esc(a.review)}</strong><small>${a.checkpoint?'Inspect the decision →':'A passing check alone is not approval'}</small></button></div><section class="activity-timeline"><h3>Latest request</h3><p class="activity-request">${esc(a.request)}</p><p class="small muted">Chronological actions${a.items.length>40?' · showing the latest 40':''}</p>${timeline||'<p class="activity-empty">No file actions yet. Conversation and live model output are in Chat.</p>'}</section><button class="text-link" data-activity-view="logs">View technical logs →</button>`;
   $$('[data-activity-view]').forEach(b=>b.onclick=()=>setView(b.dataset.activityView));
-  $$('[data-chat-action]').forEach(b=>b.onclick=()=>b.dataset.chatAction==='stop'?stopTask():b.dataset.chatAction==='connections'?openConnections():setView('chat'));
+  $$('#activity-view [data-chat-action]').forEach(b=>b.onclick=()=>b.dataset.chatAction==='stop'?stopTask():b.dataset.chatAction==='connections'?openConnections():setView('chat'));
   $$('[data-activity-file]').forEach(b=>b.onclick=()=>{state.file=task.changes.findIndex(c=>c.path===b.dataset.activityFile);setView('changes')});
   bindPermissions(task);
   $$('[data-checkpoint]').forEach(b=>b.onclick=()=>checkpointDialog(Number(b.dataset.checkpoint)));
@@ -833,22 +865,43 @@ function newTask(prefill='',preset={}) {
   if(!state.project)openProject();else $('#chat-input').focus();
 }
 const executionLabel=mode=>({delegate:'Delegate heavy work',local:'All local',remote:'All remote',manual:'Manual model pair'}[mode]||'Manual model pair');
+function coordinatorTaskNotice(task,paused=false){
+  if(!task||task.demo)return '';
+  const status=CheapOSGuide.coordinatorStatus(task);
+  return `<div class="execution-notice"><strong>This chat · Coordinator assistance: ${status.label}</strong><p>${esc(paused&&status.pauseNote?status.pauseNote:status.detail)}</p><p>Restarting keeps this chat's saved choice. Execution defaults apply to new chats.</p></div>`;
+}
+function coordinatorReassessmentMarkup(task){
+  const available=task.coordinator_reassessment;
+  if(!available)return '';
+  if(!available.available)return `<p class="small">${esc(available.reason)}</p>`;
+  const busy=state.coordinatorReassessing?.has(task.id),error=state.coordinatorErrors?.get(task.id);
+  return `<p>Use ${esc(available.model)} to reassess these saved files once, then continue only if it provides a next step. Keeps remaining limits, permissions and review requirements. No new prompt needed.</p><button class="primary-button" data-chat-action="coordinator-reassess" ${busy?'disabled':''}>${busy?'Requesting reassessment…':CheapOSGuide.coordinatorStatus(task).enabled?'Reassess with coordinator':'Enable coordinator &amp; reassess'}</button>${error?`<p role="alert">${esc(error)}</p>`:''}`;
+}
+async function reassessCoordinator(button,task){
+  state.coordinatorReassessing ||= new Set();state.coordinatorErrors ||= new Map();
+  if(state.coordinatorReassessing.has(task.id))return;
+  state.coordinatorReassessing.add(task.id);state.coordinatorErrors.delete(task.id);
+  button.disabled=true;button.textContent='Requesting reassessment…';
+  try{const saved=await api('/tasks/'+task.id+'/start',{coordinator_reassessment:true});if(state.task?.id===task.id){state.task=saved;renderTask();}}
+  catch(error){state.coordinatorErrors.set(task.id,error.message);toast(error.message);}
+  finally{state.coordinatorReassessing.delete(task.id);if(state.task?.id===task.id)renderChat();}
+}
 function coordinatorSettings(saved,models){
   const selected=saved.coordinator_model||saved.local_model||'',known=Array.isArray(models),choices=known?models:[];
-  return `<section class="execution-notice"><h3>Coordinator assistance — recommended</h3><p>Let a local model help redirect stalled work. Coding and independent review keep their selected models.</p><label class="full-field">Assistance<select name="coordinator_assistance"><option value="off" ${saved.coordinator_assistance!==true?'selected':''}>Off</option><option value="on" ${saved.coordinator_assistance===true?'selected':''}>On · help when work stalls</option></select></label><label class="full-field">Installed local coordinator<select name="coordinator_model"><option value="">Use configured local chat model</option>${selected&&!choices.includes(selected)?`<option selected value="${esc(selected)}">${esc(selected)} · availability not confirmed</option>`:''}${choices.map(name=>`<option value="${esc(name)}" ${name===selected?'selected':''}>${esc(name)}</option>`).join('')}</select></label><p data-coordinator-status>${known?(choices.length?'Installed models advertise local completion and tools. The saved model is checked again when needed.':'No eligible installed local model is available. Ordinary remote work remains usable.'):'Local model availability is not checked. Ordinary remote work remains usable.'}</p><button type="button" class="outline-button" data-coordinator-refresh>Refresh installed models</button><p>Idle until a worker stalls, then one bounded consultation per request or unattended item. Returns to idle afterward. Local inference uses laptop resources; no background thinking, downloads or remote fallback. Applies only to new tasks.</p></section>`;
+  return `<section class="execution-notice"><h3>Coordinator assistance — recommended</h3><p><strong>Defaults for new chats</strong> · ${saved.coordinator_assistance===true?'On':'Off'}</p><p>Optional and Off until you enable it. Restarting restores your saved choice; it does not turn assistance on.</p><p>Let a local model help redirect stalled work. Coding and independent review keep their selected models.</p><label class="full-field">Assistance for new chats<select name="coordinator_assistance"><option value="off" ${saved.coordinator_assistance!==true?'selected':''}>Off</option><option value="on" ${saved.coordinator_assistance===true?'selected':''}>On · help when work stalls</option></select></label><label class="full-field">Installed local coordinator<select name="coordinator_model"><option value="">Use configured local chat model</option>${selected&&!choices.includes(selected)?`<option selected value="${esc(selected)}">${esc(selected)} · availability not confirmed</option>`:''}${choices.map(name=>`<option value="${esc(name)}" ${name===selected?'selected':''}>${esc(name)}</option>`).join('')}</select></label><p data-coordinator-status>${known?(choices.length?'Installed models advertise local completion and tools. The saved model is checked again when needed.':'No eligible installed local model is available. Ordinary remote work remains usable.'):'Local model availability is not checked. Ordinary remote work remains usable.'}</p><button type="button" class="outline-button" data-coordinator-refresh>Refresh installed models</button><p>Idle until a worker stalls, then one bounded consultation per request or unattended item. Returns to idle afterward. Local inference uses laptop resources; no background thinking, downloads or remote fallback. Applies only to new tasks.</p></section>`;
 }
 function executionPreferences() {
   const saved=state.preferences.execution||{},local=state.config.worker?.base_url?.includes(':11434')?state.config.worker.model:'';
-  const d=dialog(`<form>${modalHeader('EXECUTION','Where should the work run?')}<p class="modal-description">Choose how new chats use your laptop and connected providers.</p>${state.task?`<p class="execution-notice">This chat keeps <strong>${esc(executionLabel(state.task.execution?.mode))}</strong> and its saved models. Start a new chat to use a different setup.</p>`:''}<div class="execution-options">${[
+  const d=dialog(`<form>${modalHeader('EXECUTION','Where should the work run?')}<p class="modal-description">Choose how new chats use your laptop and connected providers.</p>${state.task?`<p class="execution-notice">This chat keeps <strong>${esc(executionLabel(state.task.execution?.mode))}</strong> and its saved models. Start a new chat to use a different setup.</p>`:''}${coordinatorTaskNotice(state.task)}<div class="execution-options">${[
     ['delegate','Delegate heavy work','Short local chats. Free remote models inspect files, implement changes, and review. Your local model goes idle after handoff.'],
     ['local','All local','Work and review on your own hardware. No remote model requests.'],
     ['remote','All remote','A responding free OmniRoute model handles chat and work; a different free model reviews.'],
     ['manual','Manual model pair','Use the worker and reviewer selected in Models, including paid models when your spending cap allows.']
-  ].map(([value,title,description])=>`<label class="execution-option"><input type="radio" name="mode" value="${value}" ${(saved.mode||'manual')===value?'checked':''}><span><strong>${title}</strong><small>${description}</small></span></label>`).join('')}</div><div id="execution-local"><label class="full-field">Installed Ollama model<input name="local_model" value="${esc(saved.local_model||local)}" placeholder="Your installed model ID" autocomplete="off"><small>Used for short chat in Delegate mode, and implementation in All local.</small></label><label class="full-field" id="execution-reviewer">Local reviewer model · optional<input name="local_reviewer" value="${esc(saved.local_reviewer||'')}" placeholder="Use the same local model" autocomplete="off"></label><label class="full-field">Local planner model · optional<input name="local_planner" value="${esc(saved.local_planner||'')}" placeholder="Use the local reviewer" autocomplete="off"></label></div><p id="execution-remote" class="execution-notice">Uses providers you enabled in OmniRoute. Project context is sent when work is handed off. cheapoS checks up to four free candidates per role without project data. A worker handles chat and edits; a different reviewer is selected at a checkpoint. Failed models cool down; up to two free-model handoffs per request continue saved work automatically. Saved edits wait if review is unavailable. No automatic paid or local fallback.</p>${coordinatorSettings(saved,state.readiness?.paths?.local?.models)}<p class="small muted">Free routing uses advertised prices. Check OmniRoute’s fallback and billing settings. Automatic chats can switch between free models after failures. Manual and local choices stay fixed. Saving does not start inference or download anything.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new chats.</span><button class="primary-button" type="submit">Save execution choice</button></div></form>`,'execution-modal');
+  ].map(([value,title,description])=>`<label class="execution-option"><input type="radio" name="mode" value="${value}" ${(saved.mode||'manual')===value?'checked':''}><span><strong>${title}</strong><small>${description}</small></span></label>`).join('')}</div><div id="execution-local"><label class="full-field">Installed Ollama model<input name="local_model" value="${esc(saved.local_model||local)}" placeholder="Your installed model ID" autocomplete="off"><small>Used for short chat in Delegate mode, and implementation in All local.</small></label><label class="full-field" id="execution-reviewer">Local reviewer model · optional<input name="local_reviewer" value="${esc(saved.local_reviewer||'')}" placeholder="Use the same local model" autocomplete="off"></label><label class="full-field">Local planner model · optional<input name="local_planner" value="${esc(saved.local_planner||'')}" placeholder="Use the local reviewer" autocomplete="off"></label></div><p id="execution-remote" class="execution-notice">Uses providers you enabled in OmniRoute. Project context is sent when work is handed off. cheapoS checks up to four free candidates per role without project data. A worker handles chat and edits; a different reviewer is selected at a checkpoint. Failed models cool down; up to two free-model handoffs per request continue saved work automatically. Saved edits wait if review is unavailable. No automatic paid or local fallback.</p>${coordinatorSettings(saved,state.readiness?.paths?.local?.models)}<p class="small muted">Free routing uses advertised prices. Check OmniRoute’s fallback and billing settings. Automatic chats can switch between free models after failures. Manual and local choices stay fixed. Saving does not start inference or download anything.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new chats.</span><button class="primary-button" type="submit">Save defaults for new chats</button></div></form>`,'execution-modal');
   const form=$('form',d),layout=()=>{const mode=new FormData(form).get('mode');$('#execution-local',d).hidden=!['local','delegate'].includes(mode);$('#execution-reviewer',d).hidden=mode!=='local';$('#execution-remote',d).hidden=!['remote','delegate'].includes(mode);$('[name="local_model"]',d).required=['local','delegate'].includes(mode)};
   $$('[name="mode"]',d).forEach(input=>input.onchange=layout);layout();
   $('[data-coordinator-refresh]',d).onclick=async()=>{const status=$('[data-coordinator-status]',d);status.textContent='Checking installed local models…';try{const readiness=await api('/readiness?refresh=1');if(!d.isConnected)return;const models=readiness.paths?.local?.models,select=$('[name="coordinator_model"]',d),selected=select.value;if(!Array.isArray(models)){status.textContent='Local inspection is pending or unavailable. Refresh again later; other work is unaffected.';return;}for(const name of models)if(![...select.options].some(o=>o.value===name))select.add(new Option(name,name));select.value=selected;status.textContent=models.length?'Installed eligible local models refreshed. Saved choice is preserved.':'No eligible local models found. Assistance will be skipped if unavailable.';}catch{if(d.isConnected)status.textContent='Could not check local models. Other work remains usable.';}};
-  form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form);state.preferences=await api('/preferences',{execution:{...saved,...Object.fromEntries(['mode','local_model','local_reviewer','local_planner','coordinator_model'].map(k=>[k,String(f.get(k)||'')])),coordinator_assistance:f.get('coordinator_assistance')==='on'}});d.close();renderComposer();toast('Execution choice saved for new chats.');})};
+  form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form);state.preferences=await api('/preferences',{execution:{...saved,...Object.fromEntries(['mode','local_model','local_reviewer','local_planner','coordinator_model'].map(k=>[k,String(f.get(k)||'')])),coordinator_assistance:f.get('coordinator_assistance')==='on'}});d.close();renderComposer();toast(state.task?'Defaults saved for new chats. This chat keeps its saved coordinator setting.':'Defaults saved for new chats.');})};
 }
 function chatLimits({defaults=false}={}) {
   const task=defaults?null:state.task,limits=task?.limits||state.preferences.limits;
@@ -868,13 +921,13 @@ async function dispatchChat() {
   const message=$('#chat-input').value.trim();if(!message)return;
   if(!state.project){openProject(()=>{$('#chat-input').value=message;saveDraft();renderComposer()});return;}
   if((state.preferences.execution?.mode||'manual')==='manual'&&(!state.config.worker||!state.config.reviewer)){openConnections(()=>{$('#chat-input').focus()});return;}
-  const key=draftKey(),selection=state.selection,repository=state.project.path;state.pendingSends.add(key);saveDraft();renderComposer();
+  const key=draftKey(),selection=state.selection,repository=state.project.path;beginMessageSend(key,message);
   try {
-    if(task){await api('/tasks/'+task.id+'/message',{message});clearOwnedDraft(key,message);await refresh();}
+    if(task){const saved=await api('/tasks/'+task.id+'/message',{message});state.pendingMessages.delete(key);clearOwnedDraft(key,message);if(state.selection===selection&&state.task?.id===task.id){state.task=saved;renderTask();}void refreshContext();}
     else {const created=await api('/tasks',{repository,prompt:message,conversational:true,limits:state.preferences.limits});await loadTasks();if(state.selection===selection){await selectTask(created.id);}state.pendingSends.add(created.id);try{const started=await startTask(created.id);if(started)clearOwnedDraft(key,message);}finally{state.pendingSends.delete(created.id);}}
     if(state.selection===selection)$('#view-container').scrollTop=$('#view-container').scrollHeight;
-  }catch(e){if(state.selection===selection){$('#composer-note').textContent=e.message+' Your draft remains saved.';}toast(e.message);}
-  finally{state.pendingSends.delete(key);renderComposer();if(state.selection===selection)$('#chat-input').focus();}
+  }catch(e){state.sendErrors.set(key,e.message);toast(e.message);}
+  finally{state.pendingMessages.delete(key);state.pendingSends.delete(key);if(draftKey()===key){if(state.task)renderChat();else renderHome();}renderComposer();if(state.selection===selection)$('#chat-input').focus();}
 }
 async function steerTask(text) {
   const task=state.task,message=text||$('#chat-input').value.trim();
@@ -981,7 +1034,7 @@ function openConnections(afterSave, taskContext=null) {
       <label class="checkbox-field" data-included-label="${role}"><input type="checkbox" data-included="${role}" ${p.access==='included'?'checked':''}><span>Use included access for this exact model<small>Authorize its ID in the gateway list above first.</small></span></label><div class="field-grid" data-prices="${role}">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
       <p class="small muted" data-price-note="${role}">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
   };
-  const d=dialog(`${modalHeader('MODEL CONNECTIONS','Choose where the work runs.')}<button class="outline-button" id="models-execution">Execution: ${esc(executionLabel(state.preferences.execution?.mode))} →</button><p class="modal-description">All remote model requests go through OmniRoute during development. Configure OpenRouter and other providers in its dashboard. Direct Ollama remains available for installed local models.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>Automatic remote chats check another free model after a recoverable failure when you resume. Manual and local chats keep their selected models; choices below apply to new chats.</p></div>`:''}
+  const d=dialog(`${modalHeader('MODEL CONNECTIONS','Choose where the work runs.')}<button class="outline-button" id="models-execution">Execution: ${esc(executionLabel(state.preferences.execution?.mode))} · Coordinator ${CheapOSGuide.coordinatorStatus({execution:state.preferences.execution}).label} for new chats →</button>${coordinatorTaskNotice(taskContext||state.task)}<p class="modal-description">All remote model requests go through OmniRoute during development. Configure OpenRouter and other providers in its dashboard. Direct Ollama remains available for installed local models.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>Automatic remote chats check another free model after a recoverable failure when you resume. Manual and local chats keep their selected models; choices below apply to new chats.</p></div>`:''}
     <form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong>OmniRoute</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
       <p id="gateway-message" class="small muted"></p><p id="gateway-instance" class="small muted"></p>
       <details class="advanced"><summary id="free-pool-title">Authorized remote model pool</summary><p class="small muted">Refreshes every five minutes, including OpenRouter’s current free models. Failed models cool down for 15–60 minutes. Provider cooldowns follow the gateway’s retry time and do not count as individual model failures. A response or tool check does not prove coding quality.</p><div id="free-model-pool" class="free-model-pool"></div></details>

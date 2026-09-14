@@ -11,6 +11,46 @@ from .providers import BudgetError, ProviderError
 from .routing import coordinator_assistance_config, RoutingPause
 
 
+def reassessment_config(task):
+    """Explicit paused-chat opt-in; never a renewed attempt or user follow-up."""
+    if (task.get('branch_run') or task.get('demo') or task.get('status') != 'paused'
+            or task.get('error_code') != 'progress_limit' or task.get('active_role') != 'worker'
+            or task.get('pending_approval') or task.get('pending_review') or task.get('pending_checkpoint')
+            or task.get('pending_verification') or task.get('commit_pending') or task.get('limit_hit')
+            or (task.get('environment_setup') or {}).get('status') == 'missing'
+            or (task.get('reconciliation') or {}).get('conflicts')):
+        raise ValueError('Coordinator reassessment is available only for a paused Interactive worker stall without another pending action.')
+    key = contract.episode_key(task)
+    if any(e.get('key') == key for e in task.get('coordinator_recovery', [])):
+        raise ValueError('Coordinator assistance was already attempted for this request. Inspect its saved result; reassessment does not renew attempts.')
+    from .engine import request_worker_turns
+    if not measuring(task) and request_worker_turns(task) >= task['limits']['worker_turns']:
+        raise ValueError('No worker turns remain. Review the task limit before requesting coordinator help.')
+    if remaining_work_seconds(task) <= 0:
+        raise ValueError('No working time remains. Review the task limit before requesting coordinator help.')
+    config = coordinator_assistance_config({**task, 'execution': {**task.get('execution', {}), 'coordinator_assistance': True}})
+    if not config:
+        raise ValueError('This chat has no saved local coordinator model. Inspect Coordinator settings; new-chat defaults do not change this task.')
+    return config
+
+
+def remaining_work_seconds(task):
+    import math
+    latest = (task.get('run_metrics') or [{}])[-1]
+    used = task.get('recovery_work_seconds', max(0, latest.get('elapsed_seconds', 0) - latest.get('operator_wait_seconds', 0)))
+    if type(used) not in (int, float) or not math.isfinite(used) or used < 0:
+        raise ValueError('The saved working-time evidence is invalid; inspect this task before continuing.')
+    return task['limits'].get('run_minutes', 15) * 60 - used
+
+
+def reassessment_availability(task):
+    try:
+        config = reassessment_config(task)
+    except (ValueError, RoutingPause) as error:
+        return {'available': False, 'reason': str(error)}
+    return {'available': True, 'model': config['model']}
+
+
 def _eligible(runtime):
     task = runtime.task
     run = task.get('branch_run') or {}

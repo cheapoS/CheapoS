@@ -651,6 +651,16 @@ class Engine:
                 raise
             task = self.store.get(task_id)
             task.pop("start_error", None)
+            reassess = (changes or {}).get('coordinator_reassessment', False)
+            if type(reassess) is not bool or (reassess and set(changes) != {'coordinator_reassessment'}):
+                raise ValueError('Coordinator reassessment cannot include a new message, limits, or other start options.')
+            reassessment_model = None
+            recovery_elapsed = 0
+            if reassess:
+                from .coordinator_dispatch import reassessment_config, remaining_work_seconds
+                reassessment_model = reassessment_config(task)['model']
+                recovery_elapsed = task['limits'].get('run_minutes', 15) * 60 - remaining_work_seconds(task)
+                reassessment_reason = task.get('error') or 'Worker inspection stopped making progress.'
             if "branch_run" in task:
                 compatibility = branch_runs.compatibility(task["branch_run"])
                 raise ValueError(compatibility["message"] if not compatibility["supported"] else
@@ -686,7 +696,7 @@ class Engine:
             if followup is None and task.get('recovery_blocked') is not None:
                 self.refresh_changes(task)
                 progress.observe(task)
-                if task['recovery_blocked'] == progress.state(task)['revision']:
+                if task['recovery_blocked'] == progress.state(task)['revision'] and not reassess:
                     raise ValueError("This recovery attempt is exhausted. Send a specific correction or missing information; Resume alone cannot retry the same stalled step.")
             if task["status"] == "takeover_requested" and followup is None:
                 if not changes or changes.get("approve_takeover") is not True:
@@ -755,14 +765,28 @@ class Engine:
             task["stream"] = None
             task["check_stream"] = None
             task["web_read"] = None
+            if reassess:
+                task['execution'] = {**task.get('execution', {}), 'coordinator_assistance': True,
+                                     'coordinator_model': reassessment_model}
             # Resume from durable evidence, not by replaying an ambiguous model/tool call.
             task["messages"] = self.initial_messages(task)
             runtime = Runtime(task)
+            if reassess:
+                runtime.started -= recovery_elapsed
+                runtime.coordinator_reassessment = reassessment_reason
+                if previous:
+                    runtime.step_turns = previous.step_turns
+                    runtime.observations = copy.deepcopy(previous.observations)
+                    runtime.file_observations = copy.deepcopy(previous.file_observations)
             task['retry_wait_enabled'] = retry_wait
             if retry_wait and wait_info['remaining_seconds'] is not None:
                 runtime.started -= max(0, task['limits'].get('run_minutes', 15) * 60 - wait_info['remaining_seconds'])
             self.runtimes[task_id] = runtime
             self.event(task, "state", "Task started" if task["worker_turns"] == 0 else "Resuming from saved files and checkpoints",{'run_kind':'followup' if followup is not None else 'start' if task['worker_turns']==0 else 'resume'})
+            if reassess:
+                self.event(task, 'coordinator_recovery', 'Coordinator reassessment requested', {
+                    'state':'queued', 'model':reassessment_model,
+                    'summary':'You enabled coordinator assistance for this chat. Reassessing saved work before asking the worker to continue; existing limits and attempts are retained.'})
             runtime.thread = threading.Thread(target=self._run, args=(runtime,), daemon=True)
             runtime.thread.start()
         return self.store.get(task_id)
@@ -2257,7 +2281,13 @@ class Engine:
         task = runtime.task
         from . import coordinator_dispatch
         try:
-            coordinator_dispatch.restore(self, runtime)
+            reassessment = getattr(runtime, 'coordinator_reassessment', None)
+            if reassessment:
+                runtime.coordinator_reassessment = None
+                if not coordinator_dispatch.consult(self, runtime, reassessment):
+                    raise ProgressPause('Coordinator reassessment did not produce an applicable next step. Saved work is intact; inspect the coordinator result in Details.')
+            else:
+                coordinator_dispatch.restore(self, runtime)
             while task["status"] in ACTIVE:
                 if runtime.stop.is_set():
                     raise InterruptedError("Task stopped")
@@ -2525,6 +2555,7 @@ class Engine:
                         break
                 self.store.save(task)
         except (ProgressPause, RoutingPause) as error:
+            task['recovery_work_seconds'] = max(0, time.monotonic() - runtime.started)
             task["status"] = "budget_paused" if isinstance(error, WorkingTimeLimit) else "paused"
             task["error_code"] = ("environment_setup" if isinstance(error, EnvironmentPause) else "working_time_limit" if isinstance(error, WorkingTimeLimit) else "routing_unavailable" if isinstance(error, RoutingPause) else
                                   "checkpoint_turn_limit" if isinstance(error, CheckpointTurnLimit) else "progress_limit")

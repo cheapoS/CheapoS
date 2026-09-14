@@ -14,6 +14,16 @@ fallback. Existing tasks remain Off unless their captured configuration explicit
 opted in. New tasks and proposals snapshot the choice. Legacy authorization
 comparisons accept only missing optional false/empty defaults.
 
+Follow-up: current-chat On/Off is visible beside the composer and in pause/settings
+views, separately from new-chat defaults. An explicit `coordinator_reassessment`
+start option enables one unused consultation for a paused Interactive worker
+progress stop with a captured local model. It rejects mixed start options,
+Unattended tasks, pending approvals/checks/reviews/commits, environment/conflict
+stops, exhausted time/turns and any existing episode for that request. It keeps
+request history, counters, remaining working time, placement and review authority.
+No applicable advice leaves a visible pause instead of dispatching the worker.
+This is the only new current-chat opt-in; ordinary Resume does not enable it.
+
 Local metadata must advertise completion/tools and must not identify a cloud
 route. Missing/offline/ineligible local models return to ordinary recovery;
 they do not prevent remote work. Local metadata inspection uses the existing
@@ -131,3 +141,27 @@ projection coverage. Personal tasks, keys and running application were untouched
 This validates control flow, not improved model success rates. A later operator-
 selected live comparison should use measurement mode with comparable Off/On tasks,
 record added calls/tokens/latency and accepted outcomes, and preserve spending policy.
+
+### Paused-chat opt-in and Send feedback follow-up
+
+- Focused coordinator/configuration/recovery/admission/work-limit cases: **26
+  passing**; browser-facing HTTP cases: **23 passing** across the batch and one
+  targeted rerun. The pre-existing gateway-mutation test needed a concrete task
+  on its mock runtime for admission; its rejection assertions are unchanged.
+  Socket tests require loopback permission in the development sandbox.
+- Frontend: **173 passing / 0.109 seconds**, plus syntax and diff checks. New Send
+  cases hold promises explicitly (no timed sleep), cover duplicate submission,
+  delayed acknowledgment, rejection/draft retention and switching chats.
+- Added deterministic configuration/status assertions are below **0.002 seconds**
+  per case. One new dispatch case reuses the tiny workspace fixture: **1.424
+  seconds**, with no test subprocess or multi-item Git run. It checks retained
+  request/counters/time/placement, no worker dispatch after invalid advice, and no
+  second consultation on repeated clicks. No new heavy test was introduced.
+- Disposable browser server on port 5189, scripted providers and real engine/API:
+  current chat Off while defaults On; explicit reassessment; guidance visible;
+  worker edits the same workspace while the earlier saved file and original
+  request remain; verification/review still required. An attempted consultation
+  is labeled and cannot be renewed. Enter and Send immediately display pending
+  delivery; accepted delivery clears it, rejected delivery keeps an editable draft.
+- Browser testing also caught Activity rendering overwriting Chat action handlers;
+  handlers now bind within their own tab. No personal task or live model was run.

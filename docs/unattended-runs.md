@@ -156,6 +156,12 @@ and an installed local model. Off remains fully supported. The choice applies to
 new tasks and proposals; it does not change the worker/reviewer placement or opt
 an existing run into local inference. Saving makes no inference request.
 
+The composer displays the current chat's captured On/Off choice. Eligible paused
+Interactive chats offer a separate **Enable coordinator & reassess** action for
+one unused consultation with their saved local model. This explicit action does
+not apply to Unattended runs or change their approved plan authority. Restarting
+alone enables nothing, and changing new-chat defaults leaves existing runs intact.
+
 After repeated worker inspection has resisted a focused recovery step, the
 coordinator may inspect a bounded packet of saved evidence and suggest one useful
 next action. It can request a genuinely new file excerpt through the worker;

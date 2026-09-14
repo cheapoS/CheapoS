@@ -9,3 +9,18 @@ test('settings legacy Off and installed choices preserve explicit model without 
 test('paused worker request cannot relabel coordinator identity or count unfinished consultation done',()=>{const t=task({status:'paused'});t.events.push({id:'worker',kind:'model',title:'Requesting worker: remote-worker',time:stamp});const list=steps(t);assert.equal(list[0].role,'coordinator');assert.notEqual(list[0].model,'remote-worker');assert.equal(list[0].outcome,'pending');assert.equal(list.at(-1).title,'Worker continuation stopped');});
 test('observed edits and checks after assistance project worker outcomes, not another consultation',()=>{for(const action of ['write_file','run_checks']){const t=task({status:'paused'});t.coordinator_recovery[0].state='applied';t.events.push({id:'result',kind:'coordinator_recovery',time:stamp,detail:{state:'result',summary:'Actual saved result',result:{action,passed:false}}});const list=steps(t);assert.equal(list.at(-1).phase,action==='run_checks'?'checks':'work');assert.notEqual(list.at(-1).role,'coordinator');assert.equal(list.at(-1).detail,'Actual saved result');}});
 test('unattended worker stall offers saved-work continuation rather than inventing missing input',()=>{const branch=require('../dist/branch_ui.js');const p=branch.pausePresentation({branch_run:{status:'paused',pause_detail:{version:1,cause:'repeated_work',role:'worker',next_action:'correction'}}});assert.match(p.headline,/Worker could not choose/);assert.equal(p.actionLabel,'Review saved work and continue in chat');});
+test('captured task status distinguishes local chat from recovery and new-chat defaults',()=>{
+ const t=task({execution:{mode:'delegate',local_model:'gemma',coordinator_assistance:false}});
+ assert.equal(guide.coordinatorStatus(t).label,'Off');assert.match(guide.coordinatorStatus(t).pauseNote,/was not attempted/);
+ const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
+ const c={CheapOSGuide:guide,state:{preferences:{execution:{coordinator_assistance:true}}},esc:String};vm.createContext(c);
+ vm.runInContext(source.slice(source.indexOf('function coordinatorTaskNotice'),source.indexOf('function executionPreferences')),c);
+ assert.match(c.coordinatorTaskNotice(t,true),/This chat · Coordinator assistance: Off/);
+ assert.match(c.coordinatorSettings({coordinator_assistance:true},[]),/Defaults for new chats<\/strong> · On/);
+ assert.match(c.coordinatorSettings({},[]),/Restarting restores your saved choice/);
+ const ready={...t,coordinator_reassessment:{available:true,model:'gemma'}};
+ assert.match(c.coordinatorReassessmentMarkup(ready),/Enable coordinator &amp; reassess/);
+ assert.match(c.coordinatorReassessmentMarkup(ready),/No new prompt needed/);
+ assert.doesNotMatch(c.coordinatorReassessmentMarkup({...ready,coordinator_reassessment:{available:false,reason:'Already attempted'}}),/data-chat-action/);
+ assert.match(c.coordinatorReassessmentMarkup({...ready,execution:{coordinator_assistance:true}}),/Reassess with coordinator/);
+});

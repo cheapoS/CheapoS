@@ -393,6 +393,7 @@ class HTTPTests(unittest.TestCase):
 
     def test_gateway_changes_are_rejected_during_a_task(self):
         runtime = Mock()
+        runtime.task = {'status': 'running'}
         runtime.thread.is_alive.return_value = True
         self.engine.runtimes['fixture'] = runtime
         for path in ['/api/gateway/config', '/api/gateway/stop']:

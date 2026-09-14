@@ -3,9 +3,36 @@ import copy
 import unittest
 from unittest.mock import patch
 from cheapos.routing import coordinator_assistance_config, execution_from, RoutingPause
+from cheapos.coordinator_dispatch import reassessment_availability
+from cheapos.coordinator_recovery import episode_key
 
 
 class CoordinatorConfigurationTests(unittest.TestCase):
+    def test_paused_opt_in_is_only_an_unused_interactive_consultation(self):
+        task={'id':'task', 'prompt':'Add trash controls', 'requests':['Add trash controls'],
+              'status':'paused','error_code':'progress_limit','active_role':'worker',
+              'execution':{'mode':'delegate','local_model':'local:1','coordinator_assistance':False},
+              'limits':{'worker_turns':40,'run_minutes':15},'conversational':True,'worker_turns':12,'request_worker_turns':12,
+              'run_metrics':[{'elapsed_seconds':80,'operator_wait_seconds':20}]}
+        before=copy.deepcopy(task)
+        self.assertEqual(reassessment_availability(task),{'available':True,'model':'local:1'})
+        self.assertEqual(task,before)
+        exclusions=[{'status':'running'}, {'demo':True}, {'branch_run':{'id':'run'}},
+                    {'pending_approval':{'id':'command'}}, {'pending_review':{'id':'review'}},
+                    {'pending_checkpoint':{'summary':'saved'}}, {'pending_verification':True},
+                    {'commit_pending':True}, {'limit_hit':{'key':'dollars'}},
+                    {'error_code':'environment_setup'}, {'active_role':'reviewer'},
+                    {'environment_setup':{'status':'missing'}}, {'reconciliation':{'conflicts':['file.py']}},
+                    {'request_worker_turns':40}, {'recovery_work_seconds':900},
+                    {'coordinator_recovery':[{'key':episode_key(task),'state':'failed'}]},
+                    {'execution':{'mode':'remote','coordinator_assistance':False}}]
+        for change in exclusions:
+            with self.subTest(change=change):
+                self.assertFalse(reassessment_availability({**task,**change})['available'])
+        with patch('cheapos.startup.local_json') as metadata:
+            reassessment_availability(task)
+            metadata.assert_not_called()
+
     def test_disabled_and_missing_model_do_not_change_remote_work(self):
         task={'execution':{'mode':'remote'},'providers':{'worker':{'model':'remote','base_url':'https://example.com/v1'}}}
         before=copy.deepcopy(task)

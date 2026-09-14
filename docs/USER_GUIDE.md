@@ -265,3 +265,18 @@ workers keep their selected placement. Saving does not download or run a model.
 The helper stays idle between bounded consultations. See
 [coordinator recovery](unattended-runs.md#optional-coordinator-recovery) for behavior
 and limits.
+
+The composer shows **Coordinator Off/On for this chat**. A local chat model and a
+restart do not enable recovery assistance. Settings distinguish the current chat
+from defaults for new chats.
+
+For an eligible paused Interactive worker, **Enable coordinator & reassess** uses
+the chat's saved local model to inspect its saved work once. You do not need to
+invent a retry prompt. It retains the current request, remaining limits, model
+placement, permissions and review requirements. An already used consultation is
+not renewed; when unavailable, the chat explains why. No usable advice means it
+stays paused, with the coordinator result in Details.
+
+Enter and Send show **Sending…** immediately. The draft stays saved until cheapoS
+accepts the message; rejected delivery leaves the draft editable and shows the
+error. Acceptance no longer waits for the gateway/sidebar refresh.

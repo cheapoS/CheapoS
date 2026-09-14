@@ -1,6 +1,16 @@
 /* Translate saved execution evidence into a clear next step. No model calls. */
 const CheapOSGuide = (() => {
   const active = new Set(['running', 'reviewing', 'waiting_approval', 'waiting_retry', 'stopping']);
+  function coordinatorStatus(task) {
+    const enabled=task?.execution?.coordinator_assistance===true;
+    return {
+      enabled,label:enabled?'On':'Off',
+      detail:enabled
+        ?'Assistance is enabled for this chat. The local coordinator is consulted only when an eligible worker stall needs help; availability is checked then.'
+        :'Assistance is disabled for this chat. Having a local chat model does not enable recovery assistance.',
+      pauseNote:enabled?'':'Coordinator assistance was not attempted because it is Off for this chat.'
+    };
+  }
   function connectionNotice(readiness, gateway={}, execution={}, config={}) {
     if(readiness?.diagnostic_code==='readiness_request_failed'||readiness?.diagnostic_code==='readiness_probe_failed')return {tone:'attention',title:'Connection check could not finish',detail:'Re-check your connections or open setup. Availability has not been verified.'};
     const mode=execution.mode||'manual', roles=[config.worker,config.reviewer].filter(Boolean);
@@ -542,7 +552,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {connectionNotice,metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {coordinatorStatus,connectionNotice,metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 

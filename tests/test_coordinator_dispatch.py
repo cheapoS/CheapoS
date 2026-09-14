@@ -5,11 +5,45 @@ from unittest.mock import patch
 from cheapos.engine import Runtime
 from cheapos import coordinator_dispatch as recovery
 from cheapos import coordinator_recovery as contract
+from cheapos import progress
 from cheapos.providers import ProviderError
 from test_engine import LocalCase, call
 
 
 class CoordinatorDispatchTests(LocalCase):
+    def test_explicit_reassessment_keeps_saved_request_and_limits_then_stops_if_no_advice(self):
+        task,runtime=self.prepare()
+        task.update(status='paused',error_code='progress_limit',error='Repeated evidence',
+                    requests=[task['prompt']],request_worker_turns=6,worker_turns=6,
+                    recovery_work_seconds=18)
+        task['execution']['coordinator_assistance']=False
+        task['recovery_blocked']=progress.state(task)['revision']
+        self.engine.store.save(task)
+        before=copy.deepcopy(task);calls=[]
+        class Provider:
+            def complete(_,messages,tools,maximum):
+                calls.append('coordinator')
+                return {'content':'invalid advice'}, {'prompt_tokens':10,'completion_tokens':20}
+        self.engine.provider_factory=lambda role,config: Provider() if role=='coordinator' else self.fail('Worker must not run without applicable advice')
+        with self.assertRaisesRegex(ValueError,'exhausted'):
+            self.engine.start(task['id'])
+        with self.assertRaisesRegex(ValueError,'cannot include'):
+            self.engine.start(task['id'],{'coordinator_reassessment':True,'message':'retry'})
+        self.engine.start(task['id'],{'coordinator_reassessment':True})
+        result=self.finish(task)
+        self.assertEqual(calls,['coordinator'])
+        self.assertEqual(result['status'],'paused')
+        self.assertTrue(result['execution']['coordinator_assistance'])
+        self.assertEqual(result['execution']['mode'],before['execution']['mode'])
+        for field in ('limits','requests','worker_turns','request_worker_turns','providers','patch'):
+            self.assertEqual(result[field],before[field],field)
+        self.assertGreaterEqual(result['recovery_work_seconds'],18)
+        self.assertEqual(result['coordinator_recovery'][0]['state'],'failed')
+        self.assertEqual(result['usage']['coordinator']['tokens'],30)
+        self.assertFalse(any(e['kind']=='user' for e in result['events']))
+        with self.assertRaisesRegex(ValueError,'already attempted'):
+            self.engine.start(task['id'],{'coordinator_reassessment':True})
+
     def prepare(self):
         task = self.fixture(paid=True)
         task.update(conversational=True, status='running', action_pending=True,
