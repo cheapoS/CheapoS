@@ -16,7 +16,7 @@ def reassessment_config(task):
     if (task.get('branch_run') or task.get('demo') or task.get('status') != 'paused'
             or task.get('error_code') != 'progress_limit' or task.get('active_role') != 'worker'
             or task.get('pending_approval') or task.get('pending_review') or task.get('pending_checkpoint')
-            or task.get('pending_verification') or task.get('commit_pending') or task.get('limit_hit')
+            or task.get('pending_verification') or task.get('commit_pending')
             or (task.get('environment_setup') or {}).get('status') == 'missing'
             or (task.get('reconciliation') or {}).get('conflicts')):
         raise ValueError('Coordinator reassessment is available only for a paused Interactive worker stall without another pending action.')
@@ -26,6 +26,8 @@ def reassessment_config(task):
     from .engine import request_worker_turns
     if not measuring(task) and request_worker_turns(task) >= task['limits']['worker_turns']:
         raise ValueError('No worker turns remain. Review the task limit before requesting coordinator help.')
+    if task.get('limit_hit') and task['limit_hit'].get('key') != 'worker_turns':
+        raise ValueError('A task limit still needs attention. Review the current limit before requesting coordinator help.')
     if remaining_work_seconds(task) <= 0:
         raise ValueError('No working time remains. Review the task limit before requesting coordinator help.')
     config = coordinator_assistance_config({**task, 'execution': {**task.get('execution', {}), 'coordinator_assistance': True}})

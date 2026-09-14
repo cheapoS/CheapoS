@@ -17,6 +17,7 @@ class CoordinatorDispatchTests(LocalCase):
                     requests=[task['prompt']],request_worker_turns=6,worker_turns=6,
                     recovery_work_seconds=18)
         task['execution']['coordinator_assistance']=False
+        task['limit_hit']={'key':'worker_turns','used':5,'allowed':5,'remaining':0}
         task['recovery_blocked']=progress.state(task)['revision']
         self.engine.store.save(task)
         before=copy.deepcopy(task);calls=[]
@@ -34,6 +35,7 @@ class CoordinatorDispatchTests(LocalCase):
         self.assertEqual(calls,['coordinator'])
         self.assertEqual(result['status'],'paused')
         self.assertTrue(result['execution']['coordinator_assistance'])
+        self.assertNotIn('limit_hit',result)
         self.assertEqual(result['execution']['mode'],before['execution']['mode'])
         for field in ('limits','requests','worker_turns','request_worker_turns','providers','patch'):
             self.assertEqual(result[field],before[field],field)

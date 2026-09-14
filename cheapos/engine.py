@@ -766,6 +766,10 @@ class Engine:
             task["check_stream"] = None
             task["web_read"] = None
             if reassess:
+                # The operator may already have raised this limit. Eligibility
+                # checked current request usage; discard only its stale marker.
+                if (task.get('limit_hit') or {}).get('key') == 'worker_turns':
+                    task.pop('limit_hit')
                 task['execution'] = {**task.get('execution', {}), 'coordinator_assistance': True,
                                      'coordinator_model': reassessment_model}
             # Resume from durable evidence, not by replaying an ambiguous model/tool call.

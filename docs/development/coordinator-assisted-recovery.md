@@ -23,6 +23,9 @@ stops, exhausted time/turns and any existing episode for that request. It keeps
 request history, counters, remaining working time, placement and review authority.
 No applicable advice leaves a visible pause instead of dispatching the worker.
 This is the only new current-chat opt-in; ordinary Resume does not enable it.
+Eligibility compares current request turns against the operator's current limit.
+An old worker-turn stop marker is cleared only if that check passes; it does not
+raise the allowance or reset usage. Other retained limit stops remain blocking.
 
 Local metadata must advertise completion/tools and must not identify a cloud
 route. Missing/offline/ineligible local models return to ordinary recovery;

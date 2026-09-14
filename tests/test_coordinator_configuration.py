@@ -17,6 +17,11 @@ class CoordinatorConfigurationTests(unittest.TestCase):
         before=copy.deepcopy(task)
         self.assertEqual(reassessment_availability(task),{'available':True,'model':'local:1'})
         self.assertEqual(task,before)
+        # A historical stop is not a current cap after the operator raises it.
+        raised={**task,'limits':{**task['limits'],'worker_turns':200},
+                'request_worker_turns':71,'limit_hit':{'key':'worker_turns','used':40,'allowed':40,'remaining':0}}
+        self.assertTrue(reassessment_availability(raised)['available'])
+        self.assertEqual(raised['limit_hit']['allowed'],40)
         exclusions=[{'status':'running'}, {'demo':True}, {'branch_run':{'id':'run'}},
                     {'pending_approval':{'id':'command'}}, {'pending_review':{'id':'review'}},
                     {'pending_checkpoint':{'summary':'saved'}}, {'pending_verification':True},
