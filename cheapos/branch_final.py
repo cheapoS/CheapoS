@@ -85,10 +85,14 @@ def build_manifest(run):
         raise ValueError('Private baseline does not match the final item receipt')
     if previous != tip:
         raise ValueError('Feature tip includes work outside the accepted item receipts')
-    diff = work.source_git(source, 'diff', '--binary', '--no-ext-diff', '--no-textconv', run['base_sha'], tip, '--')
-    names = work.source_git(source, 'diff', '--name-status', '-z', '--no-renames', run['base_sha'], tip, '--', binary=True).split(b'\0')
+    # advance_receipts above has validated the entire update ancestry. Review
+    # only what this branch adds to its latest incorporated target; keep the
+    # original base and item receipts for the full historical audit.
+    review_base = (run.get('target_update_history') or [{}])[-1].get('target_tip', run['base_sha'])
+    diff = work.source_git(source, 'diff', '--binary', '--no-ext-diff', '--no-textconv', review_base, tip, '--')
+    names = work.source_git(source, 'diff', '--name-status', '-z', '--no-renames', review_base, tip, '--', binary=True).split(b'\0')
     files = [{'status': names[n].decode(), 'path': names[n+1].decode()} for n in range(0, len(names)-1, 2)]
-    stats = work.source_git(source, 'diff', '--numstat', '-z', '--no-renames', run['base_sha'], tip, '--', binary=True)
+    stats = work.source_git(source, 'diff', '--numstat', '-z', '--no-renames', review_base, tip, '--', binary=True)
     counts = {}
     for row in stats.split(b'\0'):
         if row:
@@ -109,7 +113,7 @@ def build_manifest(run):
                            'digest': hashlib.sha256(text.encode()).hexdigest(), 'content': text})
     result = {'version': 1, 'run_id': run['id'], 'plan_revision': run['plan_revision'],
               'plan_digest': run['plan_digest'], 'plan_content_digest': _hash(run['plan']),
-              'base_sha': run['base_sha'], 'feature_ref': run['feature_ref'], 'feature_tip': tip,
+              'base_sha': run['base_sha'], 'review_base_sha': review_base, 'feature_ref': run['feature_ref'], 'feature_tip': tip,
               'feature_tree': work.source_git(source, 'rev-parse', tip + '^{tree}'),
               'target_ref': run['target_ref'], 'target_tip': work._tip(source, run['target_ref']),
               'files': files, 'commits': commits, 'requirements': requirements, 'chunks': chunks,
