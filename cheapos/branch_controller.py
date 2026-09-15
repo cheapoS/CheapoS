@@ -641,6 +641,8 @@ class BranchController:
             self.engine.require_active_task(task_id)
             self.engine.admission.require('unattended', task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            if run.get('target_update'):
+                raise ValueError('A branch update is saved. Open Review changes and choose Update branch & recheck to finish it.')
             task.pop('recovery_blocked', None)
             self.engine.store.save(task)
             from .model_pool import observe_completions
@@ -682,6 +684,7 @@ class BranchController:
             runtime=self.engine.runtimes.get(task_id)
             task=runtime.task if runtime and runtime.thread and runtime.thread.is_alive() else self.engine.store.get(task_id)
             run=state.require_supported(task['branch_run'])
+            if run.get('target_update'): raise ValueError('Finish the saved branch update: open Review changes, then Update branch & recheck.')
             if task.get('planning_request') and not run.get('authorization_ref'):
                 return self.planning_message(task,message.strip())
             if run['status'] not in {'running','paused','blocked'}:

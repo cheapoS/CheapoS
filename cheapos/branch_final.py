@@ -26,7 +26,7 @@ def _hash(value):
 
 def build_manifest(run):
     branch_runs.require_supported(run)
-    if not run.get('items') or any(i['status'] not in branch_runs.DONE for i in run['items']) or run.get('pending_operations'):
+    if not run.get('items') or any(i['status'] not in branch_runs.DONE for i in run['items']) or run.get('pending_operations') or run.get('target_update'):
         raise ValueError('Finish every item and pending commit before final review')
     mapping = run['workspace_mapping']; source = mapping['source']; tip = run['expected_feature_tip']
     work.validate_owned(mapping, tip)
@@ -43,8 +43,13 @@ def build_manifest(run):
             raise ValueError('Accepted plan requirements changed')
     previous = run['base_sha']; commits = []; requirements = []
     ordered_items = completion_order(run)
+    from .branch_update import advance_receipts
+    updates=copy.deepcopy(run.get('target_update_history',[]))
+    private=(ordered_items[0].get('commit_receipt') or {}).get('private_old')
     for item in ordered_items:
         operation = item.get('commit_receipt') or {}
+        if operation.get('old_tip')!=previous:
+            previous,private=advance_receipts(run,previous,private,updates)
         if operation.get('stage') != 'completed' or operation.get('run_id') != run['id'] or operation.get('item_id') != item['id'] or operation.get('old_tip') != previous:
             raise ValueError('Missing or discontinuous item commit receipt')
         saved = json.loads(operation['receipt']); receipt_id = saved.pop('id')
@@ -65,6 +70,7 @@ def build_manifest(run):
         if work.source_git(source, 'rev-parse', new_tip + '^{tree}') != operation['tree']:
             raise ValueError('Feature tree differs from its commit receipt')
         previous = new_tip
+        private=operation['private_new']
         commits.append({'item_id': item['id'], 'old_tip': operation['old_tip'], 'new_tip': new_tip,
                         'tree': operation['tree'], 'receipt_id': receipt_id, 'outcome': item['status'],
                         'files': [name.decode() for name in work.source_git(source, 'diff', '--name-only', '-z', operation['old_tip'], new_tip, '--', binary=True).split(b'\0') if name]})
@@ -73,7 +79,9 @@ def build_manifest(run):
                                  'instructions': item['instructions'], 'criterion': criterion,
                                  'outcome': saved['criteria_outcomes'][criterion], 'review': saved['review'],
                                  'check_evidence': saved['checks'], 'commit': new_tip, 'receipt_id': receipt_id})
-    if ordered_items[-1]['commit_receipt']['private_new'] != mapping['workspace_head']:
+    previous,private=advance_receipts(run,previous,private,updates)
+    if updates: raise ValueError('Discontinuous branch update receipts')
+    if private != mapping['workspace_head']:
         raise ValueError('Private baseline does not match the final item receipt')
     if previous != tip:
         raise ValueError('Feature tip includes work outside the accepted item receipts')
@@ -268,7 +276,7 @@ def final_check_review(engine, runtime):
         raise ValueError('Final candidate changed while being reviewed')
     blocker = None
     try: work.source_git(run['workspace_mapping']['source'], 'merge-base', '--is-ancestor', manifest['target_tip'], manifest['feature_tip'])
-    except ValueError: blocker = 'Target diverged; retain the reviewed feature branch for explicit integration planning.'
+    except ValueError: blocker = 'The target branch has new commits. Choose Update branch & recheck to combine them with the saved task before merging.'
     readiness = {'version': 1, 'manifest': manifest, 'candidate': current, 'checks': checks, 'reviews': reviews,
                  'review': overall, 'worker_model': worker, 'reviewer_model': reviewer, 'integration_blocker': blocker}
     readiness['id'] = _hash(readiness)

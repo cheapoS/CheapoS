@@ -103,7 +103,7 @@ def amend(controller, task_id, values):
         engine.require_active_task(task_id);engine.admission.require_idle(task_id)
         task=engine.store.get(task_id);run=task['branch_run']
         if action not in {'checks','reviewer'} and not enabled(task):raise ValueError('Enable operator development mode first')
-        if run['status'] not in {'paused','blocked'} or run.get('pending_operations') or run.get('merge_operation'):
+        if run['status'] not in {'paused','blocked'} or run.get('pending_operations') or run.get('merge_operation') or run.get('target_update'):
             raise ValueError('Pause the run and finish any saved commit operation before revising it')
         controller.validate_authority(task,run)
         if values.get('revision_token')!=revision_token(run,task):
