@@ -105,17 +105,31 @@ function reviewDiffs(text){
 }
 function reviewFiles(preview){return (Array.isArray(preview.manifest)?preview.manifest:preview.manifest?.files||preview.files||[]).map(f=>typeof f==='string'?{path:f}:f);}
 function fileStats(file){return file.binary||file.added_lines===null?'Binary':Number.isInteger(file.added_lines)?`+${file.added_lines} −${file.removed_lines}`:'Stats unavailable';}
+function changedSpan(text, other){
+ let start=0,end=0;
+ while(start<text.length&&start<other.length&&text[start]===other[start])start++;
+ while(end<text.length-start&&end<other.length-start&&text[text.length-1-end]===other[other.length-1-end])end++;
+ return escape(text.slice(0,start))+'<mark class="review-inline-change">'+escape(text.slice(start,text.length-end))+'</mark>'+escape(end?text.slice(-end):'');
+}
+function diffCharacterSummary(lines){
+ const changed=lines.filter(l=>/^[+-]/.test(l)&&!l.startsWith('--- ')&&!l.startsWith('+++ '));
+ const count=sign=>changed.filter(l=>l[0]===sign).reduce((n,l)=>n+Array.from(l.slice(1)).length,0);
+ const dense=changed.some(l=>l.length>301);
+ return '<p class="review-character-summary">'+count('-')+' removed characters · '+count('+')+' added characters'+(dense?' · Long changed lines: inspect the removed code, not just the line count.':'')+'</p>';
+}
 function reviewDiffMarkup(section,raw=false){
  if(!section)return '<p class="review-empty">This file’s diff has not loaded yet.</p>';
  if(raw||section.binary)return `${section.binary?'<p class="review-empty">Binary content cannot be displayed as a text diff. The saved Git patch is shown below.</p>':''}<pre class="review-raw">${escape(section.text)}</pre>`;
  let old=null,next=null;const lines=section.text.split('\n');if(lines.at(-1)==='')lines.pop();
- return '<div class="review-code" aria-label="Unified diff; old and new line numbers">'+lines.map(line=>{
+ return diffCharacterSummary(lines)+'<div class="review-code" aria-label="Unified diff; old and new line numbers">'+lines.map((line,index)=>{
   const hunk=line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
   if(hunk){old=Number(hunk[1]);next=Number(hunk[2]);return `<div class="review-diff-meta hunk">${escape(line)}</div>`;}
   if(old===null&&/^(diff --git |index |--- |\+\+\+ )/.test(line))return '';
   if(old===null||![' ','+','-'].includes(line[0]))return `<div class="review-diff-meta">${escape(line)}</div>`;
   const kind=line[0]==='+'?'add':line[0]==='-'?'remove':'context',before=kind==='add'?'':old++,after=kind==='remove'?'':next++;
-  return `<div class="review-diff-line ${kind}"><span class="review-line-number">${before}</span><span class="review-line-number">${after}</span><span class="review-sign">${escape(line[0])}</span><code>${escape(line.slice(1))||' '}</code></div>`;
+  const other=kind==='remove'&&lines[index+1]?.startsWith('+')?lines[index+1]:kind==='add'&&lines[index-1]?.startsWith('-')?lines[index-1]:null;
+  const code=other?changedSpan(line.slice(1),other.slice(1)):escape(line.slice(1));
+  return `<div class="review-diff-line ${kind}"><span class="review-line-number">${before}</span><span class="review-line-number">${after}</span><span class="review-sign">${escape(line[0])}</span><code>${code||' '}</code></div>`;
  }).join('')+'</div>';
 }
 function finalReviewMarkup(task,preview){
@@ -124,7 +138,7 @@ function finalReviewMarkup(task,preview){
  const command=c=>{const v=c?.command||c?.argv||[];return Array.isArray(v)?v.join(' '):String(v);};
  const total=key=>files.reduce((n,f)=>n+(Number.isInteger(f[key])?f[key]:0),0);
  return `<div class="review-overview"><p class="review-task-title">${escape(task.title||'Saved branch changes')}</p><p class="review-branch-route"><strong>${escape(short(task.branch_run.feature_ref))}</strong><span>→</span><strong>${escape(short(preview.target_ref||task.branch_run.target_ref))}</strong><span>Local merge · no push</span></p><div class="review-summary"><span>${files.length} files</span><span class="review-add">+${total('added_lines')}</span><span class="review-remove">−${total('removed_lines')}</span><button type="button" data-evidence aria-expanded="false">${checks.length?`${passed}/${checks.length} checks passed`:'Check evidence unavailable'} · ${review?.decision==='APPROVE'?'Final review approved':'Inspect final review'}</button></div><p class="review-blocker" role="status" ${preview.blocker?'':'hidden'}>${escape(preview.blocker)}</p></div>
- <div class="review-workspace"><aside class="review-sidebar" aria-label="Changed files"><label class="review-filter">Find a file<input type="search" data-file-search placeholder="Filter files…"></label><p class="review-progress" data-review-progress></p><nav class="review-file-list" aria-label="Files in this branch"></nav><p class="review-session-note">Review marks are a checklist for this open preview.</p></aside><section class="review-main" aria-label="Selected change"><div class="review-file-toolbar"><div><strong data-file-title></strong><span data-file-stats></span></div><div class="review-diff-controls"><button type="button" data-previous aria-label="Previous file">←</button><button type="button" data-next aria-label="Next file">→</button><button type="button" data-viewed aria-pressed="false">Mark reviewed</button><button type="button" data-raw aria-pressed="false">Raw patch</button><button type="button" data-wrap aria-pressed="true">Wrap lines</button></div></div><div class="review-diff-viewport wraps" tabindex="0" aria-label="File changes"></div></section></div>
+ <div class="review-workspace"><aside class="review-sidebar" aria-label="Changed files"><label class="review-filter">Find a file<input type="search" data-file-search placeholder="Filter files…"></label><p class="review-progress" data-review-progress></p><nav class="review-file-list" aria-label="Files in this branch"></nav><p class="review-session-note">Review marks are a checklist for this open preview.</p></aside><section class="review-main" aria-label="Selected change"><div class="review-file-toolbar"><div><strong data-file-title></strong><span data-file-stats></span></div><div class="review-diff-controls"><button type="button" data-expand aria-pressed="false">Expand review</button><button type="button" data-previous aria-label="Previous file">←</button><button type="button" data-next aria-label="Next file">→</button><button type="button" data-viewed aria-pressed="false">Mark reviewed</button><button type="button" data-raw aria-pressed="false">Raw patch</button><button type="button" data-wrap aria-pressed="true">Wrap lines</button></div></div><div class="review-diff-viewport wraps" tabindex="0" aria-label="File changes"></div></section></div>
  <section class="review-evidence" hidden tabindex="-1" aria-label="Verification and review evidence"><h3>Verification and final review</h3><p>Evidence saved for feature <code>${escape((preview.feature_tip||'').slice(0,12))}</code>. Opening this preview does not rerun checks.</p><ul>${checks.map(c=>`<li><strong>${c.record?.passed===true?'Passed':c.record?.passed===false?'Failed':'Result unavailable'}</strong><code>${escape(command(c))}</code></li>`).join('')||'<li>No check evidence is available.</li>'}</ul><h4>Independent final review · ${escape(review?.decision||'unavailable')}</h4><p class="review-feedback">${escape(review?.feedback||'No final reviewer feedback was saved.')}</p><h4>Completed work</h4><ul>${(task.branch_run.items||[]).map(i=>`<li>${escape(i.title)} · ${escape(String(i.status||'unknown').replace(/_/g,' '))}${i.commit_receipt?.new_tip?` · <code>${escape(i.commit_receipt.new_tip.slice(0,12))}</code>`:''}</li>`).join('')}</ul><details><summary>Exact revisions and complete manifest</summary><p>Feature <code>${escape(preview.feature_tip)}</code><br>Inspected target <code>${escape(preview.target_tip)}</code><br>Base <code>${escape(preview.base_sha)}</code></p><ul>${files.map(f=>`<li><code>${escape(f.path)}</code> · ${escape(f.status||'Changed')} · ${fileStats(f)}</li>`).join('')}</ul></details><button type="button" data-back-diff>Back to files</button></section>
  <footer class="review-footer"><div><span data-load-status role="status"></span><button type="button" data-retry-diff hidden>Retry loading diff</button><p class="branch-error" role="alert"></p></div><div class="branch-actions"><button type="button" data-refresh>Refresh preview</button><button type="button" data-recheck>Recheck changes</button>${preview.resolve_available?'<button type="button" data-resolve-conflicts>Resolve conflicts &amp; recheck</button>':''}${preview.update_available&&!preview.resolve_available?'<button type="button" data-update-branch>Update branch &amp; recheck</button>':''}<button type="button" data-leave>Leave on branch</button><button type="button" data-revise>Request changes</button><button type="button" class="primary" data-merge>Approve &amp; merge locally</button></div></footer>`;
 }
@@ -165,6 +179,8 @@ function mountFinalDiff(d,task,preview,api){
  d.querySelector('[data-file-search]').oninput=navigation;
  d.querySelector('[data-viewed]').onclick=()=>{const top=viewport.scrollTop;viewed.has(selected)?viewed.delete(selected):viewed.add(selected);navigation();content();viewport.scrollTop=top;};
  d.querySelector('[data-raw]').onclick=e=>{raw=!raw;e.currentTarget.setAttribute('aria-pressed',String(raw));content();};
+ const expand=d.querySelector('[data-expand]');
+ if(expand)expand.onclick=()=>{const active=d.classList.toggle('review-expanded');expand.textContent=active?'Exit expanded review':'Expand review';expand.setAttribute('aria-pressed',String(active));};
  d.querySelector('[data-wrap]').onclick=e=>{const wrap=viewport.classList.toggle('wraps');e.currentTarget.setAttribute('aria-pressed',String(wrap));};
  const evidence=d.querySelector('.review-evidence'),workspace=d.querySelector('.review-workspace');
  d.querySelector('[data-evidence]').onclick=e=>{workspace.hidden=true;evidence.hidden=false;e.currentTarget.setAttribute('aria-expanded','true');evidence.focus();};

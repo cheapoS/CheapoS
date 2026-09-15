@@ -1329,7 +1329,21 @@ async function bootstrap() {
 }
 async function poll() {try{if(state.online)await refresh({background:true})}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
 $$('.tab').forEach(b=>{b.onclick=()=>setView(b.dataset.view);b.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=$$('.tab').filter(t=>!t.hidden),i=tabs.indexOf(b),next=e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];setView(next.dataset.view);next.focus();};});
-$('#home-trigger').onclick=()=>openProject();$('.brand').onclick=e=>{e.preventDefault();home()};$('#new-task').onclick=()=>newTask();$('#search-trigger').onclick=openSearch;$('#settings-trigger').onclick=()=>openConnections();$('#session-settings').onclick=()=>openConnections();$('#demo-trigger').onclick=sampleDialog;$('#composer-project').onclick=()=>openProject();$('#chat-budget').onclick=chatLimits;$('#execution-choice').onclick=executionPreferences;$('#chat-input').oninput=()=>{saveDraft();renderComposer()};$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};$('#chat-stop').onclick=stopFromComposer;
+$('#home-trigger').onclick=()=>openProject();
+$('.brand').onclick=e=>{e.preventDefault();home()};
+$('#new-task').onclick=()=>newTask();
+$('#search-trigger').onclick=openSearch;
+$('#settings-trigger').onclick=()=>openConnections();
+$('#session-settings').onclick=()=>openConnections();
+$('#demo-trigger').onclick=sampleDialog;
+$('#composer-project').onclick=()=>openProject();
+$('#chat-budget').onclick=chatLimits;
+$('#execution-choice').onclick=executionPreferences;
+$('#chat-input').oninput=()=>{saveDraft();renderComposer()};
+$('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};
+if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();
+$('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};
+$('#chat-stop').onclick=stopFromComposer;
 const hideDemo=$('#hide-demo');
 if(hideDemo) hideDemo.onclick=()=>{if(confirm('Hide Try a sample task from the sidebar?')) $('#demo-row')?.classList.add('hidden');};
 function toggleInspector(){ $('#toggle-inspector').click() }

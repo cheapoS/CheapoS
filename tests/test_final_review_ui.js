@@ -101,3 +101,14 @@ test('failed merge does not publish completion, and another task response is ign
  await ui.mergeAndPublish({task:{id:'task'},api:async()=>({id:'other',branch_run:{status:'merged'}}),onTask:()=>published=true});
  assert.equal(published,false);
 });
+
+test('dense replacements expose deleted characters without truncation',()=>{
+ const removed='sendChat();'.repeat(50),added='hideSample();';
+ const text=`diff --git a/app.js b/app.js\n--- a/app.js\n+++ b/app.js\n@@ -1 +1 @@\n-${removed}\n+${added}\n`;
+ const html=ui.reviewDiffMarkup(ui.reviewDiffs(text)[0]);
+ assert.match(html,/550 removed characters/);
+ assert.match(html,/Long changed lines/);
+ assert.match(html,/review-inline-change/);
+ assert.equal((html.match(/sendChat/g)||[]).length,50);
+ assert.match(ui.reviewDiffMarkup(ui.reviewDiffs(text)[0],true),/sendChat/);
+});
