@@ -3,6 +3,7 @@ import http.client
 from html.parser import HTMLParser
 import io
 import json
+import sys
 import tempfile
 import threading
 import unittest
@@ -191,6 +192,16 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post('/api/tasks/missing/metadata', values)[0], 400)
         self.assertEqual(self.post(path + '/metadata', {'status': 'running'})[0], 400)
 
+    def test_restart_endpoint(self):
+        status, _, _ = self.request('POST', '/api/restart', {})
+        self.assertEqual(status, 403)
+        with patch.object(self.server, 'server_close'), patch('os.execv') as mock_exec:
+            status, _, body = self.post('/api/restart', {})
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body), {"status": "restarting"})
+            import time
+            time.sleep(0.5)
+            mock_exec.assert_called_once_with(sys.executable, [sys.executable] + sys.argv)
     def test_trash_routes_require_token_preserve_inspection_and_block_execution(self):
         task=self.engine.create_demo();path='/api/tasks/'+task['id']
         self.assertEqual(self.request('POST',path+'/trash',{}, {'Content-Type':'application/json'})[0],403)

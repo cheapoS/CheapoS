@@ -1289,8 +1289,17 @@ $('#composer-permissions').onclick=sessionPermissions;
   async function callGatewayRefresh(){
     try{await fetch('/api/gateway/refresh',{method:'POST'});}catch(e){console.warn('OmniRoute refresh failed',e);}
   }
-  if(restartWebapp)restartWebapp.onclick=()=>{modal.close();window.location.reload();};
-  if(restartBoth)restartBoth.onclick=async()=>{modal.close();await callGatewayRefresh();window.location.reload();};
+  const startRestart=async()=>{
+    modal.close();toast('Restarting cheapoS backend...');
+    try{await fetch('/api/restart',{method:'POST',headers:{'X-CheapOS-Token':state.token}});}catch(e){}
+    for(let i=0;i<30;i++){
+      try{if((await fetch('/api/bootstrap')).ok)return window.location.reload()}catch(e){}
+      await new Promise(r=>setTimeout(r,500));
+    }
+    toast('Restart failed');
+  };
+  if(restartWebapp)restartWebapp.onclick=startRestart;
+  if(restartBoth)restartBoth.onclick=async()=>{modal.close();await callGatewayRefresh();startRestart();};
   if(restartOmniroute)restartOmniroute.onclick=async()=>{modal.close();await callGatewayRefresh();toast('OmniRoute restarted');};
 })();
 

@@ -3,6 +3,10 @@
 import json
 import hashlib
 import secrets
+import os
+import sys
+import threading
+import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit, parse_qs
@@ -166,7 +170,16 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 raise ValueError("Expected a JSON object")
             engine = self.server.engine
             path = urlsplit(self.path).path
-            if path == "/api/config":
+            if path == "/api/restart":
+                self.trusted(mutation=True)
+                self.server.engine.shutdown()
+                result = {"status": "restarting"}
+                def restart_backend():
+                    time.sleep(0.4)
+                    self.server.server_close()
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                threading.Thread(target=restart_backend, daemon=True).start()
+            elif path == "/api/config":
                 result = engine.configure(values)
             elif path == "/api/startup/config":
                 result = engine.startup.configure(values)
