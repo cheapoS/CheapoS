@@ -84,7 +84,7 @@ def review_packet(current, item, plan, checks, uncertainties=''):
     if item.get('acceptance_criteria') != current['criteria']:
         raise ValueError('Item criteria changed')
     return {'candidate_id': current['id'], 'context': copy.deepcopy(current['context']),
-            'item': copy.deepcopy(item), 'plan': copy.deepcopy(plan), 'diff': current['patch'],
+            'item': {key: copy.deepcopy(item[key]) for key in ('id','title','instructions','dependencies','acceptance_criteria','required_checks','revision_of','revision') if key in item}, 'plan': copy.deepcopy(plan), 'diff': current['patch'],
             'checks': copy.deepcopy(checks), 'uncertainties': str(uncertainties),
             'acceptance_criteria': list(current['criteria'])}
 

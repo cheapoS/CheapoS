@@ -103,3 +103,21 @@ class BranchEvidenceTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class ReviewPacketHistoryTests(unittest.TestCase):
+    def test_saved_recovery_history_does_not_expand_current_review(self):
+        item={'id':'repair','instructions':'Verify existing fix','acceptance_criteria':['Works'],
+              'required_checks':['python3 -m unittest tests.test_http'],
+              'operator_evidence_history':[{'output':'old evidence '*4000}],
+              'evidence':{'old':'receipt'},'review_rounds':[{'old':'review'}]}
+        original=copy.deepcopy(item)
+        current={'id':'candidate','context':{'item_revision':2},'criteria':['Works'],'patch':'current diff'}
+        packet=evidence.review_packet(current,item,{'items':[]},[{'passed':True}])
+        self.assertLess(len(json.dumps(packet)),1000)
+        self.assertEqual(packet['item']['instructions'],item['instructions'])
+        self.assertEqual(packet['acceptance_criteria'],['Works'])
+        self.assertEqual(packet['diff'],'current diff')
+        self.assertEqual(packet['checks'],[{'passed':True}])
+        self.assertNotIn('operator_evidence_history',packet['item'])
+        self.assertEqual(item,original)
