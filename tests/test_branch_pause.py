@@ -1,6 +1,6 @@
 import unittest
 from cheapos import branch_pause as pause, branch_runs
-from cheapos.providers import ProviderError
+from cheapos.providers import ProviderError, BudgetError
 from cheapos.branch_budget import LimitExceeded
 
 class PauseDetails(unittest.TestCase):
@@ -25,6 +25,15 @@ class PauseDetails(unittest.TestCase):
  def test_context_and_explicit_dispute(self):
   d=pause.classify(pause.PauseError('repeated_review_dispute',stage='reviewing',diagnostic_id='review-2'),self.task())
   self.assertEqual(d['item_id'],'one');self.assertEqual(d['diagnostic_id'],'review-2');self.assertEqual(d['next_action'],'review_dispute')
+
+ def test_preflight_budget_stop_explains_remaining_allowance_without_raw_error(self):
+  t=self.task();t['branch_run']['status']='finalizing'
+  pause.apply(t,BudgetError('PRIVATE provider details', 'reviewer_tokens',170676,200000))
+  d=pause.public(t['branch_run']['pause_detail'])
+  self.assertEqual(d['cause'],'exhausted_work');self.assertEqual(d['next_action'],'limits')
+  self.assertEqual(d['stage'],'finalizing')
+  self.assertIn('next model request',d['explanation']);self.assertIn('170676',d['explanation'])
+  self.assertNotIn('PRIVATE',str(d));self.assertNotIn('unknown',d['explanation'])
 
  def test_summary_and_full_public_pause_cannot_echo_raw_exception(self):
   from cheapos.server import public_task

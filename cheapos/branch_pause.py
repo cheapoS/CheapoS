@@ -84,9 +84,11 @@ def specific(diagnostic):
         if not re.fullmatch(r'[A-Za-z0-9_.-]{1,120}',runner):return None
         return "Verification could not run because the selected executable '%s' is unavailable. Choose an available executable and re-check this task's environment." % runner
     if kind=='safe_message':return safe_text(diagnostic.get('message'))
-    if kind=='limit':
+    if kind in {'limit', 'request_budget'}:
         key=label(diagnostic.get('key'));used=diagnostic.get('used');allowed=diagnostic.get('allowed')
         if key and all(type(v) in (int,float) and math.isfinite(v) and v>=0 for v in (used,allowed)):
+            if kind == 'request_budget':
+                return 'The next model request does not fit the remaining %s allowance (%s used / %s allowed). Saved work is intact; review work limits before continuing.' % (key,used,allowed)
             return 'The authorized %s allowance was reached (%s used / %s allowed). Inspect work limits before authorizing more work.' % (key,used,allowed)
     return None
 
@@ -115,6 +117,7 @@ def public(value):
 def classify(error=None, task=None, cause=None, stage=None):
     task=task or {};run=task.get('branch_run') or {}
     from .branch_budget import LimitExceeded
+    from .providers import BudgetError
     explicit=cause or getattr(error,'pause_cause',None)
     code=getattr(error,'code',None) or task.get('error_code')
     if not explicit:
@@ -154,6 +157,8 @@ def classify(error=None, task=None, cause=None, stage=None):
                 diagnostic = {'kind': 'worker_stall', 'reason': reason, 'saved_files': len(task.get('changes', [])),
                               'assisted': any(e.get('key') == episode_key(task) for e in task.get('coordinator_recovery', []))}
     if isinstance(error, LimitExceeded): diagnostic = {'kind': 'limit', 'key': error.key, 'used': error.used, 'allowed': error.allowed}
+    if isinstance(error, BudgetError) and error.limit_hit:
+        diagnostic = {'kind': 'request_budget', **error.limit_hit}
     if diagnostic: detail['diagnostic'] = diagnostic
     if explicit == 'malformed_output' and not specific(diagnostic):
         role = detail.get('role') or ('planner' if detail.get('stage') == 'planning' else 'model')

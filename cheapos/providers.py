@@ -101,6 +101,8 @@ def http_failure(error, config):
 
 
 class BudgetError(Exception):
+    code = 'budget_exceeded'
+
     def __init__(self, message, limit=None, used=None, allowed=None):
         super().__init__(message)
         self.limit_hit = {'key': limit, 'used': used, 'allowed': allowed, 'remaining': max(0, allowed-used)} if limit and used is not None and allowed is not None else None
