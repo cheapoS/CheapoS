@@ -1,4 +1,5 @@
 """Tests for mid-flight steering and smart budget headroom recovery."""
+import json
 import sys
 import unittest
 import threading
@@ -39,14 +40,19 @@ class SteerTests(LocalCase):
         self.assertIn("USER COURSE CORRECTION", last_msg["content"])
         self.assertIn("tests/test_calc.py", last_msg["content"])
 
-        # Check that initial_messages preserves steer guidance and event
+        # The reviewer packet uses requests, not the worker's chat messages.
+        self.assertEqual(updated['requests'][-1], updated['steer_guidance'])
         initial = self.engine.initial_messages(updated)
+        self.assertEqual(json.loads(initial[1]['content'])['latest_message'], updated['steer_guidance'])
         steer_msg = next((m for m in initial if "User direction:" in m.get("content", "")), None)
         self.assertIsNotNone(steer_msg)
         self.assertIn("Focus strictly on fixing", steer_msg["content"])
 
     def test_steer_while_running(self):
         task = self.fixture(paid=True)
+        old_requests = task.get('requests', [task['prompt']])
+        task['requests'] = old_requests
+        task['checkpoints'] = [{'user_messages': old_requests}]
         runtime = Runtime(task)
         done = threading.Event()
         def dummy_target():
@@ -60,6 +66,9 @@ class SteerTests(LocalCase):
             self.assertTrue(res["steered"])
             self.assertTrue(res["running"])
 
+            self.assertEqual(task['requests'][-1], 'Do not edit math_utils.py; create a new helper instead')
+            self.assertEqual(task['checkpoints'][0]['user_messages'], old_requests)
+            self.assertEqual(len(task['requests']), len(old_requests) + 1)
             # Verify queued on runtime
             self.assertIn("Do not edit math_utils.py; create a new helper instead", runtime.steer_queue)
 

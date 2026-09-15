@@ -94,9 +94,20 @@ class CompactRecoveryTests(LocalCase):
         self.engine.provider_factory = lambda role, config: Provider(role, config)
         return requests
 
+    @staticmethod
+    def latest_snapshot(messages):
+        for message in reversed(messages):
+            try:
+                value = json.loads(message.get('content') or '')
+            except (ValueError, TypeError):
+                continue
+            if isinstance(value, dict) and 'current_files' in value:
+                return value
+        raise AssertionError('No current file snapshot supplied')
+
     def edit(self, line, content):
         def response(request):
-            summary = json.loads(request['messages'][1]['content'])
+            summary = self.latest_snapshot(request['messages'])
             file = next(f for f in summary['current_files'] if f['path'] == 'math_utils.py')
             return call('replace_lines', {'path': file['path'], 'start_line': line, 'end_line': line,
                                           'new_text': content})
@@ -126,7 +137,10 @@ class CompactRecoveryTests(LocalCase):
             self.assertEqual(request['config']['_recovery_reasoning'], {'enabled': False})
             self.assertNotIn('MALFORMED_SENTINEL', json.dumps(request['messages']))
             self.assertEqual(request['maximum'], task['limits']['output_tokens'])
-        after_handoff = json.loads(requests[4]['messages'][1]['content'])
+        original_read = next(m for m in requests[1]['messages'] if m.get('role') == 'tool')
+        self.assertIn(original_read, requests[4]['messages'])
+        self.assertTrue(any(m.get('role') == 'assistant' and any(c.get('function', {}).get('name') == 'replace_lines' for c in m.get('tool_calls', [])) for m in requests[4]['messages']))
+        after_handoff = self.latest_snapshot(requests[4]['messages'])
         self.assertIn('1: def clamp(value, lower, upper):  # bounds', after_handoff['current_files'][0]['content'])
         self.assertNotIn('replace_lines', {t['function']['name'] for t in requests[-1]['tools']})
         self.assertEqual(result['limits'], task['limits'])
@@ -317,14 +331,15 @@ class CompactRecoveryTests(LocalCase):
         self.assertEqual(observe(1, 200, 'edited'), 1)
         self.assertEqual([observe(1, 0, 'empty') for _ in range(3)], [1, 2, 3])
 
-    def test_clipped_snapshot_line_can_be_read_without_a_false_repeat(self):
+    def test_omitted_snapshot_line_can_be_read_without_a_false_repeat(self):
         task = self.chat('remote'); task['compact_edits'] = True
         path = Path(task['workspace']) / 'math_utils.py'; path.write_text(('x' * 100 + '\n') * 500)
         self.engine.file_tool(task, 'read_file', {'path':'math_utils.py'})
         runtime = Runtime(task)
         snapshot = json.loads(self.engine.compact_context(runtime)[1]['content'])['current_files'][0]
-        self.assertTrue(snapshot['truncated'])
-        line = int(snapshot['content'].splitlines()[-1].split(':')[0])
+        self.assertFalse(snapshot['complete'])
+        line = max(snapshot['included_lines']) + 1
+        self.assertNotIn(line, snapshot['included_lines'])
         result = Workspace(task['workspace']).read_file('math_utils.py', line, line)
         self.assertEqual(record_observation(runtime,'read_file',{'path':'math_utils.py'},result),1)
 

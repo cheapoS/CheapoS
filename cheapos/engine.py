@@ -842,8 +842,9 @@ class Engine:
                     task.pop('limit_hit')
                 task['execution'] = {**task.get('execution', {}), 'coordinator_assistance': True,
                                      'coordinator_model': reassessment_model}
-            # Resume from durable evidence, not by replaying an ambiguous model/tool call.
-            task["messages"] = self.initial_messages(task)
+            # Preserve the conversation; ambiguous calls are closed, never replayed.
+            from .worker_conversation import refresh
+            task["messages"] = refresh(task.get("messages", []), self.initial_messages(task))
             runtime = Runtime(task)
             if reassess:
                 runtime.started -= recovery_elapsed
@@ -1064,6 +1065,9 @@ class Engine:
                     return {"steered": True, "running": True, "task": task, "operator_continue": task["operator_continue"]}
                 return self.operator_recovery(task_id, {"action":"retry", "message":cleaned})
             self.event(task, "steer", "User Guidance", cleaned)
+            # Worker and reviewer must receive the same ordered requirements.
+            # Append a new list so earlier checkpoint evidence stays immutable.
+            task["requests"] = task.get("requests", [task["prompt"]]) + [cleaned]
             task["steer_guidance"] = cleaned
             if runtime and runtime.thread and runtime.thread.is_alive():
                 runtime.steer_queue.append(cleaned)
@@ -1120,7 +1124,7 @@ class Engine:
             runtime.observations.clear(); runtime.file_observations.clear(); runtime.edit_versions.clear()
             runtime.action_context_ready=False;runtime.compact_context_ready=False
             self.refresh_changes(task)
-            task['messages']=self.initial_messages(task)
+            self.refresh_worker_conversation(runtime)
             task['operator_continue']={'status':'running','reason':'Continuing from the saved files with your latest direction. Earlier review/check results remain recorded.'}
             self.event(task,'operator_control','Direction applied',task['operator_continue'])
 
@@ -1512,6 +1516,12 @@ class Engine:
         runtime.compact_context_ready = True
         return messages
 
+    def refresh_worker_conversation(self, runtime):
+        from .worker_conversation import refresh
+        task = runtime.task
+        snapshot = self.compact_context(runtime) if task.get('compact_edits') else self.action_messages(task)
+        task.setdefault('messages', [])[:] = refresh(task.get('messages', []), snapshot)
+
     def fit_worker_context(self, runtime, tools, rejected=False):
         from .context_budget import decision
         from .context_compaction import compact
@@ -1543,13 +1553,8 @@ class Engine:
     @staticmethod
     def deliver_loop_guidance(task):
         """A recovery notice is useful only if the worker actually receives it."""
-        guidance = task.get('loop_guidance')
-        messages = task.setdefault('messages', [])
-        # Refresh position, without accumulating duplicates on every turn.
-        messages[:] = [m for m in messages if not (m.get('role') == 'user'
-                       and str(m.get('content', '')).startswith('CURRENT RECOVERY DIRECTION: '))]
-        if guidance:
-            messages.append({'role': 'user', 'content': 'CURRENT RECOVERY DIRECTION: ' + guidance})
+        from .worker_conversation import append_direction
+        append_direction(task.setdefault('messages', []), 'CURRENT RECOVERY DIRECTION: ', task.get('loop_guidance'))
 
     def prepare_loop_recovery(self, task):
         if developing(task):
@@ -1651,7 +1656,7 @@ class Engine:
         runtime.interval_revision = progress.state(task)['revision']
         runtime.step_turns = 0
         if compact:
-            task['messages'] = self.compact_context(runtime) if task.get('compact_edits') else self.initial_messages(task)
+            self.refresh_worker_conversation(runtime)
         self.event(task, 'guard', 'Saved progress; continuing the remaining step', {
             'worker_turns': request_worker_turns(task), 'worker_turn_limit': task['limits']['worker_turns'],
             'summary': 'The patch is still unfinished. Continue the user requirements; verification and review are required before approval.'})
@@ -1729,7 +1734,9 @@ class Engine:
                     "from": recovery["from"], "to": task["providers"][role]["model"], "role": role,
                     "summary": "Continuing with the same chat, saved files, checks, and limits. " + recovery["reason"]})
                 if not purpose and (task.get("action_pending") or task.get("compact_edits")) and task["status"] != "reviewing":
-                    messages[:] = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
+                    from .worker_conversation import refresh
+                    snapshot = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
+                    messages[:] = refresh(messages, snapshot)
             cfg = task["providers"][role]
             # Revalidate pinned choices against the refreshed catalog, including prices.
             catalog = self.gateway.catalog(fresh=True)
@@ -2011,6 +2018,8 @@ class Engine:
         if record.get('retry_of'):
             self.event(task, 'transport', 'The streamed reply failed; retrying without streaming',
                        {'attempt_id': record['id'], 'retry_of': record['retry_of'], 'role': role, 'reason': 'streaming_unsupported'})
+        from .worker_conversation import receipt
+        record['conversation'] = receipt(messages)
         record['dispatched']=True
         if streaming:
             live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
@@ -2670,7 +2679,7 @@ class Engine:
                 if task.get('pending_verification'):
                     result=self.checks(runtime)
                     task.pop('pending_verification',None)
-                    task['messages']=self.initial_messages(task)
+                    self.refresh_worker_conversation(runtime)
                     task['messages'].append({'role':'user','content':'Resumed saved verification: '+json.dumps(result)})
                 if task.get("pending_checkpoint") is not None:
                     result = self.checkpoint_feedback(runtime, task["pending_checkpoint"])
@@ -2737,15 +2746,14 @@ class Engine:
                 recovering = task.get("action_pending", False)
                 if recovering:
                     if not runtime.action_context_ready:
-                        task["messages"] = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
+                        self.refresh_worker_conversation(runtime)
                         runtime.action_context_ready = True
                     # Missing context remains recoverable; repeated unchanged reads
                     # are bounded by observations, not by removing every read tool.
                     task["loop_guidance"] = execution_context.guidance(task, task["loop_guidance"])
-                    task["messages"].append({"role": "user", "content": task["loop_guidance"]})
                 if task.get("compact_edits"):
                     if not runtime.compact_context_ready:
-                        task["messages"] = self.compact_context(runtime)
+                        self.refresh_worker_conversation(runtime)
                     offered_tools = [t for t in offered_tools if t["function"]["name"] not in {"replace_text", "write_file"}] + [LINE_EDIT, COMPACT_WRITE]
                 current_stage = work_policy.stage(task)
                 offered_tools = work_policy.prioritize(work_policy.offered_tools(task, offered_tools), current_stage)
@@ -2768,7 +2776,8 @@ class Engine:
                     self.store.save(task)
                 self.deliver_loop_guidance(task)
                 if developing(task) and task.get('steer_guidance'):
-                    task['messages'].append({'role':'user','content':'LATEST OPERATOR DIRECTION: '+task['steer_guidance']+'\nFollow this direction now. Existing spending and command permissions still apply; do not claim unfinished review passed.'})
+                    from .worker_conversation import append_direction
+                    append_direction(task['messages'], 'LATEST OPERATOR DIRECTION: ', task['steer_guidance'])
                 self.fit_worker_context(runtime, offered_tools)
                 try:
                     message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
