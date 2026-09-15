@@ -29,6 +29,29 @@ def date(value):
         return None
 
 
+def resolve_category(record, fallback_cat=None):
+    cat = fallback_cat or record.get('category') or record.get('access_class')
+    srv_m = safe_model(record.get('served_model'))
+    req_m = safe_model(record.get('requested_model', record.get('model')))
+    if srv_m and req_m:
+        srv_n = normalized(srv_m)
+        req_n = normalized(req_m)
+        if srv_n != req_n and not req_n.endswith('/' + srv_n) and not srv_n.endswith('/' + req_n):
+            return 'unknown'
+    if cat in CATEGORIES and cat != 'unknown':
+        return cat
+    req_lower = (req_m or '').lower()
+    if record.get('role') == 'coordinator' or any(req_lower.startswith(p) for p in ('gemma', 'llama', 'qwen', 'ollama')):
+        return 'local'
+    if any(req_lower.startswith(p) for p in ('antigravity/', 'kiro/', 'kr/', 'nvidia/', 'opencode/')):
+        return 'included'
+    if ':free' in req_lower or '-free' in req_lower or req_lower.startswith('openrouter/'):
+        return 'public_free'
+    if (record.get('input_rate') or 0) > 0 or (record.get('output_rate') or 0) > 0 or (record.get('reported_cost') or 0) > 0:
+        return 'paid'
+    return 'unknown'
+
+
 def clean(record):
     if not record.get('dispatched') or record.get('synthetic'):
         return None
@@ -39,13 +62,15 @@ def clean(record):
     for field, source in [('reservation_tokens', 'tokens'), ('reservation_cost', 'cost')]:
         if result[field] is None:
             result[field] = number(reservation.get(source))
+    req_m = safe_model(record.get('requested_model', record.get('model')))
+    srv_m = safe_model(record.get('served_model'))
+    cat = resolve_category(record, fallback_cat=record.get('access_class'))
+
     result.update(role=record.get('role') if record.get('role') in ROLES else 'unknown',
-                  date=date(record.get('requested_at', record.get('created_at'))), category=record.get('access_class') if record.get('access_class') in CATEGORIES else 'unknown',
+                  date=date(record.get('requested_at', record.get('created_at'))), category=cat,
                   reconciled=bool(record.get('usage_reconciled') or record.get('cost_provenance') in {'provider_reported', 'estimated'}),
-                  requested_model=safe_model(record.get('requested_model', record.get('model'))),
-                  served_model=safe_model(record.get('served_model')))
-    if result['served_model'] and result['requested_model'] and normalized(result['served_model']) != normalized(result['requested_model']):
-        result['category'] = 'unknown'
+                  requested_model=req_m,
+                  served_model=srv_m)
     result['charged_free'] = result['category'] == 'public_free' and (result['reported_cost'] or 0) > 0
     if result['charged_free']:
         result['category'] = 'paid'
@@ -57,6 +82,8 @@ def clean(record):
             result['accounted_cost'] = result['reported_cost']
         elif known and result['reconciled'] and all(result[k] is not None for k in ('input_rate', 'output_rate')):
             result['accounted_cost'] = (result['input_tokens'] * result['input_rate'] + result['output_tokens'] * result['output_rate']) / 1_000_000
+        elif result['category'] in ('public_free', 'included', 'local') and (result['input_rate'] or 0) == 0 and (result['output_rate'] or 0) == 0:
+            result['accounted_cost'] = 0.0
         else:
             result['accounted_cost'] = result['reservation_cost']
     return result
@@ -179,13 +206,17 @@ class LifetimeUsage:
                 result['tokens']['unknown_cached_requests'] += int(r['cached_tokens'] is None)
                 for target, source in [('input', 'input_tokens'), ('output', 'output_tokens'), ('reasoning', 'reasoning_tokens'), ('cached', 'cached_tokens')]:
                     result['tokens'][target] += r[source] or 0
-                for target, key in [('categories', 'category'), ('roles', 'role')]:
-                    result[target][r[key]]['tokens'] += tokens
-                    result[target][r[key]]['requests'] += 1
+                cat = resolve_category(r)
+                result['categories'][cat]['tokens'] += tokens
+                result['categories'][cat]['requests'] += 1
+                result['roles'][r['role']]['tokens'] += tokens
+                result['roles'][r['role']]['requests'] += 1
                 result['charged_free_requests'] += int(r['charged_free'])
                 result['charged_free_tokens'] += tokens if r['charged_free'] else 0
                 result['missing_identity_requests'] += int(not r['served_model'])
                 cost = r['accounted_cost'] or 0
+                if cat in ('public_free', 'included', 'local') and (r.get('reported_cost') or 0) == 0 and (r.get('input_rate') or 0) == 0 and (r.get('output_rate') or 0) == 0:
+                    cost = 0.0
                 if r['reported_cost'] is not None:
                     result['cost']['provider_reported'] += r['reported_cost']
                 if r['reconciled']:
@@ -199,6 +230,9 @@ class LifetimeUsage:
                     day['tokens'] += tokens
                     day['cost'] += max(cost, r['reported_cost'] or 0)
         result['cost']['accounted'] = sum(result['cost'][k] for k in ('provider_reported', 'configured_estimate', 'reserved', 'historical_accounted'))
+        total_free = sum(result['categories'][k]['tokens'] for k in ('public_free', 'included', 'local'))
+        result['total_free_tokens'] = total_free
+        result['estimated_savings'] = round((total_free / 1_000_000) * 3.0, 2)
         result['history'] = sorted(history.values(), key=lambda d: d['date'])[-366:]
         result['history_truncated'] = len(history) > 366
         result['limitations'] = [

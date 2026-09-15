@@ -29,9 +29,17 @@ def apply(record, usage):
     record.update(metadata(record['model'],reported))
 
 
+GATEWAY_PREFIXES = (
+    'openrouter/', 'antigravity/', 'kiro/', 'nvidia/', 'opencode/',
+    'ddgw/', 'aug/', 'tllm/', 'aihorde/', 'no-think/', 'kr/'
+)
+
+
 def normalized(value):
-    value=(safe_model(value) or '').lower()
-    if value.startswith('openrouter/'):value=value[len('openrouter/'):]
+    value = (safe_model(value) or '').lower()
+    for prefix in GATEWAY_PREFIXES:
+        if value.startswith(prefix):
+            value = value[len(prefix):]
     return value[:-5] if value.endswith(':free') else value
 
 
