@@ -180,7 +180,7 @@ def validate(response, supplied):
             # qualifies. Typed need_context.path remains strictly workspace-bound.
             around = text[max(0, match.start()-40):match.end()+40]
             if (path.startswith('/api/') and not any(part in {'.','..'} for part in path.split('/'))
-                    and '.' not in path and re.search(r'\b(route|endpoint|GET|POST|PUT|PATCH|DELETE)\b', around, re.I)):
+                    and '.' not in path and re.search(r'\b(route|endpoint|GET|POST|PUT|PATCH|DELETE|HTTP|poll(?:s|ing)?|fetch)\b', around, re.I)):
                 continue
             raise PathReferenceError('Advice references a path outside supplied evidence: ' + path)
         if supplied.get('read_only') and re.search(r'(?:^|[.!;]\s+|\band then\s+)(?:please\s+)?(?:edit|modify|write|replace|delete|create|remove|run|execute|commit|merge)\b', text, re.I):

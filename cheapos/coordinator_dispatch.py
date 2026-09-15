@@ -292,6 +292,7 @@ def restore(engine, runtime):
     """Only apply a previously received response; never dispatch on Resume."""
     task = runtime.task
     episode = next((e for e in task.get('coordinator_recovery', [])
-                    if e.get('key') == contract.episode_key(task) and e.get('state') == 'completed'), None)
+                    if e.get('key') == contract.episode_key(task)
+                    and (e.get('state') == 'completed' or reusable_advice(task, e))), None)
     if episode:
         consult(engine, runtime, episode.get('reason', 'Saved recovery advice'))

@@ -182,7 +182,8 @@ class CoordinatorDispatchTests(LocalCase):
         episode.pop('advice',None)
         before=copy.deepcopy(task)
         with patch.object(self.engine,'request') as request:
-            self.assertTrue(recovery.consult(self.engine,runtime,'Repeated evidence'))
+            recovery.restore(self.engine, runtime)
+            self.assertEqual(episode['state'], 'applied')
             self.assertFalse(recovery.consult(self.engine,runtime,'Repeated evidence'))
             request.assert_not_called()
         for key in ('limits','worker_turns','usage','request_metrics','patch'):

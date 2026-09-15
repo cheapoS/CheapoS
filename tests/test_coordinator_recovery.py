@@ -103,6 +103,10 @@ class RecoveryContractTests(unittest.TestCase):
                       next_step='Inspect cheapos/server.py to locate the existing request handler.',
                       expected_result='Find routing in server.py for a new /api/tasks/empty-trash (or similar) route.')
         self.assertEqual(recovery.validate(advice,packet),advice)
+        polling = dict(advice, action='edit',
+                       next_step='Update dist/app.js to poll /api/bootstrap for recovery.',
+                       expected_result='The browser polls until HTTP 200 OK on /api/bootstrap before reloading.')
+        self.assertEqual(recovery.validate(polling, packet), polling)
         for text in ('Inspect /etc/passwd to resolve this endpoint.',
                      'Inspect /api/../secret to resolve this endpoint.',
                      'Inspect /api/config.py to resolve this endpoint.',
