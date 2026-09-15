@@ -92,9 +92,10 @@ def amend(controller, task_id, values):
     from .providers import validate_provider
     from .branch_authorization import contract_builder
     action=values.get('action')
-    allowed={'action','approved','message','model','instructions','revision_token','required_checks','final_checks','full_suite_approved'}
+    allowed={'action','approved','message','model','instructions','revision_token','required_checks','final_checks','full_suite_approved','resume'}
     if set(values)-allowed or action not in {'model','revise','checks'} or values.get('approved') is not True:
         raise ValueError('Explicitly approve the selected model or current-item revision')
+    if 'resume' in values and not isinstance(values['resume'],bool):raise ValueError('Resume must be a boolean')
     engine=controller.engine
     with engine.lock:
         engine.require_active_task(task_id);engine.admission.require_idle(task_id)
@@ -146,6 +147,10 @@ def amend(controller, task_id, values):
             revised=copy.deepcopy(run['plan'])
             next(i for i in revised['items'] if i['id']==item['id'])['required_checks']=required
             revised['final_checks']=final
+            if 'instructions' in values:
+                instructions=values['instructions']
+                if not isinstance(instructions,str) or not instructions.strip() or len(instructions)>4000:raise ValueError('Provide instructions of up to 4,000 characters')
+                next(i for i in revised['items'] if i['id']==item['id'])['instructions']=instructions.strip()
             revised=branch_runs.validate_plan(revised)
             candidate=copy.deepcopy(task);candidate['branch_run']['plan']=revised
             test_policy.approve(candidate,values.get('full_suite_approved'))
@@ -157,6 +162,7 @@ def amend(controller, task_id, values):
                 if command not in all_commands:all_commands.append(command)
             scopes=[controller.scopes.prepare(task,c) for c in all_commands]
             run['plan']=revised;item['required_checks']=required
+            item['instructions']=next(i for i in revised['items'] if i['id']==item['id'])['instructions']
             run['check_scope']=scopes;run['test_policy_version']=1
             task['full_suite_approval']=candidate['full_suite_approval']
             task['check_command']=commands([required[0]])[0]
@@ -189,6 +195,10 @@ def amend(controller, task_id, values):
             run['development_authorization']['plan_digest']=digest(contract['plan'])
         engine.event(task,'operator_revision','Approved '+('worker model replacement' if action=='model' else 'verification requirements' if action=='checks' else 'current-item revision'),
                      {'action':action,'item_id':item['id'],'model':task['providers']['worker']['model'],'authorization_ref':auth['id']})
+        if values.get('resume') is False:
+            task['operator_continue']={'status':'ready','reason':'Revised requirements saved. The task remains paused until you continue.'}
+            engine.store.save(task)
+            return task
     message=values.get('message') or ('Continue the current item with the approved '+('worker model.' if action=='model' else 'revised verification requirements. Do not claim removed checks passed.' if action=='checks' else 'revised instructions.'))
     result=controller.message(task_id,{'message':message})
     if action=='checks' and not enabled(result):return continue_saved(controller,task_id)

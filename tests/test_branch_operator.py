@@ -195,10 +195,13 @@ class BranchOperatorTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Full-suite'):recover(self.controller,'task',values)
             self.assertEqual(self.saved,original)
             values['final_checks']=['python3 -m unittest tests.test_http']
+            values['resume']=False
             task=recover(self.controller,'task',values)
         self.assertEqual(task['branch_run']['plan']['final_checks'],values['final_checks'])
         self.assertEqual(task['usage'],original['usage'])
         self.assertEqual(task['branch_run']['operator_revision_history'][-1]['authorization'],original['branch_run']['authorization'])
         self.assertEqual(task['full_suite_approval'],[])
+        self.controller.message.assert_not_called()
+        self.assertEqual(task['operator_continue']['status'],'ready')
         run=task['branch_run']
         self.controller.proposals.validate(run['authorization'],contract_builder(run,run['authorization_workspace'],run['model_policy'],run['check_scope']))
