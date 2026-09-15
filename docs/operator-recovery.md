@@ -71,3 +71,29 @@ removed; they must be explicitly addressed as plan requirements.
 Deterministic coverage exercises repeated compaction of a stalled fixture and
 stale patch/generation rejection. This verifies the supplied context, not a claim
 that a particular live model will always follow it. No live run was resumed.
+
+## Full-suite cost approval
+
+New unattended plans explicitly disclose recognized full-suite commands in
+Review & start. The separate checkbox starts unchecked. The app shows the last
+measured duration for that command in the same project, or says it is unknown.
+Ordinary Start approval and human takeover do not substitute for this consent.
+The backend rejects an unapproved broad command before execution; focused
+commands remain available. Known patterns include general unittest discovery,
+unscoped pytest, check.py --full and the full/default dev_tests.py suite. This
+classification does not inspect the contents of arbitrary custom script wrappers.
+
+For an already paused item, **Choose recovery action** exposes required and final
+verification commands. Approving a revision creates new authorization, preserves
+previous evidence, files and usage, and invalidates the current item's old review
+receipt. Removed checks are not relabeled as passed. Acceptance criteria remain
+unchanged; reviewers must still assess them. Exact successful checks continue to
+use the existing code/environment-identity reuse rules.
+
+Already-authorized runs retain their captured checks, including a currently
+running full suite. The policy does not kill or rewrite active work. Changing
+future defaults does not retroactively alter their approved plans.
+
+The new cost-policy tests are pure cases (about 0.002 seconds before the dispatch
+case); the check-revision regression uses the existing pure authorization fixture.
+No new full agent workflow test was added.

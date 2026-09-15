@@ -184,3 +184,21 @@ class BranchOperatorTests(unittest.TestCase):
                 self.assertEqual(policy_for_saved(policy,saved),saved)
                 policy['execution']['mode']='remote'
                 self.assertEqual(policy_for_saved(policy,saved)['execution']['mode'],'remote')
+
+    def test_check_revision_preserves_history_and_requires_broad_consent(self):
+        self.controller.scopes=SimpleNamespace(prepare=lambda task,c:{'command':c},consent=Mock())
+        original=copy.deepcopy(self.saved)
+        values={'action':'checks','approved':True,'revision_token':revision_token(self.saved['branch_run'],self.saved),
+                'required_checks':['python3 -m unittest tests.test_http'],
+                'final_checks':['python3 -m unittest discover -v tests']}
+        with patch('cheapos.branch_workspace.validate_owned'):
+            with self.assertRaisesRegex(ValueError,'Full-suite'):recover(self.controller,'task',values)
+            self.assertEqual(self.saved,original)
+            values['final_checks']=['python3 -m unittest tests.test_http']
+            task=recover(self.controller,'task',values)
+        self.assertEqual(task['branch_run']['plan']['final_checks'],values['final_checks'])
+        self.assertEqual(task['usage'],original['usage'])
+        self.assertEqual(task['branch_run']['operator_revision_history'][-1]['authorization'],original['branch_run']['authorization'])
+        self.assertEqual(task['full_suite_approval'],[])
+        run=task['branch_run']
+        self.controller.proposals.validate(run['authorization'],contract_builder(run,run['authorization_workspace'],run['model_policy'],run['check_scope']))

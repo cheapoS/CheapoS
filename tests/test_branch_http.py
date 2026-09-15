@@ -59,7 +59,7 @@ class BranchHTTPTests(unittest.TestCase):
         self.assertIsNone(_tip(self.source, self.values['feature_ref']))
         self.assertEqual(self.engine.runtimes, {})
         endpoint = '/api/tasks/' + proposal['task_id'] + '/branch-start'
-        decision = {'proposal_id':proposal['proposal_id'], 'approved':True}
+        decision = {'proposal_id':proposal['proposal_id'], 'approved':True,'full_suite_approved':True}
         status, first = self.post(endpoint, decision)
         self.assertEqual(status, 200, first)
         status, second = self.post(endpoint, decision)
@@ -71,24 +71,24 @@ class BranchHTTPTests(unittest.TestCase):
 
     def test_forged_missing_false_and_cross_origin_start_do_not_create_ref(self):
         proposal = self.proposal(); endpoint = '/api/tasks/' + proposal['task_id'] + '/branch-start'
-        for decision in ({}, {'approved':True}, {'proposal_id':'forged','approved':True},
+        for decision in ({}, {'approved':True,'full_suite_approved':True}, {'proposal_id':'forged','approved':True,'full_suite_approved':True},
                          {'proposal_id':proposal['proposal_id'],'approved':1}, {'proposal_id':proposal['proposal_id'],'approved':False}):
             status, _ = self.post(endpoint, decision)
             self.assertEqual(status, 400)
-        status, _ = self.post(endpoint, {'proposal_id':proposal['proposal_id'],'approved':True}, {'Origin':'https://foreign.invalid'})
+        status, _ = self.post(endpoint, {'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True}, {'Origin':'https://foreign.invalid'})
         self.assertEqual(status,403)
         self.assertIsNone(_tip(self.source,self.values['feature_ref']))
 
     def test_stale_base_and_proposal_expiry_rejected(self):
         proposal = self.proposal()
         (self.source/'hello.py').write_text('value=2\n'); git(self.source,'add','.'); git(self.source,'commit','-qm','changed base')
-        decision={'proposal_id':proposal['proposal_id'],'approved':True}
+        decision={'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True}
         status, _=self.post('/api/tasks/'+proposal['task_id']+'/branch-start',decision)
         self.assertEqual(status,400)
         self.assertIsNone(_tip(self.source,self.values['feature_ref']))
         proposal=self.proposal()
         self.engine.branch.proposals.proposals[proposal['proposal_id']]['expires']=0
-        status,_=self.post('/api/tasks/'+proposal['task_id']+'/branch-start',{'proposal_id':proposal['proposal_id'],'approved':True})
+        status,_=self.post('/api/tasks/'+proposal['task_id']+'/branch-start',{'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True})
         self.assertEqual(status,400)
 
     def test_manual_actions_cannot_bypass_run_contract(self):

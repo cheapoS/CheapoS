@@ -156,6 +156,7 @@ class BranchController:
                                      'worker_turns':200,'iterations':20,'reviewer_tokens':limits['reviewer_tokens'],'check_seconds':limits['check_seconds'],'output_tokens':limits['output_tokens']}},
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id)
             task['branch_run']=run
+            run['test_policy_version']=1
             if planning_task:
                 for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
@@ -174,7 +175,11 @@ class BranchController:
             state.transition(run,'awaiting_authorization')
             self.engine.store.save(task)
             proposal=self.proposals.prepare(task_id,self.contract(task))
-            return {'task_id':task_id,**proposal,'readiness':self.readiness(task)}
+            return {'task_id':task_id,**proposal,'readiness':self.readiness(task),**self.test_disclosure(task)}
+
+    def test_disclosure(self, task):
+        from .test_policy import disclosure
+        return disclosure(self.engine,task)
 
     def readiness(self, task):
         from .unattended_setup import inspect
@@ -194,7 +199,7 @@ class BranchController:
     def authorize(self, task_id, values):
         with self.engine.lock:
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
-            if set(values)-{'proposal_id','approved'}: raise ValueError('Start accepts only the inspected proposal and operator decision')
+            if set(values)-{'proposal_id','approved','full_suite_approved'}: raise ValueError('Start accepts only the inspected proposal and operator decision')
             runtime=self.engine.runtimes.get(task_id)
             if task.get('planning_request') and not run.get('authorization_ref') and runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError('Planning is still in progress. Continue in chat until the proposal is ready.')
@@ -206,6 +211,8 @@ class BranchController:
                 if run['status'] == 'awaiting_authorization':
                     return self._finish_start(task)
                 return task
+            from .test_policy import approve
+            approve(task,values.get('full_suite_approved'))
             mapping=run['workspace_mapping']
             if work.inspect_source(mapping['source'])!={k:mapping[k] for k in ('source','source_identity','common_identity')}:
                 raise ValueError('Project changed; prepare a fresh proposal')
@@ -664,7 +671,7 @@ class BranchController:
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             if run['status']!='awaiting_authorization' or run.get('authorization'):
                 raise ValueError('Only an unstarted proposal can be refreshed')
-            return {'task_id':task_id,**self.proposals.prepare(task_id,self.contract(task)),'readiness':self.readiness(task)}
+            return {'task_id':task_id,**self.proposals.prepare(task_id,self.contract(task)),'readiness':self.readiness(task),**self.test_disclosure(task)}
 
     def message(self, task_id, values):
         message=values.get('message')
@@ -778,4 +785,4 @@ class BranchController:
             with self.proposals.lock:
                 self.proposals.proposals={token:proposal for token,proposal in self.proposals.proposals.items() if proposal['task_id']!=task_id}
                 proposal=self.proposals.prepare(task_id,self.contract(task))
-            return {'task_id':task_id,**proposal,'readiness':self.readiness(task)}
+            return {'task_id':task_id,**proposal,'readiness':self.readiness(task),**self.test_disclosure(task)}

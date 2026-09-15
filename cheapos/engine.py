@@ -2167,6 +2167,9 @@ class Engine:
         argv = normalize_unittest(argv or [])
         if not argv:
             raise CheckCommandError("Choose a check from this project's guidance and call run_checks with its command. If none is suitable, use ask_user.")
+        from .test_policy import guard
+        try:guard(task,argv)
+        except ValueError as error:raise CheckCommandError(str(error)) from error
         return argv
 
     def recheck_environment(self, task_id):

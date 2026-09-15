@@ -78,8 +78,10 @@ def capabilities(controller, task_id):
     used={task.get('providers',{}).get('reviewer',{}).get('model')}
     models=[{'id':m['id'],'label':m.get('name') or m['id']} for m in catalog.get('models',[])
             if access_policy.eligible(m,policy) and m['id'] not in used]
-    return {'enabled':enabled(task),'current_item_id':run.get('current_item_id'),'revision_token':revision_token(run,task),
-            'actions':['enable','takeover','retry','model','revise'],'models':models,
+    from .test_policy import disclosure
+    return {**disclosure(controller.engine,task),'enabled':enabled(task),'current_item_id':run.get('current_item_id'),'revision_token':revision_token(run,task),
+            'actions':['enable','takeover','retry','model','revise','checks'],'models':models,
+            'can_checks':True,'required_checks':next((i.get('required_checks',[]) for i in run.get('items',[]) if i['id']==run.get('current_item_id')),[]),'final_checks':run['plan'].get('final_checks',[]),
             'scope':'Current uncommitted item only. Spending, checks, reviewer approval and Git safeguards remain unchanged.'}
 
 
@@ -90,14 +92,14 @@ def amend(controller, task_id, values):
     from .providers import validate_provider
     from .branch_authorization import contract_builder
     action=values.get('action')
-    allowed={'action','approved','message','model','instructions','revision_token'}
-    if set(values)-allowed or action not in {'model','revise'} or values.get('approved') is not True:
+    allowed={'action','approved','message','model','instructions','revision_token','required_checks','final_checks','full_suite_approved'}
+    if set(values)-allowed or action not in {'model','revise','checks'} or values.get('approved') is not True:
         raise ValueError('Explicitly approve the selected model or current-item revision')
     engine=controller.engine
     with engine.lock:
         engine.require_active_task(task_id);engine.admission.require_idle(task_id)
         task=engine.store.get(task_id);run=task['branch_run']
-        if not enabled(task):raise ValueError('Enable operator development mode first')
+        if action!='checks' and not enabled(task):raise ValueError('Enable operator development mode first')
         if run['status'] not in {'paused','blocked'} or run.get('pending_operations') or run.get('merge_operation'):
             raise ValueError('Pause the run and finish any saved commit operation before revising it')
         controller.validate_authority(task,run)
@@ -110,6 +112,7 @@ def amend(controller, task_id, values):
         old_item=copy.deepcopy(item)
         previous=copy.deepcopy(run['authorization'])
         previous_amendments=copy.deepcopy(run.get('amendments',[]))
+        previous_final_evidence=copy.deepcopy(run.get('final_evidence',{}))
         policy=copy.deepcopy(run['model_policy'])
         if action=='model':
             chosen=values.get('model')
@@ -133,6 +136,32 @@ def amend(controller, task_id, values):
             if task.get('route'):
                 task['route'].setdefault('preferred',{})['worker']=chosen
                 task['route'].get('recovery',{}).pop('worker',None)
+        elif action=='checks':
+            from . import test_policy
+            from .engine import check_argv
+            from .branch_evidence import commands
+            required=values.get('required_checks');final=values.get('final_checks')
+            if not all(isinstance(v,list) and v and len(v)<=12 and all(isinstance(c,str) and c.strip() for c in v) for v in (required,final)):
+                raise ValueError('Provide one or more executable commands for both item and final verification')
+            revised=copy.deepcopy(run['plan'])
+            next(i for i in revised['items'] if i['id']==item['id'])['required_checks']=required
+            revised['final_checks']=final
+            revised=branch_runs.validate_plan(revised)
+            candidate=copy.deepcopy(task);candidate['branch_run']['plan']=revised
+            test_policy.approve(candidate,values.get('full_suite_approved'))
+            all_commands=[]
+            for spec in [c for i in revised['items'] for c in i['required_checks']]+final:
+                command=commands([spec])[0]
+                import shlex
+                check_argv(shlex.join(command))
+                if command not in all_commands:all_commands.append(command)
+            scopes=[controller.scopes.prepare(task,c) for c in all_commands]
+            run['plan']=revised;item['required_checks']=required
+            run['check_scope']=scopes;run['test_policy_version']=1
+            task['full_suite_approval']=candidate['full_suite_approval']
+            task['check_command']=commands([required[0]])[0]
+            task.pop('validated_check_command',None)
+            for scope in scopes:controller.scopes.consent(task,scope)
         else:
             instructions=values.get('instructions')
             if not isinstance(instructions,str) or not instructions.strip() or len(instructions)>4000:
@@ -141,7 +170,7 @@ def amend(controller, task_id, values):
             spec['instructions']=instructions.strip();item['instructions']=instructions.strip()
             run['plan']=branch_runs.validate_plan(run['plan'])
         run.setdefault('operator_revision_history',[]).append({'authorization':previous,'amendments':previous_amendments,
-            'item_id':item['id'],'item':old_item,'action':action,'expected_feature_tip':run['expected_feature_tip']})
+            'item_id':item['id'],'item':old_item,'action':action,'final_evidence':previous_final_evidence,'expected_feature_tip':run['expected_feature_tip']})
         run['amendments']=[]
         run['plan_revision']+=1;run['plan_digest']=digest(run['plan']);run['model_policy']=policy
         item.setdefault('operator_evidence_history',[]).append({key:copy.deepcopy(item[key]) for key in ('evidence','ready_receipt','review_repair','review_rounds') if key in item})
@@ -158,15 +187,17 @@ def amend(controller, task_id, values):
         if run.get('development_authorization'):
             run['development_authorization']['authorization_ref']=auth['id']
             run['development_authorization']['plan_digest']=digest(contract['plan'])
-        engine.event(task,'operator_revision','Approved '+('worker model replacement' if action=='model' else 'current-item revision'),
+        engine.event(task,'operator_revision','Approved '+('worker model replacement' if action=='model' else 'verification requirements' if action=='checks' else 'current-item revision'),
                      {'action':action,'item_id':item['id'],'model':task['providers']['worker']['model'],'authorization_ref':auth['id']})
-    message=values.get('message') or ('Continue the current item with the approved '+('worker model.' if action=='model' else 'revised instructions.'))
-    return controller.message(task_id,{'message':message})
+    message=values.get('message') or ('Continue the current item with the approved '+('worker model.' if action=='model' else 'revised verification requirements. Do not claim removed checks passed.' if action=='checks' else 'revised instructions.'))
+    result=controller.message(task_id,{'message':message})
+    if action=='checks' and not enabled(result):return continue_saved(controller,task_id)
+    return result
 
 
 def recover(controller, task_id, values):
     action=values.get('action')
-    if action in {'model','revise'}:return amend(controller,task_id,values)
+    if action in {'model','revise','checks'}:return amend(controller,task_id,values)
     if action=='takeover':
         if set(values)-{'action','approved','message'} or values.get('approved') is not True:
             raise ValueError('Explicitly approve takeover with your correction')
