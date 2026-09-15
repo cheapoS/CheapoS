@@ -14,29 +14,24 @@ from cheapos.providers import guard_inference_route, ChatProvider
 
 
 class TransportTests(unittest.TestCase):
-    def test_expired_quota_retries_same_route_without_renewing_handoffs(self):
-        from cheapos.routing import RoutingPause
-        for cooling in (True, False):
-            engine,runtime,calls=self.harness();task=runtime.task;cfg=task['providers']['worker']
-            task.update(execution={'mode':'remote'}, route={'ready':True,'recovery':{
-                'worker':{'from':cfg['model'],'reason':'A model cooldown was reported.'}}})
-            runtime.handoffs=2
-            engine.gateway.catalog=Mock(return_value={'status':'ready','models':[
-                {'id':cfg['model'],'free':True,'tool_calling':True}]})
-            health={'cooling_down':cooling, 'retry_known':True, 'retry_at':123,
-                    'cooldown_scope':'model','failure':{'category':'rate_limit_quota','scope':'model'}}
-            engine.gateway.pool=SimpleNamespace(observation=Mock(return_value=health),record=Mock())
-            engine._request=Mock(return_value={'content':'done'})
-            if cooling:
-                with self.assertRaises(RoutingPause) as caught:engine.request(runtime,[],[],'worker')
-                self.assertEqual(caught.exception.retry_at,123)
-                self.assertEqual(caught.exception.scope,'model')
-                engine._request.assert_not_called()
-            else:
-                self.assertEqual(engine.request(runtime,[],[],'worker')['content'],'done')
-                engine._request.assert_called_once()
-                self.assertEqual(task['route']['recovery'],{})
-            self.assertEqual(runtime.handoffs,2)
+    def test_provider_failover_does_not_spend_quality_handoffs_or_replay_work(self):
+        engine,runtime,calls=self.harness();task=runtime.task;cfg=task['providers']['worker']
+        task.update(execution={'mode':'remote'}, route={'ready':True,'recovery':{
+            'worker':{'from':cfg['model'],'reason':'Cooling down','error_code':'gateway_cooldown'}}})
+        runtime.handoffs=2;runtime.failed_models=set()
+        engine.gateway.catalog=Mock(return_value={'status':'ready','models':[
+            {'id':'other/model','free':True,'tool_calling':True}]})
+        engine.gateway.pool=SimpleNamespace(observation=Mock(return_value={'cooling_down':False}),record=Mock())
+        engine._request=Mock(return_value={'content':'done'})
+        def select(e,r,role,replace):
+            self.assertEqual(task['route']['availability_recovery'][role]['providers'],['example'])
+            task['providers'][role]={**cfg,'model':'other/model'}
+        messages=[{'role':'user','content':'Saved review evidence'}]
+        with patch('cheapos.engine.select_remote',side_effect=select):
+            self.assertEqual(engine.request(runtime,messages,[],'worker')['content'],'done')
+        self.assertEqual(runtime.handoffs,2)
+        self.assertEqual(task['route']['availability_recovery']['worker']['handoffs'],1)
+        self.assertEqual(engine._request.call_args.args[1],messages)
 
     def test_gateway_placeholder_retries_json_and_remembers_success(self):
         engine,runtime,calls=self.harness();provider=engine.provider_factory()

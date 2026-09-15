@@ -145,9 +145,10 @@ class FailoverTests(LocalCase):
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(len(requests),2)
         self.assertEqual(result['usage']['uncertain_requests'],1)
-        self.assertFalse(result['route'].get('recovery'))
+        self.assertEqual(result['route']['recovery']['worker']['from'],'openrouter/a')
+        self.assertEqual(result['route']['availability_recovery']['worker']['providers'],['openrouter'])
 
-    def test_model_cooldown_hands_off_to_next_eligible_model(self):
+    def test_model_cooldown_hands_off_to_next_eligible_provider(self):
         task=self.chat('remote')
         task['check_command']=[sys.executable,'-m','unittest','discover','-v'];task['auto_approve_checks']=True
         self.engine.store.save(task)
@@ -156,11 +157,11 @@ class FailoverTests(LocalCase):
             call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
             call('checkpoint',{'summary':'Fixed clamp.'}),
             call('review_decision',{'decision':'APPROVE','feedback':'Verified.'})
-        ],names=('openrouter/a','openrouter/b','openrouter/c'))
+        ],names=('openrouter/a','openrouter/b','zprovider/b','openrouter/c'))
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'approved',result['error'])
-        self.assertEqual(result['providers']['worker']['model'],'openrouter/b')
-        self.assertEqual(result['providers']['reviewer']['model'],'openrouter/c')
+        self.assertEqual(result['providers']['worker']['model'],'zprovider/b')
+        self.assertEqual(result['providers']['reviewer']['model'],'openrouter/b')
         self.assertTrue(any(e['kind']=='handoff' for e in result['events']))
 
     def responding(self, replies, names=('a','b','c','d')):

@@ -12,6 +12,47 @@ MODEL={'id':'provider/model','tool_calling':True,'context_length':10000}
 
 
 class RouteHealthTests(unittest.TestCase):
+    def test_outage_selection_skips_provider_and_preserves_free_independent_selection(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from cheapos.routing import select_remote
+        from cheapos.engine import Engine
+        models=[dict(MODEL,id=name,free=free) for name,free in [
+            ('down/one',True),('down/two',True),('paid/one',False),('author/one',True),('next/one',True)]]
+        task={'providers':{'worker':{'model':'author/one'},'reviewer':{'model':'down/one'}},'events':[],
+              'route':{'base_url':URL,'availability_recovery':{'reviewer':{'providers':['down'],'handoffs':0}}}}
+        with tempfile.TemporaryDirectory() as directory:
+            pool=FreeModelPool(directory)
+            gateway=SimpleNamespace(settings={},pool=pool,matches=lambda url:True,
+                catalog=lambda **kw:{'status':'ready','models':models})
+            response={'tool_calls':[{'id':'probe','function':{'name':'routing_ready',
+                'arguments':json.dumps({'marker':health.PROBE_MARKER})}}]}
+            engine=SimpleNamespace(gateway=gateway,event=Mock(),store=Mock(),parse_call=Engine.parse_call,
+                                   request=Mock(return_value=response))
+            runtime=SimpleNamespace(task=task,failed_models=set())
+            select_remote(engine,runtime,'reviewer',replace=True)
+            self.assertEqual(task['providers']['reviewer']['model'],'next/one')
+            self.assertEqual(engine.request.call_count,1)
+            self.assertEqual(task['progress_state']['route_probes']['reviewer'],1)
+
+    def test_only_matching_review_outages_leave_decision_turns_available(self):
+        from cheapos.provider_recovery import review_turns
+        pending={'branch_candidate_id':'current','review_requests':8}
+        failed={'id':'outage','role':'reviewer','purpose':'work','status':'failed',
+                'dispatched':True,'error_code':'gateway_cooldown','review_candidate_id':'current'}
+        task={'request_metrics':[failed]}
+        self.assertEqual(review_turns(task,pending),7)
+        for change in ({'review_candidate_id':'older'},{'role':'worker'},{'purpose':'probe'},
+                       {'error_code':'invalid_tool_envelope'},{'status':'responded'},{'dispatched':False}):
+            task['request_metrics']=[{**failed,**change}]
+            self.assertEqual(review_turns(task,pending),8)
+        # Historical saved candidate outages can be identified without editing usage.
+        task.update(branch_run={'current_item_id':'one'},events=[{'kind':'checkpoint','time':'2026-09-14T10:00',
+                    'detail':{'candidate_id':'current'}}])
+        task['request_metrics']=[{**failed,'review_candidate_id':None,'branch_item_id':'one','requested_at':'2026-09-14T10:01'}]
+        self.assertEqual(review_turns(task,pending),7)
+        self.assertEqual(pending['review_requests'],8)
+
     def test_http_success_without_exact_required_tool_marker_is_not_capability_proof(self):
         from cheapos.engine import Engine
         def response(arguments):

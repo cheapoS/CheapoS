@@ -1440,7 +1440,7 @@ class Engine:
     def defer_route(self, task, role, reason):
         cfg = task["providers"][role]
         self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=reason, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
-        task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": str(reason)[:500]}
+        task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": str(reason)[:500], "error_code": getattr(reason, 'code', None)}
         # reserve() already added this request to the totals. Do not refund or replay it.
         task["in_flight"] = None
         self.store.save(task)
@@ -1518,36 +1518,38 @@ class Engine:
                 select_remote(self, runtime, role)
             recovery = task["route"].get("recovery", {}).get(role)
             cfg = task['providers'][role]
-            if recovery and recovery.get('from') == cfg['model']:
-                health = self.gateway.pool.observation(cfg['base_url'], cfg['model'], (cfg.get('access_binding') or {}).get('connection_revision'))
-                # A timed availability failure is not a permanent model failure.
-                # Resume may retry this same route after its cooldown without
-                # renewing model handoffs or spending another compatibility probe.
-                quota = (health.get('failure') or {}).get('category') == 'rate_limit_quota'
-                if quota and health.get('retry_known'):
-                    if health['cooling_down']:
-                        raise RoutingPause('The model is still cooling down. Saved review evidence and checks are kept.',
-                                           retry_at=health.get('retry_at'), scope=health.get('cooldown_scope') or 'model')
-                    task['route']['recovery'].pop(role)
-                    recovery = None
-                    self.event(task, 'routing', 'Retrying after the reported cooldown', {'role': role, 'model': cfg['model'],
-                        'summary': 'Continuing on the same authorized route with saved evidence and remaining limits.'})
-                    self.store.save(task)
+            from . import provider_recovery
+            unavailable = provider_recovery.outage(task, role, recovery)
+            availability = task['route'].setdefault('availability_recovery', {})
+            provider_attempts = availability.setdefault(role, {'handoffs': 0, 'providers': []})
             repair_transport = transport.pending_json(task, cfg, role, purpose)
             if repair_transport and recovery and recovery.get('from') == cfg['model'] and recovery.get('reason') == 'This model is cooling down after a recent failure.':
                 task['route']['recovery'].pop(role)
                 recovery = None
-            if recovery and runtime.handoffs >= MAX_HANDOFFS:
+            if recovery and not unavailable and runtime.handoffs >= MAX_HANDOFFS:
                 raise RoutingPause("Two automatic model handoffs were tried for this request. Saved work and usage are kept. Inspect Models and send a specific next instruction; Resume does not replenish handoffs.")
             if attempted:
                 self.count_recovery_turn(runtime)
                 attempted = False
             if recovery:
+                if unavailable:
+                    if provider_attempts['handoffs'] >= provider_recovery.MAX_PROVIDER_HANDOFFS:
+                        raise RoutingPause('Four provider failovers were used for this request. Saved work is intact; inspect provider availability before continuing.')
+                    failed_provider = provider_recovery.provider(recovery['from'])
+                    if failed_provider not in provider_attempts['providers']:
+                        provider_attempts['providers'].append(failed_provider)
+                    self.event(task, 'routing', 'Provider unavailable; trying another provider', {
+                        'role': role, 'model': recovery['from'],
+                        'summary': 'Saved files, checks and review evidence will continue on another eligible provider.'})
+                    self.store.save(task)
                 runtime.failed_models.add(recovery["from"])
                 self.event(task, "routing", "Finding another free " + role, {"model": recovery["from"], "error": recovery["reason"], "role": role})
                 select_remote(self, runtime, role, replace=True)
-                runtime.handoffs += 1
-                progress.state(task)["handoffs"] = runtime.handoffs
+                if unavailable:
+                    provider_attempts['handoffs'] += 1
+                else:
+                    runtime.handoffs += 1
+                    progress.state(task)["handoffs"] = runtime.handoffs
                 task["route"]["recovery"].pop(role, None)
                 self.event(task, "handoff", "Switching to another free " + role, {
                     "from": recovery["from"], "to": task["providers"][role]["model"], "role": role,
@@ -1573,12 +1575,17 @@ class Engine:
                 task['providers'][role] = cfg
             if self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))["cooling_down"]:
                 health = self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
-                if health.get("cooldown_scope") == "provider":
+                if health.get("cooldown_scope") in {'account', 'connection'} or (health.get('cooldown_scope') == 'provider' and (health.get('failure') or {}).get('category') != 'rate_limit_quota'):
                     raise RoutingPause(health["last_error"] + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=health.get("cooldown_scope"))
+                if (health.get('failure') or {}).get('category') == 'rate_limit_quota':
+                    task['route'].setdefault('recovery', {})[role] = {'from':cfg['model'],
+                        'reason':'The provider reported a cooldown.', 'error_code':'gateway_cooldown'}
+                    self.store.save(task)
+                    continue
                 # Older placeholder failures were misclassified as capability
                 # mismatches. Their one exact-route JSON retry remains useful;
                 # never bypass an upstream provider/account/quota cooldown.
-                if not (repair_transport and (health.get('failure') or {}).get('category') == 'capability_mismatch'
+                if not (repair_transport and health.get('cooldown_scope') != 'provider' and (health.get('failure') or {}).get('category') == 'capability_mismatch'
                         and (health.get('failure') or {}).get('scope') == 'model'):
                     task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": "This model is cooling down after a recent failure."}
                     continue
@@ -1600,15 +1607,10 @@ class Engine:
                     else:
                         self.defer_route(task, role, "The worker reached its output cap again after a smaller-action retry.")
                     continue
-                if error.code == "gateway_cooldown":
+                if error.code == "gateway_cooldown" and getattr(error, "scope", None) in {'account', 'connection'}:
                     self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
-                    health = self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
-                    if health.get("cooldown_scope") == "provider" or getattr(error, "scope", None) == "provider":
-                        raise RoutingPause(str(error) + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=error.scope) from None
-                    attempted = True
-                    self.defer_route(task, role, error)
-                    continue
-                if error.code not in RECOVERABLE_CODES:
+                    raise RoutingPause(str(error) + ' Inspect this gateway connection before retrying.', scope=error.scope) from None
+                if error.code not in RECOVERABLE_CODES and error.code != 'gateway_cooldown':
                     raise
                 attempted = True
                 if error.code == "unsupported_tool":
@@ -1709,6 +1711,8 @@ class Engine:
         record.update(metadata(config['model']))
         if task.get('branch_run'):
             record['branch_item_id'] = task['branch_run'].get('current_item_id')
+            if role == 'reviewer' and not purpose:
+                record['review_candidate_id'] = task.get('pending_review', {}).get('branch_candidate_id')
         binding = config.get('access_binding')
         if binding:
             record['dispatch_scope'] = {'base_url': config['base_url'], 'connection_revision': binding['connection_revision'],
@@ -1793,8 +1797,9 @@ class Engine:
         account = {**task, "limits": {**task["limits"], "output_tokens": min(task["limits"]["output_tokens"], 1024 if purpose == "probe" else 512)}} if purpose == "probe" or role == "coordinator" else task
         if role == 'reviewer' and task['status'] == 'reviewing' and not purpose:
             checkpoint = task.get('pending_review') or (task.get('checkpoints') or [{}])[-1]
-            if not measuring(task) and checkpoint.get('review_requests', 0) >= 8:
-                raise BudgetError("Reviewer reached the eight-turn checkpoint limit, including failed requests and resumed attempts. Saved review work is kept.")
+            from .provider_recovery import review_turns
+            if not measuring(task) and review_turns(task, checkpoint) >= 8:
+                raise BudgetError("Reviewer reached the eight-turn checkpoint limit. Provider outages remain counted against request and usage limits. Saved review work is kept.")
             checkpoint['review_requests'] = checkpoint.get('review_requests', 0) + 1
             runtime.review_requests = checkpoint['review_requests']
         if role == 'planner' and not self.provider_factory and config['base_url'].startswith('https://') and not self.provider_key(role, config):

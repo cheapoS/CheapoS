@@ -167,11 +167,14 @@ def select_remote(engine, runtime, role="worker", replace=False):
     used.update(runtime.failed_models)
     used.update(task.get('branch_run',{}).get('implementation_recovery',{}).get('failed_models',[]))
     connection_revision=(route.get('access_policy') or {}).get('connection_revision')
+    from .provider_recovery import provider
+    unavailable = route.get('availability_recovery', {}).get(role, {}).get('providers', [])
     candidates = []
     for model in catalog['models']:
         fit = routing_trace.context_fit(task, model)
         reason = ('local_excluded' if model.get('local') else 'capability_missing' if model.get('tool_calling') is not True
                   else 'access_excluded' if not access_policy.eligible(model, route.get('access_policy'))
+                  else 'provider_unavailable_for_request' if provider(model['id']) in unavailable
                   else 'failed_model' if model['id'] in runtime.failed_models
                   else 'prior_worker' if model['id'] in used
                   else 'cooldown' if gateway.pool.observation(route['base_url'],model['id'],connection_revision)['cooling_down']
@@ -185,6 +188,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
     probes = task.setdefault("progress_state", {}).setdefault("route_probes", {})
     probes.setdefault(role, 0)
     for model in candidates:
+        if provider(model['id']) in unavailable: continue
         # A preceding probe may have cooled the whole provider. Do not repeat
         # its cached error against every other model or count those as failures.
         if gateway.pool.observation(route["base_url"], model["id"], connection_revision)["cooling_down"]:
@@ -244,6 +248,9 @@ def select_remote(engine, runtime, role="worker", replace=False):
             classification = route_health.classify(error, {'purpose':'probe', 'caller_error':isinstance(error, ValueError)})
             cooldown = classification['category'] == 'rate_limit_quota'
             if classification['quality_impact']: runtime.failed_models.add(model['id'])
+            if classification['category'] in {'rate_limit_quota', 'transient_provider'}:
+                unavailable = route.setdefault('availability_recovery', {}).setdefault(role, {'handoffs':0,'providers':[]})['providers']
+                if provider(model['id']) not in unavailable: unavailable.append(provider(model['id']))
             gateway.pool.record(route['base_url'], model['id'], role, error=error, connection_revision=connection_revision,
                                 failure_context={'caller_error':isinstance(error, ValueError)})
             failure = {'model':model['id'], 'role':role, 'error':classification['action'],

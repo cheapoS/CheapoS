@@ -171,7 +171,8 @@ def checkpoint(engine, runtime, args):
             _stop(engine, task, 'invalid_decision')
         disagreement.ensure_available(task, current['id'])
         runtime.guard()
-        deciding = not measuring(task) and pending.get('review_requests', 0) >= max_rounds - 1
+        from .provider_recovery import review_turns
+        deciding = not measuring(task) and review_turns(task, pending) >= max_rounds - 1
         if deciding:
             _coach(engine, task, messages, 'request_limit')
         offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools
