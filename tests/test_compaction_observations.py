@@ -30,12 +30,14 @@ class CompactionObservationTests(unittest.TestCase):
         self.assertEqual(counts, [2, 3, 4])
         self.files = []
         Engine.compact_context(self.engine, self.runtime)
+        self.assertEqual(self.read(), 1)  # Recover omitted evidence once.
         self.assertEqual(self.read(), 5)
 
     def test_union_keeps_old_ranges_and_new_versions_or_unseen_lines_are_progress(self):
         self.assertEqual(self.read(), 1)
         self.assertEqual(self.read(), 2)
         self.snapshot('2: another line')
+        self.assertEqual(self.read('1: unchanged\n2: another line'), 1)
         self.assertEqual(self.read('1: unchanged\n2: another line'), 3)
         self.assertEqual(self.read('3: newly read line'), 1)
         self.assertEqual(self.read('1: changed', 'new-version'), 1)

@@ -23,3 +23,10 @@ Findings remain unverified claims tied to the recorded patch/generation. Old
 checks do not become current merely because their receipt survives compaction.
 This policy governs worker size-triggered compaction; explicit recovery, model
 handoff and task-transition context rebuilding still have their own semantics.
+
+Handoff file snapshots preserve up to six distinct recently inspected ranges per
+included large file rather than only the latest read. Files that fit are supplied
+in full. Partial snapshots identify omitted evidence explicitly. Small edit
+limits do not restrict reads: workers may read a whole small file. A reread that
+recovers omitted known lines gets one recovery allowance per model/file version;
+repeated identical inspections still retain their prior observation history.
