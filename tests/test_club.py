@@ -69,3 +69,24 @@ class ClubTests(unittest.TestCase):
         self.club._call=lambda action:{'sequence':self.club.state['sequence'],'previous_hash':self.club.state['previous_hash']}
         self.club._request=self.accept;self.club.set_sync(False)
         self.assertEqual(json.loads(self.sent[-1]['payload'])['action'],'consent');self.assertFalse(self.club.state['sync_enabled'])
+
+    def test_connect_recovers_existing_approval_instead_of_replacing_pair(self):
+        self.club.state['identity']=None
+        self.club._key=Mock()
+        self.club._call=Mock(return_value={'status':'connected','pairing_id':'original','handle':'alice','name':'Alice','account_id':'account','sequence':0,'previous_hash':''})
+        result=self.club.start_pairing(self.ledger)
+        self.assertTrue(result['is_linked']);self.assertEqual(self.club.state['pairing_id'],'original')
+        self.club._call.assert_called_once_with('status')
+
+    def test_connect_reuses_pending_session(self):
+        self.club.state['identity']=None;self.club._key=Mock()
+        self.club._call=Mock(return_value={'status':'pending'})
+        self.club.start_pairing(self.ledger)
+        self.assertEqual(self.club.state['pairing_id'],'pair')
+        self.club._call.assert_called_once_with('status')
+
+    def test_failed_start_does_not_persist_replacement_pair(self):
+        self.club.state.update(identity=None,pairing_id=None);self.club._key=Mock()
+        self.club._call=Mock(side_effect=ValueError('offline'))
+        with self.assertRaises(ValueError):self.club.start_pairing(self.ledger)
+        self.assertIsNone(self.club.state['pairing_id'])

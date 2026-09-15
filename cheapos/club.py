@@ -1,4 +1,5 @@
 """Optional signed Club connection; never claims an offline upload succeeded."""
+import copy
 import hashlib
 import json
 import os
@@ -108,13 +109,24 @@ class ClubManager:
 
     def start_pairing(self,lifetime):
         with self.lock:
-            if self.state['identity'] or self.state.get('revoking'): raise ValueError('Disconnect the current Club account before switching.')
+            if self.state.get('revoking'): raise ValueError('Finish disconnecting the current Club account before switching.')
+            if self.state['identity']: return self.get_status()
             self._key(create=True)
+            if self.state['pairing_id']:
+                try:
+                    # Recover approval or reuse the same live pending session.
+                    return self.check_pairing()
+                except ValueError as error:
+                    if 'approval link expired' not in str(error): raise
+            previous=copy.deepcopy(self.state)
             self.state.update(pairing_id=str(uuid.uuid4()),baseline=[r['request_id'] for r in lifetime.raw_requests()],sent={},pending=None,error=None)
-            self._save()
-            result=self._call('pair')
-            if result.get('status')!='pending': raise ValueError('Unexpected Club pairing response.')
-            # Explicit migration discards obsolete plaintext HMAC credentials.
+            try:
+                result=self._call('pair')
+                if result.get('status')!='pending': raise ValueError('Unexpected Club pairing response.')
+                self._save()
+            except Exception:
+                self.state=previous
+                raise
             legacy=self.directory/'club_profile.json'
             if legacy.exists(): legacy.unlink()
             return self.get_status()
@@ -124,7 +136,7 @@ class ClubManager:
             if self.state['identity']: return self.get_status()
             result=self._call('status')
             if result.get('status')=='connected':
-                self.state.update(identity={'handle':result['handle'],'name':result['name'],'account_id':result['account_id']},sequence=result['sequence'],previous_hash=result['previous_hash'],error=None)
+                self.state.update(pairing_id=result.get('pairing_id',self.state['pairing_id']),identity={'handle':result['handle'],'name':result['name'],'account_id':result['account_id']},sequence=result['sequence'],previous_hash=result['previous_hash'],error=None)
                 self._save()
             return self.get_status()
 
