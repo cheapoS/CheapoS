@@ -52,6 +52,7 @@ def validate_response(task, message):
 def small_edit_reason(task):
     if read_only(task):return None
     if task.get('compact_edits'):return None
+    if stage(task)=='review':return None
     if task['limits']['output_tokens']<=768:return 'The selected output allowance is at most 768 tokens.'
     events=task.get('events',[])
     boundary=max((i for i,event in enumerate(events) if event['kind']=='user'),default=-1)

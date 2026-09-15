@@ -76,3 +76,38 @@ test('branch continuation opens scoped consent instead of approving commands aut
  c.api=async path=>{paths.push(path);return path.endsWith('/branch-message')?state.task:{needs_consent:true,proposal_id:'exact',scopes:[{command:['python3','-m','unittest'],directory:'/fixture'}]};};
  await c.sendChat();assert.match(html,/Allow tests & resume/);assert.equal(typeof form.onsubmit,'function');assert.equal(paths.length,2);assert.equal(c.sendingHere(),false);
 });
+
+
+test('renewing test permissions closes the modal before the server responds and prevents duplicate submission',async()=>{
+ const {c,state,input}=branchSendFixture();let form,closed=false,accept,calls=0;
+ Object.assign(c,{esc:String,modalHeader:()=>'',dialog:()=>({close:()=>closed=true}),$:selector=>selector==='form'?(form={}):input});
+ await c.resumeBranchRun(state.task,{needs_consent:true,proposal_id:'inspected',scopes:[]});
+ c.api=async(path,body)=>{calls++;assert.equal(closed,true);assert.equal(body.proposal_id,'inspected');assert.equal(body.approved,true);return new Promise(r=>accept=r);};
+ form.onsubmit({preventDefault(){}});
+ assert.equal(closed,true);assert.equal(state.branchResumeStatus.get('b').status,'pending');
+ form.onsubmit({preventDefault(){}});assert.equal(calls,1);
+ accept({needs_consent:false});await new Promise(r=>setImmediate(r));
+ assert.equal(state.branchResumeStatus.has('b'),false);
+});
+
+function permissionFixture(){
+ const state={task:{id:'b',pending_approval:{id:'check-1',command:['python3','-m','unittest']}}};
+ const c={state,api:async()=>{},renderChat:()=>{},toast:()=>{},loadTaskPermissions:()=>new Promise(()=>{}),refresh:async()=>{},esc:String,CheapOSGuide:{permissionChoice:()=>({scope:'once',label:'Run once'})}};
+ vm.createContext(c);vm.runInContext(source.slice(source.indexOf('function permissionMarkup('),source.indexOf('function bindPermissions(')),c);return c;
+}
+test('command approval renders immediately, survives polling, and does not await permissions refresh',async()=>{
+ const c=permissionFixture();let accept,calls=0;c.api=()=>{calls++;return new Promise(r=>accept=r);};
+ const pending=c.submitPermission(c.state.task,'once');assert.match(c.permissionMarkup(c.state.task),/Sending your decision/);
+ assert.doesNotMatch(c.permissionMarkup(c.state.task),/data-permission=/);
+ await c.submitPermission(c.state.task,'once');assert.equal(calls,1);
+ accept({accepted:true});await pending;assert.match(c.permissionMarkup(c.state.task),/Permission accepted/);
+ // A fresh command must not inherit the previous confirmation.
+ c.state.task.pending_approval.id='check-2';assert.match(c.permissionMarkup(c.state.task),/Can I run this check/);
+});
+test('rejected command approval is actionable and a late response cannot replace another chat',async()=>{
+ const c=permissionFixture();c.api=async()=>{throw Error('Command scope changed');};
+ await c.submitPermission(c.state.task,'once');assert.match(c.permissionMarkup(c.state.task),/Command scope changed/);assert.match(c.permissionMarkup(c.state.task),/data-permission=/);
+ let accept,renders=0;c.renderChat=()=>renders++;c.api=()=>new Promise(r=>accept=r);
+ const pending=c.submitPermission(c.state.task,'decline');assert.equal(renders,1);c.state.task={id:'other'};
+ accept({accepted:true});await pending;assert.equal(renders,1);assert.equal(c.state.task.id,'other');
+});

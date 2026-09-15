@@ -48,6 +48,10 @@ class BranchRecoveryTests(unittest.TestCase):
 
     def test_restart_resume_requires_fresh_scoped_consent_without_reauthorizing_run(self):
         task = self.started()
+        task['pending_review']={'branch_candidate_id':'candidate','review_requests':3,'messages':[{'role':'assistant','content':'Retained evidence'}]}
+        task['branch_run']['review_disagreements']={'candidate':{'unsupported_attempts':1}}
+        task['branch_run']['final_review_corrections']={'attempts':1}
+        self.engine.store.save(task)
         restarted = self.restart()
         launched = []
         restarted.branch.launch = lambda task_id: launched.append(task_id) or restarted.store.get(task_id)
@@ -60,6 +64,9 @@ class BranchRecoveryTests(unittest.TestCase):
         self.assertEqual(launched, [task['id']])
         self.assertEqual(result['task']['branch_run']['authorization_ref'], task['branch_run']['authorization_ref'])
         self.assertTrue(restarted.branch.scopes.authorize(result['task'], task['check_command']))
+        self.assertEqual(result['task']['pending_review'],task['pending_review'])
+        self.assertEqual(result['task']['branch_run']['review_disagreements'],task['branch_run']['review_disagreements'])
+        self.assertEqual(result['task']['branch_run']['final_review_corrections'],task['branch_run']['final_review_corrections'])
 
     def test_feature_ref_drift_and_checked_out_worktree_block_before_dispatch(self):
         task = self.started()

@@ -59,6 +59,30 @@ def context(run, item):
                 item_id=item['id'], item_revision=item.get('revision', 1), feature_parent=run['expected_feature_tip'])
 
 
+def save_history(pending, messages):
+    """Keep completed review exchanges, bounded by whole tool-call groups."""
+    groups = []
+    for message in messages[2:]:
+        if message.get('role') == 'tool' and groups:
+            groups[-1].append(message)
+        else:
+            groups.append([message])
+    kept, size = [], 0
+    for group in reversed(groups):
+        head = group[0]
+        calls = {call['id'] for call in head.get('tool_calls', [])}
+        results = {m.get('tool_call_id') for m in group[1:] if m.get('role') == 'tool'}
+        if calls != results:
+            continue  # An interrupted tool exchange must never be replayed.
+        length = len(json.dumps(group))
+        if size + length > 60000:
+            pending['history_partial'] = True
+            break
+        kept[:0] = copy.deepcopy(group)
+        size += length
+    pending['messages'] = kept
+
+
 def checkpoint(engine, runtime, args):
     from .engine import REVIEW_TOOLS, REVIEW_SYSTEM, ProgressPause
     task = runtime.task
@@ -116,12 +140,27 @@ def checkpoint(engine, runtime, args):
     messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.' + diff_notice + direct_call + disagreement.REVIEW_INSTRUCTION}, {'role':'user','content':json.dumps(packet)}]
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
         task['pending_review']={'branch_candidate_id':current['id'],'review_requests':0}
-    if task['pending_review'].get('coaching'):
+    pending = task['pending_review']
+    messages.extend(copy.deepcopy(pending.get('messages', [])))
+    if pending.get('history_partial'):
+        messages.append({'role':'user','content':'Older review exchanges were omitted from this bounded history. The current candidate and checks above are authoritative. Read only context still needed for a decision.'})
+    if pending.get('coaching') and pending['coaching']['content'] not in [m.get('content') for m in messages]:
         messages.append({'role':'user','content':task['pending_review']['coaching']['content']})
+    guidance = [g for g in run.get('guidance', []) if g.get('item_id') == item['id']]
+    if guidance and pending.get('guidance_count', 0) != len(guidance):
+        messages.append({'role':'user','content':'Operator guidance for this accepted item (does not authorize a plan change):\n'+guidance[-1]['message']})
+        pending['guidance_count'] = len(guidance)
+    pending['worker_summary'] = str(args.get('summary', ''))[:4000]
+    pending['uncertainties'] = str(args.get('uncertainties', ''))[:2000]
+    if item.get('review_repair'):
+        # These dispositions were validated above; preserve them for a resumed
+        # review without asking the worker to recreate its counterevidence.
+        pending['repair_dispositions'] = copy.deepcopy(item['review_repair'].get('dispositions', []))
     task['status'] = 'reviewing'
     engine.event(task, 'checkpoint', 'Reviewing the complete branch item', {'item_id':item['id'], 'candidate_id':current['id']})
     rounds = 0
-    while measuring(task) or rounds < 8:
+    max_rounds = 8
+    while measuring(task) or rounds < max_rounds:
         rounds += 1
         pending = task['pending_review']
         if pending.get('stop_diagnostic'):
@@ -132,6 +171,10 @@ def checkpoint(engine, runtime, args):
             _stop(engine, task, 'invalid_decision')
         disagreement.ensure_available(task, current['id'])
         runtime.guard()
+        if not measuring(task) and pending.get('review_requests', 0) >= max_rounds - 1:
+            _coach(engine, task, messages, 'request_limit')
+        save_history(pending, messages)
+        engine.store.save(task)
         engine.event(task,'review_request','Requesting item review',{'item_id':item['id'],'candidate_id':current['id']})
         message = engine.request(runtime, messages, tools, 'reviewer')
         task['review_count'] += 1
@@ -209,6 +252,7 @@ def checkpoint(engine, runtime, args):
         fingerprint = hashlib.sha256(json.dumps(observations,sort_keys=True).encode()).hexdigest()
         repeated = task['pending_review'].setdefault('observations',{})
         repeated[fingerprint] = repeated.get(fingerprint,0) + 1
+        save_history(task['pending_review'], messages)
         engine.store.save(task)
         invalid = run.get('review_disagreements', {}).get(current['id'], {}).get('unsupported_attempts', 0)
         repeated_reason = ('repeated_tool_error' if any(isinstance(o['result'],dict) and o['result'].get('error') for o in observations)
@@ -217,7 +261,7 @@ def checkpoint(engine, runtime, args):
             _stop(engine, task, 'invalid_decision')
         if repeated[fingerprint] >= 3:
             _stop(engine, task, repeated_reason)
-        if invalid >= 2 or repeated[fingerprint] >= 2 or rounds == 7:
+        if invalid >= 2 or repeated[fingerprint] >= 2 or rounds == max_rounds - 1:
             _coach(engine, task, messages, 'invalid_decision' if invalid >= 2 else
                    repeated_reason if repeated[fingerprint] >= 2 else 'request_limit')
     _stop(engine, task, 'request_limit')

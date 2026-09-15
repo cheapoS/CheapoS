@@ -21,7 +21,11 @@ def candidates(task):
     candidates = [['patch', task.get('workspace_generation', 0), task.get('patch', '')]]
     if task.get('checks'):
         check = task['checks'][-1]
-        candidates.append(['check', check.get('generation', 0), check.get('digest'), check.get('command'), check.get('outcome'), check.get('passed'), check.get('output')])
+        # Successful output commonly varies only in elapsed time. A new log is
+        # not new progress for the same verified inputs and command. Failed
+        # output remains useful evidence for diagnosing a changed failure.
+        output = None if check.get('passed') else check.get('output')
+        candidates.append(['check', check.get('generation', 0), check.get('digest'), check.get('command'), check.get('outcome'), check.get('passed'), output, check.get('verification_identity')])
     if task.get('checkpoints'):
         review = task['checkpoints'][-1]
         # Distinct verified review decisions advance work; wording alone does not.

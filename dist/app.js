@@ -568,17 +568,31 @@ function commandMarkup(check,{live=false,open=false,key=check.run_id}={}) {
 }
 function permissionMarkup(task) {
   const pending=task.pending_approval, choice=CheapOSGuide.permissionChoice(pending), profile=pending.profile;
+  const submission=state.permissionSubmissions?.get(task.id);
+  if(submission?.id===pending.id&&submission.status!=='error')return `<section class="chat-decision" role="status" aria-live="polite"><strong>${submission.status==='saving'?'Sending your decision…':submission.approved?'Permission accepted · starting tests…':'Check declined'}</strong><code class="approval-command">${esc(pending.command.join(' '))}</code><p>${submission.status==='saving'?'Waiting for the server to confirm.':submission.approved?'The command will appear here as it starts.':'Waiting for the task to pause.'}</p></section>`;
   const explanation=profile?`<p>Allow supported unittest variants in this project until cheapoS restarts or you revoke permission. Tests execute project code, including later test edits.</p><details><summary>Test permission scope</summary><p>Project: ${esc(profile.project)}</p><p>Runner: unittest · ${esc(profile.executable)}</p><p>Test roots: ${profile.roots.map(root=>esc(root==='.'?'Project root (.)':root)).join(', ')}. Supported selectors, discovery patterns, and verbosity flags.</p></details>`:'<p>This exact command in this chat’s task copy · until cheapoS restarts. Different commands ask again.</p>';
   const reason=pending.scope_reason&&!pending.scope_reason.startsWith('No project-session')?`<p>${esc(pending.scope_reason)}</p>`:'';
-  return `<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(pending.command.join(' '))}</code>${explanation}${reason}<div class="button-row"><button class="primary-button" data-permission="${choice.scope}">${choice.label}</button><button class="outline-button" data-permission="once">Run once</button><button class="subtle-button" data-permission="decline">Decline</button></div></section>`;
+  return `<section class="chat-decision"><strong>Can I run this check?</strong><code class="approval-command">${esc(pending.command.join(' '))}</code>${explanation}${reason}${submission?.id===pending.id&&submission.status==='error'?`<p class="form-error" role="alert">${esc(submission.message)}</p>`:''}<div class="button-row"><button class="primary-button" data-permission="${choice.scope}">${choice.label}</button><button class="outline-button" data-permission="once">Run once</button><button class="subtle-button" data-permission="decline">Decline</button></div></section>`;
+}
+async function submitPermission(task,scope) {
+  const id=task.pending_approval?.id;if(!id)return;
+  state.permissionSubmissions ||= new Map();
+  const previous=state.permissionSubmissions.get(task.id);
+  if(previous?.id===id&&previous.status!=='error')return;
+  const submission={id,status:'saving',approved:scope!=='decline'};
+  state.permissionSubmissions.set(task.id,submission);
+  if(state.task?.id===task.id)renderChat();
+  try{
+    await api('/tasks/'+task.id+'/approval',{approved:submission.approved,scope:scope==='decline'?'once':scope,approval_id:id});
+    submission.status='accepted';
+    if(state.task?.id===task.id)renderChat();
+    // Sidebar permission discovery must not delay command feedback.
+    void loadTaskPermissions(task,true).catch(error=>toast(error.message));
+  }catch(error){submission.status='error';submission.message=error.message;toast(error.message);if(state.task?.id===task.id)renderChat();}
+  void refresh({background:true}).catch(error=>toast(error.message));
 }
 function bindPermissions(task) {
-  $$('[data-permission]').forEach(button=>button.onclick=async()=>{
-    const scope=button.dataset.permission, approval=task.pending_approval.id;
-    $$('[data-permission]').forEach(b=>b.disabled=true);
-    try{await api('/tasks/'+task.id+'/approval',{approved:scope!=='decline',scope:scope==='decline'?'once':scope,approval_id:approval});await loadTaskPermissions(task,true);await refresh()}
-    catch(error){toast(error.message);await refresh();$$('[data-permission]').forEach(b=>b.disabled=false)}
-  });
+  $$('[data-permission]').forEach(button=>button.onclick=()=>submitPermission(task,button.dataset.permission));
 }
 function renderChat() {
   const task=state.task;if(!task)return;
@@ -644,7 +658,7 @@ function renderChat() {
     if(action==='resume'){await resumeTask(b);return}
     b.disabled=true;
     if(action==='start'){await startTask(task.id);b.disabled=false;return}
-    try{await api('/tasks/'+task.id+'/approval',{approved:action!=='decline',remember:action==='approve-session',approval_id:task.pending_approval.id});await loadTaskPermissions(task,true);await refresh()}catch(e){toast(e.message);b.disabled=false}
+    await submitPermission(task,action==='approve-session'?'task_exact':action==='decline'?'decline':'once');
   });
 }
 function reviewDisputeMarkup(task){
@@ -1238,13 +1252,13 @@ async function refresh({background=false}={}) {
   }
   if(!background)await context;
 }
-async function resumeBranchRun(task,savedResult) {
+async function resumeBranchRun(task,savedResult,approvalValues={}) {
   state.branchResumeStatus ||= new Map();
   if(state.branchResumeStatus.get(task.id)?.status==='pending')return;
   state.branchResumeStatus.set(task.id,{status:'pending'});
   if(state.task?.id===task.id)renderChat();
   let result;
-  try{result=savedResult||await api('/tasks/'+task.id+'/branch-resume',{});state.branchResumeStatus.delete(task.id);}
+  try{result=savedResult||await api('/tasks/'+task.id+'/branch-resume',approvalValues);state.branchResumeStatus.delete(task.id);}
   catch(e){state.branchResumeStatus.set(task.id,{status:'error',message:e.message});throw e;}
   finally{if(state.task?.id===task.id)renderChat();}
   if(result.needs_merge_recovery){
@@ -1255,7 +1269,7 @@ async function resumeBranchRun(task,savedResult) {
   }
   if(!result.needs_consent){await refresh();return;}
   const d=dialog(`<form>${modalHeader('RESUME UNATTENDED','Renew test permissions')}<p>These session permissions expired or their environment changed. Resume keeps the same run and remaining allowance.</p><ul>${(result.scopes||[]).map(scope=>`<li><code>${esc(scope.command.join(' '))}</code><br><small>${esc(scope.directory)}</small></li>`).join('')}</ul><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Keep paused</button><button type="submit" class="primary-button">Allow tests & resume</button></div></form>`);
-  const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{await api('/tasks/'+task.id+'/branch-resume',{proposal_id:result.proposal_id,approved:true});d.close();await refresh();});};
+  const form=$('form',d);form.onsubmit=e=>{e.preventDefault();d.close();void resumeBranchRun(task,null,{proposal_id:result.proposal_id,approved:true}).catch(error=>toast(error.message));};
 }
 async function bootstrap() {
   try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;await loadAdmission({render:false});try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);}

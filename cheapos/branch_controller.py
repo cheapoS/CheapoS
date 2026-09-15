@@ -290,8 +290,6 @@ class BranchController:
             if run['status'] in {'paused','blocked'}:state.transition(run,'running')
             runtime=Runtime(task)
             runtime.branch_authority=lambda:self.validate_authority(task,run)
-            run.pop('final_review_corrections', None)
-            run.pop('review_disagreements', None)
             task.update(status='running',error=None,error_code=None,stream=None,check_stream=None,pending_approval=None)
             self.engine.store.save(task)
             self.engine.runtimes[task_id]=runtime
@@ -330,6 +328,24 @@ class BranchController:
             self.engine.event(task,'branch_commit','Item already satisfied' if flags['no_change'] else 'Committed '+item['title'],event)
             from .model_pool import observe_completions
             observe_completions(self.engine.gateway.pool,task)
+
+    def continue_item(self, runtime, item):
+        """Resume the interrupted stage; a pending review is not worker work."""
+        task = runtime.task
+        if item['status'] == 'reviewing':
+            from .branch_review import checkpoint
+            saved = task.get('pending_review') or {}
+            self.engine.event(task, 'state', 'Continuing independent review from saved evidence',
+                              {'item_id': item['id']})
+            result = checkpoint(self.engine, runtime, {
+                'summary': saved.get('worker_summary', 'Continuing the interrupted item review.'),
+                'uncertainties': saved.get('uncertainties', ''),
+                'repair_dispositions': saved.get('repair_dispositions', item.get('review_repair', {}).get('dispositions', []))})
+            if result['decision'] != 'REQUEST_CHANGES':
+                return
+        task['status'] = 'running'
+        task['messages'] = self.engine.initial_messages(task)
+        self.engine._run_with_wait(runtime)
 
     def execute(self, runtime):
         from .engine import now
@@ -382,8 +398,7 @@ class BranchController:
                     else:
                         self.commit_item(runtime,item)
                         continue
-                task['status']='running';task['messages']=self.engine.initial_messages(task)
-                self.engine._run_with_wait(runtime)
+                self.continue_item(runtime, item)
                 if run.get('waiting_for_user'):
                     self.engine.refresh_changes(task)
                     clean=not task.get('changes') and not Workspace(task['workspace']).patch(validate=True)
@@ -597,9 +612,6 @@ class BranchController:
             self.engine.require_active_task(task_id)
             self.engine.admission.require('unattended', task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
-            run.pop('final_review_corrections', None)
-            run.pop('review_disagreements', None)
-            task.pop('pending_review', None)
             task.pop('recovery_blocked', None)
             self.engine.store.save(task)
             from .model_pool import observe_completions
@@ -650,12 +662,7 @@ class BranchController:
             if sum(len(g['message']) for g in guidance)+len(message)>24000:
                 raise ValueError('Guidance is full; prepare an explicit revision')
             guidance.append({'item_id':run['current_item_id'],'message':message.strip()})
-            task.pop('pending_review', None)
             task.pop('recovery_blocked', None)
-            if run.get('current_item_id'):
-                current_item = next((i for i in run['items'] if i['id'] == run['current_item_id']), None)
-                if current_item and current_item['status'] == 'reviewing':
-                    state.transition_item(run, current_item['id'], 'working')
             answering_blocker=bool(run.pop('waiting_for_user',None))
             if answering_blocker:
                 for item in run['items']:

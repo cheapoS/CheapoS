@@ -19,7 +19,7 @@ from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
 from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, Workspace, git
 from . import commits, reconciliation, progress, branch_runs
-from .verification import evidence_identity, matches as evidence_matches
+from .verification import evidence_identity, matches as evidence_matches, normalize_unittest, reusable_check
 from .web import WebReader, allowed_urls
 from .gateways import gateway_for
 from .omniroute import OmniRouteManager
@@ -1299,6 +1299,13 @@ class Engine:
                 files.append({"path": path, "error": str(error)[:300], "complete": False})
         requests = task.get("requests", [task["prompt"]])
         check = (task.get("checks") or [{}])[-1]
+        passed_current = work_policy.stage(task) == "review"
+        if passed_current:
+            guidance_text = "Verification passed for the current changes. If the requested work is complete, call checkpoint with a summary and uncertainties to submit for review. Do not repeat checks or modify unchanged files."
+        elif compact:
+            guidance_text = COMPACT_GUIDANCE + ("\n" + ACTION_GUIDANCE if task.get("action_pending") else "")
+        else:
+            guidance_text = ACTION_GUIDANCE
         summary = {"original_task": task["prompt"], "latest_message": requests[-1],
                    "earlier_user_messages": [excerpt(m, 1000) for m in requests[-4:-1]],
                    "changed_files": changed, "current_files": files,
@@ -1333,7 +1340,7 @@ class Engine:
             summary["available_files"] = workspace.list_files()[:500]
         return [{"role": "system", "content": worker_system(task)},
                 {"role": "user", "content": json.dumps(summary)},
-                {"role": "user", "content": execution_context.guidance(task, (COMPACT_GUIDANCE + ("\n" + ACTION_GUIDANCE if task.get("action_pending") else "")) if compact else ACTION_GUIDANCE)}]
+                {"role": "user", "content": execution_context.guidance(task, guidance_text)}]
 
     def prepare_compact_edits(self, task):
         if not task.get("compact_edits"):
@@ -1954,15 +1961,7 @@ class Engine:
             # added. Resume must not execute it again, even with a session grant.
             if any(re.fullmatch(r"\d*[|&;<>]+\d*", arg) for arg in argv):
                 raise CheckCommandError("The saved verification command contains shell syntax. Call run_checks with only the test command; cheapoS captures output automatically.")
-        if argv and '-m' in argv and 'unittest' in argv:
-            cleaned = []
-            for arg in argv:
-                if arg.endswith('.py'):
-                    arg = arg[:-3]
-                elif '.py.' in arg:
-                    arg = arg.replace('.py.', '.')
-                cleaned.append(arg)
-            argv = cleaned
+        argv = normalize_unittest(argv or [])
         if not argv:
             raise CheckCommandError("Choose a check from this project's guidance and call run_checks with its command. If none is suitable, use ask_user.")
         return argv
@@ -1998,6 +1997,18 @@ class Engine:
             self.event(task,'setup','Verification environment needs setup',readiness)
             raise EnvironmentPause(readiness['evidence'])
         if task.get('environment_setup'): task['environment_setup']=readiness
+        # An explicit Interactive check still runs with normal permissions.
+        # Unattended repeats can use evidence without executing a new command.
+        saved = reusable_check(task, argv) if task.get('branch_run') else None
+        if saved:
+            runtime.guard()
+            task['check_command'] = list(argv)
+            task['validated_check_command'] = list(argv)
+            task['tool_actions'] += 1
+            self.event(task, 'check_reused', 'Checks already passed for these unchanged inputs',
+                       {'command': argv, 'run_id': saved.get('run_id'), 'digest': saved.get('digest')})
+            return {**copy.deepcopy(saved), 'reused': True,
+                    'next_action': 'This exact command already passed for the current files and environment. Submit checkpoint when the item is complete; do not repeat this check.'}
         # Session grants match this chat, workspace, and parsed argument vector.
         # They are held in memory, never restored from task history.
         with self.lock:
@@ -2089,6 +2100,9 @@ class Engine:
         task["checks"].append(result)
         task["tool_actions"] += 1
         self.event(task, "checks", "Verification passed" if result["passed"] else "Verification failed", result)
+        if result["passed"]:
+            task.pop("action_pending", None)
+            task.pop("loop_guidance", None)
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
         if result['outcome'] == 'task_deadline':
@@ -2096,6 +2110,18 @@ class Engine:
             raise WorkingTimeLimit(result['next_action'])
         if result["outcome"] in {"process_timeout", "output_limit"}:
             raise ProgressPause(result["next_action"])
+        return result
+
+    def worker_checks(self, runtime, args, last_call=True):
+        result = self.checks(runtime, args.get('command'))
+        run = runtime.task.get('branch_run') or {}
+        item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
+        if result.get('reused') and run and last_call and not item.get('review_repair'):
+            self.event(runtime.task, 'state', 'Taking verified changes to independent review',
+                       'The worker requested the same passing check again. I’m asking the reviewer to assess the complete item against its requirements.')
+            return self.checkpoint_feedback(runtime, {
+                'summary': 'Worker requested the already-passing verification again.',
+                'uncertainties': 'The controller is submitting saved work to avoid repeated tests. Independently assess every requirement; passing tests alone do not establish completion.'})
         return result
 
     def checkpoint_feedback(self, runtime, args):
@@ -2534,7 +2560,7 @@ class Engine:
                         if name == "checkpoint":
                             result = self.checkpoint_feedback(runtime, args)
                         elif name == "run_checks":
-                            result = self.checks(runtime, args.get("command"))
+                            result = self.worker_checks(runtime, args, last_call=call_index == len(calls) - 1)
                         elif name == "report_blocker" and execution_context.mode(task) == 'unattended':
                             detail = execution_context.blocker(args)
                             question = detail['question']

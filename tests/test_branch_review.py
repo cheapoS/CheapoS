@@ -33,8 +33,11 @@ class BranchReviewTests(LocalCase):
         self.assertEqual(json.loads(item['ready_receipt'])['outcome'],'ready')
         self.assertEqual(len(task['checks']),1)
         item['status']='working';task['status']='running'
-        checkpoint(self.engine,runtime,{})
+        result=self.engine.worker_checks(runtime,{'command':shlex.join(task['check_command'])})
+        self.assertEqual(result['decision'],'APPROVE')
         self.assertEqual(len(task['checks']),1)
+        self.assertEqual(self.engine.request.call_count,2)
+        self.assertTrue(any(e['title']=='Taking verified changes to independent review' for e in task['events']))
 
     def test_partial_completion_and_same_model_cannot_get_receipt(self):
         task=self.task(); task['providers']['reviewer']=dict(task['providers']['worker'])

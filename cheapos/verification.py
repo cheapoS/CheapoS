@@ -7,6 +7,46 @@ from .workspace import Workspace, git
 from .project_permissions import config_identity
 
 
+def normalize_unittest(argv):
+    """Canonicalize unittest test names, never executable paths/discovery options."""
+    argv = list(argv)
+    if '-m' not in argv:
+        return argv
+    module = argv.index('-m') + 1
+    if module >= len(argv) or argv[module] != 'unittest' or 'discover' in argv[module + 1:]:
+        return argv
+    skip = False
+    for index in range(module + 1, len(argv)):
+        arg = argv[index]
+        if skip:
+            skip = False
+            continue
+        if arg == '-k':
+            skip = True
+        if arg.startswith(('-', '/')):
+            continue
+        name = arg[2:] if arg.startswith('./') else arg
+        if name.endswith('.py'):
+            name = name[:-3]
+        name = name.replace('.py.', '.').replace('/', '.')
+        if all(part.isidentifier() for part in name.split('.')):
+            argv[index] = name
+    return argv
+
+
+def reusable_check(task, argv):
+    """Latest exact successful command only; reread all inputs before reuse."""
+    record = (task.get('checks') or [{}])[-1]
+    if (record.get('command') != argv or record.get('passed') is not True
+            or record.get('exit_code') != 0 or record.get('reason') or record.get('truncated')
+            or record.get('outcome', 'passed') != 'passed'
+            or not record.get('input_identity')
+            or record.get('input_identity') != record.get('verification_identity')):
+        return None
+    identity = evidence_identity({**task, 'check_command': argv})
+    return record if identity and identity == record['verification_identity'] else None
+
+
 def runner_identity(argv, workspace):
     executable = executable_identity(argv[0], workspace) if argv else None
     if not executable:
