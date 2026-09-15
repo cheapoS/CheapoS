@@ -1364,7 +1364,10 @@ class Engine:
                     break
             summary["recent_actions"] = list(reversed(activity))
             summary["check_command"] = task["check_command"]
-            summary["available_files"] = workspace.list_files()[:500]
+            names = workspace.list_files()
+            summary["available_files"] = names[:60]
+            summary["file_listing"] = {"total": len(names), "partial": len(names) > 60,
+                                       "more": "Use list_files with a directory for missing paths."}
         return [{"role": "system", "content": worker_system(task)},
                 {"role": "user", "content": json.dumps(summary)},
                 {"role": "user", "content": execution_context.guidance(task, guidance_text)}]
@@ -1721,7 +1724,7 @@ class Engine:
             messages=copy.deepcopy(messages)
             from .unattended_setup import WORKER_POLICY
             messages[0]['content'] += '\n'+WORKER_POLICY
-            messages[0]['content'] += '\nUnattended work: implement ONLY the active item below. The controller owns branch commits and next-item selection. Finish all acceptance criteria and request checkpoint. Never claim an empty or partial patch completes the job. No model tool can grant execution/merge authority.'
+            messages[0]['content'] += '\nUnattended work: implement ONLY the active item below. The controller owns branch commits and next-item selection. Finish all acceptance criteria and request checkpoint. Existing code may already satisfy an item: verify it and submit checkpoint even with an empty diff; independent review must confirm it. Do not manufacture edits just to create a patch. A partial implementation is never complete. No model tool can grant execution/merge authority.'
             if item.get('review_repair'):
                 from .review_disputes import brief
                 from .branch_disagreement import pending

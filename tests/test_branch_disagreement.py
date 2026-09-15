@@ -141,6 +141,24 @@ class DisagreementTests(unittest.TestCase):
 
 
 class ReviewCoachingTests(unittest.TestCase):
+    def test_last_saved_request_requires_decision_without_renewing_allowance(self):
+        task,engine,runtime=self.fixture()
+        task['pending_review']={'branch_candidate_id':'candidate','review_requests':7,
+            'messages':[{'role':'user','content':'Previously inspected exact values implementation.'}]}
+        def respond(rt,messages,tools,role):
+            self.assertEqual([t['function']['name'] for t in tools],['review_decision'])
+            self.assertIn('Previously inspected',json.dumps(messages))
+            self.assertIn('Do not invent evidence',messages[-1]['content'])
+            self.assertEqual(task['pending_review']['review_requests'],7)
+            task['pending_review']['review_requests']+=1
+            return {'tool_calls':[{'id':'decision','name':'review_decision','result':{'decision':'APPROVE',
+                'candidate_id':'candidate','feedback':'Source and checks meet criteria',
+                'criteria_outcomes':{'exact values':{'passed':True,'evidence':'Source and checks'}}}}]}
+        engine.request.side_effect=respond
+        self.assertEqual(branch_review.checkpoint(engine,runtime,{})['decision'],'APPROVE')
+        engine.file_tool.assert_not_called()
+        branch_review.evidence.ready_receipt.assert_called_once()
+
     def fixture(self):
         from contextlib import ExitStack
         run = branch_runs.new_run({'items':[{'id':'one','title':'Read report','instructions':'Verify exact values',

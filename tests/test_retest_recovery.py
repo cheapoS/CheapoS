@@ -17,6 +17,22 @@ def call(name, args):
 
 
 class RetestRecoveryTests(unittest.TestCase):
+    def test_compact_context_keeps_file_directory_bounded_without_losing_requirements(self):
+        task={'workspace':'unused','changes':[],'events':[],'compact_edits':True,
+              'prompt':'Implement restart','requests':['Implement restart','Preserve exact arguments'],
+              'checks':[],'checkpoints':[],'check_command':['python3','-m','unittest']}
+        names=['tests/module_%04d.py'%i for i in range(500)]
+        with patch('cheapos.engine.Workspace') as workspace, \
+             patch('cheapos.engine.project_context.brief',return_value={}), \
+             patch('cheapos.engine.project_context.continuation',return_value={'active_requirements':task['requests']}):
+            workspace.return_value.list_files.return_value=names
+            messages=Engine.action_messages(None,task)
+        packet=json.loads(messages[1]['content'])
+        self.assertEqual(packet['available_files'],names[:60])
+        self.assertEqual(packet['file_listing']['total'],500)
+        self.assertTrue(packet['file_listing']['partial'])
+        self.assertEqual(packet['continuation_record']['active_requirements'],task['requests'])
+
     def record(self):
         return {'command':['python3','-m','unittest','tests.test_http'], 'passed':True,
                 'exit_code':0,'outcome':'passed','input_identity':'inputs',

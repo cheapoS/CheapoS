@@ -171,12 +171,21 @@ def checkpoint(engine, runtime, args):
             _stop(engine, task, 'invalid_decision')
         disagreement.ensure_available(task, current['id'])
         runtime.guard()
-        if not measuring(task) and pending.get('review_requests', 0) >= max_rounds - 1:
+        deciding = not measuring(task) and pending.get('review_requests', 0) >= max_rounds - 1
+        if deciding:
             _coach(engine, task, messages, 'request_limit')
+        offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools
+        request_messages = messages
+        if deciding:
+            request_messages = messages + [{'role':'user','content':
+                'This is the final review request within the current allowance. Use the evidence already collected '
+                'and call review_decision now. APPROVE only with complete supporting evidence; otherwise provide '
+                'a concrete supported defect, or TAKE_OVER explaining precisely which essential evidence remains '
+                'unavailable. Additional inspection tools are not offered on this request. Do not invent evidence.'}]
         save_history(pending, messages)
         engine.store.save(task)
         engine.event(task,'review_request','Requesting item review',{'item_id':item['id'],'candidate_id':current['id']})
-        message = engine.request(runtime, messages, tools, 'reviewer')
+        message = engine.request(runtime, request_messages, offered, 'reviewer')
         task['review_count'] += 1
         messages.append(message)
         calls = message.get('tool_calls', [])

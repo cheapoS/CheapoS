@@ -133,8 +133,12 @@ def classify(error=None, task=None, cause=None, stage=None):
         return public(run['pause_detail']) or public({'version': 1, 'cause': 'unknown'})
     item = next((i for i in run.get('items', []) if i.get('id') == run.get('current_item_id')), {})
     requests = task.get('request_metrics') or []; request = requests[-1] if requests else {}
-    if explicit == 'repeated_work' and task.get('active_role') == 'worker':
-        request = next((r for r in reversed(requests) if r.get('role') == 'worker'), request)
+    if explicit == 'repeated_work':
+        diagnostic = (getattr(error, 'safe_diagnostic', None) or
+                      (task.get('pending_review') or {}).get('stop_diagnostic'))
+        review_stop = isinstance(diagnostic, dict) and diagnostic.get('kind') == 'review_stall'
+        stalled_role = 'reviewer' if review_stop else task.get('active_role')
+        request = next((r for r in reversed(requests) if r.get('role') == stalled_role), request)
     detail = {'version': 1, 'cause': explicit, 'stage': stage or getattr(error, 'stage', None) or (run.get('status') if run.get('status') in STAGES else 'reviewing' if task.get('active_role') == 'reviewer' else item.get('status')),
               'item_id': item.get('id'), 'role': request.get('role') or task.get('active_role'), 'model': request.get('model'),
               'diagnostic_id': getattr(error, 'diagnostic_id', None) or request.get('id')}

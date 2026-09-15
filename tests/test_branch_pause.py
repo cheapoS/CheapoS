@@ -99,6 +99,13 @@ class PauseDetails(unittest.TestCase):
    t['pending_review']['stop_diagnostic']=malformed
    self.assertNotIn('diagnostic',pause.classify(ValueError('private'),t))
 
+ def test_item_review_stall_uses_reviewer_request_not_worker_implementation_role(self):
+  t=self.task();t['active_role']='worker';t['error_code']='progress_limit'
+  t['request_metrics'].insert(0,{'id':'worker-request','role':'worker','model':'fixture/worker'})
+  t['pending_review']={'stop_diagnostic':{'kind':'review_stall','reason':'request_limit','coached':True}}
+  d=pause.classify(ValueError('wrapper'),t)
+  self.assertEqual((d['role'],d['model'],d['diagnostic_id']),('reviewer','fixture/reviewer','r1'))
+
  def test_route_unavailable_cooldown_classifies_as_provider_quota_with_retry_and_scope(self):
   t = self.task()
   t['error_code'] = 'routing_unavailable'
