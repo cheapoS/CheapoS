@@ -63,6 +63,8 @@ def candidate(task, context, required_checks, criteria=None):
 
 def bind_check(current, command, record):
     """Accept only controller-executed, complete checks of these exact inputs."""
+    from .test_policy import require_verification
+    require_verification(command)
     expected = next((c for c in current['checks'] if c['command'] == command), None)
     if not expected or record.get('command') != command or record.get('passed') is not True or record.get('exit_code') != 0 or record.get('reason') or record.get('truncated') or record.get('outcome', 'passed') != 'passed':
         raise ValueError('Required verification did not complete successfully')

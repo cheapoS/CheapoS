@@ -115,3 +115,9 @@ Preserve these properties:
 - Savings claims require a measured baseline and comparable task outcomes.
 
 Include what changed, why it helps, and relevant verification in your pull request. Do not commit `.cheapos/`, credentials, local task output, or unrelated generated assets. Code contributions are made under the repository's MIT license.
+
+The app's verification tool rejects `check.py --plan`: a successful selection
+preview is not a passing check, including when it appears in saved evidence.
+Use the preview to choose executable, scoped checks. Uncapped Interactive work
+also leaves checkpoint reviewer turns uncapped; pause, model usage accounting,
+and authorized spending limits still apply.

@@ -46,3 +46,20 @@ class TestPolicyTests(unittest.TestCase):
         engine=Engine.__new__(Engine)
         with self.assertRaises(CheckCommandError):engine.verification_argv(task)
         self.assertEqual(engine.verification_argv(task,'python3 -m unittest tests.test_http'),['python3','-m','unittest','tests.test_http'])
+
+    def test_plan_only_is_not_verification_even_when_previously_validated(self):
+        from cheapos.engine import Engine, CheckCommandError
+        command=['python3','-B','scripts/check.py','--plan']
+        task=dict(conversational=True, check_command=command, validated_check_command=command, limits={'uncapped_work':True})
+        with self.assertRaisesRegex(CheckCommandError, 'lists checks but runs none'):
+            Engine.__new__(Engine).verification_argv(task)
+        self.assertEqual(task['check_command'], command)
+        policy.require_verification('python3 -B scripts/check.py --files dist/app.js')
+
+    def test_historical_plan_record_cannot_be_bound_as_evidence(self):
+        from cheapos.branch_evidence import bind_check
+        command=['python3','scripts/check.py','--plan']
+        current={'checks':[{'command':command,'verification_identity':'same'}]}
+        record=dict(command=command,passed=True,exit_code=0,verification_identity='same',input_identity='same')
+        with self.assertRaisesRegex(ValueError, 'lists checks'):
+            bind_check(current, command, record)

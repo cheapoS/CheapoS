@@ -2357,6 +2357,9 @@ class Engine:
             return self.checkpoint(runtime, args)
         except CheckCommandError as error:
             runtime.task.pop("pending_checkpoint", None)
+            if "branch_run" not in runtime.task:
+                runtime.task.pop("pending_review", None)
+                runtime.task["status"] = "running"
             result = {"error": str(error), "code": "invalid_check_command"}
             self.event(runtime.task, "tool_error", "Asking the worker to correct its test command", result)
             return result
@@ -2414,9 +2417,20 @@ class Engine:
         task["status"] = "reviewing"
         self.event(task, "handoff", "Sending changes for review", {"from": task["providers"].get("worker", {}).get("model", "Scripted worker"), "to": task["providers"].get("reviewer", {}).get("model", "Scripted reviewer"), "role": "reviewer", "summary": "The controller collected verification output. The reviewer will inspect the patch and evidence."})
         self.event(task, "checkpoint", f"Checkpoint #{checkpoint['number']} ready for review", checkpoint)
-        messages = [{"role": "system", "content": REVIEW_SYSTEM}, {"role": "user", "content": json.dumps(checkpoint)}]
+        messages = [{"role": "system", "content": REVIEW_SYSTEM}, {"role": "user", "content": json.dumps({k: v for k, v in checkpoint.items() if k != "messages"})}]
+        messages.extend(checkpoint.get("messages", []))
+        from .branch_review import save_history
         runtime.review_requests = checkpoint.get("review_requests", 0)
-        for _ in range(8):
+        turns = 0
+        while measuring(task) or turns < 8:
+            if runtime.stop.is_set():
+                raise InterruptedError("Task stopped")
+            runtime.guard()
+            save_history(checkpoint, messages)
+            self.store.save(task)
+            if turns and turns % 4 == 0:
+                messages.append({"role": "user", "content": "Use the evidence already inspected to reach review_decision. Identify a concrete defect or approve with specific evidence. Avoid repeating unchanged searches; read further only to resolve a specific unanswered question."})
+            turns += 1
             message = self.request(runtime, messages, REVIEW_TOOLS, "reviewer")
             task["review_count"] += 1
             messages.append(message)
@@ -2459,6 +2473,7 @@ class Engine:
                 else:
                     result = {"error": "Reviewer tools are read-only"}
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)})
+        save_history(checkpoint, messages)
         raise BudgetError("Reviewer reached the eight-turn checkpoint limit without deciding. Inspect the saved checkpoint before resuming.")
 
     @staticmethod

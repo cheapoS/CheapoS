@@ -55,7 +55,14 @@ def approve(task, approved):
     task['branch_run']['test_policy_version']=1
 
 
+def require_verification(command):
+    args = argv(command)
+    if 'check.py' in [PurePath(a).name for a in args] and '--plan' in args:
+        raise ValueError('check.py --plan lists checks but runs none. Inspect its suggested commands, then call run_checks with the relevant executable check command. Do not substitute the full suite.')
+
+
 def guard(task, command):
+    require_verification(command)
     if not task.get('branch_run') or not full_suite(command):return
     canonical=shlex.join(argv(command))
     if canonical in task.get('full_suite_approval',[]):return
