@@ -1330,12 +1330,16 @@ $('#composer-permissions').onclick=sessionPermissions;
   }
   const startRestart=async()=>{
     modal.close();toast('Restarting cheapoS backend...');
-    try{await fetch('/api/restart',{method:'POST',headers:{'X-CheapOS-Token':state.token}});}catch(e){}
+    let oldToken;
+    try{const b=await fetch('/api/bootstrap');if(b.ok){const d=await b.json();oldToken=d.token;}}catch(e){}
+    let res;
+    try{res=await fetch('/api/restart',{method:'POST',headers:{'Content-Type':'application/json','X-CheapOS-Token':state.token},body:JSON.stringify({})});}catch(e){toast('Restart failed: network error');return;}
+    if(!res.ok){toast('Restart failed ('+res.status+')');return;}
     for(let i=0;i<30;i++){
-      try{if((await fetch('/api/bootstrap')).ok)return window.location.reload()}catch(e){}
       await new Promise(r=>setTimeout(r,500));
+      try{const r=await fetch('/api/bootstrap');if(r.ok){const d=await r.json();if(d.app==='CheapOS'&&d.token&&d.token!==oldToken)return window.location.reload();}}catch(e){}
     }
-    toast('Restart failed');
+    toast('Restart failed: server did not come back');
   };
   if(restartWebapp)restartWebapp.onclick=startRestart;
   if(restartBoth)restartBoth.onclick=async()=>{modal.close();await callGatewayRefresh();startRestart();};
