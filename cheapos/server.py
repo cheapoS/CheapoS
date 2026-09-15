@@ -209,6 +209,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.open_project(values)
             elif path == "/api/preferences":
                 result = engine.save_preferences(values)
+            elif path == "/api/club/pair":
+                self.trusted(mutation=True)
+                result = engine.store.club.start_pairing(engine.store.lifetime)
+            elif path == "/api/club/check":
+                self.trusted(mutation=True)
+                result = engine.store.club.check_pairing()
             elif path == "/api/club/link":
                 self.trusted(mutation=True)
                 result = engine.store.club.link(values)

@@ -71,6 +71,9 @@ def clean(record):
                   reconciled=bool(record.get('usage_reconciled') or record.get('cost_provenance') in {'provider_reported', 'estimated'}),
                   requested_model=req_m,
                   served_model=srv_m)
+    # Club classification requires explicit access evidence; never infer free pricing from a model prefix.
+    result['club_category'] = cat if record.get('access_class') in CATEGORIES else 'unknown'
+    if (result['reported_cost'] or 0) > 0: result['club_category'] = 'paid'
     result['charged_free'] = result['category'] == 'public_free' and (result['reported_cost'] or 0) > 0
     if result['charged_free']:
         result['category'] = 'paid'

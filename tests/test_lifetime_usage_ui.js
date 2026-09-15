@@ -10,8 +10,8 @@ test('open is immediately pending; filters reject stale replies and close leaves
 test('failure offers retry, no raw server error, and successful retry enables export',async()=>{const c=controls();let count=0;ui.open({dialog:()=>c.d,header:()=>'',api:async()=>{if(!count++)throw Error('SECRET path');return fixture();}});await tick();assert.match(c.q('[data-usage-body]').innerHTML,/Retry/);assert.doesNotMatch(c.q('[data-usage-body]').innerHTML,/SECRET/);await c.q('[data-retry]').onclick();assert.equal(c.q('[data-export]').disabled,false);});
 test('club renders unlinked, preview, and active states with extended models',async()=>{
   const unlinkedData = fixture();
-  assert.match(ui.render(unlinkedData), /Join the Cheapskate Club/);
-  assert.match(ui.render(unlinkedData), /Connect X account/);
+  assert.match(ui.render(unlinkedData), /The Cheapskate Club/);
+  assert.match(ui.render(unlinkedData), /Connect to Club/);
 
   const linkedData = fixture();
   linkedData.models = {'deepseek-chat': {tokens: 80, requests: 2, category: 'included'}};
@@ -22,9 +22,10 @@ test('club renders unlinked, preview, and active states with extended models',as
   };
   const linkedHtml = ui.render(linkedData);
   assert.match(linkedHtml, /@carlosa8c/);
-  assert.match(linkedHtml, /Review stats before sharing/);
-  assert.match(linkedHtml, /Share my stats/);
-  assert.match(linkedHtml, /deepseek-chat/);
+  assert.match(linkedHtml, /Only new settled request counts/);
+  assert.match(linkedHtml, /Enable sharing for new usage/);
+  assert.doesNotMatch(linkedHtml, /verified numerical/);
+  assert.match(linkedHtml, /No prompts, code, paths, model names or provider keys/);
 
   const activeData = fixture();
   activeData.club = {
@@ -32,7 +33,7 @@ test('club renders unlinked, preview, and active states with extended models',as
     x_identity: {handle: 'carlosa8c'}, last_synced_at: '2026-09-15T12:00:00Z'
   };
   const activeHtml = ui.render(activeData);
-  assert.match(activeHtml, /Active on Leaderboard/);
+  assert.match(activeHtml, /Sharing enabled/);
   assert.match(activeHtml, /Sync now/);
   assert.match(activeHtml, /Pause sharing/);
 

@@ -1194,6 +1194,7 @@ class Engine:
             return task
 
     def shutdown(self):
+        self.store.club.shutdown()
         self.previews.shutdown()
         self.readiness.shutdown()
         self.startup.shutdown()
