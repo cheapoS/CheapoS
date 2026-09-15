@@ -70,3 +70,11 @@ class OperatorControlsTests(LocalCase):
         self.assertEqual(result['status'],'awaiting_reply',result.get('error'))
         self.assertEqual(result['worker_turns'],7)
         self.assertTrue(any(e['title']=='Asking for a different approach' for e in result['events']))
+
+    def test_operator_direction_archives_stale_worker_handoff(self):
+        task={'execution':{'development_mode':True},'route':{'recovery':{
+            'worker':{'from':'old-worker','reason':'old stall'},'reviewer':{'from':'reviewer'}}}}
+        self.engine.archive_operator_state(task,'Operator correction')
+        self.assertNotIn('worker',task['route']['recovery'])
+        self.assertIn('reviewer',task['route']['recovery'])
+        self.assertEqual(task['operator_route_history'][-1]['recovery']['worker']['reason'],'old stall')

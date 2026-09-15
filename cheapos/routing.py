@@ -254,6 +254,10 @@ def select_remote(engine, runtime, role="worker", replace=False):
             return
         except (ProviderError, ValueError, TypeError, KeyError) as error:
             classification = route_health.classify(error, {'purpose':'probe', 'caller_error':isinstance(error, ValueError)})
+            if classification['category'] == 'malformed_request':
+                code = getattr(error, 'code', None)
+                status = code.replace('http_', 'HTTP ') if code in {'http_400', 'http_422'} else 'request validation failure'
+                classification['action'] = f"Connection check for {model['id']} was rejected ({status}). No task work was sent. Select another eligible worker in recovery controls, or inspect this route in OmniRoute; repeating the same request will not fix it."
             cooldown = classification['category'] == 'rate_limit_quota'
             if classification['quality_impact']: runtime.failed_models.add(model['id'])
             if classification['category'] in {'rate_limit_quota', 'transient_provider'}:

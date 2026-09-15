@@ -1071,6 +1071,11 @@ class Engine:
             'request_worker_turns': task.get('request_worker_turns'),
             **{key: copy.deepcopy(task.get(key)) for key in
                ('progress_state', 'pause_summary', 'pending_checkpoint', 'pending_review', 'pending_verification')}})
+        if developing(task):
+            task.setdefault('operator_route_history', []).append(copy.deepcopy(task.get('route', {})))
+            task.get('route', {}).get('recovery', {}).pop('worker', None)
+            task['action_pending'] = False
+            task['loop_guidance'] = None
 
     def queue_operator_direction(self, runtime, message, record=True):
         """Cancel stale inference, never mark a check/review approved."""
@@ -1872,7 +1877,7 @@ class Engine:
             # Refresh controller policy on resume/handoff without rewriting user
             # requirements, repository text, or earlier evidence packets.
             messages[0]['content'] = worker_system(task)
-        if role == "worker" and task.get("branch_run",{}).get("current_item_id"):
+        if role == "worker" and not purpose and task.get("branch_run",{}).get("current_item_id"):
             run=task['branch_run'];item=next(i for i in run['items'] if i['id']==run['current_item_id'])
             messages=copy.deepcopy(messages)
             from .unattended_setup import WORKER_POLICY
@@ -2851,7 +2856,7 @@ class Engine:
             infrastructure = (task.get('checks') or [{}])[-1].get('next_action') == str(error) or 'time limit' in str(error)
             if isinstance(error, ProgressPause) and not isinstance(error, (CheckpointTurnLimit, WorkingTimeLimit, EnvironmentPause)) and not infrastructure:
                 task['recovery_blocked'] = progress.state(task)['revision']
-            self.event(task, "guard", "Paused to avoid repeated work" if isinstance(error, ProgressPause) else "Waiting for a usable route", task["error"])
+            self.event(task, "guard", "Paused to avoid repeated work" if isinstance(error, ProgressPause) else ("Model request needs attention" if getattr(error, "scope", None) == "request" else "Waiting for a usable route"), task["error"])
         except OperatorRedirect:
             task["status"] = "running"
         except InterruptedError as error:
