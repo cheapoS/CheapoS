@@ -50,6 +50,7 @@
 .chat-action summary>span{flex:1;min-width:0}
 .settings-row { display: flex; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: nowrap; }
 .settings-row .settings-trigger { flex-shrink: 0; }
+#demo-trigger { flex: 1; min-width: 0; }
 .settings-row .hide-btn { flex-shrink: 0; padding: 0 8px; }
 .chat-action strong{display:block;font-size:15px;font-weight:500;overflow-wrap:anywhere;line-height:1.5}
 .chat-action small{display:block;font-size:12px;color:#a1b0a7;overflow-wrap:anywhere;line-height:1.5;margin-top:3px}
