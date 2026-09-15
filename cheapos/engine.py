@@ -1517,6 +1517,11 @@ class Engine:
             if not task['providers'].get(role):
                 select_remote(self, runtime, role)
             recovery = task["route"].get("recovery", {}).get(role)
+            cfg = task['providers'][role]
+            repair_transport = transport.pending_json(task, cfg, role, purpose)
+            if repair_transport and recovery and recovery.get('from') == cfg['model'] and recovery.get('reason') == 'This model is cooling down after a recent failure.':
+                task['route']['recovery'].pop(role)
+                recovery = None
             if recovery and runtime.handoffs >= MAX_HANDOFFS:
                 raise RoutingPause("Two automatic model handoffs were tried for this request. Saved work and usage are kept. Inspect Models and send a specific next instruction; Resume does not replenish handoffs.")
             if attempted:
@@ -1555,8 +1560,13 @@ class Engine:
                 health = self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
                 if health.get("cooldown_scope") == "provider":
                     raise RoutingPause(health["last_error"] + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=health.get("cooldown_scope"))
-                task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": "This model is cooling down after a recent failure."}
-                continue
+                # Older placeholder failures were misclassified as capability
+                # mismatches. Their one exact-route JSON retry remains useful;
+                # never bypass an upstream provider/account/quota cooldown.
+                if not (repair_transport and (health.get('failure') or {}).get('category') == 'capability_mismatch'
+                        and (health.get('failure') or {}).get('scope') == 'model'):
+                    task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": "This model is cooling down after a recent failure."}
+                    continue
             started = time.monotonic()
             try:
                 if not purpose and role == "worker" and (task.get("output_recovery") or task.get("compact_edits")):

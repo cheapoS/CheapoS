@@ -30,6 +30,7 @@ PROBE_MESSAGES = [{"role": "user", "content": "Call routing_ready with marker ch
 
 
 class RoutingPause(Exception):
+    code = 'routing_unavailable'
     def __init__(self, message, retry_at=None, scope=None):
         super().__init__(message)
         self.retry_at = retry_at

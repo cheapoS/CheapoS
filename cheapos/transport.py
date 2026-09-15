@@ -38,6 +38,11 @@ def restore_malformed_retry(task, role):
     return True
 
 
+def pending_json(task, config, role, purpose=None):
+    key = retry_key(config, role, purpose)
+    return key in task.get('transport_pending_json', {}) and key not in task.get('transport_retries', {})
+
+
 def choice(config, role, purpose, tools, streaming):
     # Observed in the ten-task trial. This is a route/role/tool workaround,
     # not evidence that the entire Gemini family cannot stream.

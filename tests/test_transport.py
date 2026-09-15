@@ -44,6 +44,27 @@ class TransportTests(unittest.TestCase):
         self.assertFalse(transport.restore_malformed_retry(runtime.task,'worker'))
         self.assertTrue(transport.json_preference(runtime.task,cfg,'worker',None))
 
+    def test_saved_json_repair_can_pass_local_mismatch_cooldown_but_not_provider_cooldown(self):
+        from cheapos.routing import RoutingPause
+        for provider_cooldown in (False,True):
+            engine,runtime,calls=self.harness();task=runtime.task;cfg=task['providers']['worker']
+            task.update(execution={'mode':'remote'},route={'ready':True,'recovery':{
+                'worker':{'from':cfg['model'],'reason':'This model is cooling down after a recent failure.'}}})
+            task['transport_pending_json']={transport.retry_key(cfg,'worker',None):'original'}
+            runtime.handoffs=2
+            model={'id':cfg['model'],'free':True,'tool_calling':True}
+            engine.gateway.catalog=lambda **kwargs:{'status':'ready','models':[model]}
+            health={'cooling_down':True,'failure':{'category':'capability_mismatch','scope':'model'},
+                    'cooldown_scope':'provider' if provider_cooldown else None,'last_error':'Cooling down'}
+            engine.gateway.pool=SimpleNamespace(observation=Mock(return_value=health),record=Mock())
+            if provider_cooldown:
+                with self.assertRaises(RoutingPause):engine.request(runtime,[],[],'worker')
+                self.assertEqual(calls,[])
+            else:
+                self.assertEqual(engine.request(runtime,[],[],'worker')['content'],'done')
+                self.assertEqual(calls,['json'])
+                self.assertEqual(runtime.handoffs,2)
+
     def harness(self, failure=None, hook=None):
         config = {'model':'example/model','base_url':'http://localhost:1/v1','input_rate':1,'output_rate':1}
         task = {'id':'task','demo':False,'status':'running','providers':{'worker':config},
