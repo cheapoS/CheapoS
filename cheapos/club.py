@@ -1,341 +1,223 @@
-"""Cheapskate Club Leaderboard Attestation and Sync Client for CheapOS.
-
-Provides zero-secret open-source attestation:
-1. Local Merkle tree over lifetime request accounting records.
-2. Canonical JSON serialization (RFC 8785 style) and HMAC-SHA256 signing.
-3. Dynamic pairing secret management (issued during browser X OAuth).
-4. Opt-in sync state and public stats preview generation.
-"""
-
-import copy
+"""Optional signed Club connection; never claims an offline upload succeeded."""
 import hashlib
-import hmac
 import json
 import os
-import socket
 import threading
 import urllib.request
 import urllib.error
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
+from datetime import datetime, timezone
+from .credentials import CredentialStore
 
-
-DEFAULT_LEADERBOARD_URL = "https://cheapskate.club"
-
+DEFAULT_LEADERBOARD_URL = "https://cheapskate-club.vercel.app"
 
 def now():
     return datetime.now(timezone.utc).isoformat()
 
-
-def canonical_json(data):
-    """Deterministic, RFC 8785-compatible canonical JSON string."""
-    def sort_keys(obj):
-        if isinstance(obj, dict):
-            return {k: sort_keys(v) for k, v in sorted(obj.items())}
-        if isinstance(obj, list):
-            return [sort_keys(v) for v in obj]
-        return obj
-
-    return json.dumps(sort_keys(data), separators=(',', ':'), ensure_ascii=False, allow_nan=False)
-
-
-def sha256_hex(data):
-    if isinstance(data, str):
-        data = data.encode('utf-8')
-    return hashlib.sha256(data).hexdigest()
-
-
-def build_merkle_tree(records):
-    """Builds a deterministic Merkle Tree over chronological request records."""
-    if not records:
-        empty_root = sha256_hex(b"empty_ledger")
-        return {"root": empty_root, "count": 0}
-
-    leaves = []
-    for r in records:
-        raw = f"{r.get('request_id')}:{r.get('task_id')}:{r.get('requested_model')}:{r.get('served_model')}:{r.get('input_tokens')}:{r.get('output_tokens')}:{r.get('date')}:{r.get('category')}"
-        leaves.append(hashlib.sha256(raw.encode('utf-8')).digest())
-
-    current_level = leaves
-    while len(current_level) > 1:
-        next_level = []
-        for i in range(0, len(current_level), 2):
-            left = current_level[i]
-            right = current_level[i + 1] if i + 1 < len(current_level) else left
-            next_level.append(hashlib.sha256(left + right).digest())
-        current_level = next_level
-
-    return {
-        "root": current_level[0].hex(),
-        "count": len(records)
-    }
-
-
-def sample_audit_receipts(records, seed_secret, count=5):
-    """Deterministically samples audit receipts using HMAC seed without disclosing full ledger."""
-    if not records:
-        return []
-    if len(records) <= count:
-        sample_indices = list(range(len(records)))
-    else:
-        scored = []
-        for i in range(len(records)):
-            h = hmac.new(seed_secret.encode('utf-8'), f"sample:{i}".encode('utf-8'), hashlib.sha256).hexdigest()
-            scored.append((h, i))
-        scored.sort()
-        sample_indices = sorted([i for _, i in scored[:count]])
-
-    sample = []
-    for idx in sample_indices:
-        r = records[idx]
-        sample.append({
-            "index": idx,
-            "date": r.get("date"),
-            "model": r.get("served_model") or r.get("requested_model"),
-            "tokens": (r.get("input_tokens") or 0) + (r.get("output_tokens") or 0),
-            "category": r.get("category"),
-            "leaf_hash": sha256_hex(f"{r.get('request_id')}:{r.get('task_id')}:{r.get('requested_model')}:{r.get('served_model')}:{r.get('input_tokens')}:{r.get('output_tokens')}:{r.get('date')}:{r.get('category')}")
-        })
-    return sample
-
+def crypto():
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives import serialization
+        return Ed25519PrivateKey, serialization
+    except ImportError:
+        raise ValueError("Club connections need the optional dependency: python3 -m pip install -r requirements-club.txt. Local work is unaffected.") from None
 
 class ClubManager:
-    def __init__(self, data_directory, leaderboard_url=None):
-        self.directory = Path(data_directory)
-        self.path = self.directory / "club_profile.json"
-        self.leaderboard_url = (leaderboard_url or os.getenv("CHEAPOS_CLUB_URL") or DEFAULT_LEADERBOARD_URL).rstrip('/')
-        self.lock = threading.RLock()
-        self._load()
-
-    def _default_state(self):
+    def __init__(self, data_directory, leaderboard_url=None, credentials=None):
+        self.directory=Path(data_directory)
+        self.path=self.directory/'club_connection.json'
+        self.leaderboard_url=(leaderboard_url or os.getenv('CHEAPOS_CLUB_URL') or DEFAULT_LEADERBOARD_URL).rstrip('/')
+        from urllib.parse import urlsplit
+        url=urlsplit(self.leaderboard_url)
+        if url.scheme!='https' and not (url.scheme=='http' and url.hostname in {'127.0.0.1','localhost'}):
+            raise ValueError('Club URL must use HTTPS or local development loopback.')
+        self.credentials=credentials or CredentialStore(self.directory)
+        self.lock=threading.RLock()
+        self.stop=threading.Event()
+        self.thread=None
+        self.lifetime=None
+        default=dict(installation_id=str(uuid.uuid4()),pairing_id=None,identity=None,sync_enabled=False,sequence=0,previous_hash='',baseline=[],sent={},pending=None,last_synced_at=None,error=None)
+        self.blocked=None
         try:
-            name = socket.gethostname().split('.')[0]
-        except Exception:
-            name = "Local Computer"
-        return {
-            "schema_version": 1,
-            "installation_id": str(uuid.uuid4()),
-            "installation_name": name,
-            "x_identity": None,
-            "sync_secret": None,
-            "sync_enabled": False,
-            "last_synced_at": None,
-            "sequence_number": 0,
-            "created_at": now()
-        }
-
-    def _load(self):
-        with self.lock:
-            if self.path.exists():
-                try:
-                    self.state = json.loads(self.path.read_text())
-                    if not self.state.get("installation_id"):
-                        self.state["installation_id"] = str(uuid.uuid4())
-                except Exception:
-                    self.state = self._default_state()
-                    self._save()
-            else:
-                self.state = self._default_state()
-                self._save()
+            self.state=json.loads(self.path.read_text()) if self.path.exists() else default
+            if not isinstance(self.state,dict) or not set(default).issubset(self.state): raise ValueError()
+            self.state.setdefault('endpoint',self.leaderboard_url)
+            if self.state['endpoint']!=self.leaderboard_url:
+                raise ValueError()
+        except (ValueError,OSError):
+            self.blocked='Club connection settings could not be loaded. Restore the saved file or original endpoint; local work is unaffected.'
+            self.state={**default,'error':self.blocked}
 
     def _save(self):
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        temporary = self.path.with_suffix(".tmp")
-        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            json.dump(self.state, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(temporary, self.path)
+        if self.blocked: raise ValueError(self.blocked)
+        self.directory.mkdir(parents=True,exist_ok=True)
+        temporary=self.path.with_suffix('.tmp')
+        fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+        with os.fdopen(fd,'w') as f:
+            json.dump(self.state,f);f.flush();os.fsync(f.fileno())
+        os.replace(temporary,self.path)
 
-    def get_status(self, summary_dict):
-        """Returns the current club status, linked identity, and exact public preview."""
-        with self.lock:
-            state = copy.deepcopy(self.state)
+    def _key(self, create=False):
+        if self.blocked: raise ValueError(self.blocked)
+        key_type,serialization=crypto()
+        slot=self.leaderboard_url+'/installation/'+self.state['installation_id']
+        raw=self.credentials.get(slot)
+        if not raw:
+            if not create: raise ValueError('Club signing key is unavailable. Unlock your credential store; local work can continue.')
+            key=key_type.generate()
+            raw=key.private_bytes(serialization.Encoding.Raw,serialization.PrivateFormat.Raw,serialization.NoEncryption()).hex()
+            self.credentials.set(slot,raw)
+        return key_type.from_private_bytes(bytes.fromhex(raw))
 
-        zero_cost_tokens = summary_dict.get("total_free_tokens", 0)
-        reported = summary_dict.get("tokens", {}).get("reported", 0)
-        zero_cost_share = round((zero_cost_tokens / reported) * 100) if reported > 0 else 100
-        savings = summary_dict.get("estimated_savings", round(zero_cost_tokens * 0.000003, 2))
+    def _signed(self,message):
+        _,serialization=crypto();key=self._key()
+        payload=json.dumps(message,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)
+        return dict(payload=payload,signature=key.sign(('cheapskate-club-v1\n'+payload).encode()).hex(),public_key=key.public_key().public_bytes(serialization.Encoding.Raw,serialization.PublicFormat.Raw).hex())
 
-        # Build public preview
-        preview = {
-            "installation_id": state["installation_id"],
-            "installation_name": state["installation_name"],
-            "operator": state["x_identity"],
-            "metrics": {
-                "total_reported_tokens": reported,
-                "zero_cost_free_tokens": zero_cost_tokens,
-                "zero_cost_percentage": zero_cost_share,
-                "paid_metered_tokens": summary_dict.get("categories", {}).get("paid", {}).get("tokens", 0),
-                "accounted_api_spend_usd": summary_dict.get("cost", {}).get("accounted", 0.0),
-                "estimated_commercial_savings_usd": savings
-            },
-            "top_models": list(summary_dict.get("models", {}).items())[:12],
-            "completed_work": summary_dict.get("completion", {}),
-            "updated_at": summary_dict.get("updated_at")
-        }
+    def _message(self,action,**fields):
+        return dict(version=1,action=action,installation_id=self.state['installation_id'],pairing_id=self.state['pairing_id'],**fields)
 
-        connect_url = f"{self.leaderboard_url}/join?installation_id={state['installation_id']}&installation_name={urllib.parse.quote(state['installation_name'])}"
-
-        return {
-            "installation_id": state["installation_id"],
-            "installation_name": state["installation_name"],
-            "is_linked": state["x_identity"] is not None and bool(state["sync_secret"]),
-            "x_identity": state["x_identity"],
-            "sync_enabled": bool(state["sync_enabled"]),
-            "last_synced_at": state["last_synced_at"],
-            "sequence_number": state["sequence_number"],
-            "leaderboard_url": self.leaderboard_url,
-            "connect_url": connect_url,
-            "public_preview": preview
-        }
-
-    def link(self, data):
-        """Links this installation with an authenticated X identity and sync secret."""
-        if not isinstance(data, dict):
-            raise ValueError("Expected an object with handle and sync_secret")
-
-        handle = str(data.get("handle") or "").strip().lstrip('@')
-        if not handle:
-            raise ValueError("A valid X handle is required")
-
-        sync_secret = str(data.get("sync_secret") or "").strip()
-        if not sync_secret:
-            raise ValueError("A valid pairing sync_secret is required")
-
-        with self.lock:
-            self.state["x_identity"] = {
-                "handle": handle,
-                "name": str(data.get("name") or handle),
-                "avatar_url": str(data.get("avatar_url") or ""),
-                "linked_at": now()
+    def _request(self,envelope):
+        req=urllib.request.Request(self.leaderboard_url+'/api/installation',data=json.dumps(envelope).encode(),headers={'Content-Type':'application/json'},method='POST')
+        try:
+            with urllib.request.urlopen(req,timeout=5) as response:
+                return json.loads(response.read(65536))
+        except urllib.error.HTTPError as error:
+            try: code=json.loads(error.read(4096)).get('code')
+            except (ValueError,OSError): code=None
+            messages={
+                'pairing_expired':'The approval link expired. Click Connect to Club for a fresh link.',
+                'revoked':'This connection was revoked. Disconnect here, then connect the intended Club account.',
+                'paused':'Sharing is paused at the Club. Enable sharing again to continue.',
+                'already_connected':'This installation is already connected. Disconnect before switching accounts.',
+                'key_mismatch':'The saved signing key does not match this installation. Restore its original credential; local work is unaffected.',
+                'rate_limit':'Too many connection attempts. Try again in an hour; local work is unaffected.',
             }
-            self.state["sync_secret"] = sync_secret
-            self._save()
+            raise ValueError(messages.get(code,'Club setup or saved usage state needs attention. Check the website migration and server key, then retry. Local work is unaffected.')) from None
+        except (OSError,ValueError,urllib.error.URLError):
+            raise ValueError('Club is unavailable or rejected the connection. Saved usage is retained. Check your account connection and try again; local work can continue.') from None
 
-        return self.state["x_identity"]
+    def _call(self,action,**fields):
+        return self._request(self._signed(self._message(action,**fields)))
+
+    def get_status(self,summary_dict=None):
+        with self.lock:
+            s=self.state
+            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),error=s.get('error'),pending=bool(s['pending']))
+
+    def start_pairing(self,lifetime):
+        with self.lock:
+            if self.state['identity'] or self.state.get('revoking'): raise ValueError('Disconnect the current Club account before switching.')
+            self._key(create=True)
+            self.state.update(pairing_id=str(uuid.uuid4()),baseline=[r['request_id'] for r in lifetime.raw_requests()],sent={},pending=None,error=None)
+            self._save()
+            result=self._call('pair')
+            if result.get('status')!='pending': raise ValueError('Unexpected Club pairing response.')
+            # Explicit migration discards obsolete plaintext HMAC credentials.
+            legacy=self.directory/'club_profile.json'
+            if legacy.exists(): legacy.unlink()
+            return self.get_status()
+
+    def check_pairing(self):
+        with self.lock:
+            if self.state['identity']: return self.get_status()
+            result=self._call('status')
+            if result.get('status')=='connected':
+                self.state.update(identity={'handle':result['handle'],'name':result['name'],'account_id':result['account_id']},sequence=result['sequence'],previous_hash=result['previous_hash'],error=None)
+                self._save()
+            return self.get_status()
+
+    def link(self,data):
+        raise ValueError('Manual secrets are no longer supported. Use Connect to Club and approve in your browser.')
+
+    def _flush(self):
+        pending=self.state['pending']
+        if not pending: return
+        result=self._request(pending['envelope'])
+        payload=pending['envelope']['payload'];message=json.loads(payload)
+        expected=hashlib.sha256(payload.encode()).hexdigest()
+        if result.get('status')!='accepted' or result.get('sequence')!=message['sequence'] or result.get('hash')!=expected:
+            raise ValueError('Club acknowledgment did not match the saved upload. Nothing was marked synced.')
+        self.state.update(sequence=message['sequence'],previous_hash=expected,pending=None,error=None)
+        if message['action']=='sync':
+            self.state['sent'].update(pending['fingerprints']);self.state['last_synced_at']=now()
+        else:
+            self.state['sync_enabled']=message['enabled']
+        self._save()
+
+    def _queue(self,action,_fingerprints=None,**fields):
+        self.state['pending']={'envelope':self._signed(self._message(action,sequence=self.state['sequence']+1,previous_hash=self.state['previous_hash'],**fields)), 'fingerprints':_fingerprints or {}}
+        self._save()
+
+    def set_sync(self,enabled):
+        with self.lock:
+            if not isinstance(enabled,bool): raise ValueError('Sharing must be true or false.')
+            if not self.state['identity'] or self.state.get('revoking'): raise ValueError('Connect a Club account first.')
+            self.state['sync_enabled']=False;self._save()
+            # Reconcile an uncertain acknowledgment without uploading a pending
+            # batch after the operator has clicked Pause sharing.
+            if self.state['pending']:
+                pending=self.state['pending'];message=json.loads(pending['envelope']['payload'])
+                remote=self._call('status')
+                expected=hashlib.sha256(pending['envelope']['payload'].encode()).hexdigest()
+                if remote.get('sequence')==message['sequence'] and remote.get('previous_hash')==expected:
+                    if message['action']=='sync': self.state['sent'].update(pending['fingerprints'])
+                    self.state.update(sequence=remote['sequence'],previous_hash=expected)
+                elif remote.get('sequence')!=self.state['sequence'] or remote.get('previous_hash')!=self.state['previous_hash']:
+                    raise ValueError('Club cursor conflicts with saved work. Sharing remains paused.')
+                self.state['pending']=None;self._save()
+            if enabled and self.lifetime:
+                # Requests begun before enabling/resuming sharing remain private.
+                self.state['baseline']=list(set(self.state['baseline']) | {row['request_id'] for row in self.lifetime.raw_requests() if row['request_id'] not in self.state['sent']})
+            self._queue('consent',enabled=enabled);self._flush()
+            if enabled: self.start_background(self.lifetime)
+            return self.get_status()
+
+    def sync_now(self,lifetime,period='all'):
+        with self.lock:
+            if not self.state['sync_enabled'] or self.state.get('revoking'): raise ValueError('Sharing is paused.')
+            try:
+                self._flush()
+                events=[];fingerprints={};baseline=set(self.state['baseline'])
+                for row in lifetime.raw_requests():
+                    rid=row['request_id']
+                    if rid in baseline or not row.get('reconciled') or not row.get('date'): continue
+                    if any(type(row.get(k)) not in (int,float) or row[k]<0 or row[k]>1000000000 or int(row[k])!=row[k] for k in ('input_tokens','output_tokens')): continue
+                    event=dict(event_id=str(uuid.uuid5(uuid.UUID(self.state['installation_id']),rid)),category=row.get('club_category','unknown'),input_tokens=int(row['input_tokens']),output_tokens=int(row['output_tokens']),accounting_at=row['date']+'T00:00:00Z')
+                    fingerprint=hashlib.sha256(json.dumps(event,sort_keys=True).encode()).hexdigest()
+                    if self.state['sent'].get(rid)==fingerprint: continue
+                    event['slot']=len(events);events.append(event);fingerprints[rid]=fingerprint
+                    if len(events)==100: break
+                if events:
+                    self._queue('sync',_fingerprints=fingerprints,events=events)
+                    self._flush()
+                return self.get_status()
+            except ValueError as error:
+                self.state['error']=str(error);self._save();raise
 
     def disconnect(self):
-        """Unlinks this installation and revokes sync sharing."""
         with self.lock:
-            self.state["x_identity"] = None
-            self.state["sync_secret"] = None
-            self.state["sync_enabled"] = False
-            self.state["last_synced_at"] = None
+            self.state.update(sync_enabled=False,revoking=True);self._save()
+            if self.state['pairing_id']:
+                result=self._call('disconnect')
+                if result.get('status')!='disconnected': raise ValueError('Club did not confirm disconnection. Sharing remains stopped.')
+            self.state.update(identity=None,pairing_id=None,pending=None,sent={},baseline=[],revoking=False,error=None)
             self._save()
-        return {"status": "disconnected"}
+            return {'status':'disconnected'}
 
-    def set_sync(self, enabled):
-        """Enables or disables public leaderboard syncing."""
-        with self.lock:
-            if enabled and not (self.state["x_identity"] and self.state["sync_secret"]):
-                raise ValueError("Cannot enable sync without linking an X account first")
-            self.state["sync_enabled"] = bool(enabled)
-            self._save()
-        return {"sync_enabled": self.state["sync_enabled"]}
+    def start_background(self,lifetime):
+        self.lifetime=lifetime
+        if not lifetime or not self.state['sync_enabled'] or self.thread and self.thread.is_alive(): return
+        def run():
+            delay=60
+            while not self.stop.wait(delay):
+                try:
+                    if self.state['sync_enabled']: self.sync_now(lifetime)
+                    delay=60
+                except Exception:
+                    delay=min(delay*2,900)
+        self.thread=threading.Thread(target=run,daemon=True,name='club-sync');self.thread.start()
 
-    def build_sync_payload(self, lifetime_usage, period='all'):
-        """Builds the complete cryptographically signed sync payload."""
-        with self.lock:
-            if not self.state["x_identity"] or not self.state["sync_secret"]:
-                raise ValueError("Installation is not linked to a club identity")
-            state = copy.deepcopy(self.state)
-            seq = state["sequence_number"] + 1
-
-        summary = lifetime_usage.summary(period)
-        records = lifetime_usage.raw_requests(period)
-        merkle = build_merkle_tree(records)
-        seed = state["sync_secret"]
-        samples = sample_audit_receipts(records, seed, count=5)
-
-        zero_cost = summary.get("total_free_tokens", 0)
-        reported = summary.get("tokens", {}).get("reported", 0)
-        zero_share = round((zero_cost / reported) * 100) if reported > 0 else 100
-
-        payload = {
-            "schema_version": 1,
-            "installation_id": state["installation_id"],
-            "installation_name": state["installation_name"],
-            "operator": {
-                "handle": state["x_identity"]["handle"],
-                "name": state["x_identity"]["name"],
-                "avatar_url": state["x_identity"].get("avatar_url", "")
-            },
-            "sequence_number": seq,
-            "timestamp": now(),
-            "metrics": {
-                "total_reported_tokens": reported,
-                "zero_cost_free_tokens": zero_cost,
-                "zero_cost_percentage": zero_share,
-                "paid_metered_tokens": summary.get("categories", {}).get("paid", {}).get("tokens", 0),
-                "accounted_api_spend_usd": summary.get("cost", {}).get("accounted", 0.0),
-                "estimated_commercial_savings_usd": summary.get("estimated_savings", round(zero_cost * 0.000003, 2))
-            },
-            "breakdown_tokens": {
-                "public_free_remote": summary.get("categories", {}).get("public_free", {}).get("tokens", 0),
-                "account_included_quota": summary.get("categories", {}).get("included", {}).get("tokens", 0),
-                "local_hardware": summary.get("categories", {}).get("local", {}).get("tokens", 0)
-            },
-            "models_used": summary.get("models", {}),
-            "completed_work": summary.get("completion", {}),
-            "merkle_attestation": {
-                "root": merkle["root"],
-                "total_requests": merkle["count"],
-                "audit_samples": samples
-            }
-        }
-
-        canonical_bytes = canonical_json(payload).encode('utf-8')
-        signature = hmac.new(state["sync_secret"].encode('utf-8'), canonical_bytes, hashlib.sha256).hexdigest()
-
-        return {
-            "payload": payload,
-            "signature": signature
-        }
-
-    def sync_now(self, lifetime_usage, period='all'):
-        """Builds, signs, and pushes the stats payload to the leaderboard."""
-        signed = self.build_sync_payload(lifetime_usage, period)
-        payload = signed["payload"]
-        signature = signed["signature"]
-
-        sync_endpoint = f"{self.leaderboard_url}/api/v1/sync"
-        req_bytes = json.dumps({
-            "payload": payload,
-            "signature": signature
-        }).encode('utf-8')
-
-        req = urllib.request.Request(
-            sync_endpoint,
-            data=req_bytes,
-            headers={
-                "Content-Type": "application/json",
-                "X-Club-Signature": signature,
-                "X-Club-Installation-ID": self.state["installation_id"]
-            },
-            method="POST"
-        )
-
-        remote_response = None
-        try:
-            with urllib.request.urlopen(req, timeout=5.0) as resp:
-                remote_response = json.loads(resp.read().decode('utf-8'))
-        except (urllib.error.URLError, TimeoutError, OSError) as err:
-            # When testing locally or offline, record simulated success
-            remote_response = {"simulated": True, "notice": f"Offline or endpoint not reachable: {err}"}
-
-        with self.lock:
-            self.state["sequence_number"] = payload["sequence_number"]
-            self.state["last_synced_at"] = payload["timestamp"]
-            self._save()
-
-        return {
-            "status": "synced",
-            "synced_at": self.state["last_synced_at"],
-            "sequence_number": self.state["sequence_number"],
-            "remote_response": remote_response,
-            "signature": signature,
-            "public_url": f"{self.leaderboard_url}/@{payload['operator']['handle']}"
-        }
+    def shutdown(self):
+        self.stop.set()

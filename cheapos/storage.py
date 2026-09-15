@@ -35,6 +35,7 @@ class Store:
         self.lifetime = LifetimeUsage(self.root)
         from .club import ClubManager
         self.club = ClubManager(self.root)
+        self.club.start_background(self.lifetime)
         for path in self.root.glob("tasks/*/task.json"):
             try:
                 task = json.loads(path.read_text(encoding="utf-8"))

@@ -1,0 +1,2 @@
+# Optional Club integration only; local agent work does not require this.
+cryptography>=44,<47
