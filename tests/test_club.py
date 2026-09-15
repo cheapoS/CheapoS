@@ -90,3 +90,15 @@ class ClubTests(unittest.TestCase):
         self.club._call=Mock(side_effect=ValueError('offline'))
         with self.assertRaises(ValueError):self.club.start_pairing(self.ledger)
         self.assertIsNone(self.club.state['pairing_id'])
+
+    def test_empty_sync_explains_excluded_history(self):
+        self.rows.append(self.row('old'));self.club.set_sync(True)
+        result=self.club.sync_now(self.ledger)
+        self.assertIn('No new usage yet',result['sync_message'])
+        self.assertIsNone(result['last_synced_at'])
+        self.assertEqual(len(self.sent),1)  # consent only, no fake upload
+
+    def test_sync_reports_upload_then_up_to_date(self):
+        self.club.set_sync(True);self.rows.append(self.row())
+        self.assertIn('Uploaded 1 usage records',self.club.sync_now(self.ledger)['sync_message'])
+        self.assertIn('Up to date',self.club.sync_now(self.ledger)['sync_message'])
