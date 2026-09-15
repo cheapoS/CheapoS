@@ -98,10 +98,38 @@ class TransportTests(unittest.TestCase):
         self.assertAlmostEqual(runtime.task['usage']['cost'],first['reservation']['cost']+.001)
         self.assertNotIn('worker_turns',runtime.task)
         self.assertIsNone(runtime.task['stream'])
-        # Durable allowance stays consumed across a new invocation.
-        with self.assertRaisesRegex(ProviderError,'already used'):
-            engine._request(runtime,[],[],'worker')
-        self.assertEqual(calls,['sse','json','sse'])
+        # Reload the task as an older saved run: reuse its successful fallback.
+        original_retries = dict(runtime.task['transport_retries'])
+        runtime.task=json.loads(json.dumps(runtime.task))
+        engine._request(runtime,[],[],'worker')
+        self.assertEqual(calls,['sse','json','json'])
+        self.assertIsNone(runtime.task['request_metrics'][-1]['retry_of'])
+        self.assertEqual(runtime.task['transport_retries'],original_retries)
+        self.assertEqual(runtime.task['usage']['uncertain_requests'],1)
+        # The decision survives pruning the successful request and another reload.
+        runtime.task['request_metrics']=[]
+        runtime.task=json.loads(json.dumps(runtime.task))
+        engine._request(runtime,[],[],'worker')
+        self.assertEqual(calls,['sse','json','json','json'])
+        self.assertEqual(runtime.task['transport_retries'],original_retries)
+
+    def test_successful_transport_memory_is_route_role_purpose_and_connection_scoped(self):
+        engine,runtime,calls=self.harness()
+        engine._request(runtime,[],[],'worker')
+        config=runtime.task['providers']['worker']
+        self.assertIsNotNone(transport.json_preference(runtime.task,config,'worker',None))
+        for change,role,purpose in [({'model':'other'},'worker',None),
+                ({'base_url':'http://localhost:2/v1'},'worker',None),
+                ({},'reviewer',None),({},'worker','probe'),
+                ({'access_binding':{'connection_revision':'new'}},'worker',None)]:
+            self.assertIsNone(transport.json_preference(runtime.task,{**config,**change},role,purpose))
+        # Working JSON later failing remains a provider error, with no extra retry.
+        provider=engine.provider_factory()
+        provider.complete=Mock(side_effect=ProviderError('unavailable',code='empty_response'))
+        engine.provider_factory=lambda *args:provider
+        with self.assertRaises(ProviderError) as error:engine._request(runtime,[],[],'worker')
+        self.assertEqual(error.exception.code,'empty_response')
+        self.assertEqual(provider.complete.call_count,1)
 
     def test_second_dispatch_obeys_pause_authority_budget_and_request_allowance(self):
         def revoked(runtime): runtime.guard.side_effect=ValueError('revoked')
@@ -146,6 +174,11 @@ class TransportTests(unittest.TestCase):
             engine._request(runtime,[],[],'worker')
         self.assertEqual([r['status'] for r in runtime.task['request_metrics']],['failed','failed'])
         self.assertEqual(runtime.task['usage']['uncertain_requests'],2)
+        self.assertIsNone(transport.json_preference(runtime.task,runtime.task['providers']['worker'],'worker',None))
+        runtime.task=json.loads(json.dumps(runtime.task))
+        with self.assertRaises(ProviderError) as error:engine._request(runtime,[],[],'worker')
+        self.assertEqual(error.exception.code,'transport_retry_exhausted')
+        self.assertEqual(calls,['sse','json','sse'])
         engine,runtime,calls=self.harness()
         runtime.task['providers']['reviewer']=runtime.task['providers']['worker']
         runtime.task.update(status='reviewing',pending_review={'review_requests':7})

@@ -34,3 +34,45 @@ test('delivery rejection restores editable draft and late delivery cannot overwr
  accept({id:'b',status:'running',requests:['original','Continue']});await pending;
  assert.equal(state.task.id,'c');assert.equal(input.value,'Other draft');assert.equal(c.pendingMessageMarkup(),'');
 });
+
+function branchSendFixture(){
+ const f=sendFixture(),{c,state}=f;
+ state.admission.unattended={allowed:true};
+ state.task={id:'b',status:'paused',branch_run:{status:'paused',authorization_ref:'accepted',guidance:[]}};
+ vm.runInContext(source.slice(source.indexOf('async function steerTask('),source.indexOf('async function boostHeadroom(')),c);
+ vm.runInContext(source.slice(source.indexOf('async function resumeBranchRun('),source.indexOf('async function bootstrap(')),c);
+ return f;
+}
+test('any paused branch follow-up saves once, then resumes the same run with immediate feedback',async()=>{
+ for(const message of ['try again','continue','Run the focused tests and submit checkpoint']){
+  const {c,state,input}=branchSendFixture();input.value=message;const calls=[];let finishResume;
+  c.api=async(path,body)=>{calls.push([path,body]);if(path.endsWith('/branch-message'))return {...state.task,branch_run:{...state.task.branch_run,guidance:[{message:body.message}]}};return new Promise(r=>finishResume=r);};
+  const pending=c.sendChat();await new Promise(r=>setImmediate(r));
+  assert.equal(input.value,'');assert.equal(state.task.branch_run.guidance[0].message,message);
+  assert.equal(state.branchResumeStatus.get('b').status,'pending');assert.equal(c.sendingHere(),true);
+  await c.sendChat();assert.equal(calls.length,2);
+  assert.equal(calls[0][0],'/tasks/b/branch-message');assert.equal(calls[1][0],'/tasks/b/branch-resume');assert.equal(Object.keys(calls[1][1]).length,0);
+  finishResume({needs_consent:false});await pending;
+  assert.equal(state.branchResumeStatus.has('b'),false);assert.equal(c.sendingHere(),false);
+ }
+});
+test('failed branch continuation keeps delivered guidance and exposes exact error without resending it',async()=>{
+ const {c,state,input}=branchSendFixture();input.value='Continue';let saves=0;
+ c.api=async(path,body)=>{if(path.endsWith('/branch-message')){saves++;return state.task;}throw Error('Branch changed since the saved operation');};
+ await c.sendChat();assert.equal(input.value,'');assert.equal(saves,1);
+ assert.equal(state.branchResumeStatus.get('b').message,'Branch changed since the saved operation');
+ assert.equal(state.sendErrors.has('b'),false);assert.equal(c.sendingHere(),false);
+});
+test('guidance to active branch does not restart it, and unsaved guidance never resumes',async()=>{
+ const {c,state,input}=branchSendFixture();state.task.status='running';state.task.branch_run.status='running';input.value='Keep the existing behavior';let paths=[];
+ c.api=async path=>{paths.push(path);return state.task;};await c.steerTask();assert.deepEqual(paths,['/tasks/b/branch-message']);
+ state.task.status='paused';state.task.branch_run.status='paused';input.value='Try again';paths=[];
+ c.api=async path=>{paths.push(path);throw Error('Guidance could not be saved');};await c.steerTask();
+ assert.deepEqual(paths,['/tasks/b/branch-message']);assert.equal(input.value,'Try again');assert.equal(state.sendErrors.get('b'),'Guidance could not be saved');
+});
+test('branch continuation opens scoped consent instead of approving commands automatically',async()=>{
+ const {c,state,input}=branchSendFixture();input.value='continue';const paths=[];let form,html;
+ Object.assign(c,{esc:String,modalHeader:()=>'',dialog:s=>{html=s;return {};},$:selector=>selector==='form'?(form={}):input});
+ c.api=async path=>{paths.push(path);return path.endsWith('/branch-message')?state.task:{needs_consent:true,proposal_id:'exact',scopes:[{command:['python3','-m','unittest'],directory:'/fixture'}]};};
+ await c.sendChat();assert.match(html,/Allow tests & resume/);assert.equal(typeof form.onsubmit,'function');assert.equal(paths.length,2);assert.equal(c.sendingHere(),false);
+});

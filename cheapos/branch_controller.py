@@ -138,7 +138,7 @@ class BranchController:
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id)
             task['branch_run']=run
             if planning_task:
-                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries'):
+                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
@@ -651,7 +651,7 @@ class BranchController:
                     if item.get('question'):
                         item.setdefault('clarification_history',[]).append({'question':item.pop('question'),'guidance':message.strip()})
             self.engine.event(task,'user','You',message.strip())
-            self.engine.event(task,'branch_guidance','Guidance saved within the accepted plan', 'The plan and remaining limits are unchanged. Resume when ready.' if task['status']=='paused' else 'The worker will receive this on its next turn.')
+            self.engine.event(task,'branch_guidance','Guidance saved within the accepted plan', 'Your update is saved for continuation from the current files. The plan and remaining limits are unchanged.' if task['status']=='paused' else 'The worker will receive this on its next turn.')
             return task
 
     def reprepare(self, task_id, values):

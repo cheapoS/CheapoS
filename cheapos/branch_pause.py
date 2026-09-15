@@ -30,6 +30,10 @@ CODES = {'gateway_cooldown':'provider_quota','http_429':'provider_quota',
  'environment_missing':'missing_setup','missing_executable':'missing_setup','command_permission_required':'command_grant',
  'authority_changed':'authority_changed','branch_drift':'branch_drift','review_dispute':'repeated_review_dispute','essential_clarification':'essential_clarification'}
 STAGES={'planning','working','checking','reviewing','committing','finalizing','merging','unknown'}
+TRANSPORT_ERRORS = {
+ 'transport_retry_exhausted': 'The streamed model reply failed again after its transport retry was used. Saved edits and guidance are intact. Retry continues from them using proven transport compatibility or an eligible model within the saved routing policy.',
+ 'streaming_unsupported': 'The model connection did not support streaming. Saved work is intact. Retry continues within the saved routing policy.',
+}
 
 class PauseError(ValueError):
     def __init__(self, cause, stage=None, diagnostic_id=None, *, diagnostic=None):
@@ -50,6 +54,8 @@ def safe_text(value):
 def specific(diagnostic):
     if not isinstance(diagnostic,dict):return None
     kind=diagnostic.get('kind')
+    if kind=='transport' and isinstance(diagnostic.get('code'),str):
+        return TRANSPORT_ERRORS.get(diagnostic['code'])
     if kind=='worker_stall':
         count=diagnostic.get('saved_files')
         if type(count) is not int or not 0<=count<=100000 or type(diagnostic.get('assisted')) is not bool:return None
@@ -91,9 +97,11 @@ def public(value):
     diagnostic=value.get('diagnostic')
     if specific(diagnostic):explanation=specific(diagnostic)
     if isinstance(diagnostic,dict) and diagnostic.get('kind')=='review_stall' and specific(diagnostic):action='inspect'
+    if cause=='provider_connection' and isinstance(diagnostic,dict) and diagnostic.get('kind')=='transport' and specific(diagnostic):action='resume'
     result={'version':1,'cause':cause,'explanation':explanation,'next_action':action,'stage':value.get('stage') if value.get('stage') in STAGES else 'unknown'}
     if specific(diagnostic):result['diagnostic']=({'kind':'review_stall','reason':diagnostic['reason'],'coached':diagnostic['coached']}
-        if diagnostic.get('kind')=='review_stall' else {'kind':'safe_message','message':explanation})
+        if diagnostic.get('kind')=='review_stall' else {'kind':'transport','code':diagnostic['code']}
+        if diagnostic.get('kind')=='transport' else {'kind':'safe_message','message':explanation})
     for key in ('item_id','model','diagnostic_id'):
         if label(value.get(key)):result[key]=label(value[key])
     if value.get('role') in ('worker','reviewer','coordinator','planner'):result['role']=value['role']
@@ -127,6 +135,8 @@ def classify(error=None, task=None, cause=None, stage=None):
             'item_id':item.get('id'),'role':request.get('role') or task.get('active_role'),'model':request.get('model'),
             'diagnostic_id':getattr(error,'diagnostic_id',None) or request.get('id')}
     diagnostic=getattr(error,'safe_diagnostic',None)
+    if not diagnostic and explicit=='provider_connection' and code in TRANSPORT_ERRORS:
+        diagnostic={'kind':'transport','code':code}
     if explicit=='repeated_work' and not diagnostic:
         diagnostic=(task.get('pending_review') or {}).get('stop_diagnostic')
         if not diagnostic and task.get('active_role')=='worker':
@@ -143,6 +153,22 @@ def classify(error=None, task=None, cause=None, stage=None):
     detail['cooldown_scope']=getattr(error,'scope',None)
     detail['retry_at']=getattr(error,'retry_at',None) or (task.get('route_unavailable') or {}).get('retry_at')
     return public(detail)
+
+def for_task(task):
+    """Reclassify an old unknown transport stop from its same retained request.
+
+    Do not relabel a newer operator/permission/limit stop using an older error.
+    This read-only projection preserves the original record for diagnostics.
+    """
+    run=task.get('branch_run') or {}
+    if run.get('status') not in {'paused','blocked'}:return None
+    detail=public(run.get('pause_detail'))
+    request=(task.get('request_metrics') or [{}])[-1]
+    if (detail and detail['cause'] in {'unknown','provider_connection'}
+            and not detail.get('diagnostic') and task.get('error_code') in TRANSPORT_ERRORS
+            and request.get('id') and detail.get('diagnostic_id')==request['id']):
+        return classify(task=task,stage=detail.get('stage'))
+    return detail
 
 def clear(run):run.pop('pause_detail',None)
 

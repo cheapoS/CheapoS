@@ -121,11 +121,16 @@ test('actual startup renderer covers pending, accepted-stale, running and paused
  const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/branch_ui.js'),'utf8');
  const snippet=source.slice(source.indexOf(' function render(task)'),source.indexOf(' function renderPlan(task)'));
  let record={status:'pending',started_at:'2026-09-14T12:00:00Z'};const panel={innerHTML:'',querySelector:()=>null};
- const context={sync:()=>{},document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
+ const branchResumeStatus=new Map();
+ const context={sync:()=>{},getState:()=>({branchResumeStatus}),document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
  vm.createContext(context);vm.runInContext(snippet,context);
  const t={id:'a',status:'awaiting_reply',branch_run:{id:'run1',status:'awaiting_authorization',items:[]}};
  context.render(t);assert.match(panel.innerHTML,/Starting your approved plan/);assert.match(panel.innerHTML,/data-start-time/);assert.doesNotMatch(panel.innerHTML,/data-proposal/);
  record.status='accepted';context.render(t);assert.match(panel.innerHTML,/Plan accepted. Loading the saved run/);
  t.branch_run.authorization_ref='auth';t.branch_run.status='running';t.status='running';context.render(t);assert.doesNotMatch(panel.innerHTML,/branch-start-status/);
  t.branch_run.status='paused';t.status='paused';context.render(t);assert.doesNotMatch(panel.innerHTML,/data-start-time/);
+ t.branch_run.pause_detail={version:1,cause:'unknown',next_action:'inspect',explanation:'Unknown stop',item_id:'one',stage:'working',role:'worker',model:'fixture',diagnostic_id:'request'};
+ branchResumeStatus.set('a',{status:'pending'});context.render(t);assert.match(panel.innerHTML,/Continuing saved work/);assert.match(panel.innerHTML,/data-resume disabled/);
+ branchResumeStatus.set('a',{status:'error',message:'Exact <failure>'});context.render(t);assert.match(panel.innerHTML,/Exact &lt;failure&gt;/);assert.match(panel.innerHTML,/Try again from saved work/);
+ assert.match(panel.innerHTML,/<li>Item: one<\/li>/);assert.match(panel.innerHTML,/<li>Model: fixture<\/li>/);
 });

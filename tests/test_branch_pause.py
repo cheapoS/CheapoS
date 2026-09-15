@@ -47,6 +47,25 @@ class PauseDetails(unittest.TestCase):
   self.assertIn('candidate receipt',pause.classify(ValueError('wrapper'),t)['explanation'])
   t['request_metrics'].append({'id':'r2','role':'reviewer'})
   self.assertNotIn('candidate receipt',pause.classify(ValueError('new failure'),t)['explanation'])
+
+ def test_old_transport_pause_recovers_specific_retry_action_without_mutating_history(self):
+  import copy
+  from cheapos.server import public_task
+  t=self.task();t.update(id='task',usage={},patch='')
+  pause.apply(t,ValueError('private raw provider body'))
+  t['error_code']='transport_retry_exhausted'
+  before=copy.deepcopy(t)
+  for summary in (False,True):
+   result=public_task(t,summary=summary)
+   d=result['branch_run']['pause_detail']
+   self.assertEqual(d['cause'],'provider_connection');self.assertEqual(d['next_action'],'resume')
+   self.assertIn('streamed model reply failed again',d['explanation'])
+   self.assertEqual(pause.public(d),d);self.assertNotIn('private raw',str(result))
+  self.assertEqual(t,before)
+  t['request_metrics'].append({'id':'different-request'})
+  self.assertEqual(pause.for_task(t)['cause'],'unknown')
+  t=before;pause.apply(t,cause='operator')
+  self.assertEqual(pause.for_task(t)['cause'],'operator')
  def test_structured_runner_limit_and_review_details(self):
   t=self.task()
   d=pause.classify(pause.PauseError('missing_setup',diagnostic={'kind':'missing_executable','executable':'/private/operator/python-not-installed'}),t)

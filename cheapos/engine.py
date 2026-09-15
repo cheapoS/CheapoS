@@ -1557,14 +1557,25 @@ class Engine:
     def _request_with_transport(self, runtime, messages, tools, role, config_override=None, purpose=None):
         from . import transport
         task = runtime.task
+        config = self._resolve_provider_config(task, role, config_override)
+        key = transport.retry_key(config, role, purpose)
+        preference = transport.json_preference(task, config, role, purpose)
+        if preference and purpose != 'coordinator_recovery':
+            # Keep compatibility after request-history compaction and restart.
+            # This is the next ordinary request, not another retry allowance.
+            if task.get('transport_json_routes', {}).get(key) != preference:
+                task.setdefault('transport_json_routes', {})[key] = preference
+                self.event(task, 'transport', 'Continuing with the working non-streaming connection',
+                           {'role': role, 'model': config['model'], 'evidence_request': preference['request_id']})
+                self.store.save(task)
+            return self._request_attempt(runtime, messages, tools, role, config_override, purpose,
+                                         transport_override='json')
         try:
             return self._request_attempt(runtime, messages, tools, role, config_override, purpose)
         except ProviderError as error:
             record = (task.get('request_metrics') or [{}])[-1]
             if purpose == 'coordinator_recovery' or not transport.eligible(error, record):
                 raise
-            config = self._resolve_provider_config(task, role, config_override)
-            key = transport.retry_key(config, role, purpose)
             attempts = task.setdefault('transport_retries', {})
             if key in attempts:
                 raise ProviderError('Streaming is unsupported and this route has already used its one transport retry. Saved work and both attempt outcomes are retained.', code='transport_retry_exhausted') from None

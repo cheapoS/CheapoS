@@ -374,7 +374,7 @@ function renderComposer() {
     $('#chat-input').placeholder=next?'What should we work on next?':state.project?'Ask about your project or describe a change…':'Open a project to get started…';
     $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':!availability.allowed?availability.reason:next?'Ready when you are. We’ll continue from the committed changes.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
   }
-  if(task?.branch_run){$('#chat-input').placeholder='Add guidance within the accepted scope…';$('#composer-note').textContent='Guidance stays within this run’s accepted plan. Use Request changes for a reviewed revision.';}
+  if(task?.branch_run){$('#chat-input').placeholder='Add guidance within the accepted scope…';$('#composer-note').textContent=['paused','blocked'].includes(task.branch_run.status)&&task.branch_run.authorization_ref?'Send a correction or “try again” to continue this saved run. Existing permissions and limits still apply.':'Guidance stays within this run’s accepted plan. Use Request changes for a reviewed revision.';}
   if(task?.branch_run&&!task.branch_run.authorization_ref&&!CheapOSBranchUI.isPlanning(task)){$('#chat-input').disabled=true;$('#chat-input').placeholder='Inspect the proposal to edit or start this run.';$('#chat-send').disabled=true;if($('#chat-steer'))$('#chat-steer').hidden=true;$('#composer-note').textContent='This is an Unattended proposal. Inspect its captured plan before editing or starting work.';}
   if(CheapOSBranchUI.isPlanning(task)){$('#chat-input').placeholder=busy?'Add details for the proposal…':'Reply or describe changes to the proposal…';$('#composer-note').textContent=busy?'Planning continues here. Your reply will guide the proposal.':'Questions and issues stay in this chat. Reply to continue planning, or inspect the ready proposal.';}
   if(!busy&&!availability.allowed){$('#composer-note').textContent=availability.reason;if(availability.task_id){const link=document.createElement('button');link.className='text-link';link.textContent='Open running task';link.onclick=()=>selectTask(availability.task_id);$('#composer-note').append(' ',link);}}
@@ -383,7 +383,8 @@ function renderComposer() {
   const sending=sendingHere(),send=$('#chat-send');
   send.setAttribute('aria-label',sending?'Sending message':'Send message');
   send.innerHTML=sending?'<span class="spinner" aria-hidden="true"></span>':icon('up');
-  if(sending)$('#composer-note').textContent='Sending your message… Waiting for cheapoS to accept it. Your draft is saved.';
+  if(state.branchResumeStatus?.get(task?.id)?.status==='pending'){$('#composer-note').textContent='Your guidance is saved. Continuing from the current files…';send.setAttribute('aria-label','Continuing saved work');}
+  else if(sending)$('#composer-note').textContent='Sending your message… Waiting for cheapoS to accept it. Your draft is saved.';
   else if(state.sendErrors?.has(draftKey()))$('#composer-note').textContent=state.sendErrors.get(draftKey())+' Your draft remains saved.';
   const stop=$('#chat-stop');
   stop.hidden=!busy&&!state.startup.busy;
@@ -935,9 +936,19 @@ async function dispatchChat() {
 async function steerTask(text) {
   const task=state.task,message=text||$('#chat-input').value.trim();
   if(!task||!message||sendingHere()||task.status==='stopping'||state.pausingTask===task.id)return;
-  const key=draftKey(),selection=state.selection;state.pendingSends.add(key);saveDraft();renderComposer();
-  try {await api('/tasks/'+task.id+(task.branch_run?'/branch-message':'/steer'),{message});clearOwnedDraft(key,message);await refresh();if(state.selection===selection){toast('cheapoS will use your update on the next step.');$('#view-container').scrollTop=$('#view-container').scrollHeight;}}
-  catch(e){toast(e.message);}finally{state.pendingSends.delete(key);renderComposer();if(state.selection===selection)$('#chat-input').focus();}
+  const key=draftKey(),selection=state.selection;beginMessageSend(key,message);
+  let delivered=false;
+  try {
+    const saved=await api('/tasks/'+task.id+(task.branch_run?'/branch-message':'/steer'),{message});
+    delivered=true;
+    state.pendingMessages.delete(key);clearOwnedDraft(key,message);
+    if(task.branch_run&&state.selection===selection&&state.task?.id===task.id){state.task=saved;renderTask();}
+    if(saved?.branch_run?.authorization_ref&&['paused','blocked'].includes(saved.branch_run.status)){
+      await resumeBranchRun(saved);
+    }else{await refresh();if(state.selection===selection)toast('cheapoS will use your update on the next step.');}
+    if(state.selection===selection)$('#view-container').scrollTop=$('#view-container').scrollHeight;
+  }
+  catch(e){if(!delivered)state.sendErrors.set(key,e.message);toast(e.message);}finally{state.pendingMessages.delete(key);state.pendingSends.delete(key);if(state.selection===selection){renderChat();$('#chat-input').focus();}renderComposer();}
 }
 async function boostHeadroom(button) {
   const task=state.task;if(!task)return;
@@ -961,9 +972,6 @@ async function startTask(id,changes={}) {
   }
 }
 async function resumeTask(button) {
-  const paused=CheapOSBranchUI.pausePresentation(state.task);
-  if(paused&&state.task?.branch_run?.pause_detail?.next_action!=='resume'){setView('chat');return;}
-
   if(CheapOSGuide.taskGuide(state.task).primary==='new-planning'){await newTask();return;}
   if(state.task?.branch_run){try{await resumeBranchRun(state.task);}catch(e){toast(e.message);}return;}
   const task=state.task;if(!task)return;
@@ -1231,7 +1239,14 @@ async function refresh({background=false}={}) {
   if(!background)await context;
 }
 async function resumeBranchRun(task,savedResult) {
-  const result=savedResult||await api('/tasks/'+task.id+'/branch-resume',{});
+  state.branchResumeStatus ||= new Map();
+  if(state.branchResumeStatus.get(task.id)?.status==='pending')return;
+  state.branchResumeStatus.set(task.id,{status:'pending'});
+  if(state.task?.id===task.id)renderChat();
+  let result;
+  try{result=savedResult||await api('/tasks/'+task.id+'/branch-resume',{});state.branchResumeStatus.delete(task.id);}
+  catch(e){state.branchResumeStatus.set(task.id,{status:'error',message:e.message});throw e;}
+  finally{if(state.task?.id===task.id)renderChat();}
   if(result.needs_merge_recovery){
     const operation=result.operation||result.merge_operation||task.branch_run?.merge_operation;
     if(!operation?.target_ref||!operation?.feature_tip)throw new Error('Saved integration details are unavailable. Refresh this task before recovery.');

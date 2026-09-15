@@ -18,7 +18,7 @@ def public_task(task, summary=False, store=None):
         task = store.present(task)
     if task.get('branch_run',{}).get('pause_detail'):
         task={**task,'branch_run':dict(task['branch_run'])}
-        detail=branch_pause.public(task['branch_run']['pause_detail']) if task['branch_run'].get('status') in {'paused','blocked'} else None
+        detail=branch_pause.for_task(task)
         task['branch_run']['pause_detail']=detail
         task['error']=detail['explanation'] if detail else None
     if summary:
