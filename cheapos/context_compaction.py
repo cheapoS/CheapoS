@@ -33,7 +33,7 @@ def bounded(value, maximum=1500):
     return value
 
 
-def compact(task, base, previous):
+def compact(task, base, previous, limit=LIMIT):
     """Carry claims as claims, never re-execute old tool calls or validate receipts."""
     summary = json.loads(base[1]['content'])
     notes = []
@@ -73,16 +73,35 @@ def compact(task, base, previous):
     for message in base[2:]:
         messages.append({'role': message['role'], 'content': bounded(message.get('content', ''), 3000)})
     # Measure the actual nested/escaped request, not just source text length.
-    while size(messages) > LIMIT:
+    while size(messages) > limit:
         removable = next((k for k in reversed(selected) if k not in preferred and k not in {'working_memory', 'context_notice'}), None)
         if removable:
             selected.pop(removable)
         else:
             selected = bounded(selected, 700)
         messages[1]['content'] = json.dumps(selected)
-        if size(messages) > LIMIT and not removable and size(selected) < 10000:
+        if size(messages) > limit and not removable and size(selected) < 10000:
             # System/direction text itself can be unusually large; never silently
             # cut the system instructions. Retain the base directions separately.
             messages = messages[:2]
             break
+    if limit != LIMIT:
+        # Preserve recent complete exchanges when the route has room. Never
+        # retain an assistant tool call without every corresponding result.
+        groups = []
+        for message in previous[2:]:
+            if message.get('role') == 'tool' and groups:
+                groups[-1].append(message)
+            else:
+                groups.append([message])
+        retained = []
+        for group in reversed(groups):
+            calls = {c.get('id') for c in group[0].get('tool_calls', [])}
+            results = {m.get('tool_call_id') for m in group[1:] if m.get('role') == 'tool'}
+            if calls != results or group[0].get('role') == 'tool':
+                continue
+            if size(messages + group + retained) > limit:
+                break
+            retained = copy.deepcopy(group) + retained
+        messages.extend(retained)
     return messages

@@ -1515,6 +1515,32 @@ class Engine:
         runtime.compact_context_ready = True
         return messages
 
+    def fit_worker_context(self, runtime, tools, rejected=False):
+        from .context_budget import decision
+        from .context_compaction import compact
+        task = runtime.task
+        config = self._resolve_provider_config(task, task['active_role'])
+        model = None
+        gateway = getattr(self, 'gateway', None)
+        if (task.get('route') and gateway and config.get('base_url') == task['route'].get('base_url')
+                and config.get('base_url') == getattr(gateway, 'settings', {}).get('base_url')):
+            catalog = gateway.catalog(fresh=False)
+            model = next((m for m in catalog.get('models', []) if m.get('id') == config.get('model')
+                          and not m.get('metadata_evidence', {}).get('stale')), None)
+        info = decision(task, task['messages'], tools, config, model)
+        previous_policy = task.get('context_budget', {})
+        task['context_budget'] = info
+        if previous_policy.get('capacity_source') != info['capacity_source'] or previous_policy.get('capacity_tokens') != info['capacity_tokens']:
+            self.event(task, 'context_policy', 'Context capacity unknown; retaining history' if info['capacity_tokens'] is None else 'Using gateway-reported context capacity', info)
+        if not rejected and not info['compact']:
+            return
+        previous = task['messages']
+        base = self.compact_context(runtime) if task.get('compact_edits') else self.initial_messages(task)
+        limit = info['target_characters'] or max(12000, len(json.dumps(previous)) // 2)
+        task['messages'] = compact(task, base, previous, limit=limit)
+        self.event(task, 'context', 'Compacted context after provider rejection' if rejected else 'Compacted context near route token capacity',
+                   {**info, 'before_characters': len(json.dumps(previous)), 'after_characters': len(json.dumps(task['messages']))})
+
     @staticmethod
     def deliver_loop_guidance(task):
         """A recovery notice is useful only if the worker actually receives it."""
@@ -1873,6 +1899,11 @@ class Engine:
         if len(task['request_metrics'])>2000:
             task['request_metrics'].pop(0);task['request_metrics_truncated']=True
         started=time.monotonic()
+        from .context_budget import payload_bytes
+        record['context_payload_bytes'] = payload_bytes(messages, tools)
+        record['context_base_url'] = config.get('base_url')
+        if role == 'worker' and not purpose:
+            record['context_budget'] = copy.deepcopy(task.get('context_budget', {}))
         original_bytes=len(json.dumps(messages).encode())
         messages,filter_info=check_output.messages(task,messages,config)
         record['output_filter']={**filter_info,'before_bytes':original_bytes,'after_bytes':len(json.dumps(messages).encode()),'seconds':time.monotonic()-started}
@@ -2694,13 +2725,6 @@ class Engine:
                     task["loop_guidance"] = execution_context.guidance(task, task["loop_guidance"])
                     task["messages"].append({"role": "user", "content": task["loop_guidance"]})
                     self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint interval; hard task limits still apply.")
-                if len(json.dumps(task["messages"])) > 60000:
-                    from .context_compaction import compact
-                    previous_messages = task["messages"]
-                    base = self.compact_context(runtime) if task.get("compact_edits") else self.initial_messages(task)
-                    task["messages"] = compact(task, base, previous_messages)
-                    self.event(task, "context", "Compacted worker context with findings, completed actions, and next step",
-                               {"before_characters": len(json.dumps(previous_messages)), "after_characters": len(json.dumps(task["messages"]))})
                 if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
                 task["worker_turns"] += 1
                 if task.get("conversational"):
@@ -2746,7 +2770,14 @@ class Engine:
                 self.deliver_loop_guidance(task)
                 if developing(task) and task.get('steer_guidance'):
                     task['messages'].append({'role':'user','content':'LATEST OPERATOR DIRECTION: '+task['steer_guidance']+'\nFollow this direction now. Existing spending and command permissions still apply; do not claim unfinished review passed.'})
+                self.fit_worker_context(runtime, offered_tools)
                 try:
+                    message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
+                except ProviderError as error:
+                    from .context_budget import context_rejection
+                    if not context_rejection(error):
+                        raise
+                    self.fit_worker_context(runtime, offered_tools, rejected=True)
                     message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
                 except work_policy.ReadOnlyViolation as error:
                     self.event(task, "guard", "Keeping this request read-only", str(error))
