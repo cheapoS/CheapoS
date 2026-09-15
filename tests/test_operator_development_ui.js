@@ -16,7 +16,7 @@ test('sidebar hide wiring preserves chat submission and cancellation',()=>{
   const nodes=new Map(), get=key=>{if(!nodes.has(key))nodes.set(key,{});return nodes.get(key);};
   let sent=0,hidden=0,confirmed=false;
   get('#demo-row').classList={add:name=>{assert.equal(name,'hidden');hidden++;}};
-  const noop=()=>{}, context={$:get,confirm:()=>confirmed,sendChat:()=>sent++,openProject:noop,home:noop,newTask:noop,openSearch:noop,openConnections:noop,sampleDialog:noop,chatLimits:noop,executionPreferences:noop,saveDraft:noop,renderComposer:noop,steerTask:noop,stopFromComposer:noop};
+  const noop=()=>{}, context={$:get,confirm:()=>confirmed,compactMenu:(anchor,label,actions)=>{if(confirmed)get('#demo-row').classList.add('hidden');},sendChat:()=>sent++,openProject:noop,home:noop,newTask:noop,openSearch:noop,openConnections:noop,sampleDialog:noop,chatLimits:noop,executionPreferences:noop,saveDraft:noop,renderComposer:noop,steerTask:noop,stopFromComposer:noop};
   vm.createContext(context);
   vm.runInContext(source.slice(source.indexOf("$('#home-trigger').onclick="),source.indexOf('function toggleInspector')),context);
   let prevented=0;

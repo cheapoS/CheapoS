@@ -728,12 +728,38 @@ function checkpointDialog(number) {
 function patchTotals(patch) {const lines=patch.split('\n');return {add:lines.filter(l=>l.startsWith('+')&&!l.startsWith('+++')).length,remove:lines.filter(l=>l.startsWith('-')&&!l.startsWith('---')).length};}
 function diffLines(before,after) {
   const a=before?before.replace(/\n$/,'').split('\n'):[],b=after?after.replace(/\n$/,'').split('\n'):[];
-  // Keep very large files responsive; their exact Git patch is always available for export.
-  if(a.length*b.length>2_000_000)return [...a.map((text,i)=>({type:'remove',old:i+1,new:'',text})),...b.map((text,i)=>({type:'add',old:'',new:i+1,text}))];
-  const dp=Array.from({length:a.length+1},()=>new Uint32Array(b.length+1));
-  for(let i=a.length-1;i>=0;i--)for(let j=b.length-1;j>=0;j--)dp[i][j]=a[i]===b[j]?1+dp[i+1][j+1]:Math.max(dp[i+1][j],dp[i][j+1]);
-  let i=0,j=0;const rows=[];
-  while(i<a.length||j<b.length){if(i<a.length&&j<b.length&&a[i]===b[j])rows.push({type:'context',old:++i,new:++j,text:a[i-1]});else if(j<b.length&&(i===a.length||dp[i][j+1]>dp[i+1][j]))rows.push({type:'add',old:'',new:++j,text:b[j-1]});else rows.push({type:'remove',old:++i,new:'',text:a[i-1]})}return rows;
+  let start=0;
+  while(start<a.length&&start<b.length&&a[start]===b[start])start++;
+  let endA=a.length-1,endB=b.length-1;
+  while(endA>=start&&endB>=start&&a[endA]===b[endB]){endA--;endB--;}
+  const rows=[];
+  for(let i=0;i<start;i++)rows.push({type:'context',old:i+1,new:i+1,text:a[i]});
+  const midA=a.slice(start,endA+1),midB=b.slice(start,endB+1);
+  if(midA.length*midB.length>5_000_000){
+    midA.forEach((text,i)=>rows.push({type:'remove',old:start+i+1,new:'',text}));
+    midB.forEach((text,i)=>rows.push({type:'add',old:'',new:start+i+1,text}));
+  }else if(midA.length>0||midB.length>0){
+    const dp=Array.from({length:midA.length+1},()=>new Uint32Array(midB.length+1));
+    for(let i=midA.length-1;i>=0;i--)for(let j=midB.length-1;j>=0;j--)dp[i][j]=midA[i]===midB[j]?1+dp[i+1][j+1]:Math.max(dp[i+1][j],dp[i][j+1]);
+    let i=0,j=0;
+    while(i<midA.length||j<midB.length){
+      if(i<midA.length&&j<midB.length&&midA[i]===midB[j]){
+        rows.push({type:'context',old:start+i+1,new:start+j+1,text:midA[i]});
+        i++;j++;
+      }else if(j<midB.length&&(i===midA.length||dp[i][j+1]>dp[i+1][j])){
+        rows.push({type:'add',old:'',new:start+j+1,text:midB[j]});
+        j++;
+      }else{
+        rows.push({type:'remove',old:start+i+1,new:'',text:midA[i]});
+        i++;
+      }
+    }
+  }
+  for(let i=endA+1;i<a.length;i++){
+    const newIdx=endB+1+(i-(endA+1));
+    rows.push({type:'context',old:i+1,new:newIdx+1,text:a[i]});
+  }
+  return rows;
 }
 function reviewRows(rows,showAll=false) {
   if(showAll)return rows;
