@@ -178,7 +178,9 @@ def validate(response, supplied):
             if '/' not in path and sum(PurePosixPath(p).name == path for p in allowed_paths) == 1: continue
             # Only a clearly described API route, with no traversal/file suffix,
             # qualifies. Typed need_context.path remains strictly workspace-bound.
-            around = text[max(0, match.start()-40):match.end()+40]
+            # API verbs can precede the URL by a clause ("polls until the server
+            # returns 200 OK on ..."). Do not cut that context at 40 characters.
+            around = text
             if (path.startswith('/api/') and not any(part in {'.','..'} for part in path.split('/'))
                     and '.' not in path and re.search(r'\b(route|endpoint|GET|POST|PUT|PATCH|DELETE|HTTP|poll(?:s|ing)?|fetch)\b', around, re.I)):
                 continue

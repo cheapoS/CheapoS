@@ -105,7 +105,7 @@ class RecoveryContractTests(unittest.TestCase):
         self.assertEqual(recovery.validate(advice,packet),advice)
         polling = dict(advice, action='edit',
                        next_step='Update dist/app.js to poll /api/bootstrap for recovery.',
-                       expected_result='The browser polls until HTTP 200 OK on /api/bootstrap before reloading.')
+                       expected_result='The browser polls until the server returns 200 OK on /api/bootstrap before reloading.')
         self.assertEqual(recovery.validate(polling, packet), polling)
         for text in ('Inspect /etc/passwd to resolve this endpoint.',
                      'Inspect /api/../secret to resolve this endpoint.',
