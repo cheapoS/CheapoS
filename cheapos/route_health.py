@@ -67,3 +67,13 @@ def validate_probe(message, parse_call):
         raise ProviderError('Tool marker arguments invalid', code='invalid_tool_arguments') from None
     if name != 'routing_ready' or args != {'marker': PROBE_MARKER}:
         raise ProviderError('Tool marker response mismatched', code='probe_failed')
+
+
+def candidate_probe_rejection(error):
+    """A rejected canned probe can exclude that candidate, not condemn its quality.
+
+    Explicit shared request/connection failures and local validation errors must
+    still surface instead of sweeping the entire pool with a broken request.
+    """
+    return (isinstance(error, Exception) and getattr(error, 'code', None) in {'http_400', 'http_422'}
+            and getattr(error, 'scope', None) in {None, 'model'})

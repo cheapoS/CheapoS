@@ -177,8 +177,14 @@ def select_remote(engine, runtime, role="worker", replace=False):
     connection_revision=(route.get('access_policy') or {}).get('connection_revision')
     from .provider_recovery import provider
     unavailable = route.get('availability_recovery', {}).get(role, {}).get('providers', [])
+    rejected_probes = route.setdefault('rejected_probes', {})
     candidates = []
     for model in catalog['models']:
+        probe_key = role + ':' + route_health.probe_identity(route['base_url'], model, connection_revision)
+        if probe_key in rejected_probes:
+            used.add(model['id'])
+            routing_trace.candidate(trace, model['id'], 'probe_rejected')
+            continue
         fit = routing_trace.context_fit(task, model)
         reason = ('local_excluded' if model.get('local') else 'capability_missing' if model.get('tool_calling') is not True
                   else 'access_excluded' if not access_policy.eligible(model, route.get('access_policy'))
@@ -258,6 +264,14 @@ def select_remote(engine, runtime, role="worker", replace=False):
                 code = getattr(error, 'code', None)
                 status = code.replace('http_', 'HTTP ') if code in {'http_400', 'http_422'} else 'request validation failure'
                 classification['action'] = f"Connection check for {model['id']} was rejected ({status}). No task work was sent. Select another eligible worker in recovery controls, or inspect this route in OmniRoute; repeating the same request will not fix it."
+            candidate_rejected = route_health.candidate_probe_rejection(error)
+            if candidate_rejected:
+                classification['scope'] = 'model'
+                classification['action'] = f"The connection probe was rejected for {model['id']}. Trying another authorized candidate; this is not a model quality finding."
+                rejected_probes[role + ':' + identity] = {'model': model['id'], 'code': error.code}
+                while len(rejected_probes) > 256:
+                    rejected_probes.pop(next(iter(rejected_probes)))
+                used.add(model['id'])
             cooldown = classification['category'] == 'rate_limit_quota'
             if classification['quality_impact']: runtime.failed_models.add(model['id'])
             if classification['category'] in {'rate_limit_quota', 'transient_provider'}:
@@ -274,10 +288,9 @@ def select_remote(engine, runtime, role="worker", replace=False):
                 metric.update(status='failed', failure_category=classification['category'])
                 routing_trace.request(task, metric)
             engine.event(task, 'routing', 'Provider is cooling down' if cooldown else 'Model check failed', failure)
+            engine.store.save(task)
             if classification['scope'] in {'request','connection','account'}:
                 raise RoutingPause(classification['action'], scope=classification['scope']) from None
-    if not developing(task) and probes.get(role, 0) >= 4:
-        raise RoutingPause("Four eligible " + role + " probes were used for this request. Inspect Models and provide a new instruction; Resume does not renew probe attempts.", scope="probe_limit")
     provider_waits = [gateway.pool.observation(route["base_url"], m["id"], connection_revision) for m in catalog["models"]
                       if access_policy.eligible(m, route.get('access_policy')) and not m.get("local") and m["id"] not in used]
     waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") in {"provider", "model"} and h.get("retry_known") and h["cooling_down"]]
@@ -289,6 +302,10 @@ def select_remote(engine, runtime, role="worker", replace=False):
     if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits):
         reason = next((h.get('last_error') for h in provider_waits if h.get('cooldown_scope') == 'provider' and h['cooling_down'] and h.get('last_error')), 'The provider is cooling down without a known retry time.')
         raise RoutingPause(reason + " Inspect Models or retry manually later.", scope="provider")
+    if not developing(task) and probes.get(role, 0) >= 4:
+        raise RoutingPause("Four eligible " + role + " probes were used for this request. Inspect Models and provide a new instruction; Resume does not renew probe attempts.", scope="probe_limit")
+    if rejected_probes:
+        raise RoutingPause('No other authorized candidate passed its connection check. Rejected probes are remembered for this connection and model configuration; update the route configuration or enable another eligible model. Saved work and checks are kept.', scope='model')
     if replace:
         raise RoutingPause("No different eligible " + role + " passed the tool check. Failed models are temporarily cooling down. Your chat, files, checks, and usage are saved; resume to check availability again or inspect Models.")
     if role == "reviewer":

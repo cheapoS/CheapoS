@@ -3,7 +3,7 @@ import math
 import re
 
 LIMIT = 32
-REASONS = {'eligible','access_excluded','local_excluded','capability_missing','context_insufficient',
+REASONS = {'probe_rejected','eligible','access_excluded','local_excluded','capability_missing','context_insufficient',
            'fit_unknown','prior_worker','failed_model','cooldown','cached_probe','shared_probe',
            'probe_required','selected','connection_unavailable','caller_error','provider_unavailable_for_request'}
 CATEGORIES = {'credential_access','malformed_request','capability_mismatch','unavailable_route',
