@@ -2684,8 +2684,12 @@ class Engine:
                     task["messages"].append({"role": "user", "content": task["loop_guidance"]})
                     self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint interval; hard task limits still apply.")
                 if len(json.dumps(task["messages"])) > 60000:
-                    task["messages"] = self.compact_context(runtime) if task.get("compact_edits") else self.initial_messages(task)
-                    self.event(task, "context", "Compacted worker context using current files, diff, and review feedback")
+                    from .context_compaction import compact
+                    previous_messages = task["messages"]
+                    base = self.compact_context(runtime) if task.get("compact_edits") else self.initial_messages(task)
+                    task["messages"] = compact(task, base, previous_messages)
+                    self.event(task, "context", "Compacted worker context with findings, completed actions, and next step",
+                               {"before_characters": len(json.dumps(previous_messages)), "after_characters": len(json.dumps(task["messages"]))})
                 if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
                 task["worker_turns"] += 1
                 if task.get("conversational"):
