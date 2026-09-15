@@ -17,7 +17,7 @@ from pathlib import Path
 from .providers import BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider, guard_inference_route, is_local_ollama
 from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
-from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, Workspace, git
+from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, FileRangeError, Workspace, git
 from . import commits, reconciliation, progress, branch_runs
 from .verification import evidence_identity, matches as evidence_matches, normalize_unittest, reusable_check
 from .web import WebReader, allowed_urls
@@ -2181,6 +2181,10 @@ class Engine:
             # Older histories may still suggest expected_hash. Only the
             # controller's recorded version can authorize the actual write.
             args = {**args, "expected_hash": request_versions[path]}
+            from .edit_recovery import fingerprint
+            previous = task.get('edit_recovery', {}).get(path, {})
+            if previous.get('fingerprint') == fingerprint(args):
+                raise FileRangeError('This exact edit was already rejected for this file version. It was not executed again. Correct the range using the supplied current lines.')
         with self.lock:
             runtime.guard()
             result = self.file_tool(task, name, args)
@@ -2195,11 +2199,25 @@ class Engine:
                 result["current_file"] = self.edit_snapshot(runtime, args)
         return result
 
+    def recover_edit_range(self, runtime, args, error):
+        from .edit_recovery import rejected
+        task = runtime.task
+        result = rejected(task, args, self.edit_snapshot(runtime, args), str(error))
+        if result['attempts'] >= 2 and automatic(task, 'worker'):
+            self.defer_route(task, 'worker', 'Repeated invalid line edits after current file context was supplied. Continue the saved repair using the refreshed lines; do not repeat the rejected edit.')
+            result['handoff_queued'] = True
+            result['next_action'] = 'Automatic recovery will try another eligible worker with these saved files and diagnostics.'
+        self.event(task, 'tool_error', 'Refreshed lines after an invalid edit', result)
+        return result
+
     def edit_snapshot(self, runtime, args):
         start = args.get("start_line", 1)
         start = max(1, start - 10) if type(start) is int else 1
         try:
-            file = Workspace(runtime.task["workspace"]).read_file(args["path"], start, start + 99)
+            workspace = Workspace(runtime.task["workspace"])
+            total = len(workspace.text_bytes(args['path']).decode('utf-8').splitlines())
+            start = min(start, max(1, total - 20))
+            file = workspace.read_file(args["path"], start, start + 99)
             self.remember_file_version(runtime, file)
             return file
         except (ValueError, OSError, TypeError, UnicodeError) as error:
@@ -2450,6 +2468,9 @@ class Engine:
             return self.checkpoint_feedback(runtime, {
                 'summary': 'Worker requested the already-passing verification again.',
                 'uncertainties': 'The controller is submitting saved work to avoid repeated tests. Independently assess every requirement; passing tests alone do not establish completion.'})
+        if not result.get('passed') and result.get('output'):
+            from .edit_recovery import check_feedback
+            return check_feedback(result)
         return result
 
     def checkpoint_feedback(self, runtime, args):
@@ -2982,6 +3003,9 @@ class Engine:
                             runtime.action_context_ready = False
                     except InterruptedError:
                         raise
+                    except FileRangeError as error:
+                        result = self.recover_edit_range(runtime, args, error)
+                        coordinator_applied = result.get('handoff_queued', False)
                     except FileVersionError as error:
                         result = {"error": str(error), "code": "stale_file_version",
                                   "current_file": self.edit_snapshot(runtime, args),

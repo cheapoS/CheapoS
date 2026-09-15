@@ -20,6 +20,10 @@ BLOCKED_PARTS = {".git", ".cheapos", ".ssh", ".aws", ".gnupg", "node_modules", "
 BLOCKED_NAMES = {".env", ".npmrc", ".pypirc", ".netrc", "id_rsa", "id_ed25519", "credentials", "credentials.json"}
 
 
+class FileRangeError(ValueError):
+    """An edit range cannot address the current file."""
+
+
 class FileVersionError(ValueError):
     """The edit's inspected version does not match the file on disk."""
 
@@ -156,7 +160,7 @@ class Workspace:
         lines = data.decode("utf-8").splitlines(keepends=True)
         if (type(start_line) is not int or type(end_line) is not int or start_line < 1
                 or start_line > len(lines) + 1 or end_line < start_line - 1 or end_line > len(lines)):
-            raise ValueError("Invalid line range. Lines are 1-based and inclusive; end_line = start_line - 1 inserts before start_line.")
+            raise FileRangeError(f"Invalid line range {start_line!r}..{end_line!r}: this file has {len(lines)} lines. Replace within 1..{len(lines)}, or append at {len(lines)+1} with end_line={len(lines)}. No edit was made.")
         if (not isinstance(new_text, str) or len(new_text.encode("utf-8")) > MAX_EDIT_BYTES
                 or len(new_text.splitlines()) > MAX_EDIT_LINES or end_line - start_line + 1 > MAX_EDIT_LINES):
             raise ValueError(f"Edit is too large. Replace at most {MAX_EDIT_LINES} lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes per call.")
