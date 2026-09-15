@@ -121,6 +121,8 @@ def finalize(engine, runtime):
     """Return False for bounded repair continuation, True for the final handoff."""
     task = runtime.task; run = task['branch_run']
     engine.branch.validate_authority(task, run)
+    from .branch_conflicts import complete
+    complete(engine,task)
     result = final.final_check_review(engine, runtime)
     if result['decision'] != 'APPROVE':
         message = result.get('feedback', 'Repair failed final acceptance evidence.')
@@ -170,6 +172,7 @@ def preview(controller, task_id, values=None):
                 'files':manifest['files'], 'commits':manifest['commits'], 'diff_length':len(manifest['diff']),
                 'base_sha':manifest['base_sha'], 'feature_tip':manifest['feature_tip'], 'target_tip':manifest['target_tip'],
                 'update_available': bool(blocker) and run['status'] in {'paused','blocked','ready_for_merge'} and not run.get('merge_operation') and all(i['status'] in state.DONE for i in run['items']),
+                'resolve_available':bool(run.get('merge_conflict')) and bool(blocker) and all(i['status'] in state.DONE for i in run['items']) and not run.get('target_update'),
                 'update_token':update_token(run)}
 
 
@@ -351,7 +354,13 @@ def update_branch(controller, task_id, values):
             raise ValueError('Branches changed. Refresh the review before updating')
         operation=run.get('target_update')
         if not operation:
-            operation=branch_update.prepare(run)
+            try:
+                operation=branch_update.prepare(run)
+            except branch_update.MergeConflict as error:
+                run['merge_conflict']=error.context
+                engine.event(task,'merge_conflict','Conflicts need agent resolution',{'files':error.context['files']})
+                engine.store.save(task)
+                return {'needs_conflict_resolution':True}
             if values['update_token']!=update_token(run):
                 raise ValueError('Target changed while preparing the update. Refresh review and try again')
             operation['approved']=True

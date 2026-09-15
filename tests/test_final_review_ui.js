@@ -81,3 +81,10 @@ test('diverged preview offers a separate update action without authorizing targe
  assert.match(ui.finalReviewMarkup(task,preview),/data-update-branch>Update branch &amp; recheck/);
  assert.doesNotMatch(ui.finalReviewMarkup(task,{...preview,update_available:false}),/data-update-branch/);
 });
+
+test('known conflicts offer an agent task instead of repeating the failed update',()=>{
+ const task={branch_run:{feature_ref:'feature',target_ref:'main',readiness:{checks:[]}}};
+ const html=ui.finalReviewMarkup(task,{files:[],resolve_available:true,update_available:true});
+ assert.match(html,/data-resolve-conflicts>Resolve conflicts &amp; recheck/);
+ assert.doesNotMatch(html,/data-update-branch/);
+});

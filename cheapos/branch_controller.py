@@ -641,6 +641,9 @@ class BranchController:
             self.engine.require_active_task(task_id)
             self.engine.admission.require('unattended', task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            if (run.get('target_update') or {}).get('origin')=='conflict_resolution':
+                from .branch_conflicts import complete
+                complete(self.engine,task)
             if run.get('target_update'):
                 raise ValueError('A branch update is saved. Open Review changes and choose Update branch & recheck to finish it.')
             task.pop('recovery_blocked', None)

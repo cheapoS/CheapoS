@@ -25,10 +25,9 @@ def prepare(run):
         except ValueError:
             current=False
         if current: raise ValueError('Task branch already contains the target. Choose Recheck changes instead')
-        try:
-            tree = work.source_git(source, 'merge-tree', '--write-tree', old, target).splitlines()[0]
-        except ValueError:
-            raise ValueError('The target and task have conflicting changes. Both branches are preserved. Resolve the conflicting changes before updating; no merge was applied.') from None
+        tree, conflicts = merge_candidate(source, old, target)
+        if conflicts:
+            raise MergeConflict({'old_tip':old,'target_tip':target,'tree':tree,'files':conflicts})
         _preserve_exclusions(source, old, tree, mapping)
         patch = work.source_git(source, 'diff', '--binary', '--no-ext-diff', '--no-renames', old, tree, binary=True).decode('utf-8')
         with tempfile.TemporaryDirectory(prefix='cheapos-update-index-') as directory:
@@ -107,3 +106,22 @@ def advance_receipts(run, previous, private, updates):
             raise ValueError('Branch update private baseline changed')
         previous,private=op['new_tip'],op['private_new']
     return previous,private
+
+
+class MergeConflict(ValueError):
+    def __init__(self, context):
+        self.context=context
+        super().__init__('Conflicting changes found. Choose Resolve conflicts & recheck to have the agents combine both versions. Your branches are preserved.')
+
+
+def merge_candidate(source, old, target):
+    raw=work.source_git(source,'merge-tree','--write-tree','--name-only','-z',old,target,binary=True,allowed_returncodes=(0,1))
+    parts=raw.split(b'\0')
+    tree=parts[0].decode('ascii')
+    if len(tree)!=40 or any(c not in '0123456789abcdef' for c in tree):
+        raise ValueError('Git could not prepare a merge candidate')
+    conflicts=[]
+    for part in parts[1:]:
+        if not part:break
+        conflicts.append(part.decode('utf-8'))
+    return tree,conflicts

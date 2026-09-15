@@ -15,7 +15,7 @@ from pathlib import Path, PurePosixPath
 from .workspace import Workspace, allowed_name, git, MAX_FILES, MAX_SNAPSHOT_BYTES
 
 
-def source_git(source, *args, input=None, binary=False, index=None):
+def source_git(source, *args, input=None, binary=False, index=None, allowed_returncodes=(0,)):
     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     env.update(GIT_TERMINAL_PROMPT='0', GIT_OPTIONAL_LOCKS='0', GIT_NO_REPLACE_OBJECTS='1')
     if index:
@@ -24,7 +24,7 @@ def source_git(source, *args, input=None, binary=False, index=None):
                              '-c', 'core.fsmonitor=false', *args], cwd=source, env=env,
                             input=input.encode() if isinstance(input, str) else input,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
-    if result.returncode:
+    if result.returncode not in allowed_returncodes:
         raise ValueError(result.stderr.decode(errors='replace')[:1000].strip() or 'Git operation failed')
     return result.stdout if binary else result.stdout.decode('utf-8').strip()
 

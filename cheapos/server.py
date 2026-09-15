@@ -262,6 +262,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     operation = {"branch-final-preview":"preview", "branch-final-diff":"diff", "branch-merge":"merge", "branch-revise":"revise", "branch-final-recheck":"recheck", "branch-update":"update_branch"}[action]
                     result = getattr(branch_completion, operation)(engine.branch, task_id, values)
                     if isinstance(result, dict) and "branch_run" in result: result = public_task(result)
+                elif action == "branch-resolve-conflicts":
+                    from .branch_conflicts import start
+                    result = start(engine.branch, task_id, values)
                 elif action == "branch-proposal-edit":
                     result = engine.branch.reprepare(task_id, values)
                 elif action == "branch-proposal":

@@ -136,6 +136,9 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
     tools[0]['function']['parameters']['properties']['suggestions']={'type':'array','maxItems':8,'items':{'type':'string'}}
     tools.append(tool('read_final_context','Read up to 200 numbered lines from this exact candidate; never approval or coverage.', {'manifest_id':{'type':'string','enum':[manifest['id']]},'path':{'type':'string'},'start_line':{'type':'integer'},'end_line':{'type':'integer'}}, ['manifest_id','path','start_line','end_line']))
     tools.append(tool('report_review_context_blocker','Pause when necessary candidate context is unavailable; this is never approval.',{'manifest_id':{'type':'string','enum':[manifest['id']]},'path':{'type':'string'}},['manifest_id','path']))
+    if runtime.task['branch_run'].get('conflict_resolution'):
+        from .engine import READ_TOOLS
+        tools.extend(t for t in READ_TOOLS if t['function']['name']=='read_merge_context')
     encoded = _json(packet)
     if len(encoded) > 30000:
         raise ValueError('Final review packet exceeds 30,000 characters; nothing was omitted')
@@ -176,6 +179,17 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
                 engine.store.save(runtime.task)
                 messages.append(message);messages.append({'role':'tool','tool_call_id':calls[0]['id'],'content':_json(excerpt)})
                 packet.setdefault('context_references',[]).append({k:v for k,v in excerpt.items() if k!='content'})
+                continue
+            if name=='read_merge_context':
+                budget=runtime.task['branch_run'].setdefault('final_context_reads',{}).setdefault(key,{'count':0,'seen':[]})
+                read_key=_hash({'tool':name,'arguments':result})
+                if not developing(runtime.task) and (budget['count']>=6 or read_key in budget['seen']):
+                    raise ValueError('Use the captured merge evidence already read, or identify the specific missing context.')
+                budget['count']+=1;budget['seen'].append(read_key)
+                engine.store.save(runtime.task)
+                from .branch_conflicts import read
+                excerpt=read(runtime.task,**result)
+                messages.append(message);messages.append({'role':'tool','tool_call_id':calls[0]['id'],'content':_json(excerpt)})
                 continue
             expected = {'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'criteria_ids':criterion_ids}
             wrong = [field for field,value in expected.items() if result.get(field) != value]
