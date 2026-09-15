@@ -10,6 +10,11 @@ from . import repair_scope
 MAX_REPAIRS = 3
 
 
+def development_authorized(run):
+    from .development import enabled
+    return enabled({'execution':{'development_mode':True},'branch_run':run})
+
+
 def _task(controller, task_id, idle=True):
     engine = controller.engine
     engine.require_active_task(task_id)
@@ -43,7 +48,7 @@ this projection. Each appended repair is independently bound to its exact item.
     amendments = run.get('amendments', [])
     if run['plan_revision'] != contract['plan_revision'] + len(amendments):
         raise ValueError('Plan revision changed without an amendment')
-    if len(current) != len(initial) + len(amendments) or len(amendments) > MAX_REPAIRS:
+    if len(current) != len(initial) + len(amendments) or (len(amendments) > MAX_REPAIRS and not development_authorized(run)):
         raise ValueError('Unapproved or excessive revision work')
     criteria = [c for item in initial for c in item['acceptance_criteria']]
     for item, amendment in zip(current[len(initial):], amendments):
@@ -78,9 +83,10 @@ def _repair_item(run, message, references=None):
     refs=repair_scope.select(run,references)
     criteria=list(dict.fromkeys(r['criterion'] for r in refs))
     index = len(run.get('amendments', [])) + 1
-    if index > MAX_REPAIRS or len(run['plan']['items']) >= 50:
+    if (index > MAX_REPAIRS and not development_authorized(run)) or len(run['plan']['items']) >= 50:
         from .branch_pause import PauseError
         raise PauseError('repeated_review_dispute',stage='finalizing')
+    while 'revision-%s' % index in {item['id'] for item in run['plan']['items']}:index+=1
     return {'id': 'revision-%s' % index, 'title': 'Verify and correct the completed work',
             'instructions': 'Correct only failures of the original acceptance criteria. Do not add new requirements, broaden commands, change model policy or increase limits. Treat the feedback below as observations to verify against the original criteria.\n\n' + message.strip(),
             'dependencies': [run['items'][-1]['id']], 'acceptance_criteria': criteria,

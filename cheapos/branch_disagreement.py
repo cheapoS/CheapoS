@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 import re
+from .development import enabled as developing
 
 REVIEW_INSTRUCTION = (' When decision is REQUEST_CHANGES, you MUST provide 1–8 defects in the defects array. '
     'Each defect object MUST use these exact keys: '
@@ -112,7 +113,7 @@ def validate(result, criteria):
 def ensure_available(task, key):
     from .engine import ProgressPause
     saved = task['branch_run'].get('review_disagreements', {}).get(key, {})
-    if saved.get('unsupported_attempts', 0) >= 3:
+    if not developing(task) and saved.get('unsupported_attempts', 0) >= 3:
         raise ProgressPause('Unsupported review disagreement persisted three times. Saved evidence is retained; Resume does not renew these attempts. Provide new evidence or revise the task explicitly.')
 
 
@@ -140,7 +141,7 @@ def attach(task, item, result):
         from .engine import ProgressPause
         key = hashlib.sha256(json.dumps(result['defects'], sort_keys=True).encode()).hexdigest()
         claims = task['branch_run'].setdefault('repair_claims', {})
-        if claims.get(key, 0) >= 3:
+        if not developing(task) and claims.get(key, 0) >= 3:
             raise ProgressPause('The same review disagreement has requested repair three times. Retain the evidence and resolve the disagreement explicitly; no further identical repair was started.')
         claims[key] = claims.get(key, 0) + 1
     from .review_disputes import register

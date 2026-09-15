@@ -9,9 +9,10 @@ test('late start reconciliation never overwrites another chat',async()=>{const {
 test('old server 404 retains legacy single-task capacity while other errors fail closed',async()=>{const {c,state}=fixture();c.api=async()=>{throw Object.assign(Error('not found'),{status:404});};await c.loadAdmission();assert.equal(state.admission.legacy,true);state.tasks[0].status='running';assert.equal(c.submissionAvailability().allowed,false);assert.match(c.submissionAvailability().reason,/later app restart/);state.tasks[0].status='paused';assert.equal(c.submissionAvailability().allowed,true);c.api=async()=>{throw Object.assign(Error('unavailable'),{status:503});};await c.loadAdmission();assert.equal(c.submissionAvailability().allowed,false);});
 
 function sendFixture(){
- const f=fixture(),{c,state,input}=f;state.task={id:'b',status:'paused',requests:['original']};state.project={path:'/fixture'};state.preferences={execution:{mode:'remote'}};state.selection=1;
+ const f=fixture(),{c,state,input}=f;state.task={id:'b',status:'awaiting_reply',requests:['original']};state.project={path:'/fixture'};state.preferences={execution:{mode:'remote'}};state.selection=1;
  Object.assign(c,{messageText:s=>String(s).replaceAll('<','&lt;'),saveDraft:()=>state.drafts.set('b',input.value),renderChat:()=>{},renderHome:()=>{},toast:()=>{},refreshContext:()=>new Promise(()=>{})});
  c.branchUI.interceptSubmit=async()=>false;input.focus=()=>{};
+ vm.runInContext(source.slice(source.indexOf('function canTakeOver'),source.indexOf('function operatorRecoveryFields')),c);
  vm.runInContext(source.slice(source.indexOf('const submissionEntries='),source.indexOf('async function steerTask(')),c);
  return f;
 }
@@ -38,12 +39,12 @@ test('delivery rejection restores editable draft and late delivery cannot overwr
 function branchSendFixture(){
  const f=sendFixture(),{c,state}=f;
  state.admission.unattended={allowed:true};
- state.task={id:'b',status:'paused',branch_run:{status:'paused',authorization_ref:'accepted',guidance:[]}};
+ state.task={id:'b',status:'paused',pause_summary:{question:'Which behavior do you need?'},branch_run:{status:'paused',authorization_ref:'accepted',guidance:[]}};
  vm.runInContext(source.slice(source.indexOf('async function steerTask('),source.indexOf('async function boostHeadroom(')),c);
  vm.runInContext(source.slice(source.indexOf('async function resumeBranchRun('),source.indexOf('async function bootstrap(')),c);
  return f;
 }
-test('any paused branch follow-up saves once, then resumes the same run with immediate feedback',async()=>{
+test('ordinary branch question reply saves once, then resumes the same run with immediate feedback',async()=>{
  for(const message of ['try again','continue','Run the focused tests and submit checkpoint']){
   const {c,state,input}=branchSendFixture();input.value=message;const calls=[];let finishResume;
   c.api=async(path,body)=>{calls.push([path,body]);if(path.endsWith('/branch-message'))return {...state.task,branch_run:{...state.task.branch_run,guidance:[{message:body.message}]}};return new Promise(r=>finishResume=r);};
@@ -132,3 +133,4 @@ test('saved branch mode takes precedence over local limits and legacy measuremen
  assert.equal(c.workLimits({limits:{},branch_run:{plan:{measurement:true}}}).uncapped_work,true);
  assert.equal(c.workLimits(null,{uncapped_work:true}).uncapped_work,true);
 });
+test('failed-task Send explicitly takes over once and keeps later-chat drafts intact',async()=>{const {c,state,input}=sendFixture();state.task.status='paused';input.value='Use the saved evidence';let accept,calls=[];c.api=(path,body)=>{calls.push([path,body]);return new Promise(r=>accept=r);};const pending=c.sendChat();await new Promise(r=>setImmediate(r));await c.sendChat();assert.equal(calls.length,1);assert.equal(calls[0][0],'/tasks/b/operator-recovery');assert.equal(calls[0][1].action,'takeover');assert.equal(calls[0][1].approved,true);state.task={id:'other'};state.selection++;input.value='Other draft';accept({task:{id:'b',status:'running'}});await pending;assert.equal(state.task.id,'other');assert.equal(input.value,'Other draft');});

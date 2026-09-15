@@ -9,6 +9,7 @@ import time
 from . import branch_evidence as evidence
 from . import branch_runs, branch_disagreement as disagreement
 from .measurement import enabled as measuring
+from .development import enabled as developing
 from .providers import ProviderError
 
 
@@ -41,6 +42,8 @@ def _coach(engine, task, messages, reason):
 
 
 def _stop(engine, task, reason):
+    if developing(task):
+        return  # Keep evidence and retry counters; explicit work/money limits still apply.
     from .engine import ProgressPause
     from .branch_pause import specific
     pending = task['pending_review']
@@ -160,7 +163,7 @@ def checkpoint(engine, runtime, args):
     engine.event(task, 'checkpoint', 'Reviewing the complete branch item', {'item_id':item['id'], 'candidate_id':current['id']})
     rounds = 0
     max_rounds = 8
-    while measuring(task) or rounds < max_rounds:
+    while developing(task) or measuring(task) or rounds < max_rounds:
         rounds += 1
         pending = task['pending_review']
         if pending.get('stop_diagnostic'):
@@ -172,7 +175,7 @@ def checkpoint(engine, runtime, args):
         disagreement.ensure_available(task, current['id'])
         runtime.guard()
         from .provider_recovery import review_turns
-        deciding = not measuring(task) and review_turns(task, pending) >= max_rounds - 1
+        deciding = not developing(task) and not measuring(task) and review_turns(task, pending) >= max_rounds - 1
         if deciding:
             _coach(engine, task, messages, 'request_limit')
         offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools

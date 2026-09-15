@@ -111,6 +111,13 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply(engine.store.lifetime.summary(days=int(period) if period != "all" else "all"))
             elif path == "/api/admission":
                 self.reply(engine.admission.snapshot())
+            elif path.startswith('/api/tasks/') and path.endswith('/operator-recovery'):
+                task_id=path.split('/')[3]
+                task=engine.store.get(task_id)
+                if 'branch_run' in task:
+                    from .branch_operator import capabilities
+                    self.reply(capabilities(engine.branch,task_id))
+                else:self.reply(engine.operator_recovery(task_id))
             elif path == "/api/readiness":
                 self.reply(engine.readiness.snapshot(refresh=parse_qs(urlsplit(self.path).query).get("refresh") == ["1"]))
             elif path == "/api/startup":
@@ -259,6 +266,17 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     result = engine.branch.reprepare(task_id, values)
                 elif action == "branch-proposal":
                     result = engine.branch.proposal(task_id)
+                elif action == "operator-recovery":
+                    if 'branch_run' in engine.store.get(task_id):
+                        from .branch_operator import recover
+                        task=recover(engine.branch,task_id,values)
+                        result={'task':public_task(task),'operator_continue':task.get('operator_continue')}
+                    else:
+                        result=engine.operator_recovery(task_id,values)
+                        result['task']=public_task(result['task'])
+                elif action == "branch-operator-control":
+                    from .branch_operator import control
+                    result = public_task(control(engine.branch, task_id, values))
                 elif action == "branch-message":
                     result = public_task(engine.branch.message(task_id, values))
                 elif action == "branch-resume":

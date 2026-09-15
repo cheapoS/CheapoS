@@ -36,6 +36,7 @@ from .measurement import enabled as measuring, is_measurement
 from .model_pool import observe_task
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
+from .development import enabled as developing
 
 
 def now():
@@ -186,6 +187,10 @@ def limits_from(value):
             raise ValueError('Uncapped work must be explicitly true or false')
         output['uncapped_work'] = result['uncapped_work']
     return output
+
+
+class OperatorRedirect(InterruptedError):
+    """An explicit user correction superseded the in-flight response."""
 
 
 class ProgressPause(Exception):
@@ -360,8 +365,17 @@ class Runtime:
         self.compact_context_ready = False
         self.edit_versions = {}
         self.steer_queue = []
+        self.interrupt_request = threading.Event()
+
+    def wait(self, timeout):
+        return self.interrupt_request.is_set() or self.stop.wait(timeout) or self.interrupt_request.is_set()
+
+    def request_cancelled(self):
+        return self.stop.is_set() or self.interrupt_request.is_set()
 
     def guard(self):
+        if self.interrupt_request.is_set() and not self.stop.is_set():
+            raise OperatorRedirect("Applying the operator’s new direction")
         if hasattr(self, "branch_ledger"):
             if hasattr(self,"branch_authority"): self.branch_authority()
             self.branch_ledger.guard()
@@ -579,6 +593,8 @@ class Engine:
         if conversational:
             task["request_worker_turns"] = 0
         setup_task(task, execution, self.config, self.gateway)
+        if execution.get("development_mode") and "uncapped_work" not in values.get("limits", {}):
+            task["limits"]["uncapped_work"] = True
         self.project_test_grants.register(task)
         self.event(task, "snapshot", "Created an isolated repository snapshot", snapshot)
         return task
@@ -721,7 +737,7 @@ class Engine:
                 if not isinstance(followup, str) or not 1 <= len(followup.strip()) <= 8000:
                     raise ValueError("Enter a message of up to 8,000 characters")
                 requests = task.get("requests", [task["prompt"]])
-                if sum(map(len, requests)) + len(followup) > 24000:
+                if sum(map(len, requests)) + len(followup) > 24000 and not developing(task):
                     raise ValueError("This conversation is full. Start a new chat for more work.")
             if task["status"] in {"approved", "completed", "awaiting_reply"} and followup is None:
                 raise ValueError("This task is already complete; start a new task for further changes")
@@ -754,6 +770,8 @@ class Engine:
                 if automatic(task, "worker") and last_request.get("title", "").startswith("Requesting worker:") and task["providers"].get("worker"):
                     self.prepare_output_recovery(task, task["providers"]["worker"]["model"])
             if followup is not None:
+                if developing(task):
+                    self.archive_operator_state(task, "New operator direction")
                 task["conversational"] = True
                 task.pop('pending_verification',None)
                 task["request_worker_turns"] = 0
@@ -856,6 +874,8 @@ class Engine:
                 raise ValueError("Pause this chat before changing its limits")
             task = self.store.get(task_id)
             new_limits = limits_from({**task['limits'], **values['limits']})
+            if developing(task) and 'uncapped_work' in values['limits']:
+                task['operator_bounded_work'] = not new_limits['uncapped_work']
             if "branch_run" in task:
                 run = task["branch_run"]
                 if run.get("status") != "paused":
@@ -886,6 +906,8 @@ class Engine:
                                 auth['contract']['plan'][choice] = run['plan'][choice]
                     auth["digest"] = digest(auth["contract"])
                 run['plan_digest'] = digest(run['plan'])
+                if run.get('development_authorization') and auth:
+                    run['development_authorization']['plan_digest'] = digest(auth['contract']['plan'])
                 consumption = run.get('consumption', {})
                 work_fits = measuring(task) or all(consumption.get(key, 0) + (1 if key in {'requests','working_seconds'} else 0) <= run_lims[key]
                     for key in ('worker_turns','requests','tool_actions','reviewer_tokens','working_seconds') if key in run_lims)
@@ -1023,6 +1045,11 @@ class Engine:
                 raise ValueError("Use the Unattended run revision controls to change its authorized work.")
             if task.get("demo"):
                 raise ValueError("The demo uses scripted responses. Open a project to steer real tasks.")
+            if developing(task):
+                if runtime and runtime.thread and runtime.thread.is_alive():
+                    self.queue_operator_direction(runtime, cleaned)
+                    return {"steered": True, "running": True, "task": task, "operator_continue": task["operator_continue"]}
+                return self.operator_recovery(task_id, {"action":"retry", "message":cleaned})
             self.event(task, "steer", "User Guidance", cleaned)
             task["steer_guidance"] = cleaned
             if runtime and runtime.thread and runtime.thread.is_alive():
@@ -1037,6 +1064,51 @@ class Engine:
                     task["error_code"] = None
                 self.store.save(task)
                 return {"steered": True, "running": False, "task": task}
+
+    def archive_operator_state(self, task, reason):
+        task.setdefault('operator_history', []).append({
+            'time': now(), 'reason': reason,
+            'request_worker_turns': task.get('request_worker_turns'),
+            **{key: copy.deepcopy(task.get(key)) for key in
+               ('progress_state', 'pause_summary', 'pending_checkpoint', 'pending_review', 'pending_verification')}})
+
+    def queue_operator_direction(self, runtime, message, record=True):
+        """Cancel stale inference, never mark a check/review approved."""
+        task = runtime.task
+        self.archive_operator_state(task, 'Operator redirected active work')
+        task['steer_guidance'] = message
+        if not task.get('branch_run'):
+            task['requests'] = task.get('requests', [task['prompt']]) + [message]
+            task['request_worker_turns'] = 0
+        runtime.steer_queue.append(message)
+        runtime.interrupt_request.set()
+        if task.get('pending_approval'):
+            runtime.approved = False
+            runtime.approval.set()
+        task['operator_continue'] = {'status':'interrupting', 'reason':'Your direction is saved. Cancelling the current response before continuing from saved files.'}
+        if record: self.event(task, 'steer', 'You', message)
+        self.event(task, 'operator_control', 'Applying your direction', task['operator_continue'])
+        self.store.save(task)
+
+    def apply_operator_direction(self, runtime):
+        task = runtime.task
+        with self.lock:
+            if runtime.stop.is_set(): return
+            runtime.interrupt_request.clear()
+            for key in ('pending_checkpoint', 'pending_review', 'pending_verification', 'coordinator_guidance', 'recovery_blocked', 'pause_summary'):
+                task.pop(key, None)
+            task.update(status='running', error=None, error_code=None, active_role='worker',
+                        action_pending=False, answer_pending=False, loop_guidance=None)
+            runtime.observations.clear(); runtime.file_observations.clear(); runtime.edit_versions.clear()
+            runtime.action_context_ready=False;runtime.compact_context_ready=False
+            self.refresh_changes(task)
+            task['messages']=self.initial_messages(task)
+            task['operator_continue']={'status':'running','reason':'Continuing from the saved files with your latest direction. Earlier review/check results remain recorded.'}
+            self.event(task,'operator_control','Direction applied',task['operator_continue'])
+
+    def operator_recovery(self, task_id, values=None):
+        from . import operator_controls
+        return operator_controls.interactive(self, task_id, values)
 
     def boost_headroom(self, task_id, additional_tokens=100000, additional_turns=10):
         with self.lock:
@@ -1424,6 +1496,11 @@ class Engine:
         return messages
 
     def prepare_loop_recovery(self, task):
+        if developing(task):
+            task.update(answer_pending=False, action_pending=False,
+                        loop_guidance='The previous inspection repeated known evidence. Follow the latest operator direction: make a useful next edit, inspect genuinely new context, or answer from evidence. Do not repeat unchanged reads without a reason.')
+            self.event(task, 'guard', 'Asking for a different approach', task['loop_guidance'])
+            return
         if (work_policy.active_implementation(task) or needs_patch_review(task)) and not work_policy.read_only(task):
             task["answer_pending"] = False
             task["action_pending"] = True
@@ -1446,7 +1523,7 @@ class Engine:
         if not measuring(task) and request_worker_turns(task) >= task["limits"]["worker_turns"]:
             raise WorkerTurnLimit("The worker-turn allowance is exhausted. The gathered evidence is saved; an answer needs one remaining worker turn.")
         recovery = progress.state(task)
-        if recovery['answer_attempts'] >= 2:
+        if recovery['answer_attempts'] >= 2 and not developing(task):
             raise ProgressPause("The answer step has already been tried twice for this request. Provide the missing information or a specific correction.")
         recovery['answer_attempts'] += 1
         task["answer_pending"] = True
@@ -1560,14 +1637,14 @@ class Engine:
             if repair_transport and recovery and recovery.get('from') == cfg['model'] and recovery.get('reason') == 'This model is cooling down after a recent failure.':
                 task['route']['recovery'].pop(role)
                 recovery = None
-            if recovery and not unavailable and runtime.handoffs >= MAX_HANDOFFS:
+            if recovery and not unavailable and runtime.handoffs >= MAX_HANDOFFS and not developing(task):
                 raise RoutingPause("Two automatic model handoffs were tried for this request. Saved work and usage are kept. Inspect Models and send a specific next instruction; Resume does not replenish handoffs.")
             if attempted:
                 self.count_recovery_turn(runtime)
                 attempted = False
             if recovery:
                 if unavailable:
-                    if provider_attempts['handoffs'] >= provider_recovery.MAX_PROVIDER_HANDOFFS:
+                    if provider_attempts['handoffs'] >= provider_recovery.MAX_PROVIDER_HANDOFFS and not developing(task):
                         raise RoutingPause('Four provider failovers were used for this request. Saved work is intact; inspect provider availability before continuing.')
                     failed_provider = provider_recovery.provider(recovery['from'])
                     if failed_provider not in provider_attempts['providers']:
@@ -1844,6 +1921,7 @@ class Engine:
         record['reservation'] = {k: reservation[k] for k in ('tokens', 'cost', 'prompt_tokens', 'completion_tokens')}
         record.update(reservation_tokens=reservation['tokens'],reservation_cost=reservation['cost'])
         task["in_flight"] = reservation
+        if developing(task): config = {**config, "_operator_interruptible": True}
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
         from . import transport
         selected_transport = transport_override or transport.choice(config, role, purpose, tools, getattr(provider, "streams_output", False) is True)
@@ -1892,9 +1970,9 @@ class Engine:
                     published = time.monotonic()
             try:
                 if (purpose == "probe" or role == "coordinator") and hasattr(provider, "complete_brief") and not type(provider).__name__.startswith("Mock"):
-                    message, usage = provider.complete_brief(messages, tools, reservation["completion_tokens"], emit, runtime.stop.is_set)
+                    message, usage = provider.complete_brief(messages, tools, reservation["completion_tokens"], emit, getattr(runtime, 'request_cancelled', runtime.stop.is_set))
                 else:
-                    message, usage = provider.complete_with_progress(messages, tools, maximum, emit, runtime.stop.is_set)
+                    message, usage = provider.complete_with_progress(messages, tools, maximum, emit, getattr(runtime, 'request_cancelled', runtime.stop.is_set))
                 completed = True
             except ProviderError as error:
                 self.account_failed_response(task, config, reservation, error)
@@ -1911,7 +1989,7 @@ class Engine:
             self.store.save(task)
             try:
                 if brief and hasattr(provider, 'complete_brief') and not type(provider).__name__.startswith("Mock"):
-                    message, usage = provider.complete_brief(messages, tools, reservation['completion_tokens'], None, runtime.stop.is_set)
+                    message, usage = provider.complete_brief(messages, tools, reservation['completion_tokens'], None, getattr(runtime, 'request_cancelled', runtime.stop.is_set))
                 else:
                     message, usage = provider.complete(messages, tools, maximum)
             except ProviderError as error:
@@ -1979,7 +2057,9 @@ class Engine:
             # Older histories may still suggest expected_hash. Only the
             # controller's recorded version can authorize the actual write.
             args = {**args, "expected_hash": request_versions[path]}
-        result = self.file_tool(task, name, args)
+        with self.lock:
+            runtime.guard()
+            result = self.file_tool(task, name, args)
         if name == "read_file":
             self.remember_file_version(runtime, result)
         elif name in {"write_file", "replace_text", "replace_lines"}:
@@ -2121,7 +2201,7 @@ class Engine:
         with self.lock:
             exact_allowed = (task["workspace"], tuple(argv)) in self.command_permissions.get(task["id"], set())
             project_grant, scope_reason = self.project_test_grants.authorize(task, argv)
-            session_allowed = bool(self.branch.scopes.authorize(task,argv)) if "branch_run" in task else exact_allowed or bool(project_grant)
+            session_allowed = developing(task) or (bool(self.branch.scopes.authorize(task,argv)) if "branch_run" in task else exact_allowed or bool(project_grant))
         if not session_allowed and ("branch_run" in task or not task["auto_approve_checks"] or argv != task["check_command"]):
             runtime.approved = False
             runtime.approval.clear()
@@ -2134,18 +2214,19 @@ class Engine:
             if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.suspend()
             try: runtime.approval.wait()
             finally:
-                if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.resume()
+                if hasattr(runtime,"branch_ledger") and not runtime.stop.is_set(): runtime.branch_ledger.begin()
             waited=time.monotonic()-waiting_since
             runtime.metric_operator_wait=getattr(runtime,'metric_operator_wait',0)+waited
             runtime.started += waited
             task["pending_approval"] = None
             if runtime.stop.is_set():
                 raise InterruptedError("Task stopped")
+            runtime.guard()
             if not runtime.approved:
                 raise InterruptedError("Verification command was declined")
             task["status"] = "running"
         elif session_allowed:
-            self.event(task, "permission", "Running tests · allowed for this session", {"command": argv, "directory": task["workspace"], "scope": "project_tests_session" if project_grant else "task_exact", "grant_id": project_grant})
+            self.event(task, "permission", "Running tests · allowed for this session", {"command": argv, "directory": task["workspace"], "scope": "operator_development" if developing(task) else "project_tests_session" if project_grant else "task_exact", "grant_id": project_grant})
         if argv != task["check_command"]:
             task["auto_approve_checks"] = False
         task["check_command"] = argv
@@ -2172,7 +2253,7 @@ class Engine:
         try:
             with self.admission.resource("checks", runtime):
                 runtime.guard()
-                result = workspace.run_checks(argv, runtime.stop, timeout=effective, on_output=emit, on_raw=retain_raw)
+                result = workspace.run_checks(argv, runtime if developing(task) else runtime.stop, timeout=effective, on_output=emit, on_raw=retain_raw)
         finally:
             task["check_stream"] = None
             task["updated_at"] = now()
@@ -2379,7 +2460,7 @@ class Engine:
                 and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines"}):
             self.prepare_compact_edits(runtime.task)
             runtime.compact_context_ready = False
-        if recovery["malformed_attempts"] >= 3:
+        if recovery["malformed_attempts"] >= 3 and not developing(task):
             raise ProgressPause("The model returned malformed tool arguments three times for this request. These calls were not executed. Saved work is intact; send a specific correction or check the model before starting a new request.")
         return result
 
@@ -2390,7 +2471,7 @@ class Engine:
         role = 'reviewer' if task.get('pending_review') else (task.get('route') or {}).get('waiting_for', task['active_role'])
         recovery = progress.state(task)
         needs_probe = not task['providers'].get(role) or bool((task.get('route') or {}).get('recovery', {}).get(role))
-        allowance = recovery.get('wait_cycles', 0) < 3 and (not needs_probe or recovery.get('route_probes', {}).get(role, 0) < 4)
+        allowance = developing(task) or (recovery.get('wait_cycles', 0) < 3 and (not needs_probe or recovery.get('route_probes', {}).get(role, 0) < 4))
         can_wait = bool(automatic(task, role) and retry_at and (remaining is None or 0 <= max(0, retry_at-time.time()) < remaining) and allowance)
         return {'scope': getattr(error, 'scope', None), 'retry_at': retry_at, 'remaining_seconds': remaining,
                 'can_wait': can_wait, 'role': role, 'message': str(error)}
@@ -2401,7 +2482,7 @@ class Engine:
         if not info.get('can_wait') or not info.get('retry_at'):
             raise ProgressPause('No known retry fits the remaining time and attempt allowance. Inspect Models before retrying.')
         recovery = progress.state(task)
-        if recovery.get('wait_cycles', 0) >= 3:
+        if recovery.get('wait_cycles', 0) >= 3 and not developing(task):
             raise ProgressPause('Three scheduled route retries were used for this request. Inspect Models and provide a new instruction.')
         recovery['wait_cycles'] = recovery.get('wait_cycles', 0) + 1
         task['status'] = 'waiting_retry'
@@ -2425,7 +2506,7 @@ class Engine:
         finally:
             runtime.metric_cooldown_wait=getattr(runtime,'metric_cooldown_wait',0)+time.monotonic()-waiting_started
             info['remaining_seconds'] = None if measuring(task) else max(0, task['limits'].get('run_minutes', 15) * 60 - (time.monotonic()-runtime.started))
-            info['can_wait'] = bool((info['remaining_seconds'] is None or info['remaining_seconds'] > max(0, info['retry_at']-time.time())) and recovery.get('wait_cycles',0) < 3)
+            info['can_wait'] = bool((info['remaining_seconds'] is None or info['remaining_seconds'] > max(0, info['retry_at']-time.time())) and (developing(task) or recovery.get('wait_cycles',0) < 3))
             task['route_wait'] = None
 
     def _run(self, runtime):
@@ -2453,6 +2534,10 @@ class Engine:
             if task.get('retry_wait_enabled'):
                 try:
                     self.wait_for_route(runtime)
+                except OperatorRedirect:
+                    task["retry_wait_enabled"] = False
+                    self.apply_operator_direction(runtime)
+                    continue
                 except (ProgressPause, InterruptedError) as error:
                     task['status'] = 'budget_paused' if isinstance(error, WorkingTimeLimit) else 'paused'
                     task['error'] = str(error)
@@ -2460,6 +2545,9 @@ class Engine:
                     self.event(task, 'guard', 'Route waiting stopped', str(error))
                     return
             self._run_until_pause(runtime)
+            if runtime.interrupt_request.is_set() and not runtime.stop.is_set():
+                self.apply_operator_direction(runtime)
+                continue
             if not (task.get('retry_wait_enabled') and task['status'] == 'paused' and task.get('error_code') == 'routing_unavailable'):
                 return
             if not (task.get('route_unavailable') or {}).get('can_wait'):
@@ -2582,6 +2670,8 @@ class Engine:
                 if guidance:
                     task['messages'].append({'role': 'system', 'content': guidance})
                     self.store.save(task)
+                if developing(task) and task.get('steer_guidance'):
+                    task['messages'].append({'role':'user','content':'LATEST OPERATOR DIRECTION: '+task['steer_guidance']+'\nFollow this direction now. Existing spending and command permissions still apply; do not claim unfinished review passed.'})
                 try:
                     message = self.request(runtime, task["messages"], offered_tools, task["active_role"])
                 except work_policy.ReadOnlyViolation as error:
@@ -2608,7 +2698,7 @@ class Engine:
                                 failures.pop(old)
                                 if len(failures)<=70:break
                     self.event(task, 'tool_error', 'Rejected an unavailable tool before dispatch', {'code': error.code, 'attempt': failures[key]})
-                    if failures[key] > 2:
+                    if failures[key] > 2 and not developing(task):
                         if coordinator_dispatch.consult(self, runtime, 'The worker repeatedly requested a tool that is unavailable in the current scope.'):
                             continue
                         raise ProgressPause('The model repeatedly requested an unavailable tool. No calls from those responses ran; saved work is preserved.')
@@ -2652,6 +2742,7 @@ class Engine:
                         task["messages"].append({"role": "user", "content": "Changes need verification and checkpoint review. Continue with tools, or use ask_user if you need a decision." if (task.get("conversational") and not task.get("branch_run")) else "Continue with tools, or call checkpoint when ready for review. Text alone does not complete this task."})
                 coordinator_applied = False
                 for call_index, call in enumerate(calls):
+                    runtime.guard()
                     if runtime.stop.is_set():
                         raise InterruptedError("Task stopped")
                     try:
@@ -2704,13 +2795,14 @@ class Engine:
                                 if observations == 2:
                                     task["loop_guidance"] = "This read returned the same information twice. Answer the user's question from the evidence, use read_url for a supplied web link, or ask_user to explain what is missing. Do not edit just to reset the loop guard. Another identical read ends research for this run."
                                     task["loop_guidance"] = execution_context.guidance(task, task["loop_guidance"])
+                                    if developing(task):task["loop_guidance"] = "This read returned unchanged evidence twice. Follow the operator direction and choose a useful next action; further inspection remains available when needed."
                                     result = {"observation": result, "guidance": task["loop_guidance"]}
                                     self.event(task, "guard", "Asking the worker to use what it found", "The same read returned unchanged information twice. cheapoS asked for an answer, a relevant web read, or a clear explanation of what is missing.")
                                 elif observations >= 3:
                                     if recovering:
                                         blocker = 'Recovery repeated already available file evidence.'
                                         coordinator_applied = coordinator_dispatch.consult(self, runtime, blocker)
-                                        if not coordinator_applied:
+                                        if not coordinator_applied and not developing(task):
                                             raise ProgressPause('Worker could not choose the next step after recovery. ' + blocker + ' Saved edits remain intact.')
                                         result = {'observation': result, 'guidance': 'Follow the saved coordinator guidance on the next ordinary turn.'}
                                     else:
@@ -2719,7 +2811,7 @@ class Engine:
                                             self.prepare_loop_recovery(task)
                                         else:
                                             coordinator_applied = coordinator_dispatch.consult(self, runtime, 'The worker repeated unchanged evidence after deterministic guidance.')
-                                            if not coordinator_applied:
+                                            if not coordinator_applied and not developing(task):
                                                 raise ProgressPause('Worker could not choose the next step after recovery. The same inspection was repeated; saved work is intact.')
 
                         coordinator_dispatch.observe(self, task, name)
@@ -2760,8 +2852,10 @@ class Engine:
             if isinstance(error, ProgressPause) and not isinstance(error, (CheckpointTurnLimit, WorkingTimeLimit, EnvironmentPause)) and not infrastructure:
                 task['recovery_blocked'] = progress.state(task)['revision']
             self.event(task, "guard", "Paused to avoid repeated work" if isinstance(error, ProgressPause) else "Waiting for a usable route", task["error"])
+        except OperatorRedirect:
+            task["status"] = "running"
         except InterruptedError as error:
-            task["status"] = "paused"
+            task["status"] = "running" if runtime.interrupt_request.is_set() and not runtime.stop.is_set() else "paused"
             task["error"] = str(error)
             self.event(task, "state", "Task paused", task["error"])
         except BudgetError as error:

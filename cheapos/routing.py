@@ -5,11 +5,12 @@ import math
 import time
 
 from . import access_policy, route_health, routing_trace
+from .development import enabled as developing
 from .providers import ProviderError, is_local_ollama, validate_provider
 
 
 MODES = {"manual", "delegate", "local", "remote"}
-DEFAULT_EXECUTION = {"mode": "manual", "local_model": "", "local_reviewer": "", "local_planner": "", "coordinator_assistance": False, "coordinator_model": ""}
+DEFAULT_EXECUTION = {"mode": "manual", "local_model": "", "local_reviewer": "", "local_planner": "", "coordinator_assistance": False, "coordinator_model": "", "development_mode": False}
 COORDINATOR_SYSTEM = """You are cheapoS's lightweight local chat assistant.
 Reply briefly to greetings and general discussion. You have no repository access.
 For ANY request needing project files, code, edits, tests, public web links, or project-specific advice,
@@ -43,6 +44,8 @@ def execution_from(value):
     result = {**DEFAULT_EXECUTION, **value}
     if result["mode"] not in MODES:
         raise ValueError("Choose where the work runs")
+    if type(result["development_mode"]) is not bool:
+        raise ValueError("Development mode must be On or Off")
     if type(result["coordinator_assistance"]) is not bool:
         raise ValueError("Coordinator assistance must be On or Off")
     for key in ("local_model", "local_reviewer", "local_planner", "coordinator_model"):
@@ -142,7 +145,7 @@ def setup_task(task, execution, config, gateway):
 
 
 def select_remote(engine, runtime, role="worker", replace=False):
-    """Find one needed role, with at most four probes. Pin each successful selection."""
+    """Find one needed role; each candidate is probed at most once per selection."""
     task, gateway = runtime.task, engine.gateway
     route = task["route"]
     access_policy.validate_current(route.get('access_policy'), access_policy.effective_settings(task, gateway.settings))
@@ -150,6 +153,11 @@ def select_remote(engine, runtime, role="worker", replace=False):
         return
     trace = routing_trace.begin(task, role, route.get("preferred", {}).get(role))
     route["waiting_for"] = role
+    if developing(task) and route.get('failures'):
+        history=route.setdefault('failure_history',[])
+        history.extend(copy.deepcopy(route['failures']))
+        if len(history)>200:
+            del history[:-200];route['failure_history_truncated']=True
     route["failures"] = []
     if not gateway.matches(route["base_url"]):
         raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Local work will not start as a fallback.")
@@ -196,7 +204,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
             continue
         identity = route_health.probe_identity(route['base_url'], model, connection_revision)
         cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
-        if model['id'] in tried or (not cached and probes.get(role, 0) >= 4): continue
+        if model['id'] in tried or (not developing(task) and not cached and probes.get(role, 0) >= 4): continue
         tried.add(model['id'])
         cfg = validate_provider({"gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
                                  "input_rate": 0, "output_rate": 0}, role)
@@ -264,7 +272,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
             engine.event(task, 'routing', 'Provider is cooling down' if cooldown else 'Model check failed', failure)
             if classification['scope'] in {'request','connection','account'}:
                 raise RoutingPause(classification['action'], scope=classification['scope']) from None
-    if probes.get(role, 0) >= 4:
+    if not developing(task) and probes.get(role, 0) >= 4:
         raise RoutingPause("Four eligible " + role + " probes were used for this request. Inspect Models and provide a new instruction; Resume does not renew probe attempts.", scope="probe_limit")
     provider_waits = [gateway.pool.observation(route["base_url"], m["id"], connection_revision) for m in catalog["models"]
                       if access_policy.eligible(m, route.get('access_policy')) and not m.get("local") and m["id"] not in used]

@@ -19,7 +19,15 @@ def policy_for_saved(current, saved):
     """Match only newly optional empty defaults, retaining old contract digests."""
     result = copy.deepcopy(current)
     if isinstance(saved, dict):
-        for section, field, empty in (('execution', 'local_planner', ''), ('providers', 'planner', None), ('execution', 'coordinator_assistance', False), ('execution', 'coordinator_model', '')):
+        # Development mode is a default for new tasks. Existing authority keeps
+        # its captured choice; a later takeover uses an explicit task receipt.
+        old_execution=saved.get('execution')
+        new_execution=result.get('execution')
+        if isinstance(old_execution,dict) and isinstance(new_execution,dict):
+            if 'development_mode' in old_execution:
+                new_execution['development_mode']=old_execution['development_mode']
+            else:new_execution.pop('development_mode',None)
+        for section, field, empty in (('execution', 'local_planner', ''), ('providers', 'planner', None), ('execution', 'coordinator_assistance', False), ('execution', 'coordinator_model', ''), ('execution','development_mode',False)):
             old = saved.get(section)
             new = result.get(section)
             if isinstance(old, dict) and isinstance(new, dict) and field not in old and new.get(field) == empty:
@@ -175,7 +183,10 @@ class BranchController:
     def contract(self, task):
         run=task['branch_run']
         from .branch_completion import authorization_run
-        policy = self.model_policy()
+        policy = copy.deepcopy(run['model_policy']) if run.get('operator_revision_history') else self.model_policy()
+        if run.get('operator_revision_history'):
+            from .access_policy import validate_current, effective_settings
+            validate_current(policy.get('gateway_access'), effective_settings(task,self.engine.gateway.settings))
         if 'gateway_access' not in run.get('model_policy', {}): policy.pop('gateway_access', None)
         policy = policy_for_saved(policy, run.get('model_policy', {}))
         return contract_builder(authorization_run(run),run['authorization_workspace'],policy,run['check_scope'])
@@ -290,6 +301,7 @@ class BranchController:
             if run['status'] in {'paused','blocked'}:state.transition(run,'running')
             runtime=Runtime(task)
             runtime.branch_authority=lambda:self.validate_authority(task,run)
+            task.pop('operator_continue',None)
             task.update(status='running',error=None,error_code=None,stream=None,check_stream=None,pending_approval=None)
             self.engine.store.save(task)
             self.engine.runtimes[task_id]=runtime
@@ -348,7 +360,7 @@ class BranchController:
         self.engine._run_with_wait(runtime)
 
     def execute(self, runtime):
-        from .engine import now
+        from .engine import now, OperatorRedirect
         import time
         task=runtime.task;run=task['branch_run']
         metric_id=uuid.uuid4().hex;task['metric_run_id']=metric_id;started=time.monotonic()
@@ -358,70 +370,78 @@ class BranchController:
         try:
             runtime.branch_ledger.begin()
             while True:
-                if runtime.stop.is_set():raise InterruptedError('Run paused by you')
-                runtime.guard()
-                try:self.validate_authority(task,run)
-                except ValueError as error:raise branch_pause.PauseError('authority_changed') from error
-                # Finish a durable operation before asking any model for more work.
-                if run['pending_operations']:
-                    item=next(i for i in run['items'] if i['id']==run['pending_operations'][0]['item_id'])
-                    self.commit_item(runtime,item)
-                    continue
-                try:work.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
-                except ValueError as error:raise branch_pause.PauseError('branch_drift') from error
-                from .unattended_items import next_item, defer
-                item=next_item(run)
-                if item is None and any(i['status'] not in state.DONE for i in run['items']):
-                    questions=[i.get('question') for i in run['items'] if i.get('question')]
-                    run['waiting_for_user']='; '.join(questions) or 'Remaining tasks depend on blocked work.'
-                    raise branch_pause.PauseError('essential_clarification')
-                if item is None:
-                    if run['status']!='finalizing':state.transition(run,'finalizing')
-                    from .branch_completion import finalize
-                    if finalize(self.engine,runtime):return
-                    continue
-                if item['status'] in {'pending','blocked'}:
-                    state.transition_item(run,item['id'],'working')
-                    task.update(request_worker_turns=0,iterations=0,active_role='worker',turn_start_patch='',answer_pending=False,action_pending=False)
-                    for key in ('loop_guidance','progress_state','pause_summary','recovery_blocked','compact_edits','pending_checkpoint','pending_review','steer_guidance'):
-                        task.pop(key,None)
-                    runtime.step_turns=0;runtime.argument_failures=0;runtime.observations.clear();runtime.file_observations.clear()
-                    runtime.action_context_ready=False;runtime.compact_context_ready=False
-                    state.append_event(run,'item_started',{'item_id':item['id'],'title':item['title']})
-                    self.engine.event(task,'branch_item','Working on '+item['title'],{'item_id':item['id']})
-                run['current_item_id']=item['id']
-                if item.get('ready_receipt'):
-                    try:
-                        from .branch_review import context
-                        evidence.revalidate(item['ready_receipt'],task,context(run,item),item['required_checks'],item['acceptance_criteria'])
-                    except ValueError:item.pop('ready_receipt',None)
-                    else:
+                try:
+                    if runtime.stop.is_set():raise InterruptedError('Run paused by you')
+                    runtime.guard()
+                    try:self.validate_authority(task,run)
+                    except ValueError as error:raise branch_pause.PauseError('authority_changed') from error
+                    # Finish a durable operation before asking any model for more work.
+                    if run['pending_operations']:
+                        item=next(i for i in run['items'] if i['id']==run['pending_operations'][0]['item_id'])
                         self.commit_item(runtime,item)
                         continue
-                self.continue_item(runtime, item)
-                if run.get('waiting_for_user'):
-                    self.engine.refresh_changes(task)
-                    clean=not task.get('changes') and not Workspace(task['workspace']).patch(validate=True)
-                    if defer(run,item,run['waiting_for_user'],clean):
-                        self.engine.event(task,'branch_blocked','Continuing independent work',{'item_id':item['id'],'question':item['question']})
-                        self.engine.store.save(task)
+                    try:work.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
+                    except ValueError as error:raise branch_pause.PauseError('branch_drift') from error
+                    from .unattended_items import next_item, defer
+                    item=next_item(run)
+                    if item is None and any(i['status'] not in state.DONE for i in run['items']):
+                        questions=[i.get('question') for i in run['items'] if i.get('question')]
+                        run['waiting_for_user']='; '.join(questions) or 'Remaining tasks depend on blocked work.'
+                        raise branch_pause.PauseError('essential_clarification')
+                    if item is None:
+                        if run['status']!='finalizing':state.transition(run,'finalizing')
+                        from .branch_completion import finalize
+                        if finalize(self.engine,runtime):return
                         continue
-                    raise branch_pause.PauseError('essential_clarification')
-                if task['status']=='awaiting_reply':
-                    # Even an unchanged outcome requires actual criteria review.
-                    from .branch_review import checkpoint
-                    result=checkpoint(self.engine,runtime,{'summary':'Worker reported the item finished.'})
-                    if result['decision']=='REQUEST_CHANGES':
-                        task['messages'].append({'role':'user','content':json.dumps(result)})
-                        self.engine._run_with_wait(runtime)
+                    if item['status'] in {'pending','blocked'}:
+                        state.transition_item(run,item['id'],'working')
+                        task.update(request_worker_turns=0,iterations=0,active_role='worker',turn_start_patch='',answer_pending=False,action_pending=False)
+                        for key in ('loop_guidance','progress_state','pause_summary','recovery_blocked','compact_edits','pending_checkpoint','pending_review','steer_guidance'):
+                            task.pop(key,None)
+                        runtime.step_turns=0;runtime.argument_failures=0;runtime.observations.clear();runtime.file_observations.clear()
+                        runtime.action_context_ready=False;runtime.compact_context_ready=False
+                        state.append_event(run,'item_started',{'item_id':item['id'],'title':item['title']})
+                        self.engine.event(task,'branch_item','Working on '+item['title'],{'item_id':item['id']})
+                    run['current_item_id']=item['id']
+                    if item.get('ready_receipt'):
+                        try:
+                            from .branch_review import context
+                            evidence.revalidate(item['ready_receipt'],task,context(run,item),item['required_checks'],item['acceptance_criteria'])
+                        except ValueError:item.pop('ready_receipt',None)
+                        else:
+                            self.commit_item(runtime,item)
+                            continue
+                    self.continue_item(runtime, item)
+                    if run.get('waiting_for_user'):
+                        self.engine.refresh_changes(task)
+                        clean=not task.get('changes') and not Workspace(task['workspace']).patch(validate=True)
+                        if defer(run,item,run['waiting_for_user'],clean):
+                            self.engine.event(task,'branch_blocked','Continuing independent work',{'item_id':item['id'],'question':item['question']})
+                            self.engine.store.save(task)
+                            continue
+                        raise branch_pause.PauseError('essential_clarification')
+                    if task['status']=='awaiting_reply':
+                        # Even an unchanged outcome requires actual criteria review.
+                        from .branch_review import checkpoint
+                        result=checkpoint(self.engine,runtime,{'summary':'Worker reported the item finished.'})
+                        if result['decision']=='REQUEST_CHANGES':
+                            task['messages'].append({'role':'user','content':json.dumps(result)})
+                            self.engine._run_with_wait(runtime)
+                            continue
+                    from .branch_worker_recovery import queue as queue_worker_recovery
+                    if queue_worker_recovery(self,runtime,item):
                         continue
-                from .branch_worker_recovery import queue as queue_worker_recovery
-                if queue_worker_recovery(self,runtime,item):
+                    if task['status']=='approved' and item.get('ready_receipt'):
+                        self.commit_item(runtime,item)
+                        continue
+                    raise ValueError(task.get('error') or 'This item needs information or a revised authorization before continuing.')
+                except OperatorRedirect:
+                    self.engine.apply_operator_direction(runtime)
+                    current=next((i for i in run['items'] if i['id']==run.get('current_item_id')),None)
+                    if current and current['status'] not in state.DONE:
+                        current.setdefault('operator_interruption_history',[]).append({'status':current['status'],'evidence':copy.deepcopy(current.get('evidence',{}))})
+                        current['status']='working';current.pop('ready_receipt',None)
                     continue
-                if task['status']=='approved' and item.get('ready_receipt'):
-                    self.commit_item(runtime,item)
-                    continue
-                raise ValueError(task.get('error') or 'This item needs information or a revised authorization before continuing.')
         except Exception as error:
             if run['status'] not in {'merged','left_on_branch'}:
                 error=getattr(runtime,'branch_budget_error',None) or error
@@ -660,8 +680,9 @@ class BranchController:
             if run['status'] not in {'running','paused','blocked'}:
                 raise ValueError('Use Request changes to revise completed work')
             self.validate_authority(task,run)
+            from .development import enabled
             guidance=run.setdefault('guidance',[])
-            if sum(len(g['message']) for g in guidance)+len(message)>24000:
+            if not enabled(task) and sum(len(g['message']) for g in guidance)+len(message)>24000:
                 raise ValueError('Guidance is full; prepare an explicit revision')
             guidance.append({'item_id':run['current_item_id'],'message':message.strip()})
             task.pop('recovery_blocked', None)
@@ -671,8 +692,20 @@ class BranchController:
                     if item.get('question'):
                         item.setdefault('clarification_history',[]).append({'question':item.pop('question'),'guidance':message.strip()})
             self.engine.event(task,'user','You',message.strip())
-            self.engine.event(task,'branch_guidance','Guidance saved within the accepted plan', 'Your update is saved for continuation from the current files. The plan and remaining limits are unchanged.' if task['status']=='paused' else 'The worker will receive this on its next turn.')
-            return task
+            from .development import enabled
+            development=enabled(task)
+            active=bool(runtime and runtime.thread and runtime.thread.is_alive())
+            self.engine.event(task,'branch_guidance','Guidance saved within the accepted plan',
+                              'Applying your correction and continuing within the approved scope.' if development else
+                              'Your update is saved for continuation from the current files. The plan and remaining limits are unchanged.' if task['status']=='paused' else 'The worker will receive this on its next turn.')
+            if development and active:
+                self.engine.queue_operator_direction(runtime,message.strip(),record=False)
+                return runtime.task
+            if not development:return task
+            self.engine.archive_operator_state(task,'Operator corrected paused work')
+            self.engine.store.save(task)
+        from .branch_operator import continue_saved
+        return continue_saved(self,task_id)
 
     def reprepare(self, task_id, values):
         """Edit an unstarted proposal without renewing its planning allowance.

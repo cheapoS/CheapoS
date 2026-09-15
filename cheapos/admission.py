@@ -90,6 +90,7 @@ class Admission:
                 if was_active: ledger.suspend()
                 try:
                     while not acquired:
+                        if getattr(runtime, 'interrupt_request', None) is not None and runtime.interrupt_request.is_set(): runtime.guard()
                         if runtime.stop.is_set(): raise InterruptedError('Task stopped while waiting for ' + name)
                         if timeout is not None and time.monotonic() - started >= timeout:
                             raise TimeoutError("Local inference slot stayed busy; optional consultation skipped")

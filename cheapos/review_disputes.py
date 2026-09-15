@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 import re
+from .development import enabled as developing
 
 
 def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
@@ -38,7 +39,7 @@ def register(task, item, repair):
             similar=[r['id'] for r in records.values() if r['structural']==structural and r['status']!='independently_resolved']
             record={'id':key,'structural':structural,'status':'requested','attempts':0,'history':[],'possible_repeats':similar[-8:]}
             records[key]=record
-        if record['attempts']>=3:
+        if not developing(task) and record['attempts']>=3:
             from .branch_pause import PauseError
             raise PauseError('repeated_review_dispute')
         record['attempts']+=1;record['status']='requested'
