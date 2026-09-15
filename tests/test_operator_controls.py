@@ -78,3 +78,18 @@ class OperatorControlsTests(LocalCase):
         self.assertNotIn('worker',task['route']['recovery'])
         self.assertIn('reviewer',task['route']['recovery'])
         self.assertEqual(task['operator_route_history'][-1]['recovery']['worker']['reason'],'old stall')
+
+    def test_malformed_check_calls_can_be_corrected_after_third_attempt(self):
+        task=self.task()
+        bad={'role':'assistant','tool_calls':[{'id':'bad-check','type':'function',
+            'function':{'name':'run_checks','arguments':''}}]}
+        responses=iter([bad]*4+[call('ask_user',{'question':'Which focused test should I run?'})])
+        class Provider:
+            def complete(_,messages,tools,maximum):
+                return next(responses),{'prompt_tokens':2,'completion_tokens':2}
+        self.engine.provider_factory=lambda *args:Provider()
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'awaiting_reply',result.get('error'))
+        self.assertEqual(result['progress_state']['malformed_attempts'],4)
+        self.assertEqual(result['usage']['worker']['tokens'],20)
+        self.assertFalse(result.get('checks'))

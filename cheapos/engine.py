@@ -2465,7 +2465,7 @@ class Engine:
                 and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines"}):
             self.prepare_compact_edits(runtime.task)
             runtime.compact_context_ready = False
-        if recovery["malformed_attempts"] >= 3 and not developing(task):
+        if recovery["malformed_attempts"] >= 3 and not developing(runtime.task):
             raise ProgressPause("The model returned malformed tool arguments three times for this request. These calls were not executed. Saved work is intact; send a specific correction or check the model before starting a new request.")
         return result
 
@@ -2874,7 +2874,7 @@ class Engine:
             self.event(task, "budget", "Task paused at a limit", task["error"])
         except Exception as error:
             task["status"] = "error"
-            task["error_code"] = getattr(error, "code", None)
+            task["error_code"] = getattr(error, "code", None) or ("controller_error" if not isinstance(error, (ProviderError, ValueError, OSError)) else None)
             task["error"] = str(error)[:1000] if isinstance(error, (ProviderError, ValueError, OSError)) else "Unexpected execution error; saved work is available for inspection."
             self.event(task, "error", "Task stopped with an error", task["error"])
         finally:

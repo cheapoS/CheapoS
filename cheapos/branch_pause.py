@@ -18,9 +18,10 @@ TEMPLATES = {
  'repeated_review_dispute': ('Review disagreement needs a decision before more repair work.', 'review_dispute'),
  'review_context_unavailable': ('Final review needs candidate context that could not be obtained. Inspect the saved context-read diagnostic before retrying.', 'inspect'),
  'failed_checks': ('Verification checks failed. Inspect the recorded test results before changing or retrying the work.', 'inspect'),
+ 'controller_error': ('cheapoS encountered an internal execution error. Saved edits and usage are retained. This needs an app fix; changing your task instructions will not repair the error.', 'inspect'),
  'unknown': ('No safe specific diagnostic was recorded for this stop. Inspect the saved task details before continuing.', 'inspect'),
 }
-CODES = {'gateway_cooldown':'provider_quota','http_429':'provider_quota',
+CODES = {'controller_error':'controller_error','gateway_cooldown':'provider_quota','http_429':'provider_quota',
  'endpoint_unavailable':'provider_connection','http_401':'provider_connection','http_403':'provider_connection','http_402':'provider_connection',
  'invalid_tool_arguments':'malformed_output','invalid_tool_envelope':'malformed_output','invalid_response_json':'malformed_output','invalid_stream_json':'malformed_output','stream_error':'malformed_output',
  'progress_limit':'repeated_work','worker_recovery_exhausted':'repeated_work','recovery_exhausted':'repeated_work',

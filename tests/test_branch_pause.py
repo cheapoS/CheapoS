@@ -130,3 +130,10 @@ class PauseDetails(unittest.TestCase):
   projected = pause.for_task(t)
   self.assertEqual(projected['cause'], 'provider_quota')
   self.assertEqual(projected['cooldown_scope'], 'model')
+
+class InternalFailureDetails(unittest.TestCase):
+ def test_internal_failure_is_not_presented_as_missing_operator_information(self):
+  detail=pause.public({'version':1,'cause':pause.CODES['controller_error'],'stage':'working'})
+  self.assertEqual(detail['cause'],'controller_error')
+  self.assertIn('internal execution error',detail['explanation'])
+  self.assertEqual(detail['next_action'],'inspect')
