@@ -144,7 +144,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
     """Find one needed role, with at most four probes. Pin each successful selection."""
     task, gateway = runtime.task, engine.gateway
     route = task["route"]
-    access_policy.validate_current(route.get('access_policy'), gateway.settings)
+    access_policy.validate_current(route.get('access_policy'), access_policy.effective_settings(task, gateway.settings))
     if task["providers"].get(role) and not replace:
         return
     trace = routing_trace.begin(task, role, route.get("preferred", {}).get(role))
@@ -211,7 +211,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
                         while not pending.wait(.1):
                             runtime.guard()
                             if runtime.stop.is_set(): raise InterruptedError('Task stopped')
-                        access_policy.validate_current(route.get('access_policy'), gateway.settings)
+                        access_policy.validate_current(route.get('access_policy'), access_policy.effective_settings(task, gateway.settings))
                         cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
                         if not cached: continue
                     else:

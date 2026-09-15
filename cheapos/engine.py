@@ -820,7 +820,39 @@ class Engine:
                 raise ValueError("Pause this chat before changing its limits")
             task = self.store.get(task_id)
             if "branch_run" in task:
-                raise ValueError("Use the Unattended run proposal/revision controls to change its authorized work.")
+                run = task["branch_run"]
+                if run.get("status") != "paused":
+                    raise ValueError("Use the Unattended run proposal/revision controls to change its authorized work.")
+                from .branch_authorization import digest
+                new_limits = limits_from(values.get("limits"))
+                task["limits"] = new_limits
+                run_lims = run.setdefault("limits", {})
+                plan_lims = run.setdefault("plan", {}).setdefault("limits", {})
+                if "worker_turns" in new_limits:
+                    run_lims["worker_turns"] = max(run_lims.get("worker_turns", 0), new_limits["worker_turns"])
+                    plan_lims["worker_turns"] = run_lims["worker_turns"]
+                if "dollars" in new_limits:
+                    run_lims["dollars"] = max(run_lims.get("dollars", 0), new_limits["dollars"])
+                    plan_lims["dollars"] = run_lims["dollars"]
+                if "run_minutes" in new_limits:
+                    run_lims["working_seconds"] = max(run_lims.get("working_seconds", 0), new_limits["run_minutes"] * 60)
+                    plan_lims["working_seconds"] = run_lims["working_seconds"]
+                if "reviewer_tokens" in new_limits:
+                    run_lims["reviewer_tokens"] = max(run_lims.get("reviewer_tokens", 0), new_limits["reviewer_tokens"])
+                    plan_lims["reviewer_tokens"] = run_lims["reviewer_tokens"]
+                auth = run.get("authorization")
+                if auth and isinstance(auth.get("contract"), dict):
+                    auth["contract"]["limits"] = copy.deepcopy(run_lims)
+                    if isinstance(auth["contract"].get("plan"), dict):
+                        auth["contract"]["plan"]["limits"] = copy.deepcopy(run_lims)
+                    auth["digest"] = digest(auth["contract"])
+                if task.get("error_code") in {"worker_turn_limit", "exhausted_work"} or run.get("pause_reason") == "exhausted_work" or "allowance was reached" in str(task.get("error", "")):
+                    task["error"] = None
+                    task["error_code"] = None
+                    run["pause_reason"] = None
+                self.event(task, "state", "Run work allowance updated", {"limits": run_lims})
+                self.store.save(task)
+                return task
             task["limits"] = limits_from(values.get("limits"))
             self.event(task, "state", "Chat limits updated")
             return task
@@ -1468,12 +1500,13 @@ class Engine:
                 raise RoutingPause("The free model catalog is unavailable. Saved work is kept; reconnect OmniRoute and resume.")
             model = next((m for m in catalog["models"] if m["id"] == cfg["model"]), None)
             from . import access_policy
-            access_policy.validate_current(task['route'].get('access_policy'), self.gateway.settings)
+            eff_settings = access_policy.effective_settings(task, self.gateway.settings)
+            access_policy.validate_current(task['route'].get('access_policy'), eff_settings)
             if not model or not access_policy.eligible(model, task['route'].get('access_policy')):
                 self.defer_route(task, role, "This model is no longer eligible under the captured access policy with tool support.")
                 continue
             if role == 'planner':
-                access_policy.guard(task, cfg, self.gateway.settings, catalog['models'], role=role)
+                access_policy.guard(task, cfg, eff_settings, catalog['models'], role=role)
             if access_policy.classify(model, task['route'].get('access_policy')) == 'included':
                 cfg = access_policy.bind_provider(cfg, task['route']['access_policy'], model)
                 task['providers'][role] = cfg

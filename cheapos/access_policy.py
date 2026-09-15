@@ -66,8 +66,19 @@ def bind_provider(config, policy, model=None):
             'catalog_pricing': {k: model.get(k) if model else None for k in ('input_rate', 'output_rate')}}
 
 
+def effective_settings(task, settings):
+    if not isinstance(task, dict) or 'branch_run' not in task or not isinstance(settings, dict):
+        return settings
+    run = task.get('branch_run') or {}
+    gw_access = run.get('model_policy', {}).get('gateway_access')
+    if gw_access and settings.get('connection_revision') == gw_access.get('connection_revision'):
+        return {**settings, 'included_models': gw_access.get('included_models', [])}
+    return settings
+
+
 def guard(task, config, settings, models=None, role=None):
     """Check before reservations/probes. Never grants access from a catalog alone."""
+    settings = effective_settings(task, settings)
     policy = task.get('access_policy')
     if config.get('access') == 'included':
         validate_current(config.get('access_binding'), settings)

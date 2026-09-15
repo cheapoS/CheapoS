@@ -39,16 +39,20 @@ def normalize_models(data, openrouter=False):
         input_rate = rate("input", "prompt")
         output_rate = rate("output", "completion")
         provider_name = str(item.get("owned_by") or "")[:100]
-        free_providers = {"antigravity", "kiro", "opencode", "nvidia"}
+        free_providers = {"antigravity", "kiro", "opencode", "oc", "nvidia"}
+        provider_prefix = model_id.split("/")[0] if "/" in model_id else ""
+        is_free_account = provider_name in free_providers or provider_prefix in free_providers
         is_free_auto = model_id.startswith("auto/") and (":free" in model_id or "-free" in model_id)
         explicit_free = (
             ((model_id.endswith(":free") and (openrouter or model_id.startswith("openrouter/")))
              or model_id.endswith("-free")
-             or provider_name in free_providers
+             or is_free_account
              or is_free_auto)
             and (not model_id.startswith("openrouter/") or model_id.endswith(":free"))
         )
-        if explicit_free and not pricing and input_rate is None and output_rate is None:
+        if is_free_account:
+            input_rate = output_rate = 0.0
+        elif explicit_free and not pricing and input_rate is None and output_rate is None:
             input_rate = output_rate = 0.0
         capabilities = item.get("capabilities") or {}
         tools = capabilities.get("tool_calling") if isinstance(capabilities, dict) else None

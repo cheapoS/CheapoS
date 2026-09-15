@@ -30,6 +30,11 @@ def policy_for_saved(current, saved):
             for field in ('access_binding', 'pricing_source', 'catalog_pricing'):
                 if field not in old_p and field in new_p:
                     new_p.pop(field, None)
+            if old_p.get('access') == 'included' and 'access' not in new_p:
+                new_p['access'] = 'included'
+        if 'gateway_access' in saved and 'gateway_access' in result:
+            if result['gateway_access'].get('connection_revision') == saved['gateway_access'].get('connection_revision'):
+                result['gateway_access']['included_models'] = copy.deepcopy(saved['gateway_access'].get('included_models', []))
     return result
 
 
