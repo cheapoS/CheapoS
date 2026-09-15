@@ -113,8 +113,22 @@ const CheapOSGuide = (() => {
     seconds=Math.max(0,Math.floor(seconds));
     return seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`;
   }
+  function liveStream(task) {
+    const stream=task.stream;
+    if(!stream||!active.has(task.status)||task.pending_approval||task.check_stream||task.status==='waiting_retry')return null;
+    const events=task.events||[],id=stream.request_id;
+    if(id!=null){
+      // A saved response or a later action supersedes this request's live view.
+      // Guidance and transport notices can arrive while a request is still live.
+      if(events.some(e=>e.kind==='generation'&&e.detail?.request_id===id))return null;
+      const start=events.findIndex(e=>e.id===id);
+      if(start>=0&&events.slice(start+1).some(e=>['model','tool','tool_error','checks','review','commit'].includes(e.kind)))return null;
+    }
+    return stream;
+  }
   function progress(task, at=Date.now()) {
     if(!active.has(task.status))return null;
+    task={...task,stream:liveStream(task)};
     const events=task.events||[],latest=events.at(-1),request=[...events].reverse().find(e=>e.kind==='model');
     const completed=[...events].reverse().find(e=>e.kind==='checks'||e.kind==='tool'&&e.title!=='Running verification');
     const args=completed?.detail?.arguments||{};
@@ -559,7 +573,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {coordinatorStatus,connectionNotice,metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {coordinatorStatus,connectionNotice,metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,liveStream,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 
@@ -633,7 +647,7 @@ const CheapOSConversation = (() => {
       else if (task.stream?.phase === 'tool') detail = `Preparing ${String(task.stream.tool || 'the next action').replaceAll('_',' ')}`;
       else if (task.stream?.phase === 'answer') detail = 'Writing a response';
       else if (task.web_read) detail = `Reading ${task.web_read.url}`;
-      else if (request) {detail = 'Waiting for the model to respond';if(task.branch_run&&!['checks','commit'].includes(phase))title=`Waiting for the ${role}’s response`;}
+      else if (task.stream || request && events.at(-1)===request) {detail = 'Waiting for the model to respond';if(task.branch_run&&!['checks','commit'].includes(phase))title=`Waiting for the ${role}’s response`;}
       if(phase==='review'&&!review&&events.some(e=>e.kind==='review_coaching')&&!task.pending_approval&&!['stopping','waiting_retry'].includes(task.status)){
         title='Reassessing the review';
         if(!task.stream||task.stream.phase==='waiting')detail='I’m asking the reviewer to identify the remaining blocker from the saved evidence.';
@@ -795,6 +809,7 @@ const CheapOSConversation = (() => {
     return entries;
   }
   function build(task, at = Date.now()) {
+    task={...task,stream:guide.liveStream(task)};
     if(task.branch_run)return branchBuild(task,at);
     const entries = [];
     for (const turn of guide.turns(task, at)) {

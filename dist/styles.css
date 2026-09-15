@@ -327,6 +327,11 @@ svg, svg * {
 .workflow-details .terminal-body { font-size: 12px; }
 .workflow-preview { color: #c4d6cb; font-size: 14px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .workflow-step[open] .workflow-preview { display: none; }
+.workflow-step.has-live-output[open] > summary .workflow-status,
+.workflow-step.has-live-output[open] > summary .workflow-last-action,
+.workflow-step.has-live-output[open] > summary .workflow-elapsed { display: none; }
+.workflow-stream .stream-label strong { font-weight: 500; color: var(--mint); }
+.workflow-stream .stream-label [data-work-elapsed] { margin-left: auto; white-space: nowrap; }
 .workflow-exploration { margin: 8px 0; padding: 0 12px; border: 1px solid #29352e; border-radius: 8px; }
 .workflow-exploration > summary { display: flex; align-items: center; gap: 9px; padding: 12px 0; font-size: 13px; color: #aabdb1; }
 .workflow-exploration > summary span { flex: 1; min-width: 0; }

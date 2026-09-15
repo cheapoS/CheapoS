@@ -36,11 +36,22 @@ const CheapOSChatView = (() => {
     const symbol=step.outcome==='live'?'<span class="spinner"></span>':icon(['failed','revision','pending'].includes(step.outcome)?'clock':'check');
     const role={worker:'Worker',reviewer:'Reviewer',coordinator:step.phase==='coordinator'?'Coordinator':'Chat model',planner:'Planner',controller:'cheapoS'}[step.role]||'cheapoS';
     const events=operatorEvents(step.events);
-    const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span>${stream.phase==='thinking'?'Thinking':stream.phase==='answer'?'Writing':'Waiting for output'}<span>Live</span></div><pre data-thinking="workflow-stream-${esc(stream.request_id||step.id)}">${esc(stream.thinking||stream.content||'Waiting for the next chunk…')}</pre>${stream.thinking&&stream.content?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
+    const streamLabel=stream?.phase==='thinking'?'Thinking':stream?.phase==='answer'?'Writing a response':stream?.phase==='tool'?`Preparing ${String(stream.tool||'the next action').replaceAll('_',' ')}`:`Waiting for the ${role.toLowerCase()}’s response`;
+    const streamText=String(stream?.thinking||stream?.content||'');
+    const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span><strong>${esc(streamLabel)}</strong><span data-work-elapsed>${esc(step.elapsed)}</span></div>${streamText?`<pre data-thinking="workflow-stream-${esc(stream.request_id||step.id)}">${esc(streamText)}</pre>`:''}${stream.thinking&&stream.content?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
     const liveText=live?String(task.check_stream?.output||stream?.content||stream?.thinking||'').trim():'';
     const preview=liveText?`<span class="workflow-preview">${esc((liveText.length>240?'…':'')+liveText.slice(-240))}</span>`:'';
-    return `<details class="workflow-step ${live?'is-live':''} outcome-${step.outcome}" data-event="workflow-${esc(step.id)}" data-step="${esc(step.id)}" ${live||['failed','revision'].includes(step.outcome)?'open':''}><summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(step.title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(step.detail)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary><div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||(task.demo?'Scripted local model':live?'Model selection pending':'Model identity unavailable'))}</strong></div>${liveOutput}${events.length>80?'<p class="small muted">Showing the latest 80 progress events. Earlier events remain in Technical logs.</p>':''}<div class="workflow-events">${eventsMarkup(events.slice(-80))||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div><button type="button" class="text-link workflow-log-link" data-workflow-logs>Routing &amp; request details in Technical logs ${icon('chevron')}</button></div></details>`;
+    const title=liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
+    return `<details class="workflow-step ${live?'is-live':''} ${liveOutput?'has-live-output':''} outcome-${step.outcome}" data-event="workflow-${esc(step.id)}" data-step="${esc(step.id)}" ${live||['failed','revision'].includes(step.outcome)?'open':''}>
+      <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(step.detail)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
+      <div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||(task.demo?'Scripted local model':live?'Model selection pending':'Model identity unavailable'))}</strong></div>
+        ${events.length>80?'<p class="small muted">Showing the latest 80 progress events. Earlier events remain in Technical logs.</p>':''}
+        <div class="workflow-events">${eventsMarkup(events.slice(-80))||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div>
+        ${liveOutput}
+        <button type="button" class="text-link workflow-log-link" data-workflow-logs>Routing &amp; request details in Technical logs ${icon('chevron')}</button>
+      </div></details>`;
   }
+
   function routingDetails(task) {
     const trace=CheapOSGuide.routingTraceView(task);
     if(!trace.rows.length&&!trace.historyNotice)return '';
@@ -627,7 +638,7 @@ function renderChat() {
     if(state.chatDetails.has(key))d.open=state.chatDetails.get(key);
     d.ontoggle=()=>state.chatDetails.set(key,d.open);
     if(d.classList.contains('workflow-step'))$('summary',d).onclick=()=>{
-      if(!d.open)requestAnimationFrame(()=>$('.workflow-stream,.command-panel',d)?.scrollIntoView({block:'nearest',behavior:'instant'}));
+      if(!d.open)requestAnimationFrame(()=>($('.workflow-stream,.command-panel.is-live',d)||$('.command-panel',d))?.scrollIntoView({block:'nearest',behavior:'instant'}));
     };
     if(d.dataset.event===focused)$('summary',d)?.focus({preventScroll:true});
   }

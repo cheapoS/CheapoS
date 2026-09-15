@@ -59,6 +59,29 @@ test('live IDs remain stable while stream output grows',()=>{
  const first=replies(t)[0];t.stream.thinking+=' longer thought';const next=replies(t)[0];
  assert.equal(first.id,next.id);assert.equal(first.steps[0].id,next.steps[0].id);
 });
+test('completed or superseded requests cannot keep stale live output in the conversation',()=>{
+ const request=event('request','model','Requesting reviewer: reviewer-model',{});
+ for(const later of [
+  event('output','generation','Model thinking',{request_id:'request',role:'reviewer',thinking:'Saved review thought'}),
+  event('read','tool','read file',{role:'reviewer',arguments:{path:'server.py'}}),
+  event('next','model','Requesting reviewer: reviewer-model',{})]){
+  const t=task({status:'reviewing',events:[request,later],stream:{request_id:'request',role:'reviewer',phase:'thinking',thinking:'Stale live text'}});
+  const [reply]=replies(t);assert.equal(reply.stream,null);
+  assert.doesNotMatch(reply.steps.at(-1).detail,/Thinking through/);
+  if(later.kind!=='model')assert.doesNotMatch(reply.steps.at(-1).detail,/Waiting for the model/);
+ }
+});
+test('transport notices and guidance do not end a current stream but stopping states do',()=>{
+ const {liveStream}=require('../dist/guidance.js');
+ const stream={request_id:'transport',role:'reviewer',phase:'thinking',thinking:'Current output'};
+ const t=task({status:'reviewing',stream,events:[event('request','model','Requesting reviewer: reviewer-model',{}),
+  event('transport','transport','Retrying without streaming',{}),event('steer','steer','User guidance','Check the token.')]});
+ assert.equal(liveStream(t),stream);
+ for(const status of ['paused','approved','completed','error','waiting_retry'])assert.equal(liveStream({...t,status}),null);
+ assert.equal(liveStream({...t,pending_approval:{command:['python3','-m','unittest']}}),null);
+ assert.equal(liveStream({...t,check_stream:{command:['python3','-m','unittest']}}),null);
+ assert.equal(liveStream({...t,status:'stopping'}),stream); // Output remains real until cancellation completes.
+});
 test('follow-up user messages keep separate execution histories',()=>{
  const t=task({events:[event(1,'tool','read file',{arguments:{path:'first.py'}}),event(2,'assistant','Worker','First answer'),event(3,'user','You','Second question'),event(4,'assistant','Worker','Second answer')]});
  const entries=build(t);assert.equal(entries.length,4);

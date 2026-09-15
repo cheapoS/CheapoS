@@ -50,7 +50,36 @@ test('live output opens immediately and has an escaped preview for collapsed ste
  assert.match(html,/data-step="work-1" open/);assert.match(html,/class="workflow-preview"/);
  assert.match(html,/Actual thought &lt;script&gt;unsafe&lt;\/script&gt;/);assert.doesNotMatch(html,/<script>/);
  const waiting=render([],{live:true,stream:{phase:'waiting'}});
- assert.doesNotMatch(waiting,/workflow-preview/);assert.match(waiting,/Waiting for the next chunk/);
+ assert.doesNotMatch(waiting,/workflow-preview|Waiting for the next chunk|<pre/);assert.match(waiting,/Waiting for the worker’s response/);
+});
+test('current reviewer output follows recorded thinking and actions through consecutive requests',()=>{
+ const t={status:'reviewing',active_role:'reviewer',prompt:'Check the restart change',changes:[],events:[
+  event('r1','model','Requesting reviewer: reviewer-model'),
+  event('g1','generation','Model thinking',{request_id:'r1',role:'reviewer',thinking:'Check the restart handler.'}),
+  event('read','tool','read file',{role:'reviewer',arguments:{path:'server.py'}}),
+  event('r2','model','Requesting reviewer: reviewer-model')],
+  stream:{request_id:'r2',role:'reviewer',model:'reviewer-model',phase:'waiting'}};
+ const markup=()=>ctx.CheapOSGuide.conversation.build(t).map(e=>ctx.view.message(e,t)).join('');
+ let html=markup();
+ assert.match(html,/Independent review in progress/);
+ assert.equal((html.match(/class="workflow-stream"/g)||[]).length,1);
+ assert.ok(html.indexOf('class="workflow-stream"')>html.indexOf('Read server.py'));
+ t.stream.phase='thinking';t.stream.thinking='Verify that the request carries its token.';
+ html=markup();assert.ok(html.indexOf('data-thinking="workflow-stream-r2"')>html.indexOf('Read server.py'));
+ assert.match(html.slice(html.indexOf('data-thinking="workflow-stream-r2"')),/Verify that the request/);
+ assert.doesNotMatch(html,/Waiting for the reviewer’s response/);
+ t.status='stopping';html=markup();assert.match(html,/Pausing work/);assert.match(html,/class="workflow-stream"/);
+ t.status='reviewing';
+ t.events.push(event('g2','generation','Model thinking',{request_id:'r2',role:'reviewer',thinking:t.stream.thinking}),
+  event('review','review','Review passed',{decision:'APPROVE',feedback:'The handler and tests match.'}));
+ t.status='approved';
+ html=markup();assert.doesNotMatch(html,/workflow-stream|class="spinner"|data-work-elapsed/);
+ assert.match(html,/Independent review passed/);
+});
+test('live command output follows the earlier completed check',()=>{
+ const html=render([event('old','checks','Passed',{passed:true,command:['python3','-m','unittest'],output:'Earlier test passed',run_id:'old'})],
+  {live:true,phase:'checks',task:{check_stream:{run_id:'new',command:['python3','-m','unittest'],output:'Checking the changed file'}}});
+ assert.ok(html.indexOf('command-new')>html.indexOf('Earlier test passed'));
 });
 test('only the latest recorded thinking opens by default, and interruptions stay labeled',()=>{
  const html=render([event('a','generation','Output',{request_id:'old',thinking:'First thought'}),
