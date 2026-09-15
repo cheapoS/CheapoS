@@ -11,3 +11,20 @@ test('failed saved tasks offer takeover but routine replies and genuine question
 test("completed tasks do not retain a continuing notice",()=>{assert.equal(c.operatorContinuationMarkup({status:"approved",operator_continue:{status:"running"}}),"");});
 
 test('ordinary continuation stays quiet across chat updates',()=>{for(const status of ['running','reviewing','verifying','queued','starting','approved']){assert.equal(c.operatorContinuationMarkup({status,operator_continue:{status:'running',reason:'Continuing from saved files with your direction.'}}),'');}});
+
+test('sidebar hide wiring preserves chat submission and cancellation',()=>{
+  const nodes=new Map(), get=key=>{if(!nodes.has(key))nodes.set(key,{});return nodes.get(key);};
+  let sent=0,hidden=0,confirmed=false;
+  get('#demo-row').classList={add:name=>{assert.equal(name,'hidden');hidden++;}};
+  const noop=()=>{}, context={$:get,confirm:()=>confirmed,sendChat:()=>sent++,openProject:noop,home:noop,newTask:noop,openSearch:noop,openConnections:noop,sampleDialog:noop,chatLimits:noop,executionPreferences:noop,saveDraft:noop,renderComposer:noop,steerTask:noop,stopFromComposer:noop};
+  vm.createContext(context);
+  vm.runInContext(source.slice(source.indexOf("$('#home-trigger').onclick="),source.indexOf('function toggleInspector')),context);
+  let prevented=0;
+  get('#chat-form').onsubmit({preventDefault:()=>prevented++});
+  get('#chat-input').onkeydown({key:'Enter',preventDefault:()=>prevented++});
+  assert.equal(sent,2);assert.equal(prevented,2);
+  for(const selector of ['#new-task','#settings-trigger','#demo-trigger','#chat-stop'])assert.equal(typeof get(selector).onclick,'function');
+  get('#hide-demo').onclick();assert.equal(hidden,0);
+  confirmed=true;get('#hide-demo').onclick();assert.equal(hidden,1);
+  get('#chat-form').onsubmit({preventDefault:()=>{}});assert.equal(sent,3);
+});

@@ -47,6 +47,7 @@
 .chat-action summary{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;list-style:none}
 .chat-action summary::-webkit-details-marker,.command-panel summary::-webkit-details-marker{display:none}
 .chat-action summary>svg{flex:none;color:#a6c8b4;width:17px;height:17px}
+.chat-action summary>span{flex:1;min-width:0}
 .settings-row { display: flex; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: nowrap; }
 .settings-row .settings-trigger { flex-shrink: 0; }
 .settings-row .hide-btn { flex-shrink: 0; padding: 0 8px; }
