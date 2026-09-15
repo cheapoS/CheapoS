@@ -397,6 +397,7 @@ function renderComposer() {
   if(task&&!task.demo)$('#composer-note').textContent+=` · Est. ${money(task.usage.cost)} used.`;
   const sending=sendingHere(),send=$('#chat-send');
   const takeover=canTakeOver(task);send.setAttribute('aria-label',sending?'Sending message':takeover?'Take over & continue':'Send message');
+  send.classList.toggle('send-recovery',takeover);
   send.innerHTML=sending?'<span class="spinner" aria-hidden="true"></span>':takeover?'Take over &amp; continue':icon('up');
   if(takeover&&!sending)$('#composer-note').textContent='Your directions take priority. Sending takes over this saved task without automatic work or recovery caps. Recovery can run verification commands in this task copy; usage and spending limits remain tracked. Independent review still applies.';
   if(state.branchResumeStatus?.get(task?.id)?.status==='pending'){$('#composer-note').textContent='Your guidance is saved. Continuing from the current files…';send.setAttribute('aria-label','Continuing saved work');}
