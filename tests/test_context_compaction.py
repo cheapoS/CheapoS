@@ -29,3 +29,19 @@ class ContextCompactionTests(unittest.TestCase):
         a,b=[json.loads(v[1]['content']) for v in (first,second)]
         self.assertNotEqual(a['working_memory']['patch_digest'],b['working_memory']['patch_digest'])
         self.assertEqual(b['last_check']['verification_identity'],'old')
+
+    def test_recovery_direction_reaches_next_request_without_accumulating(self):
+        from cheapos.engine import Engine
+        task={'loop_guidance':'Checks passed; submit checkpoint', 'messages':[{'role':'tool','tool_call_id':'read','content':'same file'}]}
+        Engine.deliver_loop_guidance(task)
+        self.assertIn('submit checkpoint',task['messages'][-1]['content'])
+        task['messages'].append({'role':'assistant','content':'I will check again'})
+        Engine.deliver_loop_guidance(task)
+        self.assertEqual(sum(m.get('role')=='user' for m in task['messages']),1)
+        self.assertIn('submit checkpoint',task['messages'][-1]['content'])
+        task['messages']=[{'role':'system','content':'Rebuilt context'}]
+        Engine.deliver_loop_guidance(task)
+        self.assertIn('submit checkpoint',task['messages'][-1]['content'])
+        task['loop_guidance']=None
+        before=list(task['messages']);Engine.deliver_loop_guidance(task)
+        self.assertEqual(task['messages'],[before[0]])

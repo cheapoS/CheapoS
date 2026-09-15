@@ -1515,6 +1515,17 @@ class Engine:
         runtime.compact_context_ready = True
         return messages
 
+    @staticmethod
+    def deliver_loop_guidance(task):
+        """A recovery notice is useful only if the worker actually receives it."""
+        guidance = task.get('loop_guidance')
+        messages = task.setdefault('messages', [])
+        # Refresh position, without accumulating duplicates on every turn.
+        messages[:] = [m for m in messages if not (m.get('role') == 'user'
+                       and str(m.get('content', '')).startswith('CURRENT RECOVERY DIRECTION: '))]
+        if guidance:
+            messages.append({'role': 'user', 'content': 'CURRENT RECOVERY DIRECTION: ' + guidance})
+
     def prepare_loop_recovery(self, task):
         if developing(task):
             from .recovery_context import packet
@@ -2732,6 +2743,7 @@ class Engine:
                 if guidance:
                     task['messages'].append({'role': 'system', 'content': guidance})
                     self.store.save(task)
+                self.deliver_loop_guidance(task)
                 if developing(task) and task.get('steer_guidance'):
                     task['messages'].append({'role':'user','content':'LATEST OPERATOR DIRECTION: '+task['steer_guidance']+'\nFollow this direction now. Existing spending and command permissions still apply; do not claim unfinished review passed.'})
                 try:
@@ -2871,6 +2883,10 @@ class Engine:
                                         self.refresh_changes(task)
                                         if task.get("conversational"):
                                             self.prepare_loop_recovery(task)
+                                            # Operator mode keeps inspection available, but the
+                                            # direction must reach the model, not only the UI log.
+                                            result = {"observation": result, "guidance": task.get("loop_guidance"),
+                                                      "next_action": "Use the findings already established. If a specific fact is still missing, name it and inspect only that fact; otherwise finish the edit or submit checkpoint with current verification."}
                                         else:
                                             coordinator_applied = coordinator_dispatch.consult(self, runtime, 'The worker repeated unchanged evidence after deterministic guidance.')
                                             if not coordinator_applied and not developing(task):
