@@ -3,6 +3,39 @@ import hashlib
 import json
 
 VERSION = 1
+MALFORMED_NOTICE = 'The model requested malformed_tool_call, which is not available in this step. No calls from this response were executed.'
+
+
+def reject_malformed(message):
+    """A gateway parse-failure placeholder is never an executable model tool."""
+    if any(isinstance(c, dict) and isinstance(c.get('function'), dict) and c['function'].get('name') == 'malformed_tool_call'
+           for c in message.get('tool_calls', []) or []):
+        from .providers import ProviderError
+        raise ProviderError('The gateway could not decode the model tool call. No returned tools were executed.',
+                            code='malformed_tool_call')
+
+
+def restore_malformed_retry(task, role):
+    """Recover a pre-fix saved placeholder rejection, without refunding work."""
+    cfg = (task.get('providers') or {}).get(role) or {}
+    recovery = task.get('route', {}).get('recovery', {}).get(role) or {}
+    key = retry_key(cfg, role, None)
+    if (recovery.get('reason') != MALFORMED_NOTICE or recovery.get('from') != cfg.get('model')
+            or key in task.get('transport_retries', {})):
+        return False
+    record = next((r for r in reversed(task.get('request_metrics', [])) if r.get('role') == role), {})
+    if (not record.get('id') or not record.get('dispatched') or record.get('transport') != 'sse'
+            or record.get('status') != 'responded' or record.get('model') != cfg.get('model')
+            or record.get('purpose') != 'work'):
+        return False
+    revision = (cfg.get('access_binding') or {}).get('connection_revision')
+    if (record.get('dispatch_scope') or {}).get('connection_revision') != revision:
+        return False
+    # Preserve the historical response/accounting; record its later validation failure.
+    record['post_validation_error'] = 'malformed_tool_call'
+    task.setdefault('transport_pending_json', {})[key] = record['id']
+    task['route']['recovery'].pop(role)
+    return True
 
 
 def choice(config, role, purpose, tools, streaming):
@@ -47,5 +80,5 @@ def json_preference(task, config, role, purpose):
 
 
 def eligible(error, record):
-    return (getattr(error, 'code', None) in {'streaming_unsupported', 'empty_response'}
+    return (getattr(error, 'code', None) in {'streaming_unsupported', 'empty_response', 'malformed_tool_call'}
             and record.get('dispatched') and record.get('transport') == 'sse')

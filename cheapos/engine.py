@@ -1502,6 +1502,10 @@ class Engine:
 
     def request(self, runtime, messages, tools, role, config_override=None, purpose=None):
         task = runtime.task
+        from . import transport
+        if config_override is None and purpose is None and transport.restore_malformed_retry(task, role):
+            self.event(task, 'transport', 'Retrying the interrupted tool response on the same route', {'role': role})
+            self.store.save(task)
         routed_purpose = purpose in {None, 'branch_planning', 'branch_final'}
         if config_override is not None or not routed_purpose or not automatic(task, role):
             return self._request(runtime, messages, tools, role, config_override, purpose)
@@ -1633,6 +1637,13 @@ class Engine:
         task = runtime.task
         config = self._resolve_provider_config(task, role, config_override)
         key = transport.retry_key(config, role, purpose)
+        saved_retry = task.get('transport_pending_json', {}).get(key)
+        if saved_retry and key not in task.get('transport_retries', {}):
+            task.setdefault('transport_retries', {})[key] = saved_retry
+            task['transport_pending_json'].pop(key)
+            self.store.save(task)
+            return self._request_attempt(runtime, messages, tools, role, config_override, purpose,
+                                         transport_override='json', retry_of=saved_retry)
         preference = transport.json_preference(task, config, role, purpose)
         if preference and purpose != 'coordinator_recovery':
             # Keep compatibility after request-history compaction and restart.
@@ -1689,6 +1700,8 @@ class Engine:
         record['output_filter']={**filter_info,'before_bytes':original_bytes,'after_bytes':len(json.dumps(messages).encode()),'seconds':time.monotonic()-started}
         try:
             result=self._perform_request(runtime,messages,tools,role,config_override,purpose,transport_override)
+            from .transport import reject_malformed
+            reject_malformed(result)
             if role != 'coordinator' and not purpose:
                 work_policy.validate_response(task, result)
             record['status']='responded'

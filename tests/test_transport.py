@@ -14,6 +14,36 @@ from cheapos.providers import guard_inference_route, ChatProvider
 
 
 class TransportTests(unittest.TestCase):
+    def test_gateway_placeholder_retries_json_and_remembers_success(self):
+        engine,runtime,calls=self.harness();provider=engine.provider_factory()
+        def malformed(*args):
+            calls.append('sse')
+            return {'tool_calls':[{'id':'bad','function':{'name':'malformed_tool_call','arguments':'{}'}}]}, {'prompt_tokens':2,'completion_tokens':3,'cost':.001}
+        provider.complete_with_progress=malformed;engine.provider_factory=lambda *args:provider
+        engine._request(runtime,[],[],'worker')
+        engine._request(runtime,[],[],'worker')
+        self.assertEqual(calls,['sse','json','json'])
+        self.assertEqual([r['status'] for r in runtime.task['request_metrics']],['failed','responded','responded'])
+        self.assertAlmostEqual(runtime.task['usage']['cost'],.003)
+        self.assertEqual(runtime.task['request_metrics'][0]['error_code'],'malformed_tool_call')
+
+    def test_saved_placeholder_retry_preserves_handoffs_and_is_consumed_once(self):
+        engine,runtime,calls=self.harness();task=runtime.task;cfg=task['providers']['worker']
+        task['route']={'recovery':{'worker':{'from':cfg['model'],'reason':transport.MALFORMED_NOTICE}}}
+        task['progress_state']={'handoffs':2}
+        record={'id':'original','role':'worker','model':cfg['model'],'purpose':'work',
+                'dispatched':True,'transport':'sse','status':'responded'}
+        task['request_metrics']=[record]
+        self.assertTrue(transport.restore_malformed_retry(task,'worker'))
+        self.assertEqual(task['progress_state'],{'handoffs':2})
+        self.assertEqual(record['status'],'responded')
+        runtime.task=json.loads(json.dumps(task))
+        engine._request(runtime,[],[],'worker')
+        self.assertEqual(calls,['json'])
+        self.assertEqual(runtime.task['request_metrics'][-1]['retry_of'],'original')
+        self.assertFalse(transport.restore_malformed_retry(runtime.task,'worker'))
+        self.assertTrue(transport.json_preference(runtime.task,cfg,'worker',None))
+
     def harness(self, failure=None, hook=None):
         config = {'model':'example/model','base_url':'http://localhost:1/v1','input_rate':1,'output_rate':1}
         task = {'id':'task','demo':False,'status':'running','providers':{'worker':config},
