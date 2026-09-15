@@ -33,6 +33,8 @@ class Store:
         self.tasks = {}
         from .lifetime_usage import LifetimeUsage
         self.lifetime = LifetimeUsage(self.root)
+        from .club import ClubManager
+        self.club = ClubManager(self.root)
         for path in self.root.glob("tasks/*/task.json"):
             try:
                 task = json.loads(path.read_text(encoding="utf-8"))

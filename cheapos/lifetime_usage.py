@@ -181,6 +181,7 @@ class LifetimeUsage:
         result.update(app_version=__version__, scope='Local installation', period=days or 'all', partial_earlier_history=any(t['partial'] for t in state['tasks'].values()),
                       tokens=dict(reported=0, accounted_historical=0, estimated=0, reserved=0, input=0, output=0, reasoning=0, cached=0, unknown_requests=0, unknown_reasoning_requests=0, unknown_cached_requests=0),
                       categories={k: dict(tokens=0, requests=0) for k in CATEGORIES}, roles={k: dict(tokens=0, requests=0) for k in ROLES},
+                      models={},
                       cost=dict(provider_reported=0, configured_estimate=0, reserved=0, historical_accounted=0, accounted=0),
                       charged_free_requests=0, charged_free_tokens=0, missing_identity_requests=0, undated_requests=0, history=[],
                       completion=dict(human_accepted_jobs=0, merged_runs=0, independent_review_approved_jobs=0), savings_comparison='not configured')
@@ -211,6 +212,11 @@ class LifetimeUsage:
                 result['categories'][cat]['requests'] += 1
                 result['roles'][r['role']]['tokens'] += tokens
                 result['roles'][r['role']]['requests'] += 1
+                m = r.get('served_model') or r.get('requested_model')
+                if m:
+                    m_stat = result['models'].setdefault(m, dict(tokens=0, requests=0, category=cat))
+                    m_stat['tokens'] += tokens
+                    m_stat['requests'] += 1
                 result['charged_free_requests'] += int(r['charged_free'])
                 result['charged_free_tokens'] += tokens if r['charged_free'] else 0
                 result['missing_identity_requests'] += int(not r['served_model'])
@@ -233,8 +239,8 @@ class LifetimeUsage:
         total_free = sum(result['categories'][k]['tokens'] for k in ('public_free', 'included', 'local'))
         result['total_free_tokens'] = total_free
         result['estimated_savings'] = round((total_free / 1_000_000) * 3.0, 2)
+        result['models'] = dict(sorted(result['models'].items(), key=lambda item: item[1]['tokens'], reverse=True))
         result['history'] = sorted(history.values(), key=lambda d: d['date'])[-366:]
-        result['history_truncated'] = len(history) > 366
         result['limitations'] = [
             'Local installation usage only; no account-wide or other-tool activity. Historical startup/probe usage may be unavailable.',
             'Reported tokens are input plus output; reasoning and cached tokens are subsets, not additional tokens. Missing usage remains unknown.',
@@ -248,3 +254,15 @@ class LifetimeUsage:
             if state['updated_at'] == self.state['updated_at']:
                 self._summaries[cache_key] = copy.deepcopy(result)
         return result
+
+    def raw_requests(self, days=None):
+        with self.lock:
+            state = copy.deepcopy(self.state)
+        cutoff = (datetime.now(timezone.utc).date() - timedelta(days=days - 1)).isoformat() if isinstance(days, int) else None
+        records = []
+        for task_id, task in sorted(state['tasks'].items(), key=lambda t: t[0]):
+            for req_id, r in sorted(task['requests'].items(), key=lambda req: (req[1].get('date') or '', req[0])):
+                if cutoff and (not r.get('date') or r['date'] < cutoff):
+                    continue
+                records.append({**r, 'task_id': task_id, 'request_id': req_id})
+        return records

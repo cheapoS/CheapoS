@@ -8,3 +8,35 @@ function controls(){const nodes=new Map();const q=s=>{if(!nodes.has(s))nodes.set
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 test('open is immediately pending; filters reject stale replies and close leaves chat untouched',async()=>{const c=controls(),pending=[],chat={id:'selected',draft:'keep my draft',scroll:72};let shell='';ui.open({dialog:html=>(shell=html,c.d),header:()=>'',api:path=>new Promise(resolve=>pending.push({path,resolve}))});assert.match(shell,/All time/);assert.match(c.q('[data-usage-body]').innerHTML,/Loading usage/);assert.equal(c.q('[data-export]').disabled,true);c.q('[data-period]').value='7';c.q('[data-period]').onchange();pending[0].resolve(fixture());await tick();assert.match(c.q('[data-usage-body]').innerHTML,/Loading usage/);const data=fixture();data.period='7';pending[1].resolve(data);await tick();assert.match(c.q('[data-usage-body]').innerHTML,/7 days \(UTC\)/);c.q('[data-export]').onclick();assert.equal(c.q('[data-preview]').hidden,false);assert.match(c.q('[data-export-text]').textContent,/Reported tokens: 100/);c.listeners.close();assert.deepEqual(chat,{id:'selected',draft:'keep my draft',scroll:72});assert.equal(pending[1].path,'/lifetime-usage?days=7');});
 test('failure offers retry, no raw server error, and successful retry enables export',async()=>{const c=controls();let count=0;ui.open({dialog:()=>c.d,header:()=>'',api:async()=>{if(!count++)throw Error('SECRET path');return fixture();}});await tick();assert.match(c.q('[data-usage-body]').innerHTML,/Retry/);assert.doesNotMatch(c.q('[data-usage-body]').innerHTML,/SECRET/);await c.q('[data-retry]').onclick();assert.equal(c.q('[data-export]').disabled,false);});
+test('club renders unlinked, preview, and active states with extended models',async()=>{
+  const unlinkedData = fixture();
+  assert.match(ui.render(unlinkedData), /Join the Cheapskate Club/);
+  assert.match(ui.render(unlinkedData), /Connect X account/);
+
+  const linkedData = fixture();
+  linkedData.models = {'deepseek-chat': {tokens: 80, requests: 2, category: 'included'}};
+  linkedData.club = {
+    installation_id: 'inst-1', installation_name: 'Work Laptop',
+    is_linked: true, sync_enabled: false,
+    x_identity: {handle: 'carlosa8c', name: 'Carlos Cabrera'}
+  };
+  const linkedHtml = ui.render(linkedData);
+  assert.match(linkedHtml, /@carlosa8c/);
+  assert.match(linkedHtml, /Review stats before sharing/);
+  assert.match(linkedHtml, /Share my stats/);
+  assert.match(linkedHtml, /deepseek-chat/);
+
+  const activeData = fixture();
+  activeData.club = {
+    installation_id: 'inst-1', is_linked: true, sync_enabled: true,
+    x_identity: {handle: 'carlosa8c'}, last_synced_at: '2026-09-15T12:00:00Z'
+  };
+  const activeHtml = ui.render(activeData);
+  assert.match(activeHtml, /Active on Leaderboard/);
+  assert.match(activeHtml, /Sync now/);
+  assert.match(activeHtml, /Pause sharing/);
+
+  const exported = JSON.parse(ui.leaderboard(linkedData));
+  assert.equal(exported.opt_in_purpose, 'cheapos_community_savings_leaderboard');
+  assert.equal(exported.extended_profile.models_used['deepseek-chat'].tokens, 80);
+});

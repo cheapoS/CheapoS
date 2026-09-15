@@ -108,7 +108,14 @@ class LocalHandler(SimpleHTTPRequestHandler):
             elif path == "/api/lifetime-usage":
                 period=parse_qs(urlsplit(self.path).query).get("days", ["all"])[0]
                 if period not in {"all","7","30"}:return self.reply({"error":"Usage period must be all, 7 or 30 days"},400)
-                self.reply(engine.store.lifetime.summary(days=int(period) if period != "all" else "all"))
+                summary = engine.store.lifetime.summary(days=int(period) if period != "all" else "all")
+                if hasattr(engine.store, 'club'):
+                    summary['club'] = engine.store.club.get_status(summary)
+                self.reply(summary)
+            elif path == "/api/club/status":
+                period=parse_qs(urlsplit(self.path).query).get("days", ["all"])[0]
+                summary = engine.store.lifetime.summary(days=int(period) if period != "all" else "all")
+                self.reply(engine.store.club.get_status(summary))
             elif path == "/api/admission":
                 self.reply(engine.admission.snapshot())
             elif path.startswith('/api/tasks/') and path.endswith('/operator-recovery'):
@@ -202,6 +209,18 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.open_project(values)
             elif path == "/api/preferences":
                 result = engine.save_preferences(values)
+            elif path == "/api/club/link":
+                self.trusted(mutation=True)
+                result = engine.store.club.link(values)
+            elif path == "/api/club/sync":
+                self.trusted(mutation=True)
+                if "enabled" in values:
+                    result = engine.store.club.set_sync(values["enabled"])
+                else:
+                    result = engine.store.club.sync_now(engine.store.lifetime, values.get("period", "all"))
+            elif path == "/api/club/disconnect":
+                self.trusted(mutation=True)
+                result = engine.store.club.disconnect()
             elif path == "/api/gateway/config":
                 with engine.lock:
                     if engine.startup.busy():
