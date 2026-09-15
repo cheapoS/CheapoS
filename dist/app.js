@@ -5,10 +5,13 @@ const CheapOSChatView = (() => {
   function operatorEvents(events) {
     return events.filter(e=>!['model','checkpoint','permission'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error));
   }
-  function detailEvent(event,thinkingOpen=false) {
+  function detailEvent(event,thinkingOpen=false,entryReply='') {
     const d=event.detail||{};
     if(event.kind==='generation') return thinkingMarkup(d,false,thinkingOpen);
-    if(event.kind==='assistant') return `<div class="workflow-note">${messageText(typeof d==='string'?d:'')}</div>`;
+    if(event.kind==='assistant') {
+      if(typeof d==='string' && entryReply && (d.trim() === entryReply.trim() || entryReply.trim().includes(d.trim()))) return '';
+      return `<div class="workflow-note">${messageText(typeof d==='string'?d:'')}</div>`;
+    }
     if(event.kind==='checks') return commandMarkup(d,{key:d.run_id||event.id,open:!d.passed});
     if(event.kind==='tool_error') return `<section class="workflow-failure"><strong>${esc(event.title||'Action could not finish')}</strong><p>${esc(d.error||'The action did not finish. See Technical logs for the retained diagnostic.')}</p></section>`;
     const action=CheapOSGuide.activityItem(event);
@@ -16,7 +19,7 @@ const CheapOSChatView = (() => {
     const important=['review','review_coaching'].includes(event.kind)||Boolean(d.error||d.result?.error||d.result?.syntax_warning);
     return `<details class="workflow-event ${important?'needs-reading':''}" data-event="work-event-${esc(event.id)}" ${important?'open':''}><summary>${icon('chevron')}<span>${esc(title)}</span>${event.time?`<time>${new Date(event.time).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</time>`:''}</summary>${d.result?.syntax_warning?`<p class="error">${esc(d.result.syntax_warning)}</p>`:''}${d.result?.error?`<p class="error">${esc(d.result.error)}</p>`:eventDetail(event)}</details>`;
   }
-  function eventsMarkup(events) {
+  function eventsMarkup(events,entryReply='') {
     const latestThinking=events.findLast(e=>e.kind==='generation'&&e.detail?.thinking);
     const blocks=[];let inspections=[];
     function flush() {
@@ -27,11 +30,11 @@ const CheapOSChatView = (() => {
     }
     for(const event of events) {
       if(event.kind==='tool'&&inspectionTools.has(event.title)&&!event.detail?.result?.error&&!event.detail?.result?.syntax_warning)inspections.push(event);
-      else {flush();blocks.push(detailEvent(event,event===latestThinking));}
+      else {flush();blocks.push(detailEvent(event,event===latestThinking,entryReply));}
     }
     flush();return blocks.join('');
   }
-  function stepMarkup(step,task,stream) {
+  function stepMarkup(step,task,stream,entryReply='') {
     const live=step.live;
     const symbol=step.outcome==='live'?'<span class="spinner"></span>':icon(['failed','revision','pending'].includes(step.outcome)?'clock':'check');
     const role={worker:'Worker',reviewer:'Reviewer',coordinator:step.phase==='coordinator'?'Coordinator':'Chat model',planner:'Planner',controller:'cheapoS'}[step.role]||'cheapoS';
@@ -46,7 +49,7 @@ const CheapOSChatView = (() => {
       <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(step.detail)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
       <div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||(task.demo?'Scripted local model':live?'Model selection pending':'Model identity unavailable'))}</strong></div>
         ${events.length>80?'<p class="small muted">Showing the latest 80 progress events. Earlier events remain in Technical logs.</p>':''}
-        <div class="workflow-events">${eventsMarkup(events.slice(-80))||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div>
+        <div class="workflow-events">${eventsMarkup(events.slice(-80),entryReply)||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div>
         ${liveOutput}
         <button type="button" class="text-link workflow-log-link" data-workflow-logs>Routing &amp; request details in Technical logs ${icon('chevron')}</button>
       </div></details>`;
@@ -61,8 +64,8 @@ const CheapOSChatView = (() => {
     if(entry.kind==='user') return `<article class="chat-message from-user ${entry.steer?'steer-bubble':''}" data-message="${entry.id}"><div class="chat-author"><strong>You</strong>${entry.steer?'<span>Follow-up while working</span>':''}</div><div class="chat-message-body">${messageText(entry.text)}</div></article>`;
     const steps=entry.steps, older=steps.length>4?steps.slice(0,-3):[], visible=older.length?steps.slice(-3):steps;
     if(!steps.length&&!entry.reply&&!decision&&!entry.live&&!entry.owner)return '';
-    const history=older.length?`<details class="workflow-history" data-event="history-${entry.id}"><summary>${icon('clock')}Earlier steps${entry.itemTitle?' · '+esc(entry.itemTitle):''} <span>${older.length}</span>${icon('chevron')}</summary>${older.map(s=>stepMarkup(s,task,null)).join('')}</details>`:'';
-    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':entry.label||'Working'}</span>`:''}</div><div class="chat-message-body">${entry.itemTitle?`<h3 class="operation-item-title">${esc(entry.itemTitle)}</h3>`:''}${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream)).join('')}</div>`:''}${entry.reply?`<div class="cheapos-answer">${messageText(entry.reply)}</div>`:''}${decision}${entry.owner?'<section data-operation-actions aria-label="Run actions"></section>':''}</div></article>`;
+    const history=older.length?`<details class="workflow-history" data-event="history-${entry.id}"><summary>${icon('clock')}Earlier steps${entry.itemTitle?' · '+esc(entry.itemTitle):''} <span>${older.length}</span>${icon('chevron')}</summary>${older.map(s=>stepMarkup(s,task,null,entry.reply)).join('')}</details>`:'';
+    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':entry.label||'Working'}</span>`:''}</div><div class="chat-message-body">${entry.itemTitle?`<h3 class="operation-item-title">${esc(entry.itemTitle)}</h3>`:''}${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream,entry.reply)).join('')}</div>`:''}${entry.reply?`<div class="cheapos-answer">${messageText(entry.reply)}</div>`:''}${decision}${entry.owner?'<section data-operation-actions aria-label="Run actions"></section>':''}</div></article>`;
   }
   return {message,routingDetails};
 })();

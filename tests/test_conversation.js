@@ -221,3 +221,27 @@ test('automatic reviewer guidance appears inside the review with inspectable evi
  assert.ok(reply.steps.at(-1).events.some(e=>e.kind==='review_coaching'));
  t.status='paused';t.branch_run.status='paused';reply=replies(t).at(-1);assert.equal(reply.live,false);assert.equal(reply.steps.at(-1).outcome,'pending');
 });
+
+test('finalizing branch run with approved task status keeps live checks and check_stream',()=>{
+ const t=branchTask({planning_request:null,status:'approved',branch_run:{id:'run1',authorization_ref:'auth',status:'finalizing',current_item_id:null,items:[{id:'one',status:'committed',commit_receipt:{stage:'completed'}}]},check_stream:{command:['python3','-m','unittest','discover'],session_allowed:true,output:'running tests...'},events:[
+  {...event(1,'tool','Running verification',{command:['python3','-m','unittest','discover']}),branch_run_id:'run1',item_id:null}
+ ]});
+ const reply=replies(t).at(-1);
+ assert.equal(reply.operation,'final');
+ assert.equal(reply.live,true);
+ assert.equal(reply.label,'Checking');
+ assert.equal(reply.steps[0].live,true);
+ assert.equal(reply.steps[0].outcome,'live');
+ assert.equal(reply.steps[0].phase,'checks');
+});
+
+test('assistant reply is not duplicated as a workflow-note in step events',()=>{
+ const t=task({status:'awaiting_reply',events:[
+  event(1,'tool','read file',{arguments:{path:'server.py'}}),
+  event(2,'assistant','cheapoS','Here is the final answer.')
+ ]});
+ const entries=build(t);
+ const reply=entries.find(e=>e.kind==='assistant');
+ assert.equal(reply.reply,'Here is the final answer.');
+ assert.ok(reply.steps[0].events.every(e=>e.kind!=='assistant'));
+});

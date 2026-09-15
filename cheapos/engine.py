@@ -123,6 +123,36 @@ def worker_system(task):
 DEFAULT_LIMITS = {"dollars": 1.0, "reviewer_tokens": 200000, "worker_turns": 40, "iterations": 5, "output_tokens": 2048, "checkpoint_turns": 12, "run_minutes": 15, "check_seconds": 360}
 AUTOMATIC_ROUTE_CHARGE_CUTOFF = 0.01
 ACTIVE = {"running", "reviewing", "waiting_approval", "waiting_retry", "stopping"}
+def strip_leaked_actions(content):
+    if not isinstance(content, str):
+        return ""
+    import re
+    # Strip markdown code blocks containing pseudo-tool calls
+    content = re.sub(r"```(?:json)?\s*\{[^{}]*\"action\"[^{}]*\{.*?\}.*?\}\s*```", "", content, flags=re.DOTALL)
+    # Find and strip balanced {"action": ...} blocks
+    pos = 0
+    while True:
+        m = re.search(r"\{\s*\"action\"\s*:\s*\"[^\"]+\"", content[pos:])
+        if not m:
+            break
+        start = pos + m.start()
+        depth = 0
+        end = -1
+        for i in range(start, len(content)):
+            if content[i] == "{":
+                depth += 1
+            elif content[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end != -1:
+            content = content[:start] + content[end:]
+            pos = start
+        else:
+            pos = start + 1
+    content = re.sub(r"\s*(?:Read|Inspect)\s+`?[^\n`]+`?\s+to\s+inspect[^\n]*\s*$", "", content, flags=re.IGNORECASE).strip()
+    return content
 
 
 def guard_automatic_route_cost(task):
@@ -1422,7 +1452,7 @@ class Engine:
         task["answer_pending"] = True
         self.event(task, "guard", "Preparing an answer from gathered evidence", "Research has stopped for this request. The worker will answer from the sources it already read, or explain what remains unknown.")
         messages = self.initial_messages(task)
-        messages.append({"role": "user", "content": "Research is finished for this run. No tools are available for this response. Answer the LATEST user message now using the gathered evidence; cite source URLs. Do not propose another round of reading. State missing information honestly. If the user asked for changes that were not made, explicitly say the work is unfinished and why. Existing edits are not approved by this answer. Do not claim you read omitted text, executed checks, or changed files. Return a concise, useful answer, or one necessary question if genuinely blocked."})
+        messages.append({"role": "user", "content": "Research is finished for this run. No tools are available for this response. Answer the LATEST user message now using the gathered evidence; cite source URLs. Do not propose another round of reading. State missing information honestly. If the user asked for changes that were not made, explicitly say the work is unfinished and why. Existing edits are not approved by this answer. Do not claim you read omitted text, executed checks, or changed files. Return a concise, useful answer, or one necessary question if genuinely blocked. Output plain text only; do NOT output JSON, tool calling syntax, or action dictionaries."})
         runtime.step_turns += 1
         if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
         task["worker_turns"] += 1
@@ -1430,12 +1460,16 @@ class Engine:
         message = self.request(runtime, messages, [], task["active_role"])
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped")
-        if message.get("tool_calls") or not isinstance(message.get("content"), str) or not message["content"].strip():
+        raw_content = message.get("content")
+        if message.get("tool_calls") or not isinstance(raw_content, str) or not raw_content.strip():
             raise ProgressPause("The worker did not return an answer after research stopped. No additional tools were executed.")
+        content = strip_leaked_actions(raw_content)
+        if not content:
+            raise ProgressPause("The worker returned an unavailable tool call instead of an answer after research stopped.")
         task["answer_pending"] = False
         task["loop_guidance"] = None
         task["status"] = "awaiting_reply"
-        self.event(task, "assistant", "cheapoS", message["content"][:12000])
+        self.event(task, "assistant", "cheapoS", content[:12000])
 
     def defer_route(self, task, role, reason):
         cfg = task["providers"][role]
