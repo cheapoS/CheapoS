@@ -81,6 +81,8 @@ def ensure_independent(task, record):
     from .providers import ProviderError
     workers=review_workers(task,record)
     current=record.get('served_model') if record.get('identity_provenance')=='response_model' else None
+    if task.get('reviewer_identity_recovery') and current is None:
+        raise ProviderError('Recovery reviewer did not report an actual model identity.',code='review_identity_unknown')
     if opaque(record.get('requested_model')) and current is None:
         raise ProviderError('Reviewer route identity is unavailable; an opaque alias cannot establish independent review.',code='review_identity_unknown')
     for worker in workers:

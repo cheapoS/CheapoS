@@ -145,7 +145,8 @@ class IdentityPauseTests(unittest.TestCase):
      'branch_run':{'status':'paused','pause_detail':{'version':1,'cause':'unknown','stage':'reviewing','diagnostic_id':'review'}}}
   result=pause.for_task(t)
   self.assertEqual(result['cause'],'review_identity_unknown')
-  self.assertIn('Repeating this request cannot recover',result['explanation'])
+  self.assertIn('Choose reviewer',result['explanation'])
+  self.assertEqual(result['next_action'],'reviewer')
   self.assertEqual(t['branch_run']['pause_detail']['cause'],'unknown')
   t['branch_run']['pause_detail']['cause']='operator'
   self.assertEqual(pause.for_task(t)['cause'],'operator')

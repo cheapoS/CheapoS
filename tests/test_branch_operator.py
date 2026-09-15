@@ -205,3 +205,25 @@ class BranchOperatorTests(unittest.TestCase):
         self.assertEqual(task['operator_continue']['status'],'ready')
         run=task['branch_run']
         self.controller.proposals.validate(run['authorization'],contract_builder(run,run['authorization_workspace'],run['model_policy'],run['check_scope']))
+
+    def test_reviewer_only_amendment_preserves_checkpoint_item_and_messages_without_development(self):
+        endpoint='http://127.0.0.1:20128/v1'
+        self.engine.gateway.settings={'base_url':endpoint}
+        self.engine.gateway.catalog=lambda **kwargs:{'models':[{'id':'fresh-reviewer','free':True,'tool_calling':True}]}
+        self.saved['providers']['reviewer'].update(gateway='omniroute',base_url=endpoint)
+        self.saved['pending_checkpoint']={'candidate_id':'candidate','checks':['saved']}
+        self.saved['pending_review']={'id':'old-review','identity_scope':{'candidate_id':'candidate'}}
+        self.saved['messages']=[{'role':'assistant','content':'Preserved work'}]
+        item=self.saved['branch_run']['items'][0];item.update(status='reviewing',revision=4,evidence={'checks':'retained'})
+        before=copy.deepcopy(self.saved)
+        with patch('cheapos.branch_workspace.validate_owned'),patch('cheapos.reviewer_recovery.unknown_workers',return_value=[]),patch('cheapos.reviewer_recovery.candidates',return_value=[{'id':'fresh-reviewer'}]):
+            task=recover(self.controller,'task',{'action':'reviewer','approved':True,'revision_token':revision_token(self.saved['branch_run'],self.saved),'model':'fresh-reviewer','resume':False})
+        self.assertFalse(enabled(task))
+        self.assertEqual(task['pending_checkpoint'],before['pending_checkpoint'])
+        self.assertEqual(task['messages'],before['messages'])
+        self.assertEqual(task['branch_run']['items'][0],before['branch_run']['items'][0])
+        self.assertNotIn('pending_review',task)
+        self.assertEqual(task['operator_review_history'][-1],before['pending_review'])
+        self.assertEqual(task['providers']['reviewer']['model'],'fresh-reviewer')
+        self.assertNotEqual(revision_token(task['branch_run'],task),revision_token(before['branch_run'],before))
+        self.controller.message.assert_not_called()

@@ -1628,6 +1628,10 @@ class Engine:
         runtime.step_turns += 1
 
     def request(self, runtime, messages, tools, role, config_override=None, purpose=None):
+        from . import reviewer_recovery
+        return reviewer_recovery.request(self, runtime, messages, tools, role, config_override, purpose)
+
+    def _request_routed(self, runtime, messages, tools, role, config_override=None, purpose=None):
         task = runtime.task
         from . import transport
         if config_override is None and purpose is None and transport.restore_malformed_retry(task, role):

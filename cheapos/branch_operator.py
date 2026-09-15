@@ -66,7 +66,7 @@ def revision_token(run, task=None):
     item=next((i for i in run.get('items',[]) if i['id']==run.get('current_item_id')),None)
     return digest({**{key:run.get(key) for key in ('authorization_ref','plan_digest','expected_feature_tip','current_item_id')},
                    'item_instructions':(item or {}).get('instructions'),'plan':run.get('plan'),
-                   'worker':(task or {}).get('providers',{}).get('worker')})
+                   'worker':(task or {}).get('providers',{}).get('worker'),'reviewer':(task or {}).get('providers',{}).get('reviewer')})
 
 
 def capabilities(controller, task_id):
@@ -79,8 +79,10 @@ def capabilities(controller, task_id):
     models=[{'id':m['id'],'label':m.get('name') or m['id']} for m in catalog.get('models',[])
             if access_policy.eligible(m,policy) and m['id'] not in used]
     from .test_policy import disclosure
+    from . import reviewer_recovery
     return {**disclosure(controller.engine,task),'enabled':enabled(task),'current_item_id':run.get('current_item_id'),'revision_token':revision_token(run,task),
-            'actions':['enable','takeover','retry','model','revise','checks'],'models':models,
+            'actions':['enable','takeover','retry','model','reviewer','revise','checks'],'models':models,
+            'can_reviewer':True,'reviewers':reviewer_recovery.candidates(controller.engine,task),'unknown_worker_history':bool(reviewer_recovery.unknown_workers(task)),
             'can_checks':True,'required_checks':next((i.get('required_checks',[]) for i in run.get('items',[]) if i['id']==run.get('current_item_id')),[]),'final_checks':run['plan'].get('final_checks',[]),
             'scope':'Current uncommitted item only. Spending, checks, reviewer approval and Git safeguards remain unchanged.'}
 
@@ -93,14 +95,14 @@ def amend(controller, task_id, values):
     from .branch_authorization import contract_builder
     action=values.get('action')
     allowed={'action','approved','message','model','instructions','revision_token','required_checks','final_checks','full_suite_approved','resume'}
-    if set(values)-allowed or action not in {'model','revise','checks'} or values.get('approved') is not True:
+    if set(values)-allowed or action not in {'model','reviewer','revise','checks'} or values.get('approved') is not True:
         raise ValueError('Explicitly approve the selected model or current-item revision')
     if 'resume' in values and not isinstance(values['resume'],bool):raise ValueError('Resume must be a boolean')
     engine=controller.engine
     with engine.lock:
         engine.require_active_task(task_id);engine.admission.require_idle(task_id)
         task=engine.store.get(task_id);run=task['branch_run']
-        if action!='checks' and not enabled(task):raise ValueError('Enable operator development mode first')
+        if action not in {'checks','reviewer'} and not enabled(task):raise ValueError('Enable operator development mode first')
         if run['status'] not in {'paused','blocked'} or run.get('pending_operations') or run.get('merge_operation'):
             raise ValueError('Pause the run and finish any saved commit operation before revising it')
         controller.validate_authority(task,run)
@@ -108,35 +110,43 @@ def amend(controller, task_id, values):
             raise ValueError('The operator review is stale. Reopen the recovery controls before approving changes.')
         branch_workspace.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
         item=next((i for i in run['items'] if i['id']==run.get('current_item_id')),None)
-        if not item or item.get('commit_receipt') or item['status'] in branch_runs.DONE:
+        if not item or (action!='reviewer' and (item.get('commit_receipt') or item['status'] in branch_runs.DONE)):
             raise ValueError('Select a current uncommitted item')
         old_item=copy.deepcopy(item)
         previous=copy.deepcopy(run['authorization'])
         previous_amendments=copy.deepcopy(run.get('amendments',[]))
         previous_final_evidence=copy.deepcopy(run.get('final_evidence',{}))
         policy=copy.deepcopy(run['model_policy'])
-        if action=='model':
+        if action in {'model','reviewer'}:
+            role='reviewer' if action=='reviewer' else 'worker'
+            if action=='reviewer':
+                from . import reviewer_recovery
+                if reviewer_recovery.unknown_workers(task):raise ValueError('Repair missing worker model provenance before selecting a reviewer')
             chosen=values.get('model')
-            available=capabilities(controller,task_id)['models']
-            if chosen not in {m['id'] for m in available}:raise ValueError('Choose an eligible free or already-included model distinct from the reviewer')
+            available=capabilities(controller,task_id)['reviewers' if action=='reviewer' else 'models']
+            if chosen not in {m['id'] for m in available}:raise ValueError('Choose an eligible free or already-included model distinct from the other role and saved authors')
             access=policy.get('gateway_access')
             access_policy.validate_current(access,access_policy.effective_settings(task,engine.gateway.settings))
             endpoint=engine.gateway.settings['base_url']
-            current=task.get('providers',{}).get('worker') or {}
+            current=task.get('providers',{}).get(role) or {}
             if current.get('gateway')!='omniroute' or current.get('base_url')!=endpoint:
                 raise ValueError('Model replacement must stay on this run’s authorized OmniRoute connection')
-            cfg=validate_provider({**current,'gateway':'omniroute','base_url':endpoint,'model':chosen,'input_rate':0,'output_rate':0},'worker')
+            cfg=validate_provider({**current,'gateway':'omniroute','base_url':endpoint,'model':chosen,'input_rate':0,'output_rate':0},role)
             for field in ('access','access_binding','pricing_source','catalog_pricing'):cfg.pop(field,None)
             if access is not None:cfg['access_binding']=copy.deepcopy(access)
             model=next(m for m in engine.gateway.catalog(fresh=False)['models'] if m['id']==chosen)
             if access_policy.classify(model,access)=='included':cfg=access_policy.bind_provider(cfg,access,model)
             task.setdefault('operator_model_history',[]).append({'provider':copy.deepcopy(current),'route_recovery':copy.deepcopy((task.get('route') or {}).get('recovery',{}))})
-            task['providers']['worker']=cfg
-            task['operator_worker_model']=chosen
+            task['providers'][role]=cfg
+            task['operator_'+role+'_model']=chosen
+            if action=='reviewer':
+                recovery=task.setdefault('reviewer_identity_recovery',{'attempted':[]})
+                recovery['attempted']=[m for m in recovery.get('attempted',[]) if m!=chosen]
+                recovery.pop('selected',None)
             policy['execution']=copy.deepcopy(task['execution']);policy['providers']=copy.deepcopy(task['providers'])
             if task.get('route'):
-                task['route'].setdefault('preferred',{})['worker']=chosen
-                task['route'].get('recovery',{}).pop('worker',None)
+                task['route'].setdefault('preferred',{})[role]=chosen
+                task['route'].get('recovery',{}).pop(role,None)
         elif action=='checks':
             from . import test_policy
             from .engine import check_argv
@@ -179,13 +189,19 @@ def amend(controller, task_id, values):
             'item_id':item['id'],'item':old_item,'action':action,'final_evidence':previous_final_evidence,'expected_feature_tip':run['expected_feature_tip']})
         run['amendments']=[]
         run['plan_revision']+=1;run['plan_digest']=digest(run['plan']);run['model_policy']=policy
-        item.setdefault('operator_evidence_history',[]).append({key:copy.deepcopy(item[key]) for key in ('evidence','ready_receipt','review_repair','review_rounds') if key in item})
-        item['revision']=item.get('revision',1)+1;item['evidence']={};item['status']='working'
-        task['active_role']='worker'
-        task['messages']=[]
-        for key in ('ready_receipt','review_repair'):item.pop(key,None)
-        for key in ('pending_checkpoint','pending_review','recovery_blocked'):task.pop(key,None)
-        run.pop('readiness',None);run['final_evidence']={}
+        if action=='reviewer':
+            if task.get('pending_review'):
+                task.setdefault('operator_review_history',[]).append(copy.deepcopy(task['pending_review']))
+            task.pop('pending_review',None)
+            task['active_role']='reviewer'
+        else:
+            item.setdefault('operator_evidence_history',[]).append({key:copy.deepcopy(item[key]) for key in ('evidence','ready_receipt','review_repair','review_rounds') if key in item})
+            item['revision']=item.get('revision',1)+1;item['evidence']={};item['status']='working'
+            task['active_role']='worker'
+            task['messages']=[]
+            for key in ('ready_receipt','review_repair'):item.pop(key,None)
+            for key in ('pending_checkpoint','pending_review','recovery_blocked'):task.pop(key,None)
+            run.pop('readiness',None);run['final_evidence']={}
         contract=contract_builder(run,run['authorization_workspace'],policy,run['check_scope'])
         proposal=controller.proposals.prepare(task_id,contract)
         auth=controller.proposals.authorize(task_id,proposal['proposal_id'],True,contract)
@@ -193,12 +209,13 @@ def amend(controller, task_id, values):
         if run.get('development_authorization'):
             run['development_authorization']['authorization_ref']=auth['id']
             run['development_authorization']['plan_digest']=digest(contract['plan'])
-        engine.event(task,'operator_revision','Approved '+('worker model replacement' if action=='model' else 'verification requirements' if action=='checks' else 'current-item revision'),
-                     {'action':action,'item_id':item['id'],'model':task['providers']['worker']['model'],'authorization_ref':auth['id']})
+        engine.event(task,'operator_revision','Approved '+('reviewer model replacement' if action=='reviewer' else 'worker model replacement' if action=='model' else 'verification requirements' if action=='checks' else 'current-item revision'),
+                     {'action':action,'item_id':item['id'],'model':task['providers']['reviewer' if action=='reviewer' else 'worker']['model'],'authorization_ref':auth['id']})
         if values.get('resume') is False:
             task['operator_continue']={'status':'ready','reason':'Revised requirements saved. The task remains paused until you continue.'}
             engine.store.save(task)
             return task
+    if action=='reviewer':return continue_saved(controller,task_id)
     message=values.get('message') or ('Continue the current item with the approved '+('worker model.' if action=='model' else 'revised verification requirements. Do not claim removed checks passed.' if action=='checks' else 'revised instructions.'))
     result=controller.message(task_id,{'message':message})
     if action=='checks' and not enabled(result):return continue_saved(controller,task_id)
@@ -207,7 +224,7 @@ def amend(controller, task_id, values):
 
 def recover(controller, task_id, values):
     action=values.get('action')
-    if action in {'model','revise','checks'}:return amend(controller,task_id,values)
+    if action in {'model','reviewer','revise','checks'}:return amend(controller,task_id,values)
     if action=='takeover':
         if set(values)-{'action','approved','message'} or values.get('approved') is not True:
             raise ValueError('Explicitly approve takeover with your correction')
