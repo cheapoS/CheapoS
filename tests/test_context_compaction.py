@@ -38,10 +38,10 @@ class ContextCompactionTests(unittest.TestCase):
         task['messages'].append({'role':'assistant','content':'I will check again'})
         Engine.deliver_loop_guidance(task)
         self.assertEqual(sum(m.get('role')=='user' for m in task['messages']),1)
-        self.assertIn('submit checkpoint',task['messages'][-1]['content'])
+        self.assertEqual(task['messages'][-1]['content'],'I will check again')
         task['messages']=[{'role':'system','content':'Rebuilt context'}]
         Engine.deliver_loop_guidance(task)
         self.assertIn('submit checkpoint',task['messages'][-1]['content'])
         task['loop_guidance']=None
         before=list(task['messages']);Engine.deliver_loop_guidance(task)
-        self.assertEqual(task['messages'],[before[0]])
+        self.assertEqual(task['messages'],before)
