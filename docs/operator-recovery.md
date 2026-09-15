@@ -56,3 +56,18 @@ Synthetic browser interaction covered the recovery controls. The browser
 blocked the separate real-backend fixture with ERR_BLOCKED_BY_CLIENT, so that
 combined browser flow was not verified; its backend continuation was verified
 through the local HTTP API instead. The personal application was not restarted.
+
+## Continuing after repeated inspection
+
+Compacted context now retains the latest operator direction, bounded prior worker
+statements (explicitly unverified), completed-item summaries and recent check
+receipts. Its next-step guidance distinguishes missing verification from a passed
+check for the same patch and workspace generation. Check input identities and
+accepted command coverage still require validation by the normal checkpoint path.
+Development recovery keeps inspection tools available and follows the repository's
+scoped-testing policy. Existing accepted full-suite requirements are not silently
+removed; they must be explicitly addressed as plan requirements.
+
+Deterministic coverage exercises repeated compaction of a stalled fixture and
+stale patch/generation rejection. This verifies the supplied context, not a claim
+that a particular live model will always follow it. No live run was resumed.

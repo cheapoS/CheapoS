@@ -93,3 +93,17 @@ class OperatorControlsTests(LocalCase):
         self.assertEqual(result['progress_state']['malformed_attempts'],4)
         self.assertEqual(result['usage']['worker']['tokens'],20)
         self.assertFalse(result.get('checks'))
+
+    def test_stalled_compaction_preserves_findings_and_latest_direction(self):
+        task=self.task()
+        task['steer_guidance']='Run only the focused route check, then submit for review.'
+        task['events'].extend([{'kind':'assistant','title':'Worker','detail':'The frontend and backend routes already match.'},
+                               {'kind':'guard','title':'Repeated read','detail':'No new evidence'}])
+        for _ in range(2):
+            messages=self.engine.action_messages(task)
+            summary=json.loads(messages[1]['content'])
+            self.assertEqual(summary['latest_message'],task['steer_guidance'])
+            self.assertIn('routes already match',str(summary['recovery_continuation']))
+            self.assertIn('Inspection tools remain available',messages[2]['content'])
+            self.assertNotIn('Do not request read_file',messages[2]['content'])
+        self.assertFalse(task.get('checks'))
