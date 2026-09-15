@@ -1413,5 +1413,21 @@ $('#composer-permissions').onclick=sessionPermissions;
   if(restartBoth)restartBoth.onclick=()=>restartAction({refresh:true});
   if(restartOmniroute)restartOmniroute.onclick=()=>restartAction({refresh:true,restart:false});
 })();
-
 $('#lifetime-usage-trigger').onclick=()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader});
+try {
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('action') === 'club' || p.get('club_handle')) {
+    (async () => {
+      if (p.get('club_handle') && p.get('club_secret')) {
+        try {
+          await api('/club/link', {
+            handle: p.get('club_handle'),
+            sync_secret: p.get('club_secret'),
+            name: p.get('club_name') || ''
+          });
+        } catch {}
+      }
+      CheapOSLifetimeUsage.open({dialog, api, header: modalHeader});
+    })();
+  }
+} catch {}
