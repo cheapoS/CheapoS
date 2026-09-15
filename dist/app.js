@@ -421,7 +421,8 @@ function projectMenu(path,anchor) {
   ]);
 }
 function editProject(path) {
-  const d=dialog(`<form>${modalHeader('PROJECT','Project settings')}<p>Removing this project hides its sidebar shortcut. Repository files and chats are kept; you can reopen it from Hidden projects.</p><p class="small">${esc(path)}</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit">Remove from sidebar</button></div></form>`);
+  const d=dialog(`<form>${modalHeader('PROJECT','Project settings')}<button type="button" data-preview-settings>Preview settings</button><p>Removing this project hides its sidebar shortcut. Repository files and chats are kept; you can reopen it from Hidden projects.</p><p class="small">${esc(path)}</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit">Remove from sidebar</button></div></form>`);
+  $('[data-preview-settings]',d).onclick=()=>{d.close();CheapOSPreview.settings(api,path);};
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{
     await api('/projects/hide',{repository:path});
     if(state.project?.path===path){home();state.project=null;try{localStorage.removeItem('cheapos-project')}catch{}renderHome();restoreDraft()}

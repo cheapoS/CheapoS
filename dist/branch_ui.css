@@ -84,3 +84,7 @@
 .review-inline-change{color:inherit;background:#ffffff20;border-bottom:2px solid currentColor}
 .review-diff-line.remove .review-inline-change{background:#a52e3c66}
 .review-diff-line.add .review-inline-change{background:#32875066}
+
+.preview-panel{margin-top:12px;border-top:1px solid var(--border);padding-top:10px}.preview-panel[open]{max-height:45vh;overflow:auto}.preview-panel summary{cursor:pointer}.preview-panel textarea{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--border);padding:8px}.preview-panel p{font-size:13px}.preview-panel a{color:var(--mint)}
+
+.review-overview:has(.preview-panel[open]){max-height:65%}

@@ -395,6 +395,8 @@ class Engine:
         self.store = Store(data_directory)
         self.lock = threading.RLock()
         self.runtimes = {}
+        from .preview import Previews
+        self.previews = Previews(self)
         from .admission import Admission
         self.admission = Admission(self)
         self.command_permissions = {}
@@ -1137,6 +1139,7 @@ class Engine:
             return task
 
     def shutdown(self):
+        self.previews.shutdown()
         self.readiness.shutdown()
         self.startup.shutdown()
         for runtime in list(self.runtimes.values()):

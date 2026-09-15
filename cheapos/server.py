@@ -95,7 +95,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():
@@ -194,6 +194,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.startup.start()
             elif path == "/api/startup/stop":
                 result = engine.startup.stop()
+            elif path == "/api/projects/preview":
+                result = engine.previews.settings(values)
             elif path == "/api/projects/hide":
                 result = engine.hide_project(values)
             elif path == "/api/projects":
@@ -249,7 +251,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 if len(parts) != 4:
                     raise ValueError("Unknown task action")
                 task_id, action = parts[2:]
-                if action in {"trash", "restore"}:
+                if action in {"preview-start", "preview-stop", "preview-status"}:
+                    result = engine.previews.action(task_id, action, values)
+                elif action in {"trash", "restore"}:
                     if values:
                         raise ValueError("This action does not accept fields")
                     result = public_task(engine.trash_task(task_id) if action == "trash" else engine.restore_task(task_id))
