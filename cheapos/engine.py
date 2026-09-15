@@ -741,8 +741,8 @@ class Engine:
                 self.refresh_changes(task)
                 if task.get("action_pending"):
                     task["loop_guidance"] = ACTION_GUIDANCE
-                    if task.get("error_code") == "progress_limit" and task.get("error", "").startswith("The worker tried to repeat inspection") and automatic(task, task["active_role"]):
-                        self.defer_route(task, task["active_role"], "The worker kept requesting unavailable read tools after inspection stopped.")
+                    if task.get("error_code") == "progress_limit" and automatic(task, task["active_role"]):
+                        self.defer_route(task, task["active_role"], "The worker paused without progress; rotating to another eligible model.")
                 if (task.get("answer_pending") and needs_patch_review(task)) or (task.get("error_code") == "progress_limit" and task["patch"] == task.get("turn_start_patch", "")):
                     self.prepare_loop_recovery(task)
             if followup is None and automatic(task, "worker"):
@@ -2429,6 +2429,9 @@ class Engine:
                 except ProviderError as error:
                     if error.code != 'unsupported_tool':
                         raise
+                    if task.get('action_pending'):
+                        self.defer_route(task, task['active_role'], error)
+                        continue
                     run = task.get('branch_run') or {}
                     key = run.get('current_item_id') or 'interactive:'+str(len(task.get('requests',[])))
                     failures = task.setdefault('unoffered_tool_failures', {})

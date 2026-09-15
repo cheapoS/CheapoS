@@ -27,14 +27,27 @@ def normalize_models(data, openrouter=False):
             continue
         seen.add(model_id)
         pricing = item.get("pricing") or {}
-        def rate(key):
-            try:
-                value = float(pricing[key]) * 1_000_000
-                return value if math.isfinite(value) and 0 <= value <= 10000 else None
-            except (KeyError, TypeError, ValueError, OverflowError):
-                return None
-        input_rate, output_rate = rate("prompt"), rate("completion")
-        explicit_free = model_id.endswith(":free") and (openrouter or model_id.startswith("openrouter/"))
+        def rate(*keys):
+            for k in keys:
+                if k in pricing:
+                    try:
+                        value = float(pricing[k]) * 1_000_000
+                        return value if math.isfinite(value) and 0 <= value <= 10000 else None
+                    except (KeyError, TypeError, ValueError, OverflowError):
+                        return None
+            return None
+        input_rate = rate("input", "prompt")
+        output_rate = rate("output", "completion")
+        provider_name = str(item.get("owned_by") or "")[:100]
+        free_providers = {"antigravity", "kiro", "opencode", "nvidia"}
+        is_free_auto = model_id.startswith("auto/") and (":free" in model_id or "-free" in model_id)
+        explicit_free = (
+            ((model_id.endswith(":free") and (openrouter or model_id.startswith("openrouter/")))
+             or model_id.endswith("-free")
+             or provider_name in free_providers
+             or is_free_auto)
+            and (not model_id.startswith("openrouter/") or model_id.endswith(":free"))
+        )
         if explicit_free and not pricing and input_rate is None and output_rate is None:
             input_rate = output_rate = 0.0
         capabilities = item.get("capabilities") or {}
@@ -72,11 +85,11 @@ def normalize_models(data, openrouter=False):
         if local and input_rate is None and output_rate is None:
             input_rate = output_rate = 0.0
         models.append({"id": model_id, "name": str(item.get("name") or model_id)[:240], "local":local,
-                       "provider": str(item.get("owned_by") or "")[:100],
+                       "provider": provider_name,
                        "context_length": context if isinstance(context, int) and not isinstance(context, bool) and context > 0 else None,
                        "max_output_tokens": output_limit, "tool_calling": tools, "reasoning": reasoning, "recovery_reasoning": recovery_reasoning,
                        "input_rate": input_rate, "output_rate": output_rate,
-                       "free": input_rate == 0 and output_rate == 0 and not model_id.startswith("auto/") and item.get("owned_by") != "combo"})
+                       "free": input_rate == 0 and output_rate == 0 and (not model_id.startswith("auto/") or is_free_auto) and (item.get("owned_by") != "combo" or is_free_auto)})
     return sorted(models, key=lambda m: m["id"])
 
 

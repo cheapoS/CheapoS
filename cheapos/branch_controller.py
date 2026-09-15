@@ -24,6 +24,12 @@ def policy_for_saved(current, saved):
             new = result.get(section)
             if isinstance(old, dict) and isinstance(new, dict) and field not in old and new.get(field) == empty:
                 new.pop(field, None)
+        for role in ('worker', 'reviewer', 'planner'):
+            old_p = (saved.get('providers') or {}).get(role) or {}
+            new_p = (result.get('providers') or {}).get(role) or {}
+            for field in ('access_binding', 'pricing_source', 'catalog_pricing'):
+                if field not in old_p and field in new_p:
+                    new_p.pop(field, None)
     return result
 
 
