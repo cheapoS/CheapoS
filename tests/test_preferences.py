@@ -38,9 +38,10 @@ class PreferencePersistenceTests(unittest.TestCase):
             self.assertEqual(preferences['limits']['dollars'], 0)
 
     def test_invalid_execution_does_not_reset_valid_limits(self):
-        write_json(self.engine.store.root/'preferences.json', {'execution':{'mode':'obsolete'},'limits':{'dollars':0,'worker_turns':80}})
+        write_json(self.engine.store.root/'preferences.json', {'execution':{'mode':'obsolete'},'limits':{'dollars':0,'worker_turns':1200,'uncapped_work':True}})
         preferences = self.restart().preferences()
-        self.assertEqual(preferences['limits']['worker_turns'], 80)
+        self.assertEqual(preferences['limits']['worker_turns'], 1200)
+        self.assertTrue(preferences['limits']['uncapped_work'])
         self.assertEqual(preferences['execution']['mode'], 'manual')
 
     def test_invalid_update_does_not_overwrite_saved_choice(self):

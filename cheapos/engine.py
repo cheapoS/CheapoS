@@ -32,7 +32,7 @@ from . import work_policy
 from . import environment
 from . import metrics
 from . import check_output
-from .measurement import enabled as measuring
+from .measurement import enabled as measuring, is_measurement
 from .model_pool import observe_task
 from .routing import DEFAULT_EXECUTION, DELEGATE_TOOL, RoutingPause, coordinator_messages, execution_from, select_remote, setup_task, verify_local
 from .model_pool import MAX_HANDOFFS, RECOVERABLE_CODES, automatic
@@ -143,14 +143,19 @@ def guard_automatic_route_cost(task):
 def limits_from(value):
     result = dict(DEFAULT_LIMITS)
     result.update(value or {})
-    for key, minimum, maximum in [("dollars", 0, 100), ("reviewer_tokens", 512, 1000000), ("worker_turns", 1, 200), ("iterations", 1, 20), ("output_tokens", 128, 16384), ("checkpoint_turns", 2, 200), ("run_minutes", 1, 720), ("check_seconds", 1, 1800)]:
+    for key, minimum, maximum in [("dollars", 0, 100), ("reviewer_tokens", 512, 1000000), ("worker_turns", 1, 10**15), ("iterations", 1, 20), ("output_tokens", 128, 16384), ("checkpoint_turns", 2, 200), ("run_minutes", 1, 720), ("check_seconds", 1, 1800)]:
         number = result[key]
         if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number) or not minimum <= number <= maximum:
             raise ValueError("Invalid limit: " + key)
         if key != "dollars" and int(number) != number:
             raise ValueError("Token and iteration limits must be whole numbers")
         result[key] = float(number) if key == "dollars" else int(number)
-    return {key: result[key] for key in DEFAULT_LIMITS}
+    output = {key: result[key] for key in DEFAULT_LIMITS}
+    if 'uncapped_work' in result:
+        if type(result['uncapped_work']) is not bool:
+            raise ValueError('Uncapped work must be explicitly true or false')
+        output['uncapped_work'] = result['uncapped_work']
+    return output
 
 
 class ProgressPause(Exception):
@@ -331,7 +336,7 @@ class Runtime:
             if hasattr(self,"branch_authority"): self.branch_authority()
             self.branch_ledger.guard()
             return
-        if time.monotonic() - self.started >= self.task["limits"].get("run_minutes", 15) * 60:
+        if not measuring(self.task) and time.monotonic() - self.started >= self.task["limits"].get("run_minutes", 15) * 60:
             self.task['limit_hit'] = {'key':'run_minutes', 'used':round((time.monotonic()-self.started)/60, 2), 'allowed':self.task['limits'].get('run_minutes',15), 'remaining':0}
             raise WorkingTimeLimit("This run reached its working-time limit. Review saved work or explicitly increase the time allowance before continuing.")
 
@@ -662,7 +667,8 @@ class Engine:
             if reassess:
                 from .coordinator_dispatch import reassessment_config, remaining_work_seconds
                 reassessment_model = reassessment_config(task)['model']
-                recovery_elapsed = task['limits'].get('run_minutes', 15) * 60 - remaining_work_seconds(task)
+                if not measuring(task):
+                    recovery_elapsed = task['limits'].get('run_minutes', 15) * 60 - remaining_work_seconds(task)
                 reassessment_reason = task.get('error') or 'Worker inspection stopped making progress.'
             if "branch_run" in task:
                 compatibility = branch_runs.compatibility(task["branch_run"])
@@ -819,41 +825,62 @@ class Engine:
             if runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError("Pause this chat before changing its limits")
             task = self.store.get(task_id)
+            new_limits = limits_from({**task['limits'], **values['limits']})
             if "branch_run" in task:
                 run = task["branch_run"]
                 if run.get("status") != "paused":
                     raise ValueError("Use the Unattended run proposal/revision controls to change its authorized work.")
                 from .branch_authorization import digest
-                new_limits = limits_from(values.get("limits"))
+                previous_uncapped = measuring(task)
                 task["limits"] = new_limits
                 run_lims = run.setdefault("limits", {})
                 plan_lims = run.setdefault("plan", {}).setdefault("limits", {})
-                if "worker_turns" in new_limits:
-                    run_lims["worker_turns"] = max(run_lims.get("worker_turns", 0), new_limits["worker_turns"])
-                    plan_lims["worker_turns"] = run_lims["worker_turns"]
-                if "dollars" in new_limits:
-                    run_lims["dollars"] = max(run_lims.get("dollars", 0), new_limits["dollars"])
-                    plan_lims["dollars"] = run_lims["dollars"]
-                if "run_minutes" in new_limits:
-                    run_lims["working_seconds"] = max(run_lims.get("working_seconds", 0), new_limits["run_minutes"] * 60)
-                    plan_lims["working_seconds"] = run_lims["working_seconds"]
-                if "reviewer_tokens" in new_limits:
-                    run_lims["reviewer_tokens"] = max(run_lims.get("reviewer_tokens", 0), new_limits["reviewer_tokens"])
-                    plan_lims["reviewer_tokens"] = run_lims["reviewer_tokens"]
+                for key, target, scale in [('worker_turns','worker_turns',1), ('dollars','dollars',1),
+                                            ('run_minutes','working_seconds',60), ('reviewer_tokens','reviewer_tokens',1),
+                                            ('check_seconds','check_seconds',1), ('output_tokens','output_tokens',1)]:
+                    if key in values['limits']:
+                        run_lims[target] = new_limits[key] * scale
+                        plan_lims[target] = run_lims[target]
+                if 'uncapped_work' in values['limits']:
+                    run['plan']['uncapped_work'] = new_limits['uncapped_work']
+                    # Switching back to bounded work also ends a measurement exemption.
+                    if not new_limits['uncapped_work'] and run['plan'].get('measurement'):
+                        run['plan']['measurement'] = False
                 auth = run.get("authorization")
                 if auth and isinstance(auth.get("contract"), dict):
                     auth["contract"]["limits"] = copy.deepcopy(run_lims)
                     if isinstance(auth["contract"].get("plan"), dict):
                         auth["contract"]["plan"]["limits"] = copy.deepcopy(run_lims)
+                        for choice in ('uncapped_work', 'measurement'):
+                            if choice in run['plan']:
+                                auth['contract']['plan'][choice] = run['plan'][choice]
                     auth["digest"] = digest(auth["contract"])
-                if task.get("error_code") in {"worker_turn_limit", "exhausted_work"} or run.get("pause_reason") == "exhausted_work" or "allowance was reached" in str(task.get("error", "")):
-                    task["error"] = None
+                run['plan_digest'] = digest(run['plan'])
+                consumption = run.get('consumption', {})
+                work_fits = measuring(task) or all(consumption.get(key, 0) + (1 if key in {'requests','working_seconds'} else 0) <= run_lims[key]
+                    for key in ('worker_turns','requests','tool_actions','reviewer_tokens','working_seconds') if key in run_lims)
+                money_fits = task.get('usage', {}).get('cost', 0) <= run_lims.get('dollars', 0)
+                if work_fits and money_fits and (task.get("error_code") in {"worker_turn_limit", "exhausted_work"}
+                        or run.get("pause_reason") in {"exhausted_work", "worker_turn_limit"}
+                        or (run.get("pause_detail") or {}).get("cause") == "exhausted_work"
+                        or "allowance was reached" in str(task.get("error", ""))
+                        or "Run limit reached" in str(task.get("error", ""))):
+                    task["error"] = "Work limits updated. Resume when ready."
                     task["error_code"] = None
-                    run["pause_reason"] = None
-                self.event(task, "state", "Run work allowance updated", {"limits": run_lims})
+                    run["pause_reason"] = "operator"
+                    run["pause_detail"] = None
+                    task["pause_reason"] = None
+                    task["pause_detail"] = None
+                if work_fits and money_fits and (task.get('limit_hit') or {}).get('key') != 'dollars':
+                    task.pop('limit_hit', None)
+                self.event(task, "state", "Run work allowance updated", {"limits": run_lims, 'uncapped_work': measuring(task), 'previous_uncapped_work': previous_uncapped, 'origin': 'operator'})
                 self.store.save(task)
                 return task
-            task["limits"] = limits_from(values.get("limits"))
+            task["limits"] = new_limits
+            if measuring(task) and (task.get('limit_hit') or {}).get('key') in {'worker_turns', 'run_minutes', 'reviewer_tokens', 'iterations'}:
+                task.pop('limit_hit', None)
+                if task.get('status') == 'budget_paused':
+                    task.update(status='paused', error_code=None, error='Work limits updated. Resume when ready.')
             self.event(task, "state", "Chat limits updated")
             return task
 
@@ -989,7 +1016,7 @@ class Engine:
                 raise ValueError("Use the Unattended run proposal/revision controls to change its authorized work.")
             limits = task.setdefault("limits", dict(DEFAULT_LIMITS))
             limits["reviewer_tokens"] = min(1000000, limits.get("reviewer_tokens", 200000) + additional_tokens)
-            limits["worker_turns"] = min(200, limits.get("worker_turns", 40) + additional_turns)
+            limits["worker_turns"] = limits_from({**limits, 'worker_turns':limits.get('worker_turns',40)+additional_turns})['worker_turns']
             if task.get("error_code") in {"worker_turn_limit", "reviewer_token_limit", "budget_error", "cost_limit", "checkpoint_turn_limit"}:
                 task["error"] = None
                 task["error_code"] = None
@@ -1744,7 +1771,7 @@ class Engine:
         record['transport'] = selected_transport
         record['transport_contract'] = transport.VERSION
         brief = purpose == "probe" or role == "coordinator"
-        maximum = None if measuring(task) and not brief and config['input_rate'] == config['output_rate'] == 0 else reservation['completion_tokens']
+        maximum = None if is_measurement(task) and not brief and config['input_rate'] == config['output_rate'] == 0 else reservation['completion_tokens']
         record['requested_output_limit'] = maximum
         record['output_limit_basis'] = 'provider_default' if maximum is None else 'task_limit'
         if maximum is None:
@@ -2049,7 +2076,7 @@ class Engine:
         allowed = task['limits'].get('check_seconds', 90)
         remaining = task['limits'].get('run_minutes', 15) * 60 - (time.monotonic() - runtime.started)
         runtime.guard()
-        effective = None if measuring(task) else min(allowed, remaining)
+        effective = None if is_measurement(task) else allowed if measuring(task) else min(allowed, remaining)
         live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False, "session_allowed": session_allowed, "timeout_seconds": effective}
         task["check_stream"] = live
         self.event(task, "tool", "Running verification", {"command": argv, "run_id": live["run_id"], "timeout_seconds": effective})
@@ -2073,7 +2100,7 @@ class Engine:
         result["run_id"] = live["run_id"]
         result["raw_output"] = raw_info
         result['allowed_seconds'] = effective
-        result['outcome'] = {'cancelled': 'user_paused', 'timed out': 'task_deadline' if remaining <= allowed else 'process_timeout', 'output limit exceeded': 'output_limit'}.get(result.get('reason'), 'passed' if result['passed'] else 'test_failure')
+        result['outcome'] = {'cancelled': 'user_paused', 'timed out': 'task_deadline' if not measuring(task) and remaining <= allowed else 'process_timeout', 'output limit exceeded': 'output_limit'}.get(result.get('reason'), 'passed' if result['passed'] else 'test_failure')
         result['next_action'] = {'user_paused': 'Resume when ready.', 'task_deadline': 'Review saved work or increase the task time limit before resuming.', 'process_timeout': 'Inspect output; choose a focused check or increase the verification timeout.', 'output_limit': 'Reduce test verbosity or select a focused command.', 'test_failure': 'Inspect the failing assertion or process error before changing code.', 'passed': 'Only this command was verified.'}[result['outcome']]
         if result['outcome'] == 'test_failure':
             consecutive_failures = 0
@@ -2149,7 +2176,7 @@ class Engine:
         if saved_review and (not current_evidence(task, saved_review) or saved_review["diff"] != task["patch"] or saved_review["checks"]["command"] != task["check_command"]):
             saved_review = None
             task.pop("pending_review", None)
-        if not saved_review and task["iterations"] >= task["limits"]["iterations"]:
+        if not measuring(task) and not saved_review and task["iterations"] >= task["limits"]["iterations"]:
             raise BudgetError("Worker iteration limit reached", "iterations", task["iterations"], task["limits"]["iterations"])
         if task.get("route") and not task["providers"].get("reviewer"):
             task["pending_checkpoint"] = {"summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000]}

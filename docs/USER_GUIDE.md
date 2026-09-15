@@ -186,6 +186,18 @@ Dependencies are not installed automatically. This alpha works best with small, 
 
 ## Limits and recovery
 
+Use the budget button beside the composer to choose **Uncapped work · ∞** for
+this chat or new-chat defaults. Paused unattended runs can use the same control;
+save the change, then Resume. The choice is also available when reviewing an
+unattended proposal. Worker turns can also be set above 200 without enabling
+uncapped work.
+
+Uncapped work removes turn, iteration, request, tool-action, reviewer-token and
+working-time caps. It keeps usage totals, spending limits, model policy, command
+permissions, independent review and stalled-work recovery. Per-command timeouts
+and per-response output limits remain separate. It does not automatically resume
+saved work or renew exhausted recovery attempts. See [work allowance details](development/uncapped-work.md).
+
 - Estimated dollar cap, reviewer token cap, worker model-turn cap, iteration cap, and per-request output cap. In chats, each user message gets its own worker-turn allowance; Resume preserves turns already used on that message. Spending, token usage, and review iterations remain cumulative.
 - Before dispatch, conservatively reserve prompt/output usage; reconcile with provider-reported tokens and cost. When cost is absent, calculate it from your configured prices.
 - Automatic free/included routes tolerate unexpected reports below **$0.01 total per task**, provided they fit the task’s dollar budget. Reaching one cent stops returned tools and further requests; retries, handoffs and restarts keep the accumulated cost. An explicit $0 budget still permits no charge. Startup greetings keep their separate zero-charge rule.

@@ -68,9 +68,12 @@ class BranchStartTests(unittest.TestCase):
     def test_restart_keeps_contract_but_expires_commands(self):
         proposal=self.engine.branch.prepare(self.values)
         task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True})
+        task['branch_run']['status']='paused';task['status']='paused';self.engine.store.save(task)
+        self.engine.update_limits(task['id'],{'limits':{'uncapped_work':True}})
         restarted=Engine(self.root/'state',fixture_delay=0);self.addCleanup(restarted.shutdown)
         restarted.config=copy.deepcopy(self.engine.config)
         loaded=restarted.store.get(task['id'])
+        self.assertTrue(loaded['branch_run']['plan']['uncapped_work'])
         restarted.branch.validate_authority(loaded,loaded['branch_run'])
         self.assertFalse(restarted.branch.scopes.authorize(loaded,loaded['check_command']))
         self.assertEqual(restarted.runtimes,{})

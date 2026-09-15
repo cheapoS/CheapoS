@@ -32,7 +32,7 @@ def reassessment_config(task):
         raise ValueError('No worker turns remain. Review the task limit before requesting coordinator help.')
     if task.get('limit_hit') and task['limit_hit'].get('key') != 'worker_turns':
         raise ValueError('A task limit still needs attention. Review the current limit before requesting coordinator help.')
-    if remaining_work_seconds(task) <= 0:
+    if not measuring(task) and remaining_work_seconds(task) <= 0:
         raise ValueError('No working time remains. Review the task limit before requesting coordinator help.')
     config = coordinator_assistance_config({**task, 'execution': {**task.get('execution', {}), 'coordinator_assistance': True}})
     if not config:

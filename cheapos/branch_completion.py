@@ -35,6 +35,8 @@ this projection. Each appended repair is independently bound to its exact item.
         raise ValueError('Authorized scheduling policy changed')
     if run['plan'].get('measurement', False) != original.get('measurement', False):
         raise ValueError('Authorized measurement mode changed')
+    if run['plan'].get('uncapped_work', False) != original.get('uncapped_work', False):
+        raise ValueError('Authorized uncapped work choice changed')
     initial = original['items']; current = run['plan']['items']
     if current[:len(initial)] != initial:
         raise ValueError('Originally authorized work changed')

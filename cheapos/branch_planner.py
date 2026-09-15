@@ -255,6 +255,8 @@ def _parse(message, limits, source=None, assumptions=None):
     result = branch_runs.validate_plan(proposed)
     if result.get('measurement'):
         raise ValueError('Only the operator can select measurement mode')
+    if result.get('uncapped_work'):
+        raise ValueError('Only the operator can select uncapped work')
     if result['limits'] != limits:
         raise ValueError('Retain the displayed finite proposal limits exactly')
     from .engine import check_argv

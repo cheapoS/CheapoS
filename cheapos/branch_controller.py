@@ -66,7 +66,7 @@ def run_limits(values, count):
     if not isinstance(values,dict) or set(values)-set(defaults):
         raise ValueError('Unknown cumulative run limit')
     defaults.update(values)
-    for key, maximum in {'dollars':100,'working_seconds':43200,'worker_turns':10000,'requests':20000,
+    for key, maximum in {'dollars':100,'working_seconds':43200,'worker_turns':10**15,'requests':20000,
                          'tool_actions':100000,'reviewer_tokens':1000000,'check_seconds':1800,'output_tokens':16384}.items():
         value=defaults[key]
         if isinstance(value,bool) or not isinstance(value,(int,float)) or not 0 <= value <= maximum or (key!='dollars' and (type(value) is not int or value<1)):
@@ -473,6 +473,7 @@ class BranchController:
             inputs=copy.deepcopy(planning_task['branch_run']['inputs']) if planning_task else capture_inputs(values.get('repository',''),values.get('prompt',''),values.get('document'))
             measurement=values.get('measurement',False)
             if type(measurement) is not bool:raise ValueError('Measurement mode must be a boolean')
+            if type(values.get('uncapped_work', False)) is not bool:raise ValueError('Uncapped work must be a boolean')
             limits=planning_task['planning_limits'] if planning_task else run_limits(values.get('limits',{}),3)
             if planning_task:
                 task=planning_task
@@ -543,6 +544,7 @@ class BranchController:
                     # A reply received during inference supersedes its old scope.
                     if inputs!=task['branch_run']['inputs']:continue
                     if values.get('measurement'):proposed['measurement']=True
+                    if values.get('uncapped_work'):proposed['uncapped_work']=True
                     runtime.branch_ledger.end()
                 result=self.prepare({**values,'prompt':inputs['prompt'],'inputs':inputs,'plan':proposed},planning_task=task)
                 with self.engine.lock:

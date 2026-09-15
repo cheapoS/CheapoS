@@ -81,6 +81,7 @@ class MeasurementOutputTests(LocalCase):
         self.engine._request(Runtime(task),[],[],'worker',purpose='probe')
         self.assertEqual(provider.complete.call_args.args[2],1024)
         task['branch_run']['plan']['measurement']=False
+        task['branch_run']['plan']['uncapped_work']=True
         self.engine._request(Runtime(task),[],[],'worker',purpose='branch_planning')
         self.assertEqual(provider.complete.call_args.args[2],task['limits']['output_tokens'])
 

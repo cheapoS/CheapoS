@@ -111,3 +111,24 @@ test('rejected command approval is actionable and a late response cannot replace
  const pending=c.submitPermission(c.state.task,'decline');assert.equal(renders,1);c.state.task={id:'other'};
  accept({accepted:true});await pending;assert.equal(renders,1);assert.equal(c.state.task.id,'other');
 });
+
+function workLimitFixture(){
+ const c={CheapOSGuide:require('../dist/guidance.js')};vm.createContext(c);
+ vm.runInContext(source.slice(source.indexOf('const numberField='),source.indexOf('function newTask(')),c);return c;
+}
+test('work limits expose explicit infinity and remove the 200-turn HTML maximum',()=>{
+ const c=workLimitFixture(),limits={dollars:0,reviewer_tokens:200000,iterations:5,worker_turns:1200,output_tokens:2048,run_minutes:15};
+ c.limits=limits;const markup=vm.runInContext('limitFields(limits)',c);
+ assert.match(markup,/Uncapped work · ∞/);
+ const worker=markup.match(/<input name="worker_turns"[^>]*>/)[0];
+ assert.match(worker,/value="1200"/);assert.doesNotMatch(worker,/max=/);
+ c.form=new Map(Object.entries({...limits,uncapped_work:'on'}));
+ const parsed=vm.runInContext('readLimits(form)',c);assert.equal(parsed.uncapped_work,true);assert.equal(parsed.worker_turns,1200);assert.equal(parsed.dollars,0);
+ c.form.delete('uncapped_work');assert.equal(vm.runInContext('readLimits(form)',c).uncapped_work,false);
+});
+test('saved branch mode takes precedence over local limits and legacy measurement is visible',()=>{
+ const c=workLimitFixture();assert.equal(c.workLimits({limits:{uncapped_work:true},branch_run:{plan:{}}}).uncapped_work,false);
+ assert.equal(c.workLimits({limits:{},branch_run:{plan:{uncapped_work:true}}}).uncapped_work,true);
+ assert.equal(c.workLimits({limits:{},branch_run:{plan:{measurement:true}}}).uncapped_work,true);
+ assert.equal(c.workLimits(null,{uncapped_work:true}).uncapped_work,true);
+});

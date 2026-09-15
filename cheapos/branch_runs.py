@@ -56,10 +56,12 @@ def _id(value):
 
 
 def validate_plan(plan):
-    if not isinstance(plan, dict) or set(plan) - {'items', 'limits', 'final_checks', 'measurement', 'continue_independent'}:
+    if not isinstance(plan, dict) or set(plan) - {'items', 'limits', 'final_checks', 'measurement', 'uncapped_work', 'continue_independent'}:
         raise ValueError('Plan must contain items, limits and optional final_checks')
     if 'measurement' in plan and type(plan['measurement']) is not bool:
         raise ValueError('Measurement mode must be explicitly true or false')
+    if 'uncapped_work' in plan and type(plan['uncapped_work']) is not bool:
+        raise ValueError('Uncapped work must be explicitly true or false')
     if 'continue_independent' in plan and type(plan['continue_independent']) is not bool:
         raise ValueError('Independent continuation must be explicitly true or false')
     items = plan.get('items')
@@ -74,6 +76,7 @@ def validate_plan(plan):
             raise ValueError('Limits must be finite nonnegative numbers')
     output = {'items': [], 'limits': copy.deepcopy(limits), 'final_checks': _checks(plan.get('final_checks', []))}
     if 'measurement' in plan: output['measurement'] = plan['measurement']
+    if 'uncapped_work' in plan: output['uncapped_work'] = plan['uncapped_work']
     if 'continue_independent' in plan: output['continue_independent'] = plan['continue_independent']
     seen = set()
     for item in items:
