@@ -1518,6 +1518,21 @@ class Engine:
                 select_remote(self, runtime, role)
             recovery = task["route"].get("recovery", {}).get(role)
             cfg = task['providers'][role]
+            if recovery and recovery.get('from') == cfg['model']:
+                health = self.gateway.pool.observation(cfg['base_url'], cfg['model'], (cfg.get('access_binding') or {}).get('connection_revision'))
+                # A timed availability failure is not a permanent model failure.
+                # Resume may retry this same route after its cooldown without
+                # renewing model handoffs or spending another compatibility probe.
+                quota = (health.get('failure') or {}).get('category') == 'rate_limit_quota'
+                if quota and health.get('retry_known'):
+                    if health['cooling_down']:
+                        raise RoutingPause('The model is still cooling down. Saved review evidence and checks are kept.',
+                                           retry_at=health.get('retry_at'), scope=health.get('cooldown_scope') or 'model')
+                    task['route']['recovery'].pop(role)
+                    recovery = None
+                    self.event(task, 'routing', 'Retrying after the reported cooldown', {'role': role, 'model': cfg['model'],
+                        'summary': 'Continuing on the same authorized route with saved evidence and remaining limits.'})
+                    self.store.save(task)
             repair_transport = transport.pending_json(task, cfg, role, purpose)
             if repair_transport and recovery and recovery.get('from') == cfg['model'] and recovery.get('reason') == 'This model is cooling down after a recent failure.':
                 task['route']['recovery'].pop(role)
