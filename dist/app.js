@@ -1346,7 +1346,8 @@ if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();
 $('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};
 $('#chat-stop').onclick=stopFromComposer;
 const hideDemo=$('#hide-demo');
-if(hideDemo) hideDemo.onclick=()=>{if(confirm('Hide Try a sample task from the sidebar?')) $('#demo-row')?.classList.add('hidden');};
+if(hideDemo) hideDemo.onclick=()=>{if(confirm('Hide Try a sample task from the sidebar?')) {$('#demo-row')?.classList.add('hidden');if(typeof localStorage!=='undefined')localStorage.setItem('cheapos-demo-hidden','true');}};
+if(typeof localStorage!=='undefined'&&localStorage.getItem('cheapos-demo-hidden')==='true') $('#demo-row')?.classList.add('hidden');
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
 const branchUI=CheapOSBranchUI.mount({api,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
@@ -1387,8 +1388,8 @@ $('#composer-permissions').onclick=sessionPermissions;
     const controls=[btn,restartWebapp,restartBoth,restartOmniroute].filter(Boolean);
     controls.forEach(control=>control.disabled=true);
     toast(refresh?'Refreshing OmniRoute...':'Restarting cheapoS backend...');
-    try{
-      if(refresh)await restartRequest('/api/gateway/refresh',true);
+     try{
+       if(refresh)await restartRequest('/api/gateway/refresh',true);
       if(!restart){toast('OmniRoute connection refreshed');return;}
       const oldToken=state.token;
       if(typeof oldToken!=='string'||!oldToken)throw new Error('Refresh this page before restarting');
