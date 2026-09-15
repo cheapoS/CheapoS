@@ -20,6 +20,8 @@ MAX_HANDOFFS = 2
 
 
 def automatic(task, role):
+    if role == "worker" and task.get("operator_worker_model") and task["operator_worker_model"] == (task.get("providers", {}).get("worker") or {}).get("model"):
+        return False
     return (not task.get("demo") and task.get("execution", {}).get("mode") in {"delegate", "remote"}
             and bool(task.get("route")) and role in {"worker", "reviewer", "planner"})
 

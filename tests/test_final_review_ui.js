@@ -74,3 +74,17 @@ test('app view switching retains this task’s review DOM and discards another t
  state.view='plan';context.renderView();assert.equal(plan.innerHTML,'retained review');assert.equal(renders,1);
  state.view='chat';state.task={id:'b'};context.renderView();assert.equal(plan.innerHTML,'');assert.equal(plan.dataset.task,undefined);
 });
+
+test('diverged preview offers a separate update action without authorizing target merge',()=>{
+ const task={branch_run:{feature_ref:'refs/heads/feature/task',target_ref:'refs/heads/main',readiness:{checks:[]}}};
+ const preview={files:[],merge_available:false,blocker:'Target has new commits',update_available:true};
+ assert.match(ui.finalReviewMarkup(task,preview),/data-update-branch>Update branch &amp; recheck/);
+ assert.doesNotMatch(ui.finalReviewMarkup(task,{...preview,update_available:false}),/data-update-branch/);
+});
+
+test('known conflicts offer an agent task instead of repeating the failed update',()=>{
+ const task={branch_run:{feature_ref:'feature',target_ref:'main',readiness:{checks:[]}}};
+ const html=ui.finalReviewMarkup(task,{files:[],resolve_available:true,update_available:true});
+ assert.match(html,/data-resolve-conflicts>Resolve conflicts &amp; recheck/);
+ assert.doesNotMatch(html,/data-update-branch/);
+});

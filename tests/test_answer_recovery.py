@@ -193,3 +193,22 @@ class AnswerRecoveryTests(LocalCase):
         self.assertLessEqual(sum(len(f.get('content','')) for f in files),24000)
         self.assertFalse(next(f for f in files if f['path']=='large.py')['complete'])
         self.assertIn('error',next(f for f in files if f['path']=='../outside.txt'))
+
+    def test_strip_leaked_actions_removes_raw_json_tool_calls(self):
+        from cheapos.engine import strip_leaked_actions
+        raw = (
+            "I will investigate `cheapos/server.py` to identify why the endpoint is failing.\n\n"
+            "Read `cheapos/server.py` to inspect the routing logic.\n\n"
+            "{\n"
+            '  "action": "read_file",\n'
+            '  "arguments": {\n'
+            '    "path": "cheapos/server.py",\n'
+            '    "start_line": 200,\n'
+            '    "end_line": 280\n'
+            "  }\n"
+            "}"
+        )
+        cleaned = strip_leaked_actions(raw)
+        self.assertNotIn('"action": "read_file"', cleaned)
+        self.assertNotIn("Read `cheapos/server.py`", cleaned)
+        self.assertIn("I will investigate `cheapos/server.py`", cleaned)

@@ -35,7 +35,10 @@ class BranchStartTests(unittest.TestCase):
         self.assertIsNone(_tip(self.source,'refs/heads/feature/job'))
         self.assertEqual(self.engine.runtimes,{})
         self.assertTrue(proposal['readiness']['ready'])
-        decision={'proposal_id':proposal['proposal_id'],'approved':True}
+        with self.assertRaisesRegex(ValueError,'Full-suite'):
+            self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True})
+        self.assertIsNone(_tip(self.source,'refs/heads/feature/job'))
+        decision={'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True}
         with patch('cheapos.unattended_setup.environment.inspect', return_value={'status':'missing','evidence':'Dependency absent.','next_step':'Prepare environment.'}):
             with self.assertRaisesRegex(ValueError,'before Start'):
                 self.engine.branch.authorize(proposal['task_id'],decision)
@@ -62,12 +65,12 @@ class BranchStartTests(unittest.TestCase):
         for values in ({'proposal_id':'forged','approved':True},{'proposal_id':proposal['proposal_id'],'approved':False}):
             with self.assertRaises(ValueError):self.engine.branch.authorize(task_id,values)
         task=self.engine.store.get(task_id);task['branch_run']['plan']['items'][0]['instructions']='Different work';self.engine.store.save(task)
-        with self.assertRaises(ValueError):self.engine.branch.authorize(task_id,{'proposal_id':proposal['proposal_id'],'approved':True})
+        with self.assertRaises(ValueError):self.engine.branch.authorize(task_id,{'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True})
         self.assertIsNone(_tip(self.source,'refs/heads/feature/job'))
 
     def test_restart_keeps_contract_but_expires_commands(self):
         proposal=self.engine.branch.prepare(self.values)
-        task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True})
+        task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True})
         task['branch_run']['status']='paused';task['status']='paused';self.engine.store.save(task)
         self.engine.update_limits(task['id'],{'limits':{'uncapped_work':True}})
         restarted=Engine(self.root/'state',fixture_delay=0);self.addCleanup(restarted.shutdown)

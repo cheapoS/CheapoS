@@ -130,3 +130,23 @@ class PauseDetails(unittest.TestCase):
   projected = pause.for_task(t)
   self.assertEqual(projected['cause'], 'provider_quota')
   self.assertEqual(projected['cooldown_scope'], 'model')
+
+class InternalFailureDetails(unittest.TestCase):
+ def test_internal_failure_is_not_presented_as_missing_operator_information(self):
+  detail=pause.public({'version':1,'cause':pause.CODES['controller_error'],'stage':'working'})
+  self.assertEqual(detail['cause'],'controller_error')
+  self.assertIn('internal execution error',detail['explanation'])
+  self.assertEqual(detail['next_action'],'inspect')
+
+
+class IdentityPauseTests(unittest.TestCase):
+ def test_saved_unknown_identity_stop_is_explained_without_changing_record(self):
+  t={'error_code':'review_identity_unknown','active_role':'reviewer','request_metrics':[{'id':'review','role':'reviewer','model':'named-reviewer'}],
+     'branch_run':{'status':'paused','pause_detail':{'version':1,'cause':'unknown','stage':'reviewing','diagnostic_id':'review'}}}
+  result=pause.for_task(t)
+  self.assertEqual(result['cause'],'review_identity_unknown')
+  self.assertIn('Choose reviewer',result['explanation'])
+  self.assertEqual(result['next_action'],'reviewer')
+  self.assertEqual(t['branch_run']['pause_detail']['cause'],'unknown')
+  t['branch_run']['pause_detail']['cause']='operator'
+  self.assertEqual(pause.for_task(t)['cause'],'operator')

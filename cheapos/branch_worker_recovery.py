@@ -1,6 +1,7 @@
 """Durable alternative-worker recovery for observed implementation stalls."""
 from .model_pool import automatic, MAX_HANDOFFS
 from . import branch_workspace
+from .development import enabled as developing
 
 
 def queue(controller, runtime, item):
@@ -22,7 +23,7 @@ def queue(controller, runtime, item):
         return False
     recovery=run.setdefault('implementation_recovery',{'attempts':0,'failed_models':[]})
     per_item=item.setdefault('recovery',{'attempts':0})
-    if recovery['attempts']>=MAX_HANDOFFS or per_item['attempts']>=MAX_HANDOFFS or runtime.handoffs>=MAX_HANDOFFS:
+    if not developing(task) and (recovery['attempts']>=MAX_HANDOFFS or per_item['attempts']>=MAX_HANDOFFS or runtime.handoffs>=MAX_HANDOFFS):
         task['error']='Automatic model recovery allowance is exhausted. Saved files and usage are retained; Resume does not renew attempts.'
         return False
     worker=(task.get('providers',{}).get('worker') or {}).get('model')

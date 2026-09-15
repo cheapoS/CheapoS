@@ -664,9 +664,12 @@ const CheapOSConversation = (() => {
   function response(events, key, task, latest, at) {
     const steps = [];
     let phase = 'work';
+
+    const substantive = events.filter(e => !['generation','state','model','context'].includes(e.kind));
+    const final = substantive.at(-1);
     for (const event of events) {
       if (event.kind === 'assistant' || event.kind === 'generation') {
-        if (steps.length) steps.at(-1).events.push(event);
+        if (steps.length && event !== final) steps.at(-1).events.push(event);
         continue;
       }
       if (!['tool','model','checks','check_reused','checkpoint','review','review_coaching','coordinator_recovery','handoff','routing','tool_error','guard','permission','commit','web'].includes(event.kind)) continue;
@@ -701,8 +704,6 @@ const CheapOSConversation = (() => {
         steps.splice(i--,1);
       }
     }
-    const substantive = events.filter(e => !['generation','state','model','context'].includes(e.kind));
-    const final = substantive.at(-1);
     const reply = committed(final) && !task.demo ? 'What would you like to work on next?' : final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
     if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_coaching','coordinator_recovery','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
     let intro = '';
@@ -737,8 +738,9 @@ const CheapOSConversation = (() => {
       const commitPending=active&&run.status==='running'&&item&&!committed&&(item.status==='committing'||Boolean(item.ready_receipt));
       const streamedMetric=(task.request_metrics||[]).find(r=>r.id===task.stream?.request_id);
       const streamBelongs=active&&events.some(e=>e.kind==='model')&&(!streamedMetric?.branch_item_id||streamedMetric.branch_item_id===id)&&!(item?.status==='working'&&task.stream?.role==='reviewer');
+      const branchRunning = active && (['running', 'finalizing', 'merging'].includes(run.status) || Boolean(task.check_stream));
       const view={...task,events,stream:streamBelongs?task.stream:null,check_stream:active?task.check_stream:null,pending_approval:active?task.pending_approval:null,
-        status:active?(commitPending&&run.status==='running'?'running':task.status):'awaiting_reply'};
+        status:active?(commitPending&&run.status==='running'?'running':branchRunning&&task.status==='approved'?'running':task.status):'awaiting_reply'};
       let reply=response(events,key,view,active,at);
       reply.operation=id;reply.itemTitle=item?`Item ${items.indexOf(item)+1} of ${items.length} · ${item.title}`:id==='final'?'Final integration':'';
       reply.owner=active;reply.label=active?(id==='planning'?'Planning':commitPending?'Committing':task.status==='reviewing'?'Reviewing':task.check_stream?'Checking':guide.isActive(task.status)?'Working':''):'';
@@ -772,6 +774,7 @@ const CheapOSConversation = (() => {
           reply.label=first?'Starting':'Preparing next item';reply.intro=first?'Your plan is approved. I’m preparing the first item.':'I’m preparing the next item in your approved plan.';reply.stream=null;
           reply.steps=[{id:key+'-transition',phase:'work',events:[],live:true,role:'controller',model:'cheapoS controller',title:first?'Starting your approved plan':'Preparing the next item',detail:first?'Waiting for the first item to start.':'Completed item evidence remains with its item above.',outcome:'live',elapsed:guide.progress(task,at)?.elapsed||'0s'}];reply.live=true;
         }
+        if(active&&id==='final'&&run.status==='finalizing'){reply.live=true;reply.intro='I’m running final checks on the integrated changes.';}
         if(active&&id==='final'&&run.status==='ready_for_merge'){reply.live=false;reply.intro='Final checks and independent review are complete. Inspect the cumulative changes before merging.';}
         if(active&&id==='final'&&run.status==='merged'){
           const merged=run.merge_receipt?.stage==='completed',record=events.findLast(e=>e.kind==='branch_merged');

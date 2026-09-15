@@ -156,6 +156,19 @@ class TransportTests(unittest.TestCase):
         self.assertTrue(factory.called)
         self.assertEqual(runtime.task['request_metrics'][-1]['status'], 'responded')
 
+    def test_branch_probe_excludes_item_and_operator_instructions(self):
+        engine,runtime,calls=self.harness()
+        runtime.task['branch_run']={'current_item_id':'missing-on-purpose','plan':{}}
+        received=[]
+        class Provider:
+            def complete(self,messages,tools,maximum):
+                received.extend(messages)
+                return {'role':'assistant','content':'done'},{'prompt_tokens':2,'completion_tokens':3}
+        engine.provider_factory=lambda *args:Provider()
+        messages=[{'role':'user','content':'Return the routing marker only'}]
+        engine._request(runtime,messages,[],'worker',purpose='probe')
+        self.assertEqual(received,messages)
+
     def test_each_dispatch_is_accounted_without_counting_an_extra_worker_turn(self):
         engine,runtime,calls=self.harness()
         result=engine._request(runtime,[{'role':'user','content':'hi'}],[],'worker')

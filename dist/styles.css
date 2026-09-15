@@ -442,3 +442,9 @@ svg, svg * {
 .restart-option svg{display:none}
 .restart-option span{font-weight:500}
 .restart-option small{color:var(--muted);font-size:11px}
+
+/* Recovery labels need a full button, even with both side panels open. */
+.composer-controls{flex-wrap:wrap}
+.composer-controls>button{min-width:0;max-width:100%}
+.send-chat.send-recovery{width:auto;min-height:36px;height:auto;max-width:100%;padding:8px 12px;white-space:normal;overflow-wrap:anywhere;text-align:center}
+.composer-actions{max-width:100%;flex-wrap:wrap}

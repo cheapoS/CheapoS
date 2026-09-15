@@ -9,6 +9,7 @@ import time
 from . import branch_evidence as evidence
 from . import branch_runs, branch_disagreement as disagreement
 from .measurement import enabled as measuring
+from .development import enabled as developing
 from .providers import ProviderError
 
 
@@ -41,6 +42,8 @@ def _coach(engine, task, messages, reason):
 
 
 def _stop(engine, task, reason):
+    if developing(task):
+        return  # Keep evidence and retry counters; explicit work/money limits still apply.
     from .engine import ProgressPause
     from .branch_pause import specific
     pending = task['pending_review']
@@ -141,6 +144,8 @@ def checkpoint(engine, runtime, args):
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
         task['pending_review']={'branch_candidate_id':current['id'],'review_requests':0}
     pending = task['pending_review']
+    pending['identity_scope']={'candidate_id':current['id'],'item_id':item['id'],
+                               'no_change':current['patch']=='','feature_parent':ctx['feature_parent']}
     messages.extend(copy.deepcopy(pending.get('messages', [])))
     if pending.get('history_partial'):
         messages.append({'role':'user','content':'Older review exchanges were omitted from this bounded history. The current candidate and checks above are authoritative. Read only context still needed for a decision.'})
@@ -160,7 +165,7 @@ def checkpoint(engine, runtime, args):
     engine.event(task, 'checkpoint', 'Reviewing the complete branch item', {'item_id':item['id'], 'candidate_id':current['id']})
     rounds = 0
     max_rounds = 8
-    while measuring(task) or rounds < max_rounds:
+    while developing(task) or measuring(task) or rounds < max_rounds:
         rounds += 1
         pending = task['pending_review']
         if pending.get('stop_diagnostic'):
@@ -172,7 +177,7 @@ def checkpoint(engine, runtime, args):
         disagreement.ensure_available(task, current['id'])
         runtime.guard()
         from .provider_recovery import review_turns
-        deciding = not measuring(task) and review_turns(task, pending) >= max_rounds - 1
+        deciding = not developing(task) and not measuring(task) and review_turns(task, pending) >= max_rounds - 1
         if deciding:
             _coach(engine, task, messages, 'request_limit')
         offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools
@@ -249,7 +254,7 @@ def checkpoint(engine, runtime, args):
                         engine.store.save(task)
                         return result
                 else: result = {'error':'Return a valid independent review decision.'}
-            elif name in {'read_file','outline_file','search','list_files','get_diff','read_check_output'}:
+            elif name in {'read_file','outline_file','search','list_files','get_diff','read_check_output','read_merge_context'}:
                 try: result = engine.file_tool(task,name,params)
                 except (ValueError,OSError,TypeError,UnicodeError) as error: result = {'error':str(error)[:1000]}
             elif name == 'read_url': result = engine.read_url(runtime,params)

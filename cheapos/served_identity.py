@@ -35,6 +35,39 @@ def normalized(value):
     return value[:-5] if value.endswith(':free') else value
 
 
+def review_workers(task, record):
+    """Exclude superseded inspection of a proven unchanged, committed item.
+
+    Original authors remain in scope. Unknown identity is never excused for an
+    item that changed the candidate, or when its provenance is incomplete.
+    """
+    workers=[q for q in task.get('request_metrics',[]) if q.get('role')=='worker' and q.get('dispatched')
+             and q.get('purpose')!='probe']
+    run=task.get('branch_run') or {}
+    items=run.get('items',[])
+    excluded=set()
+    for item in items:
+        original=next((i for i in items if i.get('id')==item.get('revision_of')),None)
+        receipt=(original or {}).get('commit_receipt') or {}
+        if not original or original.get('status')!='committed' or receipt.get('stage')!='completed' or not receipt.get('new_tip'):
+            continue
+        scope=(task.get('pending_review') or {}).get('identity_scope') or {}
+        active=(record.get('review_candidate_id') and record['review_candidate_id']==scope.get('candidate_id')
+                and scope.get('item_id')==item.get('id') and scope.get('no_change') is True
+                and scope.get('feature_parent')==receipt['new_tip']==run.get('expected_feature_tip'))
+        finished=(item.get('status')=='satisfied_without_change' and (item.get('evidence') or {}).get('no_change') is True
+                  and (item.get('commit_receipt') or {}).get('stage')=='completed'
+                  and (item.get('commit_receipt') or {}).get('new_tip')==receipt['new_tip'])
+        if not (active or finished):continue
+        attempts=[q for q in workers if q.get('branch_item_id')==item.get('id')]
+        # Retain the current verification worker as well as all original authors.
+        if attempts:
+            excluded.update(q.get('id') for q in attempts[:-1] if q.get('id'))
+    if excluded:
+        record['identity_scope']={'basis':'unchanged_committed_revision','excluded_inspection_requests':sorted(excluded)}
+    return [q for q in workers if q.get('id') not in excluded]
+
+
 def ensure_independent(task, record):
     """Gate new review responses before tools/approval. No inference or retries.
 
@@ -46,9 +79,10 @@ def ensure_independent(task, record):
     """
     if task.get('served_identity_version')!=1 or record.get('role')!='reviewer' or record.get('purpose')=='probe':return
     from .providers import ProviderError
-    workers=[q for q in task.get('request_metrics',[]) if q.get('role')=='worker' and q.get('dispatched')
-             and q.get('purpose')!='probe']
+    workers=review_workers(task,record)
     current=record.get('served_model') if record.get('identity_provenance')=='response_model' else None
+    if task.get('reviewer_identity_recovery') and current is None:
+        raise ProviderError('Recovery reviewer did not report an actual model identity.',code='review_identity_unknown')
     if opaque(record.get('requested_model')) and current is None:
         raise ProviderError('Reviewer route identity is unavailable; an opaque alias cannot establish independent review.',code='review_identity_unknown')
     for worker in workers:

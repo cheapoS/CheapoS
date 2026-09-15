@@ -11,7 +11,7 @@ class PreferencePersistenceTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.engine = self.restart()
-        self.execution = {'mode':'delegate','local_model':'gemma4:31b','local_reviewer':'fixture-reviewer','local_planner':'','coordinator_assistance':False,'coordinator_model':''}
+        self.execution = {'mode':'delegate','local_model':'gemma4:31b','local_reviewer':'fixture-reviewer','local_planner':'','coordinator_assistance':False,'coordinator_model':'','development_mode':False}
 
     def restart(self):
         engine = Engine(self.temp.name)
@@ -46,7 +46,7 @@ class PreferencePersistenceTests(unittest.TestCase):
 
     def test_invalid_update_does_not_overwrite_saved_choice(self):
         self.engine.save_preferences({'execution':self.execution})
-        for execution in (None, 'local', {'mode':'invalid'}, {'local_model':False},{'coordinator_assistance':'yes'},{'coordinator_model':False}):
+        for execution in (None, 'local', {'mode':'invalid'}, {'local_model':False},{'coordinator_assistance':'yes'},{'coordinator_model':False},{'development_mode':'yes'}):
             with self.assertRaises(ValueError): self.engine.save_preferences({'execution':execution})
         self.assertEqual(self.restart().preferences()['execution'], self.execution)
 

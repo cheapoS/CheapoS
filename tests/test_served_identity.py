@@ -55,3 +55,37 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(usage['_served_identity']['served_model'],'served/model')
         self.assertNotIn('private_header',str(usage))
         self.assertEqual(message['content'],'ok')
+
+class RevisionIdentityTests(unittest.TestCase):
+    def task(self):
+        return {'served_identity_version':1,'branch_run':{'expected_feature_tip':'commit','items':[
+            {'id':'fix','status':'committed','commit_receipt':{'stage':'completed','new_tip':'commit'}},
+            {'id':'verify','revision_of':'fix','status':'reviewing'}]},
+            'pending_review':{'identity_scope':{'candidate_id':'candidate','item_id':'verify','no_change':True,'feature_parent':'commit'}},
+            'request_metrics':[
+                {'id':'author','role':'worker','dispatched':True,'branch_item_id':'fix',**metadata('named/author')},
+                {'id':'old-inspection','role':'worker','dispatched':True,'branch_item_id':'verify',**metadata('auto/coding')},
+                {'id':'current','role':'worker','dispatched':True,'branch_item_id':'verify',**metadata('named/worker')}]}
+
+    def test_unchanged_revision_ignores_superseded_inspection_but_preserves_authors(self):
+        task=self.task();review={'role':'reviewer','review_candidate_id':'candidate',**metadata('named/reviewer')}
+        ensure_independent(task,review)
+        self.assertEqual(review['identity_scope']['excluded_inspection_requests'],['old-inspection'])
+        for model in ('named/author','named/worker'):
+            with self.assertRaises(ProviderError):ensure_independent(task,{**review,**metadata(model)})
+        self.assertEqual(len(task['request_metrics']),3)
+
+    def test_changed_stale_and_unknown_authorship_remain_blocked(self):
+        review={'role':'reviewer','review_candidate_id':'candidate',**metadata('named/reviewer')}
+        for field,value in (('no_change',False),('candidate_id','stale'),('feature_parent','other')):
+            task=self.task();task['pending_review']['identity_scope'][field]=value
+            with self.assertRaises(ProviderError):ensure_independent(task,dict(review))
+        task=self.task();task['request_metrics'][0].update(metadata('auto/author'))
+        with self.assertRaises(ProviderError):ensure_independent(task,review)
+
+    def test_final_review_retains_completed_no_change_provenance(self):
+        task=self.task();item=task['branch_run']['items'][1]
+        item.update(status='satisfied_without_change',evidence={'no_change':True},commit_receipt={'stage':'completed','new_tip':'commit'})
+        review={'role':'reviewer','purpose':'branch_final',**metadata('named/reviewer')}
+        ensure_independent(task,review)
+        self.assertIn('identity_scope',review)

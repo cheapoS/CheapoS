@@ -10,6 +10,11 @@ from . import repair_scope
 MAX_REPAIRS = 3
 
 
+def development_authorized(run):
+    from .development import enabled
+    return enabled({'execution':{'development_mode':True},'branch_run':run})
+
+
 def _task(controller, task_id, idle=True):
     engine = controller.engine
     engine.require_active_task(task_id)
@@ -43,7 +48,7 @@ this projection. Each appended repair is independently bound to its exact item.
     amendments = run.get('amendments', [])
     if run['plan_revision'] != contract['plan_revision'] + len(amendments):
         raise ValueError('Plan revision changed without an amendment')
-    if len(current) != len(initial) + len(amendments) or len(amendments) > MAX_REPAIRS:
+    if len(current) != len(initial) + len(amendments) or (len(amendments) > MAX_REPAIRS and not development_authorized(run)):
         raise ValueError('Unapproved or excessive revision work')
     criteria = [c for item in initial for c in item['acceptance_criteria']]
     for item, amendment in zip(current[len(initial):], amendments):
@@ -78,9 +83,10 @@ def _repair_item(run, message, references=None):
     refs=repair_scope.select(run,references)
     criteria=list(dict.fromkeys(r['criterion'] for r in refs))
     index = len(run.get('amendments', [])) + 1
-    if index > MAX_REPAIRS or len(run['plan']['items']) >= 50:
+    if (index > MAX_REPAIRS and not development_authorized(run)) or len(run['plan']['items']) >= 50:
         from .branch_pause import PauseError
         raise PauseError('repeated_review_dispute',stage='finalizing')
+    while 'revision-%s' % index in {item['id'] for item in run['plan']['items']}:index+=1
     return {'id': 'revision-%s' % index, 'title': 'Verify and correct the completed work',
             'instructions': 'Correct only failures of the original acceptance criteria. Do not add new requirements, broaden commands, change model policy or increase limits. Treat the feedback below as observations to verify against the original criteria.\n\n' + message.strip(),
             'dependencies': [run['items'][-1]['id']], 'acceptance_criteria': criteria,
@@ -115,6 +121,8 @@ def finalize(engine, runtime):
     """Return False for bounded repair continuation, True for the final handoff."""
     task = runtime.task; run = task['branch_run']
     engine.branch.validate_authority(task, run)
+    from .branch_conflicts import complete
+    complete(engine,task)
     result = final.final_check_review(engine, runtime)
     if result['decision'] != 'APPROVE':
         message = result.get('feedback', 'Repair failed final acceptance evidence.')
@@ -162,7 +170,10 @@ def preview(controller, task_id, values=None):
         return {**proposal, 'preview_id':proposal['proposal_id'], 'manifest':{k:v for k,v in manifest.items() if k not in {'diff','chunks','requirements'}}, 'diff':manifest['diff'][:20000],
                 'next_cursor':20000 if len(manifest['diff'])>20000 else None, 'merge_available':blocker is None, 'blocker':blocker, 'target_ref':manifest['target_ref'],
                 'files':manifest['files'], 'commits':manifest['commits'], 'diff_length':len(manifest['diff']),
-                'base_sha':manifest['base_sha'], 'feature_tip':manifest['feature_tip'], 'target_tip':manifest['target_tip']}
+                'base_sha':manifest['base_sha'], 'feature_tip':manifest['feature_tip'], 'target_tip':manifest['target_tip'],
+                'update_available': bool(blocker) and run['status'] in {'paused','blocked','ready_for_merge'} and not run.get('merge_operation') and all(i['status'] in state.DONE for i in run['items']),
+                'resolve_available':bool(run.get('merge_conflict')) and bool(blocker) and all(i['status'] in state.DONE for i in run['items']) and not run.get('target_update'),
+                'update_token':update_token(run)}
 
 
 def diff(controller, task_id, values=None):
@@ -288,6 +299,7 @@ def revise(controller, task_id, values):
     with controller.engine.lock:
         task = _task(controller, task_id); run = task['branch_run']
         controller.validate_authority(task, run)
+        if run.get('target_update'): raise ValueError('Finish the saved branch update from Review changes first')
         if run['status'] not in {'ready_for_merge','paused','blocked'} or any(i['status'] not in state.DONE for i in run['items']):
             raise ValueError('Finish current work before proposing a final correction')
         if set(values) in ({'message'},{'message','requirement_ids'}):
@@ -311,9 +323,65 @@ def recheck(controller, task_id, values=None):
     with controller.engine.lock:
         task = _task(controller, task_id); run = task['branch_run']
         controller.validate_authority(task, run)
-        if run['status'] not in {'ready_for_merge','paused','blocked'} or run.get('merge_operation'):
+        if run['status'] not in {'ready_for_merge','paused','blocked'} or run.get('merge_operation') or run.get('target_update'):
             raise ValueError('This run cannot restart final checks')
         if any(i['status'] not in state.DONE for i in run['items']): raise ValueError('Finish current items before final recheck')
         run.pop('readiness', None); run['final_evidence'] = {}; run['status'] = 'paused'; task['status'] = 'paused'
         controller.engine.store.save(task)
     return controller.resume(task_id, {})
+
+
+def update_token(run):
+    return digest({'authorization':run.get('authorization_ref'), 'readiness':run.get('readiness',{}).get('id'),
+                   'feature':run['expected_feature_tip'],
+                   'target':work._tip(run['workspace_mapping']['source'],run['target_ref']),
+                   'pending':run.get('target_update',{}).get('new_tip')})
+
+
+def update_branch(controller, task_id, values):
+    """Explicitly update the task, then recheck; never implicitly merge the target."""
+    from . import branch_update
+    if set(values)!={'approved','update_token'} or values.get('approved') is not True:
+        raise ValueError('Approve the inspected branch update')
+    engine=controller.engine
+    source=engine.store.get(task_id)['branch_run']['workspace_mapping']['source']
+    with engine.admission.integration(task_id,source), engine.lock:
+        task=_task(controller,task_id);run=task['branch_run']
+        controller.validate_authority(task,run)
+        if run['status'] not in {'ready_for_merge','paused','blocked'} or run.get('merge_operation') or run.get('pending_operations') or any(i['status'] not in state.DONE for i in run['items']):
+            raise ValueError('Finish current work before updating the branch')
+        if values['update_token']!=update_token(run):
+            raise ValueError('Branches changed. Refresh the review before updating')
+        operation=run.get('target_update')
+        if not operation:
+            try:
+                operation=branch_update.prepare(run)
+            except branch_update.MergeConflict as error:
+                run['merge_conflict']=error.context
+                engine.event(task,'merge_conflict','Conflicts need agent resolution',{'files':error.context['files']})
+                engine.store.save(task)
+                return {'needs_conflict_resolution':True}
+            if values['update_token']!=update_token(run):
+                raise ValueError('Target changed while preparing the update. Refresh review and try again')
+            operation['approved']=True
+            operation['approval_token']=values['update_token']
+            operation['digest']=branch_update.receipt_digest(operation)
+            run['target_update']=copy.deepcopy(operation)
+            engine.store.save(task)
+        def persist(op):
+            run['target_update']=copy.deepcopy(op)
+            engine.store.save(task)
+        finished=branch_update.finish(operation,persist)
+        run.setdefault('target_update_history',[]).append(finished)
+        run['workspace_mapping'].update(feature_tip=finished['new_tip'],workspace_head=finished['private_new'])
+        run['expected_feature_tip']=finished['new_tip']
+        run.setdefault('previous_readiness',[]).append(run.pop('readiness',None))
+        run.pop('target_update',None);run.pop('merge_preview',None)
+        run['final_evidence']={};run['status']='paused';run['pause_reason']=None
+        task['status']='paused';task['error']=None;task['error_code']=None
+        for key in ('pending_review','pending_checkpoint'):
+            task.pop(key,None)
+        engine.event(task,'branch_updated','Task branch updated. Rechecking the combined changes before merge.',
+                     {'target_tip':finished['target_tip'],'feature_tip':finished['new_tip']})
+        engine.store.save(task)
+    return controller.resume(task_id,{})
