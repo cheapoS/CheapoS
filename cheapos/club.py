@@ -105,7 +105,7 @@ class ClubManager:
     def get_status(self,summary_dict=None):
         with self.lock:
             s=self.state
-            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),error=s.get('error'),pending=bool(s['pending']))
+            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']))
 
     def start_pairing(self,lifetime):
         with self.lock:
@@ -190,12 +190,18 @@ class ClubManager:
         with self.lock:
             if not self.state['sync_enabled'] or self.state.get('revoking'): raise ValueError('Sharing is paused.')
             try:
+                uploaded=len((self.state.get('pending') or {}).get('fingerprints',{}))
                 self._flush()
+                new_requests=0;waiting=0
                 events=[];fingerprints={};baseline=set(self.state['baseline'])
                 for row in lifetime.raw_requests():
                     rid=row['request_id']
-                    if rid in baseline or not row.get('reconciled') or not row.get('date'): continue
-                    if any(type(row.get(k)) not in (int,float) or row[k]<0 or row[k]>1000000000 or int(row[k])!=row[k] for k in ('input_tokens','output_tokens')): continue
+                    if rid in baseline: continue
+                    new_requests+=1
+                    if not row.get('reconciled') or not row.get('date'):
+                        waiting+=1;continue
+                    if any(type(row.get(k)) not in (int,float) or row[k]<0 or row[k]>1000000000 or int(row[k])!=row[k] for k in ('input_tokens','output_tokens')):
+                        waiting+=1;continue
                     event=dict(event_id=str(uuid.uuid5(uuid.UUID(self.state['installation_id']),rid)),category=row.get('club_category','unknown'),input_tokens=int(row['input_tokens']),output_tokens=int(row['output_tokens']),accounting_at=row['date']+'T00:00:00Z')
                     fingerprint=hashlib.sha256(json.dumps(event,sort_keys=True).encode()).hexdigest()
                     if self.state['sent'].get(rid)==fingerprint: continue
@@ -204,6 +210,10 @@ class ClubManager:
                 if events:
                     self._queue('sync',_fingerprints=fingerprints,events=events)
                     self._flush()
+                    uploaded+=len(events)
+                self.state['sync_message']=(f'Uploaded {uploaded} usage records. Additional queued usage syncs automatically.' if uploaded else 'No new usage yet. Only requests made after sharing was enabled are uploaded.' if not new_requests else 'Waiting for complete token usage before uploading.' if waiting else 'Up to date. All eligible usage has already been uploaded.')
+                self.state['error']=None
+                self._save()
                 return self.get_status()
             except ValueError as error:
                 self.state['error']=str(error);self._save();raise
