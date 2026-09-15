@@ -98,3 +98,19 @@ class PauseDetails(unittest.TestCase):
   for malformed in ({'kind':'review_stall','reason':[],'coached':True},{'kind':'review_stall','reason':'bad reason','coached':True},'not a diagnostic'):
    t['pending_review']['stop_diagnostic']=malformed
    self.assertNotIn('diagnostic',pause.classify(ValueError('private'),t))
+
+ def test_route_unavailable_cooldown_classifies_as_provider_quota_with_retry_and_scope(self):
+  t = self.task()
+  t['error_code'] = 'routing_unavailable'
+  t['route_unavailable'] = {'scope': 'model', 'retry_at': 1789431800.0, 'can_wait': True, 'message': 'OmniRoute reports a model cooldown.'}
+  d = pause.classify(ValueError('Private wrapper'), t)
+  self.assertEqual(d['cause'], 'provider_quota')
+  self.assertEqual(d['cooldown_scope'], 'model')
+  self.assertEqual(d['retry_at'], 1789431800.0)
+  self.assertIn('applies to the model', d['explanation'])
+  self.assertEqual(d['next_action'], 'models')
+  # Verify for_task reclassifies old projection correctly
+  pause.apply(t, ValueError('old stop'))
+  projected = pause.for_task(t)
+  self.assertEqual(projected['cause'], 'provider_quota')
+  self.assertEqual(projected['cooldown_scope'], 'model')

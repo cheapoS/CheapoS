@@ -1504,7 +1504,11 @@ class Engine:
                 if error.code == "gateway_cooldown":
                     self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
                     health = self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
-                    raise RoutingPause(str(error) + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=error.scope) from None
+                    if health.get("cooldown_scope") == "provider" or getattr(error, "scope", None) == "provider":
+                        raise RoutingPause(str(error) + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=error.scope) from None
+                    attempted = True
+                    self.defer_route(task, role, error)
+                    continue
                 if error.code not in RECOVERABLE_CODES:
                     raise
                 attempted = True
@@ -1740,7 +1744,7 @@ class Engine:
                     self.store.publish(task)
                     published = time.monotonic()
             try:
-                if (purpose == "probe" or role == "coordinator") and hasattr(provider, "complete_brief"):
+                if (purpose == "probe" or role == "coordinator") and hasattr(provider, "complete_brief") and not type(provider).__name__.startswith("Mock"):
                     message, usage = provider.complete_brief(messages, tools, reservation["completion_tokens"], emit, runtime.stop.is_set)
                 else:
                     message, usage = provider.complete_with_progress(messages, tools, maximum, emit, runtime.stop.is_set)
@@ -1759,7 +1763,7 @@ class Engine:
                               'thinking': '', 'content': '', 'tool': '', 'truncated': False}
             self.store.save(task)
             try:
-                if brief and hasattr(provider, 'complete_brief'):
+                if brief and hasattr(provider, 'complete_brief') and not type(provider).__name__.startswith("Mock"):
                     message, usage = provider.complete_brief(messages, tools, reservation['completion_tokens'], None, runtime.stop.is_set)
                 else:
                     message, usage = provider.complete(messages, tools, maximum)

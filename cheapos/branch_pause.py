@@ -122,36 +122,40 @@ def classify(error=None, task=None, cause=None, stage=None):
         elif isinstance(error,InterruptedError):explicit='operator'
         elif task.get('pending_approval'):explicit='command_grant'
         elif task.get('environment_setup',{}).get('status')=='missing':explicit='missing_setup'
-        else:explicit=CODES.get(code,'unknown')
-    requests=task.get('request_metrics') or [];request=requests[-1] if requests else {}
-    previous=run.get('pause_detail') or {}
-    if explicit=='unknown' and not getattr(error,'safe_diagnostic',None) and previous and run.get('status') in ('paused','blocked') and request.get('id') and previous.get('diagnostic_id')==request.get('id'):
-        return public(run['pause_detail']) or public({'version':1,'cause':'unknown'})
-    item=next((i for i in run.get('items',[]) if i.get('id')==run.get('current_item_id')), {})
-    requests=task.get('request_metrics') or [];request=requests[-1] if requests else {}
-    if explicit=='repeated_work' and task.get('active_role')=='worker':
-        request=next((r for r in reversed(requests) if r.get('role')=='worker'),request)
-    detail={'version':1,'cause':explicit,'stage':stage or getattr(error,'stage',None) or (run.get('status') if run.get('status') in STAGES else 'reviewing' if task.get('active_role')=='reviewer' else item.get('status')),
-            'item_id':item.get('id'),'role':request.get('role') or task.get('active_role'),'model':request.get('model'),
-            'diagnostic_id':getattr(error,'diagnostic_id',None) or request.get('id')}
-    diagnostic=getattr(error,'safe_diagnostic',None)
-    if not diagnostic and explicit=='provider_connection' and code in TRANSPORT_ERRORS:
-        diagnostic={'kind':'transport','code':code}
-    if explicit=='repeated_work' and not diagnostic:
-        diagnostic=(task.get('pending_review') or {}).get('stop_diagnostic')
-        if not diagnostic and task.get('active_role')=='worker':
+        else:
+            if code == 'routing_unavailable' and ((task.get('route_unavailable') or {}).get('scope') in {'model', 'provider', 'connection', 'account'} or getattr(error, 'scope', None) in {'model', 'provider', 'connection', 'account'} or (task.get('route_unavailable') or {}).get('retry_at') or getattr(error, 'retry_at', None)):
+                explicit = 'provider_quota'
+            else:
+                explicit = CODES.get(code, 'unknown')
+    requests = task.get('request_metrics') or []; request = requests[-1] if requests else {}
+    previous = run.get('pause_detail') or {}
+    if explicit == 'unknown' and not getattr(error, 'safe_diagnostic', None) and previous and run.get('status') in ('paused', 'blocked') and request.get('id') and previous.get('diagnostic_id') == request.get('id'):
+        return public(run['pause_detail']) or public({'version': 1, 'cause': 'unknown'})
+    item = next((i for i in run.get('items', []) if i.get('id') == run.get('current_item_id')), {})
+    requests = task.get('request_metrics') or []; request = requests[-1] if requests else {}
+    if explicit == 'repeated_work' and task.get('active_role') == 'worker':
+        request = next((r for r in reversed(requests) if r.get('role') == 'worker'), request)
+    detail = {'version': 1, 'cause': explicit, 'stage': stage or getattr(error, 'stage', None) or (run.get('status') if run.get('status') in STAGES else 'reviewing' if task.get('active_role') == 'reviewer' else item.get('status')),
+              'item_id': item.get('id'), 'role': request.get('role') or task.get('active_role'), 'model': request.get('model'),
+              'diagnostic_id': getattr(error, 'diagnostic_id', None) or request.get('id')}
+    diagnostic = getattr(error, 'safe_diagnostic', None)
+    if not diagnostic and explicit == 'provider_connection' and code in TRANSPORT_ERRORS:
+        diagnostic = {'kind': 'transport', 'code': code}
+    if explicit == 'repeated_work' and not diagnostic:
+        diagnostic = (task.get('pending_review') or {}).get('stop_diagnostic')
+        if not diagnostic and task.get('active_role') == 'worker':
             from .coordinator_recovery import episode_key
-            reason=safe_text((task.get('pause_summary') or {}).get('blocker'))
+            reason = safe_text((task.get('pause_summary') or {}).get('blocker'))
             if reason:
-                diagnostic={'kind':'worker_stall','reason':reason,'saved_files':len(task.get('changes',[])),
-                            'assisted':any(e.get('key')==episode_key(task) for e in task.get('coordinator_recovery',[]))}
-    if isinstance(error,LimitExceeded):diagnostic={'kind':'limit','key':error.key,'used':error.used,'allowed':error.allowed}
-    if diagnostic:detail['diagnostic']=diagnostic
-    if explicit=='malformed_output' and not specific(diagnostic):
-        role=detail.get('role') or ('planner' if detail.get('stage')=='planning' else 'model')
-        detail['diagnostic']={'kind':'safe_message','message':'The %s returned an invalid response. %s remains unfinished; inspect the response failure and add a correction before retrying.' % (role,'Review' if role=='reviewer' else 'Planning' if role=='planner' else 'Work')}
-    detail['cooldown_scope']=getattr(error,'scope',None)
-    detail['retry_at']=getattr(error,'retry_at',None) or (task.get('route_unavailable') or {}).get('retry_at')
+                diagnostic = {'kind': 'worker_stall', 'reason': reason, 'saved_files': len(task.get('changes', [])),
+                              'assisted': any(e.get('key') == episode_key(task) for e in task.get('coordinator_recovery', []))}
+    if isinstance(error, LimitExceeded): diagnostic = {'kind': 'limit', 'key': error.key, 'used': error.used, 'allowed': error.allowed}
+    if diagnostic: detail['diagnostic'] = diagnostic
+    if explicit == 'malformed_output' and not specific(diagnostic):
+        role = detail.get('role') or ('planner' if detail.get('stage') == 'planning' else 'model')
+        detail['diagnostic'] = {'kind': 'safe_message', 'message': 'The %s returned an invalid response. %s remains unfinished; inspect the response failure and add a correction before retrying.' % (role, 'Review' if role == 'reviewer' else 'Planning' if role == 'planner' else 'Work')}
+    detail['cooldown_scope'] = getattr(error, 'scope', None) or (task.get('route_unavailable') or {}).get('scope')
+    detail['retry_at'] = getattr(error, 'retry_at', None) or (task.get('route_unavailable') or {}).get('retry_at')
     return public(detail)
 
 def for_task(task):
@@ -160,14 +164,15 @@ def for_task(task):
     Do not relabel a newer operator/permission/limit stop using an older error.
     This read-only projection preserves the original record for diagnostics.
     """
-    run=task.get('branch_run') or {}
-    if run.get('status') not in {'paused','blocked'}:return None
-    detail=public(run.get('pause_detail'))
-    request=(task.get('request_metrics') or [{}])[-1]
-    if (detail and detail['cause'] in {'unknown','provider_connection'}
-            and not detail.get('diagnostic') and task.get('error_code') in TRANSPORT_ERRORS
-            and request.get('id') and detail.get('diagnostic_id')==request['id']):
-        return classify(task=task,stage=detail.get('stage'))
+    run = task.get('branch_run') or {}
+    if run.get('status') not in {'paused', 'blocked'}: return None
+    detail = public(run.get('pause_detail'))
+    request = (task.get('request_metrics') or [{}])[-1]
+    if (detail and detail['cause'] in {'unknown', 'provider_connection'}
+            and not detail.get('diagnostic')
+            and (task.get('error_code') in TRANSPORT_ERRORS or (task.get('route_unavailable') or {}).get('scope') in {'model', 'provider'})
+            and request.get('id') and detail.get('diagnostic_id') == request['id']):
+        return classify(task=task, stage=detail.get('stage'))
     return detail
 
 def clear(run):run.pop('pause_detail',None)

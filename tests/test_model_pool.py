@@ -147,6 +147,22 @@ class FailoverTests(LocalCase):
         self.assertEqual(result['usage']['uncertain_requests'],1)
         self.assertFalse(result['route'].get('recovery'))
 
+    def test_model_cooldown_hands_off_to_next_eligible_model(self):
+        task=self.chat('remote')
+        task['check_command']=[sys.executable,'-m','unittest','discover','-v'];task['auto_approve_checks']=True
+        self.engine.store.save(task)
+        requests=self.responding([
+            ProviderError('Model cooling',code='gateway_cooldown',retry_after=40,scope='model'),
+            call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
+            call('checkpoint',{'summary':'Fixed clamp.'}),
+            call('review_decision',{'decision':'APPROVE','feedback':'Verified.'})
+        ],names=('openrouter/a','openrouter/b','openrouter/c'))
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'approved',result['error'])
+        self.assertEqual(result['providers']['worker']['model'],'openrouter/b')
+        self.assertEqual(result['providers']['reviewer']['model'],'openrouter/c')
+        self.assertTrue(any(e['kind']=='handoff' for e in result['events']))
+
     def responding(self, replies, names=('a','b','c','d')):
         self.engine.gateway.catalog.return_value['models']=[model(n) for n in names]
         queue=iter(replies);requests=[]
