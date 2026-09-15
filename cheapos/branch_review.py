@@ -144,6 +144,8 @@ def checkpoint(engine, runtime, args):
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
         task['pending_review']={'branch_candidate_id':current['id'],'review_requests':0}
     pending = task['pending_review']
+    pending['identity_scope']={'candidate_id':current['id'],'item_id':item['id'],
+                               'no_change':current['patch']=='','feature_parent':ctx['feature_parent']}
     messages.extend(copy.deepcopy(pending.get('messages', [])))
     if pending.get('history_partial'):
         messages.append({'role':'user','content':'Older review exchanges were omitted from this bounded history. The current candidate and checks above are authoritative. Read only context still needed for a decision.'})
