@@ -1065,6 +1065,9 @@ class Engine:
                     return {"steered": True, "running": True, "task": task, "operator_continue": task["operator_continue"]}
                 return self.operator_recovery(task_id, {"action":"retry", "message":cleaned})
             self.event(task, "steer", "User Guidance", cleaned)
+            # Worker and reviewer must receive the same ordered requirements.
+            # Append a new list so earlier checkpoint evidence stays immutable.
+            task["requests"] = task.get("requests", [task["prompt"]]) + [cleaned]
             task["steer_guidance"] = cleaned
             if runtime and runtime.thread and runtime.thread.is_alive():
                 runtime.steer_queue.append(cleaned)
