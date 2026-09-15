@@ -1325,25 +1325,50 @@ $('#composer-permissions').onclick=sessionPermissions;
   const restartWebapp=$('#restart-webapp');
   const restartBoth=$('#restart-webapp-omni');
   const restartOmniroute=$('#restart-omni');
-  async function callGatewayRefresh(){
-    try{await fetch('/api/gateway/refresh',{method:'POST'});}catch(e){console.warn('OmniRoute refresh failed',e);}
+  let busy=false;
+  async function restartRequest(path,post=false,timeout=10000){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeout);
+    try{
+      const response=await fetch(path,{cache:'no-store',signal:controller.signal,...(post?{
+        method:'POST',headers:{'Content-Type':'application/json','X-CheapOS-Token':state.token},body:JSON.stringify({})
+      }:{})});
+      if(!response.ok)throw new Error('Request failed ('+response.status+')');
+      return await response.json();
+    }finally{clearTimeout(timer);}
   }
-  const startRestart=async()=>{
-    modal.close();toast('Restarting cheapoS backend...');
-    let oldToken;
-    try{const b=await fetch('/api/bootstrap');if(b.ok){const d=await b.json();oldToken=d.token;}}catch(e){}
-    let res;
-    try{res=await fetch('/api/restart',{method:'POST',headers:{'Content-Type':'application/json','X-CheapOS-Token':state.token},body:JSON.stringify({})});}catch(e){toast('Restart failed: network error');return;}
-    if(!res.ok){toast('Restart failed ('+res.status+')');return;}
-    for(let i=0;i<30;i++){
-      await new Promise(r=>setTimeout(r,500));
-      try{const r=await fetch('/api/bootstrap');if(r.ok){const d=await r.json();if(d.app==='CheapOS'&&d.token&&d.token!==oldToken)return window.location.reload();}}catch(e){}
+  async function restartAction({refresh=false,restart=true}={}){
+    if(busy)return;
+    busy=true;modal.close();
+    const controls=[btn,restartWebapp,restartBoth,restartOmniroute].filter(Boolean);
+    controls.forEach(control=>control.disabled=true);
+    toast(refresh?'Refreshing OmniRoute...':'Restarting cheapoS backend...');
+    try{
+      if(refresh)await restartRequest('/api/gateway/refresh',true);
+      if(!restart){toast('OmniRoute connection refreshed');return;}
+      const oldToken=state.token;
+      if(typeof oldToken!=='string'||!oldToken)throw new Error('Refresh this page before restarting');
+      toast('Restarting cheapoS backend...');
+      await restartRequest('/api/restart',true);
+      for(let i=0;i<30;i++){
+        await new Promise(resolve=>setTimeout(resolve,500));
+        try{
+          const data=await restartRequest('/api/bootstrap',false,1500);
+          if(data.app==='CheapOS'&&typeof data.token==='string'&&data.token&&data.token!==oldToken){
+            window.location.reload();return;
+          }
+        }catch(error){/* A stopped or starting backend can briefly be unreachable. */}
+      }
+      throw new Error('Server did not come back. Refresh this page to reconnect');
+    }catch(error){
+      toast('Restart/refresh failed: '+(error.name==='AbortError'?'request timed out':error.message));
+    }finally{
+      busy=false;controls.forEach(control=>control.disabled=false);
     }
-    toast('Restart failed: server did not come back');
-  };
-  if(restartWebapp)restartWebapp.onclick=startRestart;
-  if(restartBoth)restartBoth.onclick=async()=>{modal.close();await callGatewayRefresh();startRestart();};
-  if(restartOmniroute)restartOmniroute.onclick=async()=>{modal.close();await callGatewayRefresh();toast('OmniRoute restarted');};
+  }
+  if(restartWebapp)restartWebapp.onclick=()=>restartAction();
+  if(restartBoth)restartBoth.onclick=()=>restartAction({refresh:true});
+  if(restartOmniroute)restartOmniroute.onclick=()=>restartAction({refresh:true,restart:false});
 })();
 
 $('#lifetime-usage-trigger').onclick=()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader});
