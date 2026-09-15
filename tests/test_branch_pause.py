@@ -137,3 +137,15 @@ class InternalFailureDetails(unittest.TestCase):
   self.assertEqual(detail['cause'],'controller_error')
   self.assertIn('internal execution error',detail['explanation'])
   self.assertEqual(detail['next_action'],'inspect')
+
+
+class IdentityPauseTests(unittest.TestCase):
+ def test_saved_unknown_identity_stop_is_explained_without_changing_record(self):
+  t={'error_code':'review_identity_unknown','active_role':'reviewer','request_metrics':[{'id':'review','role':'reviewer','model':'named-reviewer'}],
+     'branch_run':{'status':'paused','pause_detail':{'version':1,'cause':'unknown','stage':'reviewing','diagnostic_id':'review'}}}
+  result=pause.for_task(t)
+  self.assertEqual(result['cause'],'review_identity_unknown')
+  self.assertIn('Repeating this request cannot recover',result['explanation'])
+  self.assertEqual(t['branch_run']['pause_detail']['cause'],'unknown')
+  t['branch_run']['pause_detail']['cause']='operator'
+  self.assertEqual(pause.for_task(t)['cause'],'operator')

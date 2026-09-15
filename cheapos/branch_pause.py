@@ -18,10 +18,12 @@ TEMPLATES = {
  'repeated_review_dispute': ('Review disagreement needs a decision before more repair work.', 'review_dispute'),
  'review_context_unavailable': ('Final review needs candidate context that could not be obtained. Inspect the saved context-read diagnostic before retrying.', 'inspect'),
  'failed_checks': ('Verification checks failed. Inspect the recorded test results before changing or retrying the work.', 'inspect'),
+ 'review_identity_unknown': ('The actual model identity is missing for a worker or reviewer route. cheapoS cannot verify independent review from the saved evidence. Repeating this request cannot recover historical identity; inspect model provenance before continuing.', 'inspect'),
+ 'review_identity_conflict': ('The worker and reviewer resolved to the same model. Select a different verified reviewer before continuing.', 'models'),
  'controller_error': ('cheapoS encountered an internal execution error. Saved edits and usage are retained. This needs an app fix; changing your task instructions will not repair the error.', 'inspect'),
  'unknown': ('No safe specific diagnostic was recorded for this stop. Inspect the saved task details before continuing.', 'inspect'),
 }
-CODES = {'controller_error':'controller_error','gateway_cooldown':'provider_quota','http_429':'provider_quota',
+CODES = {'review_identity_unknown':'review_identity_unknown','review_identity_conflict':'review_identity_conflict','controller_error':'controller_error','gateway_cooldown':'provider_quota','http_429':'provider_quota',
  'endpoint_unavailable':'provider_connection','http_401':'provider_connection','http_403':'provider_connection','http_402':'provider_connection',
  'invalid_tool_arguments':'malformed_output','invalid_tool_envelope':'malformed_output','invalid_response_json':'malformed_output','invalid_stream_json':'malformed_output','stream_error':'malformed_output',
  'progress_limit':'repeated_work','worker_recovery_exhausted':'repeated_work','recovery_exhausted':'repeated_work',
@@ -180,7 +182,7 @@ def for_task(task):
     request = (task.get('request_metrics') or [{}])[-1]
     if (detail and detail['cause'] in {'unknown', 'provider_connection'}
             and not detail.get('diagnostic')
-            and (task.get('error_code') in TRANSPORT_ERRORS or (task.get('route_unavailable') or {}).get('scope') in {'model', 'provider'})
+            and (task.get('error_code') in TRANSPORT_ERRORS or task.get('error_code') in {'review_identity_unknown','review_identity_conflict'} or (task.get('route_unavailable') or {}).get('scope') in {'model', 'provider'})
             and request.get('id') and detail.get('diagnostic_id') == request['id']):
         return classify(task=task, stage=detail.get('stage'))
     return detail
@@ -190,7 +192,7 @@ def clear(run):run.pop('pause_detail',None)
 def apply(task,error=None,cause=None,stage=None):
     from . import branch_runs
     detail=classify(error,task,cause,stage);run=task['branch_run']
-    reason={'provider_quota':'missing_information','provider_connection':'missing_information','malformed_output':'recovery_exhausted','repeated_work':'recovery_exhausted','essential_clarification':'missing_information','repeated_review_dispute':'recovery_exhausted','unknown':'missing_information'}.get(detail['cause'],detail['cause'])
+    reason={'review_identity_unknown':'missing_information','review_identity_conflict':'missing_information','provider_quota':'missing_information','provider_connection':'missing_information','malformed_output':'recovery_exhausted','repeated_work':'recovery_exhausted','essential_clarification':'missing_information','repeated_review_dispute':'recovery_exhausted','unknown':'missing_information'}.get(detail['cause'],detail['cause'])
     run.update(status='paused',pause_reason=reason,pause_detail=detail)
     task.update(status='paused',error=detail['explanation'],stream=None,check_stream=None)
     branch_runs.append_event(run,'paused',{'reason':reason,'pause_detail':detail})
