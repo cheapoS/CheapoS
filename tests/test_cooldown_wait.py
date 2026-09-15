@@ -54,7 +54,7 @@ class CooldownWaitTests(LocalCase):
         self.assertFalse(self.engine.route_wait_info(runtime,RoutingPause('Unknown'))['can_wait'])
         self.assertFalse(self.engine.route_wait_info(runtime,RoutingPause('Too late',time.time()+99999,'provider'))['can_wait'])
         task['progress_state']['wait_cycles']=3
-        self.assertFalse(self.engine.route_wait_info(runtime,RoutingPause('Soon',time.time()+1,'provider'))['can_wait'])
+        self.assertTrue(self.engine.route_wait_info(runtime,RoutingPause('Soon',time.time()+1,'provider'))['can_wait'])
         with self.assertRaisesRegex(ValueError,'No bounded known cooldown'):
             self.engine.start(task['id'],{'retry_when_available':True})
 
@@ -81,12 +81,20 @@ class CooldownWaitTests(LocalCase):
         self.assertLess(saved['route_unavailable']['remaining_seconds'],30)
         self.assertEqual(saved['progress_state']['wait_cycles'],1)
 
-    def test_probe_allowance_is_not_renewed_by_another_selection(self):
-        task=self.chat('remote');runtime=Runtime(task)
-        task['progress_state']['route_probes']={'worker':4}
-        with patch.object(self.engine,'request') as request:
-            with self.assertRaises(RoutingPause):select_remote(self.engine,runtime)
-        request.assert_not_called()
+    def test_probe_round_advances_to_fifth_route_without_resetting_usage(self):
+        from cheapos.providers import ProviderError
+        from test_engine import call
+        clock=FakeClock();task=self.chat('remote');runtime=Runtime(task);runtime.started=clock.now();runtime.stop=clock
+        runtime.route_autorecover=True
+        self.engine.gateway.catalog.return_value['models']=[test_routing.model(str(i)) for i in range(5)]
+        responses=[ProviderError('Unsupported route',code='http_400')]*4+[call('routing_ready',{'marker':PROBE_MARKER})]
+        with patch('cheapos.engine.time.monotonic',clock.now),patch('cheapos.engine.time.time',clock.now),patch.object(self.engine,'request',side_effect=responses) as request:
+            select_remote(self.engine,runtime)
+        self.assertEqual(request.call_count,5)
+        self.assertEqual(task['progress_state']['route_probes']['worker'],5)
+        self.assertEqual(task['providers']['worker']['model'],'4')
+        self.assertEqual(clock.now(),1030)
+        self.assertEqual(task['route_schedule']['worker']['round'],2)
 
     def test_exactly_one_probe_after_known_provider_expiry(self):
         from cheapos.providers import ProviderError
@@ -110,15 +118,20 @@ class CooldownWaitTests(LocalCase):
         from test_engine import call
         task=self.chat('remote');task.update(check_command=[sys.executable,'-m','unittest','discover','-v'],auto_approve_checks=True)
         self.engine.store.save(task)
-        test_model_pool.FailoverTests.responding(self,[call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),call('checkpoint',{'summary':'Fixed'}),ProviderError('Cooling',code='gateway_cooldown',retry_after=2,scope='provider')],names=('a','b'))
-        self.engine.start(task['id']);paused=self.finish(task)
-        self.assertTrue(paused['pending_review'])
-        self.assertTrue(paused['route_unavailable']['can_wait'])
-        requests=test_model_pool.FailoverTests.responding(self,[call('review_decision',{'decision':'APPROVE','feedback':'Verified'})],names=('a','b'))
-        with patch('cheapos.engine.time.time',return_value=paused['route_unavailable']['retry_at']+1):
-            self.engine.start(task['id'],{'retry_when_available':True});finished=self.finish(task)
+        # Advance only the cooldown wait, without sleeping or restarting review.
+        original_wait=self.engine.wait_for_route
+        clock=FakeClock()
+        responses=[call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
+                   call('checkpoint',{'summary':'Fixed'}),ProviderError('Cooling',code='gateway_cooldown',retry_after=2,scope='provider'),
+                   call('review_decision',{'decision':'APPROVE','feedback':'Verified'})]
+        requests=test_model_pool.FailoverTests.responding(self,responses,names=('a','b'))
+        def advance(runtime):
+            clock.value=runtime.task['route_unavailable']['retry_at']+1
+            original_wait(runtime)
+        with patch('cheapos.engine.time.time',clock.now),patch.object(self.engine,'wait_for_route',side_effect=advance):
+            self.engine.start(task['id']);finished=self.finish(task)
         self.assertEqual(finished['status'],'approved',finished['error'])
-        self.assertEqual(finished['worker_turns'],paused['worker_turns'])
-        self.assertEqual(finished['checks'],paused['checks'])
+        self.assertEqual(len(finished['checks']),1)
         self.assertEqual(finished['iterations'],1)
-        self.assertTrue(all(request['role']=='reviewer' for request in requests))
+        self.assertEqual(sum(e['kind']=='tool' and e['title']=='replace text' for e in finished['events']),1)
+        self.assertEqual([r['role'] for r in requests if r['messages']!=test_routing.PROBE_MESSAGES],['worker','worker','reviewer','reviewer'])

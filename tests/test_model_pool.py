@@ -85,7 +85,7 @@ class FailoverTests(LocalCase):
         self.engine.gateway.catalog.return_value['models']=[model('openrouter/a'),model('openrouter/b')]
         error=ProviderError('The provider daily free-model quota is exhausted.',code='gateway_cooldown',scope='provider')
         with patch.object(self.engine,'request',side_effect=error) as request:
-            with self.assertRaisesRegex(RoutingPause,'reported reset'):select_remote(self.engine,runtime)
+            with self.assertRaisesRegex(RoutingPause,'automatically'):select_remote(self.engine,runtime)
             self.assertEqual(request.call_count,1)
         self.assertEqual(runtime.failed_models,set())
         self.assertFalse(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/b',task['route']['access_policy']['connection_revision'])['retry_known'])
@@ -137,18 +137,18 @@ class FailoverTests(LocalCase):
     def test_actual_provider_cooldown_preserves_pinned_model_and_accounting(self):
         task=self.chat('remote')
         requests=self.responding([ProviderError('Provider cooling',code='gateway_cooldown',retry_after=120,scope='provider')],names=('openrouter/a','openrouter/b'))
-        self.engine.start(task['id']);result=self.finish(task)
+        self.engine.start(task['id'])
+        from test_engine import wait_for
+        wait_for(lambda:self.engine.store.get(task['id'])['status']=='waiting_retry')
+        self.engine.stop(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'paused',result['error'])
         self.assertEqual(result['providers']['worker']['model'],'openrouter/a')
         self.assertEqual(result['usage']['uncertain_requests'],1)
         self.assertEqual(len(requests),2)
-        self.engine.start(task['id']);result=self.finish(task)
-        self.assertEqual(len(requests),2)
-        self.assertEqual(result['usage']['uncertain_requests'],1)
         self.assertEqual(result['route']['recovery']['worker']['from'],'openrouter/a')
-        self.assertEqual(result['route']['availability_recovery']['worker']['providers'],['openrouter'])
+        self.assertEqual(result['route']['availability_recovery']['worker']['providers'],[])
 
-    def test_model_cooldown_hands_off_to_next_eligible_provider(self):
+    def test_model_cooldown_does_not_exclude_healthy_provider_siblings(self):
         task=self.chat('remote')
         task['check_command']=[sys.executable,'-m','unittest','discover','-v'];task['auto_approve_checks']=True
         self.engine.store.save(task)
@@ -160,8 +160,8 @@ class FailoverTests(LocalCase):
         ],names=('openrouter/a','openrouter/b','zprovider/b','openrouter/c'))
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'approved',result['error'])
-        self.assertEqual(result['providers']['worker']['model'],'zprovider/b')
-        self.assertEqual(result['providers']['reviewer']['model'],'openrouter/b')
+        self.assertEqual(result['providers']['worker']['model'],'openrouter/b')
+        self.assertEqual(result['providers']['reviewer']['model'],'openrouter/c')
         self.assertTrue(any(e['kind']=='handoff' for e in result['events']))
 
     def responding(self, replies, names=('a','b','c','d')):
@@ -203,7 +203,7 @@ class FailoverTests(LocalCase):
 
     def test_two_handoffs_remain_exhausted_on_unchanged_resume(self):
         task=self.chat('remote')
-        requests=self.responding([ProviderError('Broken',code='stream_error') for _ in range(3)])
+        requests=self.responding([ProviderError('Broken',code='invalid_response_json') for _ in range(3)])
         self.engine.start(task['id']);paused=self.finish(task)
         self.assertEqual(paused['status'],'paused');self.assertEqual(paused['error_code'],'routing_unavailable')
         self.assertEqual(len([r for r in requests if r['messages']!=PROBE_MESSAGES]),3)
@@ -251,7 +251,7 @@ class FailoverTests(LocalCase):
         task=self.chat('remote');task['check_command']=[sys.executable,'-m','unittest','discover','-v'];task['auto_approve_checks']=True
         self.engine.store.save(task)
         self.responding([call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
-            call('checkpoint',{'summary':'Fixed'}),ProviderError('Broken',code='stream_error')],names=('a','b'))
+            call('checkpoint',{'summary':'Fixed'}),ProviderError('Broken',code='invalid_response_json')],names=('a','b'))
         self.engine.start(task['id']);paused=self.finish(task)
         self.assertEqual(paused['status'],'paused',paused['error']);self.assertTrue(paused['pending_review'])
         self.engine=Engine(self.engine.store.root)

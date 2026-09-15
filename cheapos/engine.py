@@ -404,6 +404,7 @@ class Engine:
         self.store = Store(data_directory)
         self.lock = threading.RLock()
         self.runtimes = {}
+        self.route_restore_stop = threading.Event()
         from .preview import Previews
         self.previews = Previews(self)
         from .admission import Admission
@@ -421,6 +422,40 @@ class Engine:
         self.readiness = ReadinessManager(self)
         from .branch_controller import BranchController
         self.branch = BranchController(self)
+
+    def restore_route_waits(self):
+        """Only resume saved automatic route waits, never arbitrary interrupted work."""
+        def restore():
+            while not self.route_restore_stop.is_set():
+                with self.store.lock:
+                    pending = [t for t in self.store.tasks.values() if t.get('route_resume_on_start')]
+                if not pending:
+                    return
+                for saved in pending:
+                    with self.lock:
+                        if self.route_restore_stop.is_set(): return
+                        task = self.store.get(saved['id'])
+                        if not task.get('route_resume_on_start'): continue
+                        if self.startup.busy(): continue
+                        try:
+                            task['route_resume_on_start'] = False
+                            self.store.save(task)
+                            if 'branch_run' in task:
+                                result = self.branch.resume(task['id'], {})
+                                if result.get('needs_consent'):
+                                    task['error'] = 'Route recovery is ready. Open Review & start to renew the verification command permission after restart.'
+                                    self.store.save(task)
+                            else:
+                                self.start(task['id'], {'retry_when_available': True})
+                        except ValueError as error:
+                            # Admission is temporary; invalid authority/time needs a decision.
+                            if 'occupied' in str(error):
+                                task['route_resume_on_start'] = True
+                            else:
+                                task['error'] = 'Automatic route recovery needs attention: ' + str(error)
+                            self.store.save(task)
+                self.route_restore_stop.wait(1)
+        threading.Thread(target=restore, daemon=True, name='route-wait-restore').start()
 
     def configuration(self):
         result = copy.deepcopy(self.config)
@@ -828,6 +863,7 @@ class Engine:
                 task["action_pending"] = False
                 task["loop_guidance"] = None
             task.pop("pause_summary", None)
+            task["route_resume_on_start"] = False
             task["status"] = "running"
             task["error"] = None
             task["error_code"] = None
@@ -871,7 +907,13 @@ class Engine:
             self.require_active_task(task_id)
             runtime = self.runtimes.get(task_id)
             if not runtime or not runtime.thread.is_alive():
+                task = self.store.get(task_id)
+                if task.get('route_resume_on_start'):
+                    task['route_resume_on_start'] = False
+                    self.store.save(task)
+                    return {'stopping': True}
                 raise ValueError("Task is not running")
+            runtime.task["route_resume_on_start"] = False
             runtime.stop.set()
             runtime.task["status"] = "stopping"
             self.event(runtime.task, "state", "Stop requested; waiting for the current operation to finish")
@@ -1155,7 +1197,11 @@ class Engine:
         self.previews.shutdown()
         self.readiness.shutdown()
         self.startup.shutdown()
+        self.route_restore_stop.set()
         for runtime in list(self.runtimes.values()):
+            if runtime.task.get('status') == 'waiting_retry' and runtime.task.get('retry_wait_enabled'):
+                runtime.task['route_resume_on_start'] = True
+                self.store.save(runtime.task)
             runtime.stop.set()
             runtime.approval.set()
         self.gateway.shutdown()
@@ -1712,16 +1758,15 @@ class Engine:
                 attempted = False
             if recovery:
                 if unavailable:
-                    if provider_attempts['handoffs'] >= provider_recovery.MAX_PROVIDER_HANDOFFS and not developing(task):
-                        raise RoutingPause('Four provider failovers were used for this request. Saved work is intact; inspect provider availability before continuing.')
                     failed_provider = provider_recovery.provider(recovery['from'])
                     if failed_provider not in provider_attempts['providers']:
                         provider_attempts['providers'].append(failed_provider)
-                    self.event(task, 'routing', 'Provider unavailable; trying another provider', {
+                    self.event(task, 'routing', 'Route unavailable; trying another eligible route', {
                         'role': role, 'model': recovery['from'],
-                        'summary': 'Saved files, checks and review evidence will continue on another eligible provider.'})
+                        'summary': 'Saved files, checks and review evidence will continue on another eligible route.'})
                     self.store.save(task)
-                runtime.failed_models.add(recovery["from"])
+                if not unavailable:
+                    runtime.failed_models.add(recovery["from"])
                 self.event(task, "routing", "Finding another free " + role, {"model": recovery["from"], "error": recovery["reason"], "role": role})
                 select_remote(self, runtime, role, replace=True)
                 if unavailable:
@@ -1741,7 +1786,8 @@ class Engine:
             # Revalidate pinned choices against the refreshed catalog, including prices.
             catalog = self.gateway.catalog(fresh=True)
             if catalog["status"] != "ready":
-                raise RoutingPause("The free model catalog is unavailable. Saved work is kept; reconnect OmniRoute and resume.")
+                select_remote(self, runtime, role, replace=True)
+                continue
             model = next((m for m in catalog["models"] if m["id"] == cfg["model"]), None)
             from . import access_policy
             eff_settings = access_policy.effective_settings(task, self.gateway.settings)
@@ -1790,7 +1836,8 @@ class Engine:
                     continue
                 if error.code == "gateway_cooldown" and getattr(error, "scope", None) in {'account', 'connection'}:
                     self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
-                    raise RoutingPause(str(error) + ' Inspect this gateway connection before retrying.', scope=error.scope) from None
+                    select_remote(self, runtime, role, replace=True)
+                    continue
                 if error.code not in RECOVERABLE_CODES and error.code != 'gateway_cooldown':
                     raise
                 attempted = True
@@ -2577,10 +2624,7 @@ class Engine:
         remaining = None if measuring(task) else max(0, task['limits'].get('run_minutes', 15) * 60 - (time.monotonic() - runtime.started))
         retry_at = getattr(error, 'retry_at', None)
         role = 'reviewer' if task.get('pending_review') else (task.get('route') or {}).get('waiting_for', task['active_role'])
-        recovery = progress.state(task)
-        needs_probe = not task['providers'].get(role) or bool((task.get('route') or {}).get('recovery', {}).get(role))
-        allowance = developing(task) or (recovery.get('wait_cycles', 0) < 3 and (not needs_probe or recovery.get('route_probes', {}).get(role, 0) < 4))
-        can_wait = bool(automatic(task, role) and retry_at and (remaining is None or 0 <= max(0, retry_at-time.time()) < remaining) and allowance)
+        can_wait = bool(automatic(task, role) and retry_at and (remaining is None or 0 <= max(0, retry_at-time.time()) < remaining))
         return {'scope': getattr(error, 'scope', None), 'retry_at': retry_at, 'remaining_seconds': remaining,
                 'can_wait': can_wait, 'role': role, 'message': str(error)}
 
@@ -2588,16 +2632,14 @@ class Engine:
         task = runtime.task
         info = task.get('route_unavailable') or {}
         if not info.get('can_wait') or not info.get('retry_at'):
-            raise ProgressPause('No known retry fits the remaining time and attempt allowance. Inspect Models before retrying.')
+            raise ProgressPause('No retry fits the remaining work time. Review the time allowance in Work setup.')
         recovery = progress.state(task)
-        if recovery.get('wait_cycles', 0) >= 3 and not developing(task):
-            raise ProgressPause('Three scheduled route retries were used for this request. Inspect Models and provide a new instruction.')
         recovery['wait_cycles'] = recovery.get('wait_cycles', 0) + 1
         task['status'] = 'waiting_retry'
         task['stream'] = None
         task['route_wait'] = {'retry_at': info['retry_at'], 'started_at': time.time(), 'scope': info.get('scope')}
         waiting_started=time.monotonic()
-        self.event(task, 'routing', 'Waiting for a free route', task['route_wait'])
+        self.event(task, 'routing', 'Waiting for an authorized route; retrying automatically', task['route_wait'])
         try:
             while True:
                 if runtime.stop.is_set():
@@ -2608,16 +2650,18 @@ class Engine:
                     break
                 runtime.stop.wait(min(.25, delay))
             task['status'] = 'running'
+            task['route_resume_on_start'] = False
             task['error'] = None
             task['error_code'] = None
-            self.event(task, 'routing', 'Cooldown ended; checking route eligibility', {'role': info.get('role')})
+            self.event(task, 'routing', 'Checking route availability again', {'role': info.get('role')})
         finally:
             runtime.metric_cooldown_wait=getattr(runtime,'metric_cooldown_wait',0)+time.monotonic()-waiting_started
             info['remaining_seconds'] = None if measuring(task) else max(0, task['limits'].get('run_minutes', 15) * 60 - (time.monotonic()-runtime.started))
-            info['can_wait'] = bool((info['remaining_seconds'] is None or info['remaining_seconds'] > max(0, info['retry_at']-time.time())) and (developing(task) or recovery.get('wait_cycles',0) < 3))
+            info['can_wait'] = bool((info['remaining_seconds'] is None or info['remaining_seconds'] > max(0, info['retry_at']-time.time())))
             task['route_wait'] = None
 
     def _run(self, runtime):
+        runtime.route_autorecover = True
         task=runtime.task;run_id=uuid.uuid4().hex;task['metric_run_id']=run_id;started=time.monotonic()
         runtime.metric_operator_wait=0;runtime.metric_cooldown_wait=0
         try:self._run_with_wait(runtime)
@@ -2962,6 +3006,7 @@ class Engine:
             task["error"] = str(error)
             if isinstance(error, RoutingPause):
                 task['route_unavailable'] = self.route_wait_info(runtime, error)
+                task['retry_wait_enabled'] = task['route_unavailable']['can_wait']
             self.refresh_changes(task)
             progress.observe(task)
             task['pause_summary'] = progress.pause_summary(task, error)

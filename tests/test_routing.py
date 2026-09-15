@@ -103,9 +103,11 @@ class RoutingTests(LocalCase):
     def test_offline_gateway_pauses_delegation_without_local_edits(self):
         task=self.chat();self.engine.gateway.catalog.return_value['status']='offline'
         requests=self.responses([call('delegate_work',{'summary':'Edit the file.'})])
-        self.engine.start(task['id']);result=self.finish(task)
+        self.engine.start(task['id'])
+        from test_engine import wait_for
+        wait_for(lambda:self.engine.store.get(task['id'])['status']=='waiting_retry')
+        self.engine.stop(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'paused')
-        self.assertEqual(result['error_code'],'routing_unavailable')
         self.assertEqual(result['changes'],[])
         self.assertEqual(len(requests),1)
 
@@ -173,8 +175,9 @@ class RoutingTests(LocalCase):
         task['route']['preferred']['worker']='a:free';self.engine.store.save(task)
         self.engine.gateway.catalog.return_value['models']=[model(n) for n in names]
         requests=self.responses([call('checkpoint',{'summary':'Ready.'})],probe_fail=set(names[1:]))
-        self.engine.start(task['id']);result=self.finish(task)
-        self.assertEqual(result['error_code'],'routing_unavailable')
+        with patch.object(self.engine,'wait_for_route',side_effect=InterruptedError('Trial paused at round boundary')):
+            self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'paused')
         self.assertEqual(result['providers']['worker']['model'],'a:free')
         self.assertEqual(len([r for r in requests if r['role']=='reviewer']),4)
         self.assertEqual(len(result['route']['failures']),4)
@@ -184,7 +187,8 @@ class RoutingTests(LocalCase):
     def test_probe_attempts_are_bounded(self):
         task=self.chat('remote');self.engine.gateway.catalog.return_value['models']=[model(str(i)) for i in range(8)]
         requests=self.responses([],probe_fail=set(str(i) for i in range(8)))
-        self.engine.start(task['id']);result=self.finish(task)
+        with patch.object(self.engine,'wait_for_route',side_effect=InterruptedError('Trial paused at round boundary')):
+            self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'paused');self.assertEqual(len(requests),4)
 
     def test_all_local_never_discovers_or_dispatches_remote_models(self):

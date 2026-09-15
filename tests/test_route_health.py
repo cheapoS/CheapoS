@@ -23,6 +23,7 @@ class RouteHealthTests(unittest.TestCase):
               'route':{'base_url':URL,'availability_recovery':{'reviewer':{'providers':['down'],'handoffs':0}}}}
         with tempfile.TemporaryDirectory() as directory:
             pool=FreeModelPool(directory)
+            pool.record(URL,'down/one','reviewer',error=ProviderError('Cooling',code='gateway_cooldown',scope='provider',retry_after=120))
             gateway=SimpleNamespace(settings={},pool=pool,matches=lambda url:True,
                 catalog=lambda **kw:{'status':'ready','models':models})
             response={'tool_calls':[{'id':'probe','function':{'name':'routing_ready',

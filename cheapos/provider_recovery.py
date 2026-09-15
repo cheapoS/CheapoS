@@ -4,12 +4,12 @@ All dispatches retain their usage/request reservations. These helpers only stop
 outages consuming the allowance intended for substantive review exchanges.
 """
 OUTAGES = {'gateway_cooldown', 'http_429', 'http_408', 'http_500', 'http_502',
-           'http_503', 'http_504', 'model_connection', 'model_timeout', 'stream_timeout'}
-MAX_PROVIDER_HANDOFFS = 4
+           'http_503', 'http_504', 'model_connection', 'model_timeout', 'stream_timeout', 'stream_error', 'stream_interrupted'}
 
 
 def provider(model):
-    return model.split('/', 1)[0]
+    # These transport aliases share the underlying provider's outage scope.
+    return model.removeprefix('no-think/').split('/', 1)[0]
 
 
 def outage(task, role, recovery):

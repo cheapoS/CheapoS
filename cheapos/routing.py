@@ -4,7 +4,7 @@ import copy
 import math
 import time
 
-from . import access_policy, route_health, routing_trace
+from . import access_policy, route_health, routing_trace, route_schedule
 from .development import enabled as developing
 from .providers import ProviderError, is_local_ollama, validate_provider
 
@@ -36,6 +36,13 @@ class RoutingPause(Exception):
         super().__init__(message)
         self.retry_at = retry_at
         self.scope = scope
+
+
+def catalog_pause(status):
+    if status == 'auth_required':
+        return RoutingPause('OmniRoute needs a valid client API key. Open Models and update the gateway key; saved work is kept.')
+    return RoutingPause('OmniRoute is temporarily unavailable. Saved work is queued for an automatic retry.',
+                        retry_at=time.time() + route_schedule.ROUND_SECONDS, scope='connection')
 
 
 def execution_from(value):
@@ -145,6 +152,25 @@ def setup_task(task, execution, config, gateway):
 
 
 def select_remote(engine, runtime, role="worker", replace=False):
+    while True:
+        try:
+            return _select_remote(engine, runtime, role, replace)
+        except RoutingPause as error:
+            if not getattr(runtime, 'route_autorecover', False):
+                raise
+            info = engine.route_wait_info(runtime, error)
+            if not info['can_wait']:
+                raise
+            task = runtime.task
+            previous_status = task['status']
+            task['route_unavailable'] = info
+            task['retry_wait_enabled'] = True
+            engine.wait_for_route(runtime)
+            task['retry_wait_enabled'] = False
+            task['status'] = previous_status
+
+
+def _select_remote(engine, runtime, role="worker", replace=False):
     """Find one needed role; each candidate is probed at most once per selection."""
     task, gateway = runtime.task, engine.gateway
     route = task["route"]
@@ -163,7 +189,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
         raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Local work will not start as a fallback.")
     catalog = gateway.catalog(fresh=True)
     if catalog["status"] != "ready":
-        raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Your saved work is kept.")
+        raise catalog_pause(catalog["status"])
     # Read-only planning does not reserve a model or make it a patch author.
     other = "worker" if role == "reviewer" else "reviewer" if role == "worker" else None
     used = {task["providers"][other]["model"]} if other and task["providers"].get(other) else set()
@@ -176,12 +202,16 @@ def select_remote(engine, runtime, role="worker", replace=False):
     used.update(task.get('branch_run',{}).get('implementation_recovery',{}).get('failed_models',[]))
     connection_revision=(route.get('access_policy') or {}).get('connection_revision')
     from .provider_recovery import provider
-    unavailable = route.get('availability_recovery', {}).get(role, {}).get('providers', [])
+    # Pool records carry actual outage scope and expiry. Legacy request-level
+    # provider exclusions must not survive recovery.
+    unavailable = []
+    route.setdefault('availability_recovery', {}).setdefault(role, {'handoffs':0,'providers':[]})['providers'] = []
+    round_state = route_schedule.begin(task, role)
     rejected_probes = route.setdefault('rejected_probes', {})
     candidates = []
     for model in catalog['models']:
         probe_key = role + ':' + route_health.probe_identity(route['base_url'], model, connection_revision)
-        if probe_key in rejected_probes:
+        if route_schedule.rejected(rejected_probes.get(probe_key)):
             used.add(model['id'])
             routing_trace.candidate(trace, model['id'], 'probe_rejected')
             continue
@@ -210,7 +240,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
             continue
         identity = route_health.probe_identity(route['base_url'], model, connection_revision)
         cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
-        if model['id'] in tried or (not developing(task) and not cached and probes.get(role, 0) >= 4): continue
+        if model['id'] in tried or (not cached and round_state['probes'] >= route_schedule.BATCH_SIZE): continue
         tried.add(model['id'])
         cfg = validate_provider({"gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
                                  "input_rate": 0, "output_rate": 0}, role)
@@ -223,7 +253,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
             if not cached:
                 owner, pending = gateway.pool.claim_probe(identity)
                 if pending is None and not owner:
-                    raise RoutingPause('Four connection checks are already in flight. Retry after they finish; no probe was dispatched.', scope='probe_capacity')
+                    raise RoutingPause('Connection checks are busy. Your task will retry automatically.', retry_at=time.time()+route_schedule.ROUND_SECONDS, scope='probe_capacity')
                 try:
                     if not owner:
                         routing_trace.candidate(trace, model['id'], 'shared_probe')
@@ -239,6 +269,7 @@ def select_remote(engine, runtime, role="worker", replace=False):
                         if not cached:
                             routing_trace.candidate(trace, model['id'], 'probe_required')
                             probes[role] = probes.get(role, 0) + 1
+                            round_state['probes'] += 1
                             message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose='probe')
                             route_health.validate_probe(message, engine.parse_call)
                             gateway.pool.record(route['base_url'], model['id'], role, probe=True,
@@ -268,15 +299,12 @@ def select_remote(engine, runtime, role="worker", replace=False):
             if candidate_rejected:
                 classification['scope'] = 'model'
                 classification['action'] = f"The connection probe was rejected for {model['id']}. Trying another authorized candidate; this is not a model quality finding."
-                rejected_probes[role + ':' + identity] = {'model': model['id'], 'code': error.code}
+                rejected_probes[role + ':' + identity] = {'model': model['id'], 'code': error.code, 'retry_at': time.time()+route_schedule.REJECTED_SECONDS}
                 while len(rejected_probes) > 256:
                     rejected_probes.pop(next(iter(rejected_probes)))
                 used.add(model['id'])
             cooldown = classification['category'] == 'rate_limit_quota'
             if classification['quality_impact']: runtime.failed_models.add(model['id'])
-            if classification['category'] in {'rate_limit_quota', 'transient_provider'}:
-                unavailable = route.setdefault('availability_recovery', {}).setdefault(role, {'handoffs':0,'providers':[]})['providers']
-                if provider(model['id']) not in unavailable: unavailable.append(provider(model['id']))
             gateway.pool.record(route['base_url'], model['id'], role, error=error, connection_revision=connection_revision,
                                 failure_context={'caller_error':isinstance(error, ValueError)})
             failure = {'model':model['id'], 'role':role, 'error':classification['action'],
@@ -290,10 +318,13 @@ def select_remote(engine, runtime, role="worker", replace=False):
             engine.event(task, 'routing', 'Provider is cooling down' if cooldown else 'Model check failed', failure)
             engine.store.save(task)
             if classification['scope'] in {'request','connection','account'}:
-                raise RoutingPause(classification['action'], scope=classification['scope']) from None
+                retry = time.time() + (getattr(error, 'retry_after', None) or route_schedule.ROUND_SECONDS) if cooldown else None
+                raise RoutingPause(classification['action'], retry_at=retry, scope=classification['scope']) from None
     provider_waits = [gateway.pool.observation(route["base_url"], m["id"], connection_revision) for m in catalog["models"]
                       if access_policy.eligible(m, route.get('access_policy')) and not m.get("local") and m["id"] not in used]
-    waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") in {"provider", "model"} and h.get("retry_known") and h["cooling_down"]]
+    waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") in {"provider", "model", "account", "connection"} and h.get("retry_known") and h["cooling_down"]]
+    if round_state['probes'] >= route_schedule.BATCH_SIZE and candidates:
+        raise RoutingPause('Checking more authorized routes automatically after a short backoff.', retry_at=route_schedule.retry_at(round_state), scope='probe_capacity')
     if waits:
         seconds = max(1, math.ceil(min(waits) - time.time()))
         scope = "provider" if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits) else "model"
@@ -301,16 +332,13 @@ def select_remote(engine, runtime, role="worker", replace=False):
         raise RoutingPause(message, retry_at=min(waits), scope=scope)
     if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits):
         reason = next((h.get('last_error') for h in provider_waits if h.get('cooldown_scope') == 'provider' and h['cooling_down'] and h.get('last_error')), 'The provider is cooling down without a known retry time.')
-        raise RoutingPause(reason + " Inspect Models or retry manually later.", scope="provider")
-    if not developing(task) and probes.get(role, 0) >= 4:
-        raise RoutingPause("Four eligible " + role + " probes were used for this request. Inspect Models and provide a new instruction; Resume does not renew probe attempts.", scope="probe_limit")
-    if rejected_probes:
-        raise RoutingPause('No other authorized candidate passed its connection check. Rejected probes are remembered for this connection and model configuration; update the route configuration or enable another eligible model. Saved work and checks are kept.', scope='model')
-    if replace:
-        raise RoutingPause("No different eligible " + role + " passed the tool check. Failed models are temporarily cooling down. Your chat, files, checks, and usage are saved; resume to check availability again or inspect Models.")
-    if role == "reviewer":
-        raise RoutingPause("Your changes are saved, but a different eligible reviewer is not available yet. Check the model results below or enabled providers in OmniRoute, then resume to retry review without repeating the edits.")
-    raise RoutingPause("No eligible worker passed the tool check. Check the model results below or enabled providers in OmniRoute, then resume. No project work was dispatched and no local or paid fallback was used.")
+        raise RoutingPause(reason + " Checking availability again automatically.", retry_at=time.time()+route_schedule.ROUND_SECONDS, scope="provider")
+    allowed = [m for m in catalog['models'] if access_policy.eligible(m, route.get('access_policy')) and not m.get('local')]
+    if allowed and all(m['id'] in runtime.failed_models or (role == 'reviewer' and m['id'] in used) for m in allowed) and not any(route_schedule.rejected(v) for v in rejected_probes.values()):
+        raise RoutingPause('No eligible independent model remains after response failures. Choose another model in Models; saved work and passing checks are kept.')
+    retry_times = [v['retry_at'] for v in rejected_probes.values() if route_schedule.rejected(v)]
+    retry = min(retry_times) if retry_times else time.time() + route_schedule.ROUND_SECONDS
+    raise RoutingPause('No authorized route is ready yet. Saved work is queued; route availability will be checked automatically.', retry_at=retry, scope='model')
 
 
 def coordinator_messages(task):

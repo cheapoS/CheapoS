@@ -309,7 +309,7 @@ class BranchController:
             runtime=Runtime(task)
             runtime.branch_authority=lambda:self.validate_authority(task,run)
             task.pop('operator_continue',None)
-            task.update(status='running',error=None,error_code=None,stream=None,check_stream=None,pending_approval=None)
+            task.update(status='running',route_resume_on_start=False,error=None,error_code=None,stream=None,check_stream=None,pending_approval=None)
             self.engine.store.save(task)
             self.engine.runtimes[task_id]=runtime
             runtime.thread=threading.Thread(target=self.execute,args=(runtime,),daemon=True)
@@ -367,6 +367,7 @@ class BranchController:
         self.engine._run_with_wait(runtime)
 
     def execute(self, runtime):
+        runtime.route_autorecover = True
         from .engine import now, OperatorRedirect
         import time
         task=runtime.task;run=task['branch_run']

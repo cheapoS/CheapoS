@@ -112,7 +112,8 @@ class FreeModelPool:
 
     @staticmethod
     def provider_key(model):
-        return "\0provider/" + model.split("/", 1)[0]
+        from .provider_recovery import provider
+        return "\0provider/" + provider(model)
 
     def record(self, endpoint, model, role, *, error=None, seconds=None, probe=False, connection_revision=None, probe_identity=None, failure_context=None):
         with self.lock:
@@ -134,7 +135,9 @@ class FreeModelPool:
                 field = 'failures' if failure['quality_impact'] else 'availability_failures'
                 failures = record.get(field, 0) + 1
                 record[field] = failures
-                delay = 0 if failure['category'] == 'malformed_request' else min(3600, 900 * 2 ** min(failures - 1, 2))
+                delay = (0 if failure['category'] == 'malformed_request' else
+                         min(120, 30 * 2 ** min(failures - 1, 2)) if failure['category'] == 'transient_provider' else
+                         min(3600, 900 * 2 ** min(failures - 1, 2)))
                 record.update(retry_at=time.time() + delay, last_error=failure['action'], retry_known=False)
                 if scope in {'connection', 'account'}: record['cooldown_scope'] = scope
             else:

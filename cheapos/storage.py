@@ -39,10 +39,14 @@ class Store:
             try:
                 task = json.loads(path.read_text(encoding="utf-8"))
                 if task["status"] in {"running", "reviewing", "waiting_approval", "waiting_retry", "stopping"}:
+                    if task['status'] == 'waiting_retry' and task.get('retry_wait_enabled'):
+                        task['route_resume_on_start'] = True
                     if task['status'] == 'waiting_retry' and task.get('route_wait'):
                         info = task.get('route_unavailable') or {}
-                        info['remaining_seconds'] = max(0, info.get('remaining_seconds', 0) - max(0, time.time()-task['route_wait']['started_at']))
-                        info['can_wait'] = bool(info.get('can_wait') and info['remaining_seconds'] > 0)
+                        remaining = info.get('remaining_seconds', 0)
+                        if remaining is not None:
+                            info['remaining_seconds'] = max(0, remaining - max(0, time.time()-task['route_wait']['started_at']))
+                        info['can_wait'] = bool(info.get('can_wait') and (remaining is None or info['remaining_seconds'] > 0))
                     task['retry_wait_enabled'] = False
                     task['route_wait'] = None
                     task["status"] = "interrupted"

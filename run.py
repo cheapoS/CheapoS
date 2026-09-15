@@ -72,6 +72,7 @@ def main():
         # Gateway startup is asynchronous; local tasks and saved patches remain accessible.
         server.engine.gateway.startup()
         server.engine.startup.start(automatic=True)
+        server.engine.restore_route_waits()
     except (OSError, ValueError) as error:
         server.server_close()
         print(str(error), file=sys.stderr)
