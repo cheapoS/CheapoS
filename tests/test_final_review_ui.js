@@ -88,3 +88,16 @@ test('known conflicts offer an agent task instead of repeating the failed update
  assert.match(html,/data-resolve-conflicts>Resolve conflicts &amp; recheck/);
  assert.doesNotMatch(html,/data-update-branch/);
 });
+
+test('merge publishes the confirmed task without waiting for a slow refresh',async()=>{
+ const task={id:'task'},saved={id:'task',status:'completed',branch_run:{status:'merged'}};let published;
+ const result=await ui.mergeAndPublish({task,values:{approved:true},api:async()=>saved,onTask:value=>published=value,refresh:()=>new Promise(()=>{})});
+ assert.equal(published,saved);assert.equal(result,saved);
+});
+test('failed merge does not publish completion, and another task response is ignored',async()=>{
+ let published=false;
+ await assert.rejects(ui.mergeAndPublish({task:{id:'task'},api:async()=>{throw Error('merge failed')},onTask:()=>published=true}));
+ assert.equal(published,false);
+ await ui.mergeAndPublish({task:{id:'task'},api:async()=>({id:'other',branch_run:{status:'merged'}}),onTask:()=>published=true});
+ assert.equal(published,false);
+});

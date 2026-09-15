@@ -196,6 +196,13 @@ function technicalMarkup(task){
  return `<div class="view-title"><div><h2>Technical logs</h2><p>Newest saved event first · ${events.length} retained events. Text is bounded; raw provider payloads and credentials are omitted.</p></div></div>${cause}${task?.events_truncated||task?.history_truncated?'<p>Older history was truncated in the saved record.</p>':''}${rows||'<p class="empty-state">No technical events have been saved for this task.</p>'}`;
 }
 function fullSuiteConsent(response){const checks=response.full_suite_checks||[];if(!checks.length)return '';const seconds=response.full_suite_last_seconds;return `<section class="execution-notice"><h3>Full-suite test approval</h3><p>These broad checks can take longer than focused tests. Last measured runtime: ${Number.isFinite(seconds)?escape(seconds)+' seconds':'unknown'}. Approve once before starting this plan.</p><ul>${checks.map(c=>`<li><code>${escape(typeof c==='string'?c:Array.isArray(c)?c.join(' '):Array.isArray(c.argv||c.command)?(c.argv||c.command).join(' '):String(c.command||''))}</code></li>`).join('')}</ul><label><input type="checkbox" name="full_suite_approved">I approve these full-suite checks for this plan</label></section>`;}
+async function mergeAndPublish({api,task,values,onTask=()=>{},refresh=()=>Promise.resolve()}){
+ const saved=await api('/tasks/'+task.id+'/branch-merge',values);
+ if(saved?.id===task.id&&saved.branch_run)onTask(saved);
+ // Sidebar/connection refresh must not delay the confirmed task result.
+ Promise.resolve().then(()=>refresh({background:true})).catch(()=>{});
+ return saved;
+}
 function startController({api,onChange=()=>{},onTask=()=>{},transition=()=>{}}){
  const records=new Map();
  async function reconcile(id){const record=records.get(id);if(!record)return;try{const task=await api('/tasks/'+id);record.status=task.branch_run?.authorization_ref?(['draft','awaiting_authorization'].includes(task.branch_run.status)?'partial':'accepted'):'rejected';record.error=record.status==='accepted'?'':record.status==='partial'?'Authorization was saved, but startup did not complete. '+(record.error||task.error||'Inspect the saved task setup before continuing.'):(record.error||'Start was not accepted. Inspect the saved proposal before starting again.');if(task.id===id)onTask(task);}catch(_){record.status='unknown';record.error='The Start outcome is unknown. Check saved status before trying again.';}onChange(id);return record;}
@@ -326,7 +333,7 @@ function mount(options){
   mountFinalDiff(d,task,preview,api);
   const merge=d.querySelector('[data-merge]');const readOnly=terminalRun(task)||Boolean(task.archived_at||task.trashed_at);if(readOnly)merge.disabled=true;
   for(const selector of ['[data-revise]','[data-recheck]','[data-leave]'])d.querySelector(selector).hidden=readOnly;
-  merge.onclick=()=>guarded(merge,async()=>{await api('/tasks/'+task.id+'/branch-merge',{preview_id:preview.preview_id,approved:true});slot.dataset.signature='';await refresh();},d);
+  merge.onclick=()=>guarded(merge,()=>mergeAndPublish({api,task,values:{preview_id:preview.preview_id,approved:true},onTask:saved=>{slot.dataset.signature='';options.receiveUpdatedTask?.(saved);},refresh}),d);
   const resolve=d.querySelector('[data-resolve-conflicts]');if(resolve){resolve.hidden=readOnly;resolve.onclick=()=>guarded(resolve,async()=>{const result=await api('/tasks/'+task.id+'/branch-resolve-conflicts',{approved:true,update_token:preview.update_token});slot.dataset.signature='';await options.handleResumeResult?.(task,result);await refresh();},d);}
   const update=d.querySelector('[data-update-branch]');if(update){update.hidden=readOnly;update.onclick=()=>guarded(update,async()=>{const result=await api('/tasks/'+task.id+'/branch-update',{approved:true,update_token:preview.update_token});slot.dataset.signature='';if(result.needs_conflict_resolution){await loadFinal(task,slot);}else{await options.handleResumeResult?.(task,result);await refresh();}},d);}
   const leave=d.querySelector('[data-leave]');leave.onclick=()=>guarded(leave,async()=>{await api('/tasks/'+task.id+'/branch-leave',{});slot.dataset.signature='';await refresh();},d);
@@ -358,5 +365,5 @@ function mount(options){
  }
  sync();return {isSubmitting:()=>busy&&busySelection===getState().selection,interceptSubmit,render,renderPlan,renderStart,showProposal,showFinal,sync,restoreDraft:()=>{sync();if(!input.value&&drafts[key()]?.prompt)input.value=drafts[key()].prompt;},hasDocument:()=>selector.value==='unattended'&&Boolean(documentInput.value.trim()),getMode:()=>selector.value,newChat:()=>{sync();selector.value='interactive';documentInput.value='';delete group.dataset.revising;save();sync();options.onDraftChange?.();}};
 }
-return {fullSuiteConsent,diffPath,reviewDiffs,reviewFiles,reviewDiffMarkup,finalReviewMarkup,finalDiffState,mountFinalDiff,planningPayload,proposalValidation,technicalEvents,technicalText,technicalMarkup,startController,savedPlan,planMarkup,pausePresentation,proposalReadiness,mount,intent,terminalRun,hasRun,isPlanning,duration,isBusy,isRevisionTarget,resumeAction,proposedLimits,projectRun,diffSections,escape};
+return {mergeAndPublish,fullSuiteConsent,diffPath,reviewDiffs,reviewFiles,reviewDiffMarkup,finalReviewMarkup,finalDiffState,mountFinalDiff,planningPayload,proposalValidation,technicalEvents,technicalText,technicalMarkup,startController,savedPlan,planMarkup,pausePresentation,proposalReadiness,mount,intent,terminalRun,hasRun,isPlanning,duration,isBusy,isRevisionTarget,resumeAction,proposedLimits,projectRun,diffSections,escape};
 });
