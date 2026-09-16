@@ -308,12 +308,13 @@ class ChatProvider:
             message = choice["message"]
             if not bool(message.get("tool_calls")) and not (isinstance(message.get("content"), str) and message["content"].strip()) and isinstance(message.get("reasoning"), str) and message["reasoning"].strip():
                 message["content"] = message["reasoning"]
+                message["reasoning_fallback"] = True
             has_content = isinstance(message.get("content"), str) and bool(message["content"].strip())
             has_tools = bool(message.get("tool_calls"))
             if not isinstance(message, dict) or not (has_content or has_tools):
                 raise ValueError()
             # Preserve tool IDs and reasoning_details required by some tool-capable providers.
-            message = {key: value for key, value in message.items() if key in {"role", "content", "tool_calls", "reasoning_details", "reasoning"}}
+            message = {key: value for key, value in message.items() if key in {"role", "content", "tool_calls", "reasoning_details", "reasoning", "reasoning_fallback"}}
             message["role"] = "assistant"
             usage=dict(data.get("usage") or {})
             usage["_served_identity"]=metadata(self.config["model"],data.get("model"))

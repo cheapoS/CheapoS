@@ -2950,9 +2950,17 @@ class Engine:
                         task["delegation"] = args["summary"]
                         task["active_role"] = "worker"
                         self.event(task, "routing", "Local chat finished; finding a free worker", {"summary": args["summary"]})
-                    elif message.get("content"):
+                    elif message.get("content") and not message.get("reasoning_fallback"):
                         self.event(task, "assistant", "Local chat", str(message["content"])[:4000])
                         task["status"] = "awaiting_reply"
+                        self.store.save(task)
+                        continue
+                    elif message.get("reasoning_fallback"):
+                        task.setdefault("coordinator_reasoning_turns", 0)
+                        task["coordinator_reasoning_turns"] += 1
+                        if task["coordinator_reasoning_turns"] > 2:
+                            raise RoutingPause("The local assistant repeatedly produced reasoning without delegating or answering. Resume to try again.")
+                        task["messages"].append({"role": "user", "content": "You generated reasoning without delegating or answering. Call delegate_work to delegate to the worker, or reply with your answer to the user."})
                         self.store.save(task)
                         continue
                     else:
@@ -3063,7 +3071,7 @@ class Engine:
                 request_versions = dict(runtime.edit_versions)
                 mutated_paths = set()
                 task["messages"].append(message)
-                if message.get("content"):
+                if message.get("content") and not message.get("reasoning_fallback"):
                     self.event(task, "assistant", "Worker" if task["active_role"] == "worker" else "Frontier takeover", str(message["content"])[:12000])
                 calls = message.get("tool_calls", [])
                 if len(calls) > 8:
@@ -3122,20 +3130,35 @@ class Engine:
                                     task["messages"].append({"role": "user", "content": "Edits are present in the workspace. Call run_checks directly to verify your changes. Outputting text does not verify code."})
                         else:
                             task["no_call_turns"] = 0
-                            task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
-                    elif task.get("conversational") and not task.get("finish_review") and not task.get("branch_run") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
+                            if message.get("reasoning_fallback"):
+                                task["messages"].append({"role": "user", "content": "You generated reasoning without executing a tool call. Call write_file, replace_text, or other offered tools to apply your changes directly to repository files."})
+                            else:
+                                task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
+                    elif task.get("conversational") and not task.get("finish_review") and not task.get("branch_run") and message.get("content") and not message.get("reasoning_fallback") and task["patch"] == task.get("turn_start_patch", ""):
                         task["status"] = "awaiting_reply"
                         task["action_pending"] = False
-                    elif task.get("conversational") and message.get("content") and task["patch"] and task["check_command"]:
+                    elif task.get("conversational") and message.get("content") and not message.get("reasoning_fallback") and task["patch"] and task["check_command"]:
                         # A completed editing response must reach review even if
                         # the worker forgets the checkpoint tool. Questions and
                         # explicit ask_user calls still finish as conversation.
                         self.event(task, "state", "Preparing finished changes for review")
                         result = self.checkpoint_feedback(runtime, {"summary": str(message["content"])[:4000], "uncertainties": "The controller submitted this checkpoint after the worker's final response."})
                         task["messages"].append({"role": "user", "content": "Checkpoint result: " + json.dumps(result)})
+                    elif message.get("reasoning_fallback"):
+                        no_calls = task.get("no_call_turns", 0) + 1
+                        task["no_call_turns"] = no_calls
+                        if no_calls > 3:
+                            from . import coordinator_dispatch
+                            if coordinator_dispatch.consult(self, runtime, "The worker repeatedly returned reasoning without taking any action or providing an answer."):
+                                continue
+                        if task.get("patch") == task.get("turn_start_patch", ""):
+                            task["messages"].append({"role": "user", "content": "You generated reasoning without executing a tool call or outputting a final answer. Proceed with your planned action using the offered tools (e.g. search, view_file, write_file), or provide your answer to the user."})
+                        else:
+                            task["messages"].append({"role": "user", "content": "You generated reasoning without executing a tool call or outputting a final answer. Continue with the offered tools to complete or verify your changes, or submit them for review."})
                     else:
                         task["messages"].append({"role": "user", "content": "Changes need verification and checkpoint review. Continue with tools, or use ask_user if you need a decision." if (task.get("conversational") and not task.get("branch_run")) else "Continue with tools, or call checkpoint when ready for review. Text alone does not complete this task."})
                 coordinator_applied = False
+                task["no_call_turns"] = 0
                 for call_index, call in enumerate(calls):
                     runtime.guard()
                     if runtime.stop.is_set():

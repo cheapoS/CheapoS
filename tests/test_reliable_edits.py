@@ -117,6 +117,108 @@ class ReliableEditsTests(unittest.TestCase):
         self.assertEqual(file_path.read_text(encoding="utf-8"), "# Notes\nNew note\n")
         self.assertEqual(task["tool_actions"], 1)
 
+    def test_provider_reasoning_fallback_flag(self):
+        import json
+        from cheapos.providers import ChatProvider
+        from unittest.mock import patch, MagicMock
+
+        provider = ChatProvider({'base_url': 'http://127.0.0.1:11434/v1', 'model': 'fixture', 'key_env': 'CHEAPOS_TEST_KEY'})
+
+        # Case 1: Reasoning only, no content, no tool calls -> reasoning_fallback is True
+        mock_data = {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "reasoning": "I need to check README.md first."
+                }
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 8}
+        }
+        with patch('cheapos.providers.build_opener') as opener:
+            mock_resp = MagicMock()
+            mock_resp.headers.get_content_type.return_value = 'application/json'
+            mock_resp.read.return_value = json.dumps(mock_data).encode()
+            opener.return_value.open.return_value.__enter__.return_value = mock_resp
+            msg, usage = provider._complete([], [], 128)
+            self.assertTrue(msg.get("reasoning_fallback"))
+            self.assertEqual(msg["content"], "I need to check README.md first.")
+            self.assertEqual(msg["reasoning"], "I need to check README.md first.")
+
+        # Case 2: Content is present -> reasoning_fallback is False / not set
+        mock_data_content = {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "Here is the answer.",
+                    "reasoning": "I am thinking."
+                }
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 8}
+        }
+        with patch('cheapos.providers.build_opener') as opener:
+            mock_resp = MagicMock()
+            mock_resp.headers.get_content_type.return_value = 'application/json'
+            mock_resp.read.return_value = json.dumps(mock_data_content).encode()
+            opener.return_value.open.return_value.__enter__.return_value = mock_resp
+            msg, usage = provider._complete([], [], 128)
+            self.assertFalse(msg.get("reasoning_fallback", False))
+            self.assertEqual(msg["content"], "Here is the answer.")
+
+    def test_engine_reasoning_fallback_does_not_halt_to_awaiting_reply(self):
+        state_dir = Path(self.temp_dir) / "state"
+        engine = Engine(state_dir, fixture_delay=0)
+        self.addCleanup(engine.shutdown)
+
+        task = engine.create_demo()
+        task["demo"] = False
+        task["conversational"] = True
+        config = {'base_url': 'https://example.invalid/v1', 'model': 'test-model', 'input_rate': 0, 'output_rate': 0, 'key_env': 'CHEAPOS_TEST_KEY'}
+        task["providers"] = {"worker": dict(config), "reviewer": dict(config)}
+        engine.store.save(task)
+
+        turn = 0
+        recorded_messages = []
+
+        class ThinkingModelProvider:
+            streams_output = False
+            def complete(self, messages, tools, maximum, tool_choice=None):
+                nonlocal turn
+                turn += 1
+                recorded_messages.append(list(messages))
+                if turn == 1:
+                    return {
+                        "role": "assistant",
+                        "content": "I should search for project files.",
+                        "reasoning": "I should search for project files.",
+                        "reasoning_fallback": True,
+                        "tool_calls": []
+                    }, {"prompt_tokens": 10, "completion_tokens": 5, "cost": 0}
+                else:
+                    return {
+                        "role": "assistant",
+                        "content": "Here is the completed response.",
+                        "tool_calls": []
+                    }, {"prompt_tokens": 15, "completion_tokens": 8, "cost": 0}
+
+        engine.provider_factory = lambda *args: ThinkingModelProvider()
+        engine.start(task["id"])
+        runtime = engine.runtimes[task["id"]]
+        runtime.thread.join(10)
+        self.assertFalse(runtime.thread.is_alive())
+
+        result = engine.store.get(task["id"])
+        self.assertEqual(turn, 2)
+        self.assertEqual(result["status"], "awaiting_reply")
+
+        nudge_message = next((m for m in result["messages"] if "You generated reasoning without executing a tool call" in m.get("content", "")), None)
+        self.assertIsNotNone(nudge_message, "Worker should have received prompt to proceed after reasoning-only turn")
+        self.assertIn("Proceed with your planned action using the offered tools", nudge_message["content"])
+
+        assistant_events = [e for e in result["events"] if e["kind"] == "assistant"]
+        self.assertEqual(len(assistant_events), 1)
+        self.assertEqual(assistant_events[0]["detail"], "Here is the completed response.")
+
 
 if __name__ == "__main__":
     unittest.main()
