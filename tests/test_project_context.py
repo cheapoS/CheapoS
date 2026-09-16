@@ -1,15 +1,24 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 
 from cheapos import project_context
 from cheapos.providers import BudgetError
 from cheapos.routing import coordinator_messages
 from cheapos.workspace import Workspace
-from test_engine import LocalCase
+try:
+    from test_engine import LocalCase
+except ImportError:
+    from tests.test_engine import LocalCase
 
 
 class ProjectContextTests(LocalCase):
+    def _add_rules_file(self, root, content):
+        # Ensure .cheapos directory exists
+        (root / '.cheapos').mkdir(parents=True, exist_ok=True)
+        (root / '.cheapos' / 'rules.md').write_text(content)
+
     def task(self):
         task=self.fixture();root=Path(task['workspace'])
         (root/'README.md').write_text('Small Python clamp library. Use the configured unittest command.\n')
@@ -48,6 +57,62 @@ class ProjectContextTests(LocalCase):
         task=self.task();task['requests']=['A'*8000]*7
         with self.assertRaises(BudgetError):project_context.continuation(task)
         self.assertEqual(len(task['requests']),7)
+
+    def test_rules_file_included(self):
+        task = self.task()
+        root = Path(task['workspace'])
+        self._add_rules_file(root, "Rule content line1\nLine2\n")
+        brief = project_context.brief(task)
+        src = next((s for s in brief['sources'] if s.get('path') == '.cheapos/rules.md'), None)
+        self.assertIsNotNone(src, "Rules file should be included in sources")
+        self.assertIn('Rule content', src['excerpt'])
+        self.assertFalse(src.get('partial', False))
+
+    def test_rules_file_excerpt_limit(self):
+        task = self.task()
+        root = Path(task['workspace'])
+        long_content = "A" * 2000
+        self._add_rules_file(root, long_content)
+        brief = project_context.brief(task)
+        src = next((s for s in brief['sources'] if s.get('path') == '.cheapos/rules.md'), None)
+        self.assertIsNotNone(src, "Rules file should be included when present")
+        self.assertTrue(src.get('partial', False), "Long rules file should be marked as partial")
+        self.assertEqual(len(src['excerpt']), 1000)
+
+    def test_rules_file_unreadable(self):
+        task = self.task()
+        root = Path(task['workspace'])
+        self._add_rules_file(root, "secret content")
+        rules_path = root / '.cheapos' / 'rules.md'
+        # remove read permissions
+        os.chmod(rules_path, 0)
+        try:
+            brief = project_context.brief(task)
+            self.assertTrue(all(s.get('path') != '.cheapos/rules.md' for s in brief['sources']),
+                            "Unreadable rules file should be skipped")
+        finally:
+            # restore permissions for cleanup
+            os.chmod(rules_path, 0o644)
+
+    def test_rules_file_absent(self):
+        task = self.task()
+        brief = project_context.brief(task)
+        self.assertTrue(all(s.get('path') != '.cheapos/rules.md' for s in brief['sources']),
+                        "When rules file absent, it should not appear in sources")
+
+    def test_sources_limit(self):
+        task = self.task()
+        root = Path(task['workspace'])
+        # add rules file
+        self._add_rules_file(root, "rule content")
+        # add all GUIDANCE files to potentially exceed limit
+        from cheapos import project_context as pc
+        for fname in pc.GUIDANCE:
+            (root / fname).write_text(f"content of {fname}\n")
+        brief = project_context.brief(task)
+        self.assertLessEqual(len(brief['sources']), 12)
+        # rules file should be present if readable
+        self.assertTrue(any(s.get('path') == '.cheapos/rules.md' for s in brief['sources']))
 
     def test_repeated_question_has_test_command_without_an_extra_read(self):
         task=self.task();first=json.loads(self.engine.initial_messages(task)[1]['content'])
