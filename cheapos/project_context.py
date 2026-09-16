@@ -18,15 +18,33 @@ def digest(value):
 
 def brief(task):
     workspace=Workspace(task['workspace']); names=workspace.list_files()
-    selected=sorted((n for n in names if PurePosixPath(n).name in GUIDANCE),key=lambda n:(len(PurePosixPath(n).parts),n))[:12]
-    sources=[]
+    # Prioritize a project-specific rules file if present
+    rules_path = '.cheapos/rules.md'
+    rules_source = None
+    try:
+        if rules_path in names:
+            value = workspace.read_file(rules_path, 1, 60)
+            rules_source = {'path': rules_path, 'hash': value['hash'], 'excerpt': value['content'][:1000],
+                           'partial': not value['complete'] or len(value['content']) > 1000}
+    except (ValueError, OSError, UnicodeError):
+        rules_source = None
+
+    # Select guidance files, respecting the maximum of 12 sources total (including rules file)
+    max_guidance = 12 - (1 if rules_source else 0)
+    selected = sorted((n for n in names if PurePosixPath(n).name in GUIDANCE and n != rules_path),
+                     key=lambda n: (len(PurePosixPath(n).parts), n))[:max_guidance]
+    sources = []
+    if rules_source:
+        sources.append(rules_source)
     for name in selected:
         try:
-            value=workspace.read_file(name,1,60)
-            sources.append({'path':name,'hash':value['hash'],'excerpt':value['content'][:1000],
-                            'partial':not value['complete'] or len(value['content'])>1000})
-        except (ValueError,OSError,UnicodeError): sources.append({'path':name,'unavailable':True})
+            value = workspace.read_file(name, 1, 60)
+            sources.append({'path': name, 'hash': value['hash'], 'excerpt': value['content'][:1000],
+                            'partial': not value['complete'] or len(value['content']) > 1000})
+        except (ValueError, OSError, UnicodeError):
+            sources.append({'path': name, 'unavailable': True})
     identity=digest({'head':git(workspace.root,'rev-parse','HEAD').strip(),'generation':task.get('workspace_generation',0),
+
                      'files':names,'sources':sources,'command':task.get('check_command')})
     cached=task.get('project_brief',{})
     if cached.get('identity')==identity:return copy.deepcopy(cached)
