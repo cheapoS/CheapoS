@@ -318,7 +318,7 @@ def checkpoint(engine, runtime, args):
                         engine.store.save(task)
                         return result
                 else: result = {'error':'Return a valid independent review decision.'}
-            elif name in {'read_file','outline_file','search','list_files','get_diff','read_check_output','read_merge_context'}:
+            elif name in {'read_file','outline_file','search','list_files','get_diff','read_check_output','read_merge_context','read_context_evidence'}:
                 try: result = engine.file_tool(task,name,params)
                 except (ValueError,OSError,TypeError,UnicodeError) as error: result = {'error':str(error)[:1000]}
             elif name == 'read_url': result = engine.read_url(runtime,params)

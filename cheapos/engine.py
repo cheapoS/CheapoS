@@ -292,6 +292,7 @@ def record_observation(runtime, name, args, result):
                 return 1  # One rehydration of omitted evidence, not an endless reset.
             seen["repeats"] += 1
             return seen["repeats"] + 1
+        progress.inspection(runtime.task, args.get("path"), result["hash"], lines)
         seen["lines"].update(lines)
         seen["repeats"] = 0
         return 1
@@ -745,6 +746,9 @@ class Engine:
                 raise ValueError("Wait for the startup greeting or stop its connection check before starting a chat")
             previous = self.runtimes.get(task_id)
             if previous and previous.thread and previous.thread.is_alive():
+                from .continuation_policy import is_continue
+                if not changes or is_continue((changes or {}).get('message')):
+                    return self.store.get(task_id)
                 raise ValueError("This task is already running")
             try:
                 self.admission.require("interactive", task_id)
@@ -772,7 +776,15 @@ class Engine:
                                  "Use the authorized Unattended run controls; ordinary chat Start cannot dispatch a branch run.")
             if task.get("commit_pending"):
                 raise ValueError("Finish the saved commit attempt in Chat before continuing this task")
+            from .continuation_policy import is_continue, record
             followup = (changes or {}).get("message")
+            if is_continue(followup) and task.get('status') != 'ready':
+                followup = None
+            if followup is None:
+                selected = record(task, 'operator_continue')
+                self.store.save(task)  # Admission is durable before any dispatch.
+                if selected['action'] in {'approve_command', 'repair_environment', 'answer_question'}:
+                    raise ValueError(selected['reason'])
             if followup is None and (task.get('environment_setup') or {}).get('status') == 'missing':
                 raise ValueError('Re-check the task environment after setup before resuming. Saved work is intact.')
             retry_wait = (changes or {}).get('retry_when_available', False)
@@ -1103,6 +1115,10 @@ class Engine:
                 raise ValueError("Use the Unattended run revision controls to change its authorized work.")
             if task.get("demo"):
                 raise ValueError("The demo uses scripted responses. Open a project to steer real tasks.")
+            from .continuation_policy import is_continue
+            if is_continue(cleaned):
+                started = self.start(task_id)
+                return {'steered':False,'running':True,'task':started}
             if developing(task):
                 if runtime and runtime.thread and runtime.thread.is_alive():
                     self.queue_operator_direction(runtime, cleaned)
@@ -1533,10 +1549,10 @@ class Engine:
                     break
             summary["recent_actions"] = list(reversed(activity))
             summary["check_command"] = task["check_command"]
-            names = workspace.list_files()
-            summary["available_files"] = names[:60]
-            summary["file_listing"] = {"total": len(names), "partial": len(names) > 60,
-                                       "more": "Use list_files with a directory for missing paths."}
+        names = workspace.list_files()
+        summary["available_files"] = names[:60]
+        summary["file_listing"] = {"total": len(names), "partial": len(names) > 60,
+                                   "more": "Use list_files with a directory for missing paths."}
         return [{"role": "system", "content": worker_system(task)},
                 {"role": "user", "content": json.dumps(summary)},
                 {"role": "user", "content": execution_context.guidance(task, guidance_text)}]
@@ -1606,13 +1622,14 @@ class Engine:
         append_direction(task.setdefault('messages', []), 'CURRENT RECOVERY DIRECTION: ', task.get('loop_guidance'))
 
     def prepare_loop_recovery(self, task):
-        if developing(task):
-            from .recovery_context import packet
+        from .continuation_policy import record
+        selected = record(task, 'repeated_evidence')
+        if selected['action']=='continue_worker':
             task.update(answer_pending=False, action_pending=False,
-                        loop_guidance=packet(task)['next_step'])
+                        loop_guidance=selected['reason'])
             self.event(task, 'guard', 'Asking for a different approach', task['loop_guidance'])
             return
-        if (work_policy.active_implementation(task) or needs_patch_review(task)) and not work_policy.read_only(task):
+        if selected["action"] == "act":
             task["answer_pending"] = False
             task["action_pending"] = True
             task["loop_guidance"] = ACTION_GUIDANCE
@@ -1639,7 +1656,8 @@ class Engine:
         recovery['answer_attempts'] += 1
         task["answer_pending"] = True
         self.event(task, "guard", "Preparing an answer from gathered evidence", "Research has stopped for this request. The worker will answer from the sources it already read, or explain what remains unknown.")
-        messages = self.initial_messages(task)
+        from .worker_conversation import continue_session
+        messages = continue_session(task, self.initial_messages(task), "answer_from_evidence")
         messages.append({"role": "user", "content": "Research is finished for this run. No tools are available for this response. Answer the LATEST user message now using the gathered evidence; cite source URLs. Do not propose another round of reading. State missing information honestly. If the user asked for changes that were not made, explicitly say the work is unfinished and why. Existing edits are not approved by this answer. Do not claim you read omitted text, executed checks, or changed files. Return a concise, useful answer, or one necessary question if genuinely blocked. Output plain text only; do NOT output JSON, tool calling syntax, or action dictionaries."})
         runtime.step_turns += 1
         if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
@@ -1657,6 +1675,7 @@ class Engine:
         task["answer_pending"] = False
         task["loop_guidance"] = None
         task["status"] = "awaiting_reply"
+        task.setdefault("messages", []).append({"role":"assistant", "content":content})
         self.event(task, "assistant", "cheapoS", content[:12000])
 
     def defer_route(self, task, role, reason):
@@ -2841,19 +2860,13 @@ class Engine:
                     self.event(task, "handoff", "Local chat delegated the work", {"from": task["providers"]["coordinator"]["model"], "to": task["providers"]["worker"]["model"], "role": "worker", "summary": task.pop("delegation")})
                     from .worker_conversation import continue_session
                     continue_session(task, self.initial_messages(task), 'coordinator_handoff')
-                near_end = not measuring(task) and (runtime.step_turns >= task["limits"].get("checkpoint_turns", 12) - 1 or request_worker_turns(task) >= task["limits"]["worker_turns"] - 1)
-                if execution_context.mode(task) == "interactive" and runtime.step_turns and near_end and not task.get("action_pending"):
-                    self.refresh_changes(task)
-                    if task["patch"] == task.get("turn_start_patch", ""):
-                        self.finish_answer(runtime)
-                        continue
                 self.checkpoint_boundary(runtime)
                 runtime.step_turns += 1
                 if not measuring(task) and not task.get("action_pending") and runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
-                    task["loop_guidance"] = "You are near the checkpoint interval boundary. Useful unfinished edits can continue within the hard allowance; do not claim partial work is complete. For a question, give your answer now without editing files. For a requested change, finish only that scope and submit checkpoint; it verifies the patch and requests review. If no command is selected yet, use run_checks to choose one first. If blocked, ask_user. Avoid further polishing or repeated reads."
+                    task["loop_guidance"] = "Save your concrete next action with update_working_state if useful. Continue the coherent unfinished unit within the authorized allowance. Submit checkpoint only when the requested change is complete. For a question, answer when the evidence is sufficient; no cosmetic edit is needed."
                     task["loop_guidance"] = execution_context.guidance(task, task["loop_guidance"])
                     task["messages"].append({"role": "user", "content": task["loop_guidance"]})
-                    self.event(task, "guard", "Asking the worker to wrap up", "The worker is approaching its checkpoint interval; hard task limits still apply.")
+                    self.event(task, "guard", "Asking the worker to wrap up", "Save the current approach and concrete next action; hard task limits still apply.")
                 if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_worker_turn=True)
                 task["worker_turns"] += 1
                 if task.get("conversational"):
@@ -3116,6 +3129,11 @@ class Engine:
             task["error"] = str(error)[:1000] if isinstance(error, (ProviderError, ValueError, OSError)) else "Unexpected execution error; saved work is available for inspection."
             self.event(task, "error", "Task stopped with an error", task["error"])
         finally:
+            if task.get('status') not in ACTIVE:
+                from .continuation_policy import record
+                record(task, 'settled')
+                if task.get('continuation_episodes'):
+                    task['continuation_episodes'][-1]['result'] = task.get('status')
             task["pending_approval"] = None
             self.store.save(task)
 

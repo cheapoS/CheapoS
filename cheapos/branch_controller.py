@@ -643,8 +643,14 @@ class BranchController:
         from .engine import Runtime
         with self.engine.lock:
             self.engine.require_active_task(task_id)
+            live = self.engine.runtimes.get(task_id)
+            if live and live.thread and live.thread.is_alive():
+                return {'needs_consent': False, 'task': self.engine.store.get(task_id)}
             self.engine.admission.require('unattended', task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            from .continuation_policy import record
+            record(task, 'operator_continue')
+            self.engine.store.save(task)
             if (run.get('target_update') or {}).get('origin')=='conflict_resolution':
                 from .branch_conflicts import complete
                 complete(self.engine,task)
@@ -686,6 +692,10 @@ class BranchController:
         message=values.get('message')
         if not isinstance(message,str) or not message.strip() or len(message)>8000:
             raise ValueError('Provide guidance of up to 8,000 characters')
+        from .continuation_policy import is_continue
+        if is_continue(message):
+            from .branch_operator import continue_saved
+            return continue_saved(self, task_id)
         with self.engine.lock:
             self.engine.require_active_task(task_id)
             runtime=self.engine.runtimes.get(task_id)

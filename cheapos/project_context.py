@@ -87,6 +87,7 @@ def continuation(task):
     result['working_state'] = project(task)
     if result['working_state'].get('next_action'):
         result['next_step'] = result['working_state']['next_action']
-    result['remaining_requirements'] = [s for s in result['working_state'].get('steps', []) if s['status'] != 'done'] or result['remaining_requirements']
+    if not result['working_state']['historical']:
+        result['remaining_requirements'] = [s for s in result['working_state'].get('steps', []) if s['status'] != 'done'] or result['remaining_requirements']
     task['continuation_record']=result
     return copy.deepcopy(result)

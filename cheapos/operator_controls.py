@@ -38,7 +38,7 @@ def interactive(engine, task_id, values=None):
         if action in {'enable','takeover','model'} and values.get('approved') is not True:
             raise ValueError('Approve this recovery configuration change explicitly')
         if action not in {'enable','takeover'} and not enabled(task):raise ValueError('Enable development mode for this task first')
-        message=values.get('message') or 'Continue the unfinished work from the saved files. Use the latest operator direction and a different approach where the previous one stalled.'
+        message=values.get('message') or 'continue'
         if not isinstance(message,str) or not 1<=len(message.strip())<=8000:raise ValueError('Enter a direction of up to 8,000 characters')
         if action=='model':
             if values.get('revision_token')!=revision:raise ValueError('The task changed. Refresh recovery choices before changing its worker.')

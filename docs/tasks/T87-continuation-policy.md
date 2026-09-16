@@ -1,6 +1,6 @@
 # T87 — Make recovery continue the job with less micromanagement
 
-Status: Proposed — implementation not started
+Status: Done
 Depends on: T84, T85; integrate T86 before final qualification
 Size: M/L — deliver in ordered increments
 Context: [DeepSeek Harness assessment](../development/deepseek-harness-assessment.md)
@@ -63,3 +63,19 @@ Use table-driven policy cases, mocked providers, controlled promises/events, and
 existing recovery/transport fixtures. Add no deliberate sleeps or new multi-item
 agent runs. Record focused checks, timings, and one disposable UI continuation
 flow. Commit each coherent increment; do not mark the card Done halfway through.
+
+## Completion
+
+Shared continuation policy selects repeated-evidence recovery and saved-stop
+classification. Button and ordinary chat Continue use existing admission paths;
+busy repeats are idempotent. Synthetic retry prompts and soft forced answers are
+removed. New file ranges count as evidence; checklist churn does not. Large files
+keep normal tools until a format/capability signal requires compact editing.
+See [ownership and retired decisions](../development/continuation-ownership.md).
+
+Four new pure/mock policy cases took 0.015s in the selected run (0.066s with cold
+imports). Existing boundary, allowance, operator, progress and answer cases pass.
+The existing worker-handoff integration passed in 9.309s; the existing three-item
+execution module passed in 43.554s. Fixture expectations now acknowledge explicit
+test consent and retained history instead of fresh messages. No new heavy fixture
+was added. Browser Pause/Resume and final approval are recorded in T88.

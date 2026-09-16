@@ -11,18 +11,18 @@ def continue_saved(controller, task_id):
         if result.get('task'):
             return result['task']
         if result.get('needs_consent'):
-            detail = {'status':'needs_consent', 'reason':'Your correction is saved. Confirm the existing verification commands before work can continue.',
+            detail = {'status':'needs_consent', 'reason':'Saved work is retained. Confirm the existing verification commands before work can continue.',
                       **{key:copy.deepcopy(result[key]) for key in ('proposal_id','scopes') if key in result}}
         elif result.get('needs_merge_recovery'):
-            detail = {'status':'blocked','reason':'Your correction is saved. Finish or inspect the existing local merge operation before running more work.'}
+            detail = {'status':'blocked','reason':'Saved work is retained. Finish or inspect the existing local merge operation before running more work.'}
         else:
-            detail = {'status':'blocked','reason':'Your correction is saved. Inspect the current run controls before continuing.'}
+            detail = {'status':'blocked','reason':'Saved work is retained. Inspect the current run controls before continuing.'}
     except (ValueError, OSError) as error:
-        detail = {'status':'blocked','reason':'Your correction is saved. '+str(error)[:1000]}
+        detail = {'status':'blocked','reason':'Saved work is retained. '+str(error)[:1000]}
     with engine.lock:
         task = engine.store.get(task_id)
         task['operator_continue'] = detail
-        engine.event(task, 'operator_direction', 'Correction saved; continuation needs attention', detail)
+        engine.event(task, 'operator_direction', 'Continuation needs attention', detail)
         return task
 
 
@@ -246,5 +246,5 @@ def recover(controller, task_id, values):
         from .development import enabled
         if set(values)-{'action','message'}:raise ValueError('Retry accepts only a correction message')
         if not enabled(controller.engine.store.get(task_id)):raise ValueError('Enable operator development mode first')
-        return controller.message(task_id,{'message':values.get('message') or 'Reassess the saved blocker using the current code, acceptance criteria and preserved evidence, then continue.'})
+        return controller.message(task_id,{'message':values.get('message') or 'continue'})
     return control(controller,task_id,values)

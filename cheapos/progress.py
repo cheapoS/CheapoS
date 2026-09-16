@@ -73,3 +73,17 @@ def pause_summary(task, blocker):
             'saved_files': [f['path'] for f in task.get('changes', [])],
             'check': {'command': check.get('command', []), 'passed': check.get('passed'), 'outcome': check.get('outcome')},
             'next_action': 'Your saved work can be inspected in Details. You can change the approach in Chat or inspect model settings. Resume alone does not replenish recovery attempts.'}
+
+
+def inspection(task, path, version, lines):
+    """A newly observed source range is evidence; rereads and clocks are not."""
+    value=state(task)
+    inspected=value.setdefault('inspected', {})
+    key=digest([path,version])
+    if key not in inspected and len(inspected)>=1000:return False
+    old=set(inspected.get(key,[]))
+    new=set(lines)-old
+    if not new:return False
+    inspected[key]=sorted(old|new)
+    value['revision']+=1
+    return True

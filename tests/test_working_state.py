@@ -9,6 +9,9 @@ class WorkingStateTests(unittest.TestCase):
         restored=json.loads(json.dumps(task));value=project(restored)
         self.assertEqual(value['next_action'],'Wire readiness check')
         self.assertEqual(value['corrections'][0]['text'],'Wait for readiness')
+        restored['requests'].append('Explain only; do not edit')
+        self.assertTrue(project(restored)['historical']);self.assertNotIn('next_action',project(restored))
+        self.assertEqual(project(restored)['historical_next_action'],'Wire readiness check')
         self.assertEqual(restored['status'],'running');self.assertNotIn('checks',restored)
         restored['patch']='new';self.assertTrue(project(restored)['references'][0]['historical'])
     def test_reject_authority_and_isolate_items(self):

@@ -10,6 +10,13 @@ def owner(task):
     return 'item:' + str(item) if item else 'interactive'
 
 
+def direction_identity(task):
+    value=[task.get('requests') or [task.get('prompt','')],task.get('workspace_generation',0),len(task.get('commits',[])),
+           [(e.get('kind'),e.get('detail')) for e in task.get('events',[]) if e.get('kind') in {'user','steer'}],
+           (task.get('branch_run') or {}).get('plan_revision')]
+    return hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
+
+
 def project(task):
     value = copy.deepcopy(task.get('working_states', {}).get(owner(task), {}))
     requests = task.get('requests') or [task.get('prompt', '')]
@@ -19,6 +26,9 @@ def project(task):
                  corrections=[{'event_index': n, 'text': e.get('detail')} for n, e in enumerate(task.get('events', []))
                               if e.get('kind') in {'user', 'steer'}],
                  requests=copy.deepcopy(requests), advisory=True)
+    value['historical'] = bool(value) and value.get('direction_identity') != direction_identity(task)
+    if value['historical'] and value.get('next_action'):
+        value['historical_next_action'] = value.pop('next_action')
     value['receipt_rule'] = 'Steps and decisions are worker claims, not verification, review approval, scope changes or permission. Source references describe their recorded versions.'
     for reference in value.get('references', []):
         reference['historical'] = reference['generation'] != task.get('workspace_generation', 0) or reference['patch_digest'] != hashlib.sha256(task.get('patch', '').encode()).hexdigest()
@@ -61,5 +71,6 @@ def update(task, args):
                              for n in refs]
     # Keep previous state unchanged if validation fails.
     value['revision']=value.get('revision',0)+1
+    value['direction_identity']=direction_identity(task)
     task.setdefault('working_states',{})[owner(task)]=copy.deepcopy(value)
     return project(task)

@@ -19,6 +19,9 @@ class WorkPolicyTests(LocalCase):
             def complete(self,messages,tools,maximum):
                 requests.append((messages.copy(),[t['function']['name'] for t in tools],maximum))
                 response = call('replace_text') if not proactive and len(requests)==2 else next(replies)
+                if proactive and response.get('tool_calls') and response['tool_calls'][0]['function']['name']=='replace_lines':
+                    args=json.loads(response['tool_calls'][0]['function']['arguments'])
+                    response=call('replace_text',{'path':'large.py','old_text':'value = '+('1' if args['new_text']=='value = 2' else '2'),'new_text':args['new_text']})
                 if not proactive and len(requests)==2:response['tool_calls'][0]['function']['arguments']='{\"path\":'
                 return response,{'prompt_tokens':10,'completion_tokens':5,'cost':0}
         self.engine.provider_factory=lambda *args:Provider()
@@ -29,7 +32,7 @@ class WorkPolicyTests(LocalCase):
         with patch('cheapos.work_policy.small_edit_reason',side_effect=policy):
             self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'awaiting_reply',result['error'])
-        self.assertIn('replace_text',requests[0][1]);self.assertIn('replace_lines',requests[1 if proactive else 2][1]);self.assertNotIn('replace_text',requests[1 if proactive else 2][1])
+        self.assertIn('replace_text',requests[0][1]);(self.assertNotIn if proactive else self.assertIn)('replace_lines',requests[1 if proactive else 2][1]);(self.assertIn if proactive else self.assertNotIn)('replace_text',requests[1 if proactive else 2][1])
         self.assertIn('read_file',requests[1][1]);self.assertEqual(requests[0][2],requests[1][2])
         self.assertEqual((root/'large.py').read_text().splitlines()[-1],'value = 3')
         failures=len([e for e in result['events'] if e['kind']=='tool_error'])
@@ -37,7 +40,7 @@ class WorkPolicyTests(LocalCase):
         self.assertEqual(result['providers'],task['providers'])
         return len(requests),failures
 
-    def test_large_observed_file_avoids_one_failed_whole_edit_request(self):
+    def test_large_file_preserves_tools_until_observed_format_failure(self):
         self.assertEqual(self.large_case(False),(6,1))
         self.assertEqual(self.large_case(True),(5,0))
 
