@@ -244,7 +244,10 @@ class ChatProvider:
     def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False, timeout_seconds=REQUEST_TIMEOUT_SECONDS, stream_seconds=600, brief=False, tool_choice=None):
         body = {"model": self.config["model"], "messages": messages, "stream": emit is not None}
         if max_tokens is not None:
-            body["max_tokens"] = max_tokens
+            if self.config.get("reasoning") and max_tokens < 16384 and (self.config.get("input_rate") or 0) == (self.config.get("output_rate") or 0) == 0:
+                body["max_tokens"] = 16384
+            else:
+                body["max_tokens"] = max_tokens
         if self.config.get("_recovery_reasoning") is not None:
             body["reasoning"] = self.config["_recovery_reasoning"]
         if brief and is_local_ollama(self.config):

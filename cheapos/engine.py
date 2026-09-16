@@ -2255,7 +2255,9 @@ class Engine:
         self.store.save(task)
         guard_automatic_route_cost(task)
         if not known:
-            raise BudgetError("Provider omitted complete token usage. The conservative reservation is retained; review the budget before resuming.")
+            paid_model = ((config.get("input_rate") or 0) > 0 or (config.get("output_rate") or 0) > 0) and config.get("access") != "included"
+            if paid_model:
+                raise BudgetError("Provider omitted complete token usage. The conservative reservation is retained; review the budget before resuming.")
 
     def remember_file_version(self, runtime, file):
         if file.get("hash") and file.get("path"):
