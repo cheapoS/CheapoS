@@ -542,18 +542,39 @@
   color: #ffb8b0;
 }
 
+.club-pref-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #2b3a32;
+  border-radius: 8px;
+}
+
+.club-pref-row label,
 .club-panel label {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 14px 0 8px;
+  margin: 0;
   font-size: 0.84375rem;
-  color: #c9d8ce;
+  color: #d8e5de;
   cursor: pointer;
+  user-select: none;
+}
+
+.club-pref-row input[type="checkbox"] {
+  accent-color: var(--mint);
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
 }
 
 .club-panel button[data-club-preferences] {
-  padding: 6px 12px;
+  padding: 5px 12px;
   border-radius: 5px;
   border: 1px solid #3a4b41;
   background: #1f2723;
@@ -561,13 +582,28 @@
   font-size: 0.78125rem;
   font-weight: 500;
   cursor: pointer;
-  margin-bottom: 6px;
+  margin: 0;
+  transition: all .15s ease;
 }
 
-.club-panel button[data-club-preferences]:hover {
+.club-panel button[data-club-preferences]:hover:not(:disabled) {
   background: #28342d;
   border-color: var(--mint);
   color: #ffffff;
+}
+
+.club-panel button[data-club-preferences]:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.club-pref-feedback {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--mint);
+  display: inline-flex;
+  align-items: center;
+  transition: opacity .15s ease;
 }
 
 /* Export Summary Section */

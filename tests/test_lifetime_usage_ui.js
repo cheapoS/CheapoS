@@ -57,3 +57,16 @@ test('sync updates only Club panel without collapsing usage or export preview',a
  assert.equal(c.d.scrollTop,210);assert.equal(c.q('[data-preview]').hidden,false);
  assert.deepEqual(calls,['/lifetime-usage?days=all','/club/sync']);
 });
+
+test('model preference checkbox saves and updates state',async()=>{
+  const c=controls(),calls=[];
+  const data=fixture();data.club={is_linked:true,sync_enabled:true,share_models:false,x_identity:{handle:'alice'}};
+  ui.open({dialog:()=>c.d,header:()=>'',api:async(path,payload)=>{calls.push({path,payload});if(path==='/club/sync')return {...data.club,share_models:payload?.share_models??true};return data;}});
+  await tick();
+  c.q('[data-club-models]').checked=true;
+  await c.q('[data-club-models]').onchange();
+  assert.equal(calls.length,2);
+  assert.equal(calls[1].path,'/club/sync');
+  assert.equal(calls[1].payload.share_models,true);
+  assert.equal(calls[1].payload.enabled,true);
+});

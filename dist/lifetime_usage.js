@@ -83,7 +83,7 @@ const CheapOSLifetimeUsage = (() => {
   function renderClub(club={}){
     const isLinked=Boolean(club.is_linked),isSyncing=Boolean(club.sync_enabled),op=club.x_identity||{};
     return `<section class="club-panel"><div class="club-card-content"><h3>The Cheapskate Club</h3>
-      ${isLinked?`<p>Connected to <strong>@${escape(op.handle)}</strong>. One installation connects to one Club account at a time.</p><p>Sharing ${isSyncing?'enabled':'paused'} · Last confirmed upload: ${club.last_synced_at?escape(date(club.last_synced_at)):'None yet'}</p><p>Only new settled request counts, usage category, accounting date, and anonymous event/installation IDs are sent. No prompts, code, paths or provider keys. Existing usage stays with its original account when you disconnect.</p><label><input type="checkbox" data-club-models ${club.share_models?'checked':''}/> Share model names for my Club profile</label><button type="button" data-club-preferences>Save model preference</button><div class="club-actions-row">${isSyncing?'<button type="button" data-club-sync>Sync now</button><button type="button" data-club-pause>Pause sharing</button>':'<button type="button" data-club-share>Enable sharing for new usage</button>'}<button type="button" data-club-disconnect>Disconnect</button></div>`:`<p>Connect your Club account, then choose whether to share new usage. Your local work never depends on the Club.</p>${club.pairing_pending?'':'<button class="primary-button" type="button" data-club-connect>Connect to Club →</button>'}${club.pairing_pending?`<p><a href="${escape(club.connect_url)}" target="_blank" rel="noopener noreferrer">Approve connection in the Club ↗</a></p><button type="button" data-club-check>Check connection</button><p>Waiting for browser approval. This updates automatically.</p><button type="button" data-club-connect>Refresh approval link</button>`:''}`}
+      ${isLinked?`<p>Connected to <strong>@${escape(op.handle)}</strong>. One installation connects to one Club account at a time.</p><p>Sharing ${isSyncing?'enabled':'paused'} · Last confirmed upload: ${club.last_synced_at?escape(date(club.last_synced_at)):'None yet'}</p><p>Only new settled request counts, usage category, accounting date, and anonymous event/installation IDs are sent. No prompts, code, paths or provider keys. Existing usage stays with its original account when you disconnect.</p><div class="club-pref-row"><label><input type="checkbox" data-club-models ${club.share_models?'checked':''}/> Share model names for my Club profile</label><button type="button" data-club-preferences>Save model preference</button><span class="club-pref-feedback" data-club-pref-feedback aria-live="polite"></span></div><div class="club-actions-row">${isSyncing?'<button type="button" data-club-sync>Sync now</button><button type="button" data-club-pause>Pause sharing</button>':'<button type="button" data-club-share>Enable sharing for new usage</button>'}<button type="button" data-club-disconnect>Disconnect</button></div>`:`<p>Connect your Club account, then choose whether to share new usage. Your local work never depends on the Club.</p>${club.pairing_pending?'':'<button class="primary-button" type="button" data-club-connect>Connect to Club →</button>'}${club.pairing_pending?`<p><a href="${escape(club.connect_url)}" target="_blank" rel="noopener noreferrer">Approve connection in the Club ↗</a></p><button type="button" data-club-check>Check connection</button><p>Waiting for browser approval. This updates automatically.</p><button type="button" data-club-connect>Refresh approval link</button>`:''}`}
       ${club.sync_message?`<p role="status">${escape(club.sync_message)}</p>`:''}${club.error?`<p role="status">${escape(club.error)}</p>`:''}<p><a href="${escape(club.leaderboard_url||'https://cheapskate-club.vercel.app')}/account" target="_blank" rel="noopener noreferrer">My Club account ↗</a></p><p data-club-error role="alert"></p></div></section>`;
   }
   function render(data){const s=safeSummary(data),known=Object.values(s.categories).reduce((n,v)=>n+(v.tokens||0),0),free=s.categories.public_free.tokens,paid=s.categories.paid.tokens,denom=(free||0)+(paid||0);
@@ -347,7 +347,58 @@ const CheapOSLifetimeUsage = (() => {
     }
     function bindClubActions(){
       const actions=[['connect','/club/pair',{}],['check','/club/check',{}],['share','/club/sync',{enabled:true}],['sync','/club/sync',{}],['pause','/club/sync',{enabled:false}],['disconnect','/club/disconnect',{}],['preferences','/club/sync',{}]];
-      for(const [name,path,values] of actions){const button=q('[data-club-'+name+']');if(button)button.onclick=async()=>{const label=button.textContent;button.disabled=true;if(name==='sync')button.textContent='Syncing…';try{const payload=['preferences','share'].includes(name)?{enabled:name==='share'||Boolean(current.club.sync_enabled),share_models:Boolean(q('[data-club-models]')?.checked)}:values;let status=await api(path,payload);if(status.is_linked===undefined)status=await api('/club/status');updateClub(status);}catch(error){if(closed||!d.isConnected)return;q('[data-club-error]').textContent=error.message||'Club request failed. Local work is unaffected.';button.disabled=false;button.textContent=label;}};}
+      for(const [name,path,values] of actions){
+        const button=q('[data-club-'+name+']');
+        if(button)button.onclick=async()=>{
+          const label=button.textContent;
+          button.disabled=true;
+          if(name==='sync')button.textContent='Syncing…';
+          if(name==='preferences'){
+            button.textContent='Saving…';
+            const feedback=q('[data-club-pref-feedback]');
+            if(feedback)feedback.textContent='Saving…';
+            const chk=q('[data-club-models]');
+            if(chk)chk.disabled=true;
+          }
+          try{
+            const payload=['preferences','share'].includes(name)?{enabled:name==='share'||Boolean(current?.club?.sync_enabled),share_models:Boolean(q('[data-club-models]')?.checked)}:values;
+            let status=await api(path,payload);
+            if(status.is_linked===undefined)status=await api('/club/status');
+            updateClub(status);
+            if(name==='preferences'){
+              const updatedBtn=q('[data-club-preferences]');
+              const feedback=q('[data-club-pref-feedback]');
+              if(updatedBtn)updatedBtn.textContent='Saved ✓';
+              if(feedback)feedback.textContent='Saved ✓';
+              const t=setTimeout(()=>{
+                if(updatedBtn&&updatedBtn.isConnected)updatedBtn.textContent='Save model preference';
+                if(feedback&&feedback.isConnected)feedback.textContent='';
+              },2000);
+              if(t&&typeof t.unref==='function')t.unref();
+            }
+          }catch(error){
+            if(closed||!d.isConnected)return;
+            const errEl=q('[data-club-error]');
+            if(errEl)errEl.textContent=error.message||'Club request failed. Local work is unaffected.';
+            const feedback=q('[data-club-pref-feedback]');
+            if(feedback)feedback.textContent='';
+            button.disabled=false;
+            button.textContent=label;
+            const chk=q('[data-club-models]');
+            if(chk)chk.disabled=false;
+          }
+        };
+      }
+      const modelCheckbox=q('[data-club-models]');
+      if(modelCheckbox){
+        modelCheckbox.onchange=()=>{
+          const prefBtn=q('[data-club-preferences]');
+          if(prefBtn){
+            if(typeof prefBtn.onclick==='function')prefBtn.onclick();
+            else if(typeof prefBtn.click==='function')prefBtn.click();
+          }
+        };
+      }
     }
 
     async function load(){
