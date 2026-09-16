@@ -238,14 +238,25 @@ def run_single_task(client, repo_dir, task, limits=None):
                 continue
             raise
 
-    preview_id = prev.get("preview_id") if prev else None
+    preview_id = (prev.get("preview_id") or prev.get("proposal_id")) if prev else None
     if not preview_id and prev:
-        # Check if blocker needs final recheck
-        if "revalidate" in str(prev.get("blocker", "")):
+        if prev.get("update_available") and prev.get("update_token"):
+            print(f"[{task['id']}] Target updated; updating branch and rechecking...", flush=True)
+            client.post(f"/api/tasks/{task_id}/branch-update", {"approved": True, "update_token": prev["update_token"]})
+            while True:
+                time.sleep(3)
+                td = client.get(f"/api/tasks/{task_id}")
+                if td.get("branch_run", {}).get("status") == "ready_for_merge":
+                    break
+                if td.get("status") in ("paused", "blocked", "failed"):
+                    break
+            prev = client.post(f"/api/tasks/{task_id}/branch-final-preview", {})
+            preview_id = prev.get("preview_id") or prev.get("proposal_id")
+        elif "revalidate" in str(prev.get("blocker", "")):
             client.post(f"/api/tasks/{task_id}/branch-final-recheck", {})
             time.sleep(5)
             prev = client.post(f"/api/tasks/{task_id}/branch-final-preview", {})
-            preview_id = prev.get("preview_id")
+            preview_id = prev.get("preview_id") or prev.get("proposal_id")
 
     merge_res = client.post(f"/api/tasks/{task_id}/branch-merge", {"proposal_id": preview_id, "approved": True})
     print(f"[{task['id']}] Merged successfully! Status: {merge_res.get('status')}", flush=True)
