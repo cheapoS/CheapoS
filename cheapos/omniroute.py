@@ -21,7 +21,40 @@ from .credentials import CredentialStore, CredentialError
 from . import access_policy, route_health
 
 
-GATEWAY_TYPES = {"omniroute": "OmniRoute", "cliproxyapi": "CLIProxyAPI", "9router": "9Router", "litellm": "LiteLLM", "compatible": "OpenAI-compatible"}
+GATEWAY_TYPES = {
+    "omniroute": "OmniRoute",
+    "cliproxyapi": "CLIProxyAPI",
+    "9router": "9Router",
+    "litellm": "LiteLLM",
+    "ollama": "Ollama",
+    "vllm": "vLLM",
+    "lmstudio": "LM Studio",
+    "localai": "LocalAI",
+    "compatible": "OpenAI-compatible",
+}
+
+GATEWAY_DEFAULT_URLS = {
+    "omniroute": "http://127.0.0.1:20128/v1",
+    "cliproxyapi": "http://127.0.0.1:8317/v1",
+    "9router": "http://127.0.0.1:20128/v1",
+    "litellm": "http://127.0.0.1:4000/v1",
+    "ollama": "http://127.0.0.1:11434/v1",
+    "vllm": "http://127.0.0.1:8000/v1",
+    "lmstudio": "http://127.0.0.1:1234/v1",
+    "localai": "http://127.0.0.1:8080/v1",
+    "compatible": "http://127.0.0.1:8000/v1",
+}
+
+
+def register_gateway_type(type_id, label, default_url="http://127.0.0.1:8000/v1"):
+    """Register a new gateway type definition dynamically."""
+    GATEWAY_TYPES[type_id] = label
+    GATEWAY_DEFAULT_URLS[type_id] = default_url
+
+
+def gateway_types_catalog():
+    return [{"id": k, "label": label, "default_url": GATEWAY_DEFAULT_URLS.get(k, "http://127.0.0.1:8000/v1"), "default_name": label}
+            for k, label in GATEWAY_TYPES.items()]
 
 DEFAULT_SETTINGS = {"name": "OmniRoute", "enabled": True, "quota_groups": {}, "gateway_type": "omniroute", "base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True, "remember_key": False}
 
@@ -142,7 +175,8 @@ class OmniRouteManager:
                     "revision": self.revision + self.pool.revision, "key_configured": bool(self.api_key),
                     "key_storage": self.key_storage(),
                     "free_count": sum(m.get("free") and m.get("tool_calling") is True and not m.get("local") for m in self.models),
-                    "dashboard_url": self.settings["base_url"][:-3], "diagnostic_code": self.diagnostic_code}
+                    "dashboard_url": self.settings["base_url"][:-3], "diagnostic_code": self.diagnostic_code,
+                    "gateway_types": gateway_types_catalog()}
 
     def configure(self, values):
         with self.lock:

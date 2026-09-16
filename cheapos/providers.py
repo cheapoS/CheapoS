@@ -155,7 +155,8 @@ def validate_provider(value, role):
             raise ValueError("Choose a saved gateway connection")
         result["connection_id"] = identity
     if "gateway_type" in value:
-        if value["gateway_type"] not in {"omniroute", "cliproxyapi", "9router", "litellm", "compatible"}:
+        from .omniroute import GATEWAY_TYPES
+        if value["gateway_type"] not in GATEWAY_TYPES:
             raise ValueError("Unknown gateway adapter")
         result["gateway_type"] = value["gateway_type"]
     if access:

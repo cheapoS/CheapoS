@@ -199,7 +199,8 @@ class FreeModelPool:
         # Observed compatibility first. Metadata only breaks ties; it is not a quality rating.
         mid = model["id"].lower()
         auto_pool = -2 if role == "worker" and (mid.startswith("auto/coding") or mid.startswith("auto/best-coding")) else 0
-        top_coder = -1 if role == "worker" and any(k in mid for k in ("haiku", "sonnet", "nemotron", "-pro", "/pro", "pro-", "coding")) else 0
+        is_non_code = any(k in mid for k in ("embed", "reward", "guard", "safety", "parse", "content-safety"))
+        top_coder = -1 if role == "worker" and not is_non_code and any(k in mid for k in ("haiku", "sonnet", "nemotron", "-pro", "/pro", "pro-", "coding", "code", "gemma", "qwen", "deepseek")) else (1 if is_non_code else 0)
         context_cap = 131072 if role in {"reviewer", "planner"} else 65536
         return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3), min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0,
                 auto_pool, top_coder,
@@ -208,6 +209,27 @@ class FreeModelPool:
                 -(model.get("reasoning") is True) if role in {"reviewer", "planner"} else 0,
                 -min(model.get("context_length") or 0, context_cap),
                 health.get(role + "_seconds", float("inf")) if connection_revision is None else float("inf"), model["id"])
+
+    def interleave(self, endpoint, models, role, preferred=None, connection_revision=None):
+        """Interleave candidates across providers within the same rank tier."""
+        if not models:
+            return []
+        key_fn = lambda m: self.rank(endpoint, m, role, preferred, connection_revision)
+        sorted_models = sorted(models, key=key_fn)
+        by_tier = {}
+        for m in sorted_models:
+            k = key_fn(m)
+            tier = k[:8]
+            p = m["id"].lower().split("/")[0] if "/" in m["id"] else "other"
+            by_tier.setdefault(tier, {}).setdefault(p, []).append(m)
+        result = []
+        for tier in sorted(by_tier.keys()):
+            providers = list(by_tier[tier].keys())
+            while any(by_tier[tier][p] for p in providers):
+                for p in providers:
+                    if by_tier[tier][p]:
+                        result.append(by_tier[tier][p].pop(0))
+        return result
 
     def record_outcome(self, endpoint, model, role, run_id, task_id, signals, connection_revision=None):
         """One bounded, idempotent observation per role/model/run; no raw output."""

@@ -389,3 +389,14 @@ class AlternativeGatewayTests(unittest.TestCase):
             self.assertEqual(usage['prompt_tokens'],7)
             self.assertEqual(message['content'],'ready')
             self.assertEqual(build.return_value.open.call_count,1)
+
+    def test_expandable_gateway_types_and_dynamic_registration(self):
+        from cheapos.omniroute import gateway_types_catalog, register_gateway_type, GATEWAY_TYPES
+        catalog = gateway_types_catalog()
+        ids = {item['id'] for item in catalog}
+        for expected in ('omniroute', 'cliproxyapi', '9router', 'litellm', 'ollama', 'vllm', 'lmstudio', 'localai', 'compatible'):
+            self.assertIn(expected, ids)
+        register_gateway_type('custom_router', 'Custom Router', 'http://127.0.0.1:9099/v1')
+        self.assertIn('custom_router', GATEWAY_TYPES)
+        self.assertEqual(validate_settings({'gateway_type':'custom_router', 'base_url':'http://127.0.0.1:9099/v1'})['gateway_type'], 'custom_router')
+        self.assertIn('custom_router', {item['id'] for item in gateway_types_catalog()})
