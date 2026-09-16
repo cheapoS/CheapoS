@@ -279,15 +279,15 @@ class StartupManager:
                     content = message.get("content")
                     if not known or not isinstance(content, str) or not content.strip() or message.get("tool_calls"):
                         raise ProviderError("The greeting did not return a complete answer and token usage. No tools were executed.")
-                    # Commit model choices only after successful inference; existing chats stay pinned.
+                    # In delegate/remote mode, dynamic routing evaluates and selects models
+                    # across the gateway catalog. Do not permanently pin the greeting model to config.json.
                     with self.engine.lock:
                         self._check_stop()
-                        selected = copy.deepcopy(self.engine.config)
-                        selected["worker"] = config
-                        if not selected.get("reviewer"):
-                            selected["reviewer"] = validate_provider({**config, "key_env":config["key_env"]}, "reviewer")
-                        write_json(self.engine.store.root / "config.json", selected)
-                        self.engine.config = selected
+                        if self.engine.preferences().get("execution", {}).get("mode") == "manual":
+                            selected = copy.deepcopy(self.engine.config)
+                            selected["worker"] = config
+                            write_json(self.engine.store.root / "config.json", selected)
+                            self.engine.config = selected
                     self._attempt(attempt, status="ready", finished_at=timestamp())
                     self._set(status="ready", message="The model answered. Open a project to start.", content=content.strip()[:2000], thinking="", verified_at=timestamp())
                     return
