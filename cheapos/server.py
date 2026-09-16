@@ -192,7 +192,16 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 raise ValueError("Expected a JSON object")
             engine = self.server.engine
             path = urlsplit(self.path).path
-            if path == "/api/role-mappings":
+            if path == "/api/restart":
+                self.trusted(mutation=True)
+                self.server.engine.shutdown()
+                result = {"status": "restarting"}
+                def restart_backend():
+                    time.sleep(0.4)
+                    self.server.server_close()
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                threading.Thread(target=restart_backend, daemon=True).start()
+            elif path == "/api/role-mappings":
                 if self.command == "POST":
                     result = engine.save_role_mappings(values)
                 else:
