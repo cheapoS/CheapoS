@@ -23,7 +23,7 @@ class ClubTests(unittest.TestCase):
         self.accept=accept;self.club._request=accept
 
     def row(self,id='new',tokens=12):
-        return {'request_id':id,'date':'2026-09-15','reconciled':True,'input_tokens':tokens,'output_tokens':3,'club_category':'local'}
+        return {'request_id':id,'date':'2026-09-15','reconciled':True,'input_tokens':tokens,'output_tokens':3,'category':'local','club_category':'unknown'}
 
     def test_opt_in_excludes_existing_usage_and_duplicate_ticks(self):
         self.rows.append(self.row('old'));self.club.set_sync(True)
@@ -102,3 +102,20 @@ class ClubTests(unittest.TestCase):
         self.club.set_sync(True);self.rows.append(self.row())
         self.assertIn('Uploaded 1 usage records',self.club.sync_now(self.ledger)['sync_message'])
         self.assertIn('Up to date',self.club.sync_now(self.ledger)['sync_message'])
+
+    def test_models_are_optional_and_preference_preserves_pending_usage(self):
+        self.club.set_sync(True)
+        row=self.row();row['requested_model']='gemma4:31b';self.rows.append(row)
+        self.club.sync_now(self.ledger)
+        first=json.loads(self.sent[-1]['payload'])['events'][0]
+        self.assertEqual(first['category'],'local')
+        self.assertNotIn('model_name',first)
+        self.rows.append(self.row('another'))
+        self.club.set_sync(True,True)
+        self.assertNotIn('another',self.club.state['baseline'])
+        self.club.sync_now(self.ledger)
+        event=json.loads(self.sent[-1]['payload'])['events'][0]
+        self.assertEqual(event['model_name'],'gemma4:31b')
+        self.assertEqual(event['event_id'],first['event_id'])
+        self.club.set_sync(True,False);self.club.sync_now(self.ledger)
+        self.assertTrue(all('model_name' not in e for e in json.loads(self.sent[-1]['payload'])['events']))

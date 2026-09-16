@@ -221,7 +221,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
             elif path == "/api/club/sync":
                 self.trusted(mutation=True)
                 if "enabled" in values:
-                    result = engine.store.club.set_sync(values["enabled"])
+                    result = engine.store.club.set_sync(values["enabled"],values.get("share_models"))
                 else:
                     result = engine.store.club.sync_now(engine.store.lifetime, values.get("period", "all"))
             elif path == "/api/club/disconnect":

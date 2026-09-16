@@ -25,7 +25,7 @@ test('club renders unlinked, preview, and active states with extended models',as
   assert.match(linkedHtml, /Only new settled request counts/);
   assert.match(linkedHtml, /Enable sharing for new usage/);
   assert.doesNotMatch(linkedHtml, /verified numerical/);
-  assert.match(linkedHtml, /No prompts, code, paths, model names or provider keys/);
+  assert.match(linkedHtml, /No prompts, code, paths or provider keys/);
 
   const activeData = fixture();
   activeData.club = {

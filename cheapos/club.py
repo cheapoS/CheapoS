@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from datetime import datetime, timezone
 from .credentials import CredentialStore
+from .lifetime_usage import resolve_category, safe_model
 
 DEFAULT_LEADERBOARD_URL = "https://cheapskate-club.vercel.app"
 
@@ -43,6 +44,7 @@ class ClubManager:
         try:
             self.state=json.loads(self.path.read_text()) if self.path.exists() else default
             if not isinstance(self.state,dict) or not set(default).issubset(self.state): raise ValueError()
+            self.state.setdefault('share_models',False)
             self.state.setdefault('endpoint',self.leaderboard_url)
             if self.state['endpoint']!=self.leaderboard_url:
                 raise ValueError()
@@ -105,7 +107,7 @@ class ClubManager:
     def get_status(self,summary_dict=None):
         with self.lock:
             s=self.state
-            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']))
+            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],share_models=s.get('share_models',False),last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']))
 
     def start_pairing(self,lifetime):
         with self.lock:
@@ -156,15 +158,18 @@ class ClubManager:
             self.state['sent'].update(pending['fingerprints']);self.state['last_synced_at']=now()
         else:
             self.state['sync_enabled']=message['enabled']
+            self.state['share_models']=message.get('share_models',self.state.get('share_models',False))
         self._save()
 
     def _queue(self,action,_fingerprints=None,**fields):
         self.state['pending']={'envelope':self._signed(self._message(action,sequence=self.state['sequence']+1,previous_hash=self.state['previous_hash'],**fields)), 'fingerprints':_fingerprints or {}}
         self._save()
 
-    def set_sync(self,enabled):
+    def set_sync(self,enabled,share_models=None):
         with self.lock:
             if not isinstance(enabled,bool): raise ValueError('Sharing must be true or false.')
+            if share_models is not None and not isinstance(share_models,bool): raise ValueError('Model sharing must be true or false.')
+            was_enabled=self.state['sync_enabled']
             if not self.state['identity'] or self.state.get('revoking'): raise ValueError('Connect a Club account first.')
             self.state['sync_enabled']=False;self._save()
             # Reconcile an uncertain acknowledgment without uploading a pending
@@ -179,10 +184,15 @@ class ClubManager:
                 elif remote.get('sequence')!=self.state['sequence'] or remote.get('previous_hash')!=self.state['previous_hash']:
                     raise ValueError('Club cursor conflicts with saved work. Sharing remains paused.')
                 self.state['pending']=None;self._save()
-            if enabled and self.lifetime:
+            if enabled and not was_enabled and self.lifetime:
                 # Requests begun before enabling/resuming sharing remain private.
                 self.state['baseline']=list(set(self.state['baseline']) | {row['request_id'] for row in self.lifetime.raw_requests() if row['request_id'] not in self.state['sent']})
-            self._queue('consent',enabled=enabled);self._flush()
+            fields={'enabled':enabled}
+            if share_models is not None: fields['share_models']=share_models
+            self._queue('consent',**fields);self._flush()
+            if share_models is not None:
+                self.state['sync_message']='Model names will be shared on your Club profile.' if share_models else 'Model sharing is off. Your token totals are unchanged.'
+                self._save()
             if enabled: self.start_background(self.lifetime)
             return self.get_status()
 
@@ -202,7 +212,10 @@ class ClubManager:
                         waiting+=1;continue
                     if any(type(row.get(k)) not in (int,float) or row[k]<0 or row[k]>1000000000 or int(row[k])!=row[k] for k in ('input_tokens','output_tokens')):
                         waiting+=1;continue
-                    event=dict(event_id=str(uuid.uuid5(uuid.UUID(self.state['installation_id']),rid)),category=row.get('club_category','unknown'),input_tokens=int(row['input_tokens']),output_tokens=int(row['output_tokens']),accounting_at=row['date']+'T00:00:00Z')
+                    event=dict(event_id=str(uuid.uuid5(uuid.UUID(self.state['installation_id']),rid)),category='paid' if (row.get('reported_cost') or 0)>0 else resolve_category(row),input_tokens=int(row['input_tokens']),output_tokens=int(row['output_tokens']),accounting_at=row['date']+'T00:00:00Z')
+                    if self.state.get('share_models'):
+                        model=safe_model(row.get('served_model') or row.get('requested_model'))
+                        if model: event['model_name']=model[:160]
                     fingerprint=hashlib.sha256(json.dumps(event,sort_keys=True).encode()).hexdigest()
                     if self.state['sent'].get(rid)==fingerprint: continue
                     event['slot']=len(events);events.append(event);fingerprints[rid]=fingerprint
@@ -224,7 +237,7 @@ class ClubManager:
             if self.state['pairing_id']:
                 result=self._call('disconnect')
                 if result.get('status')!='disconnected': raise ValueError('Club did not confirm disconnection. Sharing remains stopped.')
-            self.state.update(identity=None,pairing_id=None,pending=None,sent={},baseline=[],revoking=False,error=None)
+            self.state.update(identity=None,pairing_id=None,pending=None,sent={},baseline=[],revoking=False,error=None,share_models=False)
             self._save()
             return {'status':'disconnected'}
 
