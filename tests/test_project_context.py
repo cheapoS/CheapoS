@@ -6,7 +6,10 @@ from cheapos import project_context
 from cheapos.providers import BudgetError
 from cheapos.routing import coordinator_messages
 from cheapos.workspace import Workspace
-from test_engine import LocalCase
+try:
+    from test_engine import LocalCase
+except ImportError:
+    from tests.test_engine import LocalCase
 
 
 class ProjectContextTests(LocalCase):

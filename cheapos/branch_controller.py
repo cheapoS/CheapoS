@@ -738,6 +738,7 @@ class BranchController:
                 raise ValueError('Guidance is full; prepare an explicit revision')
             guidance.append({'item_id':run['current_item_id'],'message':message.strip()})
             task.pop('recovery_blocked', None)
+            task['steer_guidance'] = message.strip()
             answering_blocker=bool(run.pop('waiting_for_user',None))
             if answering_blocker:
                 for item in run['items']:
@@ -747,6 +748,12 @@ class BranchController:
             from .development import enabled
             development=enabled(task)
             active=bool(runtime and runtime.thread and runtime.thread.is_alive())
+            if active and hasattr(runtime, 'task'):
+                runtime.task['steer_guidance'] = message.strip()
+                runtime.task.setdefault('messages', []).append({
+                    'role': 'user',
+                    'content': f"USER INSTRUCTION: {message.strip()}\nPlease acknowledge this instruction directly and prioritize it."
+                })
             self.engine.event(task,'branch_guidance','Guidance saved within the accepted plan',
                               'Applying your correction and continuing within the approved scope.' if development else
                               'Your update is saved for continuation from the current files. The plan and remaining limits are unchanged.' if task['status']=='paused' else 'The worker will receive this on its next turn.')

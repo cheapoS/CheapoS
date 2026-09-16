@@ -81,6 +81,7 @@ UNATTENDED_TOOLS = [t for t in WORKER_TOOLS if t['function']['name'] != 'run_che
     tool('run_checks', 'Run a planned approved check, or request additional authority for a new exact verification command. Omit command to reuse the selected check.', {'command': TEXT}), BLOCKER_TOOL]
 REVIEW_TOOLS = READ_TOOLS + [tool("review_decision", "Return the checkpoint decision. Read relevant source before deciding.", {"decision": {"type": "string", "enum": ["APPROVE", "REQUEST_CHANGES", "REQUEST_TESTS", "TAKE_OVER"]}, "feedback": TEXT}, ["decision", "feedback"])]
 WORKER_SYSTEM = """You are the cheapoS worker, coding in an isolated snapshot of the user's personal repository.
+When receiving instructions or guidance, acknowledge the user's direction clearly and concisely alongside your tool calls so the operator is informed of your reasoning and progress.
 Use the provided tools to inspect, search, edit and verify code. Make small focused changes.
 Practice test-driven discipline: when implementing new functionality or bug fixes, inspect or establish unit test cases first to define the contract. Then make focused implementation edits until run_checks passes. This keeps edits bounded and conserves worker turns.
 When run_checks reports a test failure, inspect the test definition and failing assertion carefully before modifying code. If the failure message lacks detail (e.g. AssertionError without runtime values), read the test file or add diagnostic output to see the actual runtime values instead of repeatedly guessing micro-edits.
@@ -1587,9 +1588,13 @@ class Engine:
         summary["available_files"] = names[:60]
         summary["file_listing"] = {"total": len(names), "partial": len(names) > 60,
                                    "more": "Use list_files with a directory for missing paths."}
-        return [{"role": "system", "content": worker_system(task)},
-                {"role": "user", "content": json.dumps(summary)},
-                {"role": "user", "content": execution_context.guidance(task, guidance_text)}]
+        res = [{"role": "system", "content": worker_system(task)},
+               {"role": "user", "content": json.dumps(summary)},
+               {"role": "user", "content": execution_context.guidance(task, guidance_text)}]
+        steer = task.get("steer_guidance") or (task.get("branch_run", {}).get("guidance", [])[-1]["message"] if task.get("branch_run", {}).get("guidance") else None)
+        if steer:
+            res.append({"role": "user", "content": f"USER GUIDANCE / INSTRUCTION:\n{steer}\n\nPlease directly acknowledge this instruction and prioritize it in your plan and actions."})
+        return res
 
     def prepare_compact_edits(self, task):
         if not task.get("compact_edits"):
@@ -3029,10 +3034,28 @@ class Engine:
                             last_check = (task.get("checks") or [{}])[-1]
                             current_digest = hashlib.sha256(task.get("patch", "").encode()).hexdigest()
                             if last_check.get("passed") and last_check.get("digest") == current_digest:
-                                task["messages"].append({"role": "user", "content": "Verification has passed for all current edits. Call checkpoint directly to submit for review. Do not repeat edits or output conversational text."})
+                                no_calls = task.get("no_call_turns", 0)
+                                if no_calls >= 1:
+                                    self.event(task, "state", "Submitting verified changes for review")
+                                    result = self.checkpoint_feedback(runtime, {"summary": str(message.get("content", ""))[:4000], "uncertainties": "Verified changes submitted for review."})
+                                    task["messages"].append({"role": "user", "content": "Checkpoint result: " + json.dumps(result)})
+                                    task["no_call_turns"] = 0
+                                else:
+                                    task["no_call_turns"] = no_calls + 1
+                                    task["messages"].append({"role": "user", "content": "Verification has passed for all current edits. Call checkpoint directly to submit for review. Do not repeat edits or output conversational text."})
                             else:
-                                task["messages"].append({"role": "user", "content": "Edits are present in the workspace. Call run_checks directly to verify your changes. Outputting text does not verify code."})
+                                content_lower = str(message.get("content", "")).lower()
+                                no_calls = task.get("no_call_turns", 0)
+                                if "run_checks" in content_lower or "unittest" in content_lower or "test" in content_lower or no_calls >= 1:
+                                    self.event(task, "state", "Running verification checks")
+                                    result = self.worker_checks(runtime, {}, last_call=True)
+                                    task["messages"].append({"role": "user", "content": "Verification check result: " + json.dumps(result)})
+                                    task["no_call_turns"] = 0
+                                else:
+                                    task["no_call_turns"] = no_calls + 1
+                                    task["messages"].append({"role": "user", "content": "Edits are present in the workspace. Call run_checks directly to verify your changes. Outputting text does not verify code."})
                         else:
+                            task["no_call_turns"] = 0
                             task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
                     elif task.get("conversational") and not task.get("branch_run") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
                         task["status"] = "awaiting_reply"
