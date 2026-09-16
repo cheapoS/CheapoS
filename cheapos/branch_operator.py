@@ -197,7 +197,7 @@ def amend(controller, task_id, values):
             if task.get('pending_review'):
                 task.setdefault('operator_review_history',[]).append(copy.deepcopy(task['pending_review']))
             task.pop('pending_review',None)
-            task['active_role']='reviewer'
+            task['active_role']='worker'
         else:
             item.setdefault('operator_evidence_history',[]).append({key:copy.deepcopy(item[key]) for key in ('evidence','ready_receipt','review_repair','review_rounds') if key in item})
             item['revision']=item.get('revision',1)+1;item['evidence']={};item['status']='working'
