@@ -236,8 +236,10 @@ def checkpoint(engine, runtime, args):
         runtime.guard()
         from .provider_recovery import review_turns
         turns = review_turns(task, pending)
-        needs_decision = bool(pending.get('require_decision'))
-        deciding = (not developing(task) and not measuring(task) and turns >= max_rounds - 1) or needs_decision
+        needs_decision = bool(pending.get('require_decision')) or any(count >= 3 for count in pending.get('observations', {}).values())
+        deciding = ((not developing(task) and not measuring(task) and turns >= max_rounds - 1)
+                    or (developing(task) and turns >= 12)
+                    or needs_decision)
         if deciding:
             _coach(engine, task, messages, 'request_limit' if turns >= max_rounds - 1 else 'missing_decision')
         offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools
