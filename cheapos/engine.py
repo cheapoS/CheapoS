@@ -108,6 +108,7 @@ For general conversation, questions, exploration, or chat (e.g. "Just chatting",
 2. Code Changes / Implementation:
 When the user asks you to implement, fix, refactor, or build something, execute the autonomous loop directly without stalling or asking 1,000 preliminary questions:
 - Bias to autonomous action: Inspect code, tests, and manifests directly. Do NOT ask for permission to start, do NOT ask "Shall I proceed?", and do NOT ask questions whose answers are available by reading the repository.
+- NEVER output code in conversational chat text or markdown. Outputting code in chat text does NOT modify repository files. You MUST call write_file, replace_text, or append_text directly to apply changes to files.
 - For unspecified reversible details, follow existing project conventions, make reasonable engineering decisions, and record your assumptions in the checkpoint summary.
 - Practice test-driven discipline: inspect or write tests first, make focused edits, choose an appropriate verification command from the project, and call run_checks directly. The controller presents any required command approval to the user; never ask for command permission in prose or ask_user.
 - Selection previews such as check.py --plan are not verification: choose an executable scoped check from project guidance.
@@ -3280,8 +3281,17 @@ class Engine:
                             else:
                                 task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
                     elif task.get("conversational") and not task.get("finish_review") and not task.get("branch_run") and message.get("content") and not message.get("reasoning_fallback") and task["patch"] == task.get("turn_start_patch", ""):
-                        task["status"] = "awaiting_reply"
-                        task["action_pending"] = False
+                        from .continuation_policy import is_implementation
+                        content_str = str(message.get("content", ""))
+                        has_code_in_text = "```" in content_str or any(line.strip().startswith(("def ", "class ", "import ", "from ", "function ", "const ", "let ", "var ")) for line in content_str.splitlines())
+                        no_calls = task.get("no_call_turns", 0)
+                        if is_implementation(task) and has_code_in_text and no_calls < 2:
+                            task["no_call_turns"] = no_calls + 1
+                            task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file, replace_text, or append_text directly to apply your code to the files, and run_checks to verify."})
+                        else:
+                            task["no_call_turns"] = 0
+                            task["status"] = "awaiting_reply"
+                            task["action_pending"] = False
                     elif task.get("conversational") and message.get("content") and not message.get("reasoning_fallback") and task["patch"] and task["check_command"]:
                         # A completed editing response must reach review even if
                         # the worker forgets the checkpoint tool. Questions and

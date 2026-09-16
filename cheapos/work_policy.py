@@ -78,8 +78,10 @@ def small_edit_reason(task):
 
 def stage(task):
     if read_only(task):return 'explanation'
-    if task.get('status')=='reviewing':return 'review'
+    from .continuation_policy import is_implementation
     if task.get('conversational') and not task.get('finish_review') and not active_implementation(task) and task.get('patch', '') == task.get('turn_start_patch', ''):
+        if is_implementation(task):
+            return 'implementation'
         return 'orientation'
     check=(task.get('checks') or [{}])[-1]
     if task.get('changes'):
@@ -92,6 +94,7 @@ def stage(task):
     # Reading is not authorization to implement. Ordinary chat retains all
     # tools, but the controller must not turn inspection into a repair order.
     if active_implementation(task):return 'implementation'
+    if is_implementation(task):return 'implementation'
     if task.get('conversational'):return 'orientation'
     return 'implementation' if any(e['kind']=='tool' for e in task.get('events',[])) else 'orientation'
 

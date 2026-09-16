@@ -37,18 +37,20 @@ def is_continue(message):
 def is_implementation(task):
     from . import work_policy
     from .engine import needs_patch_review
-    if work_policy.read_only(task):
-        return False
-    if work_policy.active_implementation(task) or needs_patch_review(task) or work_policy.attempted_edit(task):
-        return True
     prompt = (task.get('requests') or [task.get('prompt', '')])[-1]
     if isinstance(prompt, str):
-        prompt_lower = prompt.casefold()
+        prompt_clean = prompt.strip().casefold()
+        if re.search(r'\b(?:do\s+not\s+edit|without\s+(?:making\s+)?(?:more\s+)?changes|no\s+changes|don\'?t\s+change|don\'?t\s+edit)\b', prompt_clean):
+            return False
+        if re.search(r'^(?:how\s+(?:do|can|to|would|should)|what\s+(?:is|are|does|did)|why\s+(?:is|does|do|did)|where\s+(?:is|are|does|can)|explain\b|describe\b|tell\s+me\b|can\s+you\s+(?:find|tell|explain|show)\b)', prompt_clean):
+            return False
         action_keywords = {'fix', 'update', 'change', 'add', 'implement', 'create', 'delete', 'remove',
                            'replace', 'make', 'edit', 'patch', 'build', 'refactor', 'repair', 'resolve',
                            'write', 'modify', 'adjust', 'correct', 'clean'}
-        if any(re.search(r'\b' + re.escape(w) + r'\b', prompt_lower) for w in action_keywords):
+        if any(re.search(r'\b' + re.escape(w) + r'\b', prompt_clean) for w in action_keywords):
             return True
+    if work_policy.active_implementation(task) or needs_patch_review(task):
+        return True
     return False
 
 
