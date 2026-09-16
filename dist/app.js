@@ -424,7 +424,8 @@ function renderComposer() {
 function projectMenu(path,anchor) {
   compactMenu(anchor,'Project options',[
     {label:'New chat',run:()=>chooseProject(state.projects.find(p=>p.path===path))},
-    {label:'Project settings…',run:()=>editProject(path)}
+    {label:'Project settings…',run:()=>editProject(path)},
+    {label:'Project context…',run:()=>CheapOSCarto.settings(api,path)}
   ]);
 }
 function editProject(path) {

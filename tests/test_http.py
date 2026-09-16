@@ -69,6 +69,18 @@ class HTTPTests(unittest.TestCase):
     def post(self, path, body):
         return self.request('POST', path, body, {'Content-Type':'application/json', 'X-CheapOS-Token': self.server.token})
 
+    def test_carto_settings_require_token_and_registered_project(self):
+        source = str(Path(self.temp.name).resolve())
+        with patch('cheapos.workspace.Workspace.project_root', return_value=Path(source)), patch.object(self.engine, 'projects', return_value=[{'path':source}]), patch.object(self.engine.carto, 'context', return_value={'status':'indexing'}):
+            self.assertEqual(self.request('POST','/api/projects/carto',{'repository':source,'enabled':True})[0],403)
+            status, _, body = self.post('/api/projects/carto',{'repository':source,'enabled':True})
+            self.assertEqual(status,200)
+            self.assertTrue(json.loads(body)['enabled'])
+            self.assertEqual(json.loads(body)['index']['status'],'indexing')
+            self.assertEqual(self.request('GET','/carto.js')[0],200)
+        with patch('cheapos.workspace.Workspace.project_root', return_value=Path(source)), patch.object(self.engine, 'projects', return_value=[]):
+            self.assertEqual(self.post('/api/projects/carto',{'repository':source})[0],400)
+
     def test_raw_check_route_only_resolves_known_task_and_run(self):
         from cheapos import check_output
         task=self.engine.create_demo();run='a'*32;data=b'exact failure\n\x1b[31mred\x1b[0m\n'

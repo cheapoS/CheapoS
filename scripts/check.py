@@ -84,6 +84,14 @@ DEFAULT_JOBS = min(8, os.cpu_count() or 1)
 def plan(root, files, jobs=DEFAULT_JOBS, full=False):
     files = sorted(set(files))
     commands, notes = [], []
+    carto_runtime = {'integrations/carto/bridge.cjs', 'integrations/carto/package.json',
+                     'integrations/carto/package-lock.json', 'integrations/carto/runtime/package.json',
+                     'integrations/carto/runtime/package-lock.json', 'scripts/install_carto.py'}
+    if carto_runtime.intersection(files):
+        files = sorted(set(files) - carto_runtime | {'tests/test_carto.py'})
+        if (root/'integrations/carto/bridge.cjs').is_file():
+            commands.append(['node', '--check', 'integrations/carto/bridge.cjs'])
+        notes.append('Carto runtime changes select adapter regression tests; also smoke-test the installed native runtime locally.')
     frontend = full or any(path.startswith('dist/') or path.startswith('tests/') and path.endswith('.js') for path in files)
     backend = [path for path in files if path.endswith('.py')]
     unknown = [path for path in files if not (path.endswith(('.py', '.md')) or path.startswith(('docs/', 'dist/'))

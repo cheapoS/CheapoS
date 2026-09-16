@@ -291,6 +291,9 @@ def plan(engine, runtime, inputs):
         raise ValueError('Supply displayed finite planning_limits on the planning task')
     if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
     context = project_context(captured['source'])
+    if hasattr(engine, 'carto'):
+        carto = engine.carto.context(captured['source'], captured['source'])
+        if carto['status'] != 'disabled': context['carto'] = carto
     messages = [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': json.dumps({'captured_inputs': captured, 'displayed_limits': limits, 'project_context': context}, ensure_ascii=False)}]
     attempt = 0
     discovery = 0
@@ -330,6 +333,9 @@ def plan(engine, runtime, inputs):
                         if not isinstance(arguments, dict) or 'path' not in arguments or set(arguments) - {'path', 'start_line', 'end_line', 'start_column', 'query'}:
                             raise ValueError('Supply path and optional line/column coordinates or literal query')
                         result = inspect_project_file(captured['source'], **arguments)
+                        if hasattr(engine, 'carto'):
+                            carto = engine.carto.context(captured['source'], captured['source'], path=arguments['path'])
+                            if carto['status'] != 'disabled': result['carto'] = carto
                     except (ValueError, OSError, TypeError) as error:
                         result = {'error': str(error)[:500]}
                     if discovery >= MAX_DISCOVERY_REQUESTS:

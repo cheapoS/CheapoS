@@ -21,6 +21,15 @@ class SelectionTests(unittest.TestCase):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
 
+    def test_optional_carto_runtime_selects_adapter_tests(self):
+        self.write('tests/test_carto.py')
+        self.write('tests/test_unrelated.py')
+        self.write('integrations/carto/bridge.cjs')
+        commands, notes, selected = check.plan(self.root, ['integrations/carto/package-lock.json'])
+        self.assertEqual(selected, ['tests/test_carto.py'])
+        self.assertIn(['node','--check','integrations/carto/bridge.cjs'],commands)
+        self.assertTrue(any('native runtime' in note for note in notes))
+
     def test_frontend_and_docs_never_select_backend_tests(self):
         self.write('dist/app.js');self.write('tests/test_view.js');self.write('tests/test_backend.py')
         commands, notes, selected = check.plan(self.root, ['dist/styles.css'])

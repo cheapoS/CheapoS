@@ -96,7 +96,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():
@@ -209,6 +209,13 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.startup.start()
             elif path == "/api/startup/stop":
                 result = engine.startup.stop()
+            elif path == "/api/projects/carto":
+                from .workspace import Workspace
+                source = str(Workspace.project_root(values.get('repository', '')))
+                if source not in {p['path'] for p in engine.projects(include_hidden=True)}:
+                    raise ValueError('Choose a registered project')
+                if 'enabled' in values: engine.carto.configure(source, values['enabled'])
+                result = {**engine.carto.status(source), 'index':engine.carto.context(source,source,rebuild=values.get('rebuild') is True)}
             elif path == "/api/projects/preview":
                 result = engine.previews.settings(values)
             elif path == "/api/projects/hide":

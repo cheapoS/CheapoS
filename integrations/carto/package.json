@@ -1,0 +1,1 @@
+{"name":"cheapos-carto-context","private":true,"version":"1.0.0","description":"Optional local Carto adapter for cheapoS","dependencies":{"carto-md":"2.1.5"}}
