@@ -98,6 +98,8 @@ class BranchController:
         result = {'execution':copy.deepcopy(self.engine.preferences()['execution']), 'providers':copy.deepcopy(self.engine.config)}
         access = snapshot(self.engine.gateway.settings)
         if access is not None: result['gateway_access'] = access
+        if getattr(self.engine,'connections',None) and (len(self.engine.connections.managers) > 1 or any(p and p.get('connection_id') for p in self.engine.config.values())):
+            result['gateway_connections'] = self.engine.connections.capture()
         return result
 
     def prepare(self, values, planning_task=None):
@@ -189,7 +191,13 @@ class BranchController:
         run=task['branch_run']
         from .branch_completion import authorization_run
         policy = copy.deepcopy(run['model_policy']) if run.get('operator_revision_history') else self.model_policy()
-        if run.get('operator_revision_history'):
+        if run.get('model_policy', {}).get('gateway_connections') is not None:
+            policy = copy.deepcopy(run['model_policy'])
+            for entry in policy['gateway_connections']:
+                manager = self.engine.connections.managers.get(entry['connection_id'])
+                if manager and manager.settings['enabled'] and self.engine.connections.for_policy(entry) is None:
+                    raise ValueError('An authorized gateway connection changed; inspect a fresh proposal')
+        if run.get('operator_revision_history') and not policy.get('gateway_connections'):
             from .access_policy import validate_current, effective_settings
             validate_current(policy.get('gateway_access'), effective_settings(task,self.engine.gateway.settings))
         if 'gateway_access' not in run.get('model_policy', {}): policy.pop('gateway_access', None)

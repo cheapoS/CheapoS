@@ -1153,13 +1153,14 @@ function sampleDialog() {
     try{if(button.dataset.sample==='scripted'){d.close();await startDemo();return}const task=await api('/sample',{});d.close();await loadTasks();await selectTask(task.id);await startTask(task.id)}catch(e){$('.form-error',d).textContent=e.message;$$('[data-sample]',d).forEach(b=>b.disabled=false)}
   });
 }
-function openConnections(afterSave, taskContext=null) {
+async function openConnections(afterSave, taskContext=null) {
+  const connectionCatalogs=await api("/gateway/catalogs");
   const c=state.config, gateway=state.gateway||{}, settings=gateway.settings||{base_url:'http://127.0.0.1:20128/v1',auto_start:true,keep_running:true};
   const isOmni=p=>p.gateway==='omniroute'||!p.base_url||p.base_url.replace('localhost','127.0.0.1').replace(/\/$/,'')===settings.base_url.replace('localhost','127.0.0.1');
   const providerFields=role=>{
-    const p=c[role]||{}, preset=p.route_error?'blocked':isOmni(p)?'omniroute':'ollama';
+    const p=c[role]||{}, preset=p.route_error?'blocked':isOmni(p)?(p.connection_id||Object.keys(connectionCatalogs).find(id=>connectionCatalogs[id].settings.base_url===p.base_url)||gateway.selected_connection||'default'):'ollama';
     return `<fieldset class="provider-fields" data-role="${role}"><legend>${role==='worker'?'Worker · does the work':role==='planner'?'Planner · prepares the plan':'Reviewer · checks the evidence'}</legend>
-      <label class="full-field">Connection<select data-preset="${role}">${[['omniroute','OmniRoute (shared local gateway)'],['ollama','Ollama (local)'],...(preset==='blocked'?[['blocked','Unavailable direct connection · choose a new connection']]:[])].map(([v,n])=>`<option value="${v}" ${v==='blocked'?'disabled':''} ${v===preset?'selected':''}>${n}</option>`).join('')}</select></label>
+      <label class="full-field">Connection<select data-preset="${role}">${[...(gateway.connections||[]).map(g=>[g.id,g.name+(g.enabled?'':' · disabled')]),['ollama','Ollama (local)'],...(preset==='blocked'?[['blocked','Unavailable direct connection · choose a new connection']]:[])].map(([v,n])=>`<option value="${esc(v)}" ${v==='blocked'?'disabled':''} ${v===preset?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
       <p class="small" data-route-error="${role}" role="status"></p><div data-direct="${role}"><label class="full-field">Local Ollama URL<input type="url" name="${role}_url" value="${esc(p.base_url||settings.base_url)}" readonly required></label></div>
       <div data-catalog="${role}"><label class="checkbox-field"><input type="checkbox" data-free="${role}" checked><span>Show public-free and included models</span></label><label class="full-field">Catalog models<select data-model-picker="${role}"><option value="">Loading catalog…</option></select></label></div>
       <label class="full-field">Model ID<input name="${role}_model" type="text" value="${esc(p.model||'')}" placeholder="Choose above or enter an exact model ID" required autocomplete="off"></label>
@@ -1167,12 +1168,12 @@ function openConnections(afterSave, taskContext=null) {
       <label class="checkbox-field" data-included-label="${role}"><input type="checkbox" data-included="${role}" ${p.access==='included'?'checked':''}><span>Use included access for this exact model<small>Authorize its ID in the gateway list above first.</small></span></label><div class="field-grid" data-prices="${role}">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
       <p class="small muted" data-price-note="${role}">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
   };
-  const d=dialog(`${modalHeader('MODEL CONNECTIONS','Choose where the work runs.')}<button class="outline-button" id="models-execution">Execution: ${esc(executionLabel(state.preferences.execution?.mode))} · Coordinator ${CheapOSGuide.coordinatorStatus({execution:state.preferences.execution}).label} for new chats →</button>${coordinatorTaskNotice(taskContext||state.task)}<p class="modal-description">Remote work uses your configured gateway. Choose OmniRoute, CLIProxyAPI, 9Router, LiteLLM, or a compatible local gateway. Provider sign-in stays in that gateway; local Ollama is also available.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>Automatic remote chats check another free model after a recoverable failure when you resume. Manual and local chats keep their selected models; choices below apply to new chats.</p></div>`:''}
-    <form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong id="gateway-name">Gateway</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
+  const d=dialog(`${modalHeader('MODEL CONNECTIONS','Choose where the work runs.')}<button class="outline-button" id="models-execution">Execution: ${esc(executionLabel(state.preferences.execution?.mode))} · Coordinator ${CheapOSGuide.coordinatorStatus({execution:state.preferences.execution}).label} for new chats →</button>${coordinatorTaskNotice(taskContext||state.task)}<p class="modal-description">Remote work can use your enabled gateway connections. Choose OmniRoute, CLIProxyAPI, 9Router, LiteLLM, or a compatible local gateway. Provider sign-in stays in that gateway; local Ollama is also available.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>Automatic remote chats check another free model after a recoverable failure when you resume. Manual and local chats keep their selected models; choices below apply to new chats.</p></div>`:''}
+    <div class="button-row"><label>Saved connection<select id="saved-gateway">${(gateway.connections||[]).map(g=>`<option value="${esc(g.id)}" ${g.id===gateway.selected_connection?"selected":""}>${esc(g.name)}${g.enabled?"":" · disabled"}</option>`).join("")}</select></label><button class="outline-button" id="add-gateway">Add connection</button></div><p class="small muted">This dropdown selects settings to edit. Automatic mode can use every enabled connection captured when the task starts. Manual choices stay pinned.</p><form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong id="gateway-name">Gateway</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
       <p id="gateway-message" class="small muted"></p><p id="gateway-instance" class="small muted"></p>
       <details class="advanced"><summary id="free-pool-title">Authorized remote model pool</summary><p class="small muted">Refreshes every five minutes, including OpenRouter’s current free models. Failed models cool down for 15–60 minutes. Provider cooldowns follow the gateway’s retry time and do not count as individual model failures. A response or tool check does not prove coding quality.</p><div id="free-model-pool" class="free-model-pool"></div></details>
       <div class="included-access"><label class="full-field">Models included in my account<textarea id="included-model-ids" rows="4" spellcheck="false" placeholder="One exact gateway model ID per line">${esc((settings.included_models||[]).join('\n'))}</textarea></label><p class="small muted">Authorize only models covered by your existing account. This applies to this gateway connection. New models and changed connections need new authorization. Included access uses a $0 marginal estimate; it is not public-free pricing or a billing receipt.</p><label class="full-field">Tool-capable models missing catalog metadata<textarea id="gateway-tool-models" rows="2" spellcheck="false">${esc((settings.tool_models||[]).join("\n"))}</textarea><small>Optional exact IDs, one per line. Declares capability only; automatic selection still checks tool calling and requires free or included access.</small></label><button type="button" class="outline-button" id="save-included-models">Save included access</button><p id="included-access-status" class="small" role="status"></p></div><div class="gateway-actions"><button type="button" class="outline-button" data-gateway-action="start">Connect / start</button><button type="button" class="subtle-button" data-gateway-action="refresh">Refresh models</button><button type="button" class="subtle-button" data-gateway-action="stop" hidden>Stop instance</button></div>
-      <details class="advanced"><summary>Startup & connection settings</summary><label class="full-field">Gateway type<select name="gateway_type">${[["omniroute","OmniRoute"],["cliproxyapi","CLIProxyAPI"],["9router","9Router"],["litellm","LiteLLM"],["compatible","OpenAI-compatible"]].map(([v,n])=>`<option value="${v}" ${v===(settings.gateway_type||"omniroute")?"selected":""}>${n}</option>`).join("")}</select><small>Start alternative gateways separately. Use their configured loopback /v1 endpoint. Switching clears this connection’s model authorizations and client key.</small></label><label class="full-field">Local API URL<input name="gateway_url" type="url" value="${esc(settings.base_url)}" required></label>
+      <details class="advanced"><summary>Startup & connection settings</summary><label class="full-field">Connection name<input name="gateway_name" value="${esc(settings.name||'OmniRoute')}" required maxlength="80"></label><label class="checkbox-field"><input name="gateway_enabled" type="checkbox" ${settings.enabled!==false?'checked':''}><span>Enabled for automatic routing</span></label><label class="full-field">Shared upstream quota groups<textarea name="quota_groups" rows="2" placeholder="provider-prefix=account-label">${esc(Object.entries(settings.quota_groups||{}).map(([k,v])=>k+'='+v).join('\n'))}</textarea><small>Optional. Use the same account label for the same upstream account in different gateways. Prefix is the part of its model ID before the first slash. Labels are not credentials.</small></label><label class="full-field">Gateway type<select name="gateway_type">${[["omniroute","OmniRoute"],["cliproxyapi","CLIProxyAPI"],["9router","9Router"],["litellm","LiteLLM"],["compatible","OpenAI-compatible"]].map(([v,n])=>`<option value="${v}" ${v===(settings.gateway_type||"omniroute")?"selected":""}>${n}</option>`).join("")}</select><small>Start alternative gateways separately. Use their configured loopback /v1 endpoint. Switching clears this connection’s model authorizations and client key.</small></label><label class="full-field">Local API URL<input name="gateway_url" type="url" value="${esc(settings.base_url)}" required></label>
         <label class="full-field">Gateway client API key · optional<input name="gateway_key" type="password" placeholder="${gateway.key_configured?'Configured · leave blank to keep':'Only if your gateway requires a client key'}" autocomplete="new-password"></label>
         ${gatewayRememberField(gateway,'gateway_remember')}
         <p id="gateway-key-status" class="small muted" role="status">${esc(gatewayKeyStatus(gateway))}</p>
@@ -1183,13 +1184,20 @@ function openConnections(afterSave, taskContext=null) {
     <form id="models-form"><details class="advanced" ${(state.preferences.execution?.mode||'manual')==='manual'?'open':''}><summary>Explicit model choices · Manual mode and remote preferences</summary><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div><label class="checkbox-field"><input type="checkbox" id="dedicated-planner" ${c.planner?'checked':''}><span>Use a dedicated planner</span></label><p id="planner-fallback" class="small muted"></p><details id="planner-options" ${c.planner?'open':''}><summary>Planner connection and model</summary>${providerFields('planner')}</details>
       <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. These explicit choices apply in Manual mode. Automatic remote modes select only authorized eligible routes. Access labels do not establish remaining quota or successful inference.</p>
       </details><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">${taskContext?'Save & prepare new chat':'Save connections'} ${icon('check')}</button></div></form>`,'connections-modal');
+  $('#saved-gateway',d).onchange=async e=>{try{state.gateway=await api('/gateway/select',{connection_id:e.target.value});await loadGateway();d.close();openConnections(afterSave,taskContext)}catch(error){toast(error.message)}};
+  $('#add-gateway',d).onclick=()=>{
+    const add=dialog(`<form>${modalHeader('CONNECTION','Add a gateway')}<label>Name<input name="name" required maxlength="80" placeholder="My CLIProxyAPI"></label><label>Gateway type<select name="gateway_type"><option value="cliproxyapi">CLIProxyAPI</option><option value="omniroute">OmniRoute</option><option value="9router">9Router</option><option value="litellm">LiteLLM</option><option value="compatible">OpenAI-compatible</option></select></label><label>Local API URL<input name="base_url" type="url" required placeholder="http://127.0.0.1:8317/v1"></label><p class="small muted">Add its client key and included models after saving. New connections apply to new tasks.</p><p class="form-error" role="alert"></p><button type="submit" class="primary-button">Add connection</button></form>`,'project-modal');
+    const form=$('form',add);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form);state.gateway=await api('/gateway/add',{name:String(f.get('name')),gateway_type:String(f.get('gateway_type')),base_url:String(f.get('base_url')),enabled:true});await loadGateway();add.close();d.close();openConnections(afterSave,taskContext)})};
+  };
   $('#models-execution',d).onclick=()=>{d.close();executionPreferences()};
   const field=(role,name)=>$(`[name="${role}_${name}"]`,d);
-  const usingOmni=role=>$(`[data-preset="${role}"]`,d).value==='omniroute';
+  const usingOmni=role=>!['ollama','blocked'].includes($(`[data-preset="${role}"]`,d).value);
+  const roleGateway=role=>connectionCatalogs[$(`[data-preset="${role}"]`,d).value]||state.gateway;
+  const roleModels=role=>roleGateway(role).models||[];
   let includedRevision=settings.connection_revision;
   const includedSelected=role=>$(`[data-included="${role}"]`,d).checked;
   function capability(role) {
-    const model=usingOmni(role)?state.gatewayModels.find(m=>m.id===field(role,'model').value.trim()):null;
+    const model=usingOmni(role)?roleModels(role).find(m=>m.id===field(role,'model').value.trim()):null;
     const included=usingOmni(role)&&includedSelected(role);
     $(`[data-prices="${role}"]`,d).hidden=included;
     for(const name of ['input','output'])field(role,name).disabled=included;
@@ -1199,7 +1207,7 @@ function openConnections(afterSave, taskContext=null) {
   }
   function picker(role) {
     const select=$(`[data-model-picker="${role}"]`,d), free=$(`[data-free="${role}"]`,d).checked, current=field(role,'model').value.trim();
-    const models=state.gatewayModels.filter(m=>!free||m.free||m.access_class==='included');
+    const models=roleModels(role).filter(m=>!free||m.free||m.access_class==='included');
     select.innerHTML=`<option value="">${models.length?'Choose from '+models.length+' models':'No matching models · refresh or enter an ID'}</option>`+models.map(m=>`<option value="${esc(m.id)}">${esc(m.id)} · ${esc(CheapOSGuide.modelAccess(m))}${m.tool_calling===true?' · tools':m.tool_calling===false?' · no tools advertised':''}</option>`).join('');
     select.value=models.some(m=>m.id===current)?current:'';
     capability(role);
@@ -1219,7 +1227,7 @@ function openConnections(afterSave, taskContext=null) {
     const gatewayName=({omniroute:"OmniRoute",cliproxyapi:"CLIProxyAPI","9router":"9Router",litellm:"LiteLLM",compatible:"Compatible gateway"})[g.settings?.gateway_type||"omniroute"];
     $("#gateway-name",d).textContent=gatewayName;
     $("#gateway-dashboard",d).textContent="Open "+gatewayName+" ↗";
-    for(const role of ["worker","reviewer","planner"])$(`[data-preset="${role}"] option[value="omniroute"]`,d).textContent=gatewayName+" (configured gateway)";
+    connectionCatalogs[g.selected_connection||$("#saved-gateway",d).value]={...g,models:state.gatewayModels};
     if(includedRevision!==g.settings?.connection_revision){includedRevision=g.settings?.connection_revision;$('#included-model-ids',d).value=(g.settings?.included_models||[]).join('\n');$('#gateway-tool-models',d).value=(g.settings?.tool_models||[]).join('\n');for(const role of ['worker','reviewer','planner'])$(`[data-included="${role}"]`,d).checked=false;}
     const badge=$('#gateway-status',d);badge.textContent=({ready:'Catalog connected',checking:'Connecting…',starting:'Starting…',offline:'Offline',auth_required:'Client key needed',not_installed:'Not installed',unavailable:'Unavailable',error:'Startup failed'})[g.status]||'Not checked';badge.dataset.status=g.status||'unchecked';
     $('#gateway-message',d).textContent=g.message||'Connect your local gateway to load its model catalog.';
@@ -1254,7 +1262,7 @@ function openConnections(afterSave, taskContext=null) {
   $('[name="gateway_type"]',d).onchange=()=>{const omni=$('[name="gateway_type"]',d).value==='omniroute';$('[name="auto_start"]',d).disabled=!omni;if(!omni)$('[name="auto_start"]',d).checked=false;};
   $('[name="gateway_type"]',d).onchange();
   gatewayForm.onsubmit=e=>{e.preventDefault();formAction(gatewayForm,async()=>{
-    const f=new FormData(gatewayForm), values={gateway_type:String(f.get('gateway_type')),base_url:String(f.get('gateway_url')).trim(),auto_start:f.has('auto_start'),keep_running:f.has('keep_running'),remember_key:f.has('gateway_remember')},key=String(f.get('gateway_key')).trim();if(key)values.api_key=key;
+    const f=new FormData(gatewayForm), values={name:String(f.get('gateway_name')).trim(),enabled:f.has('gateway_enabled'),quota_groups:Object.fromEntries(String(f.get('quota_groups')).split('\n').filter(v=>v.trim()).map(v=>{const i=v.indexOf('=');if(i<1||!v.slice(i+1).trim())throw new Error('Use provider-prefix=account-label for each quota group');return [v.slice(0,i).trim(),v.slice(i+1).trim()]})),gateway_type:String(f.get('gateway_type')),base_url:String(f.get('gateway_url')).trim(),auto_start:f.has('auto_start'),keep_running:f.has('keep_running'),remember_key:f.has('gateway_remember')},key=String(f.get('gateway_key')).trim();if(key)values.api_key=key;
     state.gateway=await api('/gateway/config',values);$('[name="gateway_key"]',d).value='';$('[name="gateway_remember"]',d).checked=Boolean(state.gateway.key_storage?.saved);
     state.gateway=await api('/gateway/refresh',{});updateGateway();toast('Gateway settings saved. Use Connect / start if it is offline.');
   })};
@@ -1264,21 +1272,21 @@ function openConnections(afterSave, taskContext=null) {
     $(`[data-free="${role}"]`,d).onchange=()=>picker(role);
     $(`[data-model-picker="${role}"]`,d).onchange=e=>{
       if(!e.target.value)return;
-      const model=state.gatewayModels.find(m=>m.id===e.target.value);field(role,'model').value=model.id;$(`[data-included="${role}"]`,d).checked=model.access_class==='included';
+      const model=roleModels(role).find(m=>m.id===e.target.value);field(role,'model').value=model.id;$(`[data-included="${role}"]`,d).checked=model.access_class==='included';
       field(role,'input').value=model.input_rate??'';field(role,'output').value=model.output_rate??'';capability(role);
     };
     field(role,'model').oninput=()=>{
       $(`[data-included="${role}"]`,d).checked=false;
-      const model=usingOmni(role)?state.gatewayModels.find(m=>m.id===field(role,'model').value.trim()):null;
+      const model=usingOmni(role)?roleModels(role).find(m=>m.id===field(role,'model').value.trim()):null;
       for(const price of ['input','output'])field(role,price).value=usingOmni(role)?(model?.[price+'_rate']??''):0;
       picker(role);
     };
     $(`[data-preset="${role}"]`,d).onchange=e=>{
       const preset=e.target.value, p=c[role]||{};
-      field(role,'url').value=preset==='omniroute'?state.gateway.settings.base_url:'http://127.0.0.1:11434/v1';
+      field(role,'url').value=usingOmni(role)?roleGateway(role).settings.base_url:'http://127.0.0.1:11434/v1';
       field(role,'model').value='';$(`[data-included="${role}"]`,d).checked=false;
       for(const price of ['input','output'])field(role,price).value=preset==='ollama'?'0':'';
-      if(preset==='omniroute'&&isOmni(p)){field(role,'model').value=p.model||'';field(role,'input').value=p.input_rate??'';field(role,'output').value=p.output_rate??''}
+      if(usingOmni(role)&&p.connection_id===preset){field(role,'model').value=p.model||'';field(role,'input').value=p.input_rate??'';field(role,'output').value=p.output_rate??''}
       layout(role);
     };
   }
@@ -1298,11 +1306,11 @@ function openConnections(afterSave, taskContext=null) {
       if(role==='planner'&&!$('#dedicated-planner',d).checked){values.planner=null;continue}
       if($(`[data-preset="${role}"]`,d).value==='blocked')throw new Error('Select OmniRoute or local Ollama for each role before saving.');
       const omni=usingOmni(role);
-      if(omni&&state.gateway.status!=='ready')throw new Error('Connect the gateway before saving its model choices.');
-      values[role]={gateway:omni?'omniroute':'openai',base_url:omni?state.gateway.settings.base_url:String(f.get(role+'_url')).trim(),model:String(f.get(role+'_model')).trim(),input_rate:Number(f.get(role+'_input')),output_rate:Number(f.get(role+'_output'))};
-      if(omni)values[role].gateway_type=state.gateway.settings.gateway_type||'omniroute';
+      if(omni&&roleGateway(role).status!=='ready')throw new Error('Connect the gateway before saving its model choices.');
+      values[role]={gateway:omni?'omniroute':'openai',base_url:omni?roleGateway(role).settings.base_url:String(f.get(role+'_url')).trim(),model:String(f.get(role+'_model')).trim(),input_rate:Number(f.get(role+'_input')),output_rate:Number(f.get(role+'_output'))};
+      if(omni){values[role].gateway_type=roleGateway(role).settings.gateway_type||'omniroute';values[role].connection_id=$(`[data-preset="${role}"]`,d).value;}
       if(omni&&includedSelected(role)){
-        if(!CheapOSGuide.includedChoice(values[role].model,state.gateway.settings,true))throw new Error('Save included access for this exact model ID first.');
+        if(!CheapOSGuide.includedChoice(values[role].model,roleGateway(role).settings,true))throw new Error('Save included access for this exact model ID first.');
         values[role].access='included';delete values[role].input_rate;delete values[role].output_rate;
       }
     }

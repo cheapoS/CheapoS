@@ -23,7 +23,7 @@ from . import access_policy, route_health
 
 GATEWAY_TYPES = {"omniroute": "OmniRoute", "cliproxyapi": "CLIProxyAPI", "9router": "9Router", "litellm": "LiteLLM", "compatible": "OpenAI-compatible"}
 
-DEFAULT_SETTINGS = {"gateway_type": "omniroute", "base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True, "remember_key": False}
+DEFAULT_SETTINGS = {"name": "OmniRoute", "enabled": True, "quota_groups": {}, "gateway_type": "omniroute", "base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True, "remember_key": False}
 
 
 def validate_settings(values):
@@ -32,6 +32,12 @@ def validate_settings(values):
     settings = {key: values.get(key, default) for key, default in DEFAULT_SETTINGS.items()}
     if settings["gateway_type"] not in GATEWAY_TYPES:
         raise ValueError("Choose a supported gateway type")
+    if not isinstance(settings["name"], str) or not 1 <= len(settings["name"].strip()) <= 80:
+        raise ValueError("Name this gateway connection (up to 80 characters)")
+    settings["name"] = settings["name"].strip()
+    groups = settings["quota_groups"]
+    if not isinstance(groups, dict) or len(groups) > 50 or any(not isinstance(k,str) or not isinstance(v,str) or not k or not v or len(k)>100 or len(v)>100 for k,v in groups.items()):
+        raise ValueError("Quota groups must map provider prefixes to account labels")
     url = settings["base_url"]
     if not isinstance(url, str):
         raise ValueError("Provide a local gateway API URL")
@@ -43,7 +49,7 @@ def validate_settings(values):
     if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
             or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path != "/v1" or not 1 <= port <= 65535):
         raise ValueError("Use a loopback gateway URL such as http://127.0.0.1:20128/v1")
-    for key in ("auto_start", "keep_running", "remember_key"):
+    for key in ("auto_start", "keep_running", "remember_key", "enabled"):
         if not isinstance(settings[key], bool):
             raise ValueError("Gateway startup preferences must be true or false")
     if settings["gateway_type"] != "omniroute":
@@ -76,7 +82,7 @@ def find_executable():
 
 
 class OmniRouteManager:
-    def __init__(self, directory, credential_store=None):
+    def __init__(self, directory, credential_store=None, use_environment=True):
         self.path = Path(directory) / "gateway.json"
         self.credentials = credential_store if credential_store is not None else CredentialStore(directory)
         self.pool = FreeModelPool(directory)
@@ -87,7 +93,7 @@ class OmniRouteManager:
         if 'connection_revision' not in self.settings:
             self.settings.update(connection_revision=uuid.uuid4().hex, included_models=[])
             write_json(self.path, self.settings)
-        self.api_key = os.environ.get("CHEAPOS_GATEWAY_API_KEY", "")
+        self.api_key = os.environ.get("CHEAPOS_GATEWAY_API_KEY", "") if use_environment else ""
         self.key_source = 'environment' if self.api_key else 'none'
         self.key_error = None
         self._restore_key()
@@ -152,7 +158,7 @@ class OmniRouteManager:
             key = values.get('api_key', '' if endpoint_changed else self.api_key)
             if not key and not (self.settings['remember_key'] and not endpoint_changed and 'api_key' not in values):
                 settings['remember_key'] = False
-            connection_changed = (endpoint_changed
+            connection_changed = (endpoint_changed or settings['quota_groups'] != self.settings.get('quota_groups', {})
                                   or ('api_key' in values and values['api_key'] != self.api_key))
             if 'included_models' in values:
                 if connection_changed or values.get('expected_connection_revision') != self.settings['connection_revision']:

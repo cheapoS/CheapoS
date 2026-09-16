@@ -149,6 +149,11 @@ def validate_provider(value, role):
     if gateway not in {"openai", "omniroute"}:
         raise ValueError("Choose OmniRoute or an OpenAI-compatible connection")
     result = {"base_url": endpoint, "model": model, "input_rate": rates[0], "output_rate": rates[1], "key_env": env, "gateway": gateway}
+    if "connection_id" in value:
+        identity = value["connection_id"]
+        if not isinstance(identity,str) or not re.fullmatch(r"default|[a-f0-9]{32}",identity):
+            raise ValueError("Choose a saved gateway connection")
+        result["connection_id"] = identity
     if "gateway_type" in value:
         if value["gateway_type"] not in {"omniroute", "cliproxyapi", "9router", "litellm", "compatible"}:
             raise ValueError("Unknown gateway adapter")

@@ -417,6 +417,9 @@ class Engine:
         self.commit_previews = {}
         self.provider_factory = provider_factory
         self.gateway = OmniRouteManager(self.store.root)
+        from .connections import Connections
+        self.connections = Connections(self.store.root, self.gateway)
+        self.gateway = self.connections.selected
         try:
             self.config = json.loads((self.store.root / "config.json").read_text())
         except (OSError, ValueError):
@@ -554,16 +557,24 @@ class Engine:
             write_json(self.store.root / "preferences.json", result)
         return result
 
+    def connection_for(self, config):
+        if config.get("gateway") == "omniroute" and getattr(self,"connections",None):
+            return self.connections.resolve(config, self.gateway)
+        return self.gateway
+
     def guard_route(self, config):
-        guard_inference_route(config, self.gateway.settings['base_url'])
-        if config.get('gateway') == 'omniroute' and config.get('gateway_type', 'omniroute') != self.gateway.settings.get('gateway_type', 'omniroute'):
+        gateway = self.connection_for(config)
+        if config.get('gateway') == 'omniroute' and not gateway.settings.get('enabled', True):
+            raise ValueError('This gateway connection is disabled in Models')
+        guard_inference_route(config, gateway.settings['base_url'])
+        if config.get('gateway') == 'omniroute' and config.get('gateway_type', 'omniroute') != gateway.settings.get('gateway_type', 'omniroute'):
             raise ValueError('This task uses a different gateway adapter. Restore its original connection, or start a new chat with the new gateway.')
 
     def gateway_config(self, config):
         """Resolve adapter behavior from the authorized connection, not model input."""
         if config.get("gateway") == "omniroute":
             self.guard_route(config)
-            return {**config, "gateway_type": self.gateway.settings.get("gateway_type", "omniroute")}
+            return {**config, "gateway_type": self.connection_for(config).settings.get("gateway_type", "omniroute")}
         return config
 
     def provider_key(self, role, config):
@@ -572,7 +583,7 @@ class Engine:
         except ValueError:
             return ''
         if config.get("gateway") == "omniroute":
-            return self.gateway.api_key
+            return self.connection_for(config).api_key
         # Local Ollama needs no provider credential. Never forward old direct
         # provider secrets or CHEAPOS_*_API_KEY values to another service.
         return ""
@@ -587,12 +598,13 @@ class Engine:
         for role, config in normalized.items():
             if config is None or role not in values: continue
             self.guard_route(config)
+            gateway = self.connection_for(config)
             if config.get('access') == 'included':
                 from . import access_policy
-                config = access_policy.bind_provider(config, access_policy.snapshot(self.gateway.settings),
-                    next((m for m in self.gateway.models if m['id'] == config['model']), None))
+                config = access_policy.bind_provider(config, access_policy.snapshot(gateway.settings),
+                    next((m for m in gateway.models if m['id'] == config['model']), None))
                 normalized[role] = config
-            if config["gateway"] == "omniroute" and not self.gateway.matches(config["base_url"]):
+            if config["gateway"] == "omniroute" and not gateway.matches(config["base_url"]):
                 raise ValueError("Connect the OmniRoute backend before selecting its models")
             key = values[role].get("api_key")
             if key is not None:
@@ -652,6 +664,8 @@ class Engine:
         task.update({"conversational": conversational, "requests": [prompt.strip()], "turn_start_patch": ""})
         if conversational:
             task["request_worker_turns"] = 0
+        if len(self.connections.managers) > 1 or any(p and p.get("connection_id") for p in task["providers"].values()):
+            task["gateway_connections"] = self.connections.capture()
         setup_task(task, execution, self.config, self.gateway)
         if execution.get("development_mode") and "uncapped_work" not in values.get("limits", {}):
             task["limits"]["uncapped_work"] = True
@@ -812,11 +826,14 @@ class Engine:
                     raise ValueError("This conversation is full. Start a new chat for more work.")
             if task["status"] in {"approved", "completed", "awaiting_reply"} and followup is None:
                 raise ValueError("This task is already complete; start a new task for further changes")
-            if not task["demo"] and any(p and p.get("gateway") == "omniroute" for p in task["providers"].values()):
-                if any(p and p.get("gateway") == "omniroute" and not self.gateway.matches(p["base_url"]) for p in task["providers"].values()):
-                    raise ValueError("This task uses a different OmniRoute endpoint. Reconnect its original endpoint in Connections.")
-                if self.gateway.snapshot()["status"] != "ready":
-                    raise ValueError("Connect OmniRoute in Connections before starting this task")
+            if not task["demo"] and not task.get('gateway_connections') and any(p and p.get("gateway") == "omniroute" for p in task["providers"].values()):
+                for p in task['providers'].values():
+                    if p and p.get('gateway') == 'omniroute':
+                        gateway = self.connection_for(p)
+                        if not gateway.matches(p['base_url']):
+                            raise ValueError("This task uses a different OmniRoute endpoint. Reconnect its original endpoint in Connections.")
+                        if gateway.snapshot()['status'] != 'ready':
+                            raise ValueError("Connect OmniRoute in Connections before starting this task")
             if changes and "limits" in changes:
                 task["limits"] = limits_from(changes["limits"])
             if followup is None and task.get('recovery_blocked') is not None:
@@ -1232,7 +1249,7 @@ class Engine:
                 self.store.save(runtime.task)
             runtime.stop.set()
             runtime.approval.set()
-        self.gateway.shutdown()
+        self.connections.shutdown()
 
     def initial_messages(self, task):
         if task.get("action_pending") or task.get("compact_edits"):
@@ -1602,7 +1619,7 @@ class Engine:
         task = runtime.task
         config = self._resolve_provider_config(task, task['active_role'])
         model = None
-        gateway = getattr(self, 'gateway', None)
+        gateway = self.connection_for(config) if getattr(self, 'gateway', None) else None
         if (task.get('route') and gateway and config.get('base_url') == task['route'].get('base_url')
                 and config.get('base_url') == getattr(gateway, 'settings', {}).get('base_url')):
             catalog = gateway.catalog(fresh=False)
@@ -1689,7 +1706,7 @@ class Engine:
 
     def defer_route(self, task, role, reason):
         cfg = task["providers"][role]
-        self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=reason, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
+        self.connection_for(cfg).pool.record(cfg["base_url"], cfg["model"], role, error=reason, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
         task["route"].setdefault("recovery", {})[role] = {"from": cfg["model"], "reason": str(reason)[:500], "error_code": getattr(reason, 'code', None)}
         # reserve() already added this request to the totals. Do not refund or replay it.
         task["in_flight"] = None
@@ -1814,26 +1831,35 @@ class Engine:
                     snapshot = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
                     messages[:] = continue_session(task, snapshot, 'model_handoff')
             cfg = task["providers"][role]
+            try:
+                gateway = self.connection_for(cfg)
+            except ValueError:
+                if not task.get("gateway_connections"): raise
+                select_remote(self, runtime, role, replace=True)
+                continue
             # Revalidate pinned choices against the refreshed catalog, including prices.
-            catalog = self.gateway.catalog(fresh=True)
+            catalog = gateway.catalog(fresh=True)
             if catalog["status"] != "ready":
                 select_remote(self, runtime, role, replace=True)
                 continue
             model = next((m for m in catalog["models"] if m["id"] == cfg["model"]), None)
             from . import access_policy
-            eff_settings = access_policy.effective_settings(task, self.gateway.settings)
-            access_policy.validate_current(task['route'].get('access_policy'), eff_settings)
-            if not model or not access_policy.eligible(model, task['route'].get('access_policy')):
+            eff_settings = access_policy.effective_settings(task, gateway.settings)
+            access_policy.validate_current(access_policy.for_config(task, cfg), eff_settings)
+            if not model or not access_policy.eligible(model, access_policy.for_config(task, cfg)):
                 self.defer_route(task, role, "This model is no longer eligible under the captured access policy with tool support.")
                 continue
             if role == 'planner':
                 access_policy.guard(task, cfg, eff_settings, catalog['models'], role=role)
-            if access_policy.classify(model, task['route'].get('access_policy')) == 'included':
-                cfg = access_policy.bind_provider(cfg, task['route']['access_policy'], model)
+            if access_policy.classify(model, access_policy.for_config(task, cfg)) == 'included':
+                cfg = access_policy.bind_provider(cfg, access_policy.for_config(task, cfg), model)
                 task['providers'][role] = cfg
-            if self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))["cooling_down"]:
-                health = self.gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
+            if gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))["cooling_down"]:
+                health = gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
                 if health.get("cooldown_scope") in {'account', 'connection'} or (health.get('cooldown_scope') == 'provider' and (health.get('failure') or {}).get('category') != 'rate_limit_quota'):
+                    if task.get("gateway_connections"):
+                        select_remote(self, runtime, role, replace=True)
+                        continue
                     raise RoutingPause(health["last_error"] + " Saved work is kept; wait for availability or inspect Models.", retry_at=health.get("retry_at") if health.get("retry_known") else None, scope=health.get("cooldown_scope"))
                 if (health.get('failure') or {}).get('category') == 'rate_limit_quota':
                     task['route'].setdefault('recovery', {})[role] = {'from':cfg['model'],
@@ -1858,6 +1884,10 @@ class Engine:
                 if purpose or role != 'worker':
                     self.validate_offered_tools(message, tools)
             except ProviderError as error:
+                if task.get("gateway_connections") and error.code in {"http_401","http_402","http_403","client_key_rejected"}:
+                    gateway.pool.record(cfg["base_url"],cfg["model"],role,error=error,connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
+                    select_remote(self,runtime,role,replace=True)
+                    continue
                 if not purpose and error.code == "output_limit" and role == "worker":
                     attempted = True
                     if not task.get("output_recovery", {}).get(cfg["model"]):
@@ -1866,7 +1896,7 @@ class Engine:
                         self.defer_route(task, role, "The worker reached its output cap again after a smaller-action retry.")
                     continue
                 if error.code == "gateway_cooldown" and getattr(error, "scope", None) in {'account', 'connection'}:
-                    self.gateway.pool.record(cfg["base_url"], cfg["model"], role, error=error, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
+                    self.connection_for(cfg).pool.record(cfg["base_url"], cfg["model"], role, error=error, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
                     select_remote(self, runtime, role, replace=True)
                     continue
                 if error.code not in RECOVERABLE_CODES and error.code != 'gateway_cooldown':
@@ -1876,7 +1906,7 @@ class Engine:
                     self.event(task, "routing", "Model requested an unavailable tool", {"model": cfg["model"], "role": role, "error": str(error)})
                 self.defer_route(task, role, error)
                 continue
-            self.gateway.pool.record(cfg["base_url"], cfg["model"], role, seconds=time.monotonic() - started, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
+            self.connection_for(cfg).pool.record(cfg["base_url"], cfg["model"], role, seconds=time.monotonic() - started, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
             return message
 
     @staticmethod
@@ -2057,8 +2087,9 @@ class Engine:
             # Every production request is checked before accounting or transport.
             self.guard_route(config)
         from . import access_policy
-        access_models = self.gateway.catalog(fresh=False)['models'] if (task.get('route') or {}).get('access_policy') else None
-        access_policy.guard(task, config, self.gateway.settings, access_models, role=role)
+        gateway = self.connection_for(config)
+        access_models = gateway.catalog(fresh=False)['models'] if (task.get('route') or {}).get('access_policy') else None
+        access_policy.guard(task, config, gateway.settings, access_models, role=role)
         if not self.provider_factory and is_local_ollama(config):
             identity = (config["base_url"], config["model"])
             if identity not in runtime.verified_local:

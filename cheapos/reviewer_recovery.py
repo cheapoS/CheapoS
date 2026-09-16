@@ -19,19 +19,20 @@ def unknown_workers(task):
 
 def candidates(engine, task):
     current = task.get('providers', {}).get('reviewer') or {}
-    if current.get('gateway') != 'omniroute' or current.get('base_url') != engine.gateway.settings.get('base_url'):
+    gateway = engine.connection_for(current) if hasattr(engine,'connection_for') else engine.gateway
+    if current.get('gateway') != 'omniroute' or current.get('base_url') != gateway.settings.get('base_url'):
         return []
-    policy = (task.get('route') or {}).get('access_policy', task.get('branch_run', {}).get('model_policy', {}).get('gateway_access'))
-    access_policy.validate_current(policy, access_policy.effective_settings(task, engine.gateway.settings))
+    policy = access_policy.for_config(task, current) if task.get('gateway_connections') is not None else (task.get('route') or {}).get('access_policy', task.get('branch_run', {}).get('model_policy', {}).get('gateway_access'))
+    access_policy.validate_current(policy, access_policy.effective_settings(task, gateway.settings))
     used = {normalized(task.get('providers', {}).get('worker', {}).get('model'))}
     for worker in workers(task):
         used.update(normalized(worker.get(k)) for k in ('model', 'requested_model', 'served_model'))
-    catalog = engine.gateway.catalog(fresh=True)
+    catalog = gateway.catalog(fresh=True)
     result = []
     for model in catalog.get('models', []):
         if not access_policy.eligible(model, policy) or opaque(model['id']) or normalized(model['id']) in used:
             continue
-        pool = getattr(engine.gateway, 'pool', None)
+        pool = getattr(gateway, 'pool', None)
         if pool and pool.observation(current['base_url'], model['id'], (policy or {}).get('connection_revision')).get('cooling_down'):
             continue
         result.append({'id': model['id'], 'label': model.get('name') or model['id']})
@@ -40,14 +41,15 @@ def candidates(engine, task):
 
 def config(engine, task, model_id):
     cfg = copy.deepcopy(task['providers']['reviewer'])
-    policy = (task.get('route') or {}).get('access_policy', task.get('branch_run', {}).get('model_policy', {}).get('gateway_access'))
+    gateway = engine.connection_for(cfg) if hasattr(engine,'connection_for') else engine.gateway
+    policy = access_policy.for_config(task,cfg) if task.get('gateway_connections') is not None else (task.get('route') or {}).get('access_policy', task.get('branch_run', {}).get('model_policy', {}).get('gateway_access'))
     cfg.update(model=model_id, input_rate=0, output_rate=0)
     for key in ('access', 'access_binding', 'pricing_source', 'catalog_pricing'):
         cfg.pop(key, None)
-    catalog = engine.gateway.catalog(fresh=False)
+    catalog = gateway.catalog(fresh=False)
     model = next((m for m in catalog.get('models', []) if m['id'] == model_id), None)
     if model is None:
-        catalog = engine.gateway.catalog(fresh=True)
+        catalog = gateway.catalog(fresh=True)
         model = next(m for m in catalog['models'] if m['id'] == model_id)
     cfg = validate_provider(cfg, 'reviewer')
     if policy is not None:

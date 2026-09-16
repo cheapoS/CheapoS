@@ -115,6 +115,12 @@ def setup_task(task, execution, config, gateway):
     policy = access_policy.snapshot(gateway.settings)
     if policy is not None:
         task['access_policy'] = policy
+    # Bind legacy model choices to their saved connection before selection.
+    for role, provider in task.get('providers', {}).items():
+        if provider and provider.get('gateway') == 'omniroute' and task.get('gateway_connections') is not None:
+            matches = [e for e in task['gateway_connections'] if e['base_url'] == provider.get('base_url')
+                       and e['gateway_type'] == provider.get('gateway_type','omniroute')]
+            if len(matches) == 1: provider.setdefault('connection_id', matches[0]['connection_id'])
     mode = execution["mode"]
     if mode == "manual":
         return
@@ -141,12 +147,18 @@ def setup_task(task, execution, config, gateway):
                      "preferred": {r: (config.get(r) or {}).get("model") for r in ("worker", "reviewer", "planner")}}
     if policy is not None: task['route']['access_policy'] = copy.deepcopy(policy)
     planner = task['providers'].get('planner')
+    if task.get('gateway_connections') is not None and planner and planner.get('gateway') == 'omniroute':
+        entries = [e for e in task['gateway_connections'] if e['base_url'] == planner.get('base_url')
+                   and e['gateway_type'] == planner.get('gateway_type','omniroute')]
+        if not planner.get('connection_id') and len(entries) == 1: planner['connection_id'] = entries[0]['connection_id']
+        entry = next((e for e in entries if e['connection_id'] == planner.get('connection_id')), None)
+        if entry is None:
+            task['providers']['planner'] = None
+            return
+        policy = access_policy.connection_policy(entry)
     if policy is not None and planner and planner.get('gateway') == 'omniroute' and planner.get('base_url') == policy['base_url']:
-        # Capture authorization once, at task creation. Never repair a saved
-        # missing or stale binding at dispatch time.
-        if planner.get('access_binding') is None:
-            planner['access_binding'] = copy.deepcopy(policy)
-        access_policy.validate_current(planner['access_binding'], gateway.settings)
+        if planner.get('access_binding') is None: planner['access_binding'] = copy.deepcopy(policy)
+        if planner['access_binding'] != policy: raise ValueError('Planner access changed; save its model choice again')
         if planner['model'] in policy['included_models']:
             planner.update(access_policy.bind_provider(planner, policy))
 
@@ -154,7 +166,7 @@ def setup_task(task, execution, config, gateway):
 def select_remote(engine, runtime, role="worker", replace=False):
     while True:
         try:
-            return _select_remote(engine, runtime, role, replace)
+            return _select_connections(engine, runtime, role, replace)
         except RoutingPause as error:
             if not getattr(runtime, 'route_autorecover', False):
                 raise
@@ -170,14 +182,48 @@ def select_remote(engine, runtime, role="worker", replace=False):
             task['status'] = previous_status
 
 
-def _select_remote(engine, runtime, role="worker", replace=False):
+def _select_connections(engine, runtime, role, replace):
+    task = runtime.task
+    if task['providers'].get(role) and not replace: return
+    entries = task.get('gateway_connections')
+    if entries is None:
+        gateway = engine.gateway
+        if getattr(engine, 'connections', None):
+            config = {**(task['providers'].get(role) or {}), 'base_url':task['route']['base_url']}
+            try:
+                gateway = engine.connections.resolve(config, gateway)
+            except ValueError as error:
+                raise RoutingPause(str(error)) from error
+        return _select_remote(engine, runtime, role, replace, gateway)
+    current = (task['providers'].get(role) or {}).get('connection_id')
+    entries = sorted(entries, key=lambda e:e['connection_id'] != current)
+    pauses = []
+    for entry in entries:
+        gateway = engine.connections.for_policy(entry)
+        if gateway is None: continue
+        try:
+            return _select_remote(engine, runtime, role, replace, gateway, access_policy.connection_policy(entry), entry['connection_id'])
+        except RoutingPause as error:
+            pauses.append(error)
+            engine.event(task,'routing','Trying another enabled gateway',{'connection_id':entry['connection_id'], 'gateway':entry['name'], 'role':role, 'reason':str(error)})
+    retry = [p.retry_at for p in pauses if p.retry_at]
+    raise RoutingPause('No authorized gateway is ready. Saved work and usage are retained; checking enabled connections again.' if pauses else
+                       'The connections authorized for this task are disabled or changed. Restore their saved settings in Models.',
+                       retry_at=min(retry) if retry else None, scope='connection')
+
+
+def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, policy=None, connection_id=None):
     """Find one needed role; each candidate is probed at most once per selection."""
-    task, gateway = runtime.task, engine.gateway
+    task = runtime.task
+    gateway = gateway or engine.gateway
     route = task["route"]
-    access_policy.validate_current(route.get('access_policy'), access_policy.effective_settings(task, gateway.settings))
+    policy = policy if connection_id else route.get("access_policy")
+    base_url = gateway.settings["base_url"] if connection_id else route["base_url"]
+    access_policy.validate_current(policy, access_policy.effective_settings(task, gateway.settings))
     if task["providers"].get(role) and not replace:
         return
     trace = routing_trace.begin(task, role, route.get("preferred", {}).get(role))
+    if connection_id: trace.update(connection_id=connection_id, gateway=gateway.settings["name"])
     route["waiting_for"] = role
     if developing(task) and route.get('failures'):
         history=route.setdefault('failure_history',[])
@@ -185,7 +231,7 @@ def _select_remote(engine, runtime, role="worker", replace=False):
         if len(history)>200:
             del history[:-200];route['failure_history_truncated']=True
     route["failures"] = []
-    if not gateway.matches(route["base_url"]):
+    if not gateway.matches(base_url):
         raise RoutingPause("Connect this chat's OmniRoute gateway in Models, then resume. Local work will not start as a fallback.")
     catalog = gateway.catalog(fresh=True)
     if catalog["status"] != "ready":
@@ -200,34 +246,34 @@ def _select_remote(engine, runtime, role="worker", replace=False):
                     and e["detail"].get("model"))
     used.update(runtime.failed_models)
     used.update(task.get('branch_run',{}).get('implementation_recovery',{}).get('failed_models',[]))
-    connection_revision=(route.get('access_policy') or {}).get('connection_revision')
+    connection_revision=(policy or {}).get('connection_revision')
     from .provider_recovery import provider
     # Pool records carry actual outage scope and expiry. Legacy request-level
     # provider exclusions must not survive recovery.
     unavailable = []
     route.setdefault('availability_recovery', {}).setdefault(role, {'handoffs':0,'providers':[]})['providers'] = []
-    round_state = route_schedule.begin(task, role)
+    round_state = route_schedule.begin(task, role + ":" + connection_id if connection_id else role)
     rejected_probes = route.setdefault('rejected_probes', {})
     candidates = []
     for model in catalog['models']:
-        probe_key = role + ':' + route_health.probe_identity(route['base_url'], model, connection_revision)
+        probe_key = role + ':' + route_health.probe_identity(base_url, model, connection_revision)
         if route_schedule.rejected(rejected_probes.get(probe_key)):
             used.add(model['id'])
             routing_trace.candidate(trace, model['id'], 'probe_rejected')
             continue
         fit = routing_trace.context_fit(task, model)
         reason = ('local_excluded' if model.get('local') else 'capability_missing' if model.get('tool_calling') is not True
-                  else 'access_excluded' if not access_policy.eligible(model, route.get('access_policy'))
+                  else 'access_excluded' if not access_policy.eligible(model, policy)
                   else 'provider_unavailable_for_request' if provider(model['id']) in unavailable
                   else 'failed_model' if model['id'] in runtime.failed_models
                   else 'prior_worker' if model['id'] in used
-                  else 'cooldown' if gateway.pool.observation(route['base_url'],model['id'],connection_revision)['cooling_down']
+                  else 'cooldown' if gateway.pool.observation(base_url,model['id'],connection_revision)['cooling_down']
                   else fit)
         routing_trace.candidate(trace, model['id'], reason)
         if reason in {'eligible', 'fit_unknown'}: candidates.append(model)
     preferred = route.get("preferred", {})
-    connection_revision=(route.get('access_policy') or {}).get('connection_revision')
-    candidates.sort(key=lambda m: gateway.pool.rank(route["base_url"], m, role, preferred.get(role), connection_revision))
+    connection_revision=(policy or {}).get('connection_revision')
+    candidates.sort(key=lambda m: gateway.pool.rank(base_url, m, role, preferred.get(role), connection_revision))
     tried = set()
     probes = task.setdefault("progress_state", {}).setdefault("route_probes", {})
     probes.setdefault(role, 0)
@@ -235,20 +281,21 @@ def _select_remote(engine, runtime, role="worker", replace=False):
         if provider(model['id']) in unavailable: continue
         # A preceding probe may have cooled the whole provider. Do not repeat
         # its cached error against every other model or count those as failures.
-        if gateway.pool.observation(route["base_url"], model["id"], connection_revision)["cooling_down"]:
+        if gateway.pool.observation(base_url, model["id"], connection_revision)["cooling_down"]:
             routing_trace.candidate(trace, model["id"], "cooldown")
             continue
-        identity = route_health.probe_identity(route['base_url'], model, connection_revision)
-        cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
+        identity = route_health.probe_identity(base_url, model, connection_revision)
+        cached = gateway.pool.fresh_probe(base_url, model['id'], connection_revision, identity)
         if model['id'] in tried or (not cached and round_state['probes'] >= route_schedule.BATCH_SIZE): continue
         tried.add(model['id'])
-        cfg = validate_provider({"gateway_type": gateway.settings.get("gateway_type", "omniroute"), "gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
+        cfg = validate_provider({"gateway_type": gateway.settings.get("gateway_type", "omniroute"), "gateway": "omniroute", "base_url": base_url, "model": model["id"],
                                  "input_rate": 0, "output_rate": 0}, role)
-        if route.get('access_policy') is not None: cfg['access_binding'] = copy.deepcopy(route['access_policy'])
-        if access_policy.classify(model, route.get('access_policy')) == 'included':
-            cfg = access_policy.bind_provider(cfg, route['access_policy'], model)
+        if connection_id: cfg['connection_id'] = connection_id
+        if policy is not None: cfg['access_binding'] = copy.deepcopy(policy)
+        if access_policy.classify(model, policy) == 'included':
+            cfg = access_policy.bind_provider(cfg, policy, model)
         label = 'included' if cfg.get('access') == 'included' else 'free'
-        engine.event(task, "routing", ("Checking included " if label == "included" else "Checking a free ") + role, {"model": model["id"], "role": role})
+        engine.event(task, "routing", ("Checking included " if label == "included" else "Checking a free ") + role, {"model": model["id"], "role": role, "connection_id":connection_id, "gateway":gateway.settings.get("name","OmniRoute")})
         try:
             if not cached:
                 owner, pending = gateway.pool.claim_probe(identity)
@@ -260,26 +307,26 @@ def _select_remote(engine, runtime, role="worker", replace=False):
                         while not pending.wait(.1):
                             runtime.guard()
                             if runtime.stop.is_set(): raise InterruptedError('Task stopped')
-                        access_policy.validate_current(route.get('access_policy'), access_policy.effective_settings(task, gateway.settings))
-                        cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
+                        access_policy.validate_current(policy, access_policy.effective_settings(task, gateway.settings))
+                        cached = gateway.pool.fresh_probe(base_url, model['id'], connection_revision, identity)
                         if not cached: continue
                     else:
                         # A previous owner may have finished between lookup and claim.
-                        cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
+                        cached = gateway.pool.fresh_probe(base_url, model['id'], connection_revision, identity)
                         if not cached:
                             routing_trace.candidate(trace, model['id'], 'probe_required')
                             probes[role] = probes.get(role, 0) + 1
                             round_state['probes'] += 1
                             message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose='probe')
                             route_health.validate_probe(message, engine.parse_call)
-                            gateway.pool.record(route['base_url'], model['id'], role, probe=True,
+                            gateway.pool.record(base_url, model['id'], role, probe=True,
                                                 connection_revision=connection_revision, probe_identity=identity)
                 finally:
                     if owner: gateway.pool.release_probe(identity, pending)
             else:
                 routing_trace.candidate(trace, model['id'], 'cached_probe')
             routing_trace.selected(trace, model['id'])
-            observed=gateway.pool.observation(route['base_url'],model['id'],connection_revision).get('role_evidence',{}).get(role,{})
+            observed=gateway.pool.observation(base_url,model['id'],connection_revision).get('role_evidence',{}).get(role,{})
             engine.event(task,'routing','Observed completion evidence' if observed.get('completed',0) else 'No prior completion evidence',
                          {'model':model['id'],'role':role,'completed':observed.get('completed',0),
                           'independently_disproved':observed.get('independently_disproved',0)})
@@ -305,7 +352,7 @@ def _select_remote(engine, runtime, role="worker", replace=False):
                 used.add(model['id'])
             cooldown = classification['category'] == 'rate_limit_quota'
             if classification['quality_impact']: runtime.failed_models.add(model['id'])
-            gateway.pool.record(route['base_url'], model['id'], role, error=error, connection_revision=connection_revision,
+            gateway.pool.record(base_url, model['id'], role, error=error, connection_revision=connection_revision,
                                 failure_context={'caller_error':isinstance(error, ValueError)})
             failure = {'model':model['id'], 'role':role, 'error':classification['action'],
                        'scope':classification['scope'], 'failure_category':classification['category']}
@@ -320,8 +367,8 @@ def _select_remote(engine, runtime, role="worker", replace=False):
             if classification['scope'] in {'request','connection','account'}:
                 retry = time.time() + (getattr(error, 'retry_after', None) or route_schedule.ROUND_SECONDS) if cooldown else None
                 raise RoutingPause(classification['action'], retry_at=retry, scope=classification['scope']) from None
-    provider_waits = [gateway.pool.observation(route["base_url"], m["id"], connection_revision) for m in catalog["models"]
-                      if access_policy.eligible(m, route.get('access_policy')) and not m.get("local") and m["id"] not in used]
+    provider_waits = [gateway.pool.observation(base_url, m["id"], connection_revision) for m in catalog["models"]
+                      if access_policy.eligible(m, policy) and not m.get("local") and m["id"] not in used]
     waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") in {"provider", "model", "account", "connection"} and h.get("retry_known") and h["cooling_down"]]
     if round_state['probes'] >= route_schedule.BATCH_SIZE and candidates:
         raise RoutingPause('Checking more authorized routes automatically after a short backoff.', retry_at=route_schedule.retry_at(round_state), scope='probe_capacity')
@@ -333,7 +380,7 @@ def _select_remote(engine, runtime, role="worker", replace=False):
     if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits):
         reason = next((h.get('last_error') for h in provider_waits if h.get('cooldown_scope') == 'provider' and h['cooling_down'] and h.get('last_error')), 'The provider is cooling down without a known retry time.')
         raise RoutingPause(reason + " Checking availability again automatically.", retry_at=time.time()+route_schedule.ROUND_SECONDS, scope="provider")
-    allowed = [m for m in catalog['models'] if access_policy.eligible(m, route.get('access_policy')) and not m.get('local')]
+    allowed = [m for m in catalog['models'] if access_policy.eligible(m, policy) and not m.get('local')]
     if allowed and all(m['id'] in runtime.failed_models or (role == 'reviewer' and m['id'] in used) for m in allowed) and not any(route_schedule.rejected(v) for v in rejected_probes.values()):
         raise RoutingPause('No eligible independent model remains after response failures. Choose another model in Models; saved work and passing checks are kept.')
     retry_times = [v['retry_at'] for v in rejected_probes.values() if route_schedule.rejected(v)]

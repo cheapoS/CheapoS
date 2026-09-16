@@ -318,6 +318,10 @@ list declares capability; automatic selection still probes tool calling.
 Save your worker/reviewer choices and start a new chat. Changing gateway type
 or URL clears the old connection's key and included-access declarations.
 
-One gateway is active at a time. Model failover stays inside that connection;
-automatic failover between gateways is not enabled yet. See the
+Use **Add connection** to save multiple gateways. The dropdown selects settings
+to edit; it does not select the only usable gateway. Automatic remote tasks can
+fail over across all enabled connections captured when the task starts. Manual
+worker, reviewer and planner choices stay pinned to their selected connection.
+For gateways sharing an upstream account, use matching quota-group labels in
+connection settings so account cooldowns apply across those gateways. See the
 [gateway plan and trial checklist](development/gateway-connections.md).

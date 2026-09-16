@@ -7,9 +7,11 @@ from .providers import validate_provider
 
 def model_choices(engine, task):
     """Only existing eligible gateway routes, never invented provider IDs."""
-    policy=(task.get('route') or {}).get('access_policy') or task.get('access_policy')
+    current=task.get('providers',{}).get('worker') or {}
+    gateway=engine.connection_for(current) if hasattr(engine,'connection_for') else engine.gateway
+    policy=access_policy.for_config(task,current) if task.get('gateway_connections') is not None else (task.get('route') or {}).get('access_policy') or task.get('access_policy')
     if not policy: return []
-    catalog=engine.gateway.catalog(fresh=False)
+    catalog=gateway.catalog(fresh=False)
     if catalog.get('status')!='ready':return []
     reviewer=(task.get('providers',{}).get('reviewer') or {}).get('model')
     return [{'id':m['id'],'label':m['id']} for m in catalog.get('models',[])
@@ -44,10 +46,12 @@ def interactive(engine, task_id, values=None):
             if values.get('revision_token')!=revision:raise ValueError('The task changed. Refresh recovery choices before changing its worker.')
             selected=values.get('model')
             if selected not in {m['id'] for m in model_choices(engine,task)}:raise ValueError('Choose an eligible configured route distinct from the reviewer')
-            policy=(task.get('route') or {}).get('access_policy') or task.get('access_policy')
-            catalog=engine.gateway.catalog(fresh=False)
+            current=task.get('providers',{}).get('worker') or {}
+            gateway=engine.connection_for(current)
+            policy=access_policy.for_config(task,current) if task.get('gateway_connections') is not None else (task.get('route') or {}).get('access_policy') or task.get('access_policy')
+            catalog=gateway.catalog(fresh=False)
             entry=next(m for m in catalog['models'] if m['id']==selected)
-            config=validate_provider({'gateway_type':engine.gateway.settings.get('gateway_type','omniroute'),'gateway':'omniroute','base_url':(task.get('route') or {}).get('base_url') or engine.gateway.settings['base_url'],'model':selected,'input_rate':0,'output_rate':0,'key_env':task.get('providers',{}).get('worker',{}).get('key_env')},'worker')
+            config=validate_provider({**current,'gateway_type':gateway.settings.get('gateway_type','omniroute'),'gateway':'omniroute','base_url':gateway.settings['base_url'],'model':selected,'input_rate':0,'output_rate':0,'key_env':task.get('providers',{}).get('worker',{}).get('key_env')},'worker')
             config['access_binding']=copy.deepcopy(policy)
             if access_policy.classify(entry,policy)=='included':
                 config=access_policy.bind_provider(config,policy,entry)

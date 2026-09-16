@@ -105,7 +105,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         engine = self.server.engine
         try:
             if path == "/api/bootstrap":
-                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.gateway.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.visible(), "projects": engine.projects(), "hidden_projects": [p for p in engine.projects(include_hidden=True) if p["path"] in engine.hidden_project_paths()], "preferences": engine.preferences()})
+                self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.connections.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.visible(), "projects": engine.projects(), "hidden_projects": [p for p in engine.projects(include_hidden=True) if p["path"] in engine.hidden_project_paths()], "preferences": engine.preferences()})
             elif path == "/api/lifetime-usage":
                 period=parse_qs(urlsplit(self.path).query).get("days", ["all"])[0]
                 if period not in {"all","7","30"}:return self.reply({"error":"Usage period must be all, 7 or 30 days"},400)
@@ -135,7 +135,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
             elif path == "/api/projects":
                 self.reply(engine.projects())
             elif path == "/api/gateway":
-                self.reply(engine.gateway.snapshot())
+                self.reply(engine.connections.snapshot())
+            elif path == "/api/gateway/catalogs":
+                self.reply({identity:{**m.snapshot(), **m.catalog()} for identity,m in engine.connections.managers.items()})
             elif path == "/api/gateway/models":
                 self.reply(engine.gateway.catalog())
             elif path == "/api/tasks":
@@ -228,13 +230,23 @@ class LocalHandler(SimpleHTTPRequestHandler):
             elif path == "/api/club/disconnect":
                 self.trusted(mutation=True)
                 result = engine.store.club.disconnect()
+            elif path == "/api/gateway/select":
+                with engine.lock:
+                    engine.gateway = engine.connections.select(values.get('connection_id'))
+                    result = engine.connections.snapshot()
+            elif path == "/api/gateway/add":
+                with engine.lock:
+                    identity = engine.connections.add(values)
+                    engine.gateway = engine.connections.select(identity)
+                    result = engine.connections.snapshot()
             elif path == "/api/gateway/config":
                 with engine.lock:
                     if engine.startup.busy():
                         raise ValueError("Stop the startup connection check before changing its gateway")
                     if engine.admission.snapshot()['active']:
                         raise ValueError("Pause the active task before changing its gateway connection")
-                    result = engine.gateway.configure(values)
+                    engine.gateway.configure(values)
+                    result = engine.connections.snapshot()
             elif path in {"/api/gateway/start", "/api/gateway/refresh"}:
                 result = engine.gateway.refresh(start=path.endswith("/start"))
             elif path == "/api/gateway/stop":

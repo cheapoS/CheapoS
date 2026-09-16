@@ -79,13 +79,15 @@ def effective_settings(task, settings):
 def guard(task, config, settings, models=None, role=None):
     """Check before reservations/probes. Never grants access from a catalog alone."""
     settings = effective_settings(task, settings)
-    policy = task.get('access_policy')
+    policy = for_config(task, config) if task.get('gateway_connections') is not None else task.get('access_policy')
     if config.get('access') == 'included':
         validate_current(config.get('access_binding'), settings)
         if not policy or config.get('access_binding') != policy:
             raise ValueError('Included provider access is not bound to this saved task')
         bind_provider(config, policy)
     route = task.get('route') or {}
+    if task.get('gateway_connections') is not None:
+        route = {**route, 'access_policy':policy} if route else route
     if route.get('access_policy') is not None and (config.get('gateway') == 'omniroute' or role == 'planner'):
         validate_current(route['access_policy'], settings)
         if config.get('access_binding') != route['access_policy']:
@@ -98,3 +100,16 @@ def guard(task, config, settings, models=None, role=None):
         if config['base_url'] != route['access_policy']['base_url']:
 
             raise ValueError('Automatic provider endpoint differs from the authorized connection')
+
+
+def connection_policy(entry):
+    return {k: copy.deepcopy(entry[k]) for k in ('version','base_url','connection_revision','included_models')}
+
+def for_config(task, config):
+    entries = task.get('gateway_connections')
+    if entries is not None and config.get('gateway') == 'omniroute':
+        entry = next((e for e in entries if e['connection_id'] == config.get('connection_id')), None)
+        if entry is None:
+            raise ValueError('This gateway was not authorized for the saved task')
+        return connection_policy(entry)
+    return (task.get('route') or {}).get('access_policy', task.get('access_policy'))

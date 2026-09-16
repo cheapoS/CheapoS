@@ -73,8 +73,10 @@ def capabilities(controller, task_id):
     from . import access_policy
     from .development import enabled
     task=controller.engine.store.get(task_id);run=task['branch_run']
-    policy=(task.get('route') or {}).get('access_policy',run.get('model_policy',{}).get('gateway_access'))
-    catalog=controller.engine.gateway.catalog(fresh=False)
+    current=task.get('providers',{}).get('worker') or {}
+    gateway=controller.engine.connection_for(current) if hasattr(controller.engine,"connection_for") else controller.engine.gateway
+    policy=access_policy.for_config(task,current) if task.get('gateway_connections') is not None else (task.get('route') or {}).get('access_policy',run.get('model_policy',{}).get('gateway_access'))
+    catalog=gateway.catalog(fresh=False)
     used={task.get('providers',{}).get('reviewer',{}).get('model')}
     models=[{'id':m['id'],'label':m.get('name') or m['id']} for m in catalog.get('models',[])
             if access_policy.eligible(m,policy) and m['id'] not in used]
@@ -125,16 +127,18 @@ def amend(controller, task_id, values):
             chosen=values.get('model')
             available=capabilities(controller,task_id)['reviewers' if action=='reviewer' else 'models']
             if chosen not in {m['id'] for m in available}:raise ValueError('Choose an eligible free or already-included model distinct from the other role and saved authors')
-            access=policy.get('gateway_access')
-            access_policy.validate_current(access,access_policy.effective_settings(task,engine.gateway.settings))
-            endpoint=engine.gateway.settings['base_url']
+            current=task.get('providers',{}).get(role) or {}
+            gateway=engine.connection_for(current) if hasattr(engine,"connection_for") else engine.gateway
+            access=access_policy.for_config(task,current) if task.get('gateway_connections') is not None else policy.get('gateway_access')
+            access_policy.validate_current(access,access_policy.effective_settings(task,gateway.settings))
+            endpoint=gateway.settings['base_url']
             current=task.get('providers',{}).get(role) or {}
             if current.get('gateway')!='omniroute' or current.get('base_url')!=endpoint:
                 raise ValueError('Model replacement must stay on this run’s authorized OmniRoute connection')
             cfg=validate_provider({**current,'gateway':'omniroute','base_url':endpoint,'model':chosen,'input_rate':0,'output_rate':0},role)
             for field in ('access','access_binding','pricing_source','catalog_pricing'):cfg.pop(field,None)
             if access is not None:cfg['access_binding']=copy.deepcopy(access)
-            model=next(m for m in engine.gateway.catalog(fresh=False)['models'] if m['id']==chosen)
+            model=next(m for m in gateway.catalog(fresh=False)['models'] if m['id']==chosen)
             if access_policy.classify(model,access)=='included':cfg=access_policy.bind_provider(cfg,access,model)
             task.setdefault('operator_model_history',[]).append({'provider':copy.deepcopy(current),'route_recovery':copy.deepcopy((task.get('route') or {}).get('recovery',{}))})
             task['providers'][role]=cfg
