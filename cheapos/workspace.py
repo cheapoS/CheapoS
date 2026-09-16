@@ -323,6 +323,21 @@ class Workspace:
             result["syntax_warning"] = warning
         return result
 
+    def delete_file(self, path):
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("Provide a file path to delete")
+        target = self.path(path)
+        if not target.exists():
+            raise ValueError(f"File '{path}' does not exist")
+        if target.is_dir():
+            raise ValueError(f"'{path}' is a directory; delete_file only removes files")
+        target.unlink()
+        try:
+            git(self.root, "rm", "-f", "--quiet", "--ignore-unmatch", "--", path)
+        except Exception:
+            pass
+        return {"path": path, "deleted": True}
+
     def changes(self):
         # Include newly created files in the exported patch without changing the baseline.
         names = self.list_files()

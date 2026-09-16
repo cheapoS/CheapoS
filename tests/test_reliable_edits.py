@@ -225,6 +225,72 @@ class ReliableEditsTests(unittest.TestCase):
         self.assertEqual(len(assistant_events), 1)
         self.assertEqual(assistant_events[0]["detail"], "Here is the completed response.")
 
+    def test_delete_file_in_worker_tools(self):
+        tool_names = [t["function"]["name"] for t in WORKER_TOOLS]
+        self.assertIn("delete_file", tool_names)
+
+    def test_delete_file_deletes_untracked_and_tracked_files(self):
+        # Case 1: Untracked file
+        untracked = Path(self.temp_dir) / "untracked.py"
+        untracked.write_text("print('abandoned')\n", encoding="utf-8")
+        self.assertTrue(untracked.exists())
+        res = self.workspace.delete_file("untracked.py")
+        self.assertTrue(res["deleted"])
+        self.assertFalse(untracked.exists())
+        self.assertEqual(len(self.workspace.changes()), 0)
+
+        # Case 2: Tracked file
+        tracked = Path(self.temp_dir) / "tracked.py"
+        tracked.write_text("def old(): pass\n", encoding="utf-8")
+        import subprocess
+        subprocess.run(["git", "add", "tracked.py"], cwd=self.temp_dir, check=True)
+        subprocess.run(["git", "commit", "-m", "add tracked"], cwd=self.temp_dir, check=True, capture_output=True)
+        self.assertTrue(tracked.exists())
+        res = self.workspace.delete_file("tracked.py")
+        self.assertTrue(res["deleted"])
+        self.assertFalse(tracked.exists())
+        changes = self.workspace.changes()
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["path"], "tracked.py")
+        self.assertEqual(changes[0]["after"], "")
+
+    def test_delete_file_validations(self):
+        with self.assertRaisesRegex(ValueError, "Provide a file path to delete"):
+            self.workspace.delete_file("")
+
+        with self.assertRaisesRegex(ValueError, "does not exist"):
+            self.workspace.delete_file("nonexistent.txt")
+
+        sub_dir = Path(self.temp_dir) / "sub_dir"
+        sub_dir.mkdir()
+        with self.assertRaisesRegex(ValueError, "is a directory"):
+            self.workspace.delete_file("sub_dir")
+
+    def test_engine_file_tool_delete_file(self):
+        file_path = Path(self.temp_dir) / "to_delete.txt"
+        file_path.write_text("temporary content\n", encoding="utf-8")
+
+        state_dir = Path(self.temp_dir) / "state"
+        engine = Engine(state_dir, fixture_delay=0)
+        self.addCleanup(engine.shutdown)
+
+        task = {
+            "id": "t_del",
+            "workspace": self.temp_dir,
+            "tool_actions": 0,
+            "active_role": "worker",
+            "status": "working",
+            "providers": {},
+            "events": [],
+            "patch": "",
+            "changes": [],
+        }
+        res = engine.file_tool(task, "delete_file", {"path": "to_delete.txt"})
+        self.assertTrue(res["deleted"])
+        self.assertIn("File deleted", res["guidance"])
+        self.assertFalse(file_path.exists())
+        self.assertTrue(any(e["title"] == "delete file" for e in task["events"]))
+
 
 if __name__ == "__main__":
     unittest.main()

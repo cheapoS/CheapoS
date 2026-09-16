@@ -73,6 +73,7 @@ WORKER_TOOLS = READ_TOOLS + [
     tool("write_file", "Create a new UTF-8 text file. Existing files cannot be overwritten: use replace_text or append_text.", {"path": TEXT, "content": TEXT}, ["path", "content"]),
     tool("replace_text", "Replace exactly one occurrence of old_text in an existing file.", {"path": TEXT, "old_text": TEXT, "new_text": TEXT}, ["path", "old_text", "new_text"]),
     tool("append_text", "Append text to the end of an existing file. For modifications inside a file, use replace_text.", {"path": TEXT, "text": TEXT}, ["path", "text"]),
+    tool("delete_file", "Delete a file from the workspace. Use to remove obsolete, temporary, or moved files.", {"path": TEXT}, ["path"]),
     tool("run_checks", "Run the user-configured verification command. May require the user's permission."),
     tool("checkpoint", "Finish a worker iteration and submit a compact snapshot for senior review. The app uses its passing check result for this exact patch and command, or runs checks if needed.", {"summary": TEXT, "uncertainties": TEXT, "repair_dispositions": {"type":"array","maxItems":8,"items":{"type":"object","properties":{"finding_id":TEXT,"candidate_id":{"type":"string","description":"The disputed source candidate_id in review_repair"},"disposition":{"type":"string","enum":["reproduced_and_corrected","disproved","unresolved"]},"evidence":TEXT,"broader_edit_reason":TEXT},"required":["finding_id","candidate_id","disposition","evidence"],"additionalProperties":False}}}, ["summary", "uncertainties"]),
 ]
@@ -924,7 +925,7 @@ class Engine:
                 boundary = max((i for i, e in enumerate(task["events"]) if e["kind"] == "user"), default=-1)
                 if any(e["kind"] == "tool_error" and isinstance(e.get("detail"), dict)
                        and e["detail"].get("code") == "invalid_tool_arguments"
-                       and e["detail"].get("tool") in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}
+                       and e["detail"].get("tool") in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}
                        for e in task["events"][boundary + 1:]):
                     self.prepare_compact_edits(task)
             if work_policy.read_only(task):
@@ -2301,7 +2302,7 @@ class Engine:
         """Bind edits to evidence sent before inference, never to an execution-time hash."""
         task = runtime.task
         workspace = Workspace(task["workspace"])
-        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"} and mutated_paths is not None:
+        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"} and mutated_paths is not None:
             path = str(workspace.path(args.get("path")).relative_to(workspace.root))
             if path in mutated_paths:
                 return {"error": "The earlier mutation to this file in this response was saved. This call was not applied, even if the earlier mutation was a no-op.",
@@ -2323,7 +2324,7 @@ class Engine:
             result = self.file_tool(task, name, args)
         if name == "read_file":
             self.remember_file_version(runtime, result)
-        elif name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}:
+        elif name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}:
             path = str(workspace.path(args["path"]).relative_to(workspace.root))
             runtime.edit_versions.pop(path, None)
             if mutated_paths is not None:
@@ -2393,10 +2394,10 @@ class Engine:
             self.event(task, 'working_state', 'Updated the working approach', result)
             return result
         workspace = Workspace(task["workspace"])
-        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda **kwargs: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines, "append_text": workspace.append_text}
+        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda **kwargs: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines, "append_text": workspace.append_text, "delete_file": workspace.delete_file}
         if name not in methods:
             raise ValueError("Unknown tool: " + name)
-        if 'branch_run' in task and name in {'write_file', 'replace_text', 'replace_lines', 'append_text'}:
+        if 'branch_run' in task and name in {'write_file', 'replace_text', 'replace_lines', 'append_text', 'delete_file'}:
             from .branch_disagreement import before_write
             before_write(task, args.get('path'))
         if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text", "append_text"}:
@@ -2410,11 +2411,11 @@ class Engine:
                 raise ValueError(f"Edit is too large. New files allow at most {MAX_CREATE_BYTES} UTF-8 bytes; existing files use replace_lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes. No edit was made.")
         result = methods[name](**args)
         task["tool_actions"] += 1
-        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}:
+        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}:
             task.get("_edit_failures", {}).pop(args.get("path"), None)
             self.refresh_changes(task)
             if isinstance(result, dict) and "guidance" not in result:
-                result["guidance"] = "Edits saved. Run run_checks to verify."
+                result["guidance"] = "File deleted. Run run_checks to verify." if name == "delete_file" else "Edits saved. Run run_checks to verify."
         role = "reviewer" if task["status"] == "reviewing" else task["active_role"]
         model = (task["providers"].get(role) or {}).get("model", "Scripted demo")
         self.event(task, "tool", name.replace("_", " "), {"arguments": args, "result": result, "role": role, "model": model})
@@ -2812,7 +2813,7 @@ class Engine:
         result = {"error": str(error), "code": error.code, "tool": error.name}
         self.event(runtime.task, "tool_error", "Model needs to correct tool arguments", result)
         if (automatic(runtime.task, runtime.task["active_role"]) and runtime.task["active_role"] == "worker"
-                and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}):
+                and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}):
             self.prepare_compact_edits(runtime.task)
             runtime.compact_context_ready = False
         if recovery["malformed_attempts"] >= 3 and not developing(runtime.task):
@@ -3205,7 +3206,7 @@ class Engine:
                             result = self.read_url(runtime, args) if name == "read_url" else self.worker_file_tool(runtime, name, args, request_versions, mutated_paths)
                             if isinstance(result, dict) and result.get('code') == 'same_response_file_mutation':
                                 self.event(task, 'tool_error', 'Kept the earlier edit; rejected a second same-file mutation', result)
-                            if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}:
+                            if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}:
                                 runtime.observations.clear()
                                 runtime.file_observations.clear()
                             else:

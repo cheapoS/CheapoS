@@ -54,9 +54,9 @@ def attempted_edit(task):
     for event in task.get('events', []):
         if event.get('kind') in {'tool', 'tool_error'}:
             detail = event.get('detail') if isinstance(event.get('detail'), dict) else {}
-            if detail.get('tool') in {'write_file', 'replace_text', 'replace_lines', 'append_text', 'apply_merge_version'}:
+            if detail.get('tool') in {'write_file', 'replace_text', 'replace_lines', 'append_text', 'apply_merge_version', 'delete_file'}:
                 return True
-            if event.get('title') in {'write file', 'replace text', 'replace lines', 'append text', 'apply merge version'}:
+            if event.get('title') in {'write file', 'replace text', 'replace lines', 'append text', 'apply merge version', 'delete file'}:
                 return True
     return False
 
@@ -106,6 +106,6 @@ def instruction(value):
 
 
 def prioritize(tools,value):
-    first={'explanation':{'read_file','outline_file','search'},'orientation':{'read_file','outline_file','search'},'implementation':{'replace_text','replace_lines','write_file','append_text'},
+    first={'explanation':{'read_file','outline_file','search'},'orientation':{'read_file','outline_file','search'},'implementation':{'replace_text','replace_lines','write_file','append_text','delete_file'},
            'verification':{'run_checks','checkpoint'},'review':{'checkpoint','review_decision'}}[value]
     return sorted(tools,key=lambda tool:tool['function']['name'] not in first)
