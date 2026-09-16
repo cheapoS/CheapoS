@@ -200,3 +200,13 @@ used/allowed/remaining values and requires an explicit adjustment before the UI
 resumes. Nonadjustable blockers point to saved changes or model settings rather
 than increasing unrelated counters. Free-only uses configured prices, not a
 provider billing guarantee.
+
+## Agent Role Mappings
+
+You can map specific models for the **Planner**, **Worker**, and **Reviewer** roles in **Settings**.
+- These defaults apply to all new tasks.
+- For a specific project, you can override these mappings in the chat "**work setup**".
+- The Worker model must be distinct from the Planner and Reviewer models.
+
+These explicit mappings do not alter budget, project permissions, or merge authorization. Operator selection is still required to start or proceed with a task.
+Role mappings are labeled with their source: '**operator**' for defaults configured in Settings, and '**user**' for explicit per-project overrides configured in chat work setup.

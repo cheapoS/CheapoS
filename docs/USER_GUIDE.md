@@ -325,3 +325,18 @@ worker, reviewer and planner choices stay pinned to their selected connection.
 For gateways sharing an upstream account, use matching quota-group labels in
 connection settings so account cooldowns apply across those gateways. See the
 [gateway plan and trial checklist](development/gateway-connections.md).
+
+## Role Mappings
+
+In **Settings**, you can map a specific model for the **Planner**, **Worker**, and **Reviewer** roles.
+
+- **Planner**: Responsible for task planning.
+- **Worker**: Responsible for implementing the task.
+- **Reviewer**: Responsible for reviewing the implementation.
+
+These mappings can be overridden per project in the chat "**work setup**" by the operator.
+- Planner and Reviewer roles can share the same model.
+- The **Worker model must NOT be the same** as the Planner or Reviewer models.
+
+Explicit mappings do not alter budget, permissions, or merge authorization. Operator selection remains required to start work.
+Role mappings are labeled with their source: '**operator**' for defaults configured in Settings, and '**user**' for explicit per-project overrides configured in chat work setup.
