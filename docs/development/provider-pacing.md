@@ -30,6 +30,20 @@ streak, without clearing an active shared cooldown. This prevents a repeating
 cycle of successful tiny probe, rejected full prompt, and immediate re-selection.
 Resume, catalog refresh, and app restart do not erase the saved streak.
 
+During automatic availability recovery, a different eligible provider takes
+priority over cached probes and model preferences on the affected provider.
+Selection also reorders remaining candidates after a probe reports a cooldown,
+transport failure, unavailable route, or candidate rejection. This preference
+does not mark healthy sibling models broken: they remain fallback candidates if
+other providers cannot respond. Existing access, tool capability, context fit,
+reviewer independence, and scoped cooldown exclusions still apply. No additional
+probe allowance is granted. The activity stream explicitly says **Trying another
+provider** at this transition.
+
+This is temporary ordering for the current selection, derived from its failure
+and current pool observations, not a permanent provider ban. A saved legacy
+provider-exclusion list cannot prevent a recovered provider from being selected.
+
 ## September 16 investigation
 
 Saved request records showed selection of the next candidate beginning roughly
@@ -69,3 +83,11 @@ a budget error for incomplete usage but received `ProviderError`. No assertion
 or accounting rule was changed here. The six new/updated regression cases took
 0.011 seconds together; no heavy test was added. The full suite and live inference
 were not run for this change.
+
+The follow-up provider-selection fix passed 96 existing and new focused cases
+across routing, pool, health, probe rejection, schedule, cooldown waits,
+connections and access policy in 28.309 seconds. Its two new injected-state
+regressions took 0.016 seconds together and reproduce cached/preferred sibling
+starvation, immediate rotation after a failed probe, and same-provider fallback
+when another provider fails. The existing real worker/reviewer handoff test also
+passes with the new selection order. No live model request was sent.

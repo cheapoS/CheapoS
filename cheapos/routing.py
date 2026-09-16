@@ -247,17 +247,25 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
     used.update(runtime.failed_models)
     used.update(task.get('branch_run',{}).get('implementation_recovery',{}).get('failed_models',[]))
     connection_revision=(policy or {}).get('connection_revision')
-    from .provider_recovery import provider
+    from .provider_recovery import outage, provider
     # Pool records carry actual outage scope and expiry. Legacy request-level
     # provider exclusions must not survive recovery.
-    unavailable = []
     route.setdefault('availability_recovery', {}).setdefault(role, {'handoffs':0,'providers':[]})['providers'] = []
+    # A model-scoped outage must not ban its healthy siblings, but their cached
+    # probes/preferences must not crowd out other providers during failover.
+    deferred_providers = set()
+    recovery = route.get('recovery', {}).get(role)
+    current = task['providers'].get(role) or {}
+    if current.get('connection_id') == connection_id and outage(task, role, recovery) and recovery.get('from'):
+        deferred_providers.add(provider(recovery['from']))
     round_state = route_schedule.begin(task, role + ":" + connection_id if connection_id else role)
     rejected_probes = route.setdefault('rejected_probes', {})
     candidates = []
     for model in catalog['models']:
         probe_key = role + ':' + route_health.probe_identity(base_url, model, connection_revision)
         obs = gateway.pool.observation(base_url, model['id'], connection_revision)
+        if obs['cooling_down'] and (obs.get('failure') or {}).get('category') in {'rate_limit_quota', 'transient_provider'}:
+            deferred_providers.add(provider(model['id']))
         if route_schedule.rejected(rejected_probes.get(probe_key)) or obs.get('probe_rejected'):
             used.add(model['id'])
             routing_trace.candidate(trace, model['id'], 'probe_rejected')
@@ -267,7 +275,6 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
                   else 'auto_excluded' if model['id'].startswith('auto/')
                   else 'capability_missing' if (role != 'coordinator' and model.get('tool_calling') is not True)
                   else 'access_excluded' if not access_policy.eligible(model, policy)
-                  else 'provider_unavailable_for_request' if provider(model['id']) in unavailable
                   else 'failed_model' if model['id'] in runtime.failed_models
                   else 'prior_worker' if model['id'] in used
                   else 'cooldown' if obs['cooling_down']
@@ -283,8 +290,13 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
     tried = set()
     probes = task.setdefault("progress_state", {}).setdefault("route_probes", {})
     probes.setdefault(role, 0)
-    for model in candidates:
-        if provider(model['id']) in unavailable: continue
+    rank_order = {model['id']: index for index, model in enumerate(candidates)}
+    remaining = list(candidates)
+    while remaining:
+        # Preserve ranking within each group. Reorder after availability errors,
+        # so one provider cannot consume this discovery batch with siblings.
+        remaining.sort(key=lambda model: (provider(model['id']) in deferred_providers, rank_order[model['id']]))
+        model = remaining.pop(0)
         # A preceding probe may have cooled the whole provider. Do not repeat
         # its cached error against every other model or count those as failures.
         obs = gateway.pool.observation(base_url, model["id"], connection_revision)
@@ -295,6 +307,12 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         cached = gateway.pool.fresh_probe(base_url, model['id'], connection_revision, identity)
         if model['id'] in tried or (not cached and round_state['probes'] >= route_schedule.BATCH_SIZE): continue
         tried.add(model['id'])
+        candidate_provider = provider(model['id'])
+        if deferred_providers and candidate_provider not in deferred_providers:
+            engine.event(task, 'routing', 'Trying another provider', {
+                'model': model['id'], 'role': role, 'provider': candidate_provider,
+                'deferred_providers': sorted(deferred_providers),
+                'summary': 'Trying a different eligible provider after an availability failure. Saved work and model permissions are unchanged.'})
         cfg = validate_provider({"gateway_type": gateway.settings.get("gateway_type", "omniroute"), "gateway": "omniroute", "base_url": base_url, "model": model["id"],
                                  "input_rate": 0, "output_rate": 0, **({"provider": model["provider"]} if model.get("provider") else {})}, role)
         if connection_id: cfg['connection_id'] = connection_id
@@ -358,6 +376,8 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
                     rejected_probes.pop(next(iter(rejected_probes)))
                 used.add(model['id'])
             cooldown = classification['category'] == 'rate_limit_quota'
+            if cooldown or classification['category'] in {'transient_provider', 'unavailable_route', 'candidate_rejected'}:
+                deferred_providers.add(provider(model['id']))
             if classification['quality_impact']: runtime.failed_models.add(model['id'])
             gateway.pool.record(base_url, model['id'], role, error=error, connection_revision=connection_revision,
                                 failure_context={'caller_error':isinstance(error, ValueError), 'candidate_rejected': candidate_rejected})

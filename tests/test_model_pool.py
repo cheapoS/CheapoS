@@ -226,7 +226,7 @@ class FailoverTests(LocalCase):
         self.assertEqual(result['route']['recovery']['worker']['from'],'openrouter/a')
         self.assertEqual(result['route']['availability_recovery']['worker']['providers'],[])
 
-    def test_model_cooldown_does_not_exclude_healthy_provider_siblings(self):
+    def test_model_cooldown_prefers_another_provider_without_excluding_healthy_siblings(self):
         task=self.chat('remote')
         task['check_command']=[sys.executable,'-m','unittest','discover','-v'];task['auto_approve_checks']=True
         self.engine.store.save(task)
@@ -238,8 +238,8 @@ class FailoverTests(LocalCase):
         ],names=('openrouter/a','openrouter/b','zprovider/b','openrouter/c'))
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'approved',result['error'])
-        self.assertEqual(result['providers']['worker']['model'],'openrouter/b')
-        self.assertEqual(result['providers']['reviewer']['model'],'openrouter/c')
+        self.assertEqual(result['providers']['worker']['model'],'zprovider/b')
+        self.assertEqual(result['providers']['reviewer']['model'],'openrouter/b')
         self.assertTrue(any(e['kind']=='handoff' for e in result['events']))
 
     def responding(self, replies, names=('a','b','c','d')):

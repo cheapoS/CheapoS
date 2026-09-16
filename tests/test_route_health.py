@@ -12,6 +12,66 @@ MODEL={'id':'provider/model','tool_calling':True,'context_length':10000}
 
 
 class RouteHealthTests(unittest.TestCase):
+    def test_cooldown_prefers_another_provider_over_a_preferred_cached_sibling(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from cheapos.routing import select_remote
+        from cheapos.engine import Engine
+        for alternative_fails in (False, True):
+            with self.subTest(alternative_fails=alternative_fails), tempfile.TemporaryDirectory() as directory:
+                models = [dict(MODEL, id=name, free=True) for name in
+                          ('openrouter/gemma-a', 'openrouter/gemma-b', 'nvidia/coder')]
+                models += [dict(MODEL, id='paid/coder', free=False),
+                           dict(MODEL, id='local/coder', free=True, local=True)]
+                task = {'providers': {'planner': {'model': 'openrouter/gemma-a'}}, 'events': [],
+                        'route': {'base_url': URL, 'preferred': {'planner': 'openrouter/gemma-b'},
+                                  'recovery': {'planner': {'from': 'openrouter/gemma-a', 'error_code': 'gateway_cooldown'}}}}
+                pool = FreeModelPool(directory)
+                pool.record(URL, models[0]['id'], 'planner', error=ProviderError('', code='gateway_cooldown', scope='model', retry_after=120))
+                pool.record(URL, models[1]['id'], 'planner', probe=True, probe_identity=health.probe_identity(URL, models[1], None))
+                gateway = SimpleNamespace(settings={}, pool=pool, matches=lambda url: True,
+                                          catalog=lambda **kw: {'status': 'ready', 'models': models})
+                response = {'tool_calls': [{'id': 'probe', 'function': {'name': 'routing_ready',
+                             'arguments': json.dumps({'marker': health.PROBE_MARKER})}}]}
+                def request(*args, **kwargs):
+                    self.assertEqual(kwargs['config_override']['model'], 'nvidia/coder')
+                    if alternative_fails: raise ProviderError('', code='http_503')
+                    return response
+                engine = SimpleNamespace(gateway=gateway, event=Mock(), store=Mock(), parse_call=Engine.parse_call,
+                                         request=Mock(side_effect=request))
+                select_remote(engine, SimpleNamespace(task=task, failed_models=set()), 'planner', replace=True)
+                engine.request.assert_called_once()
+                self.assertEqual(task['providers']['planner']['model'], 'openrouter/gemma-b' if alternative_fails else 'nvidia/coder')
+                self.assertFalse(pool.observation(URL, 'openrouter/gemma-b')['cooling_down'])
+                self.assertEqual(pool.observation(URL, 'openrouter/gemma-a').get('failures', 0), 0)
+
+    def test_model_cooldown_during_probe_rotates_provider_before_second_sibling(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from cheapos.routing import select_remote
+        from cheapos.engine import Engine
+        with tempfile.TemporaryDirectory() as directory:
+            models = [dict(MODEL, id=name, free=True) for name in
+                      ('openrouter/gemma-a', 'openrouter/gemma-b', 'nvidia/coder')]
+            pool = FreeModelPool(directory)
+            # Both preferred and previously validated routes would normally rank first.
+            pool.record(URL, models[1]['id'], 'worker', probe=True,
+                        probe_identity=health.probe_identity(URL, models[1], None))
+            task = {'providers': {}, 'events': [], 'route': {'base_url': URL, 'preferred': {'worker': models[0]['id']}}}
+            gateway = SimpleNamespace(settings={}, pool=pool, matches=lambda url: True,
+                                      catalog=lambda **kw: {'status': 'ready', 'models': models})
+            calls = []
+            def request(*args, **kwargs):
+                name = kwargs['config_override']['model']; calls.append(name)
+                if name.startswith('openrouter/'):
+                    raise ProviderError('', code='gateway_cooldown', scope='model', retry_after=120)
+                return {'tool_calls': [{'id': 'probe', 'function': {'name': 'routing_ready',
+                        'arguments': json.dumps({'marker': health.PROBE_MARKER})}}]}
+            engine = SimpleNamespace(gateway=gateway, event=Mock(), store=Mock(), parse_call=Engine.parse_call, request=request)
+            select_remote(engine, SimpleNamespace(task=task, failed_models=set()), 'worker')
+            self.assertEqual(calls, ['openrouter/gemma-a', 'nvidia/coder'])
+            self.assertEqual(task['providers']['worker']['model'], 'nvidia/coder')
+
     def test_outage_selection_skips_provider_and_preserves_free_independent_selection(self):
         from types import SimpleNamespace
         from unittest.mock import Mock
