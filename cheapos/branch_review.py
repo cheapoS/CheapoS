@@ -167,19 +167,26 @@ def checkpoint(engine, runtime, args):
     messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.' + diff_notice + direct_call + disagreement.REVIEW_INSTRUCTION}, {'role':'user','content':json.dumps(packet)}]
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
         recovered = {}
-        if not task.get('pending_review') and task.get('operator_review_history'):
+        is_fresh = task.pop('fresh_review', False)
+        current_reviewer = (task.get('providers', {}).get('reviewer') or {}).get('model')
+        if not is_fresh and not task.get('pending_review') and task.get('operator_review_history'):
             for prev in reversed(task['operator_review_history']):
+                prev_model = prev.get('reviewer_model')
+                if prev_model and current_reviewer and prev_model != current_reviewer:
+                    continue
                 if (prev.get('branch_candidate_id') == current['id']
                         or (prev.get('identity_scope') or {}).get('candidate_id') == current['id']
                         or (prev.get('identity_scope') or {}).get('item_id') == item['id']):
                     recovered = copy.deepcopy(prev)
                     break
-        elif task.get('pending_review'):
+        elif not is_fresh and task.get('pending_review'):
             prev = task['pending_review']
-            if (prev.get('branch_candidate_id') == current['id']
-                    or (prev.get('identity_scope') or {}).get('candidate_id') == current['id']
-                    or (prev.get('identity_scope') or {}).get('item_id') == item['id']):
-                recovered = copy.deepcopy(prev)
+            prev_model = prev.get('reviewer_model')
+            if not (prev_model and current_reviewer and prev_model != current_reviewer):
+                if (prev.get('branch_candidate_id') == current['id']
+                        or (prev.get('identity_scope') or {}).get('candidate_id') == current['id']
+                        or (prev.get('identity_scope') or {}).get('item_id') == item['id']):
+                    recovered = copy.deepcopy(prev)
         messages_restored = recovered.get('messages', [])
         old_id = recovered.get('branch_candidate_id') or (recovered.get('identity_scope') or {}).get('candidate_id')
         if old_id and old_id != current['id']:
@@ -188,7 +195,8 @@ def checkpoint(engine, runtime, args):
                     m['content'] = m['content'].replace(old_id, current['id'])
         task['pending_review']={'branch_candidate_id':current['id'],'review_requests':recovered.get('review_requests', 0),
                                'messages':messages_restored,
-                               'observations':recovered.get('observations', {})}
+                               'observations':recovered.get('observations', {}),
+                               'reviewer_model':current_reviewer}
         for field in ('history_partial', 'worker_summary', 'uncertainties', 'repair_dispositions'):
             if field in recovered:
                 task['pending_review'][field] = recovered[field]

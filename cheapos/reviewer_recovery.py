@@ -87,7 +87,7 @@ def request(engine, runtime, messages, tools, role, config_override=None, purpos
     chosen = task.get('operator_reviewer_model')
     choices = [m['id'] for m in available if m['id'] not in recovery['attempted']]
     if chosen:
-        choices = [chosen] if chosen in {m['id'] for m in available} and (chosen == selected or chosen not in recovery['attempted']) else []
+        choices = [chosen] if chosen in {m['id'] for m in available} else []
     elif selected in {m['id'] for m in available}:
         choices.insert(0, selected)
     for model_id in dict.fromkeys(choices):

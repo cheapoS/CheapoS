@@ -283,6 +283,8 @@ class ChatProvider:
                 raise ProviderError("The model reached its output limit before finishing. Partial tool calls were not executed.",
                                     code="output_limit", usage=data.get("usage"))
             message = choice["message"]
+            if not (isinstance(message.get("content"), str) and message["content"].strip()) and isinstance(message.get("reasoning"), str) and message["reasoning"].strip():
+                message["content"] = message["reasoning"]
             has_content = isinstance(message.get("content"), str) and bool(message["content"].strip())
             has_tools = bool(message.get("tool_calls"))
             if not isinstance(message, dict) or not (has_content or has_tools):

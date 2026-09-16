@@ -144,9 +144,7 @@ def amend(controller, task_id, values):
             task['providers'][role]=cfg
             task['operator_'+role+'_model']=chosen
             if action=='reviewer':
-                recovery=task.setdefault('reviewer_identity_recovery',{'attempted':[]})
-                recovery['attempted']=[m for m in recovery.get('attempted',[]) if m!=chosen]
-                recovery.pop('selected',None)
+                task.pop('reviewer_identity_recovery',None)
             policy['execution']=copy.deepcopy(task['execution']);policy['providers']=copy.deepcopy(task['providers'])
             if task.get('route'):
                 task['route'].setdefault('preferred',{})[role]=chosen
@@ -197,6 +195,7 @@ def amend(controller, task_id, values):
             if task.get('pending_review'):
                 task.setdefault('operator_review_history',[]).append(copy.deepcopy(task['pending_review']))
             task.pop('pending_review',None)
+            task['fresh_review']=True
             task['active_role']='worker'
         else:
             item.setdefault('operator_evidence_history',[]).append({key:copy.deepcopy(item[key]) for key in ('evidence','ready_receipt','review_repair','review_rounds') if key in item})

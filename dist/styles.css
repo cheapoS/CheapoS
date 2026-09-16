@@ -471,3 +471,11 @@ svg, svg * {
 #changes-view .diff-gap:hover{background:#263b48}
 #changes-view [aria-pressed="true"]{background:var(--hover);color:var(--mint)}
 @media(max-width:700px){#changes-view{padding:12px}#changes-view.changes-expanded{inset:0}#changes-view .diff-toolbar{top:100px}#changes-view .split-diff{grid-template-columns:1fr}#changes-view .review-controls{margin-left:0}}
+
+/* Keep gateway setup readable at desktop and narrow window sizes. */
+.gateway-add-modal{width:520px;max-width:calc(100vw - 32px)}
+.gateway-add-form{display:flex;flex-direction:column;gap:18px;min-width:0}
+.gateway-add-form>label{display:flex;flex-direction:column;gap:8px;font-size:.875rem;color:var(--secondary);min-width:0}
+.gateway-add-form input,.gateway-add-form select{box-sizing:border-box;width:100%;min-width:0}
+.gateway-add-form p{margin:0;line-height:1.5}
+.gateway-add-form .modal-footer{margin-top:4px;padding-top:18px;justify-content:flex-end;gap:10px}
