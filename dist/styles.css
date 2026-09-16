@@ -485,3 +485,189 @@ svg, svg * {
 .gateway-add-form input,.gateway-add-form select{box-sizing:border-box;width:100%;min-width:0}
 .gateway-add-form p{margin:0;line-height:1.5}
 .gateway-add-form .modal-footer{margin-top:4px;padding-top:18px;justify-content:flex-end;gap:10px}
+
+/* Spacious widescreen layouts across all views and modals */
+.view {
+  width: 100% !important;
+  max-width: min(1440px, 96%) !important;
+}
+.view#chat-view {
+  width: 100% !important;
+  max-width: min(1280px, 96%) !important;
+}
+.composer-area {
+  width: 100% !important;
+  max-width: min(1280px, 96%) !important;
+}
+.task-heading {
+  max-width: min(1440px, 96%) !important;
+  margin-inline: auto !important;
+  width: 100% !important;
+}
+.task-heading h1 {
+  max-width: 1280px !important;
+}
+.tabs {
+  max-width: min(1440px, 96%) !important;
+  margin-inline: auto !important;
+  width: 100% !important;
+}
+.chat-welcome {
+  max-width: 960px !important;
+}
+.welcome {
+  max-width: 960px !important;
+}
+.welcome>p {
+  max-width: 820px !important;
+}
+.user-message p, .chat-message-body p {
+  max-width: none !important;
+}
+#changes-view, #plan-view, #tests-view, #logs-view, #activity-view {
+  max-width: min(1520px, 98%) !important;
+  width: 100% !important;
+}
+.diff-panel, .split-diff {
+  width: 100% !important;
+}
+
+/* Wide Settings & Execution Modal with Tabs and Role Cards */
+.execution-modal {
+  width: min(1000px, 95vw) !important;
+  max-width: 1000px !important;
+  max-height: min(88vh, 880px) !important;
+}
+.execution-modal .execution-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0 18px;
+}
+.settings-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid #333c38;
+  margin: 14px 0 20px;
+}
+.settings-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--muted);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  background: transparent;
+  transition: all .15s ease;
+}
+.settings-tab-btn:hover {
+  color: var(--text);
+  background: #222926;
+}
+.settings-tab-btn.active {
+  color: var(--mint);
+  border-bottom-color: var(--mint);
+  background: #202b25;
+}
+.settings-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.settings-tab-panel[hidden] {
+  display: none !important;
+}
+.roles-section {
+  background: #191e1c;
+  border: 1px solid #2f3a34;
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin: 6px 0 10px;
+}
+.roles-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.roles-header h4 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.roles-subtitle {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+.roles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.role-card {
+  background: #212724;
+  border: 1px solid #38453e;
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color .15s;
+}
+.role-card:focus-within {
+  border-color: var(--mint);
+  box-shadow: 0 0 0 1px var(--mint);
+}
+.role-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.role-card-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #e2ede6;
+}
+.role-card-hint {
+  font-size: 0.75rem;
+  color: #92a49b;
+  line-height: 1.3;
+}
+.role-card input {
+  width: 100%;
+  font-size: 0.875rem;
+  padding: 9px 11px;
+  border-radius: 6px;
+  background: #161b19;
+  border: 1px solid #3a4740;
+  color: var(--text);
+  box-sizing: border-box;
+}
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #27382f;
+  color: var(--mint);
+  border: 1px solid #3c5a48;
+}
+@media (max-width: 820px) {
+  .execution-modal .execution-options {
+    grid-template-columns: 1fr;
+  }
+  .roles-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .settings-tabs {
+    flex-wrap: wrap;
+  }
+}

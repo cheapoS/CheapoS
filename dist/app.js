@@ -1297,37 +1297,147 @@ async function operatorRecovery(task){
 }
 function developmentSettings(saved){return `<section class="execution-notice"><h3>Operator development mode</h3><label class="checkbox-field"><input type="checkbox" name="development_mode" ${saved.development_mode===true?'checked':''}><span>Keep working until I stop it</span></label><p>Off by default. Removes automatic cumulative work, turn and recovery-attempt caps for new tasks. Usage and failures remain measured. Spending authorization, permissions, independent review, per-request output limits and command safety timeouts still apply. You can pause at any time. No model or paid fallback is authorized by this setting.</p></section>`;}
 function operatorContinuationMarkup(task){const c=task.operator_continue;if(!c||c.status==='running'||(c.status==='interrupting'&&!['running','reviewing','verifying','queued','starting'].includes(task.status)))return '';const title={interrupting:'Correction received · stopping the previous approach',needs_consent:'Correction saved · permission required',blocked:'Correction saved · continuation blocked'}[c.status]||'Correction saved';return `<section class="execution-notice" role="status"><strong>${title}</strong><p>${esc(c.reason||'Your instruction remains attached to this task.')}</p>${c.status==='needs_consent'?'<button class="outline-button" data-chat-action="resume">Review required permission</button>':''}</section>`;}
-function executionPreferences() {
+function executionPreferences(initialTab='execution') {
   const saved=state.preferences.execution||{},local=state.config.worker?.base_url?.includes(':11434')?state.config.worker.model:'';
-  const d=dialog(`<form>${modalHeader('EXECUTION','Where should the work run?')}<p class="modal-description">Choose how new chats use your laptop and connected providers.</p>${state.task?`<p class="execution-notice">This chat keeps <strong>${esc(executionLabel(state.task.execution?.mode))}</strong> and its saved models. Start a new chat to use a different setup.</p>`:''}${coordinatorTaskNotice(state.task)}<div class="execution-options">${[
-    ['delegate','Delegate heavy work','Short local chats. Free remote models inspect files, implement changes, and review. Your local model goes idle after handoff.'],
-    ['local','All local','Work and review on your own hardware. No remote model requests.'],
-    ['remote','All remote','A responding free gateway model handles chat and work; a different free model reviews.'],
-    ['manual','Manual model pair','Use the worker and reviewer selected in Models, including paid models when your spending cap allows.']
-  ].map(([value,title,description])=>`<label class="execution-option"><input type="radio" name="mode" value="${value}" ${(saved.mode||'manual')===value?'checked':''}><span><strong>${title}</strong><small>${description}</small></span></label>`).join('')}</div><div id="execution-local"><label class="full-field">Installed Ollama model<input name="local_model" value="${esc(saved.local_model||local)}" placeholder="Your installed model ID" autocomplete="off"><small>Used for short chat in Delegate mode, and implementation in All local.</small></label><label class="full-field" id="execution-reviewer">Local reviewer model · optional<input name="local_reviewer" value="${esc(saved.local_reviewer||'')}" placeholder="Use the same local model" autocomplete="off"></label><label class="full-field">Local planner model · optional<input name="local_planner" value="${esc(saved.local_planner||'')}" placeholder="Use the local reviewer" autocomplete="off"></label></div>
+  const limits=workLimits(state.task,state.preferences.limits);
+  const d=dialog(`<form class="execution-settings-form">
+    ${modalHeader('SETTINGS & EXECUTION','Work Setup & Execution Preferences')}
+    <p class="modal-description">Configure model roles, execution environments, coordinator safety, and spending limits.</p>
+    <div class="settings-tabs" role="tablist">
+      <button type="button" class="settings-tab-btn ${initialTab==='execution'?'active':''}" data-tab="execution" role="tab" aria-selected="${initialTab==='execution'}">
+        <span>🎯 Execution &amp; Roles</span>
+      </button>
+      <button type="button" class="settings-tab-btn ${initialTab==='safety'?'active':''}" data-tab="safety" role="tab" aria-selected="${initialTab==='safety'}">
+        <span>🛡️ Coordinator &amp; Safety</span>
+      </button>
+      <button type="button" class="settings-tab-btn ${initialTab==='limits'?'active':''}" data-tab="limits" role="tab" aria-selected="${initialTab==='limits'}">
+        <span>💰 Spending &amp; Limits</span>
+      </button>
+    </div>
 
-<div id="role-mapping-section">
-    <h4>Agent Roles <span id="roles-origin" class="badge"></span></h4>
-    <p class="small muted">Select an available agent or enter an ID manually.</p>
-    <label class="full-field">Planner · select from available agents or enter ID manually<input name="planner" list="available-agents-list" value="${esc(saved.planner||'')}" placeholder="Select an available agent or enter ID manually" autocomplete="off"></label>
-    <label class="full-field">Worker · select from available agents or enter ID manually<input name="worker" list="available-agents-list" value="${esc(saved.worker||'')}" placeholder="Select an available agent or enter ID manually" autocomplete="off"></label>
-    <label class="full-field">Reviewer · select from available agents or enter ID manually<input name="reviewer" list="available-agents-list" value="${esc(saved.reviewer||'')}" placeholder="Select an available agent or enter ID manually" autocomplete="off"></label>
-    <datalist id="available-agents-list"></datalist>
-    <p id="role-error" class="form-error" role="alert"></p>
-</div>
+    <!-- TAB 1: EXECUTION & ROLES -->
+    <div class="settings-tab-panel" data-panel="execution" ${initialTab==='execution'?'':'hidden'}>
+      ${state.task?`<p class="execution-notice">This chat keeps <strong>${esc(executionLabel(state.task.execution?.mode))}</strong> and its saved models. Start a new chat to use a different setup.</p>`:''}
+      <div class="execution-options">
+        ${[
+          ['delegate','Delegate heavy work','Short local chats. Free remote models inspect files, implement changes, and review. Your local model goes idle after handoff.'],
+          ['local','All local','Work and review on your own hardware. No remote model requests.'],
+          ['remote','All remote','A responding free gateway model handles chat and work; a different free model reviews.'],
+          ['manual','Manual model pair','Use the worker and reviewer selected in Models, including paid models when your spending cap allows.']
+        ].map(([value,title,description])=>`<label class="execution-option"><input type="radio" name="mode" value="${value}" ${(saved.mode||'manual')===value?'checked':''}><span><strong>${title}</strong><small>${description}</small></span></label>`).join('')}
+      </div>
 
-<p id="execution-remote" class="execution-notice">Uses providers you enabled in the configured gateway. Project context is sent when work is handed off. cheapoS checks up to four free candidates per role without project data. A worker handles chat and edits; a different reviewer is selected at a checkpoint. Failed models cool down; up to two free-model handoffs per request continue saved work automatically. Saved edits wait if review is unavailable. No automatic paid or local fallback.</p>${developmentSettings(saved)}${coordinatorSettings(saved,state.readiness?.paths?.local?.models)}<p class="small muted">Free routing uses advertised prices. Check your gateway’s fallback and billing settings. Automatic chats can switch between free models after failures. Manual and local choices stay fixed. Saving does not start inference or download anything.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new chats.</span><button class="primary-button" type="submit">Save defaults for new chats</button></div></form>`,'execution-modal');
-  const form=$('form',d),layout=()=>{const mode=new FormData(form).get('mode');$('#execution-local',d).hidden=!['local','delegate'].includes(mode);$('#execution-reviewer',d).hidden=mode!=='local';$('#execution-remote',d).hidden=!['remote','delegate'].includes(mode);$('[name="local_model"]',d).required=['local','delegate'].includes(mode)};
-  $$('[name="mode"]',d).forEach(input=>input.onchange=layout);layout();
+      <div id="execution-local">
+        <label class="full-field">Installed Ollama model
+          <input name="local_model" value="${esc(saved.local_model||local)}" placeholder="Your installed model ID" autocomplete="off">
+          <small>Used for short chat in Delegate mode, and implementation in All local.</small>
+        </label>
+        <div class="field-grid">
+          <label class="full-field" id="execution-reviewer">Local reviewer model · optional
+            <input name="local_reviewer" value="${esc(saved.local_reviewer||'')}" placeholder="Use the same local model" autocomplete="off">
+          </label>
+          <label class="full-field">Local planner model · optional
+            <input name="local_planner" value="${esc(saved.local_planner||'')}" placeholder="Use the local reviewer" autocomplete="off">
+          </label>
+        </div>
+      </div>
+
+      <div class="roles-section">
+        <div class="roles-header">
+          <h4>Agent Roles</h4>
+          <span id="roles-origin" class="badge"></span>
+        </div>
+        <p class="roles-subtitle">Select an available agent or enter an ID manually.</p>
+        <div class="roles-grid">
+          <div class="role-card">
+            <div class="role-card-header">
+              <span class="role-card-title">🎯 Planner</span>
+              <span class="role-card-hint">e.g. gpt-4o, claude-3-5-sonnet</span>
+            </div>
+            <input name="planner" list="available-agents-list" value="${esc(saved.planner||'')}" placeholder="e.g. gpt-4o, claude-3-5-sonnet" autocomplete="off">
+          </div>
+          <div class="role-card">
+            <div class="role-card-header">
+              <span class="role-card-title">🛠️ Worker</span>
+              <span class="role-card-hint">e.g. qwen-2.5-coder, deepseek-v3</span>
+            </div>
+            <input name="worker" list="available-agents-list" value="${esc(saved.worker||'')}" placeholder="e.g. qwen-2.5-coder, deepseek-v3" autocomplete="off">
+          </div>
+          <div class="role-card">
+            <div class="role-card-header">
+              <span class="role-card-title">🔍 Reviewer</span>
+              <span class="role-card-hint">must differ from Worker</span>
+            </div>
+            <input name="reviewer" list="available-agents-list" value="${esc(saved.reviewer||'')}" placeholder="must differ from Worker" autocomplete="off">
+          </div>
+        </div>
+        <datalist id="available-agents-list"></datalist>
+        <p id="role-error" class="form-error" role="alert"></p>
+      </div>
+
+      <p id="execution-remote" class="execution-notice">Uses providers you enabled in the configured gateway. Project context is sent when work is handed off. cheapoS checks up to four free candidates per role without project data. A worker handles chat and edits; a different reviewer is selected at a checkpoint. Failed models cool down; up to two free-model handoffs per request continue saved work automatically. Saved edits wait if review is unavailable. No automatic paid or local fallback.</p>
+    </div>
+
+    <!-- TAB 2: COORDINATOR & SAFETY -->
+    <div class="settings-tab-panel" data-panel="safety" ${initialTab==='safety'?'':'hidden'}>
+      ${coordinatorTaskNotice(state.task)}
+      ${coordinatorSettings(saved,state.readiness?.paths?.local?.models)}
+      ${developmentSettings(saved)}
+    </div>
+
+    <!-- TAB 3: SPENDING & LIMITS -->
+    <div class="settings-tab-panel" data-panel="limits" ${initialTab==='limits'?'':'hidden'}>
+      <p class="small muted">${state.task?'Configure limits for this chat or save new defaults.':'Choose a default work allowance or explicitly remove work caps for new chats.'}</p>
+      ${limitFields(limits)}
+      <p class="small muted">Free only uses configured prices; it is not a provider billing guarantee.</p>
+      <p class="small muted">${state.task?'Usage is cumulative across this chat. Saving does not resume it.':'These defaults apply when you send the first message in a new chat.'}</p>
+    </div>
+
+    <p class="small muted">Free routing uses advertised prices. Check your gateway’s fallback and billing settings. Automatic chats can switch between free models after failures. Manual and local choices stay fixed. Saving does not start inference or download anything.</p>
+    <p class="form-error" role="alert"></p>
+    <div class="modal-footer">
+      <span>Applies to new chats. Defaults stay saved.</span>
+      <button class="primary-button" type="submit">Save settings</button>
+    </div>
+  </form>`,'execution-modal');
+  const form=$('form',d);
+  const layout=()=>{
+    const mode=new FormData(form).get('mode');
+    $('#execution-local',d).hidden=!['local','delegate'].includes(mode);
+    $('#execution-reviewer',d).hidden=mode!=='local';
+    $('#execution-remote',d).hidden=!['remote','delegate'].includes(mode);
+    $('[name="local_model"]',d).required=['local','delegate'].includes(mode);
+  };
+  $$('[name="mode"]',d).forEach(input=>input.onchange=layout);
+  layout();
+  bindLimitFields(form);
+
+  $$('.settings-tab-btn',d).forEach(btn=>{
+    btn.onclick=()=>{
+      const tab=btn.dataset.tab;
+      $$('.settings-tab-btn',d).forEach(b=>{
+        const active=b===btn;
+        b.classList.toggle('active',active);
+        b.setAttribute('aria-selected',String(active));
+      });
+      $$('.settings-tab-panel',d).forEach(p=>{
+        p.hidden=p.dataset.panel!==tab;
+      });
+    };
+  });
+
   (async()=>{
     const project=state.task?.source;
-    const effective=await api('/role-mappings/effective' + (project ? '?project=' + encodeURIComponent(project) : ''));
-    if(d.isConnected){
-      $('[name="planner"]',d).value=effective.mapping?.planner||'';
-      $('[name="worker"]',d).value=effective.mapping?.worker||'';
-      $('[name="reviewer"]',d).value=effective.mapping?.reviewer||'';
-      $('#roles-origin',d).textContent=effective.source==='user'?'User-selected':'Default';
-    }
+    try {
+      const effective=await api('/role-mappings/effective' + (project ? '?project=' + encodeURIComponent(project) : ''));
+      if(d.isConnected){
+        if(!$('[name="planner"]',d).value)$('[name="planner"]',d).value=effective.mapping?.planner||'';
+        if(!$('[name="worker"]',d).value)$('[name="worker"]',d).value=effective.mapping?.worker||'';
+        if(!$('[name="reviewer"]',d).value)$('[name="reviewer"]',d).value=effective.mapping?.reviewer||'';
+        const origin=$('#roles-origin',d);
+        if(origin)origin.textContent=effective.source==='user'?'User-selected':'Default';
+      }
+    }catch{}
     try{
       if(!state.gatewayModels?.length){
         const catalog=await api('/gateway/models');
@@ -1352,8 +1462,76 @@ function executionPreferences() {
       }
     }
   })();
-  $('[data-coordinator-refresh]',d).onclick=async()=>{const status=$('[data-coordinator-status]',d);status.textContent='Checking installed local models…';try{const readiness=await api('/readiness?refresh=1');if(!d.isConnected)return;const models=readiness.paths?.local?.models,select=$('[name="coordinator_model"]',d),selected=select.value;if(!Array.isArray(models)){status.textContent='Local inspection is pending or unavailable. Refresh again later; other work is unaffected.';return;}for(const name of models)if(![...select.options].some(o=>o.value===name))select.add(new Option(name,name));select.value=selected;status.textContent=models.length?'Installed eligible local models refreshed. Saved choice is preserved.':'No eligible local models found. Assistance will be skipped if unavailable.';}catch{if(d.isConnected)status.textContent='Could not check local models. Other work remains usable.';}};
-  form.onsubmit=e=>{e.preventDefault();const f=new FormData(form);const worker=f.get('worker'),planner=f.get('planner'),reviewer=f.get('reviewer');if(worker&&(worker===planner||worker===reviewer)){$('#role-error',d).textContent='Worker cannot be the same as planner or reviewer.';return;}formAction(form,async()=>{const data={execution:{...saved,...Object.fromEntries(['mode','local_model','local_reviewer','local_planner','coordinator_model'].map(k=>[k,String(f.get(k)||'')])),coordinator_assistance:f.get('coordinator_assistance')==='on',development_mode:f.get('development_mode')==='on'}};state.preferences=await api('/preferences',data);if(worker||planner||reviewer){const roles={planner:planner||null,worker:worker||null,reviewer:reviewer||null};const payload={};if(state.task?.source){payload.projects={[state.task.source]:roles};}else{payload.defaults=roles;}await api('/role-mappings',payload);}d.close();renderComposer();toast(state.task?'Defaults saved for new chats. This chat keeps its saved coordinator setting.':'Defaults saved for new chats.');})};
+
+  $('[data-coordinator-refresh]',d).onclick=async()=>{
+    const status=$('[data-coordinator-status]',d);
+    status.textContent='Checking installed local models…';
+    try{
+      const readiness=await api('/readiness?refresh=1');
+      if(!d.isConnected)return;
+      const models=readiness.paths?.local?.models,select=$('[name="coordinator_model"]',d),selected=select.value;
+      if(!Array.isArray(models)){
+        status.textContent='Local inspection is pending or unavailable. Refresh again later; other work is unaffected.';
+        return;
+      }
+      for(const name of models)if(![...select.options].some(o=>o.value===name))select.add(new Option(name,name));
+      select.value=selected;
+      status.textContent=models.length?'Installed eligible local models refreshed. Saved choice is preserved.':'No eligible local models found. Assistance will be skipped if unavailable.';
+    }catch{
+      if(d.isConnected)status.textContent='Could not check local models. Other work remains usable.';
+    }
+  };
+
+  form.onsubmit=e=>{
+    e.preventDefault();
+    const f=new FormData(form);
+    const worker=(f.get('worker')||'').trim(),planner=(f.get('planner')||'').trim(),reviewer=(f.get('reviewer')||'').trim();
+    if(worker&&(worker===planner||worker===reviewer)){
+      $('#role-error',d).textContent='Worker cannot be the same as planner or reviewer.';
+      $$('.settings-tab-btn',d).forEach(b=>{
+        const active=b.dataset.tab==='execution';
+        b.classList.toggle('active',active);
+        b.setAttribute('aria-selected',String(active));
+      });
+      $$('.settings-tab-panel',d).forEach(p=>{p.hidden=p.dataset.panel!=='execution'});
+      return;
+    }
+    formAction(form,async()=>{
+      const limitsData=readLimits(f);
+      const executionData={
+        execution:{
+          ...saved,
+          ...Object.fromEntries(['mode','local_model','local_reviewer','local_planner','coordinator_model'].map(k=>[k,String(f.get(k)||'')])),
+          coordinator_assistance:f.get('coordinator_assistance')==='on',
+          development_mode:f.get('development_mode')==='on'
+        },
+        limits:limitsData
+      };
+      state.preferences=await api('/preferences',executionData);
+      if(state.task){
+        try{
+          state.task=await api('/tasks/'+state.task.id+'/limits',{limits:limitsData});
+        }catch{}
+      }
+      if(worker||planner||reviewer){
+        const roles={planner:planner||null,worker:worker||null,reviewer:reviewer||null};
+        const payload={};
+        if(state.task?.source){
+          payload.projects={[state.task.source]:roles};
+        }else{
+          payload.defaults=roles;
+        }
+        await api('/role-mappings',payload);
+      }
+      d.close();
+      renderComposer();
+      if(state.task){
+        renderInspector();
+        renderChat();
+      }
+      toast(state.task?'Settings and limits saved. Defaults updated for new chats.':'Settings and defaults saved.');
+    });
+  };
 }
 function chatLimits({defaults=false}={}) {
   const task=defaults?null:state.task,limits=workLimits(task,state.preferences.limits);
