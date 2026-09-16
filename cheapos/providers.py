@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from .streaming import read_chat_stream
 from .served_identity import metadata
+from .request_pacer import pacer, provider_identity, pacing_interval
 
 
 REQUEST_TIMEOUT_SECONDS = 180
@@ -159,6 +160,15 @@ def validate_provider(value, role):
         if value["gateway_type"] not in GATEWAY_TYPES:
             raise ValueError("Unknown gateway adapter")
         result["gateway_type"] = value["gateway_type"]
+    if "provider" in value and isinstance(value["provider"], str):
+        result["provider"] = value["provider"]
+    if "pacing" in value:
+        result["pacing"] = bool(value["pacing"])
+    if "pacing_interval" in value:
+        try:
+            result["pacing_interval"] = max(0.0, float(value["pacing_interval"]))
+        except (ValueError, TypeError):
+            pass
     if access:
         result['access'] = access
     return result
@@ -251,31 +261,34 @@ class ChatProvider:
         if self.key:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
-        try:
-            with build_opener(NoRedirects(), ProxyHandler({})).open(request, timeout=timeout_seconds) as response, (BriefResponseGuard(response, stopped, stream_seconds if emit is not None else timeout_seconds) if brief or self.config.get("_operator_interruptible") else nullcontext()):
-                if emit is not None and response.headers.get_content_type() == "text/event-stream":
-                    data = read_chat_stream(response, emit, stopped, ProviderError, max_seconds=stream_seconds)
-                else:
-                    raw = response.read(4_000_001)
-                    if len(raw) > 4_000_000:
-                        raise ProviderError("Provider response exceeded 4 MB")
-                    try:
-                        data = json.loads(raw)
-                    except (json.JSONDecodeError, UnicodeDecodeError) as error:
-                        detail = f'{error.msg}, line {error.lineno}, column {error.colno}' if isinstance(error, json.JSONDecodeError) else 'invalid text encoding'
-                        raise ProviderError(f'Provider returned malformed response JSON ({detail}). No tool calls from this response were executed.', code='invalid_response_json') from None
-        except InterruptedError:
-            raise
-        except HTTPError as error:
-            raise http_failure(error, self.config) from None
-        except (URLError, TimeoutError, OSError) as error:
-            if isinstance(error, TimeoutError) or isinstance(getattr(error, "reason", None), TimeoutError):
-                duration = "3 minutes" if timeout_seconds == 180 else f"{timeout_seconds} seconds"
-                reason = f"The model stopped sending output for {duration}" if emit is not None else f"The model did not finish within {duration}"
-                raise ProviderError(reason + ". Uncertain usage remains counted.", code="model_timeout") from None
-            raise ProviderError("The model connection failed before a complete response arrived. Uncertain usage remains counted.", code="model_connection") from None
-        except (ValueError, KeyError, TypeError, AttributeError):
-            raise ProviderError("Provider returned an invalid response structure. No tool calls from this response were executed.", code="invalid_response_shape") from None
+        provider_name = provider_identity(self.config)
+        interval = pacing_interval(self.config, provider_name)
+        with pacer.throttle(provider_name, interval, stopped=stopped):
+            try:
+                with build_opener(NoRedirects(), ProxyHandler({})).open(request, timeout=timeout_seconds) as response, (BriefResponseGuard(response, stopped, stream_seconds if emit is not None else timeout_seconds) if brief or self.config.get("_operator_interruptible") else nullcontext()):
+                    if emit is not None and response.headers.get_content_type() == "text/event-stream":
+                        data = read_chat_stream(response, emit, stopped, ProviderError, max_seconds=stream_seconds)
+                    else:
+                        raw = response.read(4_000_001)
+                        if len(raw) > 4_000_000:
+                            raise ProviderError("Provider response exceeded 4 MB")
+                        try:
+                            data = json.loads(raw)
+                        except (json.JSONDecodeError, UnicodeDecodeError) as error:
+                            detail = f'{error.msg}, line {error.lineno}, column {error.colno}' if isinstance(error, json.JSONDecodeError) else 'invalid text encoding'
+                            raise ProviderError(f'Provider returned malformed response JSON ({detail}). No tool calls from this response were executed.', code='invalid_response_json') from None
+            except InterruptedError:
+                raise
+            except HTTPError as error:
+                raise http_failure(error, self.config) from None
+            except (URLError, TimeoutError, OSError) as error:
+                if isinstance(error, TimeoutError) or isinstance(getattr(error, "reason", None), TimeoutError):
+                    duration = "3 minutes" if timeout_seconds == 180 else f"{timeout_seconds} seconds"
+                    reason = f"The model stopped sending output for {duration}" if emit is not None else f"The model did not finish within {duration}"
+                    raise ProviderError(reason + ". Uncertain usage remains counted.", code="model_timeout") from None
+                raise ProviderError("The model connection failed before a complete response arrived. Uncertain usage remains counted.", code="model_connection") from None
+            except (ValueError, KeyError, TypeError, AttributeError):
+                raise ProviderError("Provider returned an invalid response structure. No tool calls from this response were executed.", code="invalid_response_shape") from None
         try:
             choice = data["choices"][0]
             if not isinstance(choice, dict):

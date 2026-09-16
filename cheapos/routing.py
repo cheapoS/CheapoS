@@ -294,7 +294,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         if model['id'] in tried or (not cached and round_state['probes'] >= route_schedule.BATCH_SIZE): continue
         tried.add(model['id'])
         cfg = validate_provider({"gateway_type": gateway.settings.get("gateway_type", "omniroute"), "gateway": "omniroute", "base_url": base_url, "model": model["id"],
-                                 "input_rate": 0, "output_rate": 0}, role)
+                                 "input_rate": 0, "output_rate": 0, **({"provider": model["provider"]} if model.get("provider") else {})}, role)
         if connection_id: cfg['connection_id'] = connection_id
         if policy is not None: cfg['access_binding'] = copy.deepcopy(policy)
         if access_policy.classify(model, policy) == 'included':
