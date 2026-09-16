@@ -671,3 +671,452 @@ svg, svg * {
     flex-wrap: wrap;
   }
 }
+
+/* --- Interactive Affordances & Button Enhancements --- */
+
+/* 1. Outline Button (used across modals, activity, settings, recovery, etc.) */
+.outline-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #d1ded7;
+  background: #1f2723;
+  border: 1px solid #3c4c42;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .1s ease;
+  line-height: 1.45;
+  user-select: none;
+  text-decoration: none;
+}
+.outline-button:hover:not(:disabled) {
+  background: #2a3630;
+  border-color: #5b7c69;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.outline-button:active:not(:disabled) {
+  background: #18221c;
+  border-color: #445c4e;
+  transform: translateY(1px);
+}
+.outline-button:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+}
+.outline-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: #2b342f;
+  background: #181d1b;
+  color: var(--muted);
+  box-shadow: none;
+}
+.outline-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Specific banner-style outline buttons */
+#models-execution {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  font-size: 0.84375rem;
+  background: #1b2420;
+  border: 1px solid #36483d;
+  color: #c8ded1;
+  border-radius: 7px;
+  margin-bottom: 18px;
+}
+#models-execution:hover {
+  background: #233129;
+  border-color: var(--mint);
+  color: #ffffff;
+}
+
+/* 2. Enhanced Subtle Button */
+.subtle-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid #3d4a43;
+  background: #202724;
+  color: #c7d5cd;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.4;
+  transition: background .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.subtle-button svg {
+  width: 13px;
+  height: 13px;
+}
+.subtle-button:hover:not(:disabled) {
+  background: #2b3631;
+  border-color: #557262;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+.subtle-button:active:not(:disabled) {
+  background: #19201d;
+  transform: translateY(1px);
+}
+.subtle-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 3. Primary Button polish */
+.primary-button {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+.primary-button:hover:not(:disabled) {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* 4. Fallback button styling for button rows & modal footers */
+.button-row > button:not([class]),
+.modal-footer > button:not([class]),
+.branch-actions > button:not([class]):not([data-open]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #d1ded7;
+  background: #1f2723;
+  border: 1px solid #3c4c42;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+  line-height: 1.45;
+}
+.button-row > button:not([class]):hover,
+.modal-footer > button:not([class]):hover,
+.branch-actions > button:not([class]):not([data-open]):hover {
+  background: #2a3630;
+  border-color: #5b7c69;
+  color: #ffffff;
+}
+
+/* 5. Composer Bottom Pills */
+.composer-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .8125rem;
+  font-weight: 500;
+  color: #c2d2c8;
+  min-width: 0;
+  max-width: 55%;
+  padding: 5px 10px;
+  background: #1c2220;
+  border: 1px solid #37443e;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.composer-project:hover:not(:disabled) {
+  background: #252f2b;
+  border-color: #4b6355;
+  color: #ffffff;
+}
+.composer-budget {
+  font-size: .8125rem;
+  font-weight: 500;
+  color: #a3b6ab;
+  white-space: nowrap;
+  padding: 5px 11px;
+  margin-left: auto;
+  background: #1c2220;
+  border: 1px solid #37443e;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.composer-budget:hover {
+  background: #252f2b;
+  border-color: #4b6355;
+  color: #ffffff;
+}
+
+/* 6. Text links with proper underline & hover */
+.text-link {
+  font: inherit;
+  color: #a4c9b2;
+  padding: 2px 4px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #4a6857;
+  transition: color .15s, text-decoration-color .15s;
+}
+.text-link:hover {
+  color: #d2ffe1;
+  text-decoration-color: var(--mint);
+}
+
+/* 7. Collapsible Details & Summaries (e.g. Authorized remote model pool, Startup settings, Advanced limits) */
+details.advanced,
+details#planner-options,
+details.planning-overrides,
+details.review-execution,
+details.review-permissions,
+details.patch-help,
+details.workspace-info {
+  margin: 12px 0;
+  border: 1px solid #33423a;
+  border-radius: 8px;
+  background: #18201d;
+  overflow: hidden;
+  transition: border-color .15s ease, background .15s ease;
+}
+.gateway-card details.advanced {
+  padding-top: 0;
+  border: 1px solid #33423a;
+  background: #171f1c;
+}
+details.advanced:hover,
+details#planner-options:hover,
+details.planning-overrides:hover,
+details.review-execution:hover,
+details.review-permissions:hover,
+details.patch-help:hover,
+details.workspace-info:hover,
+.gateway-card details.advanced:hover {
+  border-color: #485f52;
+}
+details.advanced[open],
+details#planner-options[open],
+details.planning-overrides[open],
+details.review-execution[open],
+details.review-permissions[open],
+details.patch-help[open],
+details.workspace-info[open],
+.gateway-card details.advanced[open] {
+  border-color: #4b6657;
+  background: #1a2320;
+}
+details.advanced > summary,
+details#planner-options > summary,
+details.planning-overrides > summary,
+details.review-execution > summary,
+details.review-permissions > summary,
+details.patch-help > summary,
+details.workspace-info > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 0.84375rem;
+  font-weight: 550;
+  color: #d6e5dd;
+  background: #202924;
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s ease, color .15s ease;
+  line-height: 1.4;
+  border-bottom: 1px solid transparent;
+}
+details.advanced > summary:hover,
+details#planner-options > summary:hover,
+details.planning-overrides > summary:hover,
+details.review-execution > summary:hover,
+details.review-permissions > summary:hover,
+details.patch-help > summary:hover,
+details.workspace-info > summary:hover {
+  background: #2a3730;
+  color: #ffffff;
+}
+details.advanced[open] > summary,
+details#planner-options[open] > summary,
+details.planning-overrides[open] > summary,
+details.review-execution[open] > summary,
+details.review-permissions[open] > summary,
+details.patch-help[open] > summary,
+details.workspace-info[open] > summary {
+  border-bottom-color: #2b3931;
+  background: #232d28;
+}
+details.advanced > summary::before,
+details#planner-options > summary::before,
+details.planning-overrides > summary::before,
+details.review-execution > summary::before,
+details.review-permissions > summary::before,
+details.patch-help > summary::before,
+details.workspace-info > summary::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--mint);
+  border-bottom: 2px solid var(--mint);
+  transform: rotate(-45deg);
+  transition: transform .15s ease;
+  flex-shrink: 0;
+  margin-left: 2px;
+  margin-right: 4px;
+}
+details.advanced[open] > summary::before,
+details#planner-options[open] > summary::before,
+details.planning-overrides[open] > summary::before,
+details.review-execution[open] > summary::before,
+details.review-permissions[open] > summary::before,
+details.patch-help[open] > summary::before,
+details.workspace-info[open] > summary::before {
+  transform: rotate(45deg);
+}
+details.advanced > summary:focus-visible,
+details#planner-options > summary:focus-visible,
+details.planning-overrides > summary:focus-visible,
+details.review-execution > summary:focus-visible,
+details.review-permissions > summary:focus-visible,
+details.patch-help > summary:focus-visible,
+details.workspace-info > summary:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: -2px;
+}
+details.advanced > :not(summary),
+details#planner-options > :not(summary),
+details.planning-overrides > :not(summary),
+details.review-execution > :not(summary),
+details.review-permissions > :not(summary),
+details.patch-help > :not(summary),
+details.workspace-info > :not(summary) {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+details.advanced > :last-child,
+details#planner-options > :last-child,
+details.planning-overrides > :last-child,
+details.review-execution > :last-child,
+details.review-permissions > :last-child,
+details.patch-help > :last-child,
+details.workspace-info > :last-child {
+  margin-bottom: 14px;
+}
+details.advanced > p.small.muted {
+  margin-top: 12px;
+  margin-bottom: 12px;
+  color: #9cb0a4;
+  line-height: 1.6;
+}
+
+/* Free model pool container inside details.advanced */
+.free-model-pool {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid #2e3b34;
+  border-radius: 6px;
+  background: #141a17;
+  padding: 6px 12px;
+  margin-bottom: 14px;
+}
+.pool-model {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid #243029;
+  overflow-wrap: anywhere;
+}
+.pool-model:last-child {
+  border-bottom: 0;
+}
+
+/* 8. Technical Logs Activity Cards */
+#logs-view .activity-card {
+  border: 1px solid #28342d;
+  border-radius: 7px;
+  background: #161c19;
+  margin: 6px 0;
+  overflow: hidden;
+  transition: border-color .15s, background .15s;
+}
+#logs-view .activity-card:hover {
+  border-color: #3e5045;
+  background: #19201d;
+}
+#logs-view .activity-card[open] {
+  border-color: #4a6354;
+  background: #18201d;
+}
+#logs-view .activity-card summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+#logs-view .activity-card summary::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform .15s ease, border-color .15s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+#logs-view .activity-card[open] summary::after {
+  transform: rotate(45deg);
+  border-color: var(--mint);
+}
+#logs-view .activity-card summary:hover::after {
+  border-color: var(--text);
+}
+
+/* 9. Generic Fallback for details > summary that have no icon */
+details:not(.thinking-panel):not(.command-panel):not(.chat-action):not(.chat-work):not(.activity-step):not(.workflow-event):not(.workflow-exploration):not(.workflow-history):not(.activity-card):not(.advanced):not(#planner-options):not(.planning-overrides):not(.review-execution):not(.review-permissions):not(.patch-help):not(.workspace-info) > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  color: #cdd9d1;
+  padding: 6px 0;
+  transition: color .15s ease;
+}
+details:not(.thinking-panel):not(.command-panel):not(.chat-action):not(.chat-work):not(.activity-step):not(.workflow-event):not(.workflow-exploration):not(.workflow-history):not(.activity-card):not(.advanced):not(#planner-options):not(.planning-overrides):not(.review-execution):not(.review-permissions):not(.patch-help):not(.workspace-info) > summary:hover {
+  color: #ffffff;
+}
+details:not(.thinking-panel):not(.command-panel):not(.chat-action):not(.chat-work):not(.activity-step):not(.workflow-event):not(.workflow-exploration):not(.workflow-history):not(.activity-card):not(.advanced):not(#planner-options):not(.planning-overrides):not(.review-execution):not(.review-permissions):not(.patch-help):not(.workspace-info) > summary::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-right: 2px solid var(--mint);
+  border-bottom: 2px solid var(--mint);
+  transform: rotate(-45deg);
+  transition: transform .15s ease;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+details:not(.thinking-panel):not(.command-panel):not(.chat-action):not(.chat-work):not(.activity-step):not(.workflow-event):not(.workflow-exploration):not(.workflow-history):not(.activity-card):not(.advanced):not(#planner-options):not(.planning-overrides):not(.review-execution):not(.review-permissions):not(.patch-help):not(.workspace-info)[open] > summary::before {
+  transform: rotate(45deg);
+}
