@@ -311,3 +311,81 @@ class PoolMetadataTests(unittest.TestCase):
                  {'id':'new','free':True,'tool_calling':True}]
         result=catalog_candidates(entries,'http://127.0.0.1:20128/v1','omniroute')
         self.assertEqual([r['config']['model'] for r in result],['new'])
+
+class AlternativeGatewayTests(unittest.TestCase):
+    def test_preset_migration_and_external_lifecycle(self):
+        self.assertEqual(validate_settings({})['gateway_type'], 'omniroute')
+        for kind in ('cliproxyapi', '9router', 'litellm', 'compatible'):
+            self.assertFalse(validate_settings({'gateway_type':kind, 'auto_start':True})['auto_start'])
+        with self.assertRaises(ValueError):
+            validate_settings({'gateway_type':'typo'})
+
+    def test_generic_catalog_does_not_infer_free_access_from_provider_name(self):
+        with patch.object(OpenAICompatibleGateway, '_catalog', return_value=({'data':[
+            {'id':'nvidia/example','owned_by':'nvidia'},
+            {'id':'explicit','pricing':{'prompt':'0','completion':'0'}}]}, {})):
+            adapter=gateway_for({'gateway':'omniroute','gateway_type':'cliproxyapi','base_url':'http://localhost:8317/v1'})
+            self.assertNotIsInstance(adapter, OmniRouteGateway)
+            models={m['id']:m for m in adapter.list_models()}
+            self.assertFalse(models['nvidia/example']['free'])
+            self.assertIsNone(models['nvidia/example']['input_rate'])
+            self.assertTrue(models['explicit']['free'])
+
+    def test_adapter_change_revokes_key_and_access_even_at_same_url(self):
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'CHEAPOS_GATEWAY_API_KEY':''}):
+            manager=OmniRouteManager(root)
+            manager.configure({'api_key':'fixture-only'})
+            revision=manager.settings['connection_revision']
+            manager.configure({'included_models':['coder'], 'expected_connection_revision':revision})
+            manager.configure({'gateway_type':'9router'})
+            self.assertEqual(manager.api_key, '')
+            self.assertEqual(manager.settings['included_models'], [])
+            self.assertNotEqual(manager.settings['connection_revision'],revision)
+            self.assertEqual(json.loads(manager.path.read_text())['gateway_type'],'9router')
+
+    def test_external_gateway_never_starts_omniroute(self):
+        with tempfile.TemporaryDirectory() as root:
+            manager=OmniRouteManager(root)
+            manager.configure({'gateway_type':'cliproxyapi'})
+            with patch.object(manager,'_probe',side_effect=ProviderError('offline')), patch.object(manager,'_port_open',return_value=False), patch('cheapos.omniroute.find_executable') as executable:
+                manager._connect(True)
+            executable.assert_not_called()
+            self.assertEqual(manager.state,'offline')
+
+    def test_operator_tool_declaration_only_fills_unknown_capability(self):
+        with tempfile.TemporaryDirectory() as root:
+            manager=OmniRouteManager(root)
+            manager.configure({'gateway_type':'cliproxyapi'})
+            manager.configure({'tool_models':['coder','no-tools'],'expected_connection_revision':manager.settings['connection_revision']})
+            with patch.object(OpenAICompatibleGateway, 'list_models',return_value=[{'id':'coder','tool_calling':None},{'id':'no-tools','tool_calling':False}]):
+                models=manager._probe()
+            self.assertTrue(models[0]['tool_calling'])
+            self.assertEqual(models[0]['tool_support_source'],'operator')
+            self.assertFalse(models[1]['tool_calling'])
+
+    def test_saved_model_cannot_follow_a_changed_adapter(self):
+        from types import SimpleNamespace
+        engine=object.__new__(Engine)
+        engine.gateway=SimpleNamespace(settings={'base_url':'http://127.0.0.1:8317/v1','gateway_type':'cliproxyapi'},api_key='fixture-only')
+        config={'gateway':'omniroute','base_url':engine.gateway.settings['base_url'],'model':'coder'}
+        with self.assertRaisesRegex(ValueError,'different gateway adapter'):
+            engine.guard_route(config)
+        config['gateway_type']='cliproxyapi'
+        engine.guard_route(config)
+        self.assertEqual(engine.provider_key('worker',config),'fixture-only')
+        self.assertEqual(engine.gateway_config(config)['gateway_type'],'cliproxyapi')
+
+    def test_9router_transport_preserves_history_and_disables_prompt_transforms(self):
+        response=Mock();response.read.return_value=b'{"model":"actual-coder","choices":[{"message":{"content":"ready"}}],"usage":{"prompt_tokens":7,"completion_tokens":2}}'
+        response.__enter__=Mock(return_value=response);response.__exit__=Mock(return_value=False)
+        messages=[{'role':'user','content':'Keep this correction in the conversation'}]
+        with patch('cheapos.providers.build_opener') as build:
+            build.return_value.open.return_value=response
+            adapter=gateway_for({'gateway':'omniroute','gateway_type':'9router','base_url':'http://localhost:8317/v1','model':'coder'},'fixture-only')
+            message,usage=adapter.complete(messages,[],32)
+            request=build.return_value.open.call_args.args[0]
+            self.assertEqual(request.get_header('X-9router-token-saver'),'off')
+            self.assertEqual(json.loads(request.data)['messages'],messages)
+            self.assertEqual(usage['prompt_tokens'],7)
+            self.assertEqual(message['content'],'ready')
+            self.assertEqual(build.return_value.open.call_count,1)

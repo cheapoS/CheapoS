@@ -250,7 +250,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     raise ValueError("Choose a worker, reviewer or planner connection")
                 config = validate_provider(values.get("config"), role)
                 engine.guard_route(config)
-                result = {"models": gateway_for(config, engine.provider_key(role, config)).list_models()}
+                result = {"models": gateway_for(engine.gateway_config(config), engine.provider_key(role, config)).list_models()}
             elif path == "/api/branch-runs/project":
                 result = engine.branch.project(values)
             elif path == "/api/branch-runs/plan":

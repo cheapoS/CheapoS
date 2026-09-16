@@ -556,6 +556,15 @@ class Engine:
 
     def guard_route(self, config):
         guard_inference_route(config, self.gateway.settings['base_url'])
+        if config.get('gateway') == 'omniroute' and config.get('gateway_type', 'omniroute') != self.gateway.settings.get('gateway_type', 'omniroute'):
+            raise ValueError('This task uses a different gateway adapter. Restore its original connection, or start a new chat with the new gateway.')
+
+    def gateway_config(self, config):
+        """Resolve adapter behavior from the authorized connection, not model input."""
+        if config.get("gateway") == "omniroute":
+            self.guard_route(config)
+            return {**config, "gateway_type": self.gateway.settings.get("gateway_type", "omniroute")}
+        return config
 
     def provider_key(self, role, config):
         try:
@@ -2072,7 +2081,7 @@ class Engine:
         record.update(reservation_tokens=reservation['tokens'],reservation_cost=reservation['cost'])
         task["in_flight"] = reservation
         if developing(task): config = {**config, "_operator_interruptible": True}
-        provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(config, self.provider_key(role, config))
+        provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(self.gateway_config(config), self.provider_key(role, config))
         from . import transport
         selected_transport = transport_override or transport.choice(config, role, purpose, tools, getattr(provider, "streams_output", False) is True)
         streaming = selected_transport == 'sse'

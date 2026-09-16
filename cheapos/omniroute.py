@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .gateways import OmniRouteGateway
+from .gateways import OmniRouteGateway, OpenAICompatibleGateway
 from .model_pool import FreeModelPool
 from .providers import ProviderError
 from .storage import write_json
@@ -21,27 +21,33 @@ from .credentials import CredentialStore, CredentialError
 from . import access_policy, route_health
 
 
-DEFAULT_SETTINGS = {"base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True, "remember_key": False}
+GATEWAY_TYPES = {"omniroute": "OmniRoute", "cliproxyapi": "CLIProxyAPI", "9router": "9Router", "litellm": "LiteLLM", "compatible": "OpenAI-compatible"}
+
+DEFAULT_SETTINGS = {"gateway_type": "omniroute", "base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True, "remember_key": False}
 
 
 def validate_settings(values):
     if not isinstance(values, dict):
         raise ValueError("Gateway settings must be an object")
     settings = {key: values.get(key, default) for key, default in DEFAULT_SETTINGS.items()}
+    if settings["gateway_type"] not in GATEWAY_TYPES:
+        raise ValueError("Choose a supported gateway type")
     url = settings["base_url"]
     if not isinstance(url, str):
-        raise ValueError("Provide a local OmniRoute API URL")
+        raise ValueError("Provide a local gateway API URL")
     parsed = urlsplit(url.rstrip("/"))
     try:
         port = parsed.port if parsed.port is not None else 80
     except ValueError:
-        raise ValueError("Invalid OmniRoute port") from None
+        raise ValueError("Invalid gateway port") from None
     if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
             or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path != "/v1" or not 1 <= port <= 65535):
-        raise ValueError("Use a loopback OmniRoute URL such as http://127.0.0.1:20128/v1")
+        raise ValueError("Use a loopback gateway URL such as http://127.0.0.1:20128/v1")
     for key in ("auto_start", "keep_running", "remember_key"):
         if not isinstance(settings[key], bool):
             raise ValueError("Gateway startup preferences must be true or false")
+    if settings["gateway_type"] != "omniroute":
+        settings["auto_start"] = False
     key = values.get("api_key")
     if 'api_key' in values and (not isinstance(key, str) or len(key) > 4096 or any(ord(c) < 32 or ord(c) == 127 for c in key)):
         raise ValueError("Invalid gateway client API key")
@@ -53,6 +59,8 @@ def validate_settings(values):
         settings['connection_revision'] = revision
     if 'included_models' in values:
         settings['included_models'] = access_policy.model_ids(values['included_models'])
+    if "tool_models" in values:
+        settings["tool_models"] = access_policy.model_ids(values["tool_models"])
     return settings
 
 
@@ -137,7 +145,8 @@ class OmniRouteManager:
             if 'connection_revision' in values:
                 raise ValueError('Connection revision is read-only')
             settings = validate_settings({**self.settings, **values})
-            endpoint_changed = settings['base_url'] != self.settings['base_url']
+            endpoint_changed = (settings['base_url'] != self.settings['base_url']
+                                or settings['gateway_type'] != self.settings['gateway_type'])
             if endpoint_changed and 'remember_key' not in values:
                 settings['remember_key'] = False
             key = values.get('api_key', '' if endpoint_changed else self.api_key)
@@ -151,8 +160,10 @@ class OmniRouteManager:
                 wanted = access_policy.model_ids(values['included_models'])
                 if any(m['id'] in wanted and (m.get('local') or m.get('provider') == 'combo') for m in self.models):
                     raise ValueError('Included access requires exact remote model IDs, not local or combined routes')
+            if "tool_models" in values and (connection_changed or values.get("expected_connection_revision") != self.settings["connection_revision"]):
+                raise ValueError("Inspect the current connection before declaring tool support")
             if connection_changed:
-                settings.update(connection_revision=uuid.uuid4().hex, included_models=[])
+                settings.update(connection_revision=uuid.uuid4().hex, included_models=[], tool_models=[])
             if self.thread and self.thread.is_alive():
                 raise ValueError("Wait for the current gateway connection attempt to finish")
             if endpoint_changed:
@@ -201,7 +212,7 @@ class OmniRouteManager:
         with self.lock:
             if self.closed.is_set() or (self.thread and self.thread.is_alive()):
                 return self.snapshot()
-            self.state, self.message = "checking", "Checking the local OmniRoute endpoint"
+            self.state, self.message = "checking", "Checking the local " + GATEWAY_TYPES[self.settings["gateway_type"]] + " endpoint"
             self.thread = threading.Thread(target=self._connect, args=(start,), daemon=True)
             self.thread.start()
             return self.snapshot()
@@ -211,8 +222,13 @@ class OmniRouteManager:
 
     def _probe(self):
         self._restore_key()
-        config = {"base_url": self.settings["base_url"], "key_env": "CHEAPOS_GATEWAY_API_KEY"}
-        return OmniRouteGateway(config, self.api_key).list_models()
+        config = {"base_url": self.settings["base_url"], "key_env": "CHEAPOS_GATEWAY_API_KEY", "gateway_type": self.settings["gateway_type"]}
+        adapter = OmniRouteGateway if self.settings["gateway_type"] == "omniroute" else OpenAICompatibleGateway
+        models = adapter(config, self.api_key).list_models()
+        for model in models:
+            if model["id"] in self.settings.get("tool_models", []) and model.get("tool_calling") is None:
+                model.update(tool_calling=True, tool_support_source="operator")
+        return models
 
     def _port_open(self):
         parsed = urlsplit(self.settings["base_url"])
@@ -237,7 +253,7 @@ class OmniRouteManager:
         try:
             try:
                 models = self._probe()
-                self._set_state("ready", "OmniRoute is connected. Model availability is checked when a task runs.", models)
+                self._set_state("ready", GATEWAY_TYPES[self.settings["gateway_type"]] + " is connected. Model availability is checked when a task runs.", models)
                 return
             except ProviderError as error:
                 detail = str(error)
@@ -245,6 +261,9 @@ class OmniRouteManager:
                     state = "auth_required" if error.code == "client_key_rejected" else "unavailable"
                     self._set_state(state, detail, code=error.code)
                     return
+            if self.settings["gateway_type"] != "omniroute":
+                self._set_state("offline", "Start " + GATEWAY_TYPES[self.settings["gateway_type"]] + " separately, then refresh this connection.")
+                return
             if not start:
                 self._set_state("offline", "OmniRoute is offline. Start it here or connect to another model endpoint.")
                 return

@@ -53,8 +53,8 @@ def guard_inference_route(config, gateway_url):
             return
     except (TypeError, ValueError):
         pass
-    raise ValueError('Remote models must use the configured OmniRoute connection during development. '
-                     'Open Models and select OmniRoute; direct OpenRouter and other remote endpoints are disabled. '
+    raise ValueError('Remote models must use the configured OmniRoute or compatible gateway connection. '
+                     'Open Models and select the configured gateway; direct provider endpoints are disabled. '
                      'Saved tasks keep their original connection and edits; start a new chat with the gateway model choices.')
 
 
@@ -149,6 +149,10 @@ def validate_provider(value, role):
     if gateway not in {"openai", "omniroute"}:
         raise ValueError("Choose OmniRoute or an OpenAI-compatible connection")
     result = {"base_url": endpoint, "model": model, "input_rate": rates[0], "output_rate": rates[1], "key_env": env, "gateway": gateway}
+    if "gateway_type" in value:
+        if value["gateway_type"] not in {"omniroute", "cliproxyapi", "9router", "litellm", "compatible"}:
+            raise ValueError("Unknown gateway adapter")
+        result["gateway_type"] = value["gateway_type"]
     if access:
         result['access'] = access
     return result
@@ -236,6 +240,8 @@ class ChatProvider:
         if tools:
             body.update({"tools": tools, "tool_choice": tool_choice or "auto", "parallel_tool_calls": False})
         headers = {"Content-Type": "application/json", "Accept": "text/event-stream" if emit is not None else "application/json", "User-Agent": "CheapOS/0.2"}
+        if self.config.get("gateway_type") == "9router":
+            headers["X-9Router-Token-Saver"] = "off"
         if self.key:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)

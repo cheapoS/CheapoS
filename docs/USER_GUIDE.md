@@ -304,3 +304,20 @@ unchanged usage, limits and review requirements; it does not mean the work is do
 Enter and Send show **Sending…** immediately. The draft stays saved until cheapoS
 accepts the message; rejected delivery leaves the draft editable and shows the
 error. Acceptance no longer waits for the gateway/sidebar refresh.
+
+### Alternative local gateways
+
+In **Models → Startup & connection settings**, choose **CLIProxyAPI**, **9Router**,
+**LiteLLM**, or **OpenAI-compatible**, enter that gateway's configured loopback
+`/v1` URL and client key, then save and refresh. Start alternative gateways
+separately; cheapoS manages process startup only for OmniRoute.
+
+If the catalog omits prices, authorize exact included model IDs or enter known
+prices for Manual mode. If it omits tool metadata, the optional exact-ID tool
+list declares capability; automatic selection still probes tool calling.
+Save your worker/reviewer choices and start a new chat. Changing gateway type
+or URL clears the old connection's key and included-access declarations.
+
+One gateway is active at a time. Model failover stays inside that connection;
+automatic failover between gateways is not enabled yet. See the
+[gateway plan and trial checklist](development/gateway-connections.md).

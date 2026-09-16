@@ -47,7 +47,7 @@ def interactive(engine, task_id, values=None):
             policy=(task.get('route') or {}).get('access_policy') or task.get('access_policy')
             catalog=engine.gateway.catalog(fresh=False)
             entry=next(m for m in catalog['models'] if m['id']==selected)
-            config=validate_provider({'gateway':'omniroute','base_url':(task.get('route') or {}).get('base_url') or engine.gateway.settings['base_url'],'model':selected,'input_rate':0,'output_rate':0,'key_env':task.get('providers',{}).get('worker',{}).get('key_env')},'worker')
+            config=validate_provider({'gateway_type':engine.gateway.settings.get('gateway_type','omniroute'),'gateway':'omniroute','base_url':(task.get('route') or {}).get('base_url') or engine.gateway.settings['base_url'],'model':selected,'input_rate':0,'output_rate':0,'key_env':task.get('providers',{}).get('worker',{}).get('key_env')},'worker')
             config['access_binding']=copy.deepcopy(policy)
             if access_policy.classify(entry,policy)=='included':
                 config=access_policy.bind_provider(config,policy,entry)
