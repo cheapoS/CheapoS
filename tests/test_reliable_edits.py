@@ -52,6 +52,12 @@ class ReliableEditsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"matched 2 times in 'README.md' \(line 2, line 4\).*append_text"):
             self.workspace.replace_text("README.md", "</p>", "<p>custom</p>\n</p>")
 
+    def test_write_file_existing_file_actionable_error(self):
+        file_path = Path(self.temp_dir) / "exists.txt"
+        file_path.write_text("Existing content\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, r"File 'exists\.txt' already exists.*replace_text.*append_text.*write_file cannot overwrite"):
+            self.workspace.write_file("exists.txt", "New content\n")
+
     def test_affirmative_continuations(self):
         for word in ["sure", "ok", "okay", "yes", "yep", "yeah", "yup", "fine", "sure go ahead"]:
             self.assertTrue(is_continue(word), f"'{word}' should be recognized as a continuation")

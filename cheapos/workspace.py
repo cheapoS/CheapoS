@@ -269,7 +269,7 @@ class Workspace:
             raise ValueError("Content must be text under 256 KB")
         target = self.path(path)
         if target.exists():
-            raise ValueError("File already exists; use an offered replacement tool for existing files")
+            raise ValueError(f"File '{path}' already exists. To modify an existing file, use 'replace_text' for specific edits or 'append_text' to add content to the end; write_file cannot overwrite files.")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         target.chmod(0o600)
