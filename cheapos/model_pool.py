@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from .storage import write_json
-from . import route_health
+from . import route_health, route_schedule
 
 
 RECOVERABLE_CODES = {"stream_error", "stream_interrupted", "stream_timeout", "model_timeout",
@@ -96,6 +96,7 @@ class FreeModelPool:
                               retry_known=connection.get('retry_known', False), last_error=connection.get('last_error', ''),
                               failure=connection.get('failure'))
         record["cooling_down"] = record.get("retry_at", 0) > time.time()
+        record["probe_rejected"] = bool(record.get("probe_rejected") and record["cooling_down"])
         history=[item for item in record.pop('outcomes',[]) if item.get('time',0)>=time.time()-30*86400 and item.get('connection_revision')==connection_revision]
         completed=[item for item in record.pop('completions',[]) if item.get('time',0)>=time.time()-30*86400 and item.get('connection_revision')==connection_revision]
         record['role_evidence']={role:{'samples':len([h for h in history if h['role']==role]),
@@ -117,8 +118,12 @@ class FreeModelPool:
 
     def record(self, endpoint, model, role, *, error=None, seconds=None, probe=False, connection_revision=None, probe_identity=None, failure_context=None):
         with self.lock:
+            failure_context = failure_context or {}
+            candidate_rejected = bool(failure_context.get('candidate_rejected'))
             failure = route_health.classify(error, failure_context) if error is not None else None
-            if failure and (failure['category'] == 'cancelled' or failure['scope'] == 'request'): return
+            if candidate_rejected and failure:
+                failure['scope'] = 'model'
+            if failure and (failure['category'] == 'cancelled' or (failure['scope'] == 'request' and not candidate_rejected)): return
             cooldown = failure is not None and failure['category'] == 'rate_limit_quota'
             scope = failure['scope'] if failure else None
             target = '\0connection' if scope in {'connection', 'account'} else self.provider_key(model) if cooldown and scope == 'provider' else model
@@ -135,14 +140,19 @@ class FreeModelPool:
                 field = 'failures' if failure['quality_impact'] else 'availability_failures'
                 failures = record.get(field, 0) + 1
                 record[field] = failures
-                delay = (0 if failure['category'] == 'malformed_request' else
-                         min(120, 30 * 2 ** min(failures - 1, 2)) if failure['category'] == 'transient_provider' else
-                         min(3600, 900 * 2 ** min(failures - 1, 2)))
+                if candidate_rejected or (failure and failure.get('category') == 'candidate_rejected'):
+                    record['probe_rejected'] = True
+                    delay = max(route_schedule.REJECTED_SECONDS, 86400 if getattr(error, 'code', None) in {'http_400', 'http_422'} else 3600)
+                else:
+                    delay = (0 if failure['category'] == 'malformed_request' else
+                             min(120, 30 * 2 ** min(failures - 1, 2)) if failure['category'] == 'transient_provider' else
+                             min(3600, 900 * 2 ** min(failures - 1, 2)))
                 record.update(retry_at=time.time() + delay, last_error=failure['action'], retry_known=False)
                 if scope in {'connection', 'account'}: record['cooldown_scope'] = scope
             else:
                 record.update(retry_at=0, last_error="")
                 record.pop('failure', None)
+                record.pop('probe_rejected', None)
                 record.pop("cooldown_scope", None)
                 record.pop("retry_known", None)
                 if probe:
@@ -201,7 +211,9 @@ class FreeModelPool:
         is_non_code = any(k in mid for k in ("embed", "reward", "guard", "safety", "parse", "content-safety"))
         is_generic_wildcard = any(mid.startswith(p) for p in ("auto/best-free", "auto/best-fast", "auto/chat", "auto/cheap", "auto/fast", "auto/chaos"))
         is_small = any(k in mid for k in ("-1b", "/1b", ":1b", "-2b", "/2b", ":2b", "-3b", "/3b", ":3b", "-7b", "/7b", ":7b", "-8b", "/8b", ":8b", "mini", "nano", "tiny", "micro", "flash-lite"))
-        is_flagship = not is_non_code and (any(k in mid for k in ("sonnet", "opus", "nemotron-70b", "nemotron-ultra", "deepseek", "codestral", "auto/best-coding", "auto/coding:pro", "auto/coding:reliable")) or (any(k in mid for k in ("pro", "large", "32b", "70b", "72b")) and any(k in mid for k in ("code", "coder", "qwen", "gemini", "nemotron"))))
+        is_flagship = not is_non_code and (any(k in mid for k in ("sonnet", "opus", "nemotron-70b", "nemotron-ultra", "deepseek", "codestral", "auto/best-coding", "auto/coding:pro", "auto/coding:reliable"))
+                                           or (any(k in mid for k in ("ultra", "super", "pro", "large", "26b", "31b", "32b", "70b", "72b", "120b", "550b"))
+                                               and any(k in mid for k in ("code", "coder", "qwen", "gemini", "nemotron", "gemma"))))
         is_solid_coder = not is_non_code and any(k in mid for k in ("haiku", "flash", "gemma", "qwen", "starcoder", "code", "coder", "coding"))
 
         if role in {"planner", "reviewer"}:
@@ -221,9 +233,10 @@ class FreeModelPool:
 
         context_cap = 131072 if role in {"reviewer", "planner"} else 65536
         reasoning_bonus = -(model.get("reasoning") is True) if role in {"reviewer", "planner"} and not is_generic_wildcard else 0
+        passed_probe = 2 if self.fresh_probe(endpoint, model["id"], connection_revision, route_health.probe_identity(endpoint,model,connection_revision)) else 1 if (health.get("tool_check_passed") and not health.get("cooling_down") and health.get("failures", 0) == 0) else 0
         return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3), min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0,
                 -min(health.get(role + "_responses", 0), 1) if connection_revision is None else 0,
-                -self.fresh_probe(endpoint, model["id"], connection_revision, route_health.probe_identity(endpoint,model,connection_revision)),
+                -passed_probe,
                 role_tier,
                 reasoning_bonus,
                 -min(model.get("context_length") or 0, context_cap),

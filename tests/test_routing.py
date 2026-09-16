@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from cheapos.engine import Engine, Runtime, ProgressPause
 from cheapos.routing import PROBE_MESSAGES, execution_from
+from cheapos.providers import ProviderError
 from test_engine import LocalCase, call, wait_for
 
 
@@ -286,3 +287,22 @@ class RoutingTests(LocalCase):
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['error_code'],'progress_limit');self.assertEqual(len(requests),2)
         self.assertEqual(result['checkpoints'],[])
+
+    def test_probe_rejected_model_is_skipped_on_next_task(self):
+        task = self.chat('remote')
+        runtime = Runtime(task)
+        endpoint = task['route']['base_url']
+        revision = (task['route'].get('access_policy') or {}).get('connection_revision')
+        self.engine.gateway.pool.record(endpoint, 'dead-candidate:free', 'worker',
+                                       error=ProviderError('Model dead', code='http_400'),
+                                       connection_revision=revision,
+                                       failure_context={'caller_error': False, 'candidate_rejected': True})
+        self.engine.gateway.catalog.return_value['models'] = [
+            model('dead-candidate:free'),
+            model('good-candidate:free'),
+        ]
+        requests = self.responses([{'content': 'Work'}])
+        messages = [{'role': 'user', 'content': 'Do work'}]
+        self.engine.request(runtime, messages, [], 'worker')
+        self.assertEqual(task['providers']['worker']['model'], 'good-candidate:free')
+        self.assertNotIn('dead-candidate:free', [r['model'] for r in requests])

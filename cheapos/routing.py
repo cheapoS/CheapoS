@@ -257,7 +257,8 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
     candidates = []
     for model in catalog['models']:
         probe_key = role + ':' + route_health.probe_identity(base_url, model, connection_revision)
-        if route_schedule.rejected(rejected_probes.get(probe_key)):
+        obs = gateway.pool.observation(base_url, model['id'], connection_revision)
+        if route_schedule.rejected(rejected_probes.get(probe_key)) or obs.get('probe_rejected'):
             used.add(model['id'])
             routing_trace.candidate(trace, model['id'], 'probe_rejected')
             continue
@@ -267,7 +268,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
                   else 'provider_unavailable_for_request' if provider(model['id']) in unavailable
                   else 'failed_model' if model['id'] in runtime.failed_models
                   else 'prior_worker' if model['id'] in used
-                  else 'cooldown' if gateway.pool.observation(base_url,model['id'],connection_revision)['cooling_down']
+                  else 'cooldown' if obs['cooling_down']
                   else fit)
         routing_trace.candidate(trace, model['id'], reason)
         if reason in {'eligible', 'fit_unknown'}: candidates.append(model)
@@ -284,8 +285,9 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         if provider(model['id']) in unavailable: continue
         # A preceding probe may have cooled the whole provider. Do not repeat
         # its cached error against every other model or count those as failures.
-        if gateway.pool.observation(base_url, model["id"], connection_revision)["cooling_down"]:
-            routing_trace.candidate(trace, model["id"], "cooldown")
+        obs = gateway.pool.observation(base_url, model["id"], connection_revision)
+        if obs["cooling_down"] or obs.get("probe_rejected"):
+            routing_trace.candidate(trace, model["id"], "probe_rejected" if obs.get("probe_rejected") else "cooldown")
             continue
         identity = route_health.probe_identity(base_url, model, connection_revision)
         cached = gateway.pool.fresh_probe(base_url, model['id'], connection_revision, identity)
@@ -340,12 +342,12 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
             engine.store.save(task)
             return
         except (ProviderError, ValueError, TypeError, KeyError) as error:
-            classification = route_health.classify(error, {'purpose':'probe', 'caller_error':isinstance(error, ValueError)})
-            if classification['category'] == 'malformed_request':
+            candidate_rejected = route_health.candidate_probe_rejection(error)
+            classification = route_health.classify(error, {'purpose':'probe', 'caller_error':isinstance(error, ValueError), 'candidate_rejected': candidate_rejected})
+            if classification['category'] == 'malformed_request' and not candidate_rejected:
                 code = getattr(error, 'code', None)
                 status = code.replace('http_', 'HTTP ') if code in {'http_400', 'http_422'} else 'request validation failure'
                 classification['action'] = f"Connection check for {model['id']} was rejected ({status}). No task work was sent. Select another eligible worker in recovery controls, or inspect this route in OmniRoute; repeating the same request will not fix it."
-            candidate_rejected = route_health.candidate_probe_rejection(error)
             if candidate_rejected:
                 classification['scope'] = 'model'
                 classification['action'] = f"The connection probe was rejected for {model['id']}. Trying another authorized candidate; this is not a model quality finding."
@@ -356,7 +358,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
             cooldown = classification['category'] == 'rate_limit_quota'
             if classification['quality_impact']: runtime.failed_models.add(model['id'])
             gateway.pool.record(base_url, model['id'], role, error=error, connection_revision=connection_revision,
-                                failure_context={'caller_error':isinstance(error, ValueError)})
+                                failure_context={'caller_error':isinstance(error, ValueError), 'candidate_rejected': candidate_rejected})
             failure = {'model':model['id'], 'role':role, 'error':classification['action'],
                        'scope':classification['scope'], 'failure_category':classification['category']}
             route['failures'].append(failure)

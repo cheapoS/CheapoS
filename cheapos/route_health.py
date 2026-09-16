@@ -26,6 +26,8 @@ def classify(error, context=None):
         kind, scope, retry, impact, action = 'capability_mismatch', 'request', False, False, 'Choose a verified different reviewer before continuing.'
     elif code in {'http_401', 'http_403', 'client_key_rejected', 'http_402'}:
         kind, scope, retry, impact, action = 'credential_access', 'connection', False, False, 'Inspect access for this connection in Models.'
+    elif context.get('candidate_rejected'):
+        kind, scope, retry, impact, action = 'candidate_rejected', 'model', True, False, 'The connection probe was rejected for candidate model; select another eligible candidate.'
     elif context.get('caller_error') or code in {'http_400', 'http_422', 'invalid_request'} or (code == 'http_404' and context.get('endpoint_invalid')):
         kind, scope, retry, impact, action = 'malformed_request', 'request', False, False, 'Correct the request or endpoint before retrying.'
     elif code == 'gateway_cooldown' or code == 'http_429':
