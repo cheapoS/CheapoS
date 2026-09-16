@@ -706,8 +706,17 @@ const CheapOSConversation = (() => {
         steps.splice(i--,1);
       }
     }
-    const reply = committed(final) && !task.demo ? 'What would you like to work on next?' : final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
-    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_coaching','coordinator_recovery','handoff','tool_error','commit','planning_inspection'].includes(e.kind))) steps.length = 0;
+    let reply = committed(final) && !task.demo ? 'What would you like to work on next?' : final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
+    const thinkingText = events.findLast(e => e.kind === 'generation' && e.detail?.thinking)?.detail?.thinking;
+    if (reply && thinkingText) {
+      const trimmedReply = reply.trim(), trimmedThinking = thinkingText.trim();
+      if (trimmedReply === trimmedThinking || trimmedThinking.startsWith(trimmedReply)) {
+        reply = '';
+      } else if (trimmedReply.startsWith(trimmedThinking)) {
+        reply = trimmedReply.slice(trimmedThinking.length).trim();
+      }
+    }
+    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_coaching','coordinator_recovery','handoff','tool_error','commit','planning_inspection'].includes(e.kind) || (e.kind === 'generation' && e.detail?.thinking))) steps.length = 0;
     let intro = '';
     if (steps.length) {
       intro = live ? {coordinator:"The worker got stuck. I'm checking the saved work to help it choose the next step.",work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';

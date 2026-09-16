@@ -255,3 +255,39 @@ test('current working approach appears in ordinary chat without tools and distin
   assert.match(html,new RegExp(label));assert.match(html,/Fix &lt;button>/);assert.match(html,/checks and independent review remain separate/);
  }
 });
+test('assistant reply matching recorded thinking is not duplicated in reply text',()=>{
+ const thought='We need to answer "any other suggestions?" Find another simple improvement.';
+ const t=task({status:'awaiting_reply',events:[
+  event(1,'model','Requesting worker: groq/openai/gpt-oss-120b',{}),
+  event(2,'generation','Model thinking',{thinking:thought}),
+  event(3,'assistant','Worker',thought)
+ ]});
+ const [reply]=replies(t);
+ assert.equal(reply.reply,'');
+ assert.equal(reply.steps[0].events.find(e=>e.kind==='generation').detail.thinking,thought);
+ const vm=require('node:vm'),fs=require('node:fs');
+ const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8').split("\n'use strict';\nconst $ =")[0];
+ const context={CheapOSGuide:require('../dist/guidance.js'),esc:x=>String(x??''),icon:()=>'',messageText:x=>x,thinkingMarkup:d=>`<details class="thinking-panel">${d.thinking}</details>`,eventDetail:()=>''};
+ vm.createContext(context);vm.runInContext(source+'\nthis.view=CheapOSChatView;',context);
+ const html=context.view.message(reply,t);
+ assert.match(html,/class="thinking-panel"/);
+ assert.doesNotMatch(html,/class="cheapos-answer"/);
+});
+test('assistant reply with leading thinking strips duplicate thought from answer',()=>{
+ const thought='Let me think through this.';
+ const t=task({status:'awaiting_reply',events:[
+  event(1,'generation','Model thinking',{thinking:thought}),
+  event(2,'assistant','Worker',`${thought}\n\nHere is the real answer.`)
+ ]});
+ const [reply]=replies(t);
+ assert.equal(reply.reply,'Here is the real answer.');
+});
+test('assistant reply distinct from thinking is preserved in reply text',()=>{
+ const thought='Let me think through this.';
+ const t=task({status:'awaiting_reply',events:[
+  event(1,'generation','Model thinking',{thinking:thought}),
+  event(2,'assistant','Worker','Here is the distinct answer.')
+ ]});
+ const [reply]=replies(t);
+ assert.equal(reply.reply,'Here is the distinct answer.');
+});

@@ -48,7 +48,7 @@ const CheapOSChatView = (() => {
     if(probe)stream={...stream,thinking:'',content:'',phase:'waiting'};
     const streamLabel=probe?'Checking model connection':stream?.phase==='thinking'?'Thinking':stream?.phase==='answer'?'Writing a response':stream?.phase==='tool'?`Preparing ${String(stream.tool||'the next action').replaceAll('_',' ')}`:`Waiting for the ${role.toLowerCase()}’s response`;
     const streamText=String(stream?.thinking||stream?.content||'');
-    const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span><strong>${esc(streamLabel)}</strong><span data-work-elapsed>${esc(step.elapsed)}</span></div>${streamText?`<pre data-thinking="workflow-stream-${esc(stream.request_id||step.id)}">${esc(streamText)}</pre>`:''}${stream.thinking&&stream.content?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
+    const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span><strong>${esc(streamLabel)}</strong><span data-work-elapsed>${esc(step.elapsed)}</span></div>${streamText?`<pre data-thinking="workflow-stream-${esc(stream.request_id||step.id)}">${esc(streamText)}</pre>`:''}${stream.thinking&&stream.content&&stream.content.trim()!==stream.thinking.trim()?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
     const liveText=live?String(task.check_stream?.output||stream?.content||stream?.thinking||'').trim():'';
     const preview=liveText?`<span class="workflow-preview">${esc((liveText.length>240?'…':'')+liveText.slice(-240))}</span>`:'';
     const title=live&&probe?'Checking model connection':liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
@@ -80,7 +80,20 @@ const CheapOSChatView = (() => {
     const steps=entry.steps, older=steps.length>4?steps.slice(0,-3):[], visible=older.length?steps.slice(-3):steps;
     if(!steps.length&&!entry.reply&&!decision&&!entry.live&&!entry.owner)return '';
     const history=older.length?`<details class="workflow-history" data-event="history-${entry.id}"><summary>${icon('clock')}Earlier steps${entry.itemTitle?' · '+esc(entry.itemTitle):''} <span>${older.length}</span>${icon('chevron')}</summary>${older.map(s=>stepMarkup(s,task,null,entry.reply)).join('')}</details>`:'';
-    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':entry.label||'Working'}</span>`:''}</div><div class="chat-message-body">${entry.itemTitle?`<h3 class="operation-item-title">${esc(entry.itemTitle)}</h3>`:''}${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${workingMarkup(task,entry)}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream,entry.reply)).join('')}</div>`:''}${entry.reply?`<div class="cheapos-answer">${messageText(entry.reply)}</div>`:''}${decision}${entry.owner?'<section data-operation-actions aria-label="Run actions"></section>':''}</div></article>`;
+    let replyText = entry.reply;
+    if(replyText && visible.length) {
+      const thinkings = visible.flatMap(s => s.events || []).filter(e => e.kind === 'generation' && e.detail?.thinking).map(e => e.detail.thinking.trim());
+      for (const th of thinkings) {
+        if (replyText.trim() === th || th.startsWith(replyText.trim())) {
+          replyText = '';
+          break;
+        }
+        if (replyText.trim().startsWith(th)) {
+          replyText = replyText.trim().slice(th.length).trim();
+        }
+      }
+    }
+    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':entry.label||'Working'}</span>`:''}</div><div class="chat-message-body">${entry.itemTitle?`<h3 class="operation-item-title">${esc(entry.itemTitle)}</h3>`:''}${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${workingMarkup(task,entry)}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream,entry.reply)).join('')}</div>`:''}${replyText?`<div class="cheapos-answer">${messageText(replyText)}</div>`:''}${decision}${entry.owner?'<section data-operation-actions aria-label="Run actions"></section>':''}</div></article>`;
   }
   return {message,routingDetails};
 })();
