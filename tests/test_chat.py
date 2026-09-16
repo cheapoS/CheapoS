@@ -73,6 +73,28 @@ class ChatTests(LocalCase):
         self.assertEqual(result['review_count'],0)
         self.assertEqual(result['checkpoints'],[])
         self.assertEqual(result['events'][-1]['detail'],'What check should I use?')
+        # An explicit review request must not become another conversation-only
+        # turn, even when the worker first describes the checks in plain text.
+        result['turn_start_patch']=result['patch']
+        self.engine.store.save(result)
+        self.provider([
+            {'role':'assistant','content':'I will verify the saved change and request review.'},
+            call('run_checks',{'command':sys.executable+' -m unittest discover -v'}),
+            {'role':'assistant','content':'Checks passed. The saved change is ready for review.'},
+            call('review_decision',{'decision':'APPROVE','feedback':'The requested lower bound fix is verified.'}),
+        ])
+        self.engine.start(task['id'],{'finish_review':True})
+        wait_for(lambda:self.engine.store.get(task['id'])['status']=='waiting_approval')
+        self.assertEqual(self.engine.store.get(task['id'])['checks'],[])
+        self.engine.approve_check(task['id'],True)
+        reviewed=self.finish(task)
+        self.assertEqual(reviewed['status'],'approved',reviewed['error'])
+        self.assertEqual(len(reviewed['checks']),1)
+        self.assertEqual(reviewed['review_count'],1)
+        self.assertEqual(reviewed['patch'],result['patch'])
+        self.assertEqual(reviewed['request_worker_turns'],6)
+        self.assertNotIn('finish_review',reviewed)
+        self.assertIn('return min(value, upper)',(Path(task['source'])/'math_utils.py').read_text())
 
     def test_proposed_command_waits_for_permission_and_decline_executes_nothing(self):
         task=self.chat('Run the appropriate checks.')
@@ -95,7 +117,7 @@ class ChatTests(LocalCase):
             {'role':'assistant','content':'It currently limits only the upper bound.'},
             call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
             call('run_checks',{'command':sys.executable+' -m unittest discover -v'}),
-            call('checkpoint',{'summary':'Fixed the lower bound.','uncertainties':''}),
+            call('ask_user',{'question':'Shall I submit the saved changes for review?'}),
             call('review_decision',{'decision':'APPROVE','feedback':'The change meets the request and checks pass.'}),
             {'role':'assistant','content':'It uses max for the lower bound and min for the upper.'}
         ])
@@ -107,7 +129,14 @@ class ChatTests(LocalCase):
             wait_for(lambda:self.engine.store.get(task['id'])['status']=='waiting_approval' and len(self.engine.store.get(task['id'])['checks'])==expected-1)
             self.engine.approve_check(task['id'],True)
             wait_for(lambda:len(self.engine.store.get(task['id'])['checks'])>=expected)
+        waiting=self.finish(task)
+        self.assertEqual(waiting['status'],'awaiting_reply')
+        # Reproduce the old Finish review detour: no extra worker/coordinator
+        # round trip or test execution is needed when current checks passed.
+        self.engine.start(task['id'],{'finish_review':True})
         first=self.finish(task)
+        self.assertEqual(first['worker_turns'],waiting['worker_turns'])
+        self.assertEqual(first['request_worker_turns'],waiting['request_worker_turns'])
         self.assertEqual(first['status'],'approved')
         self.assertEqual(first['review_count'],1)
         self.assertEqual(len(first['checks']),1)

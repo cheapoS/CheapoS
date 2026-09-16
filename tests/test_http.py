@@ -383,6 +383,12 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(result['requests'],['Hi','Tell me about this project.'])
         self.assertEqual(result['usage']['worker']['tokens'],20)
         self.assertNotIn('messages',result)
+        with patch.object(self.engine, 'start', return_value=self.engine.store.get(task['id'])) as start:
+            route='/api/tasks/'+task['id']+'/start'
+            self.assertEqual(self.request('POST',route,{'finish_review':True},{'Content-Type':'application/json'})[0],403)
+            start.assert_not_called()
+            self.assertEqual(self.post(route,{'finish_review':True})[0],200)
+            start.assert_called_once_with(task['id'],{'finish_review':True})
         for value in [None, '', False]:
             self.assertEqual(self.post('/api/tasks/'+task['id']+'/message',{'message':value})[0],400)
 

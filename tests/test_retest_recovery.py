@@ -18,7 +18,7 @@ def call(name, args):
 
 class RetestRecoveryTests(unittest.TestCase):
     def test_compact_context_keeps_file_directory_bounded_without_losing_requirements(self):
-        task={'workspace':'unused','changes':[],'events':[],'compact_edits':True,
+        task={'source':'unused','workspace':'unused','changes':[],'events':[],'compact_edits':True,
               'prompt':'Implement restart','requests':['Implement restart','Preserve exact arguments'],
               'checks':[],'checkpoints':[],'check_command':['python3','-m','unittest']}
         names=['tests/module_%04d.py'%i for i in range(500)]
@@ -26,7 +26,8 @@ class RetestRecoveryTests(unittest.TestCase):
              patch('cheapos.engine.project_context.brief',return_value={}), \
              patch('cheapos.engine.project_context.continuation',return_value={'active_requirements':task['requests']}):
             workspace.return_value.list_files.return_value=names
-            messages=Engine.action_messages(None,task)
+            engine=SimpleNamespace(carto=SimpleNamespace(context=Mock(return_value={'status':'disabled'})))
+            messages=Engine.action_messages(engine,task)
         packet=json.loads(messages[1]['content'])
         self.assertEqual(packet['available_files'],names[:60])
         self.assertEqual(packet['file_listing']['total'],500)

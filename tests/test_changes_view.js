@@ -27,3 +27,28 @@ test('diffLines on files larger than 1414 lines trims prefix/suffix and does not
  assert.equal(removed[0].old,1371);
  assert.equal(added[0].new,1371);
 });
+
+const reviewAction=source.slice(source.indexOf('async function requestCommitReview('),source.indexOf('const commitPreviews='));
+test('Finish review dispatches a controller action with immediate feedback',async()=>{
+ const calls=[];let release;
+ const context={state:{task:{id:'saved'}},api:(url,body)=>{calls.push([url,body]);return new Promise(resolve=>{release=resolve})},
+   refresh:async()=>calls.push('refresh'),setView:view=>calls.push(view),toast:()=>assert.fail('unexpected error')};
+ vm.runInNewContext(reviewAction,context);
+ const button={disabled:false,textContent:'Finish review'};
+ const pending=context.requestCommitReview(button);
+ assert.equal(button.disabled,true);assert.equal(button.textContent,'Requesting review…');
+ assert.deepEqual(JSON.parse(JSON.stringify(calls)),[['/tasks/saved/start',{finish_review:true}]]);
+ release();await pending;
+ assert.deepEqual(calls.slice(1),['refresh','chat']);
+});
+
+test('Finish review failure keeps the action available and explains the error',async()=>{
+ const errors=[];
+ const context={state:{task:{id:'saved'}},api:async()=>{throw new Error('Re-check the task environment')},
+   refresh:()=>assert.fail('must not refresh on rejection'),setView:()=>assert.fail('must not navigate'),toast:message=>errors.push(message)};
+ vm.runInNewContext(reviewAction,context);
+ const button={disabled:false,textContent:'Finish review'};
+ await context.requestCommitReview(button);
+ assert.equal(button.disabled,false);assert.equal(button.textContent,'Finish review');
+ assert.deepEqual(errors,['Re-check the task environment']);
+});

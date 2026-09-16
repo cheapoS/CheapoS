@@ -94,14 +94,15 @@ When your implementation is ready, call checkpoint with a useful summary and unc
 Use the reviewer's feedback to continue. Only the controller can declare approval.
 After an interruption, use the controller's current-file snapshot when supplied; previous edits may already be present. Request missing evidence only through tools currently offered. Never call an unavailable tool."""
 CHAT_TOOLS = [t for t in WORKER_TOOLS if t["function"]["name"] != "run_checks"] + [
-    tool("run_checks", "Run a suitable verification command in the task copy. Inspect project guidance to choose it. The user must approve a new command before execution. Omit command to reuse the previous one. No shell pipes or redirects.", {"command": TEXT}),
-    tool("ask_user", "Ask a necessary question and wait for the user's reply. Saved edits remain unapproved until checkpoint review.", {"question": TEXT}, ["question"]),
+    tool("run_checks", "Request verification in the task copy. Call this directly: the controller presents any required command approval before execution. Do not ask for permission in chat first. Inspect project guidance to choose a real check, not a selection preview such as check.py --plan. Omit command to reuse the previous one. No shell pipes or redirects.", {"command": TEXT}),
+    tool("ask_user", "Ask for a missing requirement or necessary decision and wait for the reply. For permission to execute a known verification command, call run_checks instead; it presents the approval control. Saved edits remain unapproved until checkpoint review.", {"question": TEXT}, ["question"]),
 ]
 CHAT_SYSTEM = """You are cheapoS, a conversational coding assistant working in a separate copy of the user's local project.
 Respond naturally to the latest user message. Decide whether to explain, inspect, ask a necessary question, or make a requested change. Do not edit files just because the user asks a question.
 Use read tools to ground answers in the project. For a question or discussion, finish with a useful plain-text answer; no checkpoint or reviewer is needed when you have not changed the patch during this turn.
 When the user supplies a web link, use read_url first. A GitHub repository link returns its README; read further line ranges or follow returned links when needed. Search only searches LOCAL files, never the internet. Cite source_url in your answer. If a page cannot be read, explain the actual error and answer from available evidence or ask for the relevant text; do not loop through local files trying to browse. No web search, sign-in, or interactive browser is available.
 For requested code changes, inspect project guidance, follow test-driven discipline (examine or write tests first), make focused edits, choose an appropriate verification command from the actual project, and call run_checks. The controller asks the user to approve the exact command. No shell tool exists. Do not install dependencies, access secrets, or alter Git internals.
+Call run_checks directly when you know the suitable command; never ask for command permission in prose or ask_user first. A chat reply such as "yes" is not command authorization. Selection previews such as check.py --plan are not verification: choose an executable scoped check from project guidance. After checks pass, submit checkpoint without asking whether to continue or request review.
 Use the project's existing test framework and the user's dependency constraints. For an isolated script, run its focused tests before a broader suite. A timed-out check is inconclusive: fix reported failures and choose appropriate focused coverage or ask for guidance instead of repeating the same timed-out command unchanged.
 If asked to commit, direct the user to Approve & commit on the final reviewed diff once the patch is ready. The app applies and commits only after the user approves the preview. Never use run_checks to apply patches, commit, or push, and never claim the source project was committed without a saved commit result.
 When changes are ready, call checkpoint with a concise user-facing summary and uncertainties. The controller uses its passing checks for the same patch and command, or runs checks if needed, then routes the patch to the configured reviewer. Follow actionable review feedback. Only the controller declares approval. Reviewer approval keeps this chat open: answer questions without rerunning checks, and make requested follow-up edits before returning the updated patch for verification and review.
@@ -119,6 +120,8 @@ Never fabricate verification, and don't approve incomplete or truncated evidence
 def worker_system(task):
     context = execution_context.mode(task)
     if context == 'interactive':
+        if task.get('finish_review'):
+            return CHAT_SYSTEM + "\nThe operator selected Finish review for the saved patch. Complete verification and independent checkpoint review even if you make no new edits. Keep the implementation unchanged unless checks or review require a fix. Call run_checks to select a missing verification command and present any required permission. A prose description of next steps does not finish this request. Ask only for a genuinely missing requirement. The operator will approve the final commit separately."
         return CHAT_SYSTEM
     if context == 'unattended':
         from .unattended_setup import WORKER_POLICY
@@ -769,13 +772,16 @@ class Engine:
 
     def start(self, task_id, changes=None):
         with self.lock:
+            finish_review = (changes or {}).get('finish_review', False)
+            if type(finish_review) is not bool or (finish_review and set(changes) != {'finish_review'}):
+                raise ValueError('Finish review cannot include a new message, limits, or other start options.')
             self.require_active_task(task_id)
             if self.startup.busy():
                 raise ValueError("Wait for the startup greeting or stop its connection check before starting a chat")
             previous = self.runtimes.get(task_id)
             if previous and previous.thread and previous.thread.is_alive():
                 from .continuation_policy import is_continue
-                if not changes or is_continue((changes or {}).get('message')):
+                if not changes or finish_review or is_continue((changes or {}).get('message')):
                     return self.store.get(task_id)
                 raise ValueError("This task is already running")
             try:
@@ -804,11 +810,19 @@ class Engine:
                                  "Use the authorized Unattended run controls; ordinary chat Start cannot dispatch a branch run.")
             if task.get("commit_pending"):
                 raise ValueError("Finish the saved commit attempt in Chat before continuing this task")
+            if finish_review:
+                if not task.get('conversational') or task['status'] not in {'awaiting_reply', 'approved', 'completed'}:
+                    raise ValueError('Finish review is available for saved Interactive changes. Use the current recovery or approval control to continue a stopped task.')
+                if work_policy.read_only(task):
+                    raise ValueError('This request is read-only. Ask for an implementation before submitting saved edits for review.')
+                self.refresh_changes(task)
+                if not needs_patch_review(task):
+                    return task
             from .continuation_policy import is_continue, record
             followup = (changes or {}).get("message")
             if is_continue(followup) and task.get('status') not in {'ready', 'awaiting_reply'}:
                 followup = None
-            if followup is None:
+            if followup is None and not finish_review:
                 selected = record(task, 'operator_continue')
                 self.store.save(task)  # Admission is durable before any dispatch.
                 if selected['action'] in {'approve_command', 'repair_environment', 'answer_question'}:
@@ -829,7 +843,7 @@ class Engine:
                 requests = task.get("requests", [task["prompt"]])
                 if sum(map(len, requests)) + len(followup) > 24000 and not developing(task):
                     raise ValueError("This conversation is full. Start a new chat for more work.")
-            if task["status"] in {"approved", "completed", "awaiting_reply"} and followup is None:
+            if task["status"] in {"approved", "completed", "awaiting_reply"} and followup is None and not finish_review:
                 raise ValueError("This task is already complete; start a new task for further changes")
             if not task["demo"] and not task.get('gateway_connections') and any(p and p.get("gateway") == "omniroute" for p in task["providers"].values()):
                 for p in task['providers'].values():
@@ -863,6 +877,7 @@ class Engine:
                 if automatic(task, "worker") and last_request.get("title", "").startswith("Requesting worker:") and task["providers"].get("worker"):
                     self.prepare_output_recovery(task, task["providers"]["worker"]["model"])
             if followup is not None:
+                task.pop('finish_review', None)
                 if developing(task):
                     self.archive_operator_state(task, "New operator direction")
                 task["conversational"] = True
@@ -892,6 +907,18 @@ class Engine:
                         self.defer_route(task, task["active_role"], "The worker paused without progress; rotating to another eligible model.")
                 if (task.get("answer_pending") and needs_patch_review(task)) or (task.get("error_code") == "progress_limit" and task["patch"] == task.get("turn_start_patch", "")):
                     self.prepare_loop_recovery(task)
+            if finish_review:
+                # Resume the controller's saved evidence, not another planning
+                # conversation. This grants neither command nor commit approval.
+                task['finish_review'] = True
+                task['active_role'] = 'worker'
+                task['answer_pending'] = False
+                if task.get('check_command'):
+                    task.setdefault('pending_checkpoint', {
+                        'summary': 'Finish verification and independent review of the saved changes requested by the operator.',
+                        'uncertainties': 'Use the actual patch and check evidence to assess completion.'})
+                self.event(task, 'state', 'Finishing review of saved changes',
+                           'Verification and independent review will continue. Any required command permission appears here; committing still needs your approval.')
             if followup is None and automatic(task, "worker"):
                 boundary = max((i for i, e in enumerate(task["events"]) if e["kind"] == "user"), default=-1)
                 if any(e["kind"] == "tool_error" and isinstance(e.get("detail"), dict)
@@ -2730,6 +2757,8 @@ class Engine:
                         task.pop("pending_review", None)
                         task.pop("pending_checkpoint", None)
                         task["status"] = {"APPROVE": "approved", "REQUEST_CHANGES": "running", "REQUEST_TESTS": "running", "TAKE_OVER": "takeover_requested"}[decision]
+                        if decision == 'APPROVE':
+                            task.pop('finish_review', None)
                         self.event(task, "review", f"Reviewer: {decision.replace('_', ' ').lower()}", {"checkpoint": checkpoint["number"], "decision": decision, "feedback": checkpoint["feedback"]})
                         return {"decision": decision, "feedback": checkpoint["feedback"]}
                 elif name in {"read_file", "outline_file", "get_project_context", "search", "list_files", "get_diff", "read_url", "read_check_output", "read_merge_context", "read_context_evidence"}:
@@ -3092,7 +3121,7 @@ class Engine:
                         else:
                             task["no_call_turns"] = 0
                             task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
-                    elif task.get("conversational") and not task.get("branch_run") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
+                    elif task.get("conversational") and not task.get("finish_review") and not task.get("branch_run") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
                         task["status"] = "awaiting_reply"
                         task["action_pending"] = False
                     elif task.get("conversational") and message.get("content") and task["patch"] and task["check_command"]:

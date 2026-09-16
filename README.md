@@ -107,7 +107,7 @@ Make expensive compute the exception. Keep the work visible and the decisions yo
 
 ![Describe a task, let the worker build in a separate copy, run checks, get a reviewer decision, then approve a commit or local merge. Revisions return to the worker.](docs/assets/workflow.svg)
 
-**Interactive:** stay in the conversation, approve commands, inspect the diff, then choose **Approve & commit**. Follow-ups keep the same task copy and history.
+**Interactive:** the worker makes the requested change, runs appropriate checks, and submits it to the reviewer. Approve a verification command when prompted; after review passes, inspect the diff and choose **Approve & commit**. You can ask for changes before committing. **Finish review** resumes verification and review of saved edits directly, reusing checks that still match the patch and command. Follow-ups keep the same task copy and history.
 
 **Unattended:** inspect a finite plan and choose **Start run**. Reviewed items become feature-branch commits within the authorized scope and cumulative limits. The completed branch comes back for your explicit merge decision. The local server must stay running.
 

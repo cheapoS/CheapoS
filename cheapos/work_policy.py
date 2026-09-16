@@ -67,7 +67,7 @@ def small_edit_reason(task):
 def stage(task):
     if read_only(task):return 'explanation'
     if task.get('status')=='reviewing':return 'review'
-    if task.get('conversational') and not active_implementation(task) and task.get('patch', '') == task.get('turn_start_patch', ''):
+    if task.get('conversational') and not task.get('finish_review') and not active_implementation(task) and task.get('patch', '') == task.get('turn_start_patch', ''):
         return 'orientation'
     check=(task.get('checks') or [{}])[-1]
     if task.get('changes'):
@@ -88,7 +88,7 @@ def instruction(value):
     focus={'explanation':'This is a read-only explanation or suggestion request. Read relevant files, then answer the latest question in plain text. If a README is absent, explain the files that exist. Describe suspected bugs as source observations, not executed test results. Do not edit, run tests, or submit a checkpoint. Suggestions wait for the operator to request implementation.',
            'orientation':'Use the project brief and targeted reads to answer the latest request. For questions or suggestions, give a plain-text answer without edits or checks. Only implement when the operator has requested changes.',
            'implementation':'Make the smallest sufficient complete edit, using existing project structures.',
-           'verification':'Run suitable authorized checks when the requested implementation is complete; otherwise finish its remaining edits.',
+           'verification':'Call run_checks directly when the requested implementation is complete; the controller presents any required command permission. Do not ask for that permission in prose or ask_user. Otherwise finish the remaining edits.',
            'review':'Submit the completed requested patch for review. Passing checks alone do not establish completion.'}[value]
     return f'Current stage: {value}. {focus} Preserve every active requirement. Avoid speculative abstractions and full-file prose. Read missing context with the offered tools; do not guess. Report actual evidence.'
 

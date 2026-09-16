@@ -814,7 +814,7 @@ async function requestCommitReview(trigger) {
   const task=state.task;if(!task)return;
   trigger.disabled=true;trigger.textContent='Requesting review…';
   try {
-    await api('/tasks/'+task.id+'/message',{message:'Prepare the current saved patch for review and commit. Keep the implementation unchanged unless verification or reviewer feedback requires a fix. Reuse the configured verification command and submit a checkpoint for reviewer approval. The app will present the final diff for the user to approve and commit afterward; do not run Git commit or push.'});
+    await api('/tasks/'+task.id+'/start',{finish_review:true});
     await refresh();setView('chat');
   } catch(e){toast(e.message);trigger.disabled=false;trigger.textContent='Finish review'}
 }
