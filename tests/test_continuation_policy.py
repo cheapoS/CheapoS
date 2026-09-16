@@ -56,3 +56,13 @@ class ContinuationPolicyTests(unittest.TestCase):
         self.assertIs(Engine.start(engine,'saved',{'message':'continue'}),task)
         engine.admission.require.assert_not_called()
         self.assertEqual(task['usage']['tokens'],42)
+
+    def test_repeated_evidence_decision_for_interactive_and_read_only(self):
+        # Implementation prompt transitions to act
+        task_fix = {'prompt': 'Lets fix these issues', 'patch': ''}
+        self.assertEqual(decide(task_fix, trigger='repeated_evidence')['action'], 'act')
+
+        # Read only prompt transitions to answer
+        read_only_prompt = work_policy.READ_ONLY_STARTERS[0]
+        task_read = {'prompt': read_only_prompt, 'patch': '', 'conversational': True}
+        self.assertEqual(decide(task_read, trigger='repeated_evidence')['action'], 'answer')

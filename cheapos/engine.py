@@ -136,11 +136,92 @@ def worker_system(task):
 DEFAULT_LIMITS = {"dollars": 1.0, "reviewer_tokens": 200000, "worker_turns": 40, "iterations": 5, "output_tokens": 2048, "checkpoint_turns": 12, "run_minutes": 15, "check_seconds": 360}
 AUTOMATIC_ROUTE_CHARGE_CUTOFF = 0.01
 ACTIVE = {"running", "reviewing", "waiting_approval", "waiting_retry", "stopping"}
+def extract_fallback_tool_calls(content, offered_tool_names):
+    if not isinstance(content, str) or not content.strip():
+        return [], content
+    import re, json, uuid
+    calls = []
+    cleaned = content
+
+    # 1. Match <invoke name="...">...</invoke> (including inside <dots_function_call> or standalone)
+    invoke_pattern = re.compile(r"<invoke\s+name=[\"\']([^\s\"\'>]+)[\"\']\s*>(.*?)</invoke>", re.DOTALL | re.IGNORECASE)
+    for m in invoke_pattern.finditer(content):
+        name = m.group(1).strip()
+        body = m.group(2)
+        if name in offered_tool_names:
+            params = {}
+            param_pattern = re.compile(r"<parameter\s+name=[\"\']([^\s\"\'>]+)[\"\']\s*>(.*?)</parameter>", re.DOTALL | re.IGNORECASE)
+            for pm in param_pattern.finditer(body):
+                pname = pm.group(1).strip()
+                pval = pm.group(2).strip()
+                try:
+                    params[pname] = json.loads(pval)
+                except Exception:
+                    params[pname] = pval
+            calls.append({
+                "id": f"call_{uuid.uuid4().hex[:8]}",
+                "type": "function",
+                "function": {"name": name, "arguments": json.dumps(params)}
+            })
+
+    # 2. Match <tool_call> containing JSON
+    tool_call_json = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL | re.IGNORECASE)
+    for m in tool_call_json.finditer(content):
+        try:
+            data = json.loads(m.group(1))
+            name = data.get("name") or data.get("action")
+            args = data.get("arguments") or data.get("parameters") or {k: v for k, v in data.items() if k not in ("name", "action")}
+            if name in offered_tool_names and isinstance(args, dict):
+                calls.append({
+                    "id": f"call_{uuid.uuid4().hex[:8]}",
+                    "type": "function",
+                    "function": {"name": name, "arguments": json.dumps(args)}
+                })
+        except Exception:
+            pass
+
+    # 3. Match code blocks ```json {"action": ...} ``` or ```json {"name": ...} ```
+    if not calls:
+        code_block = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+        for m in code_block.finditer(content):
+            try:
+                data = json.loads(m.group(1))
+                if isinstance(data, dict):
+                    name = data.get("action") or data.get("name")
+                    args = data.get("arguments") or data.get("parameters")
+                    if args is None:
+                        args = {k: v for k, v in data.items() if k not in ("action", "name")}
+                    if name in offered_tool_names and isinstance(args, dict):
+                        calls.append({
+                            "id": f"call_{uuid.uuid4().hex[:8]}",
+                            "type": "function",
+                            "function": {"name": name, "arguments": json.dumps(args)}
+                        })
+            except Exception:
+                pass
+
+    if calls:
+        cleaned = re.sub(r"</?(?:dots_function_call|tool_calls?)>", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"<invoke\s+name=[\"\'][^\s\"\'>]+[\"\']\s*>.*?</invoke>", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r"<tool_call>.*?</tool_call>", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r"```(?:json)?\s*\{[^{}]*\"action\"[^{}]*\{.*?\}.*?\}\s*```", "", cleaned, flags=re.DOTALL)
+        cleaned = cleaned.strip()
+        if not cleaned:
+            cleaned = None
+
+    return calls, cleaned
+
+
 def strip_leaked_actions(content):
     if not isinstance(content, str):
         return ""
     import re
+    # Strip XML tags for pseudo-tool calls
+    content = re.sub(r"</?(?:dots_function_call|tool_calls?)>", "", content, flags=re.IGNORECASE)
+    content = re.sub(r"<invoke\s+name=[\"\'][^\s\"\'>]+[\"\']\s*>.*?</invoke>", "", content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r"<tool_call>.*?</tool_call>", "", content, flags=re.DOTALL | re.IGNORECASE)
     # Strip markdown code blocks containing pseudo-tool calls
+    content = re.sub(r"```(?:json)?\s*\{[^{}]*\"action\"[^{}]*\}\s*```", "", content, flags=re.DOTALL)
     content = re.sub(r"```(?:json)?\s*\{[^{}]*\"action\"[^{}]*\{.*?\}.*?\}\s*```", "", content, flags=re.DOTALL)
     # Find and strip balanced {"action": ...} blocks
     pos = 0
@@ -1911,6 +1992,8 @@ class Engine:
                 self.event(task, "handoff", "Switching to another free " + role, {
                     "from": recovery["from"], "to": task["providers"][role]["model"], "role": role,
                     "summary": "Continuing with the same chat, saved files, checks, and limits. " + recovery["reason"]})
+                runtime.observations.clear()
+                runtime.file_observations.clear()
                 if not purpose and (task.get("action_pending") or task.get("compact_edits")) and task["status"] != "reviewing":
                     from .worker_conversation import continue_session
                     snapshot = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
@@ -2774,6 +2857,11 @@ class Engine:
                 messages.append({"role": "user", "content": "Use the evidence already inspected to reach review_decision. Identify a concrete defect or approve with specific evidence. Avoid repeating unchanged searches; read further only to resolve a specific unanswered question."})
             turns += 1
             message = self.request(runtime, messages, REVIEW_TOOLS, "reviewer")
+            if not message.get("tool_calls"):
+                fallback_calls, cleaned = extract_fallback_tool_calls(message.get("content"), {t["function"]["name"] for t in REVIEW_TOOLS})
+                if fallback_calls:
+                    message["tool_calls"] = fallback_calls
+                    message["content"] = cleaned
             task["review_count"] += 1
             messages.append(message)
             calls = message.get("tool_calls", [])
@@ -3084,6 +3172,11 @@ class Engine:
                     # part of a mixed batch or switch models to obtain an edit.
                     self.finish_answer(runtime)
                     continue
+                if not message.get("tool_calls"):
+                    fallback_calls, cleaned = extract_fallback_tool_calls(message.get("content"), {t["function"]["name"] for t in offered_tools})
+                    if fallback_calls:
+                        message["tool_calls"] = fallback_calls
+                        message["content"] = cleaned
                 try:
                     self.validate_offered_tools(message, offered_tools)
                 except ProviderError as error:

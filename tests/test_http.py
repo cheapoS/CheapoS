@@ -214,6 +214,35 @@ class HTTPTests(unittest.TestCase):
             import time
             time.sleep(0.5)
             mock_exec.assert_called_once_with(sys.executable, [sys.executable] + sys.argv)
+
+    def test_role_mappings_http_endpoints(self):
+        # Unauthenticated mutation rejected
+        self.assertEqual(self.request('POST', '/api/role-mappings', {'defaults': {}})[0], 403)
+
+        # GET role-mappings and effective
+        status, _, body = self.request('GET', '/api/role-mappings')
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertIn('defaults', data)
+
+        status, _, body = self.request('GET', '/api/role-mappings/effective')
+        self.assertEqual(status, 200)
+        eff = json.loads(body)
+        self.assertIn('mapping', eff)
+
+        # POST saving role mappings
+        status, _, body = self.post('/api/role-mappings', {'defaults': {'planner': 'planner-x', 'worker': 'worker-y'}})
+        self.assertEqual(status, 200)
+        saved = json.loads(body)
+        self.assertEqual(saved['defaults']['planner'], 'planner-x')
+
+        # Defensive handling of /api/api/ prefix
+        status, _, body = self.request('GET', '/api/api/role-mappings')
+        self.assertEqual(status, 200)
+        status, _, body = self.post('/api/api/role-mappings', {'defaults': {'planner': 'planner-z', 'worker': 'worker-y'}})
+        self.assertEqual(status, 200)
+        status, _, body = self.request('GET', '/api/api/role-mappings/effective')
+        self.assertEqual(status, 200)
     def test_trash_routes_require_token_preserve_inspection_and_block_execution(self):
         task=self.engine.create_demo();path='/api/tasks/'+task['id']
         self.assertEqual(self.request('POST',path+'/trash',{}, {'Content-Type':'application/json'})[0],403)

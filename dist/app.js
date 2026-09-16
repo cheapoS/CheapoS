@@ -1308,18 +1308,52 @@ function executionPreferences() {
 
 <div id="role-mapping-section">
     <h4>Agent Roles <span id="roles-origin" class="badge"></span></h4>
-    <label class="full-field">Planner<input name="planner" value="${esc(saved.planner||'')}" placeholder="Select planner agent" autocomplete="off"></label>
-    <label class="full-field">Worker<input name="worker" value="${esc(saved.worker||'')}" placeholder="Select worker agent" autocomplete="off"></label>
-    <label class="full-field">Reviewer<input name="reviewer" value="${esc(saved.reviewer||'')}" placeholder="Select reviewer agent" autocomplete="off"></label>
+    <p class="small muted">Select an available agent or enter an ID manually.</p>
+    <label class="full-field">Planner · select from available agents or enter ID manually<input name="planner" list="available-agents-list" value="${esc(saved.planner||'')}" placeholder="Select an available agent or enter ID manually" autocomplete="off"></label>
+    <label class="full-field">Worker · select from available agents or enter ID manually<input name="worker" list="available-agents-list" value="${esc(saved.worker||'')}" placeholder="Select an available agent or enter ID manually" autocomplete="off"></label>
+    <label class="full-field">Reviewer · select from available agents or enter ID manually<input name="reviewer" list="available-agents-list" value="${esc(saved.reviewer||'')}" placeholder="Select an available agent or enter ID manually" autocomplete="off"></label>
+    <datalist id="available-agents-list"></datalist>
     <p id="role-error" class="form-error" role="alert"></p>
 </div>
 
 <p id="execution-remote" class="execution-notice">Uses providers you enabled in the configured gateway. Project context is sent when work is handed off. cheapoS checks up to four free candidates per role without project data. A worker handles chat and edits; a different reviewer is selected at a checkpoint. Failed models cool down; up to two free-model handoffs per request continue saved work automatically. Saved edits wait if review is unavailable. No automatic paid or local fallback.</p>${developmentSettings(saved)}${coordinatorSettings(saved,state.readiness?.paths?.local?.models)}<p class="small muted">Free routing uses advertised prices. Check your gateway’s fallback and billing settings. Automatic chats can switch between free models after failures. Manual and local choices stay fixed. Saving does not start inference or download anything.</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new chats.</span><button class="primary-button" type="submit">Save defaults for new chats</button></div></form>`,'execution-modal');
   const form=$('form',d),layout=()=>{const mode=new FormData(form).get('mode');$('#execution-local',d).hidden=!['local','delegate'].includes(mode);$('#execution-reviewer',d).hidden=mode!=='local';$('#execution-remote',d).hidden=!['remote','delegate'].includes(mode);$('[name="local_model"]',d).required=['local','delegate'].includes(mode)};
   $$('[name="mode"]',d).forEach(input=>input.onchange=layout);layout();
-  (async()=>{const project=state.task?.source;const effective=await api('/api/role-mappings/effective' + (project ? '?project=' + encodeURIComponent(project) : ''));if(d.isConnected){$('[name="planner"]',d).value=effective.mapping?.planner||'';$('[name="worker"]',d).value=effective.mapping?.worker||'';$('[name="reviewer"]',d).value=effective.mapping?.reviewer||'';$('#roles-origin',d).textContent=effective.source==='user'?'User-selected':'Default';}})();
+  (async()=>{
+    const project=state.task?.source;
+    const effective=await api('/role-mappings/effective' + (project ? '?project=' + encodeURIComponent(project) : ''));
+    if(d.isConnected){
+      $('[name="planner"]',d).value=effective.mapping?.planner||'';
+      $('[name="worker"]',d).value=effective.mapping?.worker||'';
+      $('[name="reviewer"]',d).value=effective.mapping?.reviewer||'';
+      $('#roles-origin',d).textContent=effective.source==='user'?'User-selected':'Default';
+    }
+    try{
+      if(!state.gatewayModels?.length){
+        const catalog=await api('/gateway/models');
+        state.gatewayModels=catalog.models||[];
+        state.catalogRevision=catalog.revision;
+      }
+    }catch{}
+    if(d.isConnected){
+      const dl=$('#available-agents-list',d);
+      if(dl){
+        const seen=new Set();
+        const addOpt=(val,lbl)=>{
+          if(!val||seen.has(val))return;
+          seen.add(val);
+          const opt=document.createElement('option');
+          opt.value=val;
+          if(lbl&&lbl!==val)opt.label=lbl;
+          dl.appendChild(opt);
+        };
+        (state.readiness?.paths?.local?.models||[]).forEach(m=>addOpt(m,m+' (local)'));
+        (state.gatewayModels||[]).forEach(m=>addOpt(m.id,m.label||m.name||m.id));
+      }
+    }
+  })();
   $('[data-coordinator-refresh]',d).onclick=async()=>{const status=$('[data-coordinator-status]',d);status.textContent='Checking installed local models…';try{const readiness=await api('/readiness?refresh=1');if(!d.isConnected)return;const models=readiness.paths?.local?.models,select=$('[name="coordinator_model"]',d),selected=select.value;if(!Array.isArray(models)){status.textContent='Local inspection is pending or unavailable. Refresh again later; other work is unaffected.';return;}for(const name of models)if(![...select.options].some(o=>o.value===name))select.add(new Option(name,name));select.value=selected;status.textContent=models.length?'Installed eligible local models refreshed. Saved choice is preserved.':'No eligible local models found. Assistance will be skipped if unavailable.';}catch{if(d.isConnected)status.textContent='Could not check local models. Other work remains usable.';}};
-  form.onsubmit=e=>{e.preventDefault();const f=new FormData(form);const worker=f.get('worker'),planner=f.get('planner'),reviewer=f.get('reviewer');if(worker&&(worker===planner||worker===reviewer)){$('#role-error',d).textContent='Worker cannot be the same as planner or reviewer.';return;}formAction(form,async()=>{const data={execution:{...saved,...Object.fromEntries(['mode','local_model','local_reviewer','local_planner','coordinator_model'].map(k=>[k,String(f.get(k)||'')])),coordinator_assistance:f.get('coordinator_assistance')==='on',development_mode:f.get('development_mode')==='on'}};state.preferences=await api('/preferences',data);if(worker||planner||reviewer){const roles={planner:planner||null,worker:worker||null,reviewer:reviewer||null};const payload={};if(state.task?.source){payload.projects={[state.task.source]:roles};}else{payload.defaults=roles;}await api('/api/role-mappings',payload);}d.close();renderComposer();toast(state.task?'Defaults saved for new chats. This chat keeps its saved coordinator setting.':'Defaults saved for new chats.');})};
+  form.onsubmit=e=>{e.preventDefault();const f=new FormData(form);const worker=f.get('worker'),planner=f.get('planner'),reviewer=f.get('reviewer');if(worker&&(worker===planner||worker===reviewer)){$('#role-error',d).textContent='Worker cannot be the same as planner or reviewer.';return;}formAction(form,async()=>{const data={execution:{...saved,...Object.fromEntries(['mode','local_model','local_reviewer','local_planner','coordinator_model'].map(k=>[k,String(f.get(k)||'')])),coordinator_assistance:f.get('coordinator_assistance')==='on',development_mode:f.get('development_mode')==='on'}};state.preferences=await api('/preferences',data);if(worker||planner||reviewer){const roles={planner:planner||null,worker:worker||null,reviewer:reviewer||null};const payload={};if(state.task?.source){payload.projects={[state.task.source]:roles};}else{payload.defaults=roles;}await api('/role-mappings',payload);}d.close();renderComposer();toast(state.task?'Defaults saved for new chats. This chat keeps its saved coordinator setting.':'Defaults saved for new chats.');})};
 }
 function chatLimits({defaults=false}={}) {
   const task=defaults?null:state.task,limits=workLimits(task,state.preferences.limits);

@@ -34,12 +34,28 @@ def is_continue(message):
 
 
 
+def is_implementation(task):
+    from . import work_policy
+    from .engine import needs_patch_review
+    if work_policy.read_only(task):
+        return False
+    if work_policy.active_implementation(task) or needs_patch_review(task) or work_policy.attempted_edit(task):
+        return True
+    prompt = (task.get('requests') or [task.get('prompt', '')])[-1]
+    if isinstance(prompt, str):
+        prompt_lower = prompt.casefold()
+        action_keywords = {'fix', 'update', 'change', 'add', 'implement', 'create', 'delete', 'remove',
+                           'replace', 'make', 'edit', 'patch', 'build', 'refactor', 'repair', 'resolve',
+                           'write', 'modify', 'adjust', 'correct', 'clean'}
+        if any(re.search(r'\b' + re.escape(w) + r'\b', prompt_lower) for w in action_keywords):
+            return True
+    return False
+
+
 def decide(task, trigger=None):
     if trigger=='repeated_evidence':
-        from . import work_policy
         from .development import enabled
-        from .engine import needs_patch_review
-        implementation=(work_policy.active_implementation(task) or needs_patch_review(task) or work_policy.attempted_edit(task)) and not work_policy.read_only(task)
+        implementation = is_implementation(task)
         return {'kind':'implementation' if implementation else 'investigation',
                 'action':'continue_worker' if enabled(task) else 'act' if implementation else 'answer',
                 'reason':'Use the saved findings to take the next unfinished action; do not repeat unchanged inspection.'}

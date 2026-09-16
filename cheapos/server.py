@@ -102,6 +102,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
         if not self.trusted():
             return
         path = urlsplit(self.path).path
+        while path.startswith("/api/api/"):
+            path = path[4:]
         engine = self.server.engine
         try:
             if path == "/api/bootstrap":
@@ -140,6 +142,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply({identity:{**m.snapshot(), **m.catalog()} for identity,m in engine.connections.managers.items()})
             elif path == "/api/gateway/models":
                 self.reply(engine.gateway.catalog())
+            elif path == "/api/role-mappings":
+                self.reply(engine.role_mappings())
+            elif path == "/api/role-mappings/effective":
+                query_params = parse_qs(urlsplit(self.path).query)
+                project = query_params.get("project", [None])[0]
+                self.reply(engine.effective_role_mapping(project))
             elif path == "/api/tasks":
                 self.reply(engine.store.visible(parse_qs(urlsplit(self.path).query).get("view", ["active"])[0]))
             elif path.startswith("/api/tasks/"):
@@ -192,6 +200,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 raise ValueError("Expected a JSON object")
             engine = self.server.engine
             path = urlsplit(self.path).path
+            while path.startswith("/api/api/"):
+                path = path[4:]
             if path == "/api/restart":
                 self.trusted(mutation=True)
                 self.server.engine.shutdown()
@@ -202,10 +212,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     os.execv(sys.executable, [sys.executable] + sys.argv)
                 threading.Thread(target=restart_backend, daemon=True).start()
             elif path == "/api/role-mappings":
-                if self.command == "POST":
-                    result = engine.save_role_mappings(values)
-                else:
-                    result = engine.role_mappings()
+                result = engine.save_role_mappings(values)
             elif path == "/api/role-mappings/effective":
                 query_params = parse_qs(urlsplit(self.path).query)
                 project = query_params.get("project", [None])[0]

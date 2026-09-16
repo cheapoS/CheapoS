@@ -5,7 +5,7 @@ from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 
-from cheapos.engine import Engine, ToolArgumentsError
+from cheapos.engine import Engine, ToolArgumentsError, extract_fallback_tool_calls, strip_leaked_actions
 from cheapos.providers import ChatProvider, ProviderError
 from test_engine import LocalCase, call
 from test_streaming import chunk
@@ -132,3 +132,44 @@ class ToolArgumentTests(LocalCase):
             with self.subTest(call=c),self.assertRaises(ProviderError) as caught:
                 Engine.parse_call(c)
             self.assertEqual(caught.exception.code,'invalid_tool_envelope')
+
+    def test_extract_fallback_tool_calls_xml_and_json(self):
+        # Dots format
+        dots_xml = ('<dots_function_call>\n'
+                    '<invoke name="read_file">\n'
+                    '<parameter name="path">cheapos/role_mappings.py</parameter>\n'
+                    '</invoke>\n'
+                    '</dots_function_call>')
+        calls, cleaned = extract_fallback_tool_calls(dots_xml, {'read_file', 'write_file'})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]['function']['name'], 'read_file')
+        self.assertEqual(json.loads(calls[0]['function']['arguments']), {'path': 'cheapos/role_mappings.py'})
+        self.assertIsNone(cleaned)
+
+        # XML with surrounding text
+        text_with_invoke = ('I will inspect this file.\n'
+                            '<invoke name="read_file">\n'
+                            '<parameter name="path">foo.py</parameter>\n'
+                            '</invoke>')
+        calls, cleaned = extract_fallback_tool_calls(text_with_invoke, {'read_file'})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]['function']['name'], 'read_file')
+        self.assertEqual(cleaned, 'I will inspect this file.')
+
+        # Tool call JSON tag
+        tool_call_tag = '<tool_call>{"name": "read_file", "arguments": {"path": "bar.py"}}</tool_call>'
+        calls, cleaned = extract_fallback_tool_calls(tool_call_tag, {'read_file'})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]['function']['name'], 'read_file')
+        self.assertEqual(json.loads(calls[0]['function']['arguments']), {'path': 'bar.py'})
+
+        # Unoffered tool is not extracted
+        calls, cleaned = extract_fallback_tool_calls(dots_xml, {'other_tool'})
+        self.assertEqual(calls, [])
+
+    def test_strip_leaked_actions_xml_and_json(self):
+        dots_xml = ('Some explanation.\n<dots_function_call>\n<invoke name="read_file">\n'
+                    '<parameter name="path">test.py</parameter>\n</invoke>\n</dots_function_call>')
+        self.assertEqual(strip_leaked_actions(dots_xml), 'Some explanation.')
+        json_call = '```json\n{"action": "read_file", "path": "test.py"}\n```'
+        self.assertEqual(strip_leaked_actions(json_call), '')
