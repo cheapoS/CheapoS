@@ -154,6 +154,16 @@ Task data defaults to `.cheapos/` beside the launcher. When asking CheapoS to wo
 | **OpenRouter and other remote providers** | Configure providers in OmniRoute, then choose their gateway model IDs in cheapoS. Direct remote connections are disabled during development. | [Companion setup](docs/USER_GUIDE.md#omniroute-companion) |
 | **Ollama** | Installed tool-capable models running on your own hardware; use directly or through OmniRoute. | [Local setup](docs/USER_GUIDE.md#local-setup-and-sample-tasks) |
 
+### Recommended starter setup
+
+Use **OmniRoute as your remote gateway**, with several connected providers so cheapoS has alternatives when a route is unavailable or cooling down. The setup below includes **OpenRouter, OpenCode Free, Groq, NVIDIA NIM, Antigravity, and Kiro AI**. Connect the providers you have access to; you do not need every provider pictured to get started. Aim for two available, tool-capable models for the worker and independent reviewer, preferably across different providers.
+
+![OmniRoute provider topology connecting OpenRouter, OpenCode Free, Groq, NVIDIA NIM, Antigravity, and Kiro AI.](docs/assets/recommended-starter-setup.png)
+
+*A live OmniRoute session. The red Kiro AI indicator shows a provider error at the time of capture.*
+
+[Connect OmniRoute and choose your models →](docs/USER_GUIDE.md#omniroute-companion)
+
 **Recommended for OpenRouter free-model use:** buy at least **$10 in OpenRouter credits** to raise the free-model allowance from **50 to 1,000 requests per day**. You **do not need to spend those credits** on inference to qualify. This optional purchase also helps when accessing OpenRouter through OmniRoute. [OpenRouter's policy](https://openrouter.ai/docs/faq) · [Setup details](docs/USER_GUIDE.md#openrouter-free-request-allowance)
 
 Protect that balance with a **dedicated OpenRouter key for OmniRoute**, an explicit provider-side spending cap, and free-only model choices. A positive key cap permits spending up to that allowance; it does not make a paid route free. [Protect your credits](docs/USER_GUIDE.md#protect-the-credits-you-keep)
