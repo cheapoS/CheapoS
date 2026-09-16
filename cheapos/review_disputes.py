@@ -90,4 +90,4 @@ def resolved(task,item,candidate):
 
 
 def brief(repair):
-    return {k:copy.deepcopy(repair[k]) for k in ('candidate_id','requirement_refs','defects','checks','repair_instruction','dispositions','finding_ids','prior_counterevidence') if k in repair}
+    return {k:copy.deepcopy(repair[k]) for k in ('candidate_id','requirement_refs','defects','repair_instruction','dispositions','finding_ids','prior_counterevidence') if k in repair}

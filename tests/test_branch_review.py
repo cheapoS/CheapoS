@@ -189,3 +189,37 @@ class BranchReviewTests(LocalCase):
                 checkpoint(self.engine, Runtime(task), {})
         finally:
             branch_evidence.review_packet = orig_review_packet
+
+    def test_final_review_repair_packet_uses_item_patch_and_omits_duplicate_checks(self):
+        task = self.task()
+        run = task['branch_run']
+        cmd_str = shlex.join(task['check_command'])
+        item = run['items'][0]
+        item['review_repair'] = {
+            'manifest_id': 'manifest-abc',
+            'candidate_id': 'prev-candidate',
+            'source_patch': 'diff --git a/big.py b/big.py\n+big diff\n' * 500,
+            'checks': [{'command': cmd_str, 'stdout': 'very verbose output ' * 500}],
+            'defects': []
+        }
+        inspected_packet = {}
+        def review(runtime, messages, tools, role):
+            nonlocal inspected_packet
+            inspected_packet = json.loads(messages[1]['content'])
+            return call('review_decision', {
+                'decision': 'APPROVE',
+                'feedback': 'ok',
+                'candidate_id': inspected_packet['candidate_id'],
+                'criteria_outcomes': {'Both bounds work': {'passed': True, 'evidence': 'Passed'}}
+            })
+        self.engine.request = Mock(side_effect=review)
+        result = checkpoint(self.engine, Runtime(task), {})
+        self.assertEqual(result['decision'], 'APPROVE')
+
+        # 1. repair_diff_since_claim must be current patch, not the 500-line source_patch diff
+        self.assertNotIn('big diff', inspected_packet['repair_diff_since_claim'])
+        self.assertEqual(inspected_packet['repair_diff_since_claim'], inspected_packet['diff'])
+
+        # 2. repair_review must not duplicate checks
+        self.assertNotIn('checks', inspected_packet['repair_review'])
+        self.assertIn('checks', inspected_packet)
