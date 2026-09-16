@@ -233,7 +233,7 @@ def run_single_task(client, repo_dir, task, limits=None):
             prev = client.post(f"/api/tasks/{task_id}/branch-final-preview", {})
             break
         except Exception as e:
-            if "Pause active work" in str(e) and attempt < 11:
+            if "Pause" in str(e) and attempt < 11:
                 time.sleep(1.0)
                 continue
             raise

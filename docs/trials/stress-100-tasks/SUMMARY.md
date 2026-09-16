@@ -8,16 +8,16 @@
 
 | ID | Title | Category | Status | Turns | Duration (s) | Cost |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: |
-| ST-001 | URL Slug Generator | Text Processing | MERGED | 5 | 124.24 | $0.0000 |
-| ST-002 | Semantic Version Comparator | Text Processing | MERGED | 6 | 109.43 | $0.0000 |
-| ST-003 | Markdown Inline Formatter | Text Processing | MERGED | 5 | 102.62 | $0.0000 |
-| ST-004 | Nested Template String Interpolator | Text Processing | MERGED | 5 | 108.75 | $0.0000 |
-| ST-005 | Identifier Case Converter | Text Processing | MERGED | 6 | 108.79 | $0.0000 |
-| ST-006 | Word Wrap Text Column Formatter | Text Processing | MERGED | 11 | 198.25 | $0.0000 |
-| ST-007 | Smart Text Truncator | Text Processing | MERGED | 15 | 289.98 | $0.0000 |
-| ST-008 | Levenshtein String Similarity | Text Processing | MERGED | 4 | 178.37 | $0.0000 |
-| ST-009 | ANSI Color Code Cleaner | Text Processing | MERGED | 4 | 166.16 | $0.0000 |
-| ST-010 | Query String Parser & Formatter | Text Processing | MERGED | 4 | 173.27 | $0.0000 |
+| ST-001 | URL Slug Generator | Text Processing | MERGED | 8 | 525.14 | $0.0000 |
+| ST-002 | Semantic Version Comparator | Text Processing | MERGED | 10 | 308.84 | $0.0000 |
+| ST-003 | Markdown Inline Formatter | Text Processing | MERGED | 5 | 381.23 | $0.0000 |
+| ST-004 | Nested Template String Interpolator | Text Processing | MERGED | 5 | 277.75 | $0.0000 |
+| ST-005 | Identifier Case Converter | Text Processing | MERGED | 4 | 158.96 | $0.0000 |
+| ST-006 | Word Wrap Text Column Formatter | Text Processing | MERGED | 4 | 389.87 | $0.0000 |
+| ST-007 | Smart Text Truncator | Text Processing | MERGED | 11 | 216.9 | $0.0000 |
+| ST-008 | Levenshtein String Similarity | Text Processing | MERGED | 5 | 110.96 | $0.0000 |
+| ST-009 | ANSI Color Code Cleaner | Text Processing | MERGED | 4 | 114.41 | $0.0000 |
+| ST-010 | Query String Parser & Formatter | Text Processing | MERGED | 4 | 157.77 | $0.0000 |
 | ST-011 | Capacity-Limited LRU Cache | Data Structures | MERGED | 5 | 169.17 | $0.0000 |
 | ST-012 | Priority Queue with FIFO Tie-Breaking | Data Structures | MERGED | 4 | 180.5 | $0.0000 |
 | ST-013 | Deep Dictionary Merger | Data Structures | MERGED | 5 | 199.63 | $0.0000 |

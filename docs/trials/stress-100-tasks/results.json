@@ -4,13 +4,13 @@
     "title": "URL Slug Generator",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 124.24,
-    "turns": 5,
+    "duration": 525.14,
+    "turns": 8,
     "cost": 0.0,
     "tokens": {
-      "worker": 24213,
-      "reviewer": 33407,
-      "planner": 4217
+      "worker": 59884,
+      "reviewer": 122190,
+      "planner": 29622
     }
   },
   {
@@ -18,13 +18,13 @@
     "title": "Semantic Version Comparator",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 109.43,
-    "turns": 6,
+    "duration": 308.84,
+    "turns": 10,
     "cost": 0.0,
     "tokens": {
-      "worker": 32042,
-      "reviewer": 35847,
-      "planner": 4536
+      "worker": 193323,
+      "reviewer": 71640,
+      "planner": 35444
     }
   },
   {
@@ -32,13 +32,13 @@
     "title": "Markdown Inline Formatter",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 102.62,
+    "duration": 381.23,
     "turns": 5,
     "cost": 0.0,
     "tokens": {
-      "worker": 19659,
-      "reviewer": 32692,
-      "planner": 4273
+      "worker": 30090,
+      "reviewer": 108361,
+      "planner": 14319
     }
   },
   {
@@ -46,13 +46,13 @@
     "title": "Nested Template String Interpolator",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 108.75,
+    "duration": 277.75,
     "turns": 5,
     "cost": 0.0,
     "tokens": {
-      "worker": 22554,
-      "reviewer": 38465,
-      "planner": 4245
+      "worker": 26377,
+      "reviewer": 59435,
+      "planner": 12497
     }
   },
   {
@@ -60,13 +60,13 @@
     "title": "Identifier Case Converter",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 108.79,
-    "turns": 6,
+    "duration": 158.96,
+    "turns": 4,
     "cost": 0.0,
     "tokens": {
-      "worker": 26990,
-      "reviewer": 25271,
-      "planner": 4380
+      "worker": 22807,
+      "reviewer": 41885,
+      "planner": 13750
     }
   },
   {
@@ -74,13 +74,13 @@
     "title": "Word Wrap Text Column Formatter",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 198.25,
-    "turns": 11,
+    "duration": 389.87,
+    "turns": 4,
     "cost": 0.0,
     "tokens": {
-      "worker": 79508,
-      "reviewer": 28028,
-      "planner": 4310
+      "worker": 21976,
+      "reviewer": 176373,
+      "planner": 22983
     }
   },
   {
@@ -88,13 +88,13 @@
     "title": "Smart Text Truncator",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 289.98,
-    "turns": 15,
+    "duration": 216.9,
+    "turns": 11,
     "cost": 0.0,
     "tokens": {
-      "worker": 155693,
-      "reviewer": 66271,
-      "planner": 4480
+      "worker": 127939,
+      "reviewer": 69540,
+      "planner": 4859
     }
   },
   {
@@ -102,13 +102,13 @@
     "title": "Levenshtein String Similarity",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 178.37,
-    "turns": 4,
+    "duration": 110.96,
+    "turns": 5,
     "cost": 0.0,
     "tokens": {
-      "worker": 19195,
-      "reviewer": 51550,
-      "planner": 4451
+      "worker": 32311,
+      "reviewer": 24983,
+      "planner": 5079
     }
   },
   {
@@ -116,13 +116,13 @@
     "title": "ANSI Color Code Cleaner",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 166.16,
+    "duration": 114.41,
     "turns": 4,
     "cost": 0.0,
     "tokens": {
-      "worker": 15884,
-      "reviewer": 33393,
-      "planner": 4432
+      "worker": 22319,
+      "reviewer": 34996,
+      "planner": 4982
     }
   },
   {
@@ -130,13 +130,13 @@
     "title": "Query String Parser & Formatter",
     "category": "Text Processing",
     "status": "MERGED",
-    "duration": 173.27,
+    "duration": 157.77,
     "turns": 4,
     "cost": 0.0,
     "tokens": {
-      "worker": 18247,
-      "reviewer": 37172,
-      "planner": 4590
+      "worker": 25877,
+      "reviewer": 31766,
+      "planner": 14285
     }
   },
   {
