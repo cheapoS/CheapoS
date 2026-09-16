@@ -19,7 +19,7 @@ class BranchRecoveryTests(unittest.TestCase):
 
     def started(self):
         proposal = self.engine.branch.prepare(self.values)
-        return self.engine.branch.authorize(proposal['task_id'], {'proposal_id': proposal['proposal_id'], 'approved': True})
+        return self.engine.branch.authorize(proposal['task_id'], {'proposal_id': proposal['proposal_id'], 'approved': True, 'full_suite_approved': True})
 
     def restart(self):
         restarted = Engine(self.root / 'state', fixture_delay=0)

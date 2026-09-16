@@ -47,3 +47,42 @@ class PlanningRecoveryTests(unittest.TestCase):
         self.assertEqual(selected.call_count,1);self.assertEqual(task['usage']['cost'],4)
         self.assertEqual(requests[0][:2],requests[-1][:2]);self.assertNotIn('routing_ready',str(requests[-1]))
         self.assertIn('bad',runtime.failed_models)
+
+    def test_resume_interrupted_planning_task_restarts_planner(self):
+        from cheapos.branch_controller import BranchController
+        from cheapos import branch_runs
+        plan = {'items': [{'id': 'planning', 'title': 'Prepare proposal', 'instructions': 'Plan work', 'acceptance_criteria': ['Plan ready']}], 'limits': {'dollars': 1}}
+        run = branch_runs.new_run(plan, original_request='test')
+        run['status'] = 'running'
+        task = {'id': 't1', 'planning_request': {'prompt': 'test'}, 'branch_run': run, 'limits': {'dollars': 1}}
+        branch_runs.recover_restart(run)
+        self.assertEqual(run['status'], 'paused')
+        self.assertEqual(run['pause_detail']['stage'], 'planning')
+
+        engine = SimpleNamespace(
+            lock=threading.RLock(), runtimes={}, require_active_task=Mock(),
+            store=SimpleNamespace(get=lambda _: copy.deepcopy(task), save=Mock()),
+            admission=SimpleNamespace(require=Mock()),
+            gateway=SimpleNamespace(pool=SimpleNamespace())
+        )
+        controller = object.__new__(BranchController)
+        controller.engine = engine
+        controller.plan = Mock(return_value={'task_id': 't1'})
+        controller.proposals = SimpleNamespace(lock=threading.RLock(), proposals={})
+
+        result = BranchController.resume(controller, 't1', {})
+        self.assertFalse(result.get('needs_consent'))
+        self.assertEqual(controller.plan.call_count, 1)
+        self.assertEqual(controller.plan.call_args.kwargs['planning_task']['id'], 't1')
+
+    def test_contract_safe_when_authorization_workspace_missing(self):
+        from cheapos.branch_controller import BranchController
+        from cheapos import branch_runs
+        plan = {'items': [{'id': 'planning', 'title': 'Prepare proposal', 'instructions': 'Plan work', 'acceptance_criteria': ['Plan ready']}], 'limits': {'dollars': 1}}
+        run = branch_runs.new_run(plan, original_request='test')
+        task = {'id': 't2', 'branch_run': run}
+        controller = object.__new__(BranchController)
+        controller.model_policy = Mock(return_value={'worker': 'auto'})
+        contract = BranchController.contract(controller, task)
+        self.assertIsNotNone(contract)
+        self.assertEqual(contract['workspace_proposal'], {})

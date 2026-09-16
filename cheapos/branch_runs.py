@@ -276,6 +276,7 @@ def recover_restart(run, now=None):
         old = run['status']
         run['status'] = 'paused'
         run['pause_reason'] = 'restart'
-        run['pause_detail']=branch_pause.public({'version':1,'cause':'restart','stage':old,'item_id':run.get('current_item_id')})
+        stage = 'planning' if not run.get('authorization_workspace') and not run.get('authorization') else old
+        run['pause_detail'] = branch_pause.public({'version':1, 'cause':'restart', 'stage':stage, 'item_id':run.get('current_item_id')})
         append_event(run, 'run_transition', {'from': old, 'to': 'paused', 'reason': 'restart'}, now=now)
     return run

@@ -205,7 +205,8 @@ class BranchController:
             validate_current(policy.get('gateway_access'), effective_settings(task,self.engine.gateway.settings))
         if 'gateway_access' not in run.get('model_policy', {}): policy.pop('gateway_access', None)
         policy = policy_for_saved(policy, run.get('model_policy', {}))
-        return contract_builder(authorization_run(run),run['authorization_workspace'],policy,run['check_scope'])
+        workspace = run['authorization_workspace'] if run.get('authorization_workspace') is not None else (run.get('workspace_mapping') or {})
+        return contract_builder(authorization_run(run), workspace, policy, run.get('check_scope', []))
 
     def authorize(self, task_id, values):
         with self.engine.lock:
@@ -670,10 +671,17 @@ class BranchController:
             self.engine.store.save(task)
             from .model_pool import observe_completions
             observe_completions(self.engine.gateway.pool,task)
-            while run['pending_operations']:
+            if task.get('planning_request') and not run.get('authorization_ref') and not run.get('authorization_workspace'):
+                import uuid
+                with self.proposals.lock:
+                    self.proposals.proposals = {key:p for key,p in self.proposals.proposals.items() if p['task_id'] != task_id}
+                self.plan({**task['planning_request'], 'planning_id': uuid.uuid4().hex}, background=True, planning_task=task)
+                return {'needs_consent': False, 'task': self.engine.store.get(task_id)}
+            while run.get('pending_operations'):
                 item=next(i for i in run['items'] if i['id']==run['pending_operations'][0]['item_id'])
                 self.commit_item(Runtime(task),item)
-            self.validate_authority(task,run)
+            if run.get('authorization'):
+                self.validate_authority(task,run)
             if run['workspace_mapping']['stage']=='ready':work.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
             if run.get('merge_operation'):
                 op=run['merge_operation']
