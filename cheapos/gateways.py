@@ -39,7 +39,7 @@ def normalize_models(data, openrouter=False, infer_access=True):
         input_rate = rate("input", "prompt")
         output_rate = rate("output", "completion")
         provider_name = str(item.get("owned_by") or "")[:100]
-        free_providers = {"antigravity", "kiro", "opencode", "oc", "nvidia"}
+        free_providers = {"antigravity", "kiro", "opencode", "oc", "nvidia", "groq"}
         provider_prefix = model_id.split("/")[0] if "/" in model_id else ""
         is_free_account = infer_access and (provider_name in free_providers or provider_prefix in free_providers)
         is_free_auto = model_id.startswith("auto/") and (":free" in model_id or "-free" in model_id)
