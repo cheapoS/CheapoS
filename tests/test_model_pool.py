@@ -20,6 +20,38 @@ from test_routing import model
 
 
 class PoolTests(unittest.TestCase):
+    def test_repeated_cooldown_backoff_survives_probe_and_resets_on_actual_response(self):
+        with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time',return_value=1000) as clock:
+            pool=FreeModelPool(directory);url='http://localhost:20128/v1';model='openrouter/a'
+            error=ProviderError('limited',code='gateway_cooldown',scope='model',retry_after=24)
+            pool.record(url,model,'planner',error=error)
+            pool.record(url,model,'planner',probe=True)
+            self.assertTrue(pool.observation(url,model)['cooling_down'])
+            clock.return_value=1025
+            pool.record(url,model,'planner',probe=True)
+            pool=FreeModelPool(directory)
+            pool.record(url,model,'planner',error=error)
+            health=pool.observation(url,model)
+            self.assertEqual(health['retry_at'],1073)
+            self.assertEqual(health['cooldown_failures'],2)
+            self.assertEqual(health.get('failures',0),0)
+            self.assertFalse(pool.observation(url,'openrouter/b')['cooling_down'])
+            clock.return_value=1074
+            pool.record(url,model,'planner',seconds=1)
+            pool.record(url,model,'planner',error=error)
+            self.assertEqual(pool.observation(url,model)['retry_at'],1098)
+
+    def test_cooldown_backoff_is_bounded_and_never_shortens_upstream_delay(self):
+        with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time',return_value=1000):
+            pool=FreeModelPool(directory);url='http://localhost/v1'
+            for _ in range(10):pool.record(url,'openrouter/a','worker',error=ProviderError('',code='gateway_cooldown',scope='provider'))
+            self.assertEqual(pool.observation(url,'openrouter/b')['retry_at'],1900)
+            self.assertFalse(pool.observation(url,'groq/a')['cooling_down'])
+            pool.record(url,'openrouter/a','worker',error=ProviderError('',code='gateway_cooldown',scope='provider',retry_after=3600))
+            self.assertEqual(pool.observation(url,'openrouter/b')['retry_at'],4600)
+            pool.record(url,'openrouter/a','worker',error=ProviderError('',code='gateway_cooldown',scope='provider',retry_after=24))
+            self.assertEqual(pool.observation(url,'openrouter/b')['retry_at'],4600)
+
     def test_provider_cooldown_is_shared_persisted_and_does_not_poison_model_health(self):
         with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time', return_value=1000):
             pool=FreeModelPool(directory);endpoint='http://localhost:20128/v1'

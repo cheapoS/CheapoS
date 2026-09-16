@@ -14,6 +14,46 @@ from cheapos.providers import guard_inference_route, ChatProvider
 
 
 class TransportTests(unittest.TestCase):
+    def test_request_metrics_separate_pacing_from_gateway_time_on_success_and_failure(self):
+        from urllib.error import HTTPError
+        from cheapos.gateways import OmniRouteGateway
+        from cheapos.request_pacer import RequestPacer
+        for failed in (False, True):
+            with self.subTest(failed=failed):
+                engine, runtime, _ = self.harness()
+                config = runtime.task['providers']['worker']
+                config.update(model='openrouter/example', gateway='omniroute', pacing_interval=5)
+                provider = OmniRouteGateway(config)
+                self.assertEqual(provider.request_timing, {})
+                engine.provider_factory = lambda *args: provider
+                pacer = RequestPacer()
+                pacer._last_completed['openrouter'] = 100
+                clock = [100.0]
+                def advance(seconds): clock[0] += seconds
+                def respond(*args, **kwargs):
+                    advance(40)
+                    if failed:
+                        raise HTTPError(config['base_url'], 429, 'limited', {'Retry-After': '24'},
+                                        io.BytesIO(b'{"error":{"message":"rate limited"}}'))
+                    return io.BytesIO(json.dumps({'choices': [{'message': {'role': 'assistant', 'content': 'done'}}],
+                                                'usage': {'prompt_tokens': 2, 'completion_tokens': 3}}).encode())
+                with patch('cheapos.providers.pacer', pacer), \
+                        patch('cheapos.providers.time.monotonic', side_effect=lambda: clock[0]), \
+                        patch('cheapos.request_pacer.time.sleep', side_effect=advance), \
+                        patch('cheapos.providers.build_opener') as opener:
+                    opener.return_value.open.side_effect = respond
+                    if failed:
+                        with self.assertRaises(ProviderError):
+                            engine._request_attempt(runtime, [], [], 'worker', transport_override='json')
+                    else:
+                        engine._request_attempt(runtime, [], [], 'worker', transport_override='json')
+                    opener.return_value.open.assert_called_once()
+                record = runtime.task['request_metrics'][-1]
+                self.assertEqual(record['status'], 'failed' if failed else 'responded')
+                self.assertEqual(record['pacing_seconds'], 5)
+                self.assertEqual(record['gateway_request_seconds'], 40)
+                self.assertEqual(record['seconds'], 45)
+
     def test_provider_failover_does_not_spend_quality_handoffs_or_replay_work(self):
         engine,runtime,calls=self.harness();task=runtime.task;cfg=task['providers']['worker']
         task.update(execution={'mode':'remote'}, route={'ready':True,'recovery':{

@@ -132,7 +132,13 @@ class FreeModelPool:
             record["updated_at"] = time.time()
             if failure: record['failure'] = failure
             if cooldown:
-                record.update(retry_at=time.time() + min(86400, max(1, getattr(error,'retry_after',None) or 120)),
+                # A tiny tool probe can succeed while the real payload still
+                # exceeds quota. Keep the streak until actual work responds.
+                failures = record.get('cooldown_failures', 0) + 1
+                base = min(86400, max(1, getattr(error, 'retry_after', None) or 120))
+                delay = max(base, min(900, base * 2 ** min(failures - 1, 6)))
+                record.update(cooldown_failures=failures, cooldown_delay_seconds=delay,
+                              retry_at=max(record.get('retry_at', 0), time.time() + delay),
                               cooldown_scope=scope, retry_known=getattr(error,'retry_after',None) is not None, last_error=failure['action'])
             elif error is not None:
                 record.pop("cooldown_scope", None)
@@ -150,11 +156,12 @@ class FreeModelPool:
                 record.update(retry_at=time.time() + delay, last_error=failure['action'], retry_known=False)
                 if scope in {'connection', 'account'}: record['cooldown_scope'] = scope
             else:
-                record.update(retry_at=0, last_error="")
-                record.pop('failure', None)
+                if not probe or not record.get('cooldown_scope') or record.get('retry_at', 0) <= time.time():
+                    record.update(retry_at=0, last_error="")
+                    record.pop('failure', None)
+                    record.pop("cooldown_scope", None)
+                    record.pop("retry_known", None)
                 record.pop('probe_rejected', None)
-                record.pop("cooldown_scope", None)
-                record.pop("retry_known", None)
                 if probe:
                     record['probe_contract_version'] = route_health.PROBE_VERSION
                     record['probe_identity'] = probe_identity
@@ -163,6 +170,13 @@ class FreeModelPool:
                     record['tool_check_at'] = time.time()
                     if connection_revision is not None: record['tool_connection_revision'] = connection_revision
                 else:
+                    record.pop('cooldown_failures', None)
+                    record.pop('cooldown_delay_seconds', None)
+                    for shared in (self.provider_key(model), '\0connection'):
+                        shared_record = self.records.get(self.key(endpoint, shared, connection_revision), {})
+                        if shared_record.get('retry_at', 0) <= time.time():
+                            shared_record.pop('cooldown_failures', None)
+                            shared_record.pop('cooldown_delay_seconds', None)
                     record["failures"] = 0
                     record['request_observed_at'] = time.time()
                     record['request_source'] = 'actual_request'

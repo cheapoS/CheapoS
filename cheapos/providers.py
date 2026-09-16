@@ -224,6 +224,7 @@ class ChatProvider:
     def __init__(self, config, key=""):
         self.config = config
         self.key = key
+        self.request_timing = {}
 
     def complete(self, messages, tools, max_tokens, tool_choice=None):
         return self._complete(messages, tools, max_tokens, tool_choice=tool_choice)
@@ -268,7 +269,8 @@ class ChatProvider:
         gateway_name = gateway_identity(self.config)
         payload_bytes = len(request.data) if request.data else 0
         interval = pacing_interval(self.config, provider_name, payload_bytes=payload_bytes)
-        with pacer.throttle(provider_name, interval, gateway=gateway_name, stopped=stopped):
+        with pacer.throttle(provider_name, interval, gateway=gateway_name, stopped=stopped, timing=self.request_timing):
+            network_started = time.monotonic()
             try:
                 with build_opener(NoRedirects(), ProxyHandler({})).open(request, timeout=timeout_seconds) as response, (BriefResponseGuard(response, stopped, stream_seconds if emit is not None else timeout_seconds) if brief or self.config.get("_operator_interruptible") else nullcontext()):
                     if emit is not None and response.headers.get_content_type() == "text/event-stream":
@@ -294,6 +296,8 @@ class ChatProvider:
                 raise ProviderError("The model connection failed before a complete response arrived. Uncertain usage remains counted.", code="model_connection") from None
             except (ValueError, KeyError, TypeError, AttributeError):
                 raise ProviderError("Provider returned an invalid response structure. No tool calls from this response were executed.", code="invalid_response_shape") from None
+            finally:
+                self.request_timing['gateway_request_seconds'] = time.monotonic() - network_started
         try:
             choice = data["choices"][0]
             if not isinstance(choice, dict):

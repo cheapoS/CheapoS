@@ -6,6 +6,13 @@ Cost provenance distinguishes provider reports, configured estimates and retaine
 
 Run elapsed time is measured while the controller is active. Provider-request time includes generation and network latency, cooldown time measures explicit waits, and operator time measures in-run test-approval waits. Controller work is the remainder. Time between stopped runs or awaiting a final human commit is not included. Incomplete run timing stays unknown. Cancellation is distinct from model failure. Reviewer approval and operator-accepted commits are separate outcomes; a later failed request does not inherit earlier human acceptance.
 
+New HTTP request records additionally separate `pacing_seconds` (local provider
+slot and quiet-interval waits) from `gateway_request_seconds` (network dispatch
+through response consumption, including retries hidden inside a gateway). These
+are components of the existing `seconds` total, not extra time to add to it.
+Both survive HTTP failures; a cancelled queue has no gateway duration. Missing
+historical values remain unknown. See [provider pacing](provider-pacing.md).
+
 Export an explicitly selected local store:
 
 ```sh

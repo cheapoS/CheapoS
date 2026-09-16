@@ -3,8 +3,8 @@
 Enforces minimum quiet intervals between consecutive requests to the same
 provider and serializes concurrent calls to single-concurrency free tiers
 (e.g. OpenRouter :free, NVIDIA NIM, OpenCode/Ling, Groq, Antigravity) to
-prevent HTTP 429 rate limit errors, HTTP 500/503 upstream crashes, and token
-burst rejections.
+reduce bursts. Pacing cannot guarantee quota availability or control retries
+performed inside a gateway.
 """
 
 import os
@@ -13,8 +13,7 @@ import time
 from contextlib import contextmanager
 from urllib.parse import urlsplit
 
-# Minimum quiet intervals (seconds) required between completions for known free providers.
-# These delays prevent triggering Tokens-Per-Minute (TPM) caps and strict 1-concurrency limits.
+# Local quiet-interval defaults, not advertised provider quota guarantees.
 PROVIDER_PACING_SECONDS = {
     "openrouter": 5.0,     # OpenRouter :free tier: smooth 12 RPM, avoids burst rate/TPM limit
     "nvidia": 4.0,         # NVIDIA NIM: concurrency=1, token recovery, avoids 500 crashes
@@ -25,7 +24,7 @@ PROVIDER_PACING_SECONDS = {
     "groq": 2.0,           # Groq: high throughput
     "kiro": 3.0,           # Kiro endpoint pacing
     "openai": 4.0,         # OpenAI free/shared tier pacing
-    "omniroute": 4.0,      # OmniRoute gateway shared pacing
+    "omniroute": 4.0,      # Fallback for an explicitly unidentified upstream
 }
 
 DEFAULT_FREE_PACING_SECONDS = 3.0
@@ -79,7 +78,7 @@ def provider_identity(config):
 
 
 def gateway_identity(config):
-    """Determine gateway identifier (e.g. omniroute) for cross-model rate limiting."""
+    """Determine proxy identity; upstream providers own their pacing slots."""
     if not isinstance(config, dict):
         return None
     gw = config.get("gateway")
@@ -153,21 +152,28 @@ class RequestPacer:
             return self._provider_locks[provider]
 
     @contextmanager
-    def throttle(self, provider, min_interval, gateway=None, stopped=None):
-        """Serialize calls to the provider and enforce quiet cooldown between calls."""
+    def throttle(self, provider, min_interval, gateway=None, stopped=None, timing=None):
+        """Pace upstream providers independently, even behind the same gateway.
+
+        ``gateway`` is retained for callers; a proxy is not a shared upstream
+        quota. Calls to the same provider remain serialized across models.
+        """
+        started = time.monotonic()
         if min_interval <= 0:
+            if stopped and stopped():
+                raise InterruptedError("Task stopped before provider dispatch")
+            if timing is not None: timing['pacing_seconds'] = 0.0
             yield
             return
 
         targets = [provider]
-        if gateway:
-            gw_target = f"gateway:{gateway}"
-            if gw_target not in targets:
-                targets.append(gw_target)
 
         acquired = []
+        dispatched = False
         try:
             for target in sorted(targets):
+                if stopped and stopped():
+                    raise InterruptedError(f"Task stopped while waiting for {target} provider slot")
                 lock = self._get_provider_lock(target)
                 if not lock.acquire(blocking=False):
                     while not lock.acquire(timeout=0.05):
@@ -199,12 +205,18 @@ class RequestPacer:
                     self._stats["delays_count"][provider] = self._stats["delays_count"].get(provider, 0) + 1
                     self._stats["total_delayed_seconds"][provider] = self._stats["total_delayed_seconds"].get(provider, 0.0) + delayed_duration
 
+            if stopped and stopped():
+                raise InterruptedError("Task stopped before provider dispatch")
+            if timing is not None: timing['pacing_seconds'] = time.monotonic() - started
+            dispatched = True
             yield
         finally:
             now = time.monotonic()
-            with self._lock:
-                for target in targets:
-                    self._last_completed[target] = now
+            if not dispatched and timing is not None: timing['pacing_seconds'] = now - started
+            if dispatched:
+                with self._lock:
+                    for target in targets:
+                        self._last_completed[target] = now
             for lock in reversed(acquired):
                 lock.release()
 

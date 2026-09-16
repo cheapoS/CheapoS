@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import unittest
+from unittest.mock import Mock, patch
 
 from cheapos.request_pacer import (
     RequestPacer,
@@ -110,21 +111,41 @@ class TestRequestPacer(unittest.TestCase):
         duration = time.monotonic() - start
         self.assertLess(duration, 0.05)
 
-    def test_gateway_throttles_different_models_under_same_gateway(self):
+    def test_gateway_does_not_share_upstream_cooldowns(self):
         from cheapos.request_pacer import gateway_identity
         self.assertEqual(gateway_identity({"gateway": "omniroute"}), "omniroute")
         self.assertEqual(gateway_identity({"base_url": "http://127.0.0.1:20128/v1"}), "omniroute")
 
-        interval = 0.15
-        with self.pacer.throttle("nvidia", interval, gateway="omniroute"):
-            pass
+        clock=[100.0]
+        def advance(seconds): clock[0]+=seconds
+        with patch('cheapos.request_pacer.time.monotonic',side_effect=lambda:clock[0]), patch('cheapos.request_pacer.time.sleep',side_effect=advance):
+            with self.pacer.throttle('nvidia',4,gateway='omniroute'): pass
+            with self.pacer.throttle('openrouter',5,gateway='omniroute'): pass
+            self.assertEqual(clock[0],100)
+            timing={}
+            with self.pacer.throttle('openrouter',5,gateway='omniroute',timing=timing): pass
+            self.assertEqual(clock[0],105)
+            self.assertEqual(timing['pacing_seconds'],5)
 
-        start = time.monotonic()
-        with self.pacer.throttle("openai", interval, gateway="omniroute"):
-            pass
-        duration = time.monotonic() - start
-        self.assertGreaterEqual(duration, 0.10)
-        self.assertLess(duration, 0.25)
+    def test_slow_provider_does_not_hold_another_providers_slot(self):
+        completed=threading.Event();errors=[]
+        def other():
+            try:
+                with self.pacer.throttle('openrouter',5,gateway='omniroute'): completed.set()
+            except Exception as error: errors.append(error)
+        with self.pacer.throttle('nvidia',4,gateway='omniroute'):
+            thread=threading.Thread(target=other);thread.start()
+            finished=completed.wait(1)
+        thread.join(1)
+        self.assertTrue(finished);self.assertFalse(errors);self.assertFalse(thread.is_alive())
+
+    def test_cancelled_queue_does_not_dispatch_or_renew_cooldown(self):
+        self.pacer._last_completed['openrouter']=10
+        stopped=Mock(side_effect=[False,True])
+        with patch('cheapos.request_pacer.time.monotonic',return_value=20):
+            with self.assertRaises(InterruptedError):
+                with self.pacer.throttle('openrouter',5,stopped=stopped): self.fail('Dispatched after stop')
+        self.assertEqual(self.pacer._last_completed['openrouter'],10)
 
     def test_throttle_interruption(self):
         stopped = False

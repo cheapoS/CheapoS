@@ -141,8 +141,7 @@ class OpenAICompatibleGateway(ChatProvider):
 class OmniRouteGateway(OpenAICompatibleGateway):
     def __init__(self, config, key=""):
         # A shared gateway must never inherit a direct provider's role-specific key.
-        self.config = config
-        self.key = key
+        super().__init__(config, key)
 
     def list_models(self):
         data, headers = self._catalog()

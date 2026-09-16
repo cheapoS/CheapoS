@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .providers import BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider, guard_inference_route, is_local_ollama
+from .providers import ChatProvider, BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider, guard_inference_route, is_local_ollama
 from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
 from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, FileRangeError, Workspace, git
@@ -2129,6 +2129,10 @@ class Engine:
         task["in_flight"] = reservation
         if developing(task): config = {**config, "_operator_interruptible": True}
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(self.gateway_config(config), self.provider_key(role, config))
+        if isinstance(provider, ChatProvider):
+            # Keep local queue time separate from gateway/network time, including
+            # failed requests. A gateway can retry internally before replying.
+            provider.request_timing = record
         from . import transport
         selected_transport = transport_override or transport.choice(config, role, purpose, tools, getattr(provider, "streams_output", False) is True)
         streaming = selected_transport == 'sse'
