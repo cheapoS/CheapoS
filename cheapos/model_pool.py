@@ -212,9 +212,9 @@ class FreeModelPool:
         is_generic_wildcard = any(mid.startswith(p) for p in ("auto/best-free", "auto/best-fast", "auto/chat", "auto/cheap", "auto/fast", "auto/chaos"))
         is_small = any(k in mid for k in ("-1b", "/1b", ":1b", "-2b", "/2b", ":2b", "-3b", "/3b", ":3b", "-7b", "/7b", ":7b", "-8b", "/8b", ":8b", "mini", "nano", "tiny", "micro", "flash-lite"))
         is_flagship = not is_non_code and (any(k in mid for k in ("sonnet", "opus", "nemotron-70b", "nemotron-ultra", "deepseek", "codestral", "auto/best-coding", "auto/coding:pro", "auto/coding:reliable"))
-                                           or (any(k in mid for k in ("ultra", "super", "pro", "large", "26b", "31b", "32b", "70b", "72b", "120b", "550b"))
-                                               and any(k in mid for k in ("code", "coder", "qwen", "gemini", "nemotron", "gemma", "llama"))))
-        is_solid_coder = not is_non_code and any(k in mid for k in ("haiku", "flash", "gemma", "qwen", "starcoder", "code", "coder", "coding", "llama"))
+                                            or (any(k in mid for k in ("ultra", "super", "pro", "large", "26b", "27b", "31b", "32b", "70b", "72b", "120b", "550b"))
+                                                and any(k in mid for k in ("code", "coder", "qwen", "gemini", "nemotron", "gemma", "llama", "gpt-oss", "oss"))))
+        is_solid_coder = not is_non_code and any(k in mid for k in ("haiku", "flash", "gemma", "qwen", "starcoder", "code", "coder", "coding", "llama", "gpt-oss"))
 
         if role in {"planner", "reviewer"}:
             # Planning and Reviewing require higher tier models (strong reasoning + robust coding understanding).
