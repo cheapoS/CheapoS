@@ -56,7 +56,7 @@ class ChatTests(LocalCase):
         self.assertEqual(second['workspace'],task['workspace'])
         self.assertEqual(second['usage']['worker']['tokens'],45)
         self.assertEqual(second['worker_turns'],3)
-        context=json.loads(requests[-1][0][1]['content'])
+        context=json.loads(requests[-1][0][-1]['content'])
         self.assertEqual(context['latest_message'],'What about the lower bound?')
         self.assertIn('It caps the upper bound.',json.dumps(context))
         restored=Store(self.engine.store.root).get(task['id'])
