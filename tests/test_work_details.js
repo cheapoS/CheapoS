@@ -26,6 +26,25 @@ test('large routing history never displaces thinking or edits from chat',()=>{
  assert.match(html,/data-workflow-logs/);
  assert.match(ctx.view.routingDetails(task),/image-model.*capability missing/);
 });
+test('probe output is connection activity, not feature-planning thinking',()=>{
+ const probe=event('probe','model','Requesting planner',{purpose:'probe'});
+ const thinking=event('probe-thought','generation','Model thinking',{request_id:'probe',thinking:'Call routing_ready with the probe marker.'});
+ const plan=event('plan-thought','generation','Model thinking',{request_id:'plan',thinking:'Design the golden-task runner.'});
+ const task={events:[probe,thinking,plan]};
+ const html=render([probe,thinking,plan],{task,phase:'plan'});
+ assert.doesNotMatch(html,/routing_ready|probe marker/);
+ assert.match(html,/Design the golden-task runner/);
+ assert.equal(thinking.detail.thinking,'Call routing_ready with the probe marker.');
+ for(const stream of [{request_id:'probe'}, {request_id:'new',purpose:'probe'}]){
+   const live=render([],{task,live:true,phase:'plan',stream:{...stream,phase:'thinking',thinking:'Call routing_ready'}});
+   assert.match(live,/Checking model connection/);assert.doesNotMatch(live,/routing_ready/);
+ }
+ const inspection=event('read','planning_inspection','Inspected project context for the plan',{path:'cheapos/benchmark.py',inspection:1,limit:6});
+ const ready={status:'ready',active_role:'planner',prompt:'Plan a benchmark',events:[probe,inspection,event('answer','assistant','Plan ready','Your plan is ready.')],providers:{}};
+ const reply=ctx.CheapOSGuide.conversation.build(ready).find(e=>e.kind==='assistant');
+ assert.equal(reply.steps[0].phase,'plan');assert.equal(reply.steps[0].detail,'1 project inspection');
+ assert.match(ctx.view.message(reply,ready),/Read cheapos\/benchmark.py/);
+});
 test('consecutive exploration collapses without hiding edits or crossing thinking',()=>{
  const html=render([tool('a','read file','first.py'),event('request','model','Requesting worker'),tool('b','search','second.py'),
    tool('edit','replace text','first.py'),tool('c','list files','.'),

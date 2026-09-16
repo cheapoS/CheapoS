@@ -593,7 +593,7 @@ const CheapOSConversation = (() => {
     if (event.kind === 'checks' || event.kind === 'check_reused' || event.kind === 'permission' || event.title === 'Running verification') return 'checks';
     if (event.kind === 'review' || event.kind === 'checkpoint' || event.detail?.role === 'reviewer' || event.title?.startsWith('Requesting reviewer:')) return 'review';
     if (event.kind === 'commit') return 'commit';
-    if (event.actor?.role === 'planner' || event.detail?.role === 'planner' || event.title?.startsWith('Requesting planner:') || event.detail?.role === 'coordinator' || event.title?.startsWith('Requesting coordinator:')) return 'plan';
+    if (event.kind === 'planning_inspection' || event.actor?.role === 'planner' || event.detail?.role === 'planner' || event.title?.startsWith('Requesting planner:') || event.detail?.role === 'coordinator' || event.title?.startsWith('Requesting coordinator:')) return 'plan';
     if (event.kind === 'tool' || event.title?.startsWith('Requesting worker:') || event.kind === 'handoff' && event.detail?.role === 'worker') return 'work';
     return previous;
   }
@@ -617,6 +617,8 @@ const CheapOSConversation = (() => {
     const elapsed = live ? guide.progress(task, at)?.elapsed || '0s' : '';
     let title = {work:'Worked on your request',checks:'Ran checks',review:'Requested independent review',plan:'Prepared the next step',commit:'Commit needs attention'}[phase];
     let detail = edits.size ? `${edits.size} file${edits.size === 1 ? '' : 's'} updated` : `${toolEvents.length} action${toolEvents.length === 1 ? '' : 's'}`;
+    const inspections=events.filter(e=>e.kind==='planning_inspection');
+    if(phase==='plan'&&inspections.length)detail=`${inspections.length} project inspection${inspections.length===1?'':'s'}`;
     let outcome = 'done';
     const finalAction=events.findLast(e=>['tool','tool_error'].includes(e.kind));
     if (phase==='work' && finalAction?.kind==='tool_error') {
@@ -672,7 +674,7 @@ const CheapOSConversation = (() => {
         if (steps.length && event !== final) steps.at(-1).events.push(event);
         continue;
       }
-      if (!['tool','model','checks','check_reused','checkpoint','review','review_coaching','coordinator_recovery','handoff','routing','tool_error','guard','permission','commit','web'].includes(event.kind)) continue;
+      if (!['tool','model','checks','check_reused','checkpoint','review','review_coaching','coordinator_recovery','handoff','routing','tool_error','guard','permission','commit','web','planning_inspection'].includes(event.kind)) continue;
       if (event.kind === 'guard' && event.title === 'Applied User Guidance') continue;
       phase = eventPhase(event, phase);
       if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-${event.id ?? events.indexOf(event)}`,phase,events:[],live:false});
@@ -691,7 +693,7 @@ const CheapOSConversation = (() => {
     // Keep its output with the next action instead of showing “0 actions”.
     for (let i=0; i<steps.length; i++) {
       const step=steps[i];
-      if (!step.live && ['work','plan'].includes(step.phase) && !step.events.some(e=>['tool','tool_error','web'].includes(e.kind)) && steps.length>1 && steps[i-1]?.phase!=='coordinator' && steps[i+1]?.phase!=='coordinator') {
+      if (!step.live && ['work','plan'].includes(step.phase) && !step.events.some(e=>['tool','tool_error','web','planning_inspection'].includes(e.kind)) && steps.length>1 && steps[i-1]?.phase!=='coordinator' && steps[i+1]?.phase!=='coordinator') {
         if (steps[i+1]) steps[i+1].events.unshift(...step.events);
         else steps[i-1].events.push(...step.events);
         steps.splice(i--,1);
@@ -705,7 +707,7 @@ const CheapOSConversation = (() => {
       }
     }
     const reply = committed(final) && !task.demo ? 'What would you like to work on next?' : final?.kind === 'assistant' && typeof final.detail === 'string' ? final.detail : '';
-    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_coaching','coordinator_recovery','handoff','tool_error','commit'].includes(e.kind))) steps.length = 0;
+    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_coaching','coordinator_recovery','handoff','tool_error','commit','planning_inspection'].includes(e.kind))) steps.length = 0;
     let intro = '';
     if (steps.length) {
       intro = live ? {coordinator:"The worker got stuck. I'm checking the saved work to help it choose the next step.",work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';

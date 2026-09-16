@@ -55,8 +55,8 @@ class RoutingTests(LocalCase):
         queue=iter(replies);requests=[]
         class Provider:
             def __init__(self, role, config):self.role,self.config=role,config
-            def complete(self, messages, tools, maximum):
-                requests.append({'role':self.role,'model':self.config['model'],'messages':copy.deepcopy(messages),'tools':copy.deepcopy(tools),'maximum':maximum})
+            def complete(self, messages, tools, maximum, tool_choice=None):
+                requests.append({'role':self.role,'model':self.config['model'],'messages':copy.deepcopy(messages),'tools':copy.deepcopy(tools),'maximum':maximum,'tool_choice':tool_choice})
                 if messages==PROBE_MESSAGES:
                     if probe_fail and self.config['model'] in probe_fail:
                         return {'content':'No tools.'},{'prompt_tokens':3,'completion_tokens':1,'cost':0}
@@ -64,6 +64,23 @@ class RoutingTests(LocalCase):
                 return next(queue),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
         self.engine.provider_factory=lambda role,cfg:Provider(role,cfg)
         return requests
+
+    def test_planning_closes_discovery_without_turning_stale_reads_into_route_failures(self):
+        from cheapos.branch_planner import TOOLS
+        task=self.chat('remote');runtime=Runtime(task)
+        stale=call('inspect_project_file', {'path':'README.md'})
+        requests=self.responses([stale])
+        choice={'type':'function','function':{'name':'propose_branch_plan'}}
+        result=self.engine.request(runtime,[{'role':'user','content':'Propose from the saved evidence.'}],TOOLS[:1],
+                                   'planner',purpose='branch_planning',tool_choice=choice)
+        self.assertEqual(result,stale)  # Planner repair owns this non-executed response.
+        self.assertEqual(len(requests),2)  # One isolated probe, one planning request.
+        self.assertEqual(requests[-1]['tool_choice'],choice)
+        self.assertIsNone(requests[0]['tool_choice'])
+        self.assertEqual(runtime.handoffs,0)
+        self.assertFalse(task['route'].get('recovery'))
+        with self.assertRaisesRegex(ProviderError,'not available'):
+            self.engine.validate_offered_tools(stale,TOOLS[:1])
 
     def test_local_chat_has_no_project_tools_or_context_and_stops_after_one_reply(self):
         task=self.chat(prompt='Hi')

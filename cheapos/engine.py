@@ -1888,8 +1888,11 @@ class Engine:
                     guidance = COMPACT_GUIDANCE if task.get("compact_edits") else OUTPUT_GUIDANCE
                     message = self._request(runtime, messages + [{"role": "user", "content": execution_context.guidance(task, guidance)}], tools, role, config_override=config)
                 else:
-                    message = self._request(runtime, messages, tools, role, purpose=purpose)
-                if purpose or role != 'worker':
+                    message = self._request(runtime, messages, tools, role, purpose=purpose,
+                                            **({'tool_choice': tool_choice} if tool_choice is not None else {}))
+                # Planning has its own non-executing proposal parser and repair
+                # loop. A stale discovery call is not a broken provider route.
+                if (purpose or role != 'worker') and not (role == 'planner' and purpose == 'branch_planning'):
                     self.validate_offered_tools(message, tools)
             except ProviderError as error:
                 if task.get("gateway_connections") and error.code in {"http_401","http_402","http_403","client_key_rejected"}:
@@ -2145,7 +2148,7 @@ class Engine:
         record['conversation'] = {**receipt(messages), 'transition': task.get('conversation_state', {}).get('last_transition')}
         record['dispatched']=True
         if streaming:
-            live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
+            live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "purpose": purpose, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
             task["stream"] = live
             self.store.save(task)
             published = None
@@ -2186,10 +2189,10 @@ class Engine:
             finally:
                 task["stream"] = None
                 if live["thinking"] or not completed and live["content"]:
-                    self.event(task, "generation", "Model thinking" if completed else "Interrupted model output", {"request_id":live["request_id"], "model":config["model"], "role":role, "thinking":live["thinking"], "content":live["content"] if not completed else "", "interrupted":not completed, "truncated":live["truncated"]})
+                    self.event(task, "generation", "Model thinking" if completed else "Interrupted model output", {"request_id":live["request_id"], "model":config["model"], "role":role, "purpose":purpose, "thinking":live["thinking"], "content":live["content"] if not completed else "", "interrupted":not completed, "truncated":live["truncated"]})
                 self.store.save(task)
         else:
-            task['stream'] = {'request_id': task['events'][-1]['id'], 'model': config['model'], 'role': role,
+            task['stream'] = {'request_id': task['events'][-1]['id'], 'model': config['model'], 'role': role, 'purpose': purpose,
                               'started_at': now(), 'updated_at': now(), 'phase': 'waiting',
                               'thinking': '', 'content': '', 'tool': '', 'truncated': False}
             self.store.save(task)

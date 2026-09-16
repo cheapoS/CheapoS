@@ -2,12 +2,17 @@
 'use strict';
 const CheapOSChatView = (() => {
   const inspectionTools=new Set(['read file','outline file','list files','search','get diff']);
-  function operatorEvents(events) {
-    return events.filter(e=>!['model','checkpoint','permission'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error));
+  function isProbe(detail,events) {
+    return detail?.purpose==='probe'||Boolean(detail?.request_id&&events.some(e=>e.kind==='model'&&e.id===detail.request_id&&e.detail?.purpose==='probe'));
+  }
+  function operatorEvents(events,task) {
+    const history=task.events||events;
+    return events.filter(e=>!['model','checkpoint','permission'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error)&&!(e.kind==='generation'&&isProbe(e.detail,history)));
   }
   function detailEvent(event,thinkingOpen=false,entryReply='') {
     const d=event.detail||{};
     if(event.kind==='generation') return thinkingMarkup(d,false,thinkingOpen);
+    if(event.kind==='planning_inspection') return `<div class="workflow-note"><strong>${esc(d.error?'Project inspection could not finish':`Read ${d.path||'project context'}`)}</strong><p>${esc(d.error||`Inspection ${d.inspection} of ${d.limit} · evidence saved for the proposal`)}</p></div>`;
     if(event.kind==='assistant') {
       if(typeof d==='string' && entryReply && (d.trim() === entryReply.trim() || entryReply.trim().includes(d.trim()))) return '';
       return `<div class="workflow-note">${messageText(typeof d==='string'?d:'')}</div>`;
@@ -38,15 +43,18 @@ const CheapOSChatView = (() => {
     const live=step.live;
     const symbol=step.outcome==='live'?'<span class="spinner"></span>':icon(['failed','revision','pending'].includes(step.outcome)?'clock':'check');
     const role={worker:'Worker',reviewer:'Reviewer',coordinator:step.phase==='coordinator'?'Coordinator':'Chat model',planner:'Planner',controller:'cheapoS'}[step.role]||'cheapoS';
-    const events=operatorEvents(step.events);
-    const streamLabel=stream?.phase==='thinking'?'Thinking':stream?.phase==='answer'?'Writing a response':stream?.phase==='tool'?`Preparing ${String(stream.tool||'the next action').replaceAll('_',' ')}`:`Waiting for the ${role.toLowerCase()}’s response`;
+    const events=operatorEvents(step.events,task);
+    const probe=isProbe(stream,task.events||step.events);
+    if(probe)stream={...stream,thinking:'',content:'',phase:'waiting'};
+    const streamLabel=probe?'Checking model connection':stream?.phase==='thinking'?'Thinking':stream?.phase==='answer'?'Writing a response':stream?.phase==='tool'?`Preparing ${String(stream.tool||'the next action').replaceAll('_',' ')}`:`Waiting for the ${role.toLowerCase()}’s response`;
     const streamText=String(stream?.thinking||stream?.content||'');
     const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span><strong>${esc(streamLabel)}</strong><span data-work-elapsed>${esc(step.elapsed)}</span></div>${streamText?`<pre data-thinking="workflow-stream-${esc(stream.request_id||step.id)}">${esc(streamText)}</pre>`:''}${stream.thinking&&stream.content?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
     const liveText=live?String(task.check_stream?.output||stream?.content||stream?.thinking||'').trim():'';
     const preview=liveText?`<span class="workflow-preview">${esc((liveText.length>240?'…':'')+liveText.slice(-240))}</span>`:'';
-    const title=liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
+    const title=live&&probe?'Checking model connection':liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
+    const status=live&&probe?'Verifying tool support before starting the request':step.detail;
     return `<details class="workflow-step ${live?'is-live':''} ${liveOutput?'has-live-output':''} outcome-${step.outcome}" data-event="workflow-${esc(step.id)}" data-step="${esc(step.id)}" ${live||['failed','revision'].includes(step.outcome)?'open':''}>
-      <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(step.detail)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
+      <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(status)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
       <div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||(task.demo?'Scripted local model':live?'Model selection pending':'Model identity unavailable'))}</strong></div>
         ${events.length>80?'<p class="small muted">Showing the latest 80 progress events. Earlier events remain in Technical logs.</p>':''}
         <div class="workflow-events">${eventsMarkup(events.slice(-80),entryReply)||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div>

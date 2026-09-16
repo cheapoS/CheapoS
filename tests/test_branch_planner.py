@@ -24,20 +24,19 @@ class PlannerTests(unittest.TestCase):
         self.task = {'planning_limits': self.limits, 'request_metrics': [], 'usage': {'cost': 0}}
         self.runtime = SimpleNamespace(task=self.task, stop=threading.Event(), guard=lambda: None)
         self.requests = []
+        self.offered = []
 
     def reply(self, plan=None):
         value = {'status': 'plan', 'plan': plan or self.valid, 'clarification': ''}
         return {'tool_calls': [{'id': 'call', 'function': {'name': 'propose_branch_plan', 'arguments': json.dumps(value)}}]}
 
     def engine(self, responses):
-        def request(runtime, messages, tools, role, purpose):
+        def request(runtime, messages, tools, role, purpose, **options):
             self.requests.append(copy.deepcopy(messages))
+            self.offered.append((copy.deepcopy(tools), copy.deepcopy(options)))
             self.assertEqual(role, 'planner')
             self.assertEqual(purpose, 'branch_planning')
             self.assertEqual(tools[0]['function']['name'], 'propose_branch_plan')
-            if getattr(self, 'validate_tools', False):
-                from cheapos.engine import Engine
-                Engine.validate_offered_tools(responses[0], tools)
             self.assertTrue(all(t['function']['name'] in {'propose_branch_plan', 'inspect_project_file'} for t in tools))
             runtime.task['request_metrics'].append({'id': str(len(self.requests)), 'purpose': purpose})
             return responses.pop(0)
@@ -180,7 +179,6 @@ class PlannerTests(unittest.TestCase):
         self.assertIn(value['assumptions'][0], result['items'][0]['instructions'])
 
     def test_discovery_is_bounded_and_unsafe_reads_return_only_error(self):
-        self.validate_tools = True
         (self.root / '.env').write_text('TOP_SECRET')
         inspect = {'tool_calls': [{'function': {'name': 'inspect_project_file', 'arguments': '{"path":".env"}'}}]}
         result = planner.plan(self.engine([inspect] * (planner.MAX_DISCOVERY_REQUESTS + 1) + [self.reply()]), self.runtime,
@@ -190,6 +188,11 @@ class PlannerTests(unittest.TestCase):
         self.assertIn('Discovery is now complete', self.requests[-1][0]['content'])
         self.assertNotIn('TOP_SECRET', json.dumps(self.requests))
         self.assertIn('error', self.requests[-1][-1]['content'])
+        self.assertIn('inspection allowance is complete', self.requests[-1][-1]['content'])
+        self.assertEqual([t['function']['name'] for t in self.offered[0][0]], ['propose_branch_plan', 'inspect_project_file'])
+        for tools, options in self.offered[planner.MAX_DISCOVERY_REQUESTS:]:
+            self.assertEqual([t['function']['name'] for t in tools], ['propose_branch_plan'])
+            self.assertEqual(options['tool_choice']['function']['name'], 'propose_branch_plan')
         with self.assertRaises(ValueError):
             planner.inspect_project_file(self.root, '../outside')
 
@@ -363,7 +366,11 @@ class PlannerExcerptTests(unittest.TestCase):
         self.assertTrue(excerpt['found'])
         self.assertIn('function restartServer()', excerpt['contents'])
         self.assertNotIn('error', excerpt)
-        self.assertEqual(len(self.events), 1)
+        self.assertEqual([e[1] for e in self.events], ['planning_repair', 'planning_inspection'])
+        inspection = self.events[-1][3]
+        self.assertEqual(inspection['path'], 'app.js')
+        self.assertEqual(inspection['inspection'], 1)
+        self.assertNotIn('contents', inspection)
         self.assertEqual(prose, original)
 
     def test_parallel_discovery_executes_all_reads(self):

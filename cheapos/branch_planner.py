@@ -207,7 +207,8 @@ def _parse(message, limits, source=None, assumptions=None):
         raise PlanningResponseError('The planner returned multiple tool calls together. Return one complete propose_branch_plan call at a time.')
     function = calls[0].get('function', {})
     if function.get('name') != 'propose_branch_plan':
-        raise ValueError('Only the proposal tool is available; no actions were executed')
+        name = str(function.get('name') or 'unnamed tool')[:100]
+        raise PlanningResponseError('The planner returned ' + name + '; submit the proposal through propose_branch_plan. No actions were executed.')
     raw = function.get('arguments')
     if not isinstance(raw, str) or len(raw) > 128000:
         raise ValueError('Plan tool arguments exceed the complete proposal limit')
@@ -305,10 +306,13 @@ def plan(engine, runtime, inputs):
     while attempt < 3:
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         runtime.guard()
-        # Keep the tool name recognized so exhausted discovery is a planner
-        # repair, not a provider failure that consumes model handoffs.
-        available = TOOLS
-        response = engine.request(runtime, messages, available, 'planner', purpose='branch_planning', **({'config_override':runtime.task['planning_override']} if runtime.task.get('planning_override') else {}))
+        # The proposal parser owns repair of stale/invalid tool calls. Once
+        # discovery is complete, stop advertising an action we cannot execute.
+        available = TOOLS if discovery < MAX_DISCOVERY_REQUESTS else TOOLS[:1]
+        options = {'config_override':runtime.task['planning_override']} if runtime.task.get('planning_override') else {}
+        if discovery >= MAX_DISCOVERY_REQUESTS:
+            options['tool_choice'] = {'type': 'function', 'function': {'name': 'propose_branch_plan'}}
+        response = engine.request(runtime, messages, available, 'planner', purpose='branch_planning', **options)
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         try:
             calls = response.get('tool_calls') or []
@@ -338,12 +342,20 @@ def plan(engine, runtime, inputs):
                             if carto['status'] != 'disabled': result['carto'] = carto
                     except (ValueError, OSError, TypeError) as error:
                         result = {'error': str(error)[:500]}
+                    if hasattr(engine, 'event'):
+                        engine.event(runtime.task, 'planning_inspection', 'Project inspection failed' if result.get('error') else 'Inspected project context for the plan',
+                                     {'inspection': discovery, 'limit': MAX_DISCOVERY_REQUESTS,
+                                      **{k: result[k] for k in ('path', 'start_line', 'end_line', 'truncated', 'error') if k in result}})
                     if discovery >= MAX_DISCOVERY_REQUESTS:
                         result['next_step'] = 'Discovery is complete. Do not inspect more files. Use the collected evidence to call propose_branch_plan now; report a specific essential blocker there only if needed.'
                     messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result)})
                 if discovery >= MAX_DISCOVERY_REQUESTS:
                     messages[0]['content'] += '\nDiscovery is now complete: no further file reads are permitted. Call propose_branch_plan using collected evidence.'
                 continue
+            if discovery >= MAX_DISCOVERY_REQUESTS and any(
+                    isinstance(c, dict) and isinstance(c.get('function'), dict)
+                    and c['function'].get('name') == 'inspect_project_file' for c in calls):
+                raise PlanningResponseError('The planning inspection allowance is complete. Use the saved file evidence to call propose_branch_plan, or request clarification there if essential information is still missing. No further file inspection was executed.')
             assumptions = []
             result = _parse(response, limits, captured['source'], assumptions)
             runtime.task['planning_assumptions'] = assumptions
