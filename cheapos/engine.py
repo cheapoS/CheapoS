@@ -2469,9 +2469,20 @@ class Engine:
             return self.checkpoint_feedback(runtime, {
                 'summary': 'Worker requested the already-passing verification again.',
                 'uncertainties': 'The controller is submitting saved work to avoid repeated tests. Independently assess every requirement; passing tests alone do not establish completion.'})
+        task = runtime.task
+        if not result.get('passed'):
+            failures = task.get('consecutive_worker_check_failures', 0) + 1
+            task['consecutive_worker_check_failures'] = failures
+            if failures >= 6:
+                raise ProgressPause(f"Worker has failed verification {failures} consecutive times during this item. Saved edits remain intact. Inspect the failure and provide guidance before continuing.")
+        else:
+            task['consecutive_worker_check_failures'] = 0
         if not result.get('passed') and result.get('output'):
             from .edit_recovery import check_feedback
-            return check_feedback(result)
+            feedback = check_feedback(result)
+            if failures >= 3:
+                feedback['guidance'] = f"Notice: Verification has failed {failures} consecutive times. Instead of repeating small micro-edits with replace_text, re-read the failing test assertions and write a complete, correct implementation."
+            return feedback
         return result
 
     def checkpoint_feedback(self, runtime, args):
