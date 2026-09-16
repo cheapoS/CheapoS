@@ -15,6 +15,8 @@ Use the full suite only for an explicit comprehensive check, a release, or broad
 backend risk that focused tests cannot cover; explain that choice. Preserve
 meaningful assertions and product verification/permission safeguards.
 
+Prefer available Carto context for architecture, symbol discovery, and dependency impact before broad file searches. Verify findings against the current source. If Carto is unavailable or indexing, continue with normal inspection without blocking work.
+
 ## New test cost must be visible
 
 Do not introduce new slow/heavy regression tests as part of routine work. Prefer
