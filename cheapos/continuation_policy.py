@@ -22,7 +22,8 @@ def is_continue(message):
         'continue', 'continue please', 'please continue', 'try again', 'resume', 'do what you need to finish',
         'start', 'start run', 'start plan', 'start task', 'proceed', 'looks good', 'looks good continue',
         'go ahead', 'yes continue', 'ok continue', 'looks good go ahead', 'good to go', 'lgtm',
-        'sounds good', 'looks great', 'go for it', 'let\'s go', 'lets go', 'do it', 'lets do it', 'let\'s do it'
+        'sounds good', 'looks great', 'go for it', 'let\'s go', 'lets go', 'do it', 'lets do it', 'let\'s do it',
+        'sure', 'yes', 'ok', 'okay', 'yep', 'yeah', 'yup', 'fine'
     }:
         return True
     return bool(
@@ -38,7 +39,7 @@ def decide(task, trigger=None):
         from . import work_policy
         from .development import enabled
         from .engine import needs_patch_review
-        implementation=(work_policy.active_implementation(task) or needs_patch_review(task)) and not work_policy.read_only(task)
+        implementation=(work_policy.active_implementation(task) or needs_patch_review(task) or work_policy.attempted_edit(task)) and not work_policy.read_only(task)
         return {'kind':'implementation' if implementation else 'investigation',
                 'action':'continue_worker' if enabled(task) else 'act' if implementation else 'answer',
                 'reason':'Use the saved findings to take the next unfinished action; do not repeat unchanged inspection.'}

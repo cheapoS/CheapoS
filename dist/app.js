@@ -536,7 +536,7 @@ function eventDetail(event) {
     const result=detail?.result,args=detail?.arguments||{};
     if(event.title==='read url')return `<p>${sourceLink(result.source_url,'Open source page')} · Read ${esc(result.fetched_at)}</p><pre class="output">${esc(result.content)}</pre><p class="muted">${result.has_more?'More lines are available. ':''}${result.truncated||result.excerpt_truncated?'Document preview was shortened. ':''}External source text.</p>`;
     if(event.title==='read file')return `<pre class="output">${esc(result?.content||'No content returned.')}</pre>`;
-    if(['write file','replace text','replace lines'].includes(event.title))return `<p>Saved ${esc(args.path)} in the task copy.</p>`;
+    if(['write file','replace text','replace lines','append text'].includes(event.title))return `<p>Saved ${esc(args.path)} in the task copy.</p>`;
     if(Array.isArray(result))return `<pre class="output">${esc(result.map(r=>typeof r==='string'?r:JSON.stringify(r)).join('\n'))}</pre>`;
     if(typeof result==='string')return `<pre class="output">${esc(result)}</pre>`;
   }
