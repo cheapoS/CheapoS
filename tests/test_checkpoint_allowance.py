@@ -65,3 +65,17 @@ class CheckpointAllowanceTests(unittest.TestCase):
         self.assertEqual(runtime.task['status'], 'running')
         self.assertNotIn('pending_review', runtime.task)
         self.assertNotIn('pending_checkpoint', runtime.task)
+
+    def test_repeated_check_failures_on_checkpoint_pause_loop(self):
+        from cheapos.engine import ProgressPause
+        engine, runtime = self.setup_run(True)
+        def fail_checks(*args):
+            c = {'passed': False, 'command': runtime.task['check_command'], 'digest': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}
+            runtime.task['checks'].append(c)
+            return c
+        engine.checks = Mock(side_effect=fail_checks)
+        for _ in range(2):
+            result = self.run_checkpoint(engine, runtime)
+            self.assertEqual(result['decision'], 'REQUEST_CHANGES')
+        with self.assertRaisesRegex(ProgressPause, 'Verification has failed 3 consecutive times on unchanged files'):
+            self.run_checkpoint(engine, runtime)

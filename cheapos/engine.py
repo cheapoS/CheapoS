@@ -2524,6 +2524,21 @@ class Engine:
         if not checks["passed"]:
             if checks.get('outcome') in {'task_deadline', 'process_timeout', 'output_limit'}:
                 raise ProgressPause(checks['next_action'])
+            if not task.get('branch_run'):
+                current_digest = hashlib.sha256(task["patch"].encode()).hexdigest()
+                identical_failures = 0
+                consecutive_failures = 0
+                for c in reversed(task.get('checks', [])):
+                    if not c.get('passed'):
+                        consecutive_failures += 1
+                        if c.get('digest') == current_digest:
+                            identical_failures += 1
+                    else:
+                        break
+                if identical_failures >= 3:
+                    raise ProgressPause(f"Verification has failed {identical_failures} consecutive times on unchanged files. Make a code edit or correct the test command before requesting another checkpoint.")
+                if consecutive_failures >= 5:
+                    raise ProgressPause(f"Verification has failed {consecutive_failures} consecutive times without passing. Inspect the failing test output or revise the check command before continuing.")
             return {"decision": "REQUEST_CHANGES", "feedback": checks.get('next_action', 'Inspect the failed verification before review.'), "checks": checks}
         if task["active_role"] == "reviewer":
             task["status"] = "completed"
