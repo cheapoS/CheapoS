@@ -144,9 +144,7 @@ def amend(controller, task_id, values):
             task['providers'][role]=cfg
             task['operator_'+role+'_model']=chosen
             if action=='reviewer':
-                recovery=task.setdefault('reviewer_identity_recovery',{'attempted':[]})
-                recovery['attempted']=[m for m in recovery.get('attempted',[]) if m!=chosen]
-                recovery.pop('selected',None)
+                task.pop('reviewer_identity_recovery',None)
             policy['execution']=copy.deepcopy(task['execution']);policy['providers']=copy.deepcopy(task['providers'])
             if task.get('route'):
                 task['route'].setdefault('preferred',{})[role]=chosen
