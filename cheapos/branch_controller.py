@@ -353,7 +353,7 @@ class BranchController:
         task = runtime.task
         if item['status'] == 'reviewing':
             from .branch_review import checkpoint
-            saved = task.get('pending_review') or {}
+            saved = task.get('pending_review') or (task.get('operator_review_history') or [{}])[-1]
             self.engine.event(task, 'state', 'Continuing independent review from saved evidence',
                               {'item_id': item['id']})
             result = checkpoint(self.engine, runtime, {

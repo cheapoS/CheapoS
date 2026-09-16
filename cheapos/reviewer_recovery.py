@@ -26,7 +26,7 @@ def candidates(engine, task):
     used = {normalized(task.get('providers', {}).get('worker', {}).get('model'))}
     for worker in workers(task):
         used.update(normalized(worker.get(k)) for k in ('model', 'requested_model', 'served_model'))
-    catalog = engine.gateway.catalog(fresh=False)
+    catalog = engine.gateway.catalog(fresh=True)
     result = []
     for model in catalog.get('models', []):
         if not access_policy.eligible(model, policy) or opaque(model['id']) or normalized(model['id']) in used:
@@ -44,18 +44,23 @@ def config(engine, task, model_id):
     cfg.update(model=model_id, input_rate=0, output_rate=0)
     for key in ('access', 'access_binding', 'pricing_source', 'catalog_pricing'):
         cfg.pop(key, None)
+    catalog = engine.gateway.catalog(fresh=False)
+    model = next((m for m in catalog.get('models', []) if m['id'] == model_id), None)
+    if model is None:
+        catalog = engine.gateway.catalog(fresh=True)
+        model = next(m for m in catalog['models'] if m['id'] == model_id)
+    cfg = validate_provider(cfg, 'reviewer')
     if policy is not None:
         cfg['access_binding'] = copy.deepcopy(policy)
-    model = next(m for m in engine.gateway.catalog(fresh=False)['models'] if m['id'] == model_id)
-    if access_policy.classify(model, policy) == 'included':
-        cfg = access_policy.bind_provider(cfg, policy, model)
-    return validate_provider(cfg, 'reviewer')
+        if access_policy.classify(model, policy) == 'included':
+            cfg = access_policy.bind_provider(cfg, policy, model)
+    return cfg
 
 
-def request(engine, runtime, messages, tools, role, config_override=None, purpose=None):
+def request(engine, runtime, messages, tools, role, config_override=None, purpose=None, tool_choice=None):
     task = runtime.task
     if role != 'reviewer' or purpose == 'probe' or config_override is not None:
-        return engine._request_routed(runtime, messages, tools, role, config_override, purpose)
+        return engine._request_routed(runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
     recovery = task.get('reviewer_identity_recovery')
     if not recovery:
         previous = next((r for r in reversed(task.get('request_metrics', [])) if r.get('role') == 'reviewer' and r.get('purpose') != 'probe'), {})
@@ -64,7 +69,7 @@ def request(engine, runtime, messages, tools, role, config_override=None, purpos
             engine.store.save(task)
     if not recovery:
         try:
-            return engine._request_routed(runtime, messages, tools, role, None, purpose)
+            return engine._request_routed(runtime, messages, tools, role, None, purpose, tool_choice=tool_choice)
         except ProviderError as error:
             if error.code not in IDENTITY_ERRORS:
                 raise
@@ -94,7 +99,7 @@ def request(engine, runtime, messages, tools, role, config_override=None, purpos
             # _request retains accounting, permission and identity gates. The
             # recovery flag also requires actual response identity before tools.
             selected_config = config(engine, task, model_id)
-            result = engine._request(runtime, messages, tools, role, selected_config, purpose)
+            result = engine._request(runtime, messages, tools, role, selected_config, purpose, tool_choice=tool_choice)
         except ProviderError as error:
             if error.code not in IDENTITY_ERRORS:
                 raise
