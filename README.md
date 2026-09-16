@@ -16,7 +16,7 @@
 
 CheapoS is an open-source coding workspace that lets an inexpensive model implement a change, runs real checks, and brings in a reviewer at checkpoints. Work on local Git projects, choose your models, set your limits, and inspect the result before it lands.
 
-No CheapoS account. No hosted project. No package installation to launch the app. Just Python, Git, and your browser.
+No CheapoS account. No hosted project. No required package installation to launch the app. Just Python, Git, and your browser. (CheapoS itself needs no install. We recommend [OmniRoute](docs/USER_GUIDE.md#omniroute-companion) as the main app for connecting and managing model providers.)
 
 > **Available today:** a working local alpha for small personal projects. Model providers may require their own setup or credentials. Cost savings are an experiment to measure; they are not yet a benchmark claim.
 
