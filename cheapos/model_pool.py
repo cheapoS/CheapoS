@@ -209,17 +209,17 @@ class FreeModelPool:
         # Observed compatibility first. Metadata only breaks ties; it is not a quality rating.
         mid = model["id"].lower()
         is_non_code = any(k in mid for k in ("embed", "reward", "guard", "safety", "parse", "content-safety"))
-        is_combo = model.get("provider") == "combo" or model.get("combo") or mid.startswith("auto/")
+        is_auto = mid.startswith("auto/")
         is_small = any(k in mid for k in ("-1b", "/1b", ":1b", "-2b", "/2b", ":2b", "-3b", "/3b", ":3b", "-7b", "/7b", ":7b", "-8b", "/8b", ":8b", "mini", "nano", "tiny", "micro", "flash-lite"))
-        is_flagship = not is_non_code and not is_combo and (any(k in mid for k in ("sonnet", "opus", "nemotron-70b", "nemotron-ultra", "deepseek", "codestral"))
-                                                             or (any(k in mid for k in ("ultra", "super", "pro", "large", "26b", "27b", "31b", "32b", "70b", "72b", "120b", "550b"))
-                                                                 and any(k in mid for k in ("code", "coder", "qwen", "gemini", "nemotron", "gemma", "llama", "gpt-oss", "oss"))))
-        is_solid_coder = not is_non_code and not is_combo and any(k in mid for k in ("haiku", "flash", "gemma", "qwen", "starcoder", "code", "coder", "coding", "llama", "gpt-oss"))
+        is_flagship = not is_non_code and not is_auto and (any(k in mid for k in ("sonnet", "opus", "nemotron-70b", "nemotron-ultra", "deepseek", "codestral"))
+                                                            or (any(k in mid for k in ("ultra", "super", "pro", "large", "26b", "27b", "31b", "32b", "70b", "72b", "120b", "550b"))
+                                                                and any(k in mid for k in ("code", "coder", "qwen", "gemini", "nemotron", "gemma", "llama", "gpt-oss", "oss"))))
+        is_solid_coder = not is_non_code and not is_auto and any(k in mid for k in ("haiku", "flash", "gemma", "qwen", "starcoder", "code", "coder", "coding", "llama", "gpt-oss"))
 
         if role in {"planner", "reviewer"}:
             # Planning and Reviewing require higher tier models (strong reasoning + robust coding understanding).
             # Low workers can do good work with a good plan, but planning and reviewing cannot use low-tier models.
-            role_tier = (5 if is_combo
+            role_tier = (5 if is_auto
                          else -3 if is_flagship
                          else -2 if is_solid_coder and not is_small
                          else 0 if is_solid_coder and is_small
@@ -227,11 +227,11 @@ class FreeModelPool:
                          else 4 if is_non_code
                          else 1)
         else:
-            top_coder = -1 if not is_non_code and not is_combo and (is_flagship or is_solid_coder) else (2 if is_non_code else 0)
-            role_tier = 5 if is_combo else top_coder
+            top_coder = -1 if not is_non_code and not is_auto and (is_flagship or is_solid_coder) else (2 if is_non_code else 0)
+            role_tier = 5 if is_auto else top_coder
 
         context_cap = 131072 if role in {"reviewer", "planner"} else 65536
-        reasoning_bonus = -(model.get("reasoning") is True) if role in {"reviewer", "planner"} and not is_combo else 0
+        reasoning_bonus = -(model.get("reasoning") is True) if role in {"reviewer", "planner"} and not is_auto else 0
         passed_probe = 2 if self.fresh_probe(endpoint, model["id"], connection_revision, route_health.probe_identity(endpoint,model,connection_revision)) else 1 if (health.get("tool_check_passed") and not health.get("cooling_down") and health.get("failures", 0) == 0) else 0
         return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3), min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0,
                 -min(health.get(role + "_responses", 0), 1) if connection_revision is None else 0,
