@@ -72,6 +72,13 @@ class RoleMapping(object):
                 if self._selected[other] == model_id:
                     raise ValueError(
                         '%r is already mapped to %s; choose a different worker' % (model_id, other))
+        else:
+            # Hard block (contrapositive): if assigning to planner/reviewer,
+            # it cannot be the worker.
+            if self._selected['worker'] == model_id:
+                raise ValueError(
+                    '%r is already mapped to worker; choose a different %s' % (model_id, role))
+
         self._selected[role] = model_id
         return self
 
