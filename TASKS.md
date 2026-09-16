@@ -13,7 +13,7 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 **Next milestone: a continuous agent session that finishes the job.**
 The [DeepSeek Harness assessment](docs/development/deepseek-harness-assessment.md)
 compares upstream session, compaction, and continuation behavior with current
-cheapoS code. Start with T84. These cards are proposed implementation work, not
+cheapoS code. T84–T88 are completed; see the qualification report. These cards are not
 completed fixes or authorization for a live model trial. Reconcile the currently
 in-progress engine/review edits before changing their files.
 
@@ -23,7 +23,7 @@ in-progress engine/review edits before changing their files.
 | [T85](docs/tasks/T85-working-state.md) | Persist the actual approach, unfinished steps, and current action | T84 | M | Done |
 | [T86](docs/tasks/T86-context-continuity.md) | Compact older context while retaining working state and retrievable evidence | T84, T85 | M/L | Done |
 | [T87](docs/tasks/T87-continuation-policy.md) | Consolidate recovery, preserve useful exploration, and make Continue actionable | T84, T85; T86 before qualification | M/L | Done |
-| [T88](docs/tasks/T88-harness-qualification.md) | Qualify completion, continuity, and operator intervention with comparable evidence | T84–T87 | M | Proposed |
+| [T88](docs/tasks/T88-harness-qualification.md) | Qualify completion, continuity, and operator intervention with comparable evidence | T84–T87 | M | Done |
 
 Keep authorization and evidence checks enforceable while making implementation
 guidance more flexible. Preserve free-only/local-only and spending choices;

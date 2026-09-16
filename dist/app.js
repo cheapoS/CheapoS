@@ -345,7 +345,7 @@ function submissionAvailability(task=state.task,mode=branchUI?.getMode()||'inter
 }
 function sendingHere(){return state.pendingSends.has(draftKey());}
 async function loadAdmission({render=true}={}){try{state.admission=await api('/admission');}catch(e){state.admission=e.status===404?{legacy:true}:null;}if(render)renderComposer();}
-function clearOwnedDraft(key,message){if(state.drafts.get(key)===message)state.drafts.delete(key);if(draftKey()===key&&$('#chat-input').value.trim()===message)$('#chat-input').value='';}
+function clearOwnedDraft(key,message){if(typeof branchUI!=='undefined')branchUI?.clearSubmittedDraft?.(key,message);if(state.drafts.get(key)===message)state.drafts.delete(key);if(draftKey()===key&&$('#chat-input').value.trim()===message)$('#chat-input').value='';}
 function pendingMessageMarkup(){
   const pending=state.pendingMessages?.get(draftKey());if(!pending)return '';
   // A poll can observe server acceptance before the POST response arrives.

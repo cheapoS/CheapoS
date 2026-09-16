@@ -1,6 +1,6 @@
 # T88 — Demonstrate better completion and continuity
 
-Status: Proposed — implementation/trials not started
+Status: Done — deterministic and browser qualification; optional live comparison pending
 Depends on: T84–T87
 Size: M; live measurement is separately authorized
 Context: [DeepSeek Harness assessment](../development/deepseek-harness-assessment.md)
@@ -60,3 +60,11 @@ passed, measured new-test cost, and remaining failures. If live comparison was
 not authorized, record it as pending and make no live completion-rate claim.
 Accept the milestone only on preserved correctness plus visible continuity;
 defer further framework/plugin adoption until the results justify it.
+
+## Completion
+
+See the [qualification report](../development/continuous-session-qualification.md)
+for the scenario matrix, measured test cost, initial failures/fixes, disposable
+browser flow and limitations. Existing integration fixtures were reused. No real
+model comparison or completion-rate claim is made. Further framework adoption is
+deferred until comparable live evidence supports it.
