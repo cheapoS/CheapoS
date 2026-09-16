@@ -805,7 +805,7 @@ class Engine:
                 raise ValueError("Finish the saved commit attempt in Chat before continuing this task")
             from .continuation_policy import is_continue, record
             followup = (changes or {}).get("message")
-            if is_continue(followup) and task.get('status') != 'ready':
+            if is_continue(followup) and task.get('status') not in {'ready', 'awaiting_reply'}:
                 followup = None
             if followup is None:
                 selected = record(task, 'operator_continue')

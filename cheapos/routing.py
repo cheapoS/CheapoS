@@ -273,7 +273,10 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         if reason in {'eligible', 'fit_unknown'}: candidates.append(model)
     preferred = route.get("preferred", {})
     connection_revision=(policy or {}).get('connection_revision')
-    candidates.sort(key=lambda m: gateway.pool.rank(base_url, m, role, preferred.get(role), connection_revision))
+    if hasattr(gateway.pool, 'interleave'):
+        candidates = gateway.pool.interleave(base_url, candidates, role, preferred.get(role), connection_revision)
+    else:
+        candidates.sort(key=lambda m: gateway.pool.rank(base_url, m, role, preferred.get(role), connection_revision))
     tried = set()
     probes = task.setdefault("progress_state", {}).setdefault("route_probes", {})
     probes.setdefault(role, 0)

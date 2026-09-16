@@ -74,6 +74,26 @@ class PoolTests(unittest.TestCase):
                 self.assertEqual(manager.catalog(fresh=True)['models'],[])
             finally: manager.shutdown()
 
+    def test_interleave_candidates_round_robins_providers_and_prioritizes_coding_models(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pool = FreeModelPool(directory); endpoint = 'http://localhost:20128/v1'
+            models = [
+                {'id': 'nvidia/nemotron-parse'},
+                {'id': 'nvidia/starcoder2-15b'},
+                {'id': 'nvidia/codegemma-7b'},
+                {'id': 'openrouter/google/gemma-4-31b-it:free'},
+                {'id': 'openrouter/cohere/north-mini-code:free'},
+                {'id': 'antigravity/claude-sonnet-4-6'},
+                {'id': 'antigravity/gemini-3.1-flash-lite'},
+            ]
+            ordered = pool.interleave(endpoint, models, 'worker')
+            ordered_ids = [m['id'] for m in ordered]
+            self.assertEqual(ordered_ids[-1], 'nvidia/nemotron-parse')
+            top3_providers = [m['id'].split('/')[0] for m in ordered[:3]]
+            self.assertEqual(len(set(top3_providers)), 3)
+            pinned = pool.interleave(endpoint, models, 'worker', preferred='openrouter/cohere/north-mini-code:free')
+            self.assertEqual(pinned[0]['id'], 'openrouter/cohere/north-mini-code:free')
+
 
 class FailoverTests(LocalCase):
     chat=routing_fixture.RoutingTests.chat
