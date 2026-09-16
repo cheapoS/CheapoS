@@ -2607,6 +2607,10 @@ class Engine:
             result = {"error": str(error), "code": "invalid_check_command"}
             self.event(runtime.task, "tool_error", "Asking the worker to correct its test command", result)
             return result
+        except ValueError as error:
+            result = {"error": str(error), "code": "invalid_checkpoint_argument"}
+            self.event(runtime.task, "tool_error", "Checkpoint argument error", result)
+            return result
 
     def checkpoint(self, runtime, args):
         if "branch_run" in runtime.task:
@@ -3037,7 +3041,32 @@ class Engine:
                                 no_calls = task.get("no_call_turns", 0)
                                 if no_calls >= 1:
                                     self.event(task, "state", "Submitting verified changes for review")
-                                    result = self.checkpoint_feedback(runtime, {"summary": str(message.get("content", ""))[:4000], "uncertainties": "Verified changes submitted for review."})
+                                    checkpoint_args = {"summary": str(message.get("content", ""))[:4000], "uncertainties": "Verified changes submitted for review."}
+                                    content_raw = str(message.get("content", "")).strip()
+                                    if content_raw.startswith("{") and content_raw.endswith("}"):
+                                        try:
+                                            parsed = json.loads(content_raw)
+                                            if isinstance(parsed, dict):
+                                                checkpoint_args.update(parsed)
+                                        except Exception:
+                                            pass
+                                    run = task.get("branch_run")
+                                    item = None
+                                    if isinstance(run, dict) and "items" in run:
+                                        item = next((i for i in run["items"] if i.get("id") == run.get("current_item_id")), None)
+                                    repair = item.get("review_repair") if item else None
+                                    if repair and repair.get("defects") and not checkpoint_args.get("repair_dispositions"):
+                                        checkpoint_args["repair_dispositions"] = [
+                                            {
+                                                "finding_id": f["finding_id"],
+                                                "candidate_id": repair["candidate_id"],
+                                                "disposition": "reproduced_and_corrected",
+                                                "evidence": str(checkpoint_args.get("summary") or "Corrected reported defect in current patch.")[:2000],
+                                                "broader_edit_reason": "Changes required to support the repair and passing tests."
+                                            }
+                                            for f in repair["defects"]
+                                        ]
+                                    result = self.checkpoint_feedback(runtime, checkpoint_args)
                                     task["messages"].append({"role": "user", "content": "Checkpoint result: " + json.dumps(result)})
                                     task["no_call_turns"] = 0
                                 else:
