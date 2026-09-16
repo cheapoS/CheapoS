@@ -151,8 +151,9 @@ def checkpoint(engine, runtime, args):
         import difflib
         packet['repair_diff_since_claim']=''.join(difflib.unified_diff(item['review_repair'].get('source_patch','').splitlines(True),current['patch'].splitlines(True),fromfile='disputed candidate patch',tofile='current candidate patch',n=3))
         packet['worker_summary']=str(args.get('summary',''))[:4000]
-    if len(json.dumps(packet)) > 30000:
-        raise ProgressPause('Item review exceeds 30,000 characters. Split the item in a revised proposal; no evidence was omitted.')
+    limit = 60000 if item.get('review_repair') else 30000
+    if len(json.dumps(packet)) > limit:
+        raise ProgressPause(f'Item review exceeds {limit:,} characters. Split the item in a revised proposal; no evidence was omitted.')
     branch_runs.transition_item(run, item['id'], 'reviewing')
     tools = copy.deepcopy(REVIEW_TOOLS)
     decision = next(t for t in tools if t['function']['name'] == 'review_decision')['function']['parameters']
