@@ -269,7 +269,7 @@ class Workspace:
             raise ValueError("Content must be text under 256 KB")
         target = self.path(path)
         if target.exists():
-            raise ValueError("File already exists; use an offered replacement tool for existing files")
+            raise ValueError(f"File '{path}' already exists. To modify an existing file, use 'replace_text' for specific edits or 'append_text' to add content to the end; write_file cannot overwrite files.")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         target.chmod(0o600)
@@ -322,6 +322,21 @@ class Workspace:
         if warning:
             result["syntax_warning"] = warning
         return result
+
+    def delete_file(self, path):
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("Provide a file path to delete")
+        target = self.path(path)
+        if not target.exists():
+            raise ValueError(f"File '{path}' does not exist")
+        if target.is_dir():
+            raise ValueError(f"'{path}' is a directory; delete_file only removes files")
+        target.unlink()
+        try:
+            git(self.root, "rm", "-f", "--quiet", "--ignore-unmatch", "--", path)
+        except Exception:
+            pass
+        return {"path": path, "deleted": True}
 
     def changes(self):
         # Include newly created files in the exported patch without changing the baseline.

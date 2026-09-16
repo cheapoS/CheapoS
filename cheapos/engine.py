@@ -70,9 +70,10 @@ READ_TOOLS = [
 WORKER_TOOLS = READ_TOOLS + [
     tool("update_working_state", "Optionally retain the current approach and next action for nontrivial work. Advisory only: does not change accepted scope, permissions, checks or review. Reuse stable step IDs. References are task event indices.", {"steps":{"type":"array","maxItems":24,"items":{"type":"object","properties":{"id":TEXT,"text":TEXT,"status":{"type":"string","enum":["pending","working","done","blocked"]}},"required":["id","text","status"],"additionalProperties":False}},"decisions":{"type":"array","items":TEXT},"findings":{"type":"array","items":TEXT},"references":{"type":"array","items":{"type":"integer"}},"next_action":TEXT}),
     tool("apply_merge_version", "During a conflict task, copy a frozen target/task/suggested file version over its unchanged original. Handles captured deletions; refuses to overwrite new edits. Review and checks are still required.", {"path":TEXT,"version":{"type":"string","enum":["task","target","suggested"]}}, ["path","version"]),
-    tool("write_file", "Create a new UTF-8 text file. Existing files require replace_text or append_text.", {"path": TEXT, "content": TEXT}, ["path", "content"]),
+    tool("write_file", "Create a new UTF-8 text file. Existing files cannot be overwritten: use replace_text or append_text.", {"path": TEXT, "content": TEXT}, ["path", "content"]),
     tool("replace_text", "Replace exactly one occurrence of old_text in an existing file.", {"path": TEXT, "old_text": TEXT, "new_text": TEXT}, ["path", "old_text", "new_text"]),
     tool("append_text", "Append text to the end of an existing file. For modifications inside a file, use replace_text.", {"path": TEXT, "text": TEXT}, ["path", "text"]),
+    tool("delete_file", "Delete a file from the workspace. Use to remove obsolete, temporary, or moved files.", {"path": TEXT}, ["path"]),
     tool("run_checks", "Run the user-configured verification command. May require the user's permission."),
     tool("checkpoint", "Finish a worker iteration and submit a compact snapshot for senior review. The app uses its passing check result for this exact patch and command, or runs checks if needed.", {"summary": TEXT, "uncertainties": TEXT, "repair_dispositions": {"type":"array","maxItems":8,"items":{"type":"object","properties":{"finding_id":TEXT,"candidate_id":{"type":"string","description":"The disputed source candidate_id in review_repair"},"disposition":{"type":"string","enum":["reproduced_and_corrected","disproved","unresolved"]},"evidence":TEXT,"broader_edit_reason":TEXT},"required":["finding_id","candidate_id","disposition","evidence"],"additionalProperties":False}}}, ["summary", "uncertainties"]),
 ]
@@ -967,7 +968,7 @@ class Engine:
                 boundary = max((i for i, e in enumerate(task["events"]) if e["kind"] == "user"), default=-1)
                 if any(e["kind"] == "tool_error" and isinstance(e.get("detail"), dict)
                        and e["detail"].get("code") == "invalid_tool_arguments"
-                       and e["detail"].get("tool") in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}
+                       and e["detail"].get("tool") in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}
                        for e in task["events"][boundary + 1:]):
                     self.prepare_compact_edits(task)
             if work_policy.read_only(task):
@@ -2344,7 +2345,7 @@ class Engine:
         """Bind edits to evidence sent before inference, never to an execution-time hash."""
         task = runtime.task
         workspace = Workspace(task["workspace"])
-        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"} and mutated_paths is not None:
+        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"} and mutated_paths is not None:
             path = str(workspace.path(args.get("path")).relative_to(workspace.root))
             if path in mutated_paths:
                 return {"error": "The earlier mutation to this file in this response was saved. This call was not applied, even if the earlier mutation was a no-op.",
@@ -2366,7 +2367,7 @@ class Engine:
             result = self.file_tool(task, name, args)
         if name == "read_file":
             self.remember_file_version(runtime, result)
-        elif name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}:
+        elif name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}:
             path = str(workspace.path(args["path"]).relative_to(workspace.root))
             runtime.edit_versions.pop(path, None)
             if mutated_paths is not None:
@@ -2436,10 +2437,10 @@ class Engine:
             self.event(task, 'working_state', 'Updated the working approach', result)
             return result
         workspace = Workspace(task["workspace"])
-        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda **kwargs: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines, "append_text": workspace.append_text}
+        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda **kwargs: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines, "append_text": workspace.append_text, "delete_file": workspace.delete_file}
         if name not in methods:
             raise ValueError("Unknown tool: " + name)
-        if 'branch_run' in task and name in {'write_file', 'replace_text', 'replace_lines', 'append_text'}:
+        if 'branch_run' in task and name in {'write_file', 'replace_text', 'replace_lines', 'append_text', 'delete_file'}:
             from .branch_disagreement import before_write
             before_write(task, args.get('path'))
         if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text", "append_text"}:
@@ -2453,11 +2454,11 @@ class Engine:
                 raise ValueError(f"Edit is too large. New files allow at most {MAX_CREATE_BYTES} UTF-8 bytes; existing files use replace_lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes. No edit was made.")
         result = methods[name](**args)
         task["tool_actions"] += 1
-        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}:
+        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}:
             task.get("_edit_failures", {}).pop(args.get("path"), None)
             self.refresh_changes(task)
             if isinstance(result, dict) and "guidance" not in result:
-                result["guidance"] = "Edits saved. Run run_checks to verify."
+                result["guidance"] = "File deleted. Run run_checks to verify." if name == "delete_file" else "Edits saved. Run run_checks to verify."
         role = "reviewer" if task["status"] == "reviewing" else task["active_role"]
         model = (task["providers"].get(role) or {}).get("model", "Scripted demo")
         self.event(task, "tool", name.replace("_", " "), {"arguments": args, "result": result, "role": role, "model": model})
@@ -2855,7 +2856,7 @@ class Engine:
         result = {"error": str(error), "code": error.code, "tool": error.name}
         self.event(runtime.task, "tool_error", "Model needs to correct tool arguments", result)
         if (automatic(runtime.task, runtime.task["active_role"]) and runtime.task["active_role"] == "worker"
-                and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}):
+                and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}):
             self.prepare_compact_edits(runtime.task)
             runtime.compact_context_ready = False
         if recovery["malformed_attempts"] >= 3 and not developing(runtime.task):
@@ -2993,9 +2994,17 @@ class Engine:
                         task["delegation"] = args["summary"]
                         task["active_role"] = "worker"
                         self.event(task, "routing", "Local chat finished; finding a free worker", {"summary": args["summary"]})
-                    elif message.get("content"):
+                    elif message.get("content") and not message.get("reasoning_fallback"):
                         self.event(task, "assistant", "Local chat", str(message["content"])[:4000])
                         task["status"] = "awaiting_reply"
+                        self.store.save(task)
+                        continue
+                    elif message.get("reasoning_fallback"):
+                        task.setdefault("coordinator_reasoning_turns", 0)
+                        task["coordinator_reasoning_turns"] += 1
+                        if task["coordinator_reasoning_turns"] > 2:
+                            raise RoutingPause("The local assistant repeatedly produced reasoning without delegating or answering. Resume to try again.")
+                        task["messages"].append({"role": "user", "content": "You generated reasoning without delegating or answering. Call delegate_work to delegate to the worker, or reply with your answer to the user."})
                         self.store.save(task)
                         continue
                     else:
@@ -3106,7 +3115,7 @@ class Engine:
                 request_versions = dict(runtime.edit_versions)
                 mutated_paths = set()
                 task["messages"].append(message)
-                if message.get("content"):
+                if message.get("content") and not message.get("reasoning_fallback"):
                     self.event(task, "assistant", "Worker" if task["active_role"] == "worker" else "Frontier takeover", str(message["content"])[:12000])
                 calls = message.get("tool_calls", [])
                 if len(calls) > 8:
@@ -3165,20 +3174,35 @@ class Engine:
                                     task["messages"].append({"role": "user", "content": "Edits are present in the workspace. Call run_checks directly to verify your changes. Outputting text does not verify code."})
                         else:
                             task["no_call_turns"] = 0
-                            task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
-                    elif task.get("conversational") and not task.get("finish_review") and not task.get("branch_run") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
+                            if message.get("reasoning_fallback"):
+                                task["messages"].append({"role": "user", "content": "You generated reasoning without executing a tool call. Call write_file, replace_text, or other offered tools to apply your changes directly to repository files."})
+                            else:
+                                task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
+                    elif task.get("conversational") and not task.get("finish_review") and not task.get("branch_run") and message.get("content") and not message.get("reasoning_fallback") and task["patch"] == task.get("turn_start_patch", ""):
                         task["status"] = "awaiting_reply"
                         task["action_pending"] = False
-                    elif task.get("conversational") and message.get("content") and task["patch"] and task["check_command"]:
+                    elif task.get("conversational") and message.get("content") and not message.get("reasoning_fallback") and task["patch"] and task["check_command"]:
                         # A completed editing response must reach review even if
                         # the worker forgets the checkpoint tool. Questions and
                         # explicit ask_user calls still finish as conversation.
                         self.event(task, "state", "Preparing finished changes for review")
                         result = self.checkpoint_feedback(runtime, {"summary": str(message["content"])[:4000], "uncertainties": "The controller submitted this checkpoint after the worker's final response."})
                         task["messages"].append({"role": "user", "content": "Checkpoint result: " + json.dumps(result)})
+                    elif message.get("reasoning_fallback"):
+                        no_calls = task.get("no_call_turns", 0) + 1
+                        task["no_call_turns"] = no_calls
+                        if no_calls > 3:
+                            from . import coordinator_dispatch
+                            if coordinator_dispatch.consult(self, runtime, "The worker repeatedly returned reasoning without taking any action or providing an answer."):
+                                continue
+                        if task.get("patch") == task.get("turn_start_patch", ""):
+                            task["messages"].append({"role": "user", "content": "You generated reasoning without executing a tool call or outputting a final answer. Proceed with your planned action using the offered tools (e.g. search, view_file, write_file), or provide your answer to the user."})
+                        else:
+                            task["messages"].append({"role": "user", "content": "You generated reasoning without executing a tool call or outputting a final answer. Continue with the offered tools to complete or verify your changes, or submit them for review."})
                     else:
                         task["messages"].append({"role": "user", "content": "Changes need verification and checkpoint review. Continue with tools, or use ask_user if you need a decision." if (task.get("conversational") and not task.get("branch_run")) else "Continue with tools, or call checkpoint when ready for review. Text alone does not complete this task."})
                 coordinator_applied = False
+                task["no_call_turns"] = 0
                 for call_index, call in enumerate(calls):
                     runtime.guard()
                     if runtime.stop.is_set():
@@ -3225,7 +3249,7 @@ class Engine:
                             result = self.read_url(runtime, args) if name == "read_url" else self.worker_file_tool(runtime, name, args, request_versions, mutated_paths)
                             if isinstance(result, dict) and result.get('code') == 'same_response_file_mutation':
                                 self.event(task, 'tool_error', 'Kept the earlier edit; rejected a second same-file mutation', result)
-                            if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}:
+                            if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}:
                                 runtime.observations.clear()
                                 runtime.file_observations.clear()
                             else:

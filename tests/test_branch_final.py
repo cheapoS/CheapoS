@@ -132,7 +132,7 @@ class BranchFinalTests(unittest.TestCase):
         self.assertEqual(len(self.requests), 1)
 
     def test_oversized_context_is_rejected_without_truncation_or_request(self):
-        packet = {'review_context': {'acceptance_criteria': [{'id': 'one:1', 'criterion': 'x' * 30000}]}}
+        packet = {'review_context': {'acceptance_criteria': [{'id': 'one:1', 'criterion': 'x' * 60000}]}}
         with self.assertRaisesRegex(ValueError, 'nothing was omitted'):
             final._review(self.engine, self.runtime, {'id': 'manifest'}, packet, [], [])
         self.assertEqual(self.requests, [])

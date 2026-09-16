@@ -97,3 +97,129 @@ class BranchReviewTests(LocalCase):
                 self.engine.checks(runtime, 'python3 -c \"print(123)\"')
             execute.assert_not_called()
         self.assertTrue(any(e['kind']=='permission' for e in task['events']))
+
+    def test_branch_review_packet_limit_and_plan_trimming(self):
+        task = self.task()
+        run = task['branch_run']
+        cmd_str = shlex.join(task['check_command'])
+        run['plan']['items'] = [
+            {'id': 'fix', 'title': 'Fix clamp', 'instructions': 'Fix clamp instructions', 'acceptance_criteria': ['Both bounds work'], 'required_checks': [cmd_str], 'status': 'working'},
+            {'id': 'm2', 'title': 'Second milestone', 'instructions': 'Bulky instructions ' * 20, 'acceptance_criteria': ['Criterion 2'], 'status': 'pending'}
+        ]
+        inspected_packet = {}
+        def review(runtime, messages, tools, role):
+            nonlocal inspected_packet
+            inspected_packet = json.loads(messages[1]['content'])
+            return call('review_decision', {
+                'decision': 'APPROVE',
+                'feedback': 'ok',
+                'candidate_id': inspected_packet['candidate_id'],
+                'criteria_outcomes': {'Both bounds work': {'passed': True, 'evidence': 'Passed'}}
+            })
+        self.engine.request = Mock(side_effect=review)
+        result = checkpoint(self.engine, Runtime(task), {})
+        self.assertEqual(result['decision'], 'APPROVE')
+
+        # Verify plan trimming: non-current item 'm2' has only id, title, status
+        items = inspected_packet['plan']['items']
+        m2 = next(it for it in items if it['id'] == 'm2')
+        self.assertEqual(m2, {'id': 'm2', 'title': 'Second milestone', 'status': 'pending'})
+        self.assertNotIn('instructions', m2)
+        self.assertNotIn('acceptance_criteria', m2)
+
+        # Current item retains instructions
+        fix = next(it for it in items if it['id'] == 'fix')
+        self.assertIn('instructions', fix)
+
+        # Verify limit enforcement at 60,000 characters
+        from cheapos import branch_evidence
+        orig_review_packet = branch_evidence.review_packet
+        try:
+            # 1. 50,000 characters passes (exceeds old 30,000 limit)
+            run['items'][0]['status'] = 'working'
+            run['items'][0].pop('ready_receipt', None)
+            task['status'] = 'running'
+            def large_packet(*args, **kwargs):
+                pkt = orig_review_packet(*args, **kwargs)
+                pkt['uncertainties'] = 'x' * (50000 - len(json.dumps(pkt)))
+                return pkt
+
+            branch_evidence.review_packet = large_packet
+            result = checkpoint(self.engine, Runtime(task), {})
+            self.assertEqual(result['decision'], 'APPROVE')
+
+            # 2. 65,000 characters raises ProgressPause for regular item
+            run['items'][0]['status'] = 'working'
+            run['items'][0].pop('ready_receipt', None)
+            task['status'] = 'running'
+            def over_limit_packet(*args, **kwargs):
+                pkt = orig_review_packet(*args, **kwargs)
+                pkt['uncertainties'] = 'x' * 65000
+                return pkt
+
+            branch_evidence.review_packet = over_limit_packet
+            with self.assertRaisesRegex(ProgressPause, 'Item review exceeds 60,000 characters'):
+                checkpoint(self.engine, Runtime(task), {})
+
+            # 3. 70,000 characters with review_repair passes (under 80,000 limit)
+            run['items'][0]['status'] = 'working'
+            run['items'][0].pop('ready_receipt', None)
+            task['status'] = 'running'
+            run['items'][0]['review_repair'] = {'source_patch': '', 'defects': [], 'candidate_id': inspected_packet['candidate_id']}
+            def repair_packet(*args, **kwargs):
+                pkt = orig_review_packet(*args, **kwargs)
+                pkt['uncertainties'] = 'x' * (70000 - len(json.dumps(pkt)))
+                return pkt
+
+            branch_evidence.review_packet = repair_packet
+            result = checkpoint(self.engine, Runtime(task), {})
+            self.assertEqual(result['decision'], 'APPROVE')
+
+            # 4. 85,000 characters with review_repair raises ProgressPause
+            run['items'][0]['status'] = 'working'
+            run['items'][0].pop('ready_receipt', None)
+            task['status'] = 'running'
+            def over_repair_packet(*args, **kwargs):
+                pkt = orig_review_packet(*args, **kwargs)
+                pkt['uncertainties'] = 'x' * 85000
+                return pkt
+
+            branch_evidence.review_packet = over_repair_packet
+            with self.assertRaisesRegex(ProgressPause, 'Item review exceeds 80,000 characters'):
+                checkpoint(self.engine, Runtime(task), {})
+        finally:
+            branch_evidence.review_packet = orig_review_packet
+
+    def test_final_review_repair_packet_uses_item_patch_and_omits_duplicate_checks(self):
+        task = self.task()
+        run = task['branch_run']
+        cmd_str = shlex.join(task['check_command'])
+        item = run['items'][0]
+        item['review_repair'] = {
+            'manifest_id': 'manifest-abc',
+            'candidate_id': 'prev-candidate',
+            'source_patch': 'diff --git a/big.py b/big.py\n+big diff\n' * 500,
+            'checks': [{'command': cmd_str, 'stdout': 'very verbose output ' * 500}],
+            'defects': []
+        }
+        inspected_packet = {}
+        def review(runtime, messages, tools, role):
+            nonlocal inspected_packet
+            inspected_packet = json.loads(messages[1]['content'])
+            return call('review_decision', {
+                'decision': 'APPROVE',
+                'feedback': 'ok',
+                'candidate_id': inspected_packet['candidate_id'],
+                'criteria_outcomes': {'Both bounds work': {'passed': True, 'evidence': 'Passed'}}
+            })
+        self.engine.request = Mock(side_effect=review)
+        result = checkpoint(self.engine, Runtime(task), {})
+        self.assertEqual(result['decision'], 'APPROVE')
+
+        # 1. repair_diff_since_claim must be current patch, not the 500-line source_patch diff
+        self.assertNotIn('big diff', inspected_packet['repair_diff_since_claim'])
+        self.assertEqual(inspected_packet['repair_diff_since_claim'], inspected_packet['diff'])
+
+        # 2. repair_review must not duplicate checks
+        self.assertNotIn('checks', inspected_packet['repair_review'])
+        self.assertIn('checks', inspected_packet)
