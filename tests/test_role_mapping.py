@@ -1,8 +1,12 @@
-"""RoleMapping contract: settings-level planner/worker/reviewer model binding."""
-
 import copy
 import unittest
+import tempfile
+import json
+from pathlib import Path
 
+from cheapos import role_mappings
+from cheapos.storage import write_json
+from cheapos.engine import Engine
 from cheapos.agents import ROLES, RoleMapping
 
 
@@ -113,6 +117,63 @@ class RoleMappingTests(unittest.TestCase):
         self.assertEqual(mapping.candidates('worker'), frozenset())
         with self.assertRaises(ValueError):
             mapping.assign('worker', 'anything')
+
+
+
+
+class StoreTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name) / 'role-mappings.json'
+
+    def test_missing_file_is_empty(self):
+        data = role_mappings.load(self.path)
+        self.assertEqual(data, {'defaults': {}, 'projects': {}})
+
+    def test_corrupt_file_is_empty_and_not_fatal(self):
+        write_json(self.path, {'defaults': 'not-a-dict'})
+        self.assertEqual(role_mappings.load(self.path), {'defaults': {}, 'projects': {}})
+
+    def test_round_trip_preserves_selections(self):
+        data = {'defaults': {'planner': 'planner-A', 'worker': 'worker-A', 'reviewer': 'reviewer-A'},
+                'projects': {'/repo/alpha': {'worker': 'worker-B'}}}
+        role_mappings.save(self.path, data)
+        self.assertEqual(role_mappings.load(self.path), data)
+        on_disk = json.loads(self.path.read_text())
+        self.assertEqual(on_disk, data)
+
+class ResolveTests(unittest.TestCase):
+    def setUp(self):
+        self.data = {'defaults': {'planner': 'planner-A', 'worker': 'worker-A', 'reviewer': 'reviewer-A'},
+                     'projects': {'/proj': {'planner': 'planner-B'}}}
+
+    def resolve(self, data=None, project=None):
+        return role_mappings.effective(data if data is not None else self.data, project)
+
+    def test_defaults_used_when_no_explicit(self):
+        current = self.resolve(project='/other')
+        self.assertEqual(current['mapping'], {'planner': 'planner-A', 'worker': 'worker-A', 'reviewer': 'reviewer-A'})
+        self.assertEqual(current['source'], 'operator')
+
+    def test_explicit_overrides_defaults_per_role(self):
+        current = self.resolve(project='/proj')
+        self.assertEqual(current['mapping'], {'planner': 'planner-B', 'worker': 'worker-A', 'reviewer': 'reviewer-A'})
+        self.assertEqual(current['source'], 'user')
+
+class EngineRoundTripTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.engine = Engine(self.temp.name)
+        self.addCleanup(self.engine.shutdown)
+
+    def test_defaults_round_trip_across_restart(self):
+        self.engine.save_role_mappings({'defaults': {'planner': 'planner-A', 'worker': 'worker-A', 'reviewer': 'reviewer-A'}})
+        role = Engine(self.temp.name)
+        self.addCleanup(role.shutdown)
+        saved = role.role_mappings()
+        self.assertEqual(saved['defaults'], {'planner': 'planner-A', 'worker': 'worker-A', 'reviewer': 'reviewer-A'})
 
 
 if __name__ == '__main__':

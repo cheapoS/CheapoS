@@ -566,6 +566,49 @@ class Engine:
             write_json(self.store.root / "preferences.json", result)
         return result
 
+    # --- Agent role mappings (planner / worker / reviewer) ---
+
+    def role_mappings(self):
+        from . import role_mappings as role_mappings_mod
+        return role_mappings_mod.load(self.store.root / "role-mappings.json")
+
+    def save_role_mappings(self, values):
+        from . import role_mappings as role_mappings_mod
+        if not isinstance(values, dict) or (set(values) - {"defaults", "projects"}):
+            raise ValueError("Provide defaults and/or project role mappings")
+        for key in ("defaults", "projects"):
+            if key in values and not isinstance(values[key], dict):
+                raise ValueError("Provide %s as an object" % key)
+        path = self.store.root / "role-mappings.json"
+        with self.lock:
+            current = role_mappings_mod.load(path)
+            merged = dict(current)
+            if "defaults" in values:
+                merged["defaults"] = role_mappings_mod._clean_roles(values["defaults"])
+            if "projects" in values:
+                projects = dict(current.get("projects", {}))
+                for project, section in values["projects"].items():
+                    if not isinstance(project, str) or not project:
+                        continue
+                    clean = role_mappings_mod._clean_roles(section)
+                    if clean:
+                        projects[project] = clean
+                    else:
+                        projects.pop(project, None)
+                merged["projects"] = projects
+            # Hard block: reject a save whose effective mapping for any
+            # affected project has worker == planner or worker == reviewer.
+            for project in ([p for p in (values.get("projects") or {}) if isinstance(p, str)] + [None]):
+                result = role_mappings_mod.effective(merged, project)
+                if result["error"] == "worker-duplicate":
+                    raise ValueError(result["reason"])
+            saved = role_mappings_mod.save(path, merged)
+        return saved
+
+    def effective_role_mapping(self, project=None):
+        from . import role_mappings as role_mappings_mod
+        return role_mappings_mod.effective(self.role_mappings(), project)
+
     def connection_for(self, config):
         if config.get("gateway") == "omniroute" and getattr(self,"connections",None):
             return self.connections.resolve(config, self.gateway)

@@ -65,10 +65,13 @@ class RoleMapping(object):
             raise ValueError('Model reference must be a non-empty string')
         if model_id not in self._candidates[role]:
             raise ValueError('%r is not a configured candidate for %s' % (model_id, role))
-        for other in ROLES:
-            if other != role and self._selected[other] == model_id:
-                raise ValueError(
-                    '%r is already mapped to %s' % (model_id, other))
+        if role == 'worker':
+            # Hard block: the worker must be a different model from the
+            # planner and the reviewer. Planner and reviewer may coincide.
+            for other in ('planner', 'reviewer'):
+                if self._selected[other] == model_id:
+                    raise ValueError(
+                        '%r is already mapped to %s; choose a different worker' % (model_id, other))
         self._selected[role] = model_id
         return self
 
