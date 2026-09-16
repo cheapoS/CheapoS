@@ -470,6 +470,12 @@ svg, svg * {
 #changes-view .diff-gap{display:block;width:100%;padding:9px 16px;text-align:left;color:#9ec4de;background:#1c2931;border-block:1px solid #33444f;font-size:13px}
 #changes-view .diff-gap:hover{background:#263b48}
 #changes-view [aria-pressed="true"]{background:var(--hover);color:var(--mint)}
+.branch-decision-header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.review-evidence-summary{display:flex;align-items:center;gap:10px}
+.status-badge{display:inline-block;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:500}
+.badge-approved{background:#1c3527;color:#bce8ca;border:1px solid #2f563e}
+.badge-pending{background:#332c20;color:#f0ce95;border:1px solid #635132}
+#changes-view .diff-hunk{background:#202c35;color:#adc8e4;padding:8px 16px;font-size:13px;border-block:1px solid #33444f;font-family:var(--font-mono,monospace)}
 @media(max-width:700px){#changes-view{padding:12px}#changes-view.changes-expanded{inset:0}#changes-view .diff-toolbar{top:100px}#changes-view .split-diff{grid-template-columns:1fr}#changes-view .review-controls{margin-left:0}}
 
 /* Keep gateway setup readable at desktop and narrow window sizes. */

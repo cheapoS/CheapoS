@@ -106,7 +106,7 @@ const icon = name => `<svg aria-hidden="true" focusable="false" tabindex="-1"><u
 const taskBusy=task=>CheapOSBranchUI.isBusy(task);
 const activeStatuses = new Set(['running', 'reviewing', 'waiting_approval', 'waiting_retry', 'stopping']);
 const labels = {awaiting_reply:'Ready for your message',ready:'Ready to start',running:'cheapoS is working',reviewing:'Checking your changes',waiting_approval:'Command approval needed',waiting_retry:'Waiting for a free route',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
-const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,pendingSends:new Set(),startErrors:new Map(),admission:null,pausingTask:null,stoppingStartup:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',diffWrap:true,diffContext:false,diffExpanded:false,diffFont:14,run:-1,online:false,loading:false};
+const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,pendingSends:new Set(),startErrors:new Map(),admission:null,pausingTask:null,stoppingStartup:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',diffWrap:true,diffContext:false,diffExpanded:false,diffFont:14,run:-1,online:false,loading:false,branchPreviews:new Map()};
 const money = value => '$' + Number(value || 0).toFixed(Number(value || 0) > 0 && value < .01 ? 4 : 2);
 const date = value => new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
@@ -495,8 +495,16 @@ function renderTask({resetScroll=false}={}) {
   $('#task-date').textContent=date(task.created_at);
   $('#task-eyebrow').classList.toggle('running',taskBusy(task));
   $('#task-subtitle').textContent=task.branch_run?'Unattended work on '+task.branch_run.feature_ref.replace(/^refs\/heads\//,'')+'. Final integration stays your decision.':task.demo?'Scripted models. Real edits, checks, and checkpoint reviews.':task.status==='approved'?'Ready for your decision. Approve and commit, or keep chatting.':'Working in a separate copy of your repository.';
-  $('#change-count').textContent=task.changes.length;$('#check-count').textContent=task.checks.length;
-  const sums=patchTotals(task.patch);$('#diff-tally').innerHTML=`<span>+${sums.add}</span><span>−${sums.remove}</span>`;
+  if(task.branch_run){
+    const branchFiles=CheapOSBranchUI.reviewFiles(state.branchPreviews?.get(task.id)?.preview||task.branch_run.readiness||{});
+    $('#change-count').textContent=branchFiles.length;$('#check-count').textContent=task.checks.length;
+    const add=branchFiles.reduce((n,f)=>n+(Number.isInteger(f.added_lines)?f.added_lines:0),0);
+    const remove=branchFiles.reduce((n,f)=>n+(Number.isInteger(f.removed_lines)?f.removed_lines:0),0);
+    $('#diff-tally').innerHTML=`<span>+${add}</span><span>−${remove}</span>`;
+  }else{
+    $('#change-count').textContent=task.changes.length;$('#check-count').textContent=task.checks.length;
+    const sums=patchTotals(task.patch);$('#diff-tally').innerHTML=`<span>+${sums.add}</span><span>−${sums.remove}</span>`;
+  }
   $('#compact-cost').textContent=money(task.usage.cost);
   const totalTokens=(task.usage?.worker?.tokens||0)+(task.usage?.reviewer?.tokens||0)+(task.usage?.coordinator?.tokens||0)+(task.usage?.planner?.tokens||0);
   const actualCost=task.usage?.cost;
@@ -719,13 +727,22 @@ function reviewDisputeMarkup(task){
 function renderActivity() {
   const task=state.task,a=CheapOSGuide.activity(task),guide=CheapOSGuide.taskGuide(task),pause=CheapOSBranchUI.pausePresentation(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
   const action=(view,label)=>`<button class="outline-button" data-activity-view="${view}">${label}</button>`;
-  const timeline=a.items.slice(0,40).reverse().map(item=>`<details class="activity-step ${item.failed?'failed':''}" data-event="step-${item.event.id}"><summary><span class="step-icon">${icon(item.icon)}</span><span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span><time>${new Date(item.event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="step-body">${eventDetail(item.event)}${item.path&&task.changes.some(c=>c.path===item.path)?`<button class="text-link" data-activity-file="${esc(item.path)}">View current diff →</button>`:''}</div></details>`).join('');
+  const timeline=a.items.slice(0,40).reverse().map(item=>`<details class="activity-step ${item.failed?'failed':''}" data-event="step-${item.event.id}"><summary><span class="step-icon">${icon(item.icon)}</span><span><strong>${esc(item.title)}</strong>${item.note?`<small>${esc(item.note)}</small>`:''}</span><time>${new Date(item.event.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time>${icon('chevron')}</summary><div class="step-body">${eventDetail(item.event)}${item.path&&(task.changes.some(c=>c.path===item.path)||(task.branch_run&&CheapOSBranchUI.reviewFiles(task.branch_run.readiness||{}).some(f=>f.path===item.path)))?`<button class="text-link" data-activity-file="${esc(item.path)}">View current diff →</button>`:''}</div></details>`).join('');
 
   const status=task.pending_approval?permissionMarkup(task):taskBusy(task)?progressMarkup(task):`<section class="activity-status"><span class="activity-eyebrow">${['approved','completed'].includes(task.status)?'RESULT':'CURRENT STATUS'}</span><h3>${esc(failure?.title||guide.title)}</h3><p>${esc(failure?.description||guide.description)}</p>${task.error&&task.error!==guide.description?`<p>${esc(task.error)}</p>`:''}<div class="button-row">${['approved','completed'].includes(task.status)?action('changes','Review changes'):''}${action('chat','Back to chat')}${['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)?`<button class="outline-button" id="activity-resume">${pause?'Review pause in chat':task.status==='error'?'Retry':guide.primaryLabel}</button>`:''}${task.error_code==='routing_unavailable'?'<button class="outline-button" id="activity-models">Models</button>':''}</div></section>`;
   $('#activity-view').innerHTML=`<div class="view-title"><div><h2>What’s happening</h2><p>${task.demo?'Scripted demo · real files and checks':'Real actions and saved results from this chat.'}</p></div></div>${status}${reviewDisputeMarkup(task)}${task.check_stream?commandMarkup(task.check_stream,{live:true}):''}<div class="activity-facts"><button data-activity-view="changes"><span>Saved changes · whole chat</span><strong>${a.files} file${a.files===1?'':'s'}</strong><small>Inspect the diff →</small></button><button data-activity-view="tests"><span>Checks · this request</span><strong>${esc(a.checks)}</strong><small>View command output →</small></button><button id="activity-review" ${!a.checkpoint?'disabled':''}><span>Review · this request</span><strong>${esc(a.review)}</strong><small>${a.checkpoint?'Inspect the decision →':'A passing check alone is not approval'}</small></button></div><section class="activity-timeline"><h3>Latest request</h3><p class="activity-request">${esc(a.request)}</p><p class="small muted">Chronological actions${a.items.length>40?' · showing the latest 40':''}</p>${timeline||'<p class="activity-empty">No file actions yet. Conversation and live model output are in Chat.</p>'}</section><button class="text-link" data-activity-view="logs">View technical logs →</button>`;
   $$('[data-activity-view]').forEach(b=>b.onclick=()=>setView(b.dataset.activityView));
   $$('#activity-view [data-chat-action]').forEach(b=>b.onclick=()=>b.dataset.chatAction==='stop'?stopTask():b.dataset.chatAction==='connections'?openConnections():setView('chat'));
-  $$('[data-activity-file]').forEach(b=>b.onclick=()=>{state.file=task.changes.findIndex(c=>c.path===b.dataset.activityFile);setView('changes')});
+  $$('[data-activity-file]').forEach(b=>b.onclick=()=>{
+    const p=b.dataset.activityFile;
+    let idx=task.changes.findIndex(c=>c.path===p);
+    if(idx<0&&task.branch_run){
+      const bf=CheapOSBranchUI.reviewFiles(state.branchPreviews?.get(task.id)?.preview||task.branch_run.readiness||{});
+      idx=bf.findIndex(f=>f.path===p);
+    }
+    state.file=Math.max(0,idx);
+    setView('changes');
+  });
   bindPermissions(task);
   $$('[data-checkpoint]').forEach(b=>b.onclick=()=>checkpointDialog(Number(b.dataset.checkpoint)));
   $('#activity-review').onclick=()=>a.checkpoint&&checkpointDialog(a.checkpoint.number);
@@ -799,30 +816,119 @@ function reviewRows(rows,showAll=false) {
   for(let i=0;i<rows.length;i++){if(!keep.has(i)){omitted++;continue}if(omitted){result.push({type:'gap',count:omitted});omitted=0}result.push(rows[i])}
   if(omitted)result.push({type:'gap',count:omitted});return result;
 }
+function patchRows(text) {
+  if(!text)return [];
+  const lines=text.split('\n');
+  if(lines.at(-1)==='')lines.pop();
+  const rows=[];
+  let old=null,next=null;
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];
+    const hunk=line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if(hunk){
+      old=Number(hunk[1]);
+      next=Number(hunk[2]);
+      rows.push({type:'hunk',old:'',new:'',text:line});
+      continue;
+    }
+    if(old===null&&/^(diff --git |index |--- |\+\+\+ |new file |deleted file |similarity |rename )/.test(line)){
+      continue;
+    }
+    if(old===null||![' ','+','-'].includes(line[0])){
+      if(line.trim())rows.push({type:'hunk',old:'',new:'',text:line});
+      continue;
+    }
+    if(line[0]==='+'){
+      rows.push({type:'add',old:'',new:next++,text:line.slice(1)});
+    }else if(line[0]==='-'){
+      rows.push({type:'remove',old:old++,new:'',text:line.slice(1)});
+    }else{
+      rows.push({type:'context',old:old++,new:next++,text:line.slice(1)});
+    }
+  }
+  return rows;
+}
 function renderChanges() {
-  const task=state.task,files=task.changes;
+  const task=state.task;if(!task)return;
+  const isBranchRun=Boolean(task.branch_run);
+  let branchEntry=null;
+  if(isBranchRun){
+    branchEntry=state.branchPreviews.get(task.id);
+    if(!branchEntry){ensureBranchDiff(task);branchEntry=state.branchPreviews.get(task.id);}
+  }
+  let files=isBranchRun
+    ?(branchEntry?.files?.length?branchEntry.files:CheapOSBranchUI.reviewFiles(branchEntry?.preview||task.branch_run.readiness||{}))
+    :task.changes;
+
   const previousView=$('#changes-view'),previousKey=previousView.dataset.reviewKey;
   const previousScroll=[...previousView.querySelectorAll('.diff-code')].map(e=>({top:e.scrollTop,left:e.scrollLeft}));
-  if(!files.length){const last=task.commits?.at(-1);$('#changes-view').innerHTML=last?`<section class="commit-success">${icon('check')}<h2>Committed to your project.</h2><p>${esc(last.message)}</p><p><code>${esc(last.commit.slice(0,8))}</code> on <strong>${esc(last.branch)}</strong></p><p class="muted">Your next edits in this chat will build on this commit.</p><details class="patch-help"><summary>View committed patch (${last.files.length} files)</summary><pre>${esc(last.patch)}</pre></details></section>`:'<div class="empty-state">'+icon('code')+'<h2>No changes yet.</h2><p>File edits will appear here as the worker makes them.</p></div>';return}
-  state.file=Math.min(state.file,files.length-1);const file=files[state.file],rows=reviewRows(diffLines(file.before,file.after),state.diffContext);
+
+  if(isBranchRun&&(!files||!files.length)){
+    const run=task.branch_run;
+    if(run.status==='draft'||run.status==='running'){
+      $('#changes-view').innerHTML=`<div class="empty-state">${icon('code')}<h2>Changes will appear here.</h2><p>Branch edits will be available for review after items complete.</p></div>`;
+      return;
+    }
+  }
+
+  if(!files.length){
+    const last=task.commits?.at(-1);
+    $('#changes-view').innerHTML=last?`<section class="commit-success">${icon('check')}<h2>Committed to your project.</h2><p>${esc(last.message)}</p><p><code>${esc(last.commit.slice(0,8))}</code> on <strong>${esc(last.branch)}</strong></p><p class="muted">Your next edits in this chat will build on this commit.</p><details class="patch-help"><summary>View committed patch (${last.files.length} files)</summary><pre>${esc(last.patch)}</pre></details></section>`:'<div class="empty-state">'+icon('code')+'<h2>No changes yet.</h2><p>File edits will appear here as the worker makes them.</p></div>';
+    return;
+  }
+
+  state.file=Math.min(Math.max(0,state.file),files.length-1);
+  const file=files[state.file];
+  let rows=[];
+  let fileBinary=Boolean(file.binary);
+  let section=null;
+  if(isBranchRun){
+    section=branchEntry?.sections?.find(s=>s.path===file.path||s.oldPath===file.path);
+    if(section){
+      if(section.binary)fileBinary=true;
+      rows=reviewRows(patchRows(section.text),state.diffContext);
+    }
+  }else{
+    rows=reviewRows(diffLines(file.before,file.after),state.diffContext);
+  }
+
   const view=$('#changes-view');view.classList.toggle('changes-expanded',!!state.diffExpanded);view.classList.toggle('diff-wrap',state.diffWrap!==false);view.style.setProperty('--review-font',`${state.diffFont||14}px`);
   const gap=r=>`<button class="diff-gap" data-context>${r.count} unchanged lines · Show all context</button>`;
-  const line=r=>r.type==='gap'?gap(r):`<div class="diff-line ${r.type}"><span class="line-number">${r.old}</span><span class="line-number">${r.new}</span><span class="diff-sign">${r.type==='add'?'+':r.type==='remove'?'−':' '}</span><span class="source">${esc(r.text)||' '}</span></div>`;
-  $('#changes-view').innerHTML=`<div class="view-title"><div><h2>Review the work.</h2><p>${files.length} changed files in the task copy</p></div><div class="button-row"><button class="subtle-button" data-expand>${state.diffExpanded?'Restore view':'Expand view'}</button><a class="subtle-button" href="/api/tasks/${task.id}/patch" download>${icon('file')}Export patch</a>${!task.branch_run&&!CheapOSGuide.canCommit(task)&&task.status==='awaiting_reply'?'<button class="primary-button" id="commit-review">Finish review</button>':''}</div></div>${CheapOSGuide.canCommit(task)?commitDecisionMarkup(task):''}<div class="file-list">${files.map((f,i)=>`<button class="file-item ${i===state.file?'selected':''}" data-file="${i}">${icon('file')}<span>${esc(f.path)}</span><span class="file-status">${f.before?'M':'A'}</span></button>`).join('')}</div><div class="diff-panel"><div class="diff-toolbar"><span>${icon('file')}${esc(file.path)}</span><div class="review-controls"><button class="subtle-button" data-prev-change aria-label="Previous change">↑ Previous</button><button class="subtle-button" data-next-change aria-label="Next change">↓ Next</button><button class="subtle-button" data-wrap aria-pressed="${state.diffWrap!==false}">Wrap lines</button><button class="subtle-button" data-context aria-pressed="${!!state.diffContext}">${state.diffContext?'Hide unchanged':'Show all context'}</button><button class="subtle-button" data-font="-1" aria-label="Smaller code text">A−</button><button class="subtle-button" data-font="1" aria-label="Larger code text">A+</button></div><div class="segmented"><button data-diff="unified" class="${state.diff==='unified'?'selected':''}">Unified</button><button data-diff="split" class="${state.diff==='split'?'selected':''}">Split</button></div></div>${file.binary?'<p class="modal-description">Binary change. Inspect the exported Git patch.</p>':state.diff==='unified'?`<div class="diff-code" tabindex="0" aria-label="Unified code diff">${rows.map(line).join('')}</div>`:`<div class="split-diff">${['before','after'].map(side=>`<div class="diff-code" tabindex="0" aria-label="${side==='before'?'Original':'Modified'} file"><div class="split-label">${side==='before'?'Before':'After'}</div>${rows.filter(r=>r.type!==(side==='before'?'add':'remove')).map(r=>r.type==='gap'?gap(r):`<div class="diff-line ${r.type}"><span class="line-number">${side==='before'?r.old:r.new}</span><span class="source">${esc(r.text)||' '}</span></div>`).join('')}</div>`).join('')}</div>`}</div><div class="diff-bottom">${icon('shield')}${CheapOSGuide.canCommit(task)?'Approve the reviewed patch above, or keep chatting to request changes.':'The task copy is saved. Verification and review must finish before committing.'}</div><details class="patch-help"><summary>Apply manually instead</summary><p>From your original repository, check the downloaded patch first, then apply it:</p><pre>git apply --check /path/to/cheapos-${task.id.slice(0,8)}.patch\ngit apply /path/to/cheapos-${task.id.slice(0,8)}.patch</pre><p>For large files, the visual comparison shows whole blocks; the exported Git patch preserves the exact change, including file modes and final newlines.</p></details>`;
+  const line=r=>r.type==='gap'?gap(r):r.type==='hunk'?`<div class="diff-hunk">${esc(r.text)}</div>`:`<div class="diff-line ${r.type}"><span class="line-number">${r.old}</span><span class="line-number">${r.new}</span><span class="diff-sign">${r.type==='add'?'+':r.type==='remove'?'−':' '}</span><span class="source">${esc(r.text)||' '}</span></div>`;
+  const featureShort=isBranchRun?String(task.branch_run.feature_ref||'').replace(/^refs\/heads\//,''):'';
+
+  $('#changes-view').innerHTML=`<div class="view-title"><div><h2>Review the work.</h2><p>${files.length} changed files ${isBranchRun?'on '+esc(featureShort):'in the task copy'}</p></div><div class="button-row"><button class="subtle-button" data-expand>${state.diffExpanded?'Restore view':'Expand view'}</button>${isBranchRun?(branchEntry?.text?'<button class="subtle-button" data-export-patch>'+icon('file')+'Export patch</button>':''):`<a class="subtle-button" href="/api/tasks/${task.id}/patch" download>${icon('file')}Export patch</a>`}${!isBranchRun&&!CheapOSGuide.canCommit(task)&&task.status==='awaiting_reply'?'<button class="primary-button" id="commit-review">Finish review</button>':''}</div></div>${isBranchRun?branchDecisionMarkup(task,branchEntry?.preview):(CheapOSGuide.canCommit(task)?commitDecisionMarkup(task):'')}<div class="file-list">${files.map((f,i)=>`<button class="file-item ${i===state.file?'selected':''}" data-file="${i}">${icon('file')}<span>${esc(f.path)}</span><span class="file-status">${isBranchRun?esc(f.status||'M'):(f.before?'M':'A')}</span></button>`).join('')}</div><div class="diff-panel"><div class="diff-toolbar"><span>${icon('file')}${esc(file.path)}</span><div class="review-controls"><button class="subtle-button" data-prev-change aria-label="Previous change">↑ Previous</button><button class="subtle-button" data-next-change aria-label="Next change">↓ Next</button><button class="subtle-button" data-wrap aria-pressed="${state.diffWrap!==false}">Wrap lines</button><button class="subtle-button" data-context aria-pressed="${!!state.diffContext}">${state.diffContext?'Hide unchanged':'Show all context'}</button><button class="subtle-button" data-font="-1" aria-label="Smaller code text">A−</button><button class="subtle-button" data-font="1" aria-label="Larger code text">A+</button></div><div class="segmented"><button data-diff="unified" class="${state.diff==='unified'?'selected':''}">Unified</button><button data-diff="split" class="${state.diff==='split'?'selected':''}">Split</button></div></div>${fileBinary?'<p class="modal-description">Binary change. Inspect the exported Git patch.</p>':(isBranchRun&&branchEntry?.loading&&!section)?`<div class="review-loading" role="status"><span class="spinner" aria-hidden="true"></span><p>Loading diff for ${esc(file.path)}…</p></div>`:state.diff==='unified'?`<div class="diff-code" tabindex="0" aria-label="Unified code diff">${rows.map(line).join('')}</div>`:`<div class="split-diff">${['before','after'].map(side=>`<div class="diff-code" tabindex="0" aria-label="${side==='before'?'Original':'Modified'} file"><div class="split-label">${side==='before'?'Before':'After'}</div>${rows.filter(r=>r.type!==(side==='before'?'add':'remove')).map(r=>r.type==='gap'?gap(r):r.type==='hunk'?`<div class="diff-hunk">${esc(r.text)}</div>`:`<div class="diff-line ${r.type}"><span class="line-number">${side==='before'?r.old:r.new}</span><span class="source">${esc(r.text)||' '}</span></div>`).join('')}</div>`).join('')}</div>`}</div><div class="diff-bottom">${icon('shield')}${isBranchRun?(CheapOSBranchUI.terminalRun(task)?'This branch has completed its integration cycle.':'Branch changes are saved in local Git. Merge applies directly to the target branch.'):(CheapOSGuide.canCommit(task)?'Approve the reviewed patch above, or keep chatting to request changes.':'The task copy is saved. Verification and review must finish before committing.')}</div>${isBranchRun?`<details class="patch-help"><summary>Inspect branch in Git</summary><p>From your repository root, checkout or inspect the branch directly:</p><pre>git log -p ${esc(task.branch_run.target_ref)}..${esc(task.branch_run.feature_ref)}</pre></details>`:`<details class="patch-help"><summary>Apply manually instead</summary><p>From your original repository, check the downloaded patch first, then apply it:</p><pre>git apply --check /path/to/cheapos-${task.id.slice(0,8)}.patch\ngit apply /path/to/cheapos-${task.id.slice(0,8)}.patch</pre><p>For large files, the visual comparison shows whole blocks; the exported Git patch preserves the exact change, including file modes and final newlines.</p></details>`}`;
+
   view.querySelector('[data-expand]').onclick=()=>{state.diffExpanded=!state.diffExpanded;renderChanges()};
   view.querySelector('[data-wrap]').onclick=()=>{state.diffWrap=state.diffWrap===false;renderChanges()};
   view.querySelectorAll('[data-context]').forEach(b=>b.onclick=()=>{state.diffContext=!state.diffContext;renderChanges()});
   view.querySelectorAll('[data-font]').forEach(b=>b.onclick=()=>{state.diffFont=Math.max(12,Math.min(22,(state.diffFont||14)+Number(b.dataset.font)));renderChanges()});
+  const exportBtn=view.querySelector('[data-export-patch]');
+  if(exportBtn&&branchEntry?.text){
+    exportBtn.onclick=()=>{
+      const blob=new Blob([branchEntry.text],{type:'text/x-patch'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;a.download=`cheapos-${task.id.slice(0,8)}.patch`;a.click();
+      URL.revokeObjectURL(url);
+    };
+  }
   const reviewKey=task.id+':'+file.path+':'+state.diff;view.dataset.reviewKey=reviewKey;
   if(previousKey===reviewKey)view.querySelectorAll('.diff-code').forEach((e,i)=>{e.scrollTop=previousScroll[i]?.top||0;e.scrollLeft=previousScroll[i]?.left||0});
   let changeIndex=-1;
   const changes=[...view.querySelectorAll('.diff-line.add,.diff-line.remove')].filter(e=>!e.previousElementSibling?.matches('.diff-line.add,.diff-line.remove'));
   const jump=delta=>{if(!changes.length)return;changeIndex=changeIndex<0?(delta>0?0:changes.length-1):(changeIndex+delta+changes.length)%changes.length;changes[changeIndex].scrollIntoView({block:'center',behavior:'smooth'})};
-  view.querySelector('[data-prev-change]').onclick=()=>jump(-1);view.querySelector('[data-next-change]').onclick=()=>jump(1);
+  const prevBtn=view.querySelector('[data-prev-change]');if(prevBtn)prevBtn.onclick=()=>jump(-1);
+  const nextBtn=view.querySelector('[data-next-change]');if(nextBtn)nextBtn.onclick=()=>jump(1);
   view.onkeydown=e=>{if(e.key==='Escape'&&state.diffExpanded){state.diffExpanded=false;renderChanges()}};
   if($('#commit-review'))$('#commit-review').onclick=e=>requestCommitReview(e.currentTarget);
-  bindCommitDecision(task);
-  $$('[data-file]').forEach(b=>b.onclick=()=>{state.file=Number(b.dataset.file);renderChanges()});$$('[data-diff]').forEach(b=>b.onclick=()=>{state.diff=b.dataset.diff;renderChanges()});
+  if(isBranchRun){
+    bindBranchDecision(task,branchEntry?.preview);
+  }else{
+    bindCommitDecision(task);
+  }
+  view.querySelectorAll('[data-file]').forEach(b=>b.onclick=()=>{state.file=Number(b.dataset.file);renderChanges()});
+  view.querySelectorAll('[data-diff]').forEach(b=>b.onclick=()=>{state.diff=b.dataset.diff;renderChanges()});
 }
 async function requestCommitReview(trigger) {
   const task=state.task;if(!task)return;
@@ -912,6 +1018,159 @@ function bindCommitDecision(task) {
     } catch(error) {entry.submitError=error.message;entry.error=error.message;entry.code=error.code;entry.files=error.files;throw error}
     finally {entry.submitting=false;if(state.task?.id===task.id)renderTask()}
   })};
+}
+function branchDecisionMarkup(task,preview) {
+  const run=task?.branch_run;if(!run)return '';
+  const short=ref=>String(ref||'').replace(/^refs\/heads\//,'');
+  const isTerminal=CheapOSBranchUI.terminalRun(task);
+  const isMerged=run.status==='merged';
+  const checks=run.readiness?.checks||[];
+  const passed=checks.filter(c=>c.record?.passed===true).length;
+  const review=run.readiness?.review;
+  const target=short(preview?.target_ref||run.target_ref||'main');
+  const feature=short(run.feature_ref);
+  let statusBadge='';
+  if(isMerged){
+    statusBadge=`<span class="status-badge badge-approved">✓ Merged locally to ${esc(target)}</span>`;
+  }else if(run.status==='left_on_branch'){
+    statusBadge='<span class="status-badge badge-pending">Saved on feature branch</span>';
+  }else if(review?.decision==='APPROVE'){
+    statusBadge='<span class="status-badge badge-approved">✓ Final review approved</span>';
+  }else{
+    statusBadge=`<span class="status-badge badge-pending">${esc(CheapOSBranchUI.projectRun(task)?.label||'In review')}</span>`;
+  }
+  return `<section class="commit-decision branch-decision" aria-label="Branch review and merge">
+    <div class="branch-decision-header">
+      <div>
+        <h3>${isMerged?'Merged to '+esc(target):'Ready for integration review.'}</h3>
+        <p class="muted"><strong>${esc(feature)}</strong> → <strong>${esc(target)}</strong> · Local merge · no push</p>
+      </div>
+      <div class="review-evidence-summary">
+        ${statusBadge}
+        ${checks.length?`<button type="button" class="subtle-button" data-branch-evidence>${passed}/${checks.length} checks passed · Review details</button>`:''}
+      </div>
+    </div>
+    ${preview?.blocker?`<p class="review-blocker" role="status">${esc(preview.blocker)}</p>`:''}
+    <div class="button-row branch-actions">
+      ${!isTerminal?`
+        <button type="button" class="primary-button" data-branch-action="merge" ${preview?.merge_available!==true||preview?.blocker?'disabled':''}>Approve &amp; merge locally</button>
+        <button type="button" class="subtle-button" data-branch-action="revise">Request changes</button>
+        <button type="button" class="subtle-button" data-branch-action="recheck">Recheck changes</button>
+        ${preview?.resolve_available?'<button type="button" class="subtle-button" data-branch-action="resolve">Resolve conflicts &amp; recheck</button>':''}
+        ${preview?.update_available&&!preview?.resolve_available?'<button type="button" class="subtle-button" data-branch-action="update">Update branch &amp; recheck</button>':''}
+        <button type="button" class="subtle-button" data-branch-action="leave">Leave on branch</button>
+      `:`
+        <button type="button" class="primary-button" data-branch-action="new-chat">Start a new chat</button>
+      `}
+      <button type="button" class="subtle-button" data-branch-action="refresh">Refresh preview</button>
+    </div>
+    <p class="small muted">${isMerged?'This run has been merged to your project branch. Work and evidence are preserved.':'Approving merges the reviewed branch into '+esc(target)+' locally. No code is pushed.'}</p>
+  </section>`;
+}
+function bindBranchDecision(task,preview) {
+  const view=$('#changes-view');if(!view)return;
+  const evidenceBtn=view.querySelector('[data-branch-evidence]');
+  if(evidenceBtn){
+    evidenceBtn.onclick=()=>{
+      const checks=task.branch_run?.readiness?.checks||[];
+      const review=task.branch_run?.readiness?.review;
+      const command=c=>{const v=c?.command||c?.argv||[];return Array.isArray(v)?v.join(' '):String(v);};
+      dialog(`${modalHeader('BRANCH EVIDENCE','Verification & Final Review')}
+        <div class="checkpoint-section">
+          <h3>Verification checks</h3>
+          <ul>${checks.map(c=>`<li><strong>${c.record?.passed===true?'Passed':c.record?.passed===false?'Failed':'Unavailable'}</strong> <code>${esc(command(c))}</code></li>`).join('')||'<li>No checks recorded.</li>'}</ul>
+        </div>
+        <div class="checkpoint-section">
+          <h3>Independent final review · ${esc(review?.decision||'None')}</h3>
+          <p>${esc(review?.feedback||'No review feedback saved.')}</p>
+        </div>
+        <div class="checkpoint-section">
+          <h3>Completed items</h3>
+          <ul>${(task.branch_run?.items||[]).map(i=>`<li>${esc(i.title)} · ${esc(String(i.status||'unknown').replace(/_/g,' '))}${i.commit_receipt?.new_tip?` · <code>${esc(i.commit_receipt.new_tip.slice(0,10))}</code>`:''}</li>`).join('')||'<li>No items.</li>'}</ul>
+        </div>
+        <div class="modal-footer"><button type="button" class="primary-button" data-close>Close</button></div>`,'checkpoint-modal');
+    };
+  }
+  view.querySelectorAll('[data-branch-action]').forEach(btn=>{
+    btn.onclick=async()=>{
+      const action=btn.dataset.branchAction;
+      if(action==='new-chat'){branchUI?.newChat();newTask();return;}
+      if(action==='revise'){setView('chat');const input=$('#chat-input');if(input){input.focus();input.placeholder='Describe the changes you want in this run…';}return;}
+      if(action==='refresh'){btn.disabled=true;btn.textContent='Refreshing…';try{await ensureBranchDiff(task,true);}finally{btn.disabled=false;}return;}
+      if(action==='merge'){
+        if(!preview?.preview_id)return;
+        btn.disabled=true;btn.textContent='Merging locally…';
+        try{
+          await CheapOSBranchUI.mergeAndPublish({
+            api,task,values:{preview_id:preview.preview_id,approved:true},
+            onTask:updated=>{if(state.task?.id===updated.id)state.task=updated;renderTask();toast('Reviewed changes merged locally.');},
+            refresh
+          });
+        }catch(e){toast(e.message);btn.disabled=false;}
+        return;
+      }
+      if(action==='leave'){
+        btn.disabled=true;
+        try{await api('/tasks/'+task.id+'/branch-leave',{});await refresh();}catch(e){toast(e.message);btn.disabled=false;}
+        return;
+      }
+      if(action==='recheck'){
+        btn.disabled=true;
+        try{const result=await api('/tasks/'+task.id+'/branch-final-recheck',{});await resumeBranchRun(task,result);await refresh();}catch(e){toast(e.message);btn.disabled=false;}
+        return;
+      }
+      if(action==='resolve'){
+        btn.disabled=true;
+        try{const result=await api('/tasks/'+task.id+'/branch-resolve-conflicts',{approved:true,update_token:preview.update_token});await resumeBranchRun(task,result);await refresh();}catch(e){toast(e.message);btn.disabled=false;}
+        return;
+      }
+      if(action==='update'){
+        btn.disabled=true;
+        try{const result=await api('/tasks/'+task.id+'/branch-update',{approved:true,update_token:preview.update_token});await resumeBranchRun(task,result);await refresh();}catch(e){toast(e.message);btn.disabled=false;}
+        return;
+      }
+    };
+  });
+}
+async function ensureBranchDiff(task,force=false) {
+  if(!task?.branch_run)return null;
+  const existing=state.branchPreviews.get(task.id);
+  if(!force&&existing&&(existing.complete||existing.loading))return existing;
+  const entry={
+    loading:true,
+    complete:false,
+    error:null,
+    preview:existing?.preview||null,
+    sections:existing?.sections||[],
+    files:existing?.files||CheapOSBranchUI.reviewFiles(task.branch_run.readiness||{}),
+    text:existing?.text||''
+  };
+  state.branchPreviews.set(task.id,entry);
+  try{
+    const preview=await api('/tasks/'+task.id+'/branch-final-preview',{});
+    entry.preview=preview;
+    entry.files=CheapOSBranchUI.reviewFiles(preview);
+    const diffState=CheapOSBranchUI.finalDiffState(preview);
+    while(diffState.get().cursor!==null){
+      if(state.task?.id!==task.id)return;
+      const page=await api('/tasks/'+task.id+'/branch-final-diff',{preview_id:preview.preview_id,cursor:diffState.get().cursor});
+      diffState.append(page);
+      entry.text=diffState.get().text;
+      entry.sections=CheapOSBranchUI.reviewDiffs(entry.text);
+      if(state.task?.id===task.id&&state.view==='changes'){
+        renderChanges();
+      }
+    }
+    entry.complete=true;
+  }catch(err){
+    entry.error=err.message||String(err);
+  }finally{
+    entry.loading=false;
+    if(state.task?.id===task.id&&state.view==='changes'){
+      renderChanges();
+    }
+  }
+  return entry;
 }
 function renderTests() {
   const checks=state.task.checks;
@@ -1479,7 +1738,7 @@ if(hideDemo) hideDemo.onclick=()=>{compactMenu(hideDemo,'Demo options',[{label:'
 if(typeof localStorage!=='undefined'&&localStorage.getItem('cheapos-demo-hidden')==='true') $('#demo-row')?.classList.add('hidden');
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
-const branchUI=CheapOSBranchUI.mount({api,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
+const branchUI=CheapOSBranchUI.mount({api,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),showChanges:()=>setView('changes'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}});
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);
 

@@ -324,7 +324,7 @@ function mount(options){
  }
  function renderPlan(task){
   const panel=document.querySelector('#plan-view');if(!panel)return;
-  if(panel.dataset.task!==task.id||!panel.querySelector('[data-plan-content]')){panel.dataset.task=task.id;panel.innerHTML='<div class="plan-review-heading"><div><h2>Plan &amp; review</h2><p>Compare the completed work with the plan you approved.</p></div><button type="button" data-jump-review>Jump to results ↓</button></div><details class="plan-contract" data-event="review-plan" open><summary>Plan and acceptance criteria</summary><div data-plan-content></div></details><div data-review-slot></div>';panel.querySelector('[data-jump-review]').onclick=()=>panel.querySelector('[data-review-slot]').scrollIntoView({block:'start',behavior:'instant'});}
+  if(panel.dataset.task!==task.id||!panel.querySelector('[data-plan-content]')){panel.dataset.task=task.id;panel.innerHTML='<div class="plan-review-heading"><div><h2>Plan &amp; review</h2><p>Compare the completed work with the plan you approved.</p></div><button type="button" data-jump-changes class="primary-button">Review changes in Changes tab →</button><button type="button" data-jump-review>Jump to results ↓</button></div><details class="plan-contract" data-event="review-plan" open><summary>Plan and acceptance criteria</summary><div data-plan-content></div></details><div data-review-slot></div>';panel.querySelector('[data-jump-review]').onclick=()=>panel.querySelector('[data-review-slot]').scrollIntoView({block:'start',behavior:'instant'});panel.querySelector('[data-jump-changes]').onclick=()=>options.showChanges?options.showChanges():panel.querySelector('[data-jump-review]').click();}
   const plan=panel.querySelector('[data-plan-content]'),markup=planMarkup(task);if(plan._markup!==markup){plan._markup=markup;plan.innerHTML=markup;}
   const slot=panel.querySelector('[data-review-slot]'),run=task.branch_run;
   const signature=JSON.stringify([run?.readiness?.id,run?.status,run?.expected_feature_tip,task.archived_at,task.trashed_at]);
@@ -333,14 +333,15 @@ function mount(options){
   loadFinal(task,slot);
  }
  function showFinal(task){
+  if(options.showChanges){options.showChanges();return;}
   options.showPlan?.();renderPlan(task);
   document.querySelector('#plan-view [data-review-slot]')?.scrollIntoView({block:'start',behavior:'instant'});
  }
  async function loadFinal(task,slot){
   // Render before awaiting the expensive, server-owned readiness validation.
   const d=document.createElement('section');d.className='final-review';d.setAttribute('aria-label','Review branch changes');d.setAttribute('aria-busy','true');
-  d.innerHTML='<div class="review-heading"><h2>Review results</h2><button type="button" data-back-plan>Back to plan ↑</button></div><div data-final-content class="review-loading" role="status"><span class="spinner" aria-hidden="true"></span><h3>Preparing your review…</h3><p>Loading the saved changes and checking whether the target branch can accept them.</p><p>You can keep using the other tabs. No merge has started.</p></div><p class="branch-error" role="alert"></p>';
-  slot.replaceChildren(d);d.querySelector('[data-back-plan]').onclick=()=>{const plan=slot.closest('#plan-view')?.querySelector('.plan-contract');if(plan){plan.open=true;plan.scrollIntoView({block:'start',behavior:'instant'});}};let preview;
+  d.innerHTML='<div class="review-heading"><h2>Review results</h2><button type="button" data-open-changes>Open in Changes view ↗</button><button type="button" data-back-plan>Back to plan ↑</button></div><div data-final-content class="review-loading" role="status"><span class="spinner" aria-hidden="true"></span><h3>Preparing your review…</h3><p>Loading the saved changes and checking whether the target branch can accept them.</p><p>You can keep using the other tabs. No merge has started.</p></div><p class="branch-error" role="alert"></p>';
+  slot.replaceChildren(d);d.querySelector('[data-back-plan]').onclick=()=>{const plan=slot.closest('#plan-view')?.querySelector('.plan-contract');if(plan){plan.open=true;plan.scrollIntoView({block:'start',behavior:'instant'});}};d.querySelector('[data-open-changes]').onclick=()=>options.showChanges?.();let preview;
   try{preview=await api('/tasks/'+task.id+'/branch-final-preview',{});}
   catch(e){if(d.isConnected){d.removeAttribute('aria-busy');d.querySelector('[data-final-content]').innerHTML='<h3>Could not load the review</h3><p>The saved branch has not been merged.</p><button type="button" data-retry-preview>Try again</button>';error(d,e);d.querySelector('[data-retry-preview]').onclick=()=>loadFinal(task,slot);}return;}
   if(!d.isConnected)return;

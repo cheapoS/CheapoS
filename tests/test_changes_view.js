@@ -52,3 +52,37 @@ test('Finish review failure keeps the action available and explains the error',a
  assert.equal(button.disabled,false);assert.equal(button.textContent,'Finish review');
  assert.deepEqual(errors,['Re-check the task environment']);
 });
+
+test('patchRows parses git hunks, additions, deletions, context and line numbers',()=>{
+ const gitDiff=`diff --git a/app.py b/app.py
+index 111..222 100644
+--- a/app.py
++++ b/app.py
+@@ -10,3 +10,4 @@ def main():
+     step_one()
+-    old_step()
++    new_step()
++    extra_step()
+     finish()
+`;
+ const rows=scope.patchRows(gitDiff);
+ assert.equal(rows[0].type,'hunk');
+ assert.equal(rows[0].text,'@@ -10,3 +10,4 @@ def main():');
+ assert.equal(rows[1].type,'context');
+ assert.equal(rows[1].old,10);
+ assert.equal(rows[1].new,10);
+ assert.equal(rows[1].text,'    step_one()');
+ assert.equal(rows[2].type,'remove');
+ assert.equal(rows[2].old,11);
+ assert.equal(rows[2].new,'');
+ assert.equal(rows[2].text,'    old_step()');
+ assert.equal(rows[3].type,'add');
+ assert.equal(rows[3].old,'');
+ assert.equal(rows[3].new,11);
+ assert.equal(rows[3].text,'    new_step()');
+ assert.equal(rows[4].type,'add');
+ assert.equal(rows[4].new,12);
+ assert.equal(rows[5].type,'context');
+ assert.equal(rows[5].old,12);
+ assert.equal(rows[5].new,13);
+});
