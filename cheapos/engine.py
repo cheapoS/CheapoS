@@ -2222,7 +2222,10 @@ class Engine:
         ensure_independent(task,record)
         guard_automatic_route_cost(task)
         if not known:
-            raise BudgetError("Provider omitted token usage. The conservative reservation is retained; review the budget before resuming.")
+            paid_model = ((config.get("input_rate") or 0) > 0 or (config.get("output_rate") or 0) > 0) and config.get("access") != "included"
+            if paid_model:
+                raise BudgetError("Provider omitted token usage. The conservative reservation is retained; review the budget before resuming.")
+            task["usage"]["estimated_requests"] = task["usage"].get("estimated_requests", 0) + 1
         if runtime.stop.is_set():
             raise InterruptedError("Stopped after the in-flight model request completed")
         runtime.guard()
