@@ -49,6 +49,18 @@ def validate_response(task, message):
                                     'Wait for the operator to ask for implementation. Do not claim checks ran.')
 
 
+def attempted_edit(task):
+    """True if an edit tool was invoked, even if it failed or produced an error."""
+    for event in task.get('events', []):
+        if event.get('kind') in {'tool', 'tool_error'}:
+            detail = event.get('detail') if isinstance(event.get('detail'), dict) else {}
+            if detail.get('tool') in {'write_file', 'replace_text', 'replace_lines', 'append_text', 'apply_merge_version'}:
+                return True
+            if event.get('title') in {'write file', 'replace text', 'replace lines', 'append text', 'apply merge version'}:
+                return True
+    return False
+
+
 def small_edit_reason(task):
     if read_only(task):return None
     if task.get('compact_edits'):return None
@@ -59,7 +71,7 @@ def small_edit_reason(task):
     for event in reversed(events[boundary+1:]):
         detail=event.get('detail')
         if not isinstance(detail,dict):continue
-        if event['kind']=='tool_error' and detail.get('tool') in {'write_file','replace_text','replace_lines'}:
+        if event['kind']=='tool_error' and detail.get('tool') in {'write_file','replace_text','replace_lines','append_text'}:
             return 'An edit-output failure was observed in this task.'
     return None
 
@@ -94,6 +106,6 @@ def instruction(value):
 
 
 def prioritize(tools,value):
-    first={'explanation':{'read_file','outline_file','search'},'orientation':{'read_file','outline_file','search'},'implementation':{'replace_text','replace_lines','write_file'},
+    first={'explanation':{'read_file','outline_file','search'},'orientation':{'read_file','outline_file','search'},'implementation':{'replace_text','replace_lines','write_file','append_text'},
            'verification':{'run_checks','checkpoint'},'review':{'checkpoint','review_decision'}}[value]
     return sorted(tools,key=lambda tool:tool['function']['name'] not in first)

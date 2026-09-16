@@ -286,13 +286,38 @@ class Workspace:
         if target.stat().st_size > MAX_FILE_BYTES:
             raise ValueError("File is too large")
         text = target.read_text(encoding="utf-8")
-        if text.count(old_text) != 1:
-            raise ValueError("old_text must match exactly once; read the current file before editing")
+        matches = text.count(old_text)
+        if matches == 0:
+            raise ValueError(f"old_text was not found in '{path}'. Read the current file before editing.")
+        elif matches > 1:
+            line_numbers = [i for i, line in enumerate(text.splitlines(), 1) if old_text in line]
+            lines_str = ", ".join(f"line {ln}" for ln in line_numbers[:5])
+            more = f" and {len(line_numbers) - 5} more" if len(line_numbers) > 5 else ""
+            raise ValueError(
+                f"old_text matched {matches} times in '{path}' ({lines_str}{more}). "
+                "Provide a longer unique snippet with surrounding lines, or use append_text to add at the end of the file."
+            )
         replacement = text.replace(old_text, new_text, 1)
         if len(replacement.encode("utf-8")) > MAX_FILE_BYTES:
             raise ValueError("Replacement is too large")
         target.write_text(replacement, encoding="utf-8")
         result = {"path": path, "updated": True}
+        warning = self.validate_syntax(path)
+        if warning:
+            result["syntax_warning"] = warning
+        return result
+
+    def append_text(self, path, text):
+        target = self.path(path)
+        if not target.exists():
+            raise ValueError(f"File '{path}' does not exist; use write_file to create new files")
+        if not isinstance(text, str) or not text:
+            raise ValueError("Provide a nonempty text string to append")
+        existing = target.read_text(encoding="utf-8")
+        if len((existing + text).encode("utf-8")) > MAX_FILE_BYTES:
+            raise ValueError("File is too large")
+        target.write_text(existing + text, encoding="utf-8")
+        result = {"path": path, "updated": True, "appended": True}
         warning = self.validate_syntax(path)
         if warning:
             result["syntax_warning"] = warning

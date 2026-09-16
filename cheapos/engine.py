@@ -70,8 +70,9 @@ READ_TOOLS = [
 WORKER_TOOLS = READ_TOOLS + [
     tool("update_working_state", "Optionally retain the current approach and next action for nontrivial work. Advisory only: does not change accepted scope, permissions, checks or review. Reuse stable step IDs. References are task event indices.", {"steps":{"type":"array","maxItems":24,"items":{"type":"object","properties":{"id":TEXT,"text":TEXT,"status":{"type":"string","enum":["pending","working","done","blocked"]}},"required":["id","text","status"],"additionalProperties":False}},"decisions":{"type":"array","items":TEXT},"findings":{"type":"array","items":TEXT},"references":{"type":"array","items":{"type":"integer"}},"next_action":TEXT}),
     tool("apply_merge_version", "During a conflict task, copy a frozen target/task/suggested file version over its unchanged original. Handles captured deletions; refuses to overwrite new edits. Review and checks are still required.", {"path":TEXT,"version":{"type":"string","enum":["task","target","suggested"]}}, ["path","version"]),
-    tool("write_file", "Create a new UTF-8 text file. Existing files require replace_text.", {"path": TEXT, "content": TEXT}, ["path", "content"]),
+    tool("write_file", "Create a new UTF-8 text file. Existing files require replace_text or append_text.", {"path": TEXT, "content": TEXT}, ["path", "content"]),
     tool("replace_text", "Replace exactly one occurrence of old_text in an existing file.", {"path": TEXT, "old_text": TEXT, "new_text": TEXT}, ["path", "old_text", "new_text"]),
+    tool("append_text", "Append text to the end of an existing file. For modifications inside a file, use replace_text.", {"path": TEXT, "text": TEXT}, ["path", "text"]),
     tool("run_checks", "Run the user-configured verification command. May require the user's permission."),
     tool("checkpoint", "Finish a worker iteration and submit a compact snapshot for senior review. The app uses its passing check result for this exact patch and command, or runs checks if needed.", {"summary": TEXT, "uncertainties": TEXT, "repair_dispositions": {"type":"array","maxItems":8,"items":{"type":"object","properties":{"finding_id":TEXT,"candidate_id":{"type":"string","description":"The disputed source candidate_id in review_repair"},"disposition":{"type":"string","enum":["reproduced_and_corrected","disproved","unresolved"]},"evidence":TEXT,"broader_edit_reason":TEXT},"required":["finding_id","candidate_id","disposition","evidence"],"additionalProperties":False}}}, ["summary", "uncertainties"]),
 ]
@@ -923,7 +924,7 @@ class Engine:
                 boundary = max((i for i, e in enumerate(task["events"]) if e["kind"] == "user"), default=-1)
                 if any(e["kind"] == "tool_error" and isinstance(e.get("detail"), dict)
                        and e["detail"].get("code") == "invalid_tool_arguments"
-                       and e["detail"].get("tool") in {"write_file", "replace_text", "replace_lines", "apply_merge_version"}
+                       and e["detail"].get("tool") in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}
                        for e in task["events"][boundary + 1:]):
                     self.prepare_compact_edits(task)
             if work_policy.read_only(task):
@@ -2300,7 +2301,7 @@ class Engine:
         """Bind edits to evidence sent before inference, never to an execution-time hash."""
         task = runtime.task
         workspace = Workspace(task["workspace"])
-        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version"} and mutated_paths is not None:
+        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"} and mutated_paths is not None:
             path = str(workspace.path(args.get("path")).relative_to(workspace.root))
             if path in mutated_paths:
                 return {"error": "The earlier mutation to this file in this response was saved. This call was not applied, even if the earlier mutation was a no-op.",
@@ -2322,7 +2323,7 @@ class Engine:
             result = self.file_tool(task, name, args)
         if name == "read_file":
             self.remember_file_version(runtime, result)
-        elif name in {"write_file", "replace_text", "replace_lines", "apply_merge_version"}:
+        elif name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}:
             path = str(workspace.path(args["path"]).relative_to(workspace.root))
             runtime.edit_versions.pop(path, None)
             if mutated_paths is not None:
@@ -2392,24 +2393,25 @@ class Engine:
             self.event(task, 'working_state', 'Updated the working approach', result)
             return result
         workspace = Workspace(task["workspace"])
-        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda **kwargs: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
+        methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda **kwargs: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines, "append_text": workspace.append_text}
         if name not in methods:
             raise ValueError("Unknown tool: " + name)
-        if 'branch_run' in task and name in {'write_file', 'replace_text', 'replace_lines'}:
+        if 'branch_run' in task and name in {'write_file', 'replace_text', 'replace_lines', 'append_text'}:
             from .branch_disagreement import before_write
             before_write(task, args.get('path'))
-        if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text"}:
+        if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text", "append_text"}:
             if task.get("compact_edits") and name == "replace_text":
                 raise ValueError("Use replace_lines with the current numbered lines for a small edit. cheapoS tracks the file version. No edit was made.")
-            texts = [args.get(k) for k in ("content", "old_text", "new_text") if k in args]
+            texts = [args.get(k) for k in ("content", "old_text", "new_text", "text") if k in args]
             byte_limit = MAX_CREATE_BYTES if name == 'write_file' else MAX_EDIT_BYTES
             if any(isinstance(value, str) and (len(value.encode("utf-8")) > byte_limit or
-                    (name != 'write_file' and len(value.splitlines()) > MAX_EDIT_LINES)) for value in texts):
+                    (name not in ('write_file', 'append_text') and len(value.splitlines()) > MAX_EDIT_LINES)) for value in texts):
                 self.prepare_compact_edits(task)
                 raise ValueError(f"Edit is too large. New files allow at most {MAX_CREATE_BYTES} UTF-8 bytes; existing files use replace_lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes. No edit was made.")
         result = methods[name](**args)
         task["tool_actions"] += 1
-        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version"}:
+        if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}:
+            task.get("_edit_failures", {}).pop(args.get("path"), None)
             self.refresh_changes(task)
             if isinstance(result, dict) and "guidance" not in result:
                 result["guidance"] = "Edits saved. Run run_checks to verify."
@@ -2810,7 +2812,7 @@ class Engine:
         result = {"error": str(error), "code": error.code, "tool": error.name}
         self.event(runtime.task, "tool_error", "Model needs to correct tool arguments", result)
         if (automatic(runtime.task, runtime.task["active_role"]) and runtime.task["active_role"] == "worker"
-                and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version"}):
+                and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}):
             self.prepare_compact_edits(runtime.task)
             runtime.compact_context_ready = False
         if recovery["malformed_attempts"] >= 3 and not developing(runtime.task):
@@ -3180,7 +3182,7 @@ class Engine:
                             result = self.read_url(runtime, args) if name == "read_url" else self.worker_file_tool(runtime, name, args, request_versions, mutated_paths)
                             if isinstance(result, dict) and result.get('code') == 'same_response_file_mutation':
                                 self.event(task, 'tool_error', 'Kept the earlier edit; rejected a second same-file mutation', result)
-                            if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version"}:
+                            if name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text"}:
                                 runtime.observations.clear()
                                 runtime.file_observations.clear()
                             else:
@@ -3228,6 +3230,18 @@ class Engine:
                         self.event(task, "tool_error", "Refreshed file after a rejected edit", result)
                     except (ValueError, OSError, TypeError, UnicodeError) as error:
                         result = {"error": str(error)[:1000]}
+                        if name in {"replace_text", "append_text", "write_file", "replace_lines"}:
+                            task.setdefault("_edit_failures", {})
+                            path = args.get("path")
+                            if path:
+                                count = task["_edit_failures"].get(path, 0) + 1
+                                task["_edit_failures"][path] = count
+                                if count >= 2 and automatic(task, "worker"):
+                                    self.prepare_compact_edits(task)
+                                    snap = self.edit_snapshot(runtime, args)
+                                    if snap and not snap.get("error"):
+                                        result["current_file"] = snap
+                                        result["guidance"] = "Repeated edit attempts failed on this file. Inspect the current numbered lines above or use append_text if adding to the end."
                         self.event(task, "tool_error", "Tool could not complete: " + name, result)
                     from .context_evidence import preview
                     task["messages"].append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(preview(task, result))})
