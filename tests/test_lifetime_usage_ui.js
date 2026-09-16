@@ -41,3 +41,19 @@ test('club renders unlinked, preview, and active states with extended models',as
   assert.equal(exported.opt_in_purpose, 'cheapos_community_savings_leaderboard');
   assert.equal(exported.extended_profile.models_used['deepseek-chat'].tokens, 80);
 });
+
+test('sync updates only Club panel without collapsing usage or export preview',async()=>{
+ const c=controls(),calls=[];let finish;
+ const data=fixture();data.club={is_linked:true,sync_enabled:true,x_identity:{handle:'alice'}};
+ ui.open({dialog:()=>c.d,header:()=>'',api:async(path)=>{calls.push(path);if(path==='/club/sync')return new Promise(resolve=>finish=resolve);return data;}});
+ await tick();const content=c.q('[data-usage-body]').innerHTML;
+ c.d.scrollTop=210;c.q('[data-export]').onclick();
+ const click=c.q('[data-club-sync]').onclick();
+ assert.equal(c.q('[data-club-sync]').textContent,'Syncing…');
+ assert.equal(c.q('[data-usage-body]').innerHTML,content);
+ finish({...data.club,sync_message:'Up to date.'});await click;
+ assert.equal(c.q('[data-usage-body]').innerHTML,content);
+ assert.match(c.q('.club-panel').outerHTML,/Up to date/);
+ assert.equal(c.d.scrollTop,210);assert.equal(c.q('[data-preview]').hidden,false);
+ assert.deepEqual(calls,['/lifetime-usage?days=all','/club/sync']);
+});
