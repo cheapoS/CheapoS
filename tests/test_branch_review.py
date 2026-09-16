@@ -1,6 +1,11 @@
 import json
 import shlex
+import sys
+from pathlib import Path
 from unittest.mock import Mock
+
+sys.path.insert(0, str(Path(__file__).parent))
+
 from cheapos import branch_runs
 from cheapos.engine import Runtime, ProgressPause
 from cheapos.branch_review import checkpoint

@@ -369,12 +369,12 @@ class BranchController:
                 'summary': saved.get('worker_summary', 'Continuing the interrupted item review.'),
                 'uncertainties': saved.get('uncertainties', ''),
                 'repair_dispositions': saved.get('repair_dispositions', item.get('review_repair', {}).get('dispositions', []))})
-            if result['decision'] != 'REQUEST_CHANGES':
+            if result['decision'] not in {'REQUEST_CHANGES', 'REQUEST_TESTS'}:
                 return
         task['status'] = 'running'
         from .worker_conversation import continue_session
         continue_session(task, self.engine.initial_messages(task),
-                         'review_repair' if result else 'item_resume', result)
+                         'review_repair' if result and result.get('decision') == 'REQUEST_CHANGES' else 'test_expansion' if result and result.get('decision') == 'REQUEST_TESTS' else 'item_resume', result)
         self.engine._run_with_wait(runtime)
 
     def execute(self, runtime):
@@ -443,7 +443,7 @@ class BranchController:
                         # Even an unchanged outcome requires actual criteria review.
                         from .branch_review import checkpoint
                         result=checkpoint(self.engine,runtime,{'summary':'Worker reported the item finished.'})
-                        if result['decision']=='REQUEST_CHANGES':
+                        if result['decision'] in {'REQUEST_CHANGES', 'REQUEST_TESTS'}:
                             task['messages'].append({'role':'user','content':json.dumps(result)})
                             self.engine._run_with_wait(runtime)
                             continue

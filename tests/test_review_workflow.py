@@ -1,7 +1,10 @@
 import sys
+from pathlib import Path
 from unittest.mock import Mock
 
-from cheapos.engine import Runtime
+sys.path.insert(0, str(Path(__file__).parent))
+
+from cheapos.engine import Runtime, REVIEW_TOOLS
 from test_engine import LocalCase, call
 
 
@@ -11,7 +14,6 @@ class ReviewWorkflowTests(LocalCase):
         task['conversational'] = True
         self.engine.store.save(task)
         return task
-
     def responses(self, replies):
         provider = Mock()
         provider.complete.side_effect = [(r, {'prompt_tokens':10,'completion_tokens':5,'cost':0}) for r in replies]
@@ -59,3 +61,29 @@ class ReviewWorkflowTests(LocalCase):
         self.engine.checkpoint(runtime, {'summary':'Review with the updated check','uncertainties':''})
         self.assertEqual(len(task['checks']), 2)
         self.assertEqual(task['checks'][-1]['command'], task['check_command'])
+
+    def test_request_tests_decision_workflow(self):
+        task = self.chat()
+        self.responses([
+            call('replace_text', {'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
+            call('run_checks'), {'content':'Initial implementation complete.'},
+            call('review_decision', {'decision':'REQUEST_TESTS','feedback':'Please add test cases for inverted bounds and NaN values.'}),
+            call('write_file', {'path':'test_edge_cases.txt','content':'Edge case test coverage\n'}),
+            call('run_checks'), {'content':'Added tests and verified.'},
+            call('review_decision', {'decision':'APPROVE','feedback':'Test coverage is now sufficient.'}),
+        ])
+        self.engine.start(task['id'])
+        first = self.finish(task)
+        self.assertEqual(first['status'], 'approved', first['error'])
+        self.assertEqual(first['review_count'], 2)
+        self.assertEqual(first['checkpoints'][0]['decision'], 'REQUEST_TESTS')
+        self.assertEqual(first['checkpoints'][0]['feedback'], 'Please add test cases for inverted bounds and NaN values.')
+        self.assertEqual(first['checkpoints'][1]['decision'], 'APPROVE')
+
+    def test_review_tools_schema_includes_request_tests(self):
+        review_tool = next(t for t in REVIEW_TOOLS if t['function']['name'] == 'review_decision')
+        enums = review_tool['function']['parameters']['properties']['decision']['enum']
+        self.assertIn('REQUEST_TESTS', enums)
+        self.assertIn('APPROVE', enums)
+        self.assertIn('REQUEST_CHANGES', enums)
+        self.assertIn('TAKE_OVER', enums)

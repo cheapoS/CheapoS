@@ -35,14 +35,13 @@ def invalid_review(message):
 
 def decision(result, takeover=False):
     value = result.get('decision')
-    allowed = {'APPROVE', 'REQUEST_CHANGES'} | ({'TAKE_OVER'} if takeover else set())
+    allowed = {'APPROVE', 'REQUEST_CHANGES', 'REQUEST_TESTS'} | ({'TAKE_OVER'} if takeover else set())
     if not isinstance(value, str) or value.strip().upper() not in allowed:
         raise invalid_review('Return an explicit valid review decision; feedback cannot imply approval.')
     value = value.strip().upper()
     if value == 'APPROVE' and result.get('defects') not in (None, []):
         raise invalid_review('APPROVE cannot contain unresolved blocking defects.')
     return value
-
 
 def schema(criteria=None):
     fields = {name: {'type': 'string'} for name in

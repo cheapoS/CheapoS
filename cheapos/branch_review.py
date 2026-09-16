@@ -101,7 +101,7 @@ def extract_embedded_decision(text, candidate_id, criteria):
                     if 'function' in data and isinstance(data['function'], dict):
                         data = data['function'].get('arguments', data['function'])
                         if isinstance(data, str): data = json.loads(data)
-                    if isinstance(data, dict) and ('criteria_outcomes' in data or data.get('decision') in {'APPROVE', 'REQUEST_CHANGES', 'TAKE_OVER'}):
+                    if isinstance(data, dict) and ('criteria_outcomes' in data or data.get('decision') in {'APPROVE', 'REQUEST_CHANGES', 'REQUEST_TESTS', 'TAKE_OVER'}):
                         data.setdefault('candidate_id', candidate_id)
                         return data
             except Exception:
@@ -151,8 +151,9 @@ def checkpoint(engine, runtime, args):
         import difflib
         packet['repair_diff_since_claim']=''.join(difflib.unified_diff(item['review_repair'].get('source_patch','').splitlines(True),current['patch'].splitlines(True),fromfile='disputed candidate patch',tofile='current candidate patch',n=3))
         packet['worker_summary']=str(args.get('summary',''))[:4000]
-    if len(json.dumps(packet)) > 30000:
-        raise ProgressPause('Item review exceeds 30,000 characters. Split the item in a revised proposal; no evidence was omitted.')
+    limit = 60000 if item.get('review_repair') else 30000
+    if len(json.dumps(packet)) > limit:
+        raise ProgressPause(f'Item review exceeds {limit:,} characters. Split the item in a revised proposal; no evidence was omitted.')
     branch_runs.transition_item(run, item['id'], 'reviewing')
     tools = copy.deepcopy(REVIEW_TOOLS)
     decision = next(t for t in tools if t['function']['name'] == 'review_decision')['function']['parameters']
@@ -290,7 +291,7 @@ def checkpoint(engine, runtime, args):
                         task['checkpoints'].append({'number':len(task['checkpoints'])+1,'decision':'APPROVE','feedback':item['outcome_summary'], 'diff':current['patch'],'branch_candidate_id':current['id']})
                         engine.event(task,'review','Independent item review passed',{'item_id':item['id'],'candidate_id':current['id'],'decision':'APPROVE','feedback':item['outcome_summary']})
                         return {'decision':'APPROVE','feedback':item['outcome_summary']}
-                elif choice in {'REQUEST_CHANGES', 'TAKE_OVER'} and isinstance(params.get('feedback'),str):
+                elif choice in {'REQUEST_CHANGES', 'REQUEST_TESTS', 'TAKE_OVER'} and isinstance(params.get('feedback'),str):
                     try:
                         if params.get('candidate_id') != current['id']:
                             raise ValueError('Review disagreement belongs to a stale candidate.')
@@ -303,16 +304,19 @@ def checkpoint(engine, runtime, args):
                         result = disagreement.unsupported(engine, task, current['id'], params, error)
                     else:
                         task.pop('pending_review',None)
-                        task['status'] = 'running' if choice == 'REQUEST_CHANGES' else 'takeover_requested'
+                        task['status'] = 'running' if choice in {'REQUEST_CHANGES', 'REQUEST_TESTS'} else 'takeover_requested'
                         branch_runs.transition_item(run, item['id'], 'working')
-                        result = disagreement.repair(params, current['id'], checks)
+                        result = disagreement.repair(params, current['id'], checks) if choice == 'REQUEST_CHANGES' else {'decision': choice, 'feedback': params['feedback'][:4000], 'candidate_id': current['id']}
                         if choice == 'REQUEST_CHANGES':
                             result['source_patch']=current['patch']
                             refs=item.get('review_repair',{}).get('requirement_refs')
                             if refs:result['requirement_refs']=copy.deepcopy(refs)
                             disagreement.attach(task, item, result)
                             engine.event(task,'repair_attempt','Preparing focused item repair',{'item_id':item['id'],'candidate_id':current['id'],'finding_ids':item['review_repair']['finding_ids']})
-                        engine.event(task,'review','Actionable item review claim' if choice == 'REQUEST_CHANGES' else 'Item needs takeover',
+                        elif choice == 'REQUEST_TESTS':
+                            item['test_expansion'] = {'candidate_id': current['id'], 'feedback': params['feedback'][:4000], 'mandated_tests': params.get('mandated_tests') or params.get('test_cases') or []}
+                            task['checkpoints'].append({'number':len(task['checkpoints'])+1,'decision':'REQUEST_TESTS','feedback':params['feedback'][:4000], 'diff':current['patch'],'branch_candidate_id':current['id']})
+                        engine.event(task,'review','Actionable item review claim' if choice == 'REQUEST_CHANGES' else 'Reviewer requested test expansion' if choice == 'REQUEST_TESTS' else 'Item needs takeover',
                                      {'item_id':item['id'],'decision':choice,'feedback':params['feedback'][:4000],
                                       'defects':params.get('defects'), 'candidate_id':current['id']})
                         engine.store.save(task)

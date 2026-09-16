@@ -38,8 +38,8 @@ def decide(task, trigger=None):
     review=(task.get('checkpoints') or [{}])[-1]
     from .working_state import project
     working=project(task)
-    if review.get('decision')=='REQUEST_CHANGES':
-        return {'kind':'review','action':'repair','reason':working.get('next_action') or 'Resolve the recorded review findings in the current worker session.'}
+    if review.get('decision') in {'REQUEST_CHANGES', 'REQUEST_TESTS'}:
+        return {'kind':'review','action':'repair' if review.get('decision') == 'REQUEST_CHANGES' else 'expand_tests','reason':working.get('next_action') or ('Expand test coverage for the reviewer-specified edge cases.' if review.get('decision') == 'REQUEST_TESTS' else 'Resolve the recorded review findings in the current worker session.')}
     return {'kind':'implementation','action':'continue_worker','reason':working.get('next_action') or 'Continue from the saved findings; choose the smallest unfinished action.'}
 
 
@@ -57,4 +57,4 @@ def implementation_handoff(task, item, stopped=False):
     """Only stalled implementation reaches the branch's existing route executor."""
     return (not stopped and task.get('status')=='paused' and task.get('error_code')=='progress_limit'
             and item.get('status')=='working' and task.get('active_role')=='worker'
-            and decide(task)['action'] in {'continue_worker','repair'})
+            and decide(task)['action'] in {'continue_worker','repair','expand_tests'})
