@@ -157,9 +157,18 @@ def checkpoint(engine, runtime, args):
         review_disputes.dispositions(task,item,args,current['id'])
     plan_for_review = copy.deepcopy(run['plan'])
     if isinstance(plan_for_review, dict) and 'items' in plan_for_review:
+        trimmed_items = []
         for it in plan_for_review.get('items', []):
             if isinstance(it, dict):
-                it.pop('review_repair', None)
+                if it.get('id') == item.get('id'):
+                    trimmed_items.append({k: v for k, v in it.items() if k != 'review_repair'})
+                else:
+                    trimmed_items.append({
+                        'id': it.get('id'),
+                        'title': it.get('title'),
+                        'status': it.get('status', 'pending')
+                    })
+        plan_for_review['items'] = trimmed_items
     item_for_review = {k: v for k, v in item.items() if k != 'review_repair'}
     packet = evidence.review_packet(current, item_for_review, plan_for_review, checks, str(args.get('uncertainties', ''))[:2000])
     if item.get('review_repair'):
@@ -167,7 +176,7 @@ def checkpoint(engine, runtime, args):
         import difflib
         packet['repair_diff_since_claim']=''.join(difflib.unified_diff(item['review_repair'].get('source_patch','').splitlines(True),current['patch'].splitlines(True),fromfile='disputed candidate patch',tofile='current candidate patch',n=3))
         packet['worker_summary']=str(args.get('summary',''))[:4000]
-    limit = 60000 if item.get('review_repair') else 30000
+    limit = 80000 if item.get('review_repair') else 60000
     if len(json.dumps(packet)) > limit:
         raise ProgressPause(f'Item review exceeds {limit:,} characters. Split the item in a revised proposal; no evidence was omitted.')
     branch_runs.transition_item(run, item['id'], 'reviewing')
