@@ -1,6 +1,6 @@
 # T86 — Compact context without discarding the working approach
 
-Status: Proposed — implementation not started
+Status: Done
 Depends on: T84, T85
 Size: M/L
 Context: [DeepSeek Harness assessment](../development/deepseek-harness-assessment.md)
@@ -50,3 +50,19 @@ Extend existing compaction/context/check-output tests using in-memory transcript
 temporary output artifacts, and a mocked summarizer if implemented. No network
 inference or real-time waits in routine checks. Use change-scoped validation,
 measure added-case runtime, and commit the implemented increment with limitations.
+
+## Completion
+
+Deterministic compaction keeps exact user requirements/corrections and working
+state, plus complete recent exchanges for default and route-specific budgets.
+Older history and oversized tool results have immutable task-local references
+with range/search retrieval and explicit historical identity. Prepared source
+identity is rechecked before applying a checkpoint; capacity failure retains
+prior messages instead of trimming constraints. No summarizer inference added.
+
+15 focused context/budget/output/state tests passed in 2.051s. New pure cases
+took <0.002s; they assert decisive early constraints, corrected next action,
+complete tool pairs, retrieval, unavailable references and capacity failures.
+Checkpoints record before/after sizes and retained counts. Archives live in the
+existing local task record and are excluded from ordinary HTTP responses.
+Limitation: archives grow with the task; no automatic deletion of evidence.

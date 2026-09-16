@@ -31,7 +31,7 @@ def public_task(task, summary=False, store=None):
             result["branch_run"] = branch_runs.summary(task["branch_run"])
         return result
     from .coordinator_dispatch import reassessment_availability
-    return {**{key: value for key, value in task.items() if key not in {"messages", "worker_sessions", "conversation_state", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending", "request_metrics", "run_metrics"}}, "coordinator_reassessment":reassessment_availability(task), "metrics":metrics.aggregate(task), "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
+    return {**{key: value for key, value in task.items() if key not in {"messages", "worker_sessions", "conversation_state", "context_evidence", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending", "request_metrics", "run_metrics"}}, "coordinator_reassessment":reassessment_availability(task), "metrics":metrics.aggregate(task), "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
 
 
 class LocalServer(ThreadingHTTPServer):

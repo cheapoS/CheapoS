@@ -45,3 +45,31 @@ class ContextCompactionTests(unittest.TestCase):
         task['loop_guidance']=None
         before=list(task['messages']);Engine.deliver_loop_guidance(task)
         self.assertEqual(task['messages'],before)
+
+    def test_constraints_working_state_and_complete_tail_survive_both_budgets(self):
+        from cheapos.context_evidence import read
+        from cheapos.working_state import update
+        for limit in (LIMIT, 18000):
+            task={'prompt':'Keep accessibility','requests':['Keep accessibility','Use a confirmation dialog'],'events':[]}
+            update(task,{'next_action':'Wire dialog keyboard handling','decisions':['Keep existing handler']})
+            previous=[{'role':'user','content':'Historical detail: endpoint /restart'},
+                      {'role':'assistant','tool_calls':[{'id':'read','function':{'arguments':'{}'}}]},
+                      {'role':'tool','tool_call_id':'read','content':'Found handler'}]
+            base=[{'role':'system','content':'policy'},{'role':'user','content':'{}'}]
+            result=compact(task,base,previous,limit)
+            self.assertIn('Keep accessibility',result[1]['content'])
+            self.assertIn('Use a confirmation dialog',result[1]['content'])
+            self.assertEqual(result[-2:],previous[-2:])
+            ref=json.loads(result[1]['content'])['context_reference']
+            self.assertIn('/restart',read(task,ref,search='/restart')['content'])
+            self.assertLessEqual(size(result),limit)
+
+    def test_capacity_does_not_erase_constraints(self):
+        from cheapos.providers import BudgetError
+        from cheapos.context_evidence import read, preview
+        task={'prompt':'x'*20000,'events':[]}
+        with self.assertRaises(BudgetError):compact(task,[{'role':'system','content':'policy'},{'role':'user','content':'{}'}],[],2000)
+        saved=preview(task,{'output':'a'*18000,'error':'important failure'})
+        self.assertEqual(saved['error'],'important failure')
+        self.assertIn('important failure',read(task,saved['context_reference'],search='important failure')['content'])
+        with self.assertRaises(ValueError):read({},saved['context_reference'])

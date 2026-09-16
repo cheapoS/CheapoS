@@ -9,7 +9,7 @@ READ_ONLY_STARTERS = (
     'Look through this project and suggest one small improvement. Explain it before making changes.',
 )
 READ_ONLY_TOOLS = frozenset({'list_files', 'read_file', 'outline_file', 'search',
-                             'read_url', 'read_merge_context', 'get_diff', 'read_check_output', 'update_working_state', 'ask_user'})
+                             'read_url', 'read_merge_context', 'get_diff', 'read_context_evidence', 'read_check_output', 'update_working_state', 'ask_user'})
 
 
 class ReadOnlyViolation(ValueError):
