@@ -94,6 +94,32 @@ class PoolTests(unittest.TestCase):
             pinned = pool.interleave(endpoint, models, 'worker', preferred='openrouter/cohere/north-mini-code:free')
             self.assertEqual(pinned[0]['id'], 'openrouter/cohere/north-mini-code:free')
 
+    def test_high_tier_planning_and_reviewing_demotes_wildcards_and_small_models(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pool = FreeModelPool(directory); endpoint = 'http://localhost:20128/v1'
+            models = [
+                {'id': 'auto/best-free', 'reasoning': True},
+                {'id': 'auto/best-coding', 'reasoning': True},
+                {'id': 'openrouter/anthropic/claude-3.5-sonnet'},
+                {'id': 'nvidia/llama-3.1-nemotron-70b-instruct'},
+                {'id': 'qwen/qwen-2.5-coder-7b'},
+                {'id': 'openrouter/meta/llama-3.1-8b-instruct:free'},
+                {'id': 'nvidia/nemotron-parse'},
+            ]
+            planner_order = [m['id'] for m in pool.interleave(endpoint, models, 'planner')]
+            reviewer_order = [m['id'] for m in pool.interleave(endpoint, models, 'reviewer')]
+            # Top tier for planning and reviewing are flagship / high-tier coding models
+            high_tier = {'openrouter/anthropic/claude-3.5-sonnet', 'nvidia/llama-3.1-nemotron-70b-instruct', 'auto/best-coding'}
+            self.assertTrue(set(planner_order[:3]).issubset(high_tier))
+            self.assertTrue(set(reviewer_order[:3]).issubset(high_tier))
+            # auto/best-free and non-code parse are demoted to the bottom
+            self.assertIn(planner_order.index('auto/best-free'), [5, 6])
+            self.assertEqual(planner_order[-1], 'nvidia/nemotron-parse')
+            # For workers, coding models are prioritized, but lower tier coders are also eligible
+            worker_order = [m['id'] for m in pool.interleave(endpoint, models, 'worker')]
+            self.assertEqual(worker_order[0], 'auto/best-coding')
+            self.assertLess(worker_order.index('qwen/qwen-2.5-coder-7b'), worker_order.index('auto/best-free'))
+
 
 class FailoverTests(LocalCase):
     chat=routing_fixture.RoutingTests.chat

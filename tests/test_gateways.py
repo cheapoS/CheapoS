@@ -400,3 +400,30 @@ class AlternativeGatewayTests(unittest.TestCase):
         self.assertIn('custom_router', GATEWAY_TYPES)
         self.assertEqual(validate_settings({'gateway_type':'custom_router', 'base_url':'http://127.0.0.1:9099/v1'})['gateway_type'], 'custom_router')
         self.assertIn('custom_router', {item['id'] for item in gateway_types_catalog()})
+
+    def test_tool_calling_enforced_for_worker_reviewer_planner_but_not_coordinator(self):
+        from types import SimpleNamespace
+        from cheapos.routing import _select_remote, RoutingPause
+        model_no_tools = {'id': 'text-model', 'local': False, 'tool_calling': False, 'context_length': 4096}
+        engine = SimpleNamespace()
+        engine.gateway = SimpleNamespace(
+            settings={'base_url': 'http://127.0.0.1:20128/v1', 'name': 'OmniRoute'},
+            matches=lambda url: True,
+            catalog=lambda fresh=True: {'status': 'ready', 'models': [model_no_tools]},
+            pool=SimpleNamespace(observation=lambda *args: {'cooling_down': False, 'role_evidence': {}})
+        )
+        task = {
+            'route': {'base_url': 'http://127.0.0.1:20128/v1', 'preferred': {}, 'access_policy': None},
+            'providers': {},
+            'events': []
+        }
+        runtime = SimpleNamespace(task=task, failed_models=set(), guard=lambda: None, stop=SimpleNamespace(is_set=lambda: False))
+        # worker, reviewer, planner must reject non-tool-calling models
+        for role in ('worker', 'reviewer', 'planner'):
+            task['providers'] = {}
+            with self.assertRaises(RoutingPause):
+                _select_remote(engine, runtime, role=role)
+            # trace candidate was recorded as capability_missing
+            traces = task.get('routing_traces', [])
+            candidate_entry = next((c for c in traces[-1]['candidates'] if c['model'] == 'text-model'), None)
+            self.assertEqual(candidate_entry['reason'], 'capability_missing')

@@ -193,20 +193,39 @@ class FreeModelPool:
         health = self.observation(endpoint, model["id"], connection_revision)
         evidence=health['role_evidence'].get(role,{})
         enough=evidence.get('samples',0)>=3
-        successes=evidence.get('checkpoints',0) if role=='worker' else 0 if role=='planner' else evidence.get('reviews_completed',0)
+        successes=evidence.get('checkpoints',0) if role=='worker' else evidence.get('accepted',0) if role=='planner' else evidence.get('reviews_completed',0)
         invalid=evidence.get('invalid_output',0)
         tier=1 if enough and invalid>=3 and invalid>successes else -1 if enough and successes>=3 and invalid==0 else 0
         # Observed compatibility first. Metadata only breaks ties; it is not a quality rating.
         mid = model["id"].lower()
-        auto_pool = -2 if role == "worker" and (mid.startswith("auto/coding") or mid.startswith("auto/best-coding")) else 0
         is_non_code = any(k in mid for k in ("embed", "reward", "guard", "safety", "parse", "content-safety"))
-        top_coder = -1 if role == "worker" and not is_non_code and any(k in mid for k in ("haiku", "sonnet", "nemotron", "-pro", "/pro", "pro-", "coding", "code", "gemma", "qwen", "deepseek")) else (1 if is_non_code else 0)
+        is_generic_wildcard = any(mid.startswith(p) for p in ("auto/best-free", "auto/best-fast", "auto/chat", "auto/cheap", "auto/fast", "auto/chaos"))
+        is_small = any(k in mid for k in ("-1b", "/1b", ":1b", "-2b", "/2b", ":2b", "-3b", "/3b", ":3b", "-7b", "/7b", ":7b", "-8b", "/8b", ":8b", "mini", "nano", "tiny", "micro", "flash-lite"))
+        is_flagship = not is_non_code and (any(k in mid for k in ("sonnet", "opus", "nemotron-70b", "nemotron-ultra", "deepseek", "codestral", "auto/best-coding", "auto/coding:pro", "auto/coding:reliable")) or (any(k in mid for k in ("pro", "large", "32b", "70b", "72b")) and any(k in mid for k in ("code", "coder", "qwen", "gemini", "nemotron"))))
+        is_solid_coder = not is_non_code and any(k in mid for k in ("haiku", "flash", "gemma", "qwen", "starcoder", "code", "coder", "coding"))
+
+        if role in {"planner", "reviewer"}:
+            # Planning and Reviewing require higher tier models (strong reasoning + robust coding understanding).
+            # Low workers can do good work with a good plan, but planning and reviewing cannot use low-tier models.
+            role_tier = (-3 if is_flagship
+                         else -2 if is_solid_coder and not is_small
+                         else 0 if is_solid_coder and is_small
+                         else 2 if is_small
+                         else 3 if is_generic_wildcard
+                         else 4 if is_non_code
+                         else 1)
+        else:
+            auto_pool = -2 if (mid.startswith("auto/coding") or mid.startswith("auto/best-coding")) else 0
+            top_coder = -1 if not is_non_code and (is_flagship or is_solid_coder) else (2 if is_non_code else 0)
+            role_tier = auto_pool + top_coder
+
         context_cap = 131072 if role in {"reviewer", "planner"} else 65536
+        reasoning_bonus = -(model.get("reasoning") is True) if role in {"reviewer", "planner"} and not is_generic_wildcard else 0
         return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3), min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0,
-                auto_pool, top_coder,
                 -min(health.get(role + "_responses", 0), 1) if connection_revision is None else 0,
                 -self.fresh_probe(endpoint, model["id"], connection_revision, route_health.probe_identity(endpoint,model,connection_revision)),
-                -(model.get("reasoning") is True) if role in {"reviewer", "planner"} else 0,
+                role_tier,
+                reasoning_bonus,
                 -min(model.get("context_length") or 0, context_cap),
                 health.get(role + "_seconds", float("inf")) if connection_revision is None else float("inf"), model["id"])
 
@@ -219,7 +238,7 @@ class FreeModelPool:
         by_tier = {}
         for m in sorted_models:
             k = key_fn(m)
-            tier = k[:8]
+            tier = k[:9]
             p = m["id"].lower().split("/")[0] if "/" in m["id"] else "other"
             by_tier.setdefault(tier, {}).setdefault(p, []).append(m)
         result = []

@@ -262,7 +262,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
             routing_trace.candidate(trace, model['id'], 'probe_rejected')
             continue
         fit = routing_trace.context_fit(task, model)
-        reason = ('local_excluded' if model.get('local') else 'capability_missing' if model.get('tool_calling') is not True
+        reason = ('local_excluded' if model.get('local') else 'capability_missing' if (role != 'coordinator' and model.get('tool_calling') is not True)
                   else 'access_excluded' if not access_policy.eligible(model, policy)
                   else 'provider_unavailable_for_request' if provider(model['id']) in unavailable
                   else 'failed_model' if model['id'] in runtime.failed_models

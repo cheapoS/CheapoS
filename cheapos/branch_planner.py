@@ -347,6 +347,14 @@ def plan(engine, runtime, inputs):
             assumptions = []
             result = _parse(response, limits, captured['source'], assumptions)
             runtime.task['planning_assumptions'] = assumptions
+            planner_cfg = runtime.task.get('providers', {}).get('planner') or {}
+            if planner_cfg.get('model') and planner_cfg.get('base_url') and hasattr(engine, 'connection_for'):
+                try:
+                    gw = engine.connection_for(planner_cfg)
+                    gw.pool.record(planner_cfg['base_url'], planner_cfg['model'], 'planner',
+                                   connection_revision=(planner_cfg.get('access_binding') or {}).get('connection_revision'))
+                except Exception:
+                    pass
             return result
         except ClarificationRequired:
             raise
@@ -359,10 +367,18 @@ def plan(engine, runtime, inputs):
                     # Keep a complete blocked draft when repair cannot resolve
                     # an unavailable environment. prepare() still blocks Start.
                     return error.plan
+                failed = (runtime.task.get('providers', {}).get('planner') or {}).get('model')
+                planner_cfg = (runtime.task.get('providers', {}).get('planner') or {})
+                if failed and planner_cfg.get('base_url') and hasattr(engine, 'connection_for'):
+                    try:
+                        gw = engine.connection_for(planner_cfg)
+                        gw.pool.record(planner_cfg['base_url'], failed, 'planner', error=error,
+                                       connection_revision=(planner_cfg.get('access_binding') or {}).get('connection_revision'))
+                    except Exception:
+                        pass
                 from .model_pool import automatic
                 from .routing import _select_connections, RoutingPause
                 if automatic(runtime.task, 'planner') and not runtime.task.get('planning_override') and handoffs < 2:
-                    failed = (runtime.task.get('providers', {}).get('planner') or {}).get('model')
                     if failed:
                         runtime.failed_models.add(failed)
                         if failed not in runtime.task.setdefault('failed_planners', []): runtime.task['failed_planners'].append(failed)
