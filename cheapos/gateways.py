@@ -42,15 +42,15 @@ def normalize_models(data, openrouter=False, infer_access=True):
         free_providers = {"antigravity", "kiro", "opencode", "oc", "nvidia", "groq"}
         provider_prefix = model_id.split("/")[0] if "/" in model_id else ""
         is_free_account = infer_access and (provider_name in free_providers or provider_prefix in free_providers)
-        is_free_auto = model_id.startswith("auto/") and (":free" in model_id or "-free" in model_id)
+        is_combo = item.get("owned_by") == "combo" or provider_name == "combo" or model_id.startswith("auto/")
         explicit_free = (
             ((model_id.endswith(":free") and (openrouter or model_id.startswith("openrouter/")))
              or model_id.endswith("-free")
-             or is_free_account
-             or is_free_auto)
+             or is_free_account)
             and (not model_id.startswith("openrouter/") or model_id.endswith(":free"))
+            and not is_combo
         )
-        if is_free_account:
+        if is_free_account and not is_combo:
             input_rate = output_rate = 0.0
         elif infer_access and explicit_free and not pricing and input_rate is None and output_rate is None:
             input_rate = output_rate = 0.0
@@ -89,11 +89,11 @@ def normalize_models(data, openrouter=False, infer_access=True):
         if local and input_rate is None and output_rate is None:
             input_rate = output_rate = 0.0
         models.append({"id": model_id, "name": str(item.get("name") or model_id)[:240], "local":local,
-                       "provider": provider_name,
+                       "provider": provider_name, "combo": is_combo,
                        "context_length": context if isinstance(context, int) and not isinstance(context, bool) and context > 0 else None,
                        "max_output_tokens": output_limit, "tool_calling": tools, "reasoning": reasoning, "recovery_reasoning": recovery_reasoning,
                        "input_rate": input_rate, "output_rate": output_rate,
-                       "free": input_rate == 0 and output_rate == 0 and (not model_id.startswith("auto/") or is_free_auto) and (item.get("owned_by") != "combo" or is_free_auto)})
+                       "free": input_rate == 0 and output_rate == 0 and not is_combo})
     return sorted(models, key=lambda m: m["id"])
 
 

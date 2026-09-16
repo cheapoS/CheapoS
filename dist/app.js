@@ -1239,7 +1239,7 @@ async function openConnections(afterSave, taskContext=null) {
   }
   function picker(role) {
     const select=$(`[data-model-picker="${role}"]`,d), free=$(`[data-free="${role}"]`,d).checked, current=field(role,'model').value.trim();
-    const models=roleModels(role).filter(m=>!free||m.free||m.access_class==='included');
+    const models=roleModels(role).filter(m=>(!free||m.free||m.access_class==='included')&&!m.id.startsWith('auto/')&&m.provider!=='combo'&&!m.combo);
     select.innerHTML=`<option value="">${models.length?'Choose from '+models.length+' models':'No matching models · refresh or enter an ID'}</option>`+models.map(m=>`<option value="${esc(m.id)}">${esc(m.id)} · ${esc(CheapOSGuide.modelAccess(m))}${m.tool_calling===true?' · tools':m.tool_calling===false?' · no tools advertised':''}</option>`).join('');
     select.value=models.some(m=>m.id===current)?current:'';
     capability(role);
@@ -1268,7 +1268,7 @@ async function openConnections(afterSave, taskContext=null) {
     const forget=$('#gateway-forget-key',d);forget.hidden=!g.key_configured&&!g.key_storage?.saved;forget.disabled=Boolean(g.busy);
     $('[name="gateway_key"]',d).placeholder=g.key_configured?'Configured · leave blank to keep':'Only if your gateway requires a client key';
     $('#gateway-instance',d).textContent=g.status==='ready'?`${g.model_count} models · ${g.owned?'Started by cheapoS':'Reusing an existing instance'}`:'';
-    const freeModels=state.gatewayModels.filter(m=>(m.free||m.access_class==='included')&&m.tool_calling===true&&!m.local&&!m.id.startsWith('auto/'));
+    const freeModels=state.gatewayModels.filter(m=>(m.free||m.access_class==='included')&&m.tool_calling===true&&!m.local&&!m.id.startsWith('auto/')&&m.provider!=='combo'&&!m.combo);
     const cooling=freeModels.filter(m=>(m.health?.retry_at||0)*1000>Date.now()).length;
     $('#free-pool-title',d).textContent=`Authorized remote model pool · ${freeModels.length-cooling} candidates${cooling?' · '+cooling+' cooling down':''}`;
     $('#free-model-pool',d).innerHTML=freeModels.map(m=>`<div class="pool-model"><strong>${esc(m.id)}</strong><span>${esc(CheapOSGuide.modelAccess(m))} · ${esc(CheapOSGuide.modelHealth(m))}${m.reasoning===true?' · reasoning advertised':''}</span><small>${esc(CheapOSGuide.metadataEvidence(m))}</small>${m.health?.last_error?`<small>${esc(m.health.last_error)}</small>`:''}</div>`).join('')||'<p class="small muted">No public-free or explicitly included remote models advertising tool support are listed in this catalog.</p>';

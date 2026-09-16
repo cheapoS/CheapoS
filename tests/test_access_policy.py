@@ -82,7 +82,7 @@ class AccessTests(unittest.TestCase):
             with self.assertRaises(ValueError): access.model_ids(ids)
         model={'id':'account/model','free':False,'tool_calling':True}
         self.assertTrue(access.eligible(model,self.policy()))
-        for changed in ({'id':'account/new'},{'local':True},{'provider':'combo'},{'tool_calling':False}):
+        for changed in ({'id':'account/new'},{'id':'auto/best-free'},{'local':True},{'provider':'combo'},{'combo':True},{'tool_calling':False}):
             self.assertFalse(access.eligible({**model,**changed},self.policy()))
         config=validate_provider({'base_url':self.policy()['base_url'],'gateway':'omniroute','model':'account/model','access':'included'},'worker')
         config=access.bind_provider(config,self.policy(),model)

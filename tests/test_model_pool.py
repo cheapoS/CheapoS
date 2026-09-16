@@ -108,17 +108,17 @@ class PoolTests(unittest.TestCase):
             ]
             planner_order = [m['id'] for m in pool.interleave(endpoint, models, 'planner')]
             reviewer_order = [m['id'] for m in pool.interleave(endpoint, models, 'reviewer')]
-            # Top tier for planning and reviewing are flagship / high-tier coding models
-            high_tier = {'openrouter/anthropic/claude-3.5-sonnet', 'nvidia/llama-3.1-nemotron-70b-instruct', 'auto/best-coding'}
-            self.assertTrue(set(planner_order[:3]).issubset(high_tier))
-            self.assertTrue(set(reviewer_order[:3]).issubset(high_tier))
-            # auto/best-free and non-code parse are demoted to the bottom
-            self.assertIn(planner_order.index('auto/best-free'), [5, 6])
-            self.assertEqual(planner_order[-1], 'nvidia/nemotron-parse')
-            # For workers, coding models are prioritized, but lower tier coders are also eligible
+            # Top tier for planning and reviewing are flagship models
+            flagships = {'openrouter/anthropic/claude-3.5-sonnet', 'nvidia/llama-3.1-nemotron-70b-instruct'}
+            self.assertTrue(flagships.issubset(set(planner_order[:2])))
+            self.assertTrue(flagships.issubset(set(reviewer_order[:2])))
+            # auto/ wildcards and combos are demoted to the very bottom
+            self.assertEqual(set(planner_order[-2:]), {'auto/best-coding', 'auto/best-free'})
+            self.assertEqual(set(reviewer_order[-2:]), {'auto/best-coding', 'auto/best-free'})
+            # For workers, real flagship and coding models are prioritized, combos at the bottom
             worker_order = [m['id'] for m in pool.interleave(endpoint, models, 'worker')]
-            self.assertEqual(worker_order[0], 'auto/best-coding')
-            self.assertLess(worker_order.index('qwen/qwen-2.5-coder-7b'), worker_order.index('auto/best-free'))
+            self.assertTrue(flagships.issubset(set(worker_order[:2])))
+            self.assertEqual(set(worker_order[-2:]), {'auto/best-coding', 'auto/best-free'})
 
 
 class FailoverTests(LocalCase):

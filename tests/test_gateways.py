@@ -70,20 +70,21 @@ class CatalogTests(unittest.TestCase):
         models = normalize_models({'data': [
             {'id': 'openrouter/coder:free', 'capabilities': {'tool_calling': True}, 'context_length': 32000},
             {'id': 'auto/cheap', 'owned_by': 'combo', 'pricing': {'prompt': '0', 'completion': '0'}},
+            {'id': 'auto/best-free', 'owned_by': 'combo', 'pricing': {'prompt': '0', 'completion': '0'}},
             {'id': 'some/free-name'}, {'id': 'vendor/model:free'},
             {'id': 'paid', 'pricing': {'prompt': '.000002', 'completion': '.000004'}, 'supported_parameters': ['tools']},
             {'id': 'invalid-price', 'pricing': {'prompt': '-1', 'completion': 'NaN'}},
             {'id': 'openrouter/coder:free'}, None, {'id': ''}
         ]})
         by_id = {m['id']: m for m in models}
-        self.assertEqual(len(models), 6)
+        self.assertEqual(len(models), 7)
         free = by_id['openrouter/coder:free']
         self.assertTrue(free['free'])
         self.assertTrue(free['tool_calling'])
         self.assertEqual(free['context_length'], 32000)
         self.assertEqual((by_id['paid']['input_rate'], by_id['paid']['output_rate']), (2, 4))
         self.assertTrue(by_id['paid']['tool_calling'])
-        for name in ['auto/cheap', 'some/free-name', 'vendor/model:free', 'invalid-price']:
+        for name in ['auto/cheap', 'auto/best-free', 'some/free-name', 'vendor/model:free', 'invalid-price']:
             self.assertFalse(by_id[name]['free'])
         self.assertIsNone(by_id['some/free-name']['tool_calling'])
         self.assertIsNone(by_id['invalid-price']['input_rate'])

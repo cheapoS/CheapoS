@@ -43,11 +43,10 @@ def classify(model, policy=None):
 
 
 def eligible(model, policy=None):
-    is_free_auto = model['id'].startswith('auto/') and (':free' in model['id'] or '-free' in model['id'])
+    if model.get('local') or model.get('provider') == 'combo' or model.get('combo') or model['id'].startswith('auto/'):
+        return False
     return (classify(model, policy) in {'public_free', 'included'}
-            and model.get('tool_calling') is True and not model.get('local')
-            and (not model['id'].startswith('auto/') or is_free_auto)
-            and (model.get('provider') != 'combo' or is_free_auto))
+            and model.get('tool_calling') is True)
 
 
 def validate_current(policy, settings):
