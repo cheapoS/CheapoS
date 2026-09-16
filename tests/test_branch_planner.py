@@ -366,6 +366,28 @@ class PlannerExcerptTests(unittest.TestCase):
         self.assertEqual(len(self.events), 1)
         self.assertEqual(prose, original)
 
+    def test_parallel_discovery_executes_all_reads(self):
+        (self.root / 'a.js').write_text('const a = 1;\n')
+        (self.root / 'b.js').write_text('const b = 2;\n')
+        check = shlex.join([sys.executable, '-m', 'unittest'])
+        proposal = {'items': [{'id': 'init', 'title': 'Init', 'instructions': 'Do work',
+                              'acceptance_criteria': ['Done'], 'required_checks': [check]}],
+                    'limits': self.limits, 'final_checks': [check]}
+        multi_inspect = {
+            'tool_calls': [
+                {'id': 'c1', 'function': {'name': 'inspect_project_file', 'arguments': json.dumps({'path': 'a.js'})}},
+                {'id': 'c2', 'function': {'name': 'inspect_project_file', 'arguments': json.dumps({'path': 'b.js'})}},
+            ]
+        }
+        result = self.run_plan([multi_inspect, self.call('propose_branch_plan', {'status': 'plan', 'plan': proposal, 'clarification': ''})])
+        self.assertEqual(result['items'][0]['id'], 'init')
+        self.assertEqual(len(self.requests), 2)
+        # Verify both tool results were delivered in the prompt
+        tool_replies = [m for m in self.requests[1] if m.get('role') == 'tool']
+        self.assertEqual(len(tool_replies), 2)
+        self.assertIn('const a = 1;', tool_replies[0]['content'])
+        self.assertIn('const b = 2;', tool_replies[1]['content'])
+
     def test_response_diagnostics_distinguish_missing_multiple_and_truncated_calls(self):
         from cheapos.branch_pause import PauseError, public
         tool = self.call('propose_branch_plan', {})['tool_calls'][0]

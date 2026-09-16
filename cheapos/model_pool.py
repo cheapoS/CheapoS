@@ -198,7 +198,7 @@ class FreeModelPool:
         tier=1 if enough and invalid>=3 and invalid>successes else -1 if enough and successes>=3 and invalid==0 else 0
         # Observed compatibility first. Metadata only breaks ties; it is not a quality rating.
         mid = model["id"].lower()
-        auto_pool = -2 if mid.startswith("auto/coding") or mid.startswith("auto/best") else 0
+        auto_pool = -2 if role == "worker" and (mid.startswith("auto/coding") or mid.startswith("auto/best-coding")) else 0
         top_coder = -1 if role == "worker" and any(k in mid for k in ("haiku", "sonnet", "nemotron", "-pro", "/pro", "pro-", "coding")) else 0
         context_cap = 131072 if role in {"reviewer", "planner"} else 65536
         return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3), min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0,

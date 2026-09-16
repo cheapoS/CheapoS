@@ -304,26 +304,34 @@ def plan(engine, runtime, inputs):
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         try:
             calls = response.get('tool_calls') or []
-            if (response.get('finish_reason') not in ('length', 'max_tokens') and len(calls) == 1
-                    and calls[0].get('function', {}).get('name') == 'inspect_project_file' and discovery < MAX_DISCOVERY_REQUESTS):
-                discovery += 1
-                call = copy.deepcopy(calls[0])
-                call['id'] = call.get('id') or 'discovery-%s' % discovery
-                try:
-                    raw = call['function'].get('arguments', '')
-                    if not isinstance(raw, str) or len(raw) > 2000:
-                        raise ValueError('Supply a bounded relative path')
-                    arguments = json.loads(raw)
-                    if not isinstance(arguments, dict) or 'path' not in arguments or set(arguments) - {'path', 'start_line', 'end_line', 'start_column', 'query'}:
-                        raise ValueError('Supply path and optional line/column coordinates or literal query')
-                    result = inspect_project_file(captured['source'], **arguments)
-                except (ValueError, OSError, TypeError) as error:
-                    result = {'error': str(error)[:500]}
-                messages.append({'role': 'assistant', 'content': '', 'tool_calls': [call]})
-                if discovery == MAX_DISCOVERY_REQUESTS:
-                    result['next_step'] = 'Discovery is complete. Do not inspect more files. Use the collected evidence to call propose_branch_plan now; report a specific essential blocker there only if needed.'
+            if (response.get('finish_reason') not in ('length', 'max_tokens') and calls
+                    and all(isinstance(c, dict) and c.get('function', {}).get('name') == 'inspect_project_file' for c in calls)
+                    and discovery < MAX_DISCOVERY_REQUESTS):
+                assistant_calls = []
+                for call_item in calls:
+                    if discovery >= MAX_DISCOVERY_REQUESTS:
+                        break
+                    discovery += 1
+                    call = copy.deepcopy(call_item)
+                    call['id'] = call.get('id') or 'discovery-%s' % discovery
+                    assistant_calls.append(call)
+                messages.append({'role': 'assistant', 'content': '', 'tool_calls': assistant_calls})
+                for call in assistant_calls:
+                    try:
+                        raw = call['function'].get('arguments', '')
+                        if not isinstance(raw, str) or len(raw) > 2000:
+                            raise ValueError('Supply a bounded relative path')
+                        arguments = json.loads(raw)
+                        if not isinstance(arguments, dict) or 'path' not in arguments or set(arguments) - {'path', 'start_line', 'end_line', 'start_column', 'query'}:
+                            raise ValueError('Supply path and optional line/column coordinates or literal query')
+                        result = inspect_project_file(captured['source'], **arguments)
+                    except (ValueError, OSError, TypeError) as error:
+                        result = {'error': str(error)[:500]}
+                    if discovery >= MAX_DISCOVERY_REQUESTS:
+                        result['next_step'] = 'Discovery is complete. Do not inspect more files. Use the collected evidence to call propose_branch_plan now; report a specific essential blocker there only if needed.'
+                    messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result)})
+                if discovery >= MAX_DISCOVERY_REQUESTS:
                     messages[0]['content'] += '\nDiscovery is now complete: no further file reads are permitted. Call propose_branch_plan using collected evidence.'
-                messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result)})
                 continue
             assumptions = []
             result = _parse(response, limits, captured['source'], assumptions)
