@@ -8,8 +8,19 @@ from .provider_recovery import OUTAGES
 
 
 def is_continue(message):
-    return isinstance(message, str) and re.sub(r'[.!?]+$', '', message.strip().casefold()) in {
-        'continue', 'continue please', 'please continue', 'try again', 'resume', 'do what you need to finish'}
+    if not isinstance(message, str):
+        return False
+    normalized = re.sub(r'[\s.,!?]+', ' ', message.strip().casefold()).strip()
+    if normalized in {
+        'continue', 'continue please', 'please continue', 'try again', 'resume', 'do what you need to finish',
+        'plan approved continue', 'plan approved', 'approved', 'approve',
+        'start', 'start run', 'start plan', 'start task', 'proceed', 'looks good', 'looks good continue',
+        'go ahead', 'yes continue', 'ok continue', 'looks good go ahead'
+    }:
+        return True
+    return bool(re.fullmatch(r'(?:plan\s+)?approved[,\s]*(?:continue|start|proceed|go ahead)?', normalized) or
+                re.fullmatch(r'(?:looks\s+good|ok|okay)[,\s]*(?:continue|start|proceed|go ahead)?', normalized))
+
 
 
 def decide(task, trigger=None):

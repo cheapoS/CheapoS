@@ -682,7 +682,7 @@ class BranchController:
             if run.get('waiting_for_user'):raise ValueError('Send the missing information as guidance in this chat before resuming.')
             commands=[scope['command'] for scope in run['check_scope']]
             scopes=[self.scopes.prepare(task,argv) for argv in commands]
-            contract={'authorization_id':run['authorization_ref'],'feature_tip':run['expected_feature_tip'],'scopes':scopes}
+            contract={'authorization_id':run.get('authorization_ref'),'feature_tip':run.get('expected_feature_tip'),'scopes':scopes}
             missing=any(not self.scopes.authorize(task,argv) for argv in commands)
             if missing and values.get('approved') is not True:
                 proposal=self.resume_proposals.prepare(task_id,contract)
@@ -690,7 +690,12 @@ class BranchController:
             if missing:
                 self.resume_proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),contract)
                 for scope in scopes:self.scopes.consent(task,scope)
-            return {'needs_consent':False,'task':self._finish_start(task) if run['status']=='awaiting_authorization' else self.launch(task_id)}
+            if run['status']=='awaiting_authorization':
+                if not run.get('authorization'):
+                    proposal=self.proposals.prepare(task_id,self.contract(task))
+                    return {'needs_consent':False,'task':self.authorize(task_id,{'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True})}
+                return {'needs_consent':False,'task':self._finish_start(task)}
+            return {'needs_consent':False,'task':self.launch(task_id)}
 
     def proposal(self, task_id):
         with self.engine.lock:
@@ -706,6 +711,10 @@ class BranchController:
         from .continuation_policy import is_continue
         if is_continue(message):
             from .branch_operator import continue_saved
+            with self.engine.lock:
+                task = self.engine.store.get(task_id)
+                self.engine.event(task, 'user', 'You', message.strip())
+                self.engine.store.save(task)
             return continue_saved(self, task_id)
         with self.engine.lock:
             self.engine.require_active_task(task_id)
@@ -714,6 +723,12 @@ class BranchController:
             run=state.require_supported(task['branch_run'])
             if run.get('target_update'): raise ValueError('Finish the saved branch update: open Review changes, then Update branch & recheck.')
             if task.get('planning_request') and not run.get('authorization_ref'):
+                if run.get('status') == 'awaiting_authorization':
+                    if is_continue(message):
+                        from .branch_operator import continue_saved
+                        self.engine.event(task, 'user', 'You', message.strip())
+                        self.engine.store.save(task)
+                        return continue_saved(self, task_id)
                 return self.planning_message(task,message.strip())
             if run['status'] not in {'running','paused','blocked'}:
                 raise ValueError('Use Request changes to revise completed work')

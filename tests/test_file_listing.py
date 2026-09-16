@@ -34,6 +34,16 @@ class FileListingTests(LocalCase):
             with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'Directory not found'):
                 workspace.list_files(path)
 
+    def test_allowed_name_permits_cheapos_rulebooks_and_blocks_internal_files(self):
+        from cheapos.workspace import allowed_name
+        self.assertTrue(allowed_name('.cheapos/rules.md'))
+        self.assertTrue(allowed_name('.cheapos/guidelines.md'))
+        self.assertFalse(allowed_name('.cheapos'))
+        self.assertFalse(allowed_name('.cheapos/config.json'))
+        self.assertFalse(allowed_name('.cheapos/tasks/abc/task.json'))
+        self.assertFalse(allowed_name('.cheapos/state.db'))
+
+
     def test_worker_and_reviewer_can_list_folders_and_finish_the_loop(self):
         task = self.fixture(paid=True)
         task['conversational'] = True

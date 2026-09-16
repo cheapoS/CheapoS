@@ -7,6 +7,12 @@ def continue_saved(controller, task_id):
     """Attempt dispatch; retain direction and a precise actionable blocker."""
     engine = controller.engine
     try:
+        with engine.lock:
+            task = engine.store.get(task_id)
+            run = task.get('branch_run') or {}
+            if run.get('status') == 'awaiting_authorization' and not run.get('authorization_ref'):
+                proposal = controller.proposals.prepare(task_id, controller.contract(task))
+                return controller.authorize(task_id, {'proposal_id': proposal['proposal_id'], 'approved': True, 'full_suite_approved': True})
         result = controller.resume(task_id, {})
         if result.get('task'):
             return result['task']

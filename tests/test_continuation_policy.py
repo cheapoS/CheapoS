@@ -7,6 +7,12 @@ class ContinuationPolicyTests(unittest.TestCase):
             task={'prompt':'Fix',**patch};self.assertEqual(decide(task)['action'],action)
             record(task,'button');record(task,'chat');self.assertEqual(len(task['continuation_episodes']),1)
         self.assertTrue(is_continue('Continue please!'));self.assertFalse(is_continue('Continue and delete everything'))
+        self.assertTrue(is_continue('plan approved, continue'))
+        self.assertTrue(is_continue('Plan approved. Continue'))
+        self.assertTrue(is_continue('approved'))
+        self.assertTrue(is_continue('start'))
+        self.assertTrue(is_continue('looks good, continue'))
+        self.assertFalse(is_continue('Also support YAML files'))
     def test_new_ranges_not_rewords_or_todos(self):
         task={'prompt':'Explain','patch':''};progress.state(task)
         self.assertTrue(progress.inspection(task,'file','v1',{1,2}))

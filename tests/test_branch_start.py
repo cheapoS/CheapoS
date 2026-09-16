@@ -80,3 +80,17 @@ class BranchStartTests(unittest.TestCase):
         restarted.branch.validate_authority(loaded,loaded['branch_run'])
         self.assertFalse(restarted.branch.scopes.authorize(loaded,loaded['check_command']))
         self.assertEqual(restarted.runtimes,{})
+
+    def test_restart_unstarted_proposal_continues_without_replan(self):
+        proposal = self.engine.branch.prepare(self.values)
+        task_id = proposal['task_id']
+        restarted = Engine(self.root / 'state', fixture_delay=0)
+        self.addCleanup(restarted.shutdown)
+        restarted.config = copy.deepcopy(self.engine.config)
+        restarted.branch.launch = lambda tid: restarted.store.get(tid)
+        with patch.object(restarted.branch, 'plan') as mock_plan:
+            result = restarted.branch.message(task_id, {'message': 'plan approved, continue'})
+            mock_plan.assert_not_called()
+        self.assertTrue(result['branch_run']['authorization_ref'])
+        self.assertEqual(result['branch_run']['status'], 'running')
+        self.assertEqual(result['status'], 'running')

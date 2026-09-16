@@ -341,7 +341,7 @@ def plan(engine, runtime, inputs):
                             carto = engine.carto.context(captured['source'], captured['source'], path=arguments['path'])
                             if carto['status'] != 'disabled': result['carto'] = carto
                     except (ValueError, OSError, TypeError) as error:
-                        result = {'error': str(error)[:500]}
+                        result = {'error': str(error)[:500], 'path': arguments.get('path') if isinstance(arguments, dict) and isinstance(arguments.get('path'), str) else None}
                     if hasattr(engine, 'event'):
                         engine.event(runtime.task, 'planning_inspection', 'Project inspection failed' if result.get('error') else 'Inspected project context for the plan',
                                      {'inspection': discovery, 'limit': MAX_DISCOVERY_REQUESTS,
