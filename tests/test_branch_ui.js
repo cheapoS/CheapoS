@@ -131,6 +131,6 @@ test('actual startup renderer covers pending, accepted-stale, running and paused
  t.branch_run.status='paused';t.status='paused';context.render(t);assert.doesNotMatch(panel.innerHTML,/data-start-time/);
  t.branch_run.pause_detail={version:1,cause:'unknown',next_action:'inspect',explanation:'Unknown stop',item_id:'one',stage:'working',role:'worker',model:'fixture',diagnostic_id:'request'};
  branchResumeStatus.set('a',{status:'pending'});context.render(t);assert.match(panel.innerHTML,/Continuing saved work/);assert.match(panel.innerHTML,/data-resume disabled/);
- branchResumeStatus.set('a',{status:'error',message:'Exact <failure>'});context.render(t);assert.match(panel.innerHTML,/Exact &lt;failure&gt;/);assert.match(panel.innerHTML,/Try again from saved work/);
+ branchResumeStatus.set('a',{status:'error',message:'Exact <failure>'});context.render(t);assert.match(panel.innerHTML,/Exact &lt;failure&gt;/);assert.match(panel.innerHTML,/<button type="button" data-resume >Resume<\/button>/);
  assert.match(panel.innerHTML,/<li>Item: one<\/li>/);assert.match(panel.innerHTML,/<li>Model: fixture<\/li>/);
 });
