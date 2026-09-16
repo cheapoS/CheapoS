@@ -1406,7 +1406,7 @@ function refreshContext() {
 }
 function receiveStartedTask(task) {
   if(state.task?.id!==task?.id||!task?.branch_run)return false;
-  if(Date.parse(task.updated_at)<Date.parse(state.task.updated_at))return false;
+  if(!['merged','left_on_branch'].includes(task.branch_run?.status)&&Date.parse(task.updated_at)<Date.parse(state.task.updated_at))return false;
   state.task=task;return true;
 }
 function receiveUpdatedTask(task){if(receiveStartedTask(task))renderTask();}
@@ -1435,7 +1435,7 @@ async function resumeBranchRun(task,savedResult,approvalValues={}) {
     const operation=result.operation||result.merge_operation||task.branch_run?.merge_operation;
     if(!operation?.target_ref||!operation?.feature_tip)throw new Error('Saved integration details are unavailable. Refresh this task before recovery.');
     const d=dialog(`<form>${modalHeader('SAVED INTEGRATION','Finish the approved local merge')}<p>Reconcile the saved integration of <code>${esc(operation.feature_tip)}</code> into <strong>${esc(operation.target_ref)}</strong>. This finishes only that recorded operation and preserves external changes.</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Keep saved</button><button type="submit" class="primary-button">Finish saved integration</button></div></form>`);
-    const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{await CheapOSBranchUI.mergeAndPublish({api,task,values:{recover:true,approved:true},onTask:saved=>{d.close();receiveUpdatedTask(saved);},refresh});});};return;
+    const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{await CheapOSBranchUI.mergeAndPublish({api,task,values:{recover:true,approved:true},onTask:saved=>{d.close();setView('chat');receiveUpdatedTask(saved);toast('Reviewed changes merged locally.');},refresh});});};return;
   }
   if(!result.needs_consent){await refresh();return;}
   const d=dialog(`<form>${modalHeader('RESUME UNATTENDED','Renew test permissions')}<p>These session permissions expired or their environment changed. Resume keeps the same run and remaining allowance.</p><ul>${(result.scopes||[]).map(scope=>`<li><code>${esc(scope.command.join(' '))}</code><br><small>${esc(scope.directory)}</small></li>`).join('')}</ul><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Keep paused</button><button type="submit" class="primary-button">Allow tests & resume</button></div></form>`);
