@@ -40,7 +40,10 @@ class PlannerTests(unittest.TestCase):
             self.assertTrue(all(t['function']['name'] in {'propose_branch_plan', 'inspect_project_file'} for t in tools))
             runtime.task['request_metrics'].append({'id': str(len(self.requests)), 'purpose': purpose})
             return responses.pop(0)
-        return SimpleNamespace(request=request)
+        return SimpleNamespace(
+            request=request, 
+            effective_role_mapping=lambda project: {'mapping': {'planner': 'p', 'worker': 'w', 'reviewer': 'r'}, 'error': None}
+        )
 
     def test_prompt_document_and_combined_paths_capture_whole_plain_document(self):
         (self.root / 'spec.md').write_text('Implement a reader. Then test it.\nNo Markdown checkboxes needed.\n')
@@ -205,7 +208,7 @@ class PlannerTests(unittest.TestCase):
         def request(*args, **kwargs):
             self.runtime.stop.set()
             return self.reply()
-        with self.assertRaises(InterruptedError): planner.plan(SimpleNamespace(request=request), self.runtime, captured)
+        with self.assertRaises(InterruptedError): planner.plan(SimpleNamespace(request=request, effective_role_mapping=lambda p: {'mapping': {'planner': 'p', 'worker': 'w', 'reviewer': 'r'}, 'error': None}), self.runtime, captured)
 
 
     def test_auto_healing_missing_limits_and_final_checks(self):
@@ -282,7 +285,11 @@ class PlannerExcerptTests(unittest.TestCase):
             self.requests.append(copy.deepcopy(messages))
             return responses.pop(0)
 
-        engine = SimpleNamespace(request=request, event=lambda *args: self.events.append(args))
+        engine = SimpleNamespace(
+            request=request, 
+            event=lambda *args: self.events.append(args),
+            effective_role_mapping=lambda project: {'mapping': {'planner': 'p', 'worker': 'w', 'reviewer': 'r'}, 'error': None}
+        )
         with patch.object(planner, 'project_context', return_value={'files': ['app.js']}):
             return planner.plan(engine, self.runtime, captured)
 
