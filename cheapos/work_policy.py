@@ -9,7 +9,7 @@ READ_ONLY_STARTERS = (
     'Look through this project and suggest one small improvement. Explain it before making changes.',
 )
 READ_ONLY_TOOLS = frozenset({'list_files', 'read_file', 'outline_file', 'search',
-                             'read_url', 'read_merge_context', 'get_diff', 'read_check_output', 'ask_user'})
+                             'read_url', 'read_merge_context', 'get_diff', 'read_context_evidence', 'read_check_output', 'update_working_state', 'ask_user'})
 
 
 class ReadOnlyViolation(ValueError):
@@ -61,10 +61,6 @@ def small_edit_reason(task):
         if not isinstance(detail,dict):continue
         if event['kind']=='tool_error' and detail.get('tool') in {'write_file','replace_text','replace_lines'}:
             return 'An edit-output failure was observed in this task.'
-        if event['kind']=='tool' and event['title']=='read file':
-            result=detail.get('result') or {};result=result.get('observation',result)
-            if result.get('total_lines',0)>200 or len(result.get('content',''))>6000:
-                return 'An observed file exceeds 200 lines or its excerpt exceeds 6,000 characters.'
     return None
 
 

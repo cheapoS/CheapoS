@@ -15,7 +15,7 @@ class ModelGateway(Protocol):
     def chat(self, messages, tools, max_tokens): ...
 
 
-def normalize_models(data, openrouter=False):
+def normalize_models(data, openrouter=False, infer_access=True):
     if not isinstance(data, dict) or not isinstance(data.get("data"), list):
         raise ProviderError("The gateway did not return a model catalog")
     models, seen = [], set()
@@ -41,7 +41,7 @@ def normalize_models(data, openrouter=False):
         provider_name = str(item.get("owned_by") or "")[:100]
         free_providers = {"antigravity", "kiro", "opencode", "oc", "nvidia"}
         provider_prefix = model_id.split("/")[0] if "/" in model_id else ""
-        is_free_account = provider_name in free_providers or provider_prefix in free_providers
+        is_free_account = infer_access and (provider_name in free_providers or provider_prefix in free_providers)
         is_free_auto = model_id.startswith("auto/") and (":free" in model_id or "-free" in model_id)
         explicit_free = (
             ((model_id.endswith(":free") and (openrouter or model_id.startswith("openrouter/")))
@@ -52,7 +52,7 @@ def normalize_models(data, openrouter=False):
         )
         if is_free_account:
             input_rate = output_rate = 0.0
-        elif explicit_free and not pricing and input_rate is None and output_rate is None:
+        elif infer_access and explicit_free and not pricing and input_rate is None and output_rate is None:
             input_rate = output_rate = 0.0
         capabilities = item.get("capabilities") or {}
         tools = capabilities.get("tool_calling") if isinstance(capabilities, dict) else None
@@ -120,7 +120,8 @@ class OpenAICompatibleGateway(ChatProvider):
 
     def list_models(self):
         data, _ = self._catalog()
-        return normalize_models(data, openrouter=self.config["base_url"].startswith("https://openrouter.ai/"))
+        return normalize_models(data, openrouter=self.config["base_url"].startswith("https://openrouter.ai/"),
+                                infer_access=self.config.get("gateway_type", "omniroute") == "omniroute")
 
     def health(self):
         try:
@@ -178,5 +179,5 @@ def refresh_openrouter_free_models(models, upstream):
 
 
 def gateway_for(config, key=""):
-    gateway = OmniRouteGateway if config.get("gateway") == "omniroute" else OpenAICompatibleGateway
+    gateway = OmniRouteGateway if config.get("gateway") == "omniroute" and config.get("gateway_type", "omniroute") == "omniroute" else OpenAICompatibleGateway
     return gateway(config, key)

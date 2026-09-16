@@ -242,7 +242,7 @@ def _select_remote(engine, runtime, role="worker", replace=False):
         cached = gateway.pool.fresh_probe(route['base_url'], model['id'], connection_revision, identity)
         if model['id'] in tried or (not cached and round_state['probes'] >= route_schedule.BATCH_SIZE): continue
         tried.add(model['id'])
-        cfg = validate_provider({"gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
+        cfg = validate_provider({"gateway_type": gateway.settings.get("gateway_type", "omniroute"), "gateway": "omniroute", "base_url": route["base_url"], "model": model["id"],
                                  "input_rate": 0, "output_rate": 0}, role)
         if route.get('access_policy') is not None: cfg['access_binding'] = copy.deepcopy(route['access_policy'])
         if access_policy.classify(model, route.get('access_policy')) == 'included':

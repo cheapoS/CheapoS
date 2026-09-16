@@ -7,12 +7,10 @@ from .development import enabled as developing
 def queue(controller, runtime, item):
     engine=controller.engine;task=runtime.task;run=task['branch_run']
     # These are implementation failures, not permission/setup/review/user waits.
-    if (task.get('status')!='paused' or task.get('error_code')!='progress_limit'
-            or item.get('status')!='working' or runtime.stop.is_set()
-            or not automatic(task,'worker') or task.get('active_role')!='worker'
-            or run.get('waiting_for_user') or task.get('pending_approval')
-            or task.get('pending_review') or task.get('limit_hit')):
+    from .continuation_policy import implementation_handoff, record
+    if not implementation_handoff(task, item, runtime.stop.is_set()) or not automatic(task,'worker'):
         return False
+    record(task, 'implementation_handoff')
     last_check=(task.get('checks') or [{}])[-1]
     if last_check.get('next_action')==task.get('error'):
         return False
@@ -34,7 +32,7 @@ def queue(controller, runtime, item):
     brief=task.pop('coordinator_handoff_brief',None)
     if brief: reason += '\nCoordinator continuation (advisory, same scope and permissions): ' + brief
     task['route'].setdefault('recovery',{})['worker']={'from':worker,'reason':reason}
-    task.update(status='running',error=None,error_code=None,answer_pending=False,action_pending=True,compact_edits=True)
+    task.update(status='running',error=None,error_code=None,answer_pending=False,action_pending=True)
     task.pop('recovery_blocked',None)
     runtime.step_turns=0
     runtime.observations.clear();runtime.file_observations.clear();runtime.edit_versions.clear()

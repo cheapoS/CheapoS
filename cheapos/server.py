@@ -18,6 +18,7 @@ from . import metrics, check_output, branch_runs, branch_pause
 
 
 def public_task(task, summary=False, store=None):
+    from .working_state import project as working_state
     if store is not None:
         task = store.present(task)
     if task.get('branch_run',{}).get('pause_detail'):
@@ -31,7 +32,7 @@ def public_task(task, summary=False, store=None):
             result["branch_run"] = branch_runs.summary(task["branch_run"])
         return result
     from .coordinator_dispatch import reassessment_availability
-    return {**{key: value for key, value in task.items() if key not in {"messages", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending", "request_metrics", "run_metrics"}}, "coordinator_reassessment":reassessment_availability(task), "metrics":metrics.aggregate(task), "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
+    return {**{key: value for key, value in task.items() if key not in {"messages", "worker_sessions", "conversation_state", "context_evidence", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending", "request_metrics", "run_metrics"}}, "working_state":working_state(task), "coordinator_reassessment":reassessment_availability(task), "metrics":metrics.aggregate(task), "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -249,7 +250,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     raise ValueError("Choose a worker, reviewer or planner connection")
                 config = validate_provider(values.get("config"), role)
                 engine.guard_route(config)
-                result = {"models": gateway_for(config, engine.provider_key(role, config)).list_models()}
+                result = {"models": gateway_for(engine.gateway_config(config), engine.provider_key(role, config)).list_models()}
             elif path == "/api/branch-runs/project":
                 result = engine.branch.project(values)
             elif path == "/api/branch-runs/plan":

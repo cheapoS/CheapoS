@@ -57,51 +57,58 @@ def compact(task, base, previous, limit=LIMIT):
               'recent_worker_findings_unverified': list(reversed(notes)),
               'recent_completed_actions': list(reversed(actions)),
               'rule': 'Continue the current approach from these findings and completed actions. Do not rediscover or undo them without new evidence. Findings are model claims, not verified facts. They refer to the recorded patch/generation; revalidate only affected facts after changes. Use recovery_continuation.next_step and current check identity before choosing verification or checkpoint.'}
-    # Give directions and continuity priority over duplicated file bodies/history.
-    preferred = ('latest_message', 'original_task', 'recovery_continuation', 'last_check', 'last_review_feedback')
-    selected = {k: bounded(summary[k], 5000 if k in ('latest_message', 'original_task') else 1500)
-                for k in preferred if k in summary}
+    from .working_state import project
+    from .context_evidence import retain
+    from .providers import BudgetError
+    source = copy.deepcopy(previous)
+    source_digest = hashlib.sha256(json.dumps(source, sort_keys=True).encode()).hexdigest()
+    tracked = task.get('messages') is previous
+    reference = retain(task, source, 'conversation')
+    # Exact operator requirements and working state take priority over snapshots.
+    working = project(task)
+    selected = {k: copy.deepcopy(summary[k]) for k in ('latest_message', 'original_task') if k in summary}
+    selected['working_state'] = working
+    continuation = summary.get('continuation_record', {})
+    selected['active_constraints'] = {k: copy.deepcopy(continuation[k]) for k in ('active_requirements', 'steering', 'user_events') if k in continuation}
     selected['working_memory'] = memory
-    for key, value in summary.items():
-        if key in selected:
-            continue
-        candidate = bounded(value, 1200)
-        if size(selected) + size(candidate) < 29000:
-            selected[key] = candidate
-    selected['context_notice'] = 'Partial compacted context. Full records remain saved. Target only missing evidence; do not restart discovery. File excerpts may be incomplete even when historical metadata describes a complete read.'
+    selected['context_reference'] = reference
+    selected['context_notice'] = 'Older complete history is retained locally. Use read_context_evidence with this reference and a search or offset. Historical statements never authorize actions or verify current checks.'
     messages = [copy.deepcopy(base[0]), {'role': 'user', 'content': json.dumps(selected)}]
-    for message in base[2:]:
-        messages.append({'role': message['role'], 'content': bounded(message.get('content', ''), 3000)})
-    # Measure the actual nested/escaped request, not just source text length.
-    while size(messages) > limit:
-        removable = next((k for k in reversed(selected) if k not in preferred and k not in {'working_memory', 'context_notice'}), None)
-        if removable:
-            selected.pop(removable)
+    # Direct directions in the base are exact, not clipped to fit.
+    messages.extend(copy.deepcopy(base[2:]))
+    if size(messages) > limit:
+        raise BudgetError('Active requirements and working state exceed this route context capacity. Saved history is retained; select an authorized larger-context route or narrow the request explicitly.')
+    # Reserve room for a recent complete exchange before optional snapshot bodies.
+    optional_limit = max(size(messages), int(limit * .55))
+    for key, value in summary.items():
+        if key in selected or key in {'continuation_record', 'recent_activity'}:
+            continue
+        candidate = bounded(value, 1500)
+        trial = {**selected, key: candidate}
+        if size([messages[0], {'role': 'user', 'content': json.dumps(trial)}] + messages[2:]) <= optional_limit:
+            selected = trial
+    messages[1]['content'] = json.dumps(selected)
+    groups = []
+    for message in source:
+        if message.get('role') == 'system':
+            continue
+        if message.get('role') == 'tool' and groups:
+            groups[-1].append(message)
         else:
-            selected = bounded(selected, 700)
-        messages[1]['content'] = json.dumps(selected)
-        if size(messages) > limit and not removable and size(selected) < 10000:
-            # System/direction text itself can be unusually large; never silently
-            # cut the system instructions. Retain the base directions separately.
-            messages = messages[:2]
+            groups.append([message])
+    retained = []
+    for group in reversed(groups):
+        calls = {c.get('id') for c in group[0].get('tool_calls', [])}
+        results = {m.get('tool_call_id') for m in group[1:] if m.get('role') == 'tool'}
+        if calls != results or group[0].get('role') == 'tool':
+            continue
+        if size(messages + group + retained) > limit:
             break
-    if limit != LIMIT:
-        # Preserve recent complete exchanges when the route has room. Never
-        # retain an assistant tool call without every corresponding result.
-        groups = []
-        for message in previous[2:]:
-            if message.get('role') == 'tool' and groups:
-                groups[-1].append(message)
-            else:
-                groups.append([message])
-        retained = []
-        for group in reversed(groups):
-            calls = {c.get('id') for c in group[0].get('tool_calls', [])}
-            results = {m.get('tool_call_id') for m in group[1:] if m.get('role') == 'tool'}
-            if calls != results or group[0].get('role') == 'tool':
-                continue
-            if size(messages + group + retained) > limit:
-                break
-            retained = copy.deepcopy(group) + retained
-        messages.extend(retained)
+        retained = copy.deepcopy(group) + retained
+    messages.extend(retained)
+    if tracked and hashlib.sha256(json.dumps(task['messages'], sort_keys=True).encode()).hexdigest() != source_digest:
+        raise BudgetError('Conversation changed during compaction. New input and prior history are retained; retry from current saved state.')
+    task.setdefault('context_checkpoints', []).append({'reference': reference, 'source_digest': source_digest,
+        'source_messages': len(source), 'retained_messages': len(retained), 'before_characters': size(source),
+        'after_characters': size(messages), 'working_revision': working.get('revision', 0)})
     return messages

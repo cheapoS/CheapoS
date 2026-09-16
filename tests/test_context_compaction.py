@@ -45,3 +45,60 @@ class ContextCompactionTests(unittest.TestCase):
         task['loop_guidance']=None
         before=list(task['messages']);Engine.deliver_loop_guidance(task)
         self.assertEqual(task['messages'],before)
+
+    def test_constraints_working_state_and_complete_tail_survive_both_budgets(self):
+        from cheapos.context_evidence import read
+        from cheapos.working_state import update
+        for limit in (LIMIT, 18000):
+            task={'prompt':'Keep accessibility','requests':['Keep accessibility','Use a confirmation dialog'],'events':[]}
+            update(task,{'next_action':'Wire dialog keyboard handling','decisions':['Keep existing handler']})
+            previous=[{'role':'user','content':'Historical detail: endpoint /restart'},
+                      {'role':'assistant','tool_calls':[{'id':'read','function':{'arguments':'{}'}}]},
+                      {'role':'tool','tool_call_id':'read','content':'Found handler'}]
+            base=[{'role':'system','content':'policy'},{'role':'user','content':'{}'}]
+            result=compact(task,base,previous,limit)
+            self.assertIn('Keep accessibility',result[1]['content'])
+            self.assertIn('Use a confirmation dialog',result[1]['content'])
+            self.assertEqual(result[-2:],previous[-2:])
+            ref=json.loads(result[1]['content'])['context_reference']
+            self.assertIn('/restart',read(task,ref,search='/restart')['content'])
+            self.assertLessEqual(size(result),limit)
+
+    def test_capacity_does_not_erase_constraints(self):
+        from cheapos.providers import BudgetError
+        from cheapos.context_evidence import read, preview
+        task={'prompt':'x'*20000,'events':[]}
+        with self.assertRaises(BudgetError):compact(task,[{'role':'system','content':'policy'},{'role':'user','content':'{}'}],[],2000)
+        saved=preview(task,{'output':'a'*18000,'error':'important failure'})
+        self.assertEqual(saved['error'],'important failure')
+        self.assertIn('important failure',read(task,saved['context_reference'],search='important failure')['content'])
+        with self.assertRaises(ValueError):read({},saved['context_reference'])
+    def test_long_session_restart_preserves_work_and_rejects_concurrent_compaction(self):
+        from unittest.mock import patch
+        from cheapos.working_state import update
+        from cheapos.context_evidence import retain, read
+        from cheapos.worker_conversation import continue_session
+        from cheapos.providers import BudgetError
+        task={'prompt':'Keep endpoint /restart','requests':['Keep endpoint /restart','Add keyboard support'],'events':[],'messages':[]}
+        update(task,{'steps':[{'id':'key','text':'Wire keyboard handler','status':'working'}],'next_action':'Wire keyboard handler'})
+        task['messages']=[{'role':'assistant','content':'Earlier observation '+str(n)+'x'*10000} for n in range(20)]
+        task['messages'] += [{'role':'assistant','tool_calls':[{'id':'saved','function':{'name':'replace_text','arguments':'{}'}}]}, {'role':'tool','tool_call_id':'saved','content':'Keyboard handler saved; checking remains'}]
+        base=[{'role':'system','content':'policy'},{'role':'user','content':'{}'}]
+        before=size(task['messages']);task['messages']=compact(task,base,task['messages'],18000)
+        self.assertLess(size(task['messages']),before//2)
+        ref=task['context_checkpoints'][-1]['reference']
+        restored=json.loads(json.dumps(task));continue_session(restored,base,'restart')
+        self.assertIn('Add keyboard support',str(restored['messages']))
+        self.assertIn('Wire keyboard handler',str(restored['messages']))
+        self.assertEqual(sum(m.get('tool_call_id')=='saved' for m in restored['messages']),1)
+        self.assertIn('Earlier observation 0',read(restored,ref,search='Earlier observation 0')['content'])
+        def changed(task,value,kind):
+            reference=retain(task,value,kind)
+            task['messages'].append({'role':'user','content':'New input during compaction'})
+            return reference
+        count=len(restored['context_checkpoints'])
+        with patch('cheapos.context_evidence.retain',side_effect=changed):
+            with self.assertRaisesRegex(BudgetError,'changed during compaction'):
+                compact(restored,base,restored['messages'],18000)
+        self.assertEqual(restored['messages'][-1]['content'],'New input during compaction')
+        self.assertEqual(len(restored['context_checkpoints']),count)

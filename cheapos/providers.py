@@ -53,8 +53,8 @@ def guard_inference_route(config, gateway_url):
             return
     except (TypeError, ValueError):
         pass
-    raise ValueError('Remote models must use the configured OmniRoute connection during development. '
-                     'Open Models and select OmniRoute; direct OpenRouter and other remote endpoints are disabled. '
+    raise ValueError('Remote models must use the configured OmniRoute or compatible gateway connection. '
+                     'Open Models and select the configured gateway; direct provider endpoints are disabled. '
                      'Saved tasks keep their original connection and edits; start a new chat with the gateway model choices.')
 
 
@@ -91,7 +91,8 @@ def http_failure(error, config):
             pass
         if delay is not None or code in {'model_cooldown', 'provider_cooldown'} or error.code == 429:
             # Only explicit shared-quota metadata can exclude sibling models.
-            scope = 'provider' if code == 'provider_cooldown' else 'model'
+            detail = (metadata.get('message') or '') if isinstance(metadata, dict) else ''
+            scope = 'provider' if code == 'provider_cooldown' or (isinstance(detail, str) and any(k in detail.lower() for k in ('quota', 'daily limit', 'rate limit', 'credit', 'exhausted'))) else 'model'
             retry = f'Retry in about {delay} seconds.' if delay is not None else 'The reset time is unknown.'
             return ProviderError(f'OmniRoute reports a {scope} cooldown. {retry} No model compatibility conclusion was drawn.',
                                  code='gateway_cooldown', retry_after=delay, scope=scope)
@@ -148,6 +149,10 @@ def validate_provider(value, role):
     if gateway not in {"openai", "omniroute"}:
         raise ValueError("Choose OmniRoute or an OpenAI-compatible connection")
     result = {"base_url": endpoint, "model": model, "input_rate": rates[0], "output_rate": rates[1], "key_env": env, "gateway": gateway}
+    if "gateway_type" in value:
+        if value["gateway_type"] not in {"omniroute", "cliproxyapi", "9router", "litellm", "compatible"}:
+            raise ValueError("Unknown gateway adapter")
+        result["gateway_type"] = value["gateway_type"]
     if access:
         result['access'] = access
     return result
@@ -204,15 +209,15 @@ class ChatProvider:
         self.config = config
         self.key = key
 
-    def complete(self, messages, tools, max_tokens):
-        return self._complete(messages, tools, max_tokens)
+    def complete(self, messages, tools, max_tokens, tool_choice=None):
+        return self._complete(messages, tools, max_tokens, tool_choice=tool_choice)
 
     @property
     def streams_output(self):
         return self.config.get("gateway") == "omniroute" or is_local_ollama(self.config)
 
-    def complete_with_progress(self, messages, tools, max_tokens, emit, stopped):
-        return self._complete(messages, tools, max_tokens, emit, stopped)
+    def complete_with_progress(self, messages, tools, max_tokens, emit, stopped, tool_choice=None):
+        return self._complete(messages, tools, max_tokens, emit, stopped, tool_choice=tool_choice)
 
     def greet(self, messages, emit, stopped):
         return self._complete(messages, [], 512, emit, stopped, timeout_seconds=30, stream_seconds=60, brief=True)
@@ -220,7 +225,7 @@ class ChatProvider:
     def complete_brief(self, messages, tools, max_tokens, emit, stopped):
         return self._complete(messages, tools, max_tokens, emit, stopped, timeout_seconds=30, stream_seconds=60, brief=True)
 
-    def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False, timeout_seconds=REQUEST_TIMEOUT_SECONDS, stream_seconds=600, brief=False):
+    def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False, timeout_seconds=REQUEST_TIMEOUT_SECONDS, stream_seconds=600, brief=False, tool_choice=None):
         body = {"model": self.config["model"], "messages": messages, "stream": emit is not None}
         if max_tokens is not None:
             body["max_tokens"] = max_tokens
@@ -233,8 +238,10 @@ class ChatProvider:
         if emit is not None:
             body["stream_options"] = {"include_usage": True}
         if tools:
-            body.update({"tools": tools, "tool_choice": "auto", "parallel_tool_calls": False})
+            body.update({"tools": tools, "tool_choice": tool_choice or "auto", "parallel_tool_calls": False})
         headers = {"Content-Type": "application/json", "Accept": "text/event-stream" if emit is not None else "application/json", "User-Agent": "CheapOS/0.2"}
+        if self.config.get("gateway_type") == "9router":
+            headers["X-9Router-Token-Saver"] = "off"
         if self.key:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
@@ -271,7 +278,9 @@ class ChatProvider:
                 raise ProviderError("The model reached its output limit before finishing. Partial tool calls were not executed.",
                                     code="output_limit", usage=data.get("usage"))
             message = choice["message"]
-            if not isinstance(message, dict) or not (message.get("content") or message.get("tool_calls")):
+            has_content = isinstance(message.get("content"), str) and bool(message["content"].strip())
+            has_tools = bool(message.get("tool_calls"))
+            if not isinstance(message, dict) or not (has_content or has_tools):
                 raise ValueError()
             # Preserve tool IDs and reasoning_details required by some tool-capable providers.
             message = {key: value for key, value in message.items() if key in {"role", "content", "tool_calls", "reasoning_details", "reasoning"}}

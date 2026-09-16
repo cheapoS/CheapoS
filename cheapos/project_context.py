@@ -83,5 +83,11 @@ def continuation(task):
         result['files'].pop()
     if len(json.dumps(result).encode())>112000:
         raise BudgetError('Continuation metadata exceeds its bounded allowance. Start a focused task; saved history is intact.')
+    from .working_state import project
+    result['working_state'] = project(task)
+    if result['working_state'].get('next_action'):
+        result['next_step'] = result['working_state']['next_action']
+    if not result['working_state']['historical']:
+        result['remaining_requirements'] = [s for s in result['working_state'].get('steps', []) if s['status'] != 'done'] or result['remaining_requirements']
     task['continuation_record']=result
     return copy.deepcopy(result)

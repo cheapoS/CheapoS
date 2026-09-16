@@ -351,9 +351,10 @@ class BranchController:
     def continue_item(self, runtime, item):
         """Resume the interrupted stage; a pending review is not worker work."""
         task = runtime.task
+        result = None
         if item['status'] == 'reviewing':
             from .branch_review import checkpoint
-            saved = task.get('pending_review') or {}
+            saved = task.get('pending_review') or (task.get('operator_review_history') or [{}])[-1]
             self.engine.event(task, 'state', 'Continuing independent review from saved evidence',
                               {'item_id': item['id']})
             result = checkpoint(self.engine, runtime, {
@@ -363,7 +364,9 @@ class BranchController:
             if result['decision'] != 'REQUEST_CHANGES':
                 return
         task['status'] = 'running'
-        task['messages'] = self.engine.initial_messages(task)
+        from .worker_conversation import continue_session
+        continue_session(task, self.engine.initial_messages(task),
+                         'review_repair' if result else 'item_resume', result)
         self.engine._run_with_wait(runtime)
 
     def execute(self, runtime):
@@ -640,8 +643,14 @@ class BranchController:
         from .engine import Runtime
         with self.engine.lock:
             self.engine.require_active_task(task_id)
+            live = self.engine.runtimes.get(task_id)
+            if live and live.thread and live.thread.is_alive():
+                return {'needs_consent': False, 'task': self.engine.store.get(task_id)}
             self.engine.admission.require('unattended', task_id)
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            from .continuation_policy import record
+            record(task, 'operator_continue')
+            self.engine.store.save(task)
             if (run.get('target_update') or {}).get('origin')=='conflict_resolution':
                 from .branch_conflicts import complete
                 complete(self.engine,task)
@@ -683,6 +692,10 @@ class BranchController:
         message=values.get('message')
         if not isinstance(message,str) or not message.strip() or len(message)>8000:
             raise ValueError('Provide guidance of up to 8,000 characters')
+        from .continuation_policy import is_continue
+        if is_continue(message):
+            from .branch_operator import continue_saved
+            return continue_saved(self, task_id)
         with self.engine.lock:
             self.engine.require_active_task(task_id)
             runtime=self.engine.runtimes.get(task_id)

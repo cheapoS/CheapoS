@@ -72,3 +72,60 @@ def receipt(messages):
             'assistant_count': sum(m.get('role') == 'assistant' for m in messages),
             'tool_result_count': sum(m.get('role') == 'tool' for m in messages),
             'bytes': len(encoded)}
+
+
+def continue_session(task, snapshot, reason, feedback=None):
+    """The sole worker transition adapter. Review sessions stay in pending_review.
+
+    Only the active item's messages are writable. Other item histories are local
+    archives; changing workspace generation does not make their evidence current.
+    """
+    item = (task.get('branch_run') or {}).get('current_item_id')
+    scope = 'item:' + str(item) if item else 'interactive'
+    state = task.setdefault('conversation_state', {})
+    old_scope = state.get('scope', scope)
+    if old_scope != scope:
+        archives = task.setdefault('worker_sessions', {})
+        archives[old_scope] = copy.deepcopy(task.get('messages', []))
+        task['messages'] = copy.deepcopy(archives.get(scope, []))
+        state.clear()
+    state['scope'] = scope
+    previous = task.get('messages', [])
+    delta = []
+    hashes = state.setdefault('snapshot_hashes', {})
+    for index, message in enumerate(snapshot[1:]):
+        try:
+            value = json.loads(message.get('content', ''))
+        except (ValueError, TypeError):
+            value = None
+        if isinstance(value, dict):
+            changed = {}
+            for key, content in value.items():
+                if previous and key in {'recent_activity', 'recent_actions'}:
+                    continue
+                identity = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
+                if hashes.get(key) != identity:
+                    changed[key] = content
+                    hashes[key] = identity
+            if changed:
+                delta.append({'role': 'user', 'content': json.dumps(changed)})
+        else:
+            key = 'direction:' + str(index)
+            if hashes.get(key) != message.get('content'):
+                delta.append(copy.deepcopy(message))
+                hashes[key] = message.get('content')
+    if not previous:
+        # Initial admission contains the complete initial prompt.
+        messages = copy.deepcopy(snapshot)
+    else:
+        messages = refresh(previous, snapshot[:1] + delta)
+        if not delta:
+            messages.pop()  # refresh's compatibility notice has no new state.
+    if feedback is not None:
+        append_direction(messages, 'Review finding for the current repair: ', json.dumps(feedback, sort_keys=True))
+    task['messages'] = messages
+    state['last_transition'] = {'reason': reason, 'scope': scope,
+                                'retained_messages': len(previous), 'delta_messages': len(delta),
+                                'workspace_generation': task.get('workspace_generation', 0),
+                                **receipt(messages)}
+    return messages

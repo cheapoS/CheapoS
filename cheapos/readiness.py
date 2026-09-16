@@ -60,6 +60,8 @@ def describe(gateway, prerequisites, locals_, execution, startup, direct=False):
         state, action = ('gateway_ready','open_project') if gateway.get('free_count',0) else ('no_eligible_model','configure_provider')
     elif status == 'unavailable':
         state, action = 'offline', 'inspect_gateway'
+    elif gateway.get('settings', {}).get('gateway_type', 'omniroute') != 'omniroute':
+        state, action = 'offline', 'inspect_gateway'
     elif not installed:
         state, action = 'gateway_absent', 'install_gateway' if prerequisites['node']['installed'] else 'install_node'
     elif status in {'offline','not_installed','unchecked','stopped'} and not gateway.get('owned'):

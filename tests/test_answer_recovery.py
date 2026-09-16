@@ -114,13 +114,13 @@ class AnswerRecoveryTests(LocalCase):
         self.assertEqual(first,second)
         self.assertNotEqual(first,observation_key('read_url',{}, {**result,'content':'121: New evidence'}))
 
-    def test_last_research_turn_is_reserved_for_an_accounted_answer(self):
+    def test_soft_checkpoint_preserves_tools_for_coherent_answer(self):
         t=self.chat();t['limits']['checkpoint_turns']=3;self.engine.store.save(t)
         requests=self.provider([call('read_file',{'path':'math_utils.py'}),call('list_files'),{'content':'The project contains clamp and its tests.'}])
         self.engine.start(t['id']);result=self.finish(t)
         self.assertEqual(result['status'],'awaiting_reply')
         self.assertEqual(len(requests),3)
-        self.assertEqual(requests[-1][1],[])
+        self.assertIn('read_file',{t['function']['name'] for t in requests[-1][1]})
         self.assertEqual(result['request_worker_turns'],3)
         self.assertEqual(result['usage']['worker']['tokens'],45)
         self.assertEqual(result['limits'],t['limits'])

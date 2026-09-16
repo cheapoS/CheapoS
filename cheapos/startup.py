@@ -160,7 +160,11 @@ class StartupManager:
             self.cancelled.wait(.1)
         self._check_stop()
         catalog = gateway.catalog()
-        return catalog_candidates(catalog["models"], gateway.settings["base_url"], "omniroute") if catalog["status"] == "ready" else []
+        candidates = catalog_candidates(catalog["models"], gateway.settings["base_url"], "omniroute") if catalog["status"] == "ready" else []
+        for candidate in candidates:
+            candidate["config"]["gateway_type"] = gateway.settings.get("gateway_type", "omniroute")
+            candidate["transport"] = gateway.settings.get("gateway_type", "omniroute")
+        return candidates
 
     def _candidates(self, saved):
         execution = self.engine.preferences()["execution"]
@@ -251,7 +255,7 @@ class StartupManager:
                         with self.lock:
                             self._set(**{key:(self.state[key] + value)[:4000]})
                 try:
-                    provider = self.engine.provider_factory("worker", config) if self.engine.provider_factory else gateway_for(config, self.engine.provider_key("worker", config))
+                    provider = self.engine.provider_factory("worker", config) if self.engine.provider_factory else gateway_for(self.engine.gateway_config(config), self.engine.provider_key("worker", config))
                     record["dispatched"]=True
                     self._record(account)
                     message, usage = provider.greet(GREETING, emit, self.cancelled.is_set)

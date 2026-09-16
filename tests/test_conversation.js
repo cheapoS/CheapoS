@@ -245,3 +245,13 @@ test('assistant reply is not duplicated as a workflow-note in step events',()=>{
  assert.equal(reply.reply,'Here is the final answer.');
  assert.ok(reply.steps[0].events.every(e=>e.kind!=='assistant'));
 });
+test('current working approach appears in ordinary chat without tools and distinguishes paused approval',()=>{
+ const vm=require('node:vm'),fs=require('node:fs');
+ const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8').split("\n'use strict';\nconst $ =")[0];
+ const context={CheapOSGuide:require('../dist/guidance.js'),esc:x=>String(x??'').replaceAll('<','&lt;'),icon:()=>'',messageText:x=>x,thinkingMarkup:()=>'',eventDetail:()=>''};vm.createContext(context);vm.runInContext(source+'\nthis.view=CheapOSChatView;',context);
+ for(const [status,pending_approval,label] of [['awaiting_reply',null,'Saved approach'],['paused',null,'Paused'],['awaiting_permission',{command:['test']},'Needs approval']]){
+  const t=task({status,pending_approval,working_states:{interactive:{next_action:'Fix <button>'}},events:[event(1,'assistant','Worker','Found the issue.')]});
+  const html=context.view.message(replies(t).at(-1),t);
+  assert.match(html,new RegExp(label));assert.match(html,/Fix &lt;button>/);assert.match(html,/checks and independent review remain separate/);
+ }
+});

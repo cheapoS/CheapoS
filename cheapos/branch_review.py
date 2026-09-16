@@ -86,6 +86,29 @@ def save_history(pending, messages):
     pending['messages'] = kept
 
 
+def extract_embedded_decision(text, candidate_id, criteria):
+    if not isinstance(text, str) or not text.strip():
+        return None
+    import re
+    for pattern in (r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', r'(\{[\s\S]*"criteria_outcomes"[\s\S]*?\})', r'(\{[\s\S]*"decision"[\s\S]*?\})'):
+        matches = re.findall(pattern, text)
+        for m in matches:
+            try:
+                data = json.loads(m)
+                if isinstance(data, dict):
+                    if 'parameters' in data and isinstance(data['parameters'], dict):
+                        data = data['parameters']
+                    if 'function' in data and isinstance(data['function'], dict):
+                        data = data['function'].get('arguments', data['function'])
+                        if isinstance(data, str): data = json.loads(data)
+                    if isinstance(data, dict) and ('criteria_outcomes' in data or data.get('decision') in {'APPROVE', 'REQUEST_CHANGES', 'TAKE_OVER'}):
+                        data.setdefault('candidate_id', candidate_id)
+                        return data
+            except Exception:
+                continue
+    return None
+
+
 def checkpoint(engine, runtime, args):
     from .engine import REVIEW_TOOLS, REVIEW_SYSTEM, ProgressPause
     task = runtime.task
@@ -142,7 +165,32 @@ def checkpoint(engine, runtime, args):
     direct_call = ' Do not output conversational text or preamble. Call review_decision directly as your tool call.'
     messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.' + diff_notice + direct_call + disagreement.REVIEW_INSTRUCTION}, {'role':'user','content':json.dumps(packet)}]
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
-        task['pending_review']={'branch_candidate_id':current['id'],'review_requests':0}
+        recovered = {}
+        if not task.get('pending_review') and task.get('operator_review_history'):
+            for prev in reversed(task['operator_review_history']):
+                if (prev.get('branch_candidate_id') == current['id']
+                        or (prev.get('identity_scope') or {}).get('candidate_id') == current['id']
+                        or (prev.get('identity_scope') or {}).get('item_id') == item['id']):
+                    recovered = copy.deepcopy(prev)
+                    break
+        elif task.get('pending_review'):
+            prev = task['pending_review']
+            if (prev.get('branch_candidate_id') == current['id']
+                    or (prev.get('identity_scope') or {}).get('candidate_id') == current['id']
+                    or (prev.get('identity_scope') or {}).get('item_id') == item['id']):
+                recovered = copy.deepcopy(prev)
+        messages_restored = recovered.get('messages', [])
+        old_id = recovered.get('branch_candidate_id') or (recovered.get('identity_scope') or {}).get('candidate_id')
+        if old_id and old_id != current['id']:
+            for m in messages_restored:
+                if isinstance(m.get('content'), str) and old_id in m['content']:
+                    m['content'] = m['content'].replace(old_id, current['id'])
+        task['pending_review']={'branch_candidate_id':current['id'],'review_requests':recovered.get('review_requests', 0),
+                               'messages':messages_restored,
+                               'observations':recovered.get('observations', {})}
+        for field in ('history_partial', 'worker_summary', 'uncertainties', 'repair_dispositions'):
+            if field in recovered:
+                task['pending_review'][field] = recovered[field]
     pending = task['pending_review']
     pending['identity_scope']={'candidate_id':current['id'],'item_id':item['id'],
                                'no_change':current['patch']=='','feature_parent':ctx['feature_parent']}
@@ -177,10 +225,13 @@ def checkpoint(engine, runtime, args):
         disagreement.ensure_available(task, current['id'])
         runtime.guard()
         from .provider_recovery import review_turns
-        deciding = not developing(task) and not measuring(task) and review_turns(task, pending) >= max_rounds - 1
+        turns = review_turns(task, pending)
+        needs_decision = bool(pending.get('require_decision'))
+        deciding = (not developing(task) and not measuring(task) and turns >= max_rounds - 1) or needs_decision
         if deciding:
-            _coach(engine, task, messages, 'request_limit')
+            _coach(engine, task, messages, 'request_limit' if turns >= max_rounds - 1 else 'missing_decision')
         offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools
+        tool_choice = {'type': 'function', 'function': {'name': 'review_decision'}} if deciding else None
         request_messages = messages
         if deciding:
             request_messages = messages + [{'role':'user','content':
@@ -191,14 +242,27 @@ def checkpoint(engine, runtime, args):
         save_history(pending, messages)
         engine.store.save(task)
         engine.event(task,'review_request','Requesting item review',{'item_id':item['id'],'candidate_id':current['id']})
-        message = engine.request(runtime, request_messages, offered, 'reviewer')
+        try:
+            if tool_choice:
+                message = engine.request(runtime, request_messages, offered, 'reviewer', tool_choice=tool_choice)
+            else:
+                message = engine.request(runtime, request_messages, offered, 'reviewer')
+        except TypeError:
+            message = engine.request(runtime, request_messages, offered, 'reviewer')
         task['review_count'] += 1
         messages.append(message)
         calls = message.get('tool_calls', [])
+        if not calls and message.get('content'):
+            parsed = extract_embedded_decision(message['content'], current['id'], criteria)
+            if parsed:
+                calls = [{'id': 'call_embedded', 'type': 'function', 'function': {'name': 'review_decision', 'arguments': json.dumps(parsed)}}]
         if len(calls) > 8:
             raise ProgressPause('Reviewer exceeded the bounded tool-call allowance.')
         if not calls:
-            messages.append({'role':'user','content':'Call review_decision with the candidate ID and every criterion outcome.'})
+            pending['require_decision'] = True
+            messages.append({'role':'user','content':f'Call review_decision now with candidate_id "{current["id"]}" and criteria_outcomes for every criterion in the review packet. Do not output conversational text or repeat file reads; invoke review_decision.'})
+        else:
+            pending.pop('require_decision', None)
         observations = []
         for call in calls:
             if runtime.stop.is_set(): raise InterruptedError('Task stopped')
@@ -254,7 +318,7 @@ def checkpoint(engine, runtime, args):
                         engine.store.save(task)
                         return result
                 else: result = {'error':'Return a valid independent review decision.'}
-            elif name in {'read_file','outline_file','search','list_files','get_diff','read_check_output','read_merge_context'}:
+            elif name in {'read_file','outline_file','search','list_files','get_diff','read_check_output','read_merge_context','read_context_evidence'}:
                 try: result = engine.file_tool(task,name,params)
                 except (ValueError,OSError,TypeError,UnicodeError) as error: result = {'error':str(error)[:1000]}
             elif name == 'read_url': result = engine.read_url(runtime,params)

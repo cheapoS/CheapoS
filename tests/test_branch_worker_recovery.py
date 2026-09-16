@@ -78,14 +78,17 @@ class RecoveryExecutionTests(unittest.TestCase):
     else:
      seen.append(copy.deepcopy(messages))
      if len(seen)==1:
-      packet=json.loads(messages[1]['content']);self.assertIn('work.py',packet['available_files']);self.assertIn('work.py',packet['changed_files']);self.assertTrue(any('active_item' in m.get('content','') for m in messages))
+      packet={}
+      for m in messages:
+       if m.get('role')=='user' and m.get('content','').startswith('{'):packet.update(json.loads(m['content']))
+      self.assertIn('work.py',packet['available_files']);self.assertIn('work.py',packet['changed_files']);self.assertTrue(any('active_item' in (m.get('content') or '') for m in messages))
       result=call('write_file',{'path':'test_work.py','content':'import unittest\nimport work\nclass Check(unittest.TestCase):\n def test_value(self): self.assertEqual(work.value,1)\n'})
      else:result=call('checkpoint',{'summary':'Complete item with real regression','uncertainties':''})
     return result,{'prompt_tokens':10,'completion_tokens':10,'cost':0}
    return SimpleNamespace(complete=complete)
   self.engine.provider_factory=factory
   self.values['plan']['measurement']=True
-  proposal=self.engine.branch.prepare(self.values);task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True});self.launch(task['id'])
+  proposal=self.engine.branch.prepare(self.values);task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True});self.launch(task['id'])
   rt=self.engine.runtimes[task['id']];rt.thread.join(60);self.assertFalse(rt.thread.is_alive())
   task=self.engine.store.get(task['id']);run=task['branch_run']
   self.assertEqual(run['status'],'ready_for_merge',task.get('error'));self.assertEqual(run['implementation_recovery']['attempts'],1)

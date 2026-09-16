@@ -38,7 +38,7 @@ def interactive(engine, task_id, values=None):
         if action in {'enable','takeover','model'} and values.get('approved') is not True:
             raise ValueError('Approve this recovery configuration change explicitly')
         if action not in {'enable','takeover'} and not enabled(task):raise ValueError('Enable development mode for this task first')
-        message=values.get('message') or 'Continue the unfinished work from the saved files. Use the latest operator direction and a different approach where the previous one stalled.'
+        message=values.get('message') or 'continue'
         if not isinstance(message,str) or not 1<=len(message.strip())<=8000:raise ValueError('Enter a direction of up to 8,000 characters')
         if action=='model':
             if values.get('revision_token')!=revision:raise ValueError('The task changed. Refresh recovery choices before changing its worker.')
@@ -47,7 +47,7 @@ def interactive(engine, task_id, values=None):
             policy=(task.get('route') or {}).get('access_policy') or task.get('access_policy')
             catalog=engine.gateway.catalog(fresh=False)
             entry=next(m for m in catalog['models'] if m['id']==selected)
-            config=validate_provider({'gateway':'omniroute','base_url':(task.get('route') or {}).get('base_url') or engine.gateway.settings['base_url'],'model':selected,'input_rate':0,'output_rate':0,'key_env':task.get('providers',{}).get('worker',{}).get('key_env')},'worker')
+            config=validate_provider({'gateway_type':engine.gateway.settings.get('gateway_type','omniroute'),'gateway':'omniroute','base_url':(task.get('route') or {}).get('base_url') or engine.gateway.settings['base_url'],'model':selected,'input_rate':0,'output_rate':0,'key_env':task.get('providers',{}).get('worker',{}).get('key_env')},'worker')
             config['access_binding']=copy.deepcopy(policy)
             if access_policy.classify(entry,policy)=='included':
                 config=access_policy.bind_provider(config,policy,entry)

@@ -20,7 +20,7 @@ class ScriptedRun:
             else:
                 message=call('review_decision',{'decision':'APPROVE','feedback':'Read implementation and passing tests','candidate_id':packet['candidate_id'], 'criteria_outcomes':{c:{'passed':True,'evidence':'Implementation and its actual tests cover this criterion'} for c in item['acceptance_criteria']}})
         else:
-            context=json.loads(messages[-1]['content']);item=context['active_item'];identity=item['id'];step=self.steps.get(identity,0);self.steps[identity]=step+1
+            context=next(json.loads(m['content']) for m in reversed(messages) if m.get('role')=='user' and m.get('content','').startswith('{') and 'active_item' in json.loads(m['content']));item=context['active_item'];identity=item['id'];step=self.steps.get(identity,0);self.steps[identity]=step+1
             if identity not in self.items:self.items.append(identity)
             value={'one':1,'two':2,'three':3}[identity]
             if step==0:message=call('write_file',{'path':identity+'.py','content':'value = '+str(0 if identity=='one' else value)+'\n'})
@@ -43,7 +43,7 @@ class BranchExecutionTests(unittest.TestCase):
         if limits:self.values['plan']['limits'].update(limits)
         self.script=script or ScriptedRun();self.engine.provider_factory=lambda *args:self.script
         proposal=self.engine.branch.prepare(self.values)
-        task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True})
+        task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True})
         self.launch(task['id'])
         runtime=self.engine.runtimes[task['id']];runtime.thread.join(90)
         self.assertFalse(runtime.thread.is_alive())
