@@ -14,7 +14,7 @@ class BranchCommitControllerTests(unittest.TestCase):
 
     def reviewed(self):
         proposal=self.engine.branch.prepare(self.values)
-        task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True})
+        task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True})
         run=task['branch_run'];run['status']='running'
         branch_runs.transition_item(run,'one','working')
         (Path(task['workspace'])/'hello.py').write_text('value=2\n')

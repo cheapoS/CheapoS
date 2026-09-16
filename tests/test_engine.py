@@ -271,7 +271,7 @@ class WorkspaceTests(LocalCase):
 
     def test_delete_patch_and_exact_replacement(self):
         workspace = Workspace(self.fixture()['workspace'])
-        with self.assertRaisesRegex(ValueError, 'exactly once'):
+        with self.assertRaisesRegex(ValueError, "old_text was not found"):
             workspace.replace_text('math_utils.py', 'absent', 'replacement')
         (workspace.root / 'math_utils.py').unlink()
         self.assertIn('deleted file mode', workspace.patch())

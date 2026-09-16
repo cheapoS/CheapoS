@@ -46,7 +46,7 @@ class BranchReprepareTests(unittest.TestCase):
         self.assertTrue(replanned['readiness']['ready'])
         edited=replanned
         self.engine.branch.launch=lambda identity:self.engine.store.get(identity)
-        started=self.engine.branch.authorize(task_id,{'proposal_id':edited['proposal_id'],'approved':True})
+        started=self.engine.branch.authorize(task_id,{'proposal_id':edited['proposal_id'],'approved':True,'full_suite_approved':True})
         self.assertEqual(started['branch_run']['consumption']['requests'],2)
         self.assertEqual(_tip(self.source,values['feature_ref']),saved['branch_run']['base_sha'])
 
