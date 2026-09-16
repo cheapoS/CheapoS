@@ -294,13 +294,18 @@ def plan(engine, runtime, inputs):
     messages = [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': json.dumps({'captured_inputs': captured, 'displayed_limits': limits, 'project_context': context}, ensure_ascii=False)}]
     attempt = 0
     discovery = 0
+    handoffs = 0
+    from .model_pool import automatic
+    if automatic(runtime.task, 'planner') and not runtime.task.get('planning_override') and runtime.task.get('failed_planners'):
+        runtime.failed_models.update(runtime.task['failed_planners'])
+        runtime.task['providers']['planner'] = None
     while attempt < 3:
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         runtime.guard()
         # Keep the tool name recognized so exhausted discovery is a planner
         # repair, not a provider failure that consumes model handoffs.
         available = TOOLS
-        response = engine.request(runtime, messages, available, 'planner', purpose='branch_planning')
+        response = engine.request(runtime, messages, available, 'planner', purpose='branch_planning', **({'config_override':runtime.task['planning_override']} if runtime.task.get('planning_override') else {}))
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         try:
             calls = response.get('tool_calls') or []
@@ -348,10 +353,27 @@ def plan(engine, runtime, inputs):
                     # Keep a complete blocked draft when repair cannot resolve
                     # an unavailable environment. prepare() still blocks Start.
                     return error.plan
+                from .model_pool import automatic
+                from .routing import _select_connections, RoutingPause
+                if automatic(runtime.task, 'planner') and not runtime.task.get('planning_override') and handoffs < 2:
+                    failed = (runtime.task.get('providers', {}).get('planner') or {}).get('model')
+                    if failed:
+                        runtime.failed_models.add(failed)
+                        if failed not in runtime.task.setdefault('failed_planners', []): runtime.task['failed_planners'].append(failed)
+                        try:
+                            engine.event(runtime.task, 'planning_recovery', 'The planner could not produce a valid proposal. Trying another eligible planner.', {'model':failed})
+                            _select_connections(engine, runtime, 'planner', True)
+                        except RoutingPause:
+                            pass
+                        else:
+                            handoffs += 1
+                            attempt = 0
+                            messages.append({'role':'user','content':'The previous planner could not format a complete proposal. Use the captured request and inspection evidence above to call propose_branch_plan with one valid proposal. No implementation is authorized.'})
+                            continue
                 from .branch_pause import PauseError
                 diagnostic = 'Planning remains unfinished because the planner could not produce a complete valid proposal after two repairs.'
                 if isinstance(error, PlanningResponseError):
-                    diagnostic = 'Planning remains unfinished after two repairs. ' + str(error)
+                    diagnostic = 'Planning could not produce a valid proposal after two repairs per planner. Choose another planner or retry from saved work. ' + str(error)
                 raise PauseError('malformed_output', stage='planning', diagnostic={'kind': 'safe_message', 'message': diagnostic}) from error
             # Invalid side-effect tool calls are data only and are never dispatched.
             # Preserve the rejected answer so the model can repair its actual
@@ -371,3 +393,48 @@ def plan(engine, runtime, inputs):
                 messages.append({'role': 'user', 'content': feedback})
             attempt += 1
     raise AssertionError('Unreachable planner loop')
+
+
+def is_planning(task):
+    return bool(task.get('planning_request') and not task.get('branch_run', {}).get('authorization_ref'))
+
+
+def recovery(controller, task_id, values=None):
+    """Unapproved planning has no worker, review evidence, or execution contract yet."""
+    import uuid
+    from . import access_policy
+    from .providers import validate_provider
+    engine = controller.engine
+    with engine.lock:
+        task = engine.store.get(task_id)
+        engine.require_active_task(task_id)
+        if not is_planning(task): raise ValueError('This task is no longer in planning')
+        runtime = engine.runtimes.get(task_id)
+        busy = bool(runtime and runtime.thread and runtime.thread.is_alive())
+        options = {}
+        entries = task.get('gateway_connections')
+        managers = [(engine.connections.for_policy(e), access_policy.connection_policy(e), e['connection_id']) for e in entries] if entries is not None else [(engine.gateway, (task.get('route') or {}).get('access_policy') or task.get('planning_policy', {}).get('gateway_access'), None)]
+        for manager, policy, identity in managers:
+            if manager is None or not policy: continue
+            for model in manager.catalog(fresh=False).get('models', []):
+                if model.get('tool_calling') is not True or not access_policy.eligible(model, policy): continue
+                if manager.pool.observation(manager.settings['base_url'],model['id'],policy.get('connection_revision'))['cooling_down']: continue
+                cfg = validate_provider({'gateway':'omniroute','gateway_type':manager.settings.get('gateway_type','omniroute'),'base_url':manager.settings['base_url'],'model':model['id'],'input_rate':0,'output_rate':0,**({'connection_id':identity} if identity else {})}, 'planner')
+                cfg['access_binding'] = copy.deepcopy(policy)
+                if access_policy.classify(model,policy)=='included': cfg=access_policy.bind_provider(cfg,policy,model)
+                options[_digest(cfg)] = cfg
+        revision = _digest([task.get('planning_policy'),task.get('branch_run',{}).get('inputs'),task.get('providers')])
+        if values is None:
+            return {'planning':True,'can_retry':not busy,'can_planner':not busy,'planners':[{'id':key,'label':cfg['model']} for key,cfg in options.items()], 'revision_token':revision,
+                    'reason':'Planning is still running. Pause it before choosing a planner.' if busy else 'Your request and usage are saved. Retry planning, or choose another available planner. No implementation has started.'}
+        if busy: raise ValueError('Pause planning before choosing a recovery action')
+        if values.get('action') not in {'retry','planner'}: raise ValueError('Choose retry or another planner')
+        if values['action']=='planner':
+            if values.get('approved') is not True or values.get('revision_token')!=revision: raise ValueError('Refresh and approve the planner selection')
+            if values.get('model') not in options: raise ValueError('This planner is no longer available. Refresh the choices.')
+            task['planning_override']=copy.deepcopy(options[values['model']])
+        with controller.proposals.lock:
+            controller.proposals.proposals = {key:p for key,p in controller.proposals.proposals.items() if p['task_id'] != task_id}
+        engine.store.save(task)
+        controller.plan({**task['planning_request'],'planning_id':uuid.uuid4().hex},background=True,planning_task=task)
+        return engine.store.get(task_id)

@@ -70,6 +70,8 @@ def revision_token(run, task=None):
 
 
 def capabilities(controller, task_id):
+    from .branch_planner import is_planning, recovery
+    if is_planning(controller.engine.store.get(task_id)): return recovery(controller, task_id)
     from . import access_policy
     from .development import enabled
     task=controller.engine.store.get(task_id);run=task['branch_run']
@@ -227,6 +229,8 @@ def amend(controller, task_id, values):
 
 
 def recover(controller, task_id, values):
+    from .branch_planner import is_planning, recovery
+    if is_planning(controller.engine.store.get(task_id)): return recovery(controller, task_id, values)
     action=values.get('action')
     if action in {'model','reviewer','revise','checks'}:return amend(controller,task_id,values)
     if action=='takeover':

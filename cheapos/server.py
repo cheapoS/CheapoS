@@ -172,6 +172,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply({"error": "Not found"}, 404)
         except ValueError as error:
             self.reply({"error": str(error)}, 404)
+        except Exception:
+            # Return a usable response rather than dropping the recovery request.
+            import traceback
+            traceback.print_exc()
+            self.reply({"error": "Could not load saved task details. Retry this action; saved work is unchanged."}, 500)
 
     def do_POST(self):
         if not self.trusted(mutation=True):

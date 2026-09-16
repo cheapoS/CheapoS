@@ -72,7 +72,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
                 self.assertIsNone(_tip(self.source, 'refs/heads/feature/' + str(n)))
                 self.assertFalse(self.engine.runtimes)
                 # Ordinary draft selection/planning never authorizes a branch.
-                start_status, _ = self.post('/api/tasks/' + task['id'] + '/branch-start', {'proposal_id': proposal['proposal_id'], 'approved': True})
+                start_status, _ = self.post('/api/tasks/' + task['id'] + '/branch-start', {'proposal_id': proposal['proposal_id'], 'approved': True, 'full_suite_approved': True})
                 self.assertEqual(start_status, 200)
                 self.assertIsNotNone(_tip(self.source, 'refs/heads/feature/' + str(n)))
 
