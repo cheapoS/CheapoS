@@ -42,7 +42,10 @@ def policy_for_saved(current, saved):
                 new_p['access'] = 'included'
         if 'gateway_access' in saved and 'gateway_access' in result:
             if result['gateway_access'].get('connection_revision') == saved['gateway_access'].get('connection_revision'):
-                result['gateway_access']['included_models'] = copy.deepcopy(saved['gateway_access'].get('included_models', []))
+                if 'included_models' in saved['gateway_access']:
+                    result['gateway_access']['included_models'] = copy.deepcopy(saved['gateway_access']['included_models'])
+                else:
+                    result['gateway_access'].pop('included_models', None)
     return result
 
 

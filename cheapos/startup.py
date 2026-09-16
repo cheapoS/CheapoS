@@ -283,11 +283,12 @@ class StartupManager:
                     # across the gateway catalog. Do not permanently pin the greeting model to config.json.
                     with self.engine.lock:
                         self._check_stop()
-                        if self.engine.preferences().get("execution", {}).get("mode") == "manual":
-                            selected = copy.deepcopy(self.engine.config)
-                            selected["worker"] = config
-                            write_json(self.engine.store.root / "config.json", selected)
-                            self.engine.config = selected
+                        selected = copy.deepcopy(self.engine.config)
+                        selected["worker"] = config
+                        if not selected.get("reviewer"):
+                            selected["reviewer"] = validate_provider({**config, "key_env":config["key_env"]}, "reviewer")
+                        write_json(self.engine.store.root / "config.json", selected)
+                        self.engine.config = selected
                     self._attempt(attempt, status="ready", finished_at=timestamp())
                     self._set(status="ready", message="The model answered. Open a project to start.", content=content.strip()[:2000], thinking="", verified_at=timestamp())
                     return

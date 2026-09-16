@@ -168,7 +168,8 @@ def checkpoint(engine, runtime, args):
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
         recovered = {}
         is_fresh = task.pop('fresh_review', False)
-        current_reviewer = (task.get('providers', {}).get('reviewer') or {}).get('model')
+        rev_info = task.get('providers', {}).get('reviewer') if isinstance(task.get('providers'), dict) else None
+        current_reviewer = rev_info.get('model') if isinstance(rev_info, dict) else (rev_info if isinstance(rev_info, str) else None)
         if not is_fresh and not task.get('pending_review') and task.get('operator_review_history'):
             for prev in reversed(task['operator_review_history']):
                 prev_model = prev.get('reviewer_model')

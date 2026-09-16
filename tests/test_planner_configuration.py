@@ -84,6 +84,6 @@ class PlannerConfigurationTests(unittest.TestCase):
             self.assertEqual((e.store.root/'config.json').read_text(),saved)
         e.config['planner']=remote
         result=e.configuration()['planner']
-        self.assertIn('direct OpenRouter',result['route_error'])
+        self.assertIn('direct provider',result['route_error'])
         self.assertFalse(result['key_configured'])
         self.assertEqual(e.config['planner'],remote)
