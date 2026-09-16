@@ -160,7 +160,7 @@ Use **OmniRoute as your remote gateway**, with several connected providers so ch
 
 ![OmniRoute provider topology connecting OpenRouter, OpenCode Free, Groq, NVIDIA NIM, Antigravity, and Kiro AI.](docs/assets/recommended-starter-setup.png)
 
-*A live OmniRoute session. The red Kiro AI indicator shows a provider error at the time of capture.*
+*A live OmniRoute session. Kiro AI had reached its quota when this was captured—one reason to connect several providers.*
 
 [Connect OmniRoute and choose your models →](docs/USER_GUIDE.md#omniroute-companion)
 
