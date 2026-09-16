@@ -81,6 +81,7 @@ UNATTENDED_TOOLS = [t for t in WORKER_TOOLS if t['function']['name'] != 'run_che
     tool('run_checks', 'Run a planned approved check, or request additional authority for a new exact verification command. Omit command to reuse the selected check.', {'command': TEXT}), BLOCKER_TOOL]
 REVIEW_TOOLS = READ_TOOLS + [tool("review_decision", "Return the checkpoint decision. Read relevant source before deciding.", {"decision": {"type": "string", "enum": ["APPROVE", "REQUEST_CHANGES", "REQUEST_TESTS", "TAKE_OVER"]}, "feedback": TEXT}, ["decision", "feedback"])]
 WORKER_SYSTEM = """You are the cheapoS worker, coding in an isolated snapshot of the user's personal repository.
+When receiving instructions or guidance, acknowledge the user's direction clearly and concisely alongside your tool calls so the operator is informed of your reasoning and progress.
 Use the provided tools to inspect, search, edit and verify code. Make small focused changes.
 Practice test-driven discipline: when implementing new functionality or bug fixes, inspect or establish unit test cases first to define the contract. Then make focused implementation edits until run_checks passes. This keeps edits bounded and conserves worker turns.
 When run_checks reports a test failure, inspect the test definition and failing assertion carefully before modifying code. If the failure message lacks detail (e.g. AssertionError without runtime values), read the test file or add diagnostic output to see the actual runtime values instead of repeatedly guessing micro-edits.
@@ -1587,9 +1588,13 @@ class Engine:
         summary["available_files"] = names[:60]
         summary["file_listing"] = {"total": len(names), "partial": len(names) > 60,
                                    "more": "Use list_files with a directory for missing paths."}
-        return [{"role": "system", "content": worker_system(task)},
-                {"role": "user", "content": json.dumps(summary)},
-                {"role": "user", "content": execution_context.guidance(task, guidance_text)}]
+        res = [{"role": "system", "content": worker_system(task)},
+               {"role": "user", "content": json.dumps(summary)},
+               {"role": "user", "content": execution_context.guidance(task, guidance_text)}]
+        steer = task.get("steer_guidance") or (task.get("branch_run", {}).get("guidance", [])[-1]["message"] if task.get("branch_run", {}).get("guidance") else None)
+        if steer:
+            res.append({"role": "user", "content": f"USER GUIDANCE / INSTRUCTION:\n{steer}\n\nPlease directly acknowledge this instruction and prioritize it in your plan and actions."})
+        return res
 
     def prepare_compact_edits(self, task):
         if not task.get("compact_edits"):
@@ -2222,7 +2227,10 @@ class Engine:
         ensure_independent(task,record)
         guard_automatic_route_cost(task)
         if not known:
-            raise BudgetError("Provider omitted token usage. The conservative reservation is retained; review the budget before resuming.")
+            paid_model = ((config.get("input_rate") or 0) > 0 or (config.get("output_rate") or 0) > 0) and config.get("access") != "included"
+            if paid_model:
+                raise BudgetError("Provider omitted token usage. The conservative reservation is retained; review the budget before resuming.")
+            task["usage"]["estimated_requests"] = task["usage"].get("estimated_requests", 0) + 1
         if runtime.stop.is_set():
             raise InterruptedError("Stopped after the in-flight model request completed")
         runtime.guard()
@@ -2598,6 +2606,10 @@ class Engine:
                 runtime.task["status"] = "running"
             result = {"error": str(error), "code": "invalid_check_command"}
             self.event(runtime.task, "tool_error", "Asking the worker to correct its test command", result)
+            return result
+        except ValueError as error:
+            result = {"error": str(error), "code": "invalid_checkpoint_argument"}
+            self.event(runtime.task, "tool_error", "Checkpoint argument error", result)
             return result
 
     def checkpoint(self, runtime, args):
@@ -3026,10 +3038,53 @@ class Engine:
                             last_check = (task.get("checks") or [{}])[-1]
                             current_digest = hashlib.sha256(task.get("patch", "").encode()).hexdigest()
                             if last_check.get("passed") and last_check.get("digest") == current_digest:
-                                task["messages"].append({"role": "user", "content": "Verification has passed for all current edits. Call checkpoint directly to submit for review. Do not repeat edits or output conversational text."})
+                                no_calls = task.get("no_call_turns", 0)
+                                if no_calls >= 1:
+                                    self.event(task, "state", "Submitting verified changes for review")
+                                    checkpoint_args = {"summary": str(message.get("content", ""))[:4000], "uncertainties": "Verified changes submitted for review."}
+                                    content_raw = str(message.get("content", "")).strip()
+                                    if content_raw.startswith("{") and content_raw.endswith("}"):
+                                        try:
+                                            parsed = json.loads(content_raw)
+                                            if isinstance(parsed, dict):
+                                                checkpoint_args.update(parsed)
+                                        except Exception:
+                                            pass
+                                    run = task.get("branch_run")
+                                    item = None
+                                    if isinstance(run, dict) and "items" in run:
+                                        item = next((i for i in run["items"] if i.get("id") == run.get("current_item_id")), None)
+                                    repair = item.get("review_repair") if item else None
+                                    if repair and repair.get("defects") and not checkpoint_args.get("repair_dispositions"):
+                                        checkpoint_args["repair_dispositions"] = [
+                                            {
+                                                "finding_id": f["finding_id"],
+                                                "candidate_id": repair["candidate_id"],
+                                                "disposition": "reproduced_and_corrected",
+                                                "evidence": str(checkpoint_args.get("summary") or "Corrected reported defect in current patch.")[:2000],
+                                                "broader_edit_reason": "Changes required to support the repair and passing tests."
+                                            }
+                                            for f in repair["defects"]
+                                        ]
+                                    result = self.checkpoint_feedback(runtime, checkpoint_args)
+                                    task["messages"].append({"role": "user", "content": "Checkpoint result: " + json.dumps(result)})
+                                    task["no_call_turns"] = 0
+                                else:
+                                    task["no_call_turns"] = no_calls + 1
+                                    task["messages"].append({"role": "user", "content": "Verification has passed for all current edits. Call checkpoint directly to submit for review. Do not repeat edits or output conversational text."})
                             else:
-                                task["messages"].append({"role": "user", "content": "Edits are present in the workspace. Call run_checks directly to verify your changes. Outputting text does not verify code."})
+                                content_lower = str(message.get("content", "")).lower()
+                                no_calls = task.get("no_call_turns", 0)
+                                if "run_checks" in content_lower or "unittest" in content_lower or "test" in content_lower or no_calls >= 1:
+                                    self.event(task, "state", "Running verification checks")
+                                    result = self.worker_checks(runtime, {}, last_call=True)
+                                    task["messages"].append({"role": "user", "content": "Verification check result: " + json.dumps(result)})
+                                    task["no_call_turns"] = 0
+                                else:
+                                    task["no_call_turns"] = no_calls + 1
+                                    task["messages"].append({"role": "user", "content": "Edits are present in the workspace. Call run_checks directly to verify your changes. Outputting text does not verify code."})
                         else:
+                            task["no_call_turns"] = 0
                             task["messages"].append({"role": "user", "content": "You did not make any edits. Outputting code in chat text does not modify repository files. You MUST call write_file or replace_text directly to apply your code to the files, and run_checks to verify."})
                     elif task.get("conversational") and not task.get("branch_run") and message.get("content") and task["patch"] == task.get("turn_start_patch", ""):
                         task["status"] = "awaiting_reply"

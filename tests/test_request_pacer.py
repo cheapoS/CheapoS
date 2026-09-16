@@ -99,7 +99,7 @@ class TestRequestPacer(unittest.TestCase):
         self.assertEqual(stats["delays_count"].get(provider), 1)
 
     def test_throttle_does_not_delay_different_providers(self):
-        # Delays for provider A should not delay provider B
+        # Delays for provider A should not delay provider B when no shared gateway
         interval = 0.2
         with self.pacer.throttle("provider_a", interval):
             pass
@@ -109,6 +109,22 @@ class TestRequestPacer(unittest.TestCase):
             pass
         duration = time.monotonic() - start
         self.assertLess(duration, 0.05)
+
+    def test_gateway_throttles_different_models_under_same_gateway(self):
+        from cheapos.request_pacer import gateway_identity
+        self.assertEqual(gateway_identity({"gateway": "omniroute"}), "omniroute")
+        self.assertEqual(gateway_identity({"base_url": "http://127.0.0.1:20128/v1"}), "omniroute")
+
+        interval = 0.15
+        with self.pacer.throttle("nvidia", interval, gateway="omniroute"):
+            pass
+
+        start = time.monotonic()
+        with self.pacer.throttle("openai", interval, gateway="omniroute"):
+            pass
+        duration = time.monotonic() - start
+        self.assertGreaterEqual(duration, 0.10)
+        self.assertLess(duration, 0.25)
 
     def test_throttle_interruption(self):
         stopped = False

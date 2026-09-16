@@ -24,6 +24,8 @@ PROVIDER_PACING_SECONDS = {
     "google": 4.0,
     "groq": 2.0,           # Groq: high throughput
     "kiro": 3.0,           # Kiro endpoint pacing
+    "openai": 4.0,         # OpenAI free/shared tier pacing
+    "omniroute": 4.0,      # OmniRoute gateway shared pacing
 }
 
 DEFAULT_FREE_PACING_SECONDS = 3.0
@@ -74,6 +76,19 @@ def provider_identity(config):
         return "openrouter"
 
     return prefix or "remote"
+
+
+def gateway_identity(config):
+    """Determine gateway identifier (e.g. omniroute) for cross-model rate limiting."""
+    if not isinstance(config, dict):
+        return None
+    gw = config.get("gateway")
+    if gw and isinstance(gw, str) and gw.strip():
+        return gw.strip().lower()
+    base_url = str(config.get("base_url") or "")
+    if "20128" in base_url or "omniroute" in base_url.lower():
+        return "omniroute"
+    return None
 
 
 def pacing_interval(config, provider=None, payload_bytes=0):
@@ -138,32 +153,39 @@ class RequestPacer:
             return self._provider_locks[provider]
 
     @contextmanager
-    def throttle(self, provider, min_interval, stopped=None):
+    def throttle(self, provider, min_interval, gateway=None, stopped=None):
         """Serialize calls to the provider and enforce quiet cooldown between calls."""
         if min_interval <= 0:
             yield
             return
 
-        prov_lock = self._get_provider_lock(provider)
+        targets = [provider]
+        if gateway:
+            gw_target = f"gateway:{gateway}"
+            if gw_target not in targets:
+                targets.append(gw_target)
 
-        # Acquire provider lock interruptibly
-        if not prov_lock.acquire(blocking=False):
-            while not prov_lock.acquire(timeout=0.05):
-                if stopped and stopped():
-                    raise InterruptedError(f"Task stopped while waiting for {provider} provider slot")
-
-        delayed_duration = 0.0
+        acquired = []
         try:
-            # Enforce quiet period since the last request to this provider completed
-            with self._lock:
-                last_time = self._last_completed.get(provider)
+            for target in sorted(targets):
+                lock = self._get_provider_lock(target)
+                if not lock.acquire(blocking=False):
+                    while not lock.acquire(timeout=0.05):
+                        if stopped and stopped():
+                            raise InterruptedError(f"Task stopped while waiting for {target} provider slot")
+                acquired.append(lock)
 
-            if last_time is not None:
+            delayed_duration = 0.0
+            with self._lock:
                 now = time.monotonic()
-                elapsed = now - last_time
-                remaining = min_interval - elapsed
-            else:
                 remaining = 0.0
+                for target in targets:
+                    last_time = self._last_completed.get(target)
+                    if last_time is not None:
+                        elapsed = now - last_time
+                        rem = min_interval - elapsed
+                        if rem > remaining:
+                            remaining = rem
 
             if remaining > 0:
                 delayed_duration = remaining
@@ -179,9 +201,12 @@ class RequestPacer:
 
             yield
         finally:
+            now = time.monotonic()
             with self._lock:
-                self._last_completed[provider] = time.monotonic()
-            prov_lock.release()
+                for target in targets:
+                    self._last_completed[target] = now
+            for lock in reversed(acquired):
+                lock.release()
 
     def reset(self):
         with self._lock:

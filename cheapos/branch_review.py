@@ -138,6 +138,22 @@ def checkpoint(engine, runtime, args):
     from . import review_disputes
     if item.get('review_repair'):
         disagreement.pending(task,item)
+        if not args.get('repair_dispositions') and item.get('review_repair', {}).get('defects'):
+            repair = item['review_repair']
+            args['repair_dispositions'] = [
+                {
+                    'finding_id': f['finding_id'],
+                    'candidate_id': repair['candidate_id'],
+                    'disposition': 'reproduced_and_corrected',
+                    'evidence': str(args.get('summary') or 'Verified and corrected reported defect in current patch.')[:2000],
+                    'broader_edit_reason': 'Changes required to support the repair and passing tests.'
+                }
+                for f in repair['defects']
+            ]
+        elif args.get('repair_dispositions') and isinstance(args['repair_dispositions'], list):
+            for disp in args['repair_dispositions']:
+                if isinstance(disp, dict) and not disp.get('broader_edit_reason'):
+                    disp['broader_edit_reason'] = 'Changes required to support the repair and passing tests.'
         review_disputes.dispositions(task,item,args,current['id'])
     plan_for_review = copy.deepcopy(run['plan'])
     if isinstance(plan_for_review, dict) and 'items' in plan_for_review:
@@ -236,8 +252,10 @@ def checkpoint(engine, runtime, args):
         runtime.guard()
         from .provider_recovery import review_turns
         turns = review_turns(task, pending)
-        needs_decision = bool(pending.get('require_decision'))
-        deciding = (not developing(task) and not measuring(task) and turns >= max_rounds - 1) or needs_decision
+        needs_decision = bool(pending.get('require_decision')) or any(count >= 3 for count in pending.get('observations', {}).values())
+        deciding = ((not developing(task) and not measuring(task) and turns >= max_rounds - 1)
+                    or (developing(task) and turns >= 12)
+                    or needs_decision)
         if deciding:
             _coach(engine, task, messages, 'request_limit' if turns >= max_rounds - 1 else 'missing_decision')
         offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools
