@@ -879,8 +879,8 @@ class Engine:
                 task['execution'] = {**task.get('execution', {}), 'coordinator_assistance': True,
                                      'coordinator_model': reassessment_model}
             # Preserve the conversation; ambiguous calls are closed, never replayed.
-            from .worker_conversation import refresh
-            task["messages"] = refresh(task.get("messages", []), self.initial_messages(task))
+            from .worker_conversation import continue_session
+            continue_session(task, self.initial_messages(task), "operator_resume")
             runtime = Runtime(task)
             if reassess:
                 runtime.started -= recovery_elapsed
@@ -1338,7 +1338,7 @@ class Engine:
             info = reconciliation.build(task, recovery / "workspace")
             task.update(workspace=info["workspace"], reconciliation=info,
                         workspace_generation=task.get("workspace_generation", 0) + 1,
-                        status="paused", active_role="worker", messages=[],
+                        status="paused", active_role="worker",
                         stream=None, check_stream=None, pending_approval=None, web_read=None,
                         error_code="project_reconciled", error="The current project and saved edits are together in this task copy. Continue to resolve overlaps, run the relevant checks, and request a new review.",
                         answer_pending=False, action_pending=False, request_worker_turns=0)
@@ -1444,7 +1444,7 @@ class Engine:
             task.setdefault("commits", []).append(result)
             task.pop("commit_pending", None)
             self.refresh_changes(task)
-            task.update(status="awaiting_reply", turn_start_patch=task["patch"], error=None, error_code=None, messages=[], answer_pending=False)
+            task.update(status="awaiting_reply", turn_start_patch=task["patch"], error=None, error_code=None, answer_pending=False)
             self.event(task, "commit", "Changes committed to your project", result)
             for role in ('worker', 'reviewer', 'planner'):
                 config=task.get('providers',{}).get(role) or {}
@@ -1564,10 +1564,10 @@ class Engine:
         return messages
 
     def refresh_worker_conversation(self, runtime):
-        from .worker_conversation import refresh
+        from .worker_conversation import continue_session
         task = runtime.task
         snapshot = self.compact_context(runtime) if task.get('compact_edits') else self.action_messages(task)
-        task.setdefault('messages', [])[:] = refresh(task.get('messages', []), snapshot)
+        continue_session(task, snapshot, 'worker_recovery')
 
     def fit_worker_context(self, runtime, tools, rejected=False):
         from .context_budget import decision
@@ -1780,9 +1780,9 @@ class Engine:
                     "from": recovery["from"], "to": task["providers"][role]["model"], "role": role,
                     "summary": "Continuing with the same chat, saved files, checks, and limits. " + recovery["reason"]})
                 if not purpose and (task.get("action_pending") or task.get("compact_edits")) and task["status"] != "reviewing":
-                    from .worker_conversation import refresh
+                    from .worker_conversation import continue_session
                     snapshot = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
-                    messages[:] = refresh(messages, snapshot)
+                    messages[:] = continue_session(task, snapshot, 'model_handoff')
             cfg = task["providers"][role]
             # Revalidate pinned choices against the refreshed catalog, including prices.
             catalog = self.gateway.catalog(fresh=True)
@@ -2073,7 +2073,7 @@ class Engine:
             self.event(task, 'transport', 'The streamed reply failed; retrying without streaming',
                        {'attempt_id': record['id'], 'retry_of': record['retry_of'], 'role': role, 'reason': 'streaming_unsupported'})
         from .worker_conversation import receipt
-        record['conversation'] = receipt(messages)
+        record['conversation'] = {**receipt(messages), 'transition': task.get('conversation_state', {}).get('last_transition')}
         record['dispatched']=True
         if streaming:
             live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
@@ -2829,7 +2829,8 @@ class Engine:
                     select_remote(self, runtime)
                 if task.get("delegation"):
                     self.event(task, "handoff", "Local chat delegated the work", {"from": task["providers"]["coordinator"]["model"], "to": task["providers"]["worker"]["model"], "role": "worker", "summary": task.pop("delegation")})
-                    task["messages"] = self.initial_messages(task)
+                    from .worker_conversation import continue_session
+                    continue_session(task, self.initial_messages(task), 'coordinator_handoff')
                 near_end = not measuring(task) and (runtime.step_turns >= task["limits"].get("checkpoint_turns", 12) - 1 or request_worker_turns(task) >= task["limits"]["worker_turns"] - 1)
                 if execution_context.mode(task) == "interactive" and runtime.step_turns and near_end and not task.get("action_pending"):
                     self.refresh_changes(task)

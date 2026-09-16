@@ -19,7 +19,7 @@ in-progress engine/review edits before changing their files.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T84](docs/tasks/T84-session-continuity.md) | Preserve conversation across resume, review repair, handoff, and post-commit follow-up | Current conversation/storage contracts | M | Ready |
+| [T84](docs/tasks/T84-session-continuity.md) | Preserve conversation across resume, review repair, handoff, and post-commit follow-up | Current conversation/storage contracts | M | Done |
 | [T85](docs/tasks/T85-working-state.md) | Persist the actual approach, unfinished steps, and current action | T84 | M | Proposed |
 | [T86](docs/tasks/T86-context-continuity.md) | Compact older context while retaining working state and retrievable evidence | T84, T85 | M/L | Proposed |
 | [T87](docs/tasks/T87-continuation-policy.md) | Consolidate recovery, preserve useful exploration, and make Continue actionable | T84, T85; T86 before qualification | M/L | Proposed |

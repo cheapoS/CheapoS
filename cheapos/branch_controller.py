@@ -351,6 +351,7 @@ class BranchController:
     def continue_item(self, runtime, item):
         """Resume the interrupted stage; a pending review is not worker work."""
         task = runtime.task
+        result = None
         if item['status'] == 'reviewing':
             from .branch_review import checkpoint
             saved = task.get('pending_review') or (task.get('operator_review_history') or [{}])[-1]
@@ -363,7 +364,9 @@ class BranchController:
             if result['decision'] != 'REQUEST_CHANGES':
                 return
         task['status'] = 'running'
-        task['messages'] = self.engine.initial_messages(task)
+        from .worker_conversation import continue_session
+        continue_session(task, self.engine.initial_messages(task),
+                         'review_repair' if result else 'item_resume', result)
         self.engine._run_with_wait(runtime)
 
     def execute(self, runtime):

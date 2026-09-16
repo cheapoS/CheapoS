@@ -198,7 +198,8 @@ def amend(controller, task_id, values):
             item.setdefault('operator_evidence_history',[]).append({key:copy.deepcopy(item[key]) for key in ('evidence','ready_receipt','review_repair','review_rounds') if key in item})
             item['revision']=item.get('revision',1)+1;item['evidence']={};item['status']='working'
             task['active_role']='worker'
-            task['messages']=[]
+            # Retain worker history; the continuation adapter admits the new scope.
+            task.setdefault('conversation_state', {}).setdefault('snapshot_hashes', {}).clear()
             for key in ('ready_receipt','review_repair'):item.pop(key,None)
             for key in ('pending_checkpoint','pending_review','recovery_blocked'):task.pop(key,None)
             run.pop('readiness',None);run['final_evidence']={}

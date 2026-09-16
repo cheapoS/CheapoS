@@ -1,6 +1,6 @@
 # T84 — Preserve the conversation through task transitions
 
-Status: Ready — implementation not started
+Status: Done
 Depends on: Existing worker-conversation, task storage, and review contracts
 Size: M
 Context: [DeepSeek Harness assessment](../development/deepseek-harness-assessment.md)
@@ -58,3 +58,17 @@ relevant selected checks. Extend existing conversation/recovery tests with small
 in-memory transcripts or mocks. Do not add a full multi-item Git workflow.
 Record new-case runtime and the precise transitions covered. Mark Done only after
 implementation and focused evidence; commit only this card's changes.
+
+## Completion
+
+One worker continuation adapter now owns operator resume, item/review repair,
+model handoff and coordinator delegation. Reconciliation, source commit and
+operator amendments keep history while their existing evidence invalidation
+remains unchanged. Item histories have explicit ownership; reviewer histories
+stay separate. Repeated unchanged snapshots are omitted, with content-free
+transition receipts. Legacy interrupted calls receive uncertain outcomes only.
+
+Five conversation cases passed in 0.001s, including two new in-memory cases.
+Branch operator (14) and commit recovery (3) passed. Existing branch execution
+fixtures need updating for main's explicit full-suite consent and will be covered
+in T88; no product approval rule was relaxed. UI validation belongs to T88.
