@@ -155,7 +155,7 @@ async function archiveTask(task, archived) {
 }
 let sidebarMenu=null;
 const menuAnchorKey=button=>button?.id|| (button?.dataset.taskMenu?'task:'+button.dataset.taskMenu:button?.dataset.projectMenu?'project:'+button.dataset.projectMenu:'');
-const findMenuAnchor=key=>$$('[data-task-menu],[data-project-menu],#history-menu').find(button=>menuAnchorKey(button)===key);
+const findMenuAnchor=key=>$$('[data-task-menu],[data-project-menu],#history-menu,#hide-demo').find(button=>menuAnchorKey(button)===key);
 function compactMenu(anchor,label,actions) {
   const key=menuAnchorKey(anchor);
   if(sidebarMenu?.key===key){sidebarMenu.close();return;}
@@ -1395,7 +1395,7 @@ if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();
 $('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};
 $('#chat-stop').onclick=stopFromComposer;
 const hideDemo=$('#hide-demo');
-if(hideDemo) hideDemo.onclick=()=>{compactMenu(hideDemo,'Demo options',[{label:'Hide',action:()=>{const d=dialog(`<form>${modalHeader('HIDE','Hide Try a sample task?')}<p>This will remove the demo from the sidebar until you re-enable it in settings.</p><div class="modal-footer"><button type="button" class="outline-button" data-close>Cancel</button><button type="submit" class="primary-button">Yes, hide</button></div></form>`);$('form',d).onsubmit=(e)=>{e.preventDefault();d.close();$('#demo-row')?.classList.add('hidden');if(typeof localStorage!=='undefined')localStorage.setItem('cheapos-demo-hidden','true');}}}]);};
+if(hideDemo) hideDemo.onclick=()=>{compactMenu(hideDemo,'Demo options',[{label:'Hide',run:()=>{const d=dialog(`<form>${modalHeader('HIDE','Hide Try a sample task?')}<p>This will remove the demo from the sidebar until you re-enable it in settings.</p><div class="modal-footer"><button type="button" class="outline-button" data-close>Cancel</button><button type="submit" class="primary-button">Yes, hide</button></div></form>`);$('form',d).onsubmit=(e)=>{e.preventDefault();d.close();$('#demo-row')?.classList.add('hidden');if(typeof localStorage!=='undefined')localStorage.setItem('cheapos-demo-hidden','true');}}}]);};
 if(typeof localStorage!=='undefined'&&localStorage.getItem('cheapos-demo-hidden')==='true') $('#demo-row')?.classList.add('hidden');
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
