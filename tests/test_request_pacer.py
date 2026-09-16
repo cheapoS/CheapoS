@@ -45,11 +45,16 @@ class TestRequestPacer(unittest.TestCase):
 
     def test_pacing_interval_defaults_and_overrides(self):
         # Known free providers
-        self.assertEqual(pacing_interval({"model": "nvidia/nemotron-3-super-120b-a12b"}), 2.5)
-        self.assertEqual(pacing_interval({"model": "groq/openai/gpt-oss-120b"}), 1.5)
-        self.assertEqual(pacing_interval({"model": "cohere/north-mini-code:free"}), 3.0)
-        self.assertEqual(pacing_interval({"model": "ling-3.0-flash-fin-free"}), 2.5)
-        self.assertEqual(pacing_interval({"model": "antigravity/gemini-2.5-pro"}), 3.0)
+        self.assertEqual(pacing_interval({"model": "nvidia/nemotron-3-super-120b-a12b"}), 4.0)
+        self.assertEqual(pacing_interval({"model": "groq/openai/gpt-oss-120b"}), 2.0)
+        self.assertEqual(pacing_interval({"model": "cohere/north-mini-code:free"}), 5.0)
+        self.assertEqual(pacing_interval({"model": "ling-3.0-flash-fin-free"}), 4.0)
+        self.assertEqual(pacing_interval({"model": "antigravity/gemini-2.5-pro"}), 4.0)
+
+        # Payload-aware token scaling
+        self.assertEqual(pacing_interval({"model": "cohere/north-mini-code:free"}, payload_bytes=5_000), 5.0)
+        self.assertEqual(pacing_interval({"model": "cohere/north-mini-code:free"}, payload_bytes=80_000), 7.0)
+        self.assertEqual(pacing_interval({"model": "cohere/north-mini-code:free"}, payload_bytes=200_000), 9.0)
 
         # Local, fixture, and paid models
         self.assertEqual(pacing_interval({"local": True}), 0.0)
@@ -57,7 +62,7 @@ class TestRequestPacer(unittest.TestCase):
         self.assertEqual(pacing_interval({"model": "nvidia/nemotron", "input_rate": 1.0, "output_rate": 2.0}), 0.0)
 
         # Included access is treated as free even if rates are zeroed
-        self.assertEqual(pacing_interval({"model": "nvidia/nemotron", "input_rate": 0.0, "output_rate": 0.0, "access": "included"}), 2.5)
+        self.assertEqual(pacing_interval({"model": "nvidia/nemotron", "input_rate": 0.0, "output_rate": 0.0, "access": "included"}), 4.0)
 
         # Explicit pacing interval override
         self.assertEqual(pacing_interval({"model": "nvidia/nemotron", "pacing_interval": 0.75}), 0.75)

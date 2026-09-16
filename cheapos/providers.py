@@ -262,7 +262,8 @@ class ChatProvider:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
         provider_name = provider_identity(self.config)
-        interval = pacing_interval(self.config, provider_name)
+        payload_bytes = len(request.data) if request.data else 0
+        interval = pacing_interval(self.config, provider_name, payload_bytes=payload_bytes)
         with pacer.throttle(provider_name, interval, stopped=stopped):
             try:
                 with build_opener(NoRedirects(), ProxyHandler({})).open(request, timeout=timeout_seconds) as response, (BriefResponseGuard(response, stopped, stream_seconds if emit is not None else timeout_seconds) if brief or self.config.get("_operator_interruptible") else nullcontext()):

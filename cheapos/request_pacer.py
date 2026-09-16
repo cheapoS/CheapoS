@@ -16,17 +16,17 @@ from urllib.parse import urlsplit
 # Minimum quiet intervals (seconds) required between completions for known free providers.
 # These delays prevent triggering Tokens-Per-Minute (TPM) caps and strict 1-concurrency limits.
 PROVIDER_PACING_SECONDS = {
-    "openrouter": 3.0,     # OpenRouter :free tier: 20 RPM, burst protection against 400/429
-    "nvidia": 2.5,         # NVIDIA NIM: strict concurrency=1, token bucket recovery (prevents 500)
-    "opencode": 2.5,       # OpenCode / Ling: upstream endpoint recovery (prevents 503)
-    "oc": 2.5,
-    "antigravity": 3.0,    # Google Gemini free tier: 15 RPM
-    "google": 3.0,
-    "groq": 1.5,           # Groq: high throughput, smooth 30-40 RPM spacing
-    "kiro": 2.0,           # Kiro endpoint pacing
+    "openrouter": 5.0,     # OpenRouter :free tier: smooth 12 RPM, avoids burst rate/TPM limit
+    "nvidia": 4.0,         # NVIDIA NIM: concurrency=1, token recovery, avoids 500 crashes
+    "opencode": 4.0,       # OpenCode / Ling: endpoint recovery, avoids 503
+    "oc": 4.0,
+    "antigravity": 4.0,    # Google Gemini free tier: 15 RPM
+    "google": 4.0,
+    "groq": 2.0,           # Groq: high throughput
+    "kiro": 3.0,           # Kiro endpoint pacing
 }
 
-DEFAULT_FREE_PACING_SECONDS = 2.0
+DEFAULT_FREE_PACING_SECONDS = 3.0
 
 
 def provider_identity(config):
@@ -76,7 +76,7 @@ def provider_identity(config):
     return prefix or "remote"
 
 
-def pacing_interval(config, provider=None):
+def pacing_interval(config, provider=None, payload_bytes=0):
     """Return required minimum interval (in seconds) between requests to this provider."""
     if not isinstance(config, dict):
         return 0.0
@@ -111,7 +111,15 @@ def pacing_interval(config, provider=None):
         except (ValueError, TypeError):
             pass
 
-    return PROVIDER_PACING_SECONDS.get(ident, DEFAULT_FREE_PACING_SECONDS)
+    base = PROVIDER_PACING_SECONDS.get(ident, DEFAULT_FREE_PACING_SECONDS)
+    # Payload-aware token scaling to prevent TPM exhaustion on large context turns
+    extra = 0.0
+    if ident != "groq" and payload_bytes:
+        if payload_bytes > 160_000:       # ~40k+ prompt tokens
+            extra = 4.0
+        elif payload_bytes > 60_000:      # ~15k+ prompt tokens
+            extra = 2.0
+    return base + extra
 
 
 class RequestPacer:
