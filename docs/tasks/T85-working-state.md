@@ -1,6 +1,6 @@
 # T85 — Give the agent a durable, specific working state
 
-Status: Proposed — implementation not started
+Status: Done
 Depends on: T84
 Size: M
 Context: [DeepSeek Harness assessment](../development/deepseek-harness-assessment.md)
@@ -51,3 +51,17 @@ exercise one disposable UI transcript through working, review, and paused states
 Use the change-scoped selector and record timings. New live trials, long waits,
 and full agent/Git fixtures require separate cost acceptance. Commit the card and
 record implementation limitations honestly.
+
+## Completion
+
+Added a versioned item-owned advisory working record and validated
+`update_working_state` tool. Stable step IDs, decisions, open findings, source
+event references, exact corrections and next action survive serialization.
+Resume/coordinator context uses this record without another inference request.
+Source references carry event identity and patch/generation; changed sources
+remain historical. The reply displays a stable Details checklist with distinct
+working/review/approval/paused labels. No authority fields are accepted.
+
+Two new pure cases: <0.001s; working state, conversation, project/recovery
+context: 12 passed in 0.682s. JS syntax passed. Browser flow is qualified in T88.
+The checklist is optional, including for trivial answers.

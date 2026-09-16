@@ -66,6 +66,7 @@ READ_TOOLS = [
     tool("get_diff", "Inspect the current patch relative to the task's starting snapshot."),
 ]
 WORKER_TOOLS = READ_TOOLS + [
+    tool("update_working_state", "Optionally retain the current approach and next action for nontrivial work. Advisory only: does not change accepted scope, permissions, checks or review. Reuse stable step IDs. References are task event indices.", {"steps":{"type":"array","maxItems":24,"items":{"type":"object","properties":{"id":TEXT,"text":TEXT,"status":{"type":"string","enum":["pending","working","done","blocked"]}},"required":["id","text","status"],"additionalProperties":False}},"decisions":{"type":"array","items":TEXT},"findings":{"type":"array","items":TEXT},"references":{"type":"array","items":{"type":"integer"}},"next_action":TEXT}),
     tool("apply_merge_version", "During a conflict task, copy a frozen target/task/suggested file version over its unchanged original. Handles captured deletions; refuses to overwrite new edits. Review and checks are still required.", {"path":TEXT,"version":{"type":"string","enum":["task","target","suggested"]}}, ["path","version"]),
     tool("write_file", "Create a new UTF-8 text file. Existing files require replace_text.", {"path": TEXT, "content": TEXT}, ["path", "content"]),
     tool("replace_text", "Replace exactly one occurrence of old_text in an existing file.", {"path": TEXT, "old_text": TEXT, "new_text": TEXT}, ["path", "old_text", "new_text"]),
@@ -2264,6 +2265,11 @@ class Engine:
             result=check_output.read(self.store,task["id"],**args)
             task["tool_actions"]+=1
             self.event(task,"tool","read check output",{"arguments":args,"result":result})
+            return result
+        if name == "update_working_state":
+            from .working_state import update
+            result = update(task, args)
+            self.event(task, 'working_state', 'Updated the working approach', result)
             return result
         workspace = Workspace(task["workspace"])
         methods = {"list_files": workspace.list_files, "read_file": workspace.read_file, "outline_file": workspace.outline_file, "search": workspace.search, "get_diff": lambda **kwargs: workspace.patch(validate="branch_run" in task)[:50000], "write_file": workspace.write_file, "replace_text": workspace.replace_text, "replace_lines": workspace.replace_lines}
