@@ -599,6 +599,8 @@ class BranchController:
                         runtime.branch_ledger=Ledger(runtime,lambda:self.engine.store.save(task),lock=self.engine.lock)
                         runtime.branch_ledger.begin()
                         continue
+                    with self.proposals.lock:
+                        self.proposals.proposals={token:p for token,p in self.proposals.proposals.items() if p['task_id']!=task['id'] or token==result['proposal_id']}
                     saved=self.engine.store.get(task['id'])
                     self.engine.event(saved,'assistant','Proposal ready','The proposal is ready. Inspect it below to review the plan and start the run, or reply here to change it.')
                     self.engine.runtimes.pop(task['id'],None)
@@ -634,9 +636,6 @@ class BranchController:
         captured={k:v for k,v in run['inputs'].items() if k!='hash'}
         run['inputs']['hash']=_digest(captured)
         task['requests'].append(message)
-        # A changed scope always invalidates every prior Start token.
-        with self.proposals.lock:
-            self.proposals.proposals={token:p for token,p in self.proposals.proposals.items() if p['task_id']!=task['id']}
         self.engine.event(task,'user','You',message)
         if not active:
             self.plan({**task['planning_request'],'planning_id':uuid.uuid4().hex},background=True,planning_task=task)

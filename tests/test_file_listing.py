@@ -38,6 +38,9 @@ class FileListingTests(LocalCase):
         from cheapos.workspace import allowed_name
         self.assertTrue(allowed_name('.cheapos/rules.md'))
         self.assertTrue(allowed_name('.cheapos/guidelines.md'))
+        self.assertTrue(allowed_name('.cheapos/rules.txt'))
+        self.assertTrue(allowed_name('.cheapos/config.yaml'))
+        self.assertTrue(allowed_name('.cheapos/config.yml'))
         self.assertFalse(allowed_name('.cheapos'))
         self.assertFalse(allowed_name('.cheapos/config.json'))
         self.assertFalse(allowed_name('.cheapos/tasks/abc/task.json'))

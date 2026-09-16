@@ -32,7 +32,7 @@ def allowed_name(name):
     parts = PurePosixPath(name).parts
     if not parts:
         return False
-    if parts[0] == ".cheapos" and parts[-1].endswith(".md") and not any(p in (BLOCKED_PARTS - {".cheapos"}) or p in BLOCKED_NAMES for p in parts[1:]):
+    if parts[0] == ".cheapos" and parts[-1].endswith((".md", ".txt", ".yaml", ".yml")) and not any(p in (BLOCKED_PARTS - {".cheapos"}) or p in BLOCKED_NAMES for p in parts[1:]):
         return True
     return not any(p in BLOCKED_PARTS or p in BLOCKED_NAMES or (p.startswith(".env.") and p not in {".env.example", ".env.sample", ".env.template"}) or p.endswith((".pem", ".key", ".p12", ".pfx")) for p in parts)
 

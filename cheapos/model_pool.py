@@ -15,7 +15,7 @@ RECOVERABLE_CODES = {"stream_error", "stream_interrupted", "stream_timeout", "mo
                      "model_connection", "invalid_response_json", "invalid_stream_json",
                      "invalid_response_shape", "invalid_tool_envelope", "empty_response", "unsupported_tool",
                      "transport_retry_exhausted", "streaming_unsupported", "malformed_tool_call",
-                     "http_408", "http_429", "http_500", "http_502", "http_503", "http_504"}
+                     "http_400", "http_404", "http_408", "http_422", "http_429", "http_500", "http_502", "http_503", "http_504"}
 MAX_HANDOFFS = 2
 
 
