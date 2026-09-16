@@ -13,7 +13,20 @@ def full_suite(command):
     if 'check.py' in names:
         return '--full' in args
     if 'dev_tests.py' in names:
-        return (not any(a in args for a in ('--pattern', '--suite')) and not any(a.startswith(('--pattern=','--suite=')) for a in args)) or '--suite=full' in args or any(args[i:i+2] == ['--suite','full'] for i in range(len(args)))
+        patterns = []
+        for i, a in enumerate(args):
+            if a == '--pattern' and i + 1 < len(args):
+                patterns.append(args[i + 1])
+            elif a.startswith('--pattern='):
+                patterns.append(a.split('=', 1)[1])
+        has_suite = '--suite' in args or any(a.startswith('--suite=') for a in args)
+        if '--suite=full' in args or any(args[i:i+2] == ['--suite', 'full'] for i in range(len(args))):
+            return True
+        if not patterns and not has_suite:
+            return True
+        if any(p in ('test*.py', 'test_*.py', '*.py', '*') for p in patterns) or len(patterns) > 15:
+            return True
+        return False
     if 'unittest' in args:
         rest = args[args.index('unittest')+1:]
         if 'discover' not in rest:

@@ -11,7 +11,9 @@ class TestPolicyTests(unittest.TestCase):
     def test_recognizes_broad_commands_without_blocking_targeted_checks(self):
         for command in ('python3 -m unittest discover -v tests','python3 -m unittest -v',
                         'pytest tests','python3 -m pytest','python3 scripts/check.py --full',
-                        'python3 scripts/dev_tests.py --suite full'):
+                        'python3 scripts/dev_tests.py --suite full',
+                        'python3 scripts/dev_tests.py --pattern test_*.py',
+                        'python3 scripts/dev_tests.py ' + ' '.join(f'--pattern test_{i}.py' for i in range(16))):
             self.assertTrue(policy.full_suite(command),command)
         for command in ('python3 -m unittest tests.test_http -v','python3 -m unittest discover -p test_http.py',
                         'pytest tests/test_http.py','python3 scripts/check.py --files dist/app.js',
