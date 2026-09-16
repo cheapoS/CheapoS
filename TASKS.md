@@ -10,6 +10,8 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+**Active roadmap:** [Durable milestones for empowering smaller models](docs/ROADMAP.md). Milestone 1 (**Reliable small changes**) is in progress on branch `feature/reliable-small-changes`.
+
 **Next milestone: a continuous agent session that finishes the job.**
 The [DeepSeek Harness assessment](docs/development/deepseek-harness-assessment.md)
 compares upstream session, compaction, and continuation behavior with current
