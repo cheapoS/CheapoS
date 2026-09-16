@@ -10,16 +10,26 @@ from .provider_recovery import OUTAGES
 def is_continue(message):
     if not isinstance(message, str):
         return False
-    normalized = re.sub(r'[\s.,!?]+', ' ', message.strip().casefold()).strip()
+    text = message.strip().casefold()
+    if not text:
+        return False
+    if re.search(r'\b(?:do\s+not|don\'?t|cannot|can\'?t|won\'?t|never|not|disapprove|deny|reject)\b', text):
+        return False
+    if re.search(r'\bapprov', text):
+        return True
+    normalized = re.sub(r'[\s.,!?]+', ' ', text).strip()
     if normalized in {
         'continue', 'continue please', 'please continue', 'try again', 'resume', 'do what you need to finish',
-        'plan approved continue', 'plan approved', 'approved', 'approve',
         'start', 'start run', 'start plan', 'start task', 'proceed', 'looks good', 'looks good continue',
-        'go ahead', 'yes continue', 'ok continue', 'looks good go ahead'
+        'go ahead', 'yes continue', 'ok continue', 'looks good go ahead', 'good to go', 'lgtm',
+        'sounds good', 'looks great', 'go for it', 'let\'s go', 'lets go', 'do it', 'lets do it', 'let\'s do it'
     }:
         return True
-    return bool(re.fullmatch(r'(?:plan\s+)?approved[,\s]*(?:continue|start|proceed|go ahead)?', normalized) or
-                re.fullmatch(r'(?:looks\s+good|ok|okay)[,\s]*(?:continue|start|proceed|go ahead)?', normalized))
+    return bool(
+        re.fullmatch(r'(?:(?:yes|yeah|yep|sure)[,\s]+)?(?:(?:i\s+think\s+)?(?:this\s+)?(?:looks|sounds)\s+(?:good|great|fine)|ok|okay|good\s+to\s+go|lgtm)[,\s]*(?:to\s+me)?[,\s]*(?:continue|start|proceed|go\s+ahead|go\s+for\s+it)?', normalized) or
+        re.fullmatch(r'(?:(?:yes|yeah|yep|sure|please)[,\s]+)?(?:continue|proceed|resume|start)[,\s]*(?:please|(?:with\s+)?(?:the\s+)?(?:plan|task|run|work))?', normalized) or
+        re.fullmatch(r'(?:(?:yes|yeah|yep|sure)[,\s]+)?(?:go\s+ahead|go\s+for\s+it)[,\s]*(?:and\s+(?:start|run|proceed))?', normalized)
+    )
 
 
 
