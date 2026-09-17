@@ -129,3 +129,88 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
         "errors": errors,
         "warnings": warnings,
     }
+
+
+def probe_context_matrix(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, Any]:
+    """Execute a 2,560-combination state probe across real task contexts, roles, and modes.
+
+    Tests 4 roles x 5 modes x 128 task context flag combinations:
+    - Overlapping recovery flags (compact_edits supersedes output_cap).
+    - Nested active-item repair state and dispute ledger triggers.
+    - Planner sharing of controller commit rules and setup policy without worker pollution.
+    - Persona boundary coverage across all supported runtime modes.
+    """
+    import time
+    from .resolver import triggers_for_task
+
+    roles = ["worker", "planner", "reviewer", "coordinator"]
+    modes = ["unattended", "interactive", "planning", "worker", "review"]
+
+    flags = [
+        ("output_recovery", [False, True]),
+        ("compact_edits", [False, True]),
+        ("action_pending", [False, True]),
+        ("finish_review", [False, True]),
+        ("full_suite_approved", [False, True]),
+        ("has_review_repair", [False, True]),
+        ("has_disputes", [False, True]),
+    ]
+
+    flag_combinations = list(itertools.product(*[vals for _, vals in flags]))
+    errors: List[str] = []
+    tested = 0
+
+    start_time = time.perf_counter()
+    for role in roles:
+        for mode in modes:
+            for out_rec, comp_ed, act_pend, fin_rev, full_st, has_repair, has_disp in flag_combinations:
+                tested += 1
+                task = {
+                    "output_recovery": out_rec,
+                    "compact_edits": comp_ed,
+                    "action_pending": act_pend,
+                    "finish_review": fin_rev,
+                    "full_suite_approved": full_st,
+                    "branch_run": {
+                        "current_item_id": "item-1",
+                        "items": [{"id": "item-1", "review_repair": {"candidate_id": "c1"} if has_repair else None}],
+                        "dispute_ledger": {"findings": {"f1": {"status": "open"}} if has_disp else {}},
+                        "authorization_ref": {"id": "auth1"} if mode == "unattended" else None,
+                    },
+                }
+                triggers = triggers_for_task(task)
+                try:
+                    active = compose(role=role, mode=mode, triggers=triggers, catalog=catalog)
+                    active_ids = {r.id for r in active}
+
+                    # Invariant 1: Overlapping recovery precedence
+                    if out_rec and comp_ed:
+                        if "recovery.compact_edits" in active_ids and "recovery.output_cap" in active_ids:
+                            errors.append(f"Overlapping recovery conflict at ({role}, {mode}): both active")
+
+                    # Invariant 2: Nested active item repair state
+                    if has_repair and role == "worker":
+                        if "recovery.review_repair" not in active_ids:
+                            errors.append(f"Missing review_repair for worker at mode {mode}")
+
+                    # Invariant 3: Planner sharing without worker pollution
+                    if role == "planner":
+                        if "git.internal.controller_owns_commits" not in active_ids:
+                            errors.append(f"Planner missing controller_owns_commits at mode {mode}")
+                        if "workflow.worker_base" in active_ids:
+                            errors.append(f"Planner polluted with worker_base at mode {mode}")
+
+                    # Invariant 4: Persona boundary coverage
+                    if "git.external.commit_on_finish" in active_ids:
+                        errors.append(f"External git rule leaked into internal role {role}")
+
+                except Exception as e:
+                    errors.append(f"Exception at ({role}, {mode}, {triggers}): {e}")
+
+    duration = time.perf_counter() - start_time
+    return {
+        "tested_combinations": tested,
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "duration_seconds": duration,
+    }

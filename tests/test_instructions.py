@@ -376,6 +376,15 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertIn("recovery.compact_edits", compound_ids)
         self.assertNotIn("recovery.output_cap", compound_ids)
 
+    def test_real_context_combination_probe(self):
+        """Probe covering 2,560 combinations across real task contexts, roles, and modes passes cleanly."""
+        from cheapos.instructions import probe_context_matrix
+        report = probe_context_matrix()
+        self.assertEqual(report["tested_combinations"], 2560)
+        self.assertTrue(report["valid"], f"Probe failed with errors: {report['errors']}")
+        self.assertEqual(report["errors"], [])
+        self.assertLess(report["duration_seconds"], 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

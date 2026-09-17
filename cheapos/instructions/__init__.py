@@ -15,7 +15,7 @@ from .resolver import (
     rules_for_task,
     triggers_for_task,
 )
-from .linter import audit_catalog
+from .linter import audit_catalog, probe_context_matrix
 
 # Canonical guidance strings backed by the catalog
 ACTION_GUIDANCE = DEFAULT_CATALOG.get("recovery.action_guidance").text
@@ -39,6 +39,7 @@ __all__ = [
     "rules_for_task",
     "triggers_for_task",
     "audit_catalog",
+    "probe_context_matrix",
     "ACTION_GUIDANCE",
     "OUTPUT_GUIDANCE",
     "COMPACT_GUIDANCE",
