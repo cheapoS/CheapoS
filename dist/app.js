@@ -529,8 +529,10 @@ function renderTask({resetScroll=false}={}) {
   const usagePill=$('#compute-savings-pill');
   if(usagePill){
     usagePill.hidden=totalTokens===0;
-    usagePill.textContent=`${totalTokens.toLocaleString()} accounted tokens · ${actualCost==null?'cost unknown':money(actualCost)} · ${CheapOSGuide.costProvenance(task)}`;
-    usagePill.title=`Cost provenance: ${task.metrics?.cost?.provenance||'unknown'}. Includes retained uncertain reservations when present. Configured accounting is not a billing receipt.`;
+    const provenance=CheapOSGuide.costProvenance(task);
+    const omitProvenance=!provenance||provenance.includes('uncertain reservations')||provenance==='Cost provenance unknown';
+    usagePill.textContent=`${totalTokens.toLocaleString()} accounted tokens · ${actualCost==null?'cost unknown':money(actualCost)}${omitProvenance?'':` · ${provenance}`}`;
+    usagePill.title=`Cost provenance: ${task.metrics?.cost?.provenance||provenance||'unknown'}. Includes retained uncertain reservations when present. Configured accounting is not a billing receipt.`;
   }
   renderView();renderInspector();renderComposer();bindTerminalCopy();
   for(const d of $$('details[data-event]'))if(expanded.has(d.dataset.event))d.open=expanded.get(d.dataset.event);
@@ -1944,7 +1946,7 @@ async function resumeBranchRun(task,savedResult,approvalValues={}) {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();d.close();void resumeBranchRun(task,null,{proposal_id:result.proposal_id,approved:true}).catch(error=>toast(error.message));};
 }
 async function bootstrap() {
-  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;await loadAdmission({render:false});try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);}
+  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;await loadAdmission({render:false});try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();void updateLifetimeSavingsBadge(true);let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);}
   catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start cheapoS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh({background:true})}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
@@ -1971,7 +1973,7 @@ function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
 const branchUI=CheapOSBranchUI.mount({api,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),showChanges:()=>setView('changes'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}});
-bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);
+bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);setInterval(()=>updateLifetimeSavingsBadge(),15000);
 
 $('#rename-task').onclick=()=>renameTask();
 
@@ -2035,6 +2037,34 @@ $('#composer-permissions').onclick=sessionPermissions;
   if(restartOmniroute)restartOmniroute.onclick=()=>restartAction({refresh:true,restart:false});
 })();
 $('#lifetime-usage-trigger').onclick=()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader});
+let lifetimeUsageData=null, lifetimeUsageLoadedAt=0;
+function renderLifetimeSavingsBadge(data){
+  if(!data)return;
+  const s=(typeof CheapOSLifetimeUsage!=='undefined'&&CheapOSLifetimeUsage.safeSummary)?CheapOSLifetimeUsage.safeSummary(data):data;
+  const zeroCostTokens=Number.isFinite(s.total_free_tokens)?s.total_free_tokens:((s.categories?.public_free?.tokens||0)+(s.categories?.included?.tokens||0)+(s.categories?.local?.tokens||0));
+  const reported=s.tokens?.reported||0;
+  const zeroCostShare=reported>0?Math.round((zeroCostTokens/reported)*100):100;
+  const pctEl=$('#sidebar-zero-tokens-pct'), valEl=$('#sidebar-zero-tokens-val');
+  if(pctEl)pctEl.textContent=`${zeroCostShare}% Free`;
+  if(valEl)valEl.textContent=zeroCostTokens.toLocaleString('en-US');
+}
+async function updateLifetimeSavingsBadge(force=false){
+  const badge=$('#sidebar-zero-tokens');
+  if(!badge)return;
+  const now=Date.now();
+  if(!force&&lifetimeUsageData&&(now-lifetimeUsageLoadedAt<15000)){renderLifetimeSavingsBadge(lifetimeUsageData);return;}
+  try{
+    const data=await api('/lifetime-usage?days=all');
+    lifetimeUsageData=data;lifetimeUsageLoadedAt=now;
+    renderLifetimeSavingsBadge(data);
+  }catch{}
+}
+const sidebarZeroTokens=$('#sidebar-zero-tokens');
+if(sidebarZeroTokens){
+  const openUsage=()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader});
+  sidebarZeroTokens.onclick=openUsage;
+  sidebarZeroTokens.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openUsage();}};
+}
 try {
   const p = new URLSearchParams(window.location.search);
   if (p.get('action') === 'club' || p.get('club_handle')) {

@@ -544,6 +544,17 @@ test('cost labels report provenance without hypothetical savings',()=>{
  assert.equal(costProvenance({}),'Cost provenance unknown');
 });
 
+test('session compute pill omits uncertain reservations to prevent UI breaking',()=>{
+ const {costProvenance}=require('../dist/guidance.js');
+ const task={metrics:{cost:{provenance:'includes_uncertain_reservations'}},usage:{uncertain_requests:1,cost:0,worker:{tokens:3250308}}};
+ const totalTokens=task.usage.worker.tokens;
+ const provenance=costProvenance(task);
+ const omit=!provenance||provenance.includes('uncertain reservations')||provenance==='Cost provenance unknown';
+ const text=`${totalTokens.toLocaleString()} accounted tokens · $0.00${omit?'':` · ${provenance}`}`;
+ assert.equal(text,'3,250,308 accounted tokens · $0.00');
+ assert.doesNotMatch(text,/Includes uncertain reservations/);
+});
+
 test('model evidence exposes role sample counts without quality scores',()=>{
   const label=require('../dist/guidance.js').modelHealth({health:{role_evidence:{worker:{samples:3,valid_calls:8,invalid_output:1,accepted:0}}}});
   assert.match(label,/3 activity samples/);assert.match(label,/1 invalid outputs/);

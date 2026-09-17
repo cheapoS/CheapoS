@@ -51,6 +51,13 @@
 <div class="desktop-shell">
  <aside class="sidebar" id="sidebar">
   <div class="panel-resizer left-resizer" role="separator" tabindex="0" aria-label="Resize sidebar" aria-controls="sidebar" aria-orientation="vertical" aria-valuemin="0" title="Drag to resize; drag left to hide. Arrow keys resize; Home hides; End maximizes."></div><div class="brand-row"><a class="brand" href="./" aria-label="cheapoS home"><img class="brand-mark" src="./brand-icon.svg" alt="" /><span class="brand-wordmark">cheapo<span class="brand-s">S</span></span></a><button class="icon-btn" id="sidebar-toggle" aria-label="Collapse sidebar"><svg><use href="#i-panel"/></svg></button></div>
+  <div class="sidebar-zero-tokens-card" id="sidebar-zero-tokens" role="button" tabindex="0" title="Lifetime zero-cost compute. Click to view Usage &amp; savings" aria-label="Total zero-cost tokens">
+    <div class="zero-tokens-header">
+      <span class="zero-tokens-label">Total zero-cost tokens</span>
+      <span class="zero-tokens-pct" id="sidebar-zero-tokens-pct">--% Free</span>
+    </div>
+    <div class="zero-tokens-val" id="sidebar-zero-tokens-val">---</div>
+  </div>
   <button class="settings-trigger open-project-trigger" id="home-trigger"><svg><use href="#i-folder"/></svg>Open project</button>
   <button class="new-task" id="new-task"><svg><use href="#i-plus"/></svg>New chat<kbd>⌘ N</kbd></button>
   <button class="search-trigger" id="search-trigger"><svg><use href="#i-search"/></svg>Search chats<kbd>⌘ K</kbd></button>

@@ -70,3 +70,14 @@ test('model preference checkbox saves and updates state',async()=>{
   assert.equal(calls[1].payload.share_models,true);
   assert.equal(calls[1].payload.enabled,true);
 });
+
+test('sidebar zero-cost tokens card formats lifetime percentage and token count',()=>{
+  const data=fixture();
+  data.tokens.reported=123802941;
+  data.total_free_tokens=118357086;
+  const s=ui.safeSummary(data);
+  const zeroCostTokens=s.total_free_tokens;
+  const zeroCostShare=Math.round((zeroCostTokens/s.tokens.reported)*100);
+  assert.equal(zeroCostShare,96);
+  assert.equal(zeroCostTokens.toLocaleString('en-US'),'118,357,086');
+});
