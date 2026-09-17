@@ -37,8 +37,10 @@ class StartupTests(LocalCase):
 
     def test_fresh_local_startup_greets_without_a_project_and_sets_both_free_roles(self):
         self.locals.return_value=[candidate()]
+        defaults = self.engine.settings_store.view()
         state=self.run_startup(automatic=True)
         self.assertEqual(state['status'],'ready')
+        self.assertEqual(self.engine.settings_store.view(), defaults)
         self.assertEqual(state['content'],'Hi! Open a project to begin.')
         self.assertEqual(self.calls,[GREETING])
         self.assertEqual(self.engine.store.list(),[])
@@ -56,6 +58,7 @@ class StartupTests(LocalCase):
         self.assertEqual(len(self.calls),1)
 
     def test_free_cloud_requires_opt_in_on_a_fresh_install(self):
+        self.engine.save_preferences({'limits': {'dollars': 0}})
         self.omni.return_value=[candidate('openrouter/coder:free','omniroute',False)]
         state=self.run_startup()
         self.assertEqual(state['status'],'unavailable')
@@ -82,14 +85,14 @@ class StartupTests(LocalCase):
 
     def test_paid_and_combo_saved_choices_are_never_used_for_a_greeting(self):
         for name,price in [('paid',1),('auto/free',0)]:
-            self.engine.config['worker']={**candidate(name)['config'],'input_rate':price}
+            self.engine.config={**self.engine.config, 'worker':{**candidate(name)['config'],'input_rate':price}}
             self.locals.return_value=[candidate()]
             self.assertEqual(self.run_startup(automatic=True)['status'],'configured')
             self.assertEqual(self.engine.config['worker']['model'],name)
         self.assertEqual(self.calls,[])
 
     def test_explicit_free_connect_can_replace_a_saved_paid_worker_without_calling_it(self):
-        self.engine.config['worker']={**candidate('paid')['config'],'input_rate':1}
+        self.engine.config={**self.engine.config, 'worker':{**candidate('paid')['config'],'input_rate':1}}
         self.locals.return_value=[candidate('free-local')]
         self.assertEqual(self.run_startup()['model']['id'],'free-local')
         self.assertEqual(self.engine.config['worker']['model'],'free-local')

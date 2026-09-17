@@ -209,6 +209,8 @@ def prepare_attachments(store_root: Path, attachments, message: str):
     """Resolve unique trusted records and the context delivered with a message."""
     if attachments is not None and not isinstance(attachments, list):
         raise ValueError("Attachments must be a list")
+    if not attachments:
+        return [], message
     records = []
     seen = set()
     uploads_root = (Path(store_root).resolve() / "uploads").resolve()

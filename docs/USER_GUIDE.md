@@ -331,15 +331,57 @@ connection settings so account cooldowns apply across those gateways. See the
 
 ## Role Mappings
 
-In **Settings**, you can map a specific model for the **Planner**, **Worker**, and **Reviewer** roles.
+In **New chat defaults** or **Project defaults**, choose Automatic or Use only this model for the **Planner**, **Worker**, and **Reviewer** roles.
 
 - **Planner**: Responsible for task planning.
 - **Worker**: Responsible for implementing the task.
 - **Reviewer**: Responsible for reviewing the implementation.
 
-These mappings can be overridden per project in the chat "**work setup**" by the operator.
+Project defaults override app defaults. Chat setup can override those defaults for a new chat.
 - Planner and Reviewer roles can share the same model.
 - The **Worker model must NOT be the same** as the Planner or Reviewer models.
 
 Explicit mappings do not alter budget, permissions, or merge authorization. Operator selection remains required to start work.
-Role mappings are labeled with their source: '**operator**' for defaults configured in Settings, and '**user**' for explicit per-project overrides configured in chat work setup.
+Source labels identify New chat defaults, Project defaults, or the saved chat setup. Historical settings with unknown provenance are labeled explicitly.
+
+## Settings scopes
+
+A chat keeps its saved setup. Saving one scope never silently saves another.
+
+- **Chat setup** in the composer opens the named chat. Before first submission,
+  it edits **This new chat**, captured when you send the request.
+- **Project menu → Project settings** changes defaults for later chats in that
+  project. **Use new chat default** removes a project override.
+- **Settings → New chat defaults** changes the starting setup for future chats.
+- **Connections** owns shared gateway credentials, endpoints and access. Choose
+  the named connection carefully: existing chats may use it. Agent roles belong
+  to the scoped setup screens, not this connection form.
+- **Appearance** affects this browser. **Usage & sharing** affects this installation
+  and retains the existing explicit sharing opt-in.
+
+Agents, Spending & work, and Permissions share one scoped draft. Switching away
+from unsaved edits offers Save, Discard, or Keep editing. If another browser
+changed settings first, **Review newer settings** retains your edited fields so
+you can review before saving again. Saved choices remain visible while providers
+are offline; opening these forms does not run inference.
+
+A paused eligible chat offers **Apply & continue**, or **Apply without continuing**.
+Active work first needs **Pause to apply**; the edit draft stays open. After the
+current operation stops, refresh chat status and apply. Changing a reviewer does
+not restart completed implementation or renew spending allowance. Some changes,
+including workflow/placement after work starts, require their existing dedicated
+flow and are disabled here.
+
+A zero-dollar cap means Free only. A chat cap covers cumulative accounted usage;
+saving it does not add that amount again. Uncapped work removes cumulative work
+ceilings, while spending, saved model access, command permissions, and independent
+review continue to apply. **Keep this task branch up to date**, selected for a new
+chat, authorizes automatic branch preparation; final integration still needs its
+normal approval.
+
+When the target project changes during a task, **Update & resolve** prepares the
+saved task copy, retains both sides of overlapping work, runs its required checks,
+and obtains fresh review. Follow its saved stage in the same chat; use **Changes
+from conflict resolution** to inspect what recovery changed. If the project has
+uncommitted local edits, inspect those before deciding whether to preserve them
+as a commit or leave the reviewed work on its branch.

@@ -18,6 +18,17 @@ class ContextTests(unittest.TestCase):
         with patch.object(context.work,'_tip',return_value='tip'),patch.object(context.work,'source_git',side_effect=git):
             value=context.read(run,manifest,{'manifest_id':'m','path':'parser.py','start_line':2,'end_line':2})
             self.assertIn('2:     raise CLIError',value['content']);self.assertTrue(value['truncated']);self.assertFalse(value['complete_file'])
+            text=b'line\n'*450
+            page=context.read(run,manifest,{'manifest_id':'m','path':'parser.py','start_line':1,'end_line':450})
+            self.assertEqual(page['end_line'],200);self.assertEqual(page['next_start_line'],201)
+            self.assertFalse(page['range_complete']);self.assertTrue(page['truncated'])
+            page=context.read(run,manifest,{'manifest_id':'m','path':'parser.py','start_line':201,'end_line':450})
+            self.assertEqual(page['end_line'],400);self.assertEqual(page['next_start_line'],401)
+            text=b'x'*13000
+            page=context.read(run,manifest,{'manifest_id':'m','path':'parser.py','start_line':1,'end_line':2})
+            self.assertFalse(page['range_complete']);self.assertLessEqual(len(page['content']),12000)
+            for start,end in ((0,1),(2,1),(True,2),(1,False)):
+                with self.assertRaises(ValueError):context.read(run,manifest,{'manifest_id':'m','path':'parser.py','start_line':start,'end_line':end})
             for args in ({'manifest_id':'stale','path':'parser.py'}, {'manifest_id':'m','path':'../key'}, {'manifest_id':'m','path':'.env'}):
                 with self.assertRaises(ValueError):context.read(run,manifest,args)
             run['expected_feature_tip']='other'

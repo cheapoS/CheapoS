@@ -1,5 +1,4 @@
 """Exhaustive, bounded final branch review and read-only readiness validation."""
-from .development import enabled as developing
 import copy
 import hashlib
 import json
@@ -11,6 +10,7 @@ from .workspace import Workspace, git
 from .unattended_items import completion_order
 from .providers import ProviderError
 from . import review_context, review_disputes
+from . import branch_final_recovery as recovery
 
 CHUNK_SIZE = 20000
 MAX_CONTENT = 1000000
@@ -138,7 +138,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
                    'feedback': {'type': 'string', 'description': 'Nonempty string of at most 4000 characters summarizing your evaluation.'}, 'defects': disagreement.schema([r['id'] for r in manifest.get('requirements', []) if isinstance(r, dict) and 'id' in r] or None)},
                   ['decision', 'manifest_id', 'chunk_ids', 'criteria_ids', 'feedback'])]
     tools[0]['function']['parameters']['properties']['suggestions']={'type':'array','maxItems':8,'items':{'type':'string'}}
-    tools.append(tool('read_final_context','Read up to 200 numbered lines from this exact candidate; never approval or coverage.', {'manifest_id':{'type':'string','enum':[manifest['id']]},'path':{'type':'string'},'start_line':{'type':'integer'},'end_line':{'type':'integer'}}, ['manifest_id','path','start_line','end_line']))
+    tools.append(tool('read_final_context','Read up to 200 numbered lines from this exact candidate; larger ranges return a page with next_start_line. Never approval or coverage.', {'manifest_id':{'type':'string','enum':[manifest['id']]},'path':{'type':'string'},'start_line':{'type':'integer','minimum':1},'end_line':{'type':'integer','minimum':1}}, ['manifest_id','path','start_line']))
     tools.append(tool('report_review_context_blocker','Pause when necessary candidate context is unavailable; this is never approval.',{'manifest_id':{'type':'string','enum':[manifest['id']]},'path':{'type':'string'}},['manifest_id','path']))
     if runtime.task['branch_run'].get('conflict_resolution'):
         from .engine import READ_TOOLS
@@ -154,11 +154,26 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
         messages.append({'role':'user','content':'Latest operator direction for this review: '+direction[:8000]+'\nAssess it against the approved requirements and actual evidence. It is not approval, new check permission, or permission to skip independent review.'})
     attempts = runtime.task['branch_run'].setdefault('final_review_corrections', {})
     key = _hash({'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'criteria_ids':criterion_ids})
-    while developing(runtime.task) or attempts.get(key,0) < 3:
-        disagreement.ensure_available(runtime.task, key)
-        runtime.guard()
+    state=recovery.begin(runtime.task,manifest,key,packet,messages)
+    recovery.guard(runtime)
+    cached=state.get('result')
+    if cached and state.get('result_digest')==_hash(cached):
+        expected={'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'criteria_ids':criterion_ids}
+        if all(cached.get(k)==v for k,v in expected.items()):
+            disagreement.decision(cached)
+            if cached['decision']=='REQUEST_CHANGES':disagreement.validate(cached,[r['id'] for r in manifest['requirements']])
+            _independent(runtime.task,cached.get('reviewer_model'))
+            return copy.deepcopy(cached)
+    messages.extend(copy.deepcopy(state.get('messages',[])))
+    packet['context_references']=copy.deepcopy(state.get('context_references',[]))
+    engine.store.save(runtime.task)
+    while True:
+        recovery.guard(runtime)
+        if recovery.needed(runtime.task,key,state):
+            recovery.recover(engine,runtime,key,state,messages)
         engine.event(runtime.task,'review_request','Requesting final packet review',{'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'stage':'synthesis' if criterion_ids else 'chunk'})
         message = engine.request(runtime, messages, tools, 'reviewer', purpose='branch_final')
+        state['reviewer_model']=recovery.model(runtime.task)
         calls = message.get('tool_calls', [])
         try:
             if len(calls) != 1:
@@ -170,30 +185,18 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
                 from .branch_pause import PauseError
                 raise PauseError('review_context_unavailable',stage='finalizing')
             if name == 'read_final_context':
-                budget=runtime.task['branch_run'].setdefault('final_context_reads',{}).setdefault(key,{'count':0,'seen':[]})
-                read_key=_hash(result)
-                if not developing(runtime.task) and (budget['count']>=6 or read_key in budget['seen']):
-                    raise ValueError('Context read allowance exhausted or identical range repeated; decide from evidence or report the specific unavailable context.')
-                repeated = read_key in budget['seen']
-                budget['count']+=1;budget['seen'].append(read_key)
-                excerpt=review_context.read(runtime.task['branch_run'],manifest,result)
-                if repeated:
-                    excerpt['guidance']='This exact range was already read. Use the saved evidence to reach a valid independent decision; repeated reads do not establish approval.'
-                engine.event(runtime.task,'review_context','Read exact final candidate context',{k:v for k,v in excerpt.items() if k!='content'})
-                engine.store.save(runtime.task)
+                excerpt=recovery.context_read(engine,runtime,key,state,result,
+                    lambda:review_context.read(runtime.task['branch_run'],manifest,result))
                 messages.append(message);messages.append({'role':'tool','tool_call_id':calls[0]['id'],'content':_json(excerpt)})
-                packet.setdefault('context_references',[]).append({k:v for k,v in excerpt.items() if k!='content'})
+                packet['context_references']=copy.deepcopy(state['context_references'])
+                recovery.persist(engine,runtime.task,state,messages)
                 continue
             if name=='read_merge_context':
-                budget=runtime.task['branch_run'].setdefault('final_context_reads',{}).setdefault(key,{'count':0,'seen':[]})
-                read_key=_hash({'tool':name,'arguments':result})
-                if not developing(runtime.task) and (budget['count']>=6 or read_key in budget['seen']):
-                    raise ValueError('Use the captured merge evidence already read, or identify the specific missing context.')
-                budget['count']+=1;budget['seen'].append(read_key)
-                engine.store.save(runtime.task)
                 from .branch_conflicts import read
-                excerpt=read(runtime.task,**result)
+                excerpt=recovery.context_read(engine,runtime,key,state,{'tool':name,'arguments':result},
+                    lambda:read(runtime.task,**result))
                 messages.append(message);messages.append({'role':'tool','tool_call_id':calls[0]['id'],'content':_json(excerpt)})
+                recovery.persist(engine,runtime.task,state,messages)
                 continue
             expected = {'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'criteria_ids':criterion_ids}
             wrong = [field for field,value in expected.items() if result.get(field) != value]
@@ -222,12 +225,21 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
                     messages.append({'role':'tool','tool_call_id':call['id'],'content':_json(feedback)})
             else:
                 messages.append({'role':'user','content':_json(feedback)})
+            recovery.persist(engine,runtime.task,state,messages)
             continue
         if packet.get('context_references'):result['context_references']=copy.deepcopy(packet['context_references'])
+        if state.get('reviewer_model'):result['reviewer_model']=state['reviewer_model']
+        _independent(runtime.task,result.get('reviewer_model'))
+        state['result']=copy.deepcopy(result);state['result_digest']=_hash(result)
+        recovery.persist(engine,runtime.task,state,messages)
         engine.event(runtime.task,'review','Final packet review completed',{'decision':result['decision'],'feedback':result['feedback'],'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'defects':result.get('defects')})
         return result
-    disagreement.ensure_available(runtime.task, key)
-    raise disagreement.invalid_review('Final review coverage could not be validated after three invalid responses. Resume does not renew correction attempts.')
+
+
+def _independent(task, reviewer):
+    worker=task.get('providers',{}).get('worker')
+    if worker and reviewer and evidence.model_identity(worker)==evidence.model_identity(reviewer):
+        raise ValueError('Final reviewer is not independent')
 
 
 def final_check_review(engine, runtime):
@@ -308,7 +320,7 @@ def final_check_review(engine, runtime):
     try: work.source_git(run['workspace_mapping']['source'], 'merge-base', '--is-ancestor', current_manifest['target_tip'], manifest['feature_tip'])
     except ValueError: blocker = 'The target branch has new commits. Choose Update branch & recheck to combine them with the saved task before merging.'
     readiness = {'version': 1, 'manifest': current_manifest, 'candidate': current, 'checks': checks, 'reviews': reviews,
-                 'review': overall, 'worker_model': worker, 'reviewer_model': reviewer, 'integration_blocker': blocker}
+                 'review': overall, 'worker_model': worker, 'reviewer_model': overall.get('reviewer_model',recovery.model(task)), 'integration_blocker': blocker}
     readiness['id'] = _hash(readiness)
     return {'decision': 'APPROVE', 'readiness': readiness}
 
@@ -326,6 +338,8 @@ def validate(readiness, task):
         raise ValueError('Final chunk coverage is incomplete')
     for review in reviews:
         disagreement.decision(review)
+        if review.get('reviewer_model') and evidence.model_identity(review['reviewer_model'])==evidence.model_identity(saved['worker_model']):
+            raise ValueError('Final chunk reviewer is not independent')
     overall = saved['review']
     disagreement.decision(overall)
     if overall.get('manifest_id') != manifest['id'] or overall.get('decision') != 'APPROVE' or overall.get('chunk_ids') != chunks or overall.get('criteria_ids') != criteria:

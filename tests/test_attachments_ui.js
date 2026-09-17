@@ -125,3 +125,48 @@ test('task tab bindings and keyboard navigation leave project manager tabs indep
   assert.deepEqual(selected, ['changes']);
   assert.equal(taskTabs[1].focused, true);
 });
+
+test('attachment-only creation sends captured draft settings with the files', async () => {
+  const f = fixture([attachment('screenshot')]), calls = [];
+  Object.assign(f.state, {task: null, project: {path: '/fixture'}, selection: 1,
+    config: {}, preferences: {}, pendingMessages: new Map(), pendingSends: new Set(), sendErrors: new Map()});
+  f.input.value = ''; f.input.focus = () => {};
+  const settings = {expected_revision: 2, expected_parent_revision: 3, overrides: {'keep_up_to_date': true}};
+  Object.assign(f.c, {sendingHere: () => false, submissionAvailability: () => ({allowed: true}),
+    canTakeOver: () => false, branchUI: {interceptSubmit: async () => false},
+    setupDraft: async () => ({values: {execution: {mode: 'remote'}}}),
+    capturedDraftSetup: async repository => {assert.equal(repository, '/fixture'); return {settings};},
+    beginMessageSend() {}, loadTasks: async () => {}, selectTask: async () => {}, startTask: async () => true,
+    renderHome() {}, renderChat() {},
+    api: async (path, body) => {calls.push({path, body}); return {id: 'created'};}});
+  vm.runInContext(source.slice(source.indexOf('async function dispatchChat()'), source.indexOf('async function steerTask(')), f.c);
+  await f.c.dispatchChat();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, '/tasks');
+  assert.equal(calls[0].body.prompt, '');
+  assert.deepEqual(calls[0].body.settings, settings);
+  assert.deepEqual(Array.from(calls[0].body.attachments, a => a.id), ['screenshot']);
+  assert.equal(f.state.composerAttachments.length, 0);
+});
+
+test('choosing a project while sending carries attachments without replacing its saved files', async () => {
+  const f = fixture([attachment('unassigned')]);
+  f.state.task = null;
+  f.input.value = 'Inspect this file';
+  f.c.saveDraft();
+  let afterOpen;
+  Object.assign(f.c, {sendingHere: () => false, submissionAvailability: () => ({allowed: true}),
+    canTakeOver: () => false, branchUI: {interceptSubmit: async () => false, restoreDraft() {}},
+    openProject: callback => {afterOpen = callback;}});
+  vm.runInContext(source.slice(source.indexOf('async function dispatchChat()'), source.indexOf('async function steerTask(')), f.c);
+  await f.c.dispatchChat();
+  f.state.draftAttachments.set('/chosen', [attachment('saved-project-file')]);
+  f.state.project = {path: '/chosen'};
+  f.c.restoreDraft();
+  afterOpen();
+  assert.equal(f.input.value, 'Inspect this file');
+  assert.deepEqual(Array.from(f.state.composerAttachments, a => a.id), ['saved-project-file', 'unassigned']);
+  assert.equal(f.state.draftAttachments.has('new'), false);
+  f.c.restoreDraft();
+  assert.deepEqual(Array.from(f.state.composerAttachments, a => a.id), ['saved-project-file', 'unassigned']);
+});

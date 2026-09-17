@@ -56,6 +56,9 @@ def control(controller, task_id, values):
             receipt = {'authorization_id':run['authorization_ref'], 'plan_digest':digest(run['plan']),
                        'mode':'operator_development', 'spending':'unchanged', 'source':task['source']}
             task.setdefault('operator_development_history',[]).append(receipt)
+            if task.get('settings_snapshot'):
+                from .task_settings import sync_saved
+                sync_saved(task)
             engine.event(task,'operator_direction','Operator development mode enabled',receipt)
             return task
         from .development import enabled
@@ -221,6 +224,9 @@ def amend(controller, task_id, values):
         if run.get('development_authorization'):
             run['development_authorization']['authorization_ref']=auth['id']
             run['development_authorization']['plan_digest']=digest(contract['plan'])
+        if task.get('settings_snapshot'):
+            from .task_settings import sync_saved
+            sync_saved(task)
         engine.event(task,'operator_revision','Approved '+('reviewer model replacement' if action=='reviewer' else 'worker model replacement' if action=='model' else 'verification requirements' if action=='checks' else 'current-item revision'),
                      {'action':action,'item_id':item['id'],'model':task['providers']['reviewer' if action=='reviewer' else 'worker']['model'],'authorization_ref':auth['id']})
         if values.get('resume') is False:

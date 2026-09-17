@@ -522,16 +522,17 @@ function renderComposer() {
   branchUI?.sync();
   renderComposerAttachments();
   const task=state.task, busy=task&&taskBusy(task);
-  const assistance=CheapOSGuide.coordinatorStatus(task||{execution:state.preferences.execution});
-  $('#execution-choice').textContent=`Coordinator ${assistance.label} · Work setup`;
+  const draftSetup=setupDrafts.get(state.project?.path)?.values;
+  const assistance=CheapOSGuide.coordinatorStatus(task||{execution:draftSetup?.execution||state.preferences.execution});
+  $('#execution-choice').textContent=`Coordinator ${assistance.label} · Chat setup`;
   $('#execution-choice').title=`Coordinator assistance: ${assistance.label} ${task?'for this chat':'for new chats'}. Open execution settings.`;
   renderConnectionNotice();
   $('#composer-permissions').hidden=!(task&&state.taskPermissions?.id===task.id&&(state.taskPermissions.commands.length||state.taskPermissions.project_grants?.length));
   $('#composer-permissions').textContent=state.taskPermissions?.project_grants?.length?'Tests allowed this session':'Commands allowed this session';
   $('#composer-permissions').title=state.taskPermissions?.project_grants?.length?'This project · until cheapoS restarts':'This chat · until cheapoS restarts';
-  const chosenLimits=workLimits(task,state.preferences.limits),preset=CheapOSGuide.workPreset(chosenLimits);
+  const chosenLimits=workLimits(task,draftSetup?.limits||state.preferences.limits),preset=CheapOSGuide.workPreset(chosenLimits);
   $('#chat-budget').textContent=`${chosenLimits.dollars===0?'Free only':money(chosenLimits.dollars)+' cap'} · ${(task?.execution||state.preferences.execution)?.development_mode?'Development ∞':chosenLimits.uncapped_work?'Uncapped work ∞':`${preset==='custom'?'Custom':preset==='extended'?'Extended':'Standard'} ${chosenLimits.run_minutes??15} min`}`;
-  $('#chat-budget').title=task?'Limits for this chat':'Defaults for new chats';
+  $('#chat-budget').title=task?'Limits for this chat':'Setup for this new chat';
   const pausing=Boolean(task&&(task.status==='stopping'||state.pausingTask===task.id));
   $('#composer-area').hidden=Boolean(task?.demo||task?.archived_at||task?.trashed_at)||state.view!=='chat';
   $('#composer-project span').textContent=task?CheapOSGuide.projectName(task):state.project?CheapOSGuide.projectName({source:state.project.path}):'Open project';
@@ -585,7 +586,8 @@ function renderComposer() {
 function projectMenu(path,anchor) {
   compactMenu(anchor,'Project options',[
     {label:'New chat',run:()=>chooseProject(state.projects.find(p=>p.path===path))},
-    {label:'Project settings…',run:()=>editProject(path)},
+    {label:'Project settings…',run:()=>scopedSettings('project','agents',path)},
+    {label:'Project management…',run:()=>editProject(path)},
     {label:'Project context…',run:()=>CheapOSCarto.settings(api,path)}
   ]);
 }
@@ -1178,6 +1180,8 @@ function renderChanges() {
   if(!files.length){
     const last=task.commits?.at(-1);
     $('#changes-view').innerHTML=last?`<section class="commit-success">${icon('check')}<h2>Committed to your project.</h2><p>${esc(last.message)}</p><p><code>${esc(last.commit.slice(0,8))}</code> on <strong>${esc(last.branch)}</strong></p><p class="muted">Your next edits in this chat will build on this commit.</p><details class="patch-help"><summary>View committed patch (${last.files.length} files)</summary><pre>${esc(last.patch)}</pre></details></section>`:'<div class="empty-state">'+icon('code')+'<h2>No changes yet.</h2><p>File edits will appear here as the worker makes them.</p></div>';
+    $('#changes-view').insertAdjacentHTML('afterbegin',CheapOSIntegration.markup(task));
+    CheapOSIntegration.bind($('#changes-view'),task,null,api,async()=>refresh());
     return;
   }
 
@@ -1190,7 +1194,7 @@ function renderChanges() {
   const gap=r=>`<button class="diff-gap" data-context>${r.count} unchanged lines · Show all context</button>`;
   const line=r=>r.type==='gap'?gap(r):r.type==='hunk'?`<div class="diff-hunk">${esc(r.text)}</div>`:`<div class="diff-line ${r.type}"><span class="line-number">${r.old}</span><span class="line-number">${r.new}</span><span class="diff-sign">${r.type==='add'?'+':r.type==='remove'?'−':' '}</span><span class="source">${esc(r.text)||' '}</span></div>`;
 
-  $('#changes-view').innerHTML=`<div class="view-title"><div><h2>Review the work.</h2><p>${files.length} changed files in the task copy</p></div><div class="button-row"><button class="subtle-button" data-expand>${state.diffExpanded?'Restore view':'Expand view'}</button><a class="subtle-button" href="/api/tasks/${task.id}/patch" download>${icon('file')}Export patch</a>${!CheapOSGuide.canCommit(task)&&task.status==='awaiting_reply'?'<button class="primary-button" id="commit-review">Finish review</button>':''}</div></div>${CheapOSGuide.canCommit(task)?commitDecisionMarkup(task):''}<div class="file-list">${files.map((f,i)=>`<button class="file-item ${i===state.file?'selected':''}" data-file="${i}">${icon('file')}<span>${esc(f.path)}</span><span class="file-status">${f.before?'M':'A'}</span></button>`).join('')}</div><div class="diff-panel"><div class="diff-toolbar"><span>${icon('file')}${esc(file.path)}</span><div class="review-controls"><button class="subtle-button" data-prev-change aria-label="Previous change">↑ Previous</button><button class="subtle-button" data-next-change aria-label="Next change">↓ Next</button><button class="subtle-button" data-wrap aria-pressed="${state.diffWrap!==false}">Wrap lines</button><button class="subtle-button" data-context aria-pressed="${!!state.diffContext}">${state.diffContext?'Hide unchanged':'Show all context'}</button><button class="subtle-button" data-font="-1" aria-label="Smaller code text">A−</button><button class="subtle-button" data-font="1" aria-label="Larger code text">A+</button></div><div class="segmented"><button data-diff="unified" class="${state.diff==='unified'?'selected':''}">Unified</button><button data-diff="split" class="${state.diff==='split'?'selected':''}">Split</button></div></div>${fileBinary?'<p class="modal-description">Binary change. Inspect the exported Git patch.</p>':state.diff==='unified'?`<div class="diff-code" tabindex="0" aria-label="Unified code diff">${rows.map(line).join('')}</div>`:`<div class="split-diff">${['before','after'].map(side=>`<div class="diff-code" tabindex="0" aria-label="${side==='before'?'Original':'Modified'} file"><div class="split-label">${side==='before'?'Before':'After'}</div>${rows.filter(r=>r.type!==(side==='before'?'add':'remove')).map(r=>r.type==='gap'?gap(r):r.type==='hunk'?`<div class="diff-hunk">${esc(r.text)}</div>`:`<div class="diff-line ${r.type}"><span class="line-number">${side==='before'?r.old:r.new}</span><span class="source">${esc(r.text)||' '}</span></div>`).join('')}</div>`).join('')}</div>`}</div><div class="diff-bottom">${icon('shield')}${CheapOSGuide.canCommit(task)?'Approve the reviewed patch above, or keep chatting to request changes.':'The task copy is saved. Verification and review must finish before committing.'}</div><details class="patch-help"><summary>Apply manually instead</summary><p>From your original repository, check the downloaded patch first, then apply it:</p><pre>git apply --check /path/to/cheapos-${task.id.slice(0,8)}.patch\ngit apply /path/to/cheapos-${task.id.slice(0,8)}.patch</pre><p>For large files, the visual comparison shows whole blocks; the exported Git patch preserves the exact change, including file modes and final newlines.</p></details>`;
+  $('#changes-view').innerHTML=`<div class="view-title"><div><h2>Review the work.</h2><p>${files.length} changed files in the task copy</p></div><div class="button-row"><button class="subtle-button" data-expand>${state.diffExpanded?'Restore view':'Expand view'}</button><a class="subtle-button" href="/api/tasks/${task.id}/patch" download>${icon('file')}Export patch</a>${!CheapOSGuide.canCommit(task)&&task.status==='awaiting_reply'?'<button class="primary-button" id="commit-review">Finish review</button>':''}</div></div>${CheapOSGuide.canCommit(task)?commitDecisionMarkup(task):CheapOSIntegration.markup(task)}<div class="file-list">${files.map((f,i)=>`<button class="file-item ${i===state.file?'selected':''}" data-file="${i}">${icon('file')}<span>${esc(f.path)}</span><span class="file-status">${f.before?'M':'A'}</span></button>`).join('')}</div><div class="diff-panel"><div class="diff-toolbar"><span>${icon('file')}${esc(file.path)}</span><div class="review-controls"><button class="subtle-button" data-prev-change aria-label="Previous change">↑ Previous</button><button class="subtle-button" data-next-change aria-label="Next change">↓ Next</button><button class="subtle-button" data-wrap aria-pressed="${state.diffWrap!==false}">Wrap lines</button><button class="subtle-button" data-context aria-pressed="${!!state.diffContext}">${state.diffContext?'Hide unchanged':'Show all context'}</button><button class="subtle-button" data-font="-1" aria-label="Smaller code text">A−</button><button class="subtle-button" data-font="1" aria-label="Larger code text">A+</button></div><div class="segmented"><button data-diff="unified" class="${state.diff==='unified'?'selected':''}">Unified</button><button data-diff="split" class="${state.diff==='split'?'selected':''}">Split</button></div></div>${fileBinary?'<p class="modal-description">Binary change. Inspect the exported Git patch.</p>':state.diff==='unified'?`<div class="diff-code" tabindex="0" aria-label="Unified code diff">${rows.map(line).join('')}</div>`:`<div class="split-diff">${['before','after'].map(side=>`<div class="diff-code" tabindex="0" aria-label="${side==='before'?'Original':'Modified'} file"><div class="split-label">${side==='before'?'Before':'After'}</div>${rows.filter(r=>r.type!==(side==='before'?'add':'remove')).map(r=>r.type==='gap'?gap(r):r.type==='hunk'?`<div class="diff-hunk">${esc(r.text)}</div>`:`<div class="diff-line ${r.type}"><span class="line-number">${side==='before'?r.old:r.new}</span><span class="source">${esc(r.text)||' '}</span></div>`).join('')}</div>`).join('')}</div>`}</div><div class="diff-bottom">${icon('shield')}${CheapOSGuide.canCommit(task)?'Approve the reviewed patch above, or keep chatting to request changes.':'The task copy is saved. Verification and review must finish before committing.'}</div><details class="patch-help"><summary>Apply manually instead</summary><p>From your original repository, check the downloaded patch first, then apply it:</p><pre>git apply --check /path/to/cheapos-${task.id.slice(0,8)}.patch\ngit apply /path/to/cheapos-${task.id.slice(0,8)}.patch</pre><p>For large files, the visual comparison shows whole blocks; the exported Git patch preserves the exact change, including file modes and final newlines.</p></details>`;
 
   view.querySelector('[data-expand]').onclick=()=>{state.diffExpanded=!state.diffExpanded;renderChanges()};
   view.querySelector('[data-wrap]').onclick=()=>{state.diffWrap=state.diffWrap===false;renderChanges()};
@@ -1243,11 +1247,10 @@ function commitDecisionMarkup(task) {
   if(!current){ensureCommitPreview(task);return '<section class="chat-result"><div><strong>Checks and review are complete.</strong><p>Preparing your final diff and commit message…</p></div></section>'}
   if(current.loading)return '<section class="chat-result"><div><strong>Checks and review are complete.</strong><p>Preparing your final diff and commit message…</p></div></section>';
   if(current.error){
-    const conflict=current.code==='project_conflict';
-    return `<section class="chat-result"><div><strong>${conflict?'Let’s combine this with your current project.':'Your changes are saved.'}</strong><p>${esc(current.error)}</p>${conflict?`<p class="small muted">Files in this patch: ${(current.files||[]).map(esc).join(', ')}. I’ll preserve the previous task copy, combine the versions here, and send the result through checks and review before you approve a commit.</p>`:''}<div class="button-row">${conflict?'<button class="primary-button" data-commit-action="reconcile">Reconcile in this chat</button>':''}<button class="${conflict?'subtle-button':'primary-button'}" data-commit-action="refresh">${conflict?'Recheck project':'Refresh commit preview'}</button><button class="subtle-button" data-commit-action="change">Keep chatting</button>${task.commit_pending?'':'<button class="subtle-button" data-commit-action="defer">Decline</button>'}</div></div></section>`;
+    return CheapOSIntegration.markup(task,current.integration_readiness)+`<section class="chat-result"><div><p>${esc(current.error)}</p><button class="subtle-button" data-commit-action="refresh">Recheck project</button><button class="subtle-button" data-commit-action="change">Keep chatting</button></div></section>`;
   }
   const p=current.preview;
-  return `<section class="commit-decision" aria-label="Your decision"><h3>${p.retry?'Finish your approved commit.':'Ready for your approval.'}</h3><p class="muted">${esc(p.review)} · checks passed. ${p.retry?'Finish the saved attempt before starting more work.':'You can approve this patch, ask for changes, or keep chatting.'}</p><dl class="commit-target"><div><dt>Project</dt><dd>${esc(p.source)}</dd></div><div><dt>Commit to</dt><dd>${esc(p.branch)} <span class="muted">at ${esc(p.head.slice(0,8))}</span></dd></div></dl><details class="commit-patch" data-event="commit-patch-${esc(task.patch_digest)}"><summary>Exact Git patch · ${p.files.length} file${p.files.length===1?'':'s'}</summary>${renderPatchPreview(p.patch)}</details><form id="commit-form"><label>Commit message<textarea name="message" rows="2" maxlength="2000" required ${p.retry?'readonly':''}>${esc(current.message)}</textarea></label><p class="form-error" role="alert">${esc(current.submitError||'')}</p><div class="button-row"><button type="submit" class="primary-button" ${current.submitting?'disabled':''}>${current.submitting?'Committing…':p.retry?'Finish commit':'Approve & commit'}</button>${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="change" ${current.submitting?'disabled':''}>Request changes</button>`}${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="defer" ${current.submitting?'disabled':''}>Decline</button>`}</div><p class="small muted">${p.retry?'Your approved commit was interrupted. Finish the saved attempt to continue chatting.':'Approval applies this reviewed patch and creates a local commit. Declining keeps your edits saved.'} Pushing is separate.</p></form></section>`;
+  return CheapOSIntegration.markup(task)+`<section class="commit-decision" aria-label="Your decision"><h3>${p.retry?'Finish your approved commit.':'Ready for your approval.'}</h3><p class="muted">${esc(p.review)} · checks passed. ${p.retry?'Finish the saved attempt before starting more work.':'You can approve this patch, ask for changes, or keep chatting.'}</p><dl class="commit-target"><div><dt>Project</dt><dd>${esc(p.source)}</dd></div><div><dt>Commit to</dt><dd>${esc(p.branch)} <span class="muted">at ${esc(p.head.slice(0,8))}</span></dd></div></dl><details class="commit-patch" data-event="commit-patch-${esc(task.patch_digest)}"><summary>Exact Git patch · ${p.files.length} file${p.files.length===1?'':'s'}</summary>${renderPatchPreview(p.patch)}</details><form id="commit-form"><label>Commit message<textarea name="message" rows="2" maxlength="2000" required ${p.retry?'readonly':''}>${esc(current.message)}</textarea></label><p class="form-error" role="alert">${esc(current.submitError||'')}</p><div class="button-row"><button type="submit" class="primary-button" ${current.submitting?'disabled':''}>${current.submitting?'Committing…':p.retry?'Finish commit':'Approve & commit'}</button>${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="change" ${current.submitting?'disabled':''}>Request changes</button>`}${p.retry?'':`<button type="button" class="subtle-button" data-commit-action="defer" ${current.submitting?'disabled':''}>Decline</button>`}</div><p class="small muted">${p.retry?'Your approved commit was interrupted. Finish the saved attempt to continue chatting.':'Approval applies this reviewed patch and creates a local commit. Declining keeps your edits saved.'} Pushing is separate.</p></form></section>`;
 }
 async function ensureCommitPreview(task,force=false) {
   const key=previewKey(task),existing=commitPreviews.get(task.id);
@@ -1256,7 +1259,7 @@ async function ensureCommitPreview(task,force=false) {
   try {
     const p=await api('/tasks/'+task.id+'/commit-preview',{});
     entry.preview=p;entry.message=entry.message??p.message;
-  } catch(e){entry.error=e.message;entry.code=e.code;entry.files=e.files}
+  } catch(e){entry.error=e.message;entry.code=e.code;entry.files=e.files;try{entry.integration_readiness=await api('/tasks/'+task.id+'/integration-readiness')}catch(detail){entry.error+=' '+detail.message}}
   finally {entry.loading=false;if(state.task?.id===task.id&&previewKey(state.task)===key&&commitPreviews.get(task.id)===entry)renderTask()}
 }
 function requestChanges() {
@@ -1264,22 +1267,13 @@ function requestChanges() {
 }
 function bindCommitDecision(task) {
   if(task.archived_at||task.trashed_at)return;
+  const integrationState=commitPreviews.get(task.id)?.integration_readiness;
+  CheapOSIntegration.bind($('#changes-view'),task,integrationState,api,async()=>{commitPreviews.delete(task.id);await refresh();},()=>setView('chat'));
   $$('[data-commit-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.commitAction;
     if(action==='change'){requestChanges();return}
     if(action==='refresh'){b.disabled=true;b.textContent='Checking project…';try{await ensureCommitPreview(task,true)}finally{b.disabled=false}return}
     b.disabled=true;
-    if(action==='reconcile'){
-      b.textContent='Combining saved work…';
-      try{
-        const updated=await api('/tasks/'+task.id+'/reconcile',{patch_digest:task.patch_digest});
-        commitPreviews.delete(task.id);
-        if(state.task?.id===task.id){state.task=updated;renderTask()}
-        if(updated.status==='paused')await api('/tasks/'+task.id+'/start',{});
-        await refresh();setView('chat');
-      }catch(e){toast(e.message);b.disabled=false;b.textContent='Reconcile in this chat';await refresh()}
-      return;
-    }
     try {
       const updated=await api('/tasks/'+task.id+'/commit-decision',{decision:action==='defer'?'defer':'review',patch_digest:task.patch_digest});
       commitPreviews.delete(task.id);
@@ -1443,245 +1437,32 @@ async function operatorRecovery(task){
 }
 function developmentSettings(saved){return `<section class="execution-notice"><h3>Operator development mode</h3><label class="checkbox-field"><input type="checkbox" name="development_mode" ${saved.development_mode===true?'checked':''}><span>Keep working until I stop it</span></label><p>Off by default. Removes automatic cumulative work, turn and recovery-attempt caps for new tasks. Usage and failures remain measured. Spending authorization, permissions, independent review, per-request output limits and command safety timeouts still apply. You can pause at any time. No model or paid fallback is authorized by this setting.</p></section>`;}
 function operatorContinuationMarkup(task){const c=task.operator_continue;if(!c||c.status==='running'||(c.status==='interrupting'&&!['running','reviewing','verifying','queued','starting'].includes(task.status)))return '';const title={interrupting:'Correction received · stopping the previous approach',needs_consent:'Correction saved · permission required',blocked:'Correction saved · continuation blocked'}[c.status]||'Correction saved';return `<section class="execution-notice" role="status"><strong>${title}</strong><p>${esc(c.reason||'Your instruction remains attached to this task.')}</p>${c.status==='needs_consent'?'<button class="outline-button" data-chat-action="resume">Review required permission</button>':''}</section>`;}
-function executionPreferences(initialTab='execution') {
-  const saved=state.preferences.execution||{},local=state.config.worker?.base_url?.includes(':11434')?state.config.worker.model:'';
-  const limits=workLimits(state.task,state.preferences.limits);
-  const d=dialog(`<form class="execution-settings-form">
-    ${modalHeader('SETTINGS & EXECUTION','Work Setup & Execution Preferences')}
-    <p class="modal-description">Configure model roles, execution environments, coordinator safety, and spending limits.</p>
-    <div class="settings-tabs" role="tablist">
-      <button type="button" class="settings-tab-btn ${initialTab==='execution'?'active':''}" data-tab="execution" role="tab" aria-selected="${initialTab==='execution'}">
-        <span>🎯 Execution &amp; Roles</span>
-      </button>
-      <button type="button" class="settings-tab-btn ${initialTab==='safety'?'active':''}" data-tab="safety" role="tab" aria-selected="${initialTab==='safety'}">
-        <span>🛡️ Coordinator &amp; Safety</span>
-      </button>
-      <button type="button" class="settings-tab-btn ${initialTab==='limits'?'active':''}" data-tab="limits" role="tab" aria-selected="${initialTab==='limits'}">
-        <span>💰 Spending &amp; Limits</span>
-      </button>
-    </div>
-
-    <!-- TAB 1: EXECUTION & ROLES -->
-    <div class="settings-tab-panel" data-panel="execution" ${initialTab==='execution'?'':'hidden'}>
-      ${state.task?`<p class="execution-notice">This chat keeps <strong>${esc(executionLabel(state.task.execution?.mode))}</strong> and its saved models. Start a new chat to use a different setup.</p>`:''}
-      <div class="execution-options">
-        ${[
-          ['delegate','Delegate heavy work','Short local chats. Free remote models inspect files, implement changes, and review. Your local model goes idle after handoff.'],
-          ['local','All local','Work and review on your own hardware. No remote model requests.'],
-          ['remote','All remote','A responding free gateway model handles chat and work; a different free model reviews.'],
-          ['manual','Manual model pair','Use the worker and reviewer selected in Models, including paid models when your spending cap allows.']
-        ].map(([value,title,description])=>`<label class="execution-option"><input type="radio" name="mode" value="${value}" ${(saved.mode||'manual')===value?'checked':''}><span><strong>${title}</strong><small>${description}</small></span></label>`).join('')}
-      </div>
-
-      <div id="execution-local">
-        <label class="full-field">Installed Ollama model
-          <input name="local_model" value="${esc(saved.local_model||local)}" placeholder="Your installed model ID" autocomplete="off">
-          <small>Used for short chat in Delegate mode, and implementation in All local.</small>
-        </label>
-        <div class="field-grid">
-          <label class="full-field" id="execution-reviewer">Local reviewer model · optional
-            <input name="local_reviewer" value="${esc(saved.local_reviewer||'')}" placeholder="Use the same local model" autocomplete="off">
-          </label>
-          <label class="full-field">Local planner model · optional
-            <input name="local_planner" value="${esc(saved.local_planner||'')}" placeholder="Use the local reviewer" autocomplete="off">
-          </label>
-        </div>
-      </div>
-
-      <div class="roles-section">
-        <div class="roles-header">
-          <h4>Agent Roles</h4>
-          <span id="roles-origin" class="badge"></span>
-        </div>
-        <p class="roles-subtitle">Select an available agent or enter an ID manually.</p>
-        <div class="roles-grid">
-          <div class="role-card">
-            <div class="role-card-header">
-              <span class="role-card-title">🎯 Planner</span>
-              <span class="role-card-hint">e.g. gpt-4o, claude-3-5-sonnet</span>
-            </div>
-            <input name="planner" list="available-agents-list" value="${esc(saved.planner||'')}" placeholder="e.g. gpt-4o, claude-3-5-sonnet" autocomplete="off">
-          </div>
-          <div class="role-card">
-            <div class="role-card-header">
-              <span class="role-card-title">🛠️ Worker</span>
-              <span class="role-card-hint">e.g. qwen-2.5-coder, deepseek-v3</span>
-            </div>
-            <input name="worker" list="available-agents-list" value="${esc(saved.worker||'')}" placeholder="e.g. qwen-2.5-coder, deepseek-v3" autocomplete="off">
-          </div>
-          <div class="role-card">
-            <div class="role-card-header">
-              <span class="role-card-title">🔍 Reviewer</span>
-              <span class="role-card-hint">must differ from Worker</span>
-            </div>
-            <input name="reviewer" list="available-agents-list" value="${esc(saved.reviewer||'')}" placeholder="must differ from Worker" autocomplete="off">
-          </div>
-        </div>
-        <datalist id="available-agents-list"></datalist>
-        <p id="role-error" class="form-error" role="alert"></p>
-      </div>
-
-      <p id="execution-remote" class="execution-notice">Uses providers you enabled in the configured gateway. Project context is sent when work is handed off. cheapoS checks up to four free candidates per role without project data. A worker handles chat and edits; a different reviewer is selected at a checkpoint. Failed models cool down; up to two free-model handoffs per request continue saved work automatically. Saved edits wait if review is unavailable. No automatic paid or local fallback.</p>
-    </div>
-
-    <!-- TAB 2: COORDINATOR & SAFETY -->
-    <div class="settings-tab-panel" data-panel="safety" ${initialTab==='safety'?'':'hidden'}>
-      ${coordinatorTaskNotice(state.task)}
-      ${coordinatorSettings(saved,state.readiness?.paths?.local?.models)}
-      ${developmentSettings(saved)}
-    </div>
-
-    <!-- TAB 3: SPENDING & LIMITS -->
-    <div class="settings-tab-panel" data-panel="limits" ${initialTab==='limits'?'':'hidden'}>
-      <p class="small muted">${state.task?'Configure limits for this chat or save new defaults.':'Choose a default work allowance or explicitly remove work caps for new chats.'}</p>
-      ${limitFields(limits)}
-      <p class="small muted">Free only uses configured prices; it is not a provider billing guarantee.</p>
-      <p class="small muted">${state.task?'Usage is cumulative across this chat. Saving does not resume it.':'These defaults apply when you send the first message in a new chat.'}</p>
-    </div>
-
-    <p class="small muted">Free routing uses advertised prices. Check your gateway’s fallback and billing settings. Automatic chats can switch between free models after failures. Manual and local choices stay fixed. Saving does not start inference or download anything.</p>
-    <p class="form-error" role="alert"></p>
-    <div class="modal-footer">
-      <span>Applies to new chats. Defaults stay saved.</span>
-      <button class="primary-button" type="submit">Save settings</button>
-    </div>
-  </form>`,'execution-modal');
-  const form=$('form',d);
-  const layout=()=>{
-    const mode=new FormData(form).get('mode');
-    $('#execution-local',d).hidden=!['local','delegate'].includes(mode);
-    $('#execution-reviewer',d).hidden=mode!=='local';
-    $('#execution-remote',d).hidden=!['remote','delegate'].includes(mode);
-    $('[name="local_model"]',d).required=['local','delegate'].includes(mode);
-  };
-  $$('[name="mode"]',d).forEach(input=>input.onchange=layout);
-  layout();
-  bindLimitFields(form);
-
-  $$('.settings-tab-btn',d).forEach(btn=>{
-    btn.onclick=()=>{
-      const tab=btn.dataset.tab;
-      $$('.settings-tab-btn',d).forEach(b=>{
-        const active=b===btn;
-        b.classList.toggle('active',active);
-        b.setAttribute('aria-selected',String(active));
-      });
-      $$('.settings-tab-panel',d).forEach(p=>{
-        p.hidden=p.dataset.panel!==tab;
-      });
-    };
-  });
-
-  (async()=>{
-    const project=state.task?.source;
-    try {
-      const effective=await api('/role-mappings/effective' + (project ? '?project=' + encodeURIComponent(project) : ''));
-      if(d.isConnected){
-        if(!$('[name="planner"]',d).value)$('[name="planner"]',d).value=effective.mapping?.planner||'';
-        if(!$('[name="worker"]',d).value)$('[name="worker"]',d).value=effective.mapping?.worker||'';
-        if(!$('[name="reviewer"]',d).value)$('[name="reviewer"]',d).value=effective.mapping?.reviewer||'';
-        const origin=$('#roles-origin',d);
-        if(origin)origin.textContent=effective.source==='user'?'User-selected':'Default';
-      }
-    }catch{}
-    try{
-      if(!state.gatewayModels?.length){
-        const catalog=await api('/gateway/models');
-        state.gatewayModels=catalog.models||[];
-        state.catalogRevision=catalog.revision;
-      }
-    }catch{}
-    if(d.isConnected){
-      const dl=$('#available-agents-list',d);
-      if(dl){
-        const seen=new Set();
-        const addOpt=(val,lbl)=>{
-          if(!val||seen.has(val))return;
-          seen.add(val);
-          const opt=document.createElement('option');
-          opt.value=val;
-          if(lbl&&lbl!==val)opt.label=lbl;
-          dl.appendChild(opt);
-        };
-        (state.readiness?.paths?.local?.models||[]).forEach(m=>addOpt(m,m+' (local)'));
-        (state.gatewayModels||[]).forEach(m=>addOpt(m.id,m.label||m.name||m.id));
-      }
-    }
-  })();
-
-  $('[data-coordinator-refresh]',d).onclick=async()=>{
-    const status=$('[data-coordinator-status]',d);
-    status.textContent='Checking installed local models…';
-    try{
-      const readiness=await api('/readiness?refresh=1');
-      if(!d.isConnected)return;
-      const models=readiness.paths?.local?.models,select=$('[name="coordinator_model"]',d),selected=select.value;
-      if(!Array.isArray(models)){
-        status.textContent='Local inspection is pending or unavailable. Refresh again later; other work is unaffected.';
-        return;
-      }
-      for(const name of models)if(![...select.options].some(o=>o.value===name))select.add(new Option(name,name));
-      select.value=selected;
-      status.textContent=models.length?'Installed eligible local models refreshed. Saved choice is preserved.':'No eligible local models found. Assistance will be skipped if unavailable.';
-    }catch{
-      if(d.isConnected)status.textContent='Could not check local models. Other work remains usable.';
-    }
-  };
-
-  form.onsubmit=e=>{
-    e.preventDefault();
-    const f=new FormData(form);
-    const worker=(f.get('worker')||'').trim(),planner=(f.get('planner')||'').trim(),reviewer=(f.get('reviewer')||'').trim();
-    if(worker&&(worker===planner||worker===reviewer)){
-      $('#role-error',d).textContent='Worker cannot be the same as planner or reviewer.';
-      $$('.settings-tab-btn',d).forEach(b=>{
-        const active=b.dataset.tab==='execution';
-        b.classList.toggle('active',active);
-        b.setAttribute('aria-selected',String(active));
-      });
-      $$('.settings-tab-panel',d).forEach(p=>{p.hidden=p.dataset.panel!=='execution'});
-      return;
-    }
-    formAction(form,async()=>{
-      const limitsData=readLimits(f);
-      const executionData={
-        execution:{
-          ...saved,
-          ...Object.fromEntries(['mode','local_model','local_reviewer','local_planner','coordinator_model'].map(k=>[k,String(f.get(k)||'')])),
-          coordinator_assistance:f.get('coordinator_assistance')==='on',
-          development_mode:f.get('development_mode')==='on'
-        },
-        limits:limitsData
-      };
-      state.preferences=await api('/preferences',executionData);
-      if(state.task){
-        try{
-          state.task=await api('/tasks/'+state.task.id+'/limits',{limits:limitsData});
-        }catch{}
-      }
-      const roles={planner:planner||null,worker:worker||null,reviewer:reviewer||null};
-      const payload={};
-      if(state.task?.source){
-        payload.projects={[state.task.source]:roles};
-      }else{
-        payload.defaults=roles;
-      }
-      await api('/role-mappings',payload);
-      d.close();
-      renderComposer();
-      if(state.task){
-        renderInspector();
-        renderChat();
-      }
-      toast(state.task?'Settings and limits saved. Defaults updated for new chats.':'Settings and defaults saved.');
-    });
-  };
+const setupDrafts=new Map();
+async function setupDraft(repository){
+ let draft=setupDrafts.get(repository);if(draft)return draft;
+ const record=await api('/projects/settings?project='+encodeURIComponent(repository));
+ draft={record,overrides:{},values:record.values||record.resolved};setupDrafts.set(repository,draft);return draft;
 }
-function chatLimits({defaults=false}={}) {
-  const task=defaults?null:state.task,limits=workLimits(task,state.preferences.limits);
-  const d=dialog(`<form>${modalHeader('SPENDING & LIMITS',task?'Limits for this chat':'Defaults for new chats')}<p class="modal-description">Choose a work allowance or explicitly remove work caps. Your spending cap and model placement stay separate.</p>${limitFields(limits)}<p class="small muted">Free only uses configured prices; it is not a provider billing guarantee.</p>${task?'<button type="button" class="text-link" data-new-defaults>Edit defaults for new chats</button>':''}<p class="small muted">${task?'Usage is cumulative across this chat. Saving does not resume it.':'These defaults apply when you send the first message in a new chat.'}</p><p class="form-error" role="alert"></p><div class="modal-footer"><span>Cost estimates use your configured prices.</span><button class="primary-button" type="submit">Save limits</button></div></form>`);
-  const form=$('form',d);bindLimitFields(form);if($('[data-new-defaults]',d))$('[data-new-defaults]',d).onclick=()=>{d.close();chatLimits({defaults:true})};if(task&&taskBusy(task)){ $('[type="submit"]',form).disabled=true;$('.form-error',form).textContent='Pause this chat before changing its limits. New-chat defaults can be edited separately.';}form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const limits=readLimits(new FormData(form));if(task){state.task=await api('/tasks/'+task.id+'/limits',{limits})}else state.preferences=await api('/preferences',{limits});d.close();renderComposer();if(state.task){renderInspector();renderChat();}})};
+async function capturedDraftSetup(repository){
+ const draft=await setupDraft(repository);
+ return {settings:{overrides:draft.overrides,expected_revision:draft.record.revision,expected_parent_revision:draft.record.parent_revision},keep_up_to_date:draft.values.keep_up_to_date===true};
 }
+function appearanceSettings(){
+ const d=dialog(`${modalHeader('THIS BROWSER','Appearance')}<p>Layout and display choices affect only this browser.</p><button type="button" data-demo>Show Try a sample task</button><p>Drag panel boundaries to resize or hide panels. Use the top panel buttons to restore them. Diff wrapping and text size are available in Changes.</p>`);
+ $('[data-demo]',d).onclick=()=>{localStorage.removeItem('cheapos-demo-hidden');$('#demo-row')?.classList.remove('hidden');toast('Sample task restored.');};
+}
+async function scopedSettings(scope,section='agents',project){
+ const capturedTask=state.task,repository=project||state.project?.path||capturedTask?.source;
+ const options={api,scope:scope||(capturedTask?'task':'draft'),task:capturedTask?{id:capturedTask.id,title:capturedTask.title||capturedTask.prompt}:null,project:repository,section,models:state.gatewayModels||[],connectionsList:state.gateway.connections||[],
+ connections:()=>openConnections(),appearance:appearanceSettings,usage:()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader}),
+ permissions:id=>{if(id&&state.task?.id!==id)selectTask(id);else setView('activity');},pause:id=>api('/tasks/'+id+'/stop',{}),onSaved:async()=>{await refreshContext();if(state.task?.id===capturedTask?.id)await refresh();}};
+ try{if(options.scope==='draft'){if(!repository){openProject(()=>scopedSettings('draft',section));return;}const draft=await setupDraft(repository);options.draft=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>{setupDrafts.set(repository,next);renderComposer();},()=>api('/projects/settings?project='+encodeURIComponent(repository)));}
+ CheapOSSettings.open(options);}catch(error){toast(error.message);}
+}
+function executionPreferences(initialTab='execution'){return scopedSettings(undefined,initialTab==='limits'?'spending':'agents');}
+
+function chatLimits({defaults=false}={}){return scopedSettings(defaults?'defaults':undefined,'spending');}
+
 const submissionEntries=new Set();
 async function sendChat(){const owner=draftKey();if(submissionEntries.has(owner))return;submissionEntries.add(owner);try{await dispatchChat();}finally{submissionEntries.delete(owner);}}
 async function dispatchChat() {
@@ -1696,8 +1477,20 @@ async function dispatchChat() {
   const message=$('#chat-input').value.trim();
   const attachments=[...(state.composerAttachments||[])];
   if(!message&&!attachments.length)return;
-  if(!state.project){openProject(()=>{$('#chat-input').value=message;saveDraft();renderComposer()});return;}
-  if((state.preferences.execution?.mode||'manual')==='manual'&&(!state.config.worker||!state.config.reviewer)){openConnections(()=>{$('#chat-input').focus()});return;}
+  if(!state.project){
+    const owner=draftKey();
+    openProject(()=>{
+      if(!state.project)return;
+      const existing=state.composerAttachments||[],ids=new Set(existing.map(a=>a.id));
+      state.composerAttachments=[...existing,...attachments.filter(a=>!ids.has(a.id))];
+      $('#chat-input').value=message;saveDraft();
+      if(draftKey()!==owner)clearOwnedDraft(owner,message,attachments);
+      renderComposer();
+    });
+    return;
+  }
+  let newSetup;try{newSetup=task?null:await setupDraft(state.project.path);}catch(error){toast(error.message);return;}
+  if((task?.execution?.mode||newSetup?.values.execution?.mode||state.preferences.execution?.mode||'manual')==='manual'&&(!state.config.worker||!state.config.reviewer)){openConnections(()=>{$('#chat-input').focus()});return;}
   const key=draftKey(),selection=state.selection,repository=state.project.path;beginMessageSend(key,message);
   try {
     if(task){
@@ -1709,7 +1502,7 @@ async function dispatchChat() {
       void refreshContext();
     }
     else {
-      const created=await api('/tasks',{repository,prompt:message,attachments,conversational:true,limits:state.preferences.limits});
+      const created=await api('/tasks',{repository,prompt:message,attachments,conversational:true,...await capturedDraftSetup(repository)});
       await loadTasks();
       clearOwnedDraft(key,message,attachments);
       if(typeof renderComposerAttachments==='function')renderComposerAttachments();
@@ -1822,20 +1615,7 @@ function sampleDialog() {
   });
 }
 async function openConnections(afterSave, taskContext=null) {
-  const connectionCatalogs=await api("/gateway/catalogs");
-  const c=state.config, gateway=state.gateway||{}, settings=gateway.settings||{base_url:'http://127.0.0.1:20128/v1',auto_start:true,keep_running:true};
-  const isOmni=p=>p.gateway==='omniroute'||!p.base_url||p.base_url.replace('localhost','127.0.0.1').replace(/\/$/,'')===settings.base_url.replace('localhost','127.0.0.1');
-  const providerFields=role=>{
-    const p=c[role]||{}, preset=p.route_error?'blocked':isOmni(p)?(p.connection_id||Object.keys(connectionCatalogs).find(id=>connectionCatalogs[id].settings.base_url===p.base_url)||gateway.selected_connection||'default'):'ollama';
-    return `<fieldset class="provider-fields" data-role="${role}"><legend>${role==='worker'?'Worker · does the work':role==='planner'?'Planner · prepares the plan':'Reviewer · checks the evidence'}</legend>
-      <label class="full-field">Connection<select data-preset="${role}">${[...(gateway.connections||[]).map(g=>[g.id,g.name+(g.enabled?'':' · disabled')]),['ollama','Ollama (local)'],...(preset==='blocked'?[['blocked','Unavailable direct connection · choose a new connection']]:[])].map(([v,n])=>`<option value="${esc(v)}" ${v==='blocked'?'disabled':''} ${v===preset?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
-      <p class="small" data-route-error="${role}" role="status"></p><div data-direct="${role}"><label class="full-field">Local Ollama URL<input type="url" name="${role}_url" value="${esc(p.base_url||settings.base_url)}" readonly required></label></div>
-      <div data-catalog="${role}"><label class="checkbox-field"><input type="checkbox" data-free="${role}" checked><span>Show public-free and included models</span></label><label class="full-field">Catalog models<select data-model-picker="${role}"><option value="">Loading catalog…</option></select></label></div>
-      <label class="full-field">Model ID<input name="${role}_model" type="text" value="${esc(p.model||'')}" placeholder="Choose above or enter an exact model ID" required autocomplete="off"></label>
-      <p class="model-capabilities small" data-capabilities="${role}"></p>
-      <label class="checkbox-field" data-included-label="${role}"><input type="checkbox" data-included="${role}" ${p.access==='included'?'checked':''}><span>Use included access for this exact model<small>Authorize its ID in the gateway list above first.</small></span></label><div class="field-grid" data-prices="${role}">${numberField(role+'_input','Input $ / million tokens',p.input_rate??'',0,10000,'any')}${numberField(role+'_output','Output $ / million tokens',p.output_rate??'',0,10000,'any')}</div>
-      <p class="small muted" data-price-note="${role}">Unknown prices need your input. Verify them with the provider.</p></fieldset>`;
-  };
+  const gateway=state.gateway||{}, settings=gateway.settings||{base_url:'http://127.0.0.1:20128/v1',auto_start:true,keep_running:true};
   const gatewayTypesList = () => state.gateway?.gateway_types || [
     {id:"cliproxyapi",label:"CLIProxyAPI",default_url:"http://127.0.0.1:8317/v1",default_name:"CLIProxyAPI"},
     {id:"omniroute",label:"OmniRoute",default_url:"http://127.0.0.1:20128/v1",default_name:"OmniRoute"},
@@ -1847,7 +1627,7 @@ async function openConnections(afterSave, taskContext=null) {
     {id:"localai",label:"LocalAI",default_url:"http://127.0.0.1:8080/v1",default_name:"LocalAI"},
     {id:"compatible",label:"OpenAI-compatible",default_url:"http://127.0.0.1:8000/v1",default_name:"OpenAI-compatible"}
   ];
-  const d=dialog(`${modalHeader('MODEL CONNECTIONS','Choose where the work runs.')}<button class="outline-button" id="models-execution">Execution: ${esc(executionLabel(state.preferences.execution?.mode))} · Coordinator ${CheapOSGuide.coordinatorStatus({execution:state.preferences.execution}).label} for new chats →</button>${coordinatorTaskNotice(taskContext||state.task)}<p class="modal-description">Remote work can use your enabled gateway connections. Choose OmniRoute, CLIProxyAPI, 9Router, LiteLLM, or a compatible local gateway. Provider sign-in stays in that gateway; local Ollama is also available.</p>${taskContext?`<div class="connection-context"><strong>Checking a stopped task</strong><p>Worker: <b>${esc(taskContext.providers.worker?.model||'not set')}</b><br>Reviewer: <b>${esc(taskContext.providers.reviewer?.model||'not set')}</b><br>Automatic remote chats check another free model after a recoverable failure when you resume. Manual and local chats keep their selected models; choices below apply to new chats.</p></div>`:''}
+  const d=dialog(`${modalHeader('SHARED CONNECTIONS','Gateways & local models')}<button class="outline-button" id="models-execution">Choose agents in scoped setup →</button><p class="modal-description">These connections are shared by chats. Changing connection identity or access can affect saved chats using it. Agent choices belong to Chat setup, Project defaults, or New chat defaults.</p>
     <div class="button-row"><label>Saved connection<select id="saved-gateway">${(gateway.connections||[]).map(g=>`<option value="${esc(g.id)}" ${g.id===gateway.selected_connection?"selected":""}>${esc(g.name)}${g.enabled?"":" · disabled"}</option>`).join("")}</select></label><button class="outline-button" id="add-gateway">Add connection</button></div><p class="small muted">This dropdown selects settings to edit. Automatic mode can use every enabled connection captured when the task starts. Manual choices stay pinned.</p><form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong id="gateway-name">Gateway</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
       <p id="gateway-message" class="small muted"></p><p id="gateway-instance" class="small muted"></p>
       <details class="advanced"><summary id="free-pool-title">Authorized remote model pool</summary><p class="small muted">Refreshes every five minutes, including OpenRouter’s current free models. Failed models cool down for 15–60 minutes. Provider cooldowns follow the gateway’s retry time and do not count as individual model failures. A response or tool check does not prove coding quality.</p><div id="free-model-pool" class="free-model-pool"></div></details>
@@ -1860,9 +1640,7 @@ async function openConnections(afterSave, taskContext=null) {
         <label class="checkbox-field"><input name="auto_start" type="checkbox" ${settings.auto_start?'checked':''}><span>Start installed OmniRoute when cheapoS launches<small>Reuses an existing instance. Does not install or update software.</small></span></label>
         <label class="checkbox-field"><input name="keep_running" type="checkbox" ${settings.keep_running?'checked':''}><span>Keep OmniRoute running when cheapoS closes<small>cheapoS only stops an instance it started in this session.</small></span></label>
         <button class="outline-button gateway-save" type="submit">Save gateway settings</button></details><p class="form-error" role="alert"></p></form>
-    <form id="models-form"><details class="advanced" ${(state.preferences.execution?.mode||'manual')==='manual'?'open':''}><summary>Explicit model choices · Manual mode and remote preferences</summary><div class="provider-grid">${providerFields('worker')}${providerFields('reviewer')}</div><label class="checkbox-field"><input type="checkbox" id="dedicated-planner" ${c.planner?'checked':''}><span>Use a dedicated planner</span></label><p id="planner-fallback" class="small muted"></p><details id="planner-options" ${c.planner?'open':''}><summary>Planner connection and model</summary>${providerFields('planner')}</details>
-      <p class="small muted">Catalog connection and advertised tool support do not guarantee a successful model run. These explicit choices apply in Manual mode. Automatic remote modes select only authorized eligible routes. Access labels do not establish remaining quota or successful inference.</p>
-      </details><p class="form-error" role="alert"></p><div class="modal-footer"><span>Applies to new tasks.<br>Saving makes no inference request.</span><button class="primary-button" type="submit">${taskContext?'Save & prepare new chat':'Save connections'} ${icon('check')}</button></div></form>`,'connections-modal');
+`,'connections-modal');
   $('#saved-gateway',d).onchange=async e=>{try{state.gateway=await api('/gateway/select',{connection_id:e.target.value});await loadGateway();d.close();openConnections(afterSave,taskContext)}catch(error){toast(error.message)}};
   $('#add-gateway',d).onclick=()=>{
     const add=dialog(`<form class="gateway-add-form">${modalHeader('CONNECTION','Add a gateway')}<p class="muted gateway-add-intro">Choose your router, then enter its local API address.</p><label>Gateway type<select name="gateway_type">${gatewayTypesList().map(t=>`<option value="${esc(t.id)}" ${t.id==='cliproxyapi'?'selected':''}>${esc(t.label)}</option>`).join('')}</select></label><label>Connection name<input type="text" name="name" required maxlength="80" value="CLIProxyAPI" autocomplete="off"></label><label>Local API URL<input name="base_url" type="url" required value="http://127.0.0.1:8317/v1" placeholder="http://127.0.0.1:PORT/v1" spellcheck="false" aria-describedby="gateway-url-help"></label><p id="gateway-url-help" class="small muted">Use the address shown by your running router, ending in /v1.</p><p class="small muted">Next, you can add a client key and choose models.</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" class="outline-button" data-close>Cancel</button><button type="submit" class="primary-button">Add connection</button></div></form>`,'gateway-add-modal');
@@ -1881,36 +1659,7 @@ async function openConnections(afterSave, taskContext=null) {
     const form=$('form',add);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form);state.gateway=await api('/gateway/add',{name:String(f.get('name')),gateway_type:String(f.get('gateway_type')),base_url:String(f.get('base_url')),enabled:true});await loadGateway();add.close();d.close();openConnections(afterSave,taskContext)})};
   };
   $('#models-execution',d).onclick=()=>{d.close();executionPreferences()};
-  const field=(role,name)=>$(`[name="${role}_${name}"]`,d);
-  const usingOmni=role=>!['ollama','blocked'].includes($(`[data-preset="${role}"]`,d).value);
-  const roleGateway=role=>connectionCatalogs[$(`[data-preset="${role}"]`,d).value]||state.gateway;
-  const roleModels=role=>roleGateway(role).models||[];
   let includedRevision=settings.connection_revision;
-  const includedSelected=role=>$(`[data-included="${role}"]`,d).checked;
-  function capability(role) {
-    const model=usingOmni(role)?roleModels(role).find(m=>m.id===field(role,'model').value.trim()):null;
-    const included=usingOmni(role)&&includedSelected(role);
-    $(`[data-prices="${role}"]`,d).hidden=included;
-    for(const name of ['input','output'])field(role,name).disabled=included;
-    $(`[data-included-label="${role}"]`,d).hidden=!usingOmni(role);
-    $(`[data-price-note="${role}"]`,d).textContent=included?'Included account access · $0 marginal estimate, not a provider price. Exact ID must be authorized above.':'Unknown prices need your input. Verify them with the provider.';
-    $(`[data-capabilities="${role}"]`,d).textContent=model?`${CheapOSGuide.modelAccess(model)} · `+`${model.tool_calling===true?(model.tool_support_source==='operator'?'Tool support declared by you':'Tool calling advertised'):model.tool_calling===false?'Tool calling not advertised':'Tool support unknown'}${model.context_length?' · '+Intl.NumberFormat().format(model.context_length)+' context':''}${model.free?' · Free variant':''}`:'Use a model that supports tool calling. Availability has not been tested.';
-  }
-  function picker(role) {
-    const select=$(`[data-model-picker="${role}"]`,d), free=$(`[data-free="${role}"]`,d).checked, current=field(role,'model').value.trim();
-    const models=roleModels(role).filter(m=>(!free||m.free||m.access_class==='included')&&!m.id.startsWith('auto/'));
-    select.innerHTML=`<option value="">${models.length?'Choose from '+models.length+' models':'No matching models · refresh or enter an ID'}</option>`+models.map(m=>`<option value="${esc(m.id)}">${esc(m.id)} · ${esc(CheapOSGuide.modelAccess(m))}${m.tool_calling===true?' · tools':m.tool_calling===false?' · no tools advertised':''}</option>`).join('');
-    select.value=models.some(m=>m.id===current)?current:'';
-    capability(role);
-  }
-  function layout(role) {
-    const omni=usingOmni(role);
-    $(`[data-direct="${role}"]`,d).hidden=omni;
-    for(const input of $$('input',$(`[data-direct="${role}"]`,d)))input.disabled=omni;
-    $(`[data-catalog="${role}"]`,d).hidden=!omni;
-    $(`[data-route-error="${role}"]`,d).textContent=$(`[data-preset="${role}"]`,d).value==='blocked'?(c[role]?.route_error||'Select OmniRoute or local Ollama.') : '';
-    picker(role);
-  }
   const gatewayForm=$('#gateway-form',d);
   function updateGateway() {
     if(!d.open)return;
@@ -1919,8 +1668,7 @@ async function openConnections(afterSave, taskContext=null) {
     const gatewayName=gtMatch?.label||g.settings?.gateway_type||"Gateway";
     $("#gateway-name",d).textContent=gatewayName;
     $("#gateway-dashboard",d).textContent="Open "+gatewayName+" ↗";
-    connectionCatalogs[g.selected_connection||$("#saved-gateway",d).value]={...g,models:state.gatewayModels};
-    if(includedRevision!==g.settings?.connection_revision){includedRevision=g.settings?.connection_revision;$('#included-model-ids',d).value=(g.settings?.included_models||[]).join('\n');$('#gateway-tool-models',d).value=(g.settings?.tool_models||[]).join('\n');for(const role of ['worker','reviewer','planner'])$(`[data-included="${role}"]`,d).checked=false;}
+    if(includedRevision!==g.settings?.connection_revision){includedRevision=g.settings?.connection_revision;$('#included-model-ids',d).value=(g.settings?.included_models||[]).join('\n');$('#gateway-tool-models',d).value=(g.settings?.tool_models||[]).join('\n');}
     const badge=$('#gateway-status',d);badge.textContent=({ready:'Catalog connected',checking:'Connecting…',starting:'Starting…',offline:'Offline',auth_required:'Client key needed',not_installed:'Not installed',unavailable:'Unavailable',error:'Startup failed'})[g.status]||'Not checked';badge.dataset.status=g.status||'unchecked';
     $('#gateway-message',d).textContent=g.message||'Connect your local gateway to load its model catalog.';
     $('#gateway-key-status',d).textContent=gatewayKeyStatus(g);
@@ -1934,7 +1682,6 @@ async function openConnections(afterSave, taskContext=null) {
     $('#gateway-dashboard',d).href=g.dashboard_url||'http://127.0.0.1:20128';
     $$('[data-gateway-action]',d).forEach(b=>{b.disabled=Boolean(g.busy);if(b.dataset.gatewayAction==='stop')b.hidden=!g.owned});
     $('button[type="submit"]',gatewayForm).disabled=Boolean(g.busy);
-    for(const role of ['worker','reviewer','planner'])picker(role);
   }
   state.gatewayListener=updateGateway;
   d.addEventListener('close',()=>{if(state.gatewayListener===updateGateway)state.gatewayListener=null});
@@ -1958,58 +1705,8 @@ async function openConnections(afterSave, taskContext=null) {
     state.gateway=await api('/gateway/config',values);$('[name="gateway_key"]',d).value='';$('[name="gateway_remember"]',d).checked=Boolean(state.gateway.key_storage?.saved);
     state.gateway=await api('/gateway/refresh',{});updateGateway();toast('Gateway settings saved. Use Connect / start if it is offline.');
   })};
-  for(const role of ['worker','reviewer','planner']) {
-    layout(role);
-    $(`[data-included="${role}"]`,d).onchange=()=>capability(role);
-    $(`[data-free="${role}"]`,d).onchange=()=>picker(role);
-    $(`[data-model-picker="${role}"]`,d).onchange=e=>{
-      if(!e.target.value)return;
-      const model=roleModels(role).find(m=>m.id===e.target.value);field(role,'model').value=model.id;$(`[data-included="${role}"]`,d).checked=model.access_class==='included';
-      field(role,'input').value=model.input_rate??'';field(role,'output').value=model.output_rate??'';capability(role);
-    };
-    field(role,'model').oninput=()=>{
-      $(`[data-included="${role}"]`,d).checked=false;
-      const model=usingOmni(role)?roleModels(role).find(m=>m.id===field(role,'model').value.trim()):null;
-      for(const price of ['input','output'])field(role,price).value=usingOmni(role)?(model?.[price+'_rate']??''):0;
-      picker(role);
-    };
-    $(`[data-preset="${role}"]`,d).onchange=e=>{
-      const preset=e.target.value, p=c[role]||{};
-      field(role,'url').value=usingOmni(role)?roleGateway(role).settings.base_url:'http://127.0.0.1:11434/v1';
-      field(role,'model').value='';$(`[data-included="${role}"]`,d).checked=false;
-      for(const price of ['input','output'])field(role,price).value=preset==='ollama'?'0':'';
-      if(usingOmni(role)&&p.connection_id===preset){field(role,'model').value=p.model||'';field(role,'input').value=p.input_rate??'';field(role,'output').value=p.output_rate??''}
-      layout(role);
-    };
-  }
-  function plannerChoice() {
-    const dedicated=$('#dedicated-planner',d).checked;
-    $('#planner-options',d).hidden=!dedicated;
-    $('[data-role="planner"]',d).disabled=!dedicated;
-    $('#planner-fallback',d).textContent=dedicated?'Dedicated planning applies to new proposals. Automatic remote placement still requires authorized free or included access.':`Planner follows reviewer: ${field('reviewer','model').value||'choose a reviewer model'}.`;
-  }
-  $('#dedicated-planner',d).onchange=plannerChoice;
-  field('reviewer','model').addEventListener('input',plannerChoice);
-  plannerChoice();
-  const form=$('#models-form',d);
-  form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{
-    const f=new FormData(form),values={};
-    for(const role of ['worker','reviewer','planner']) {
-      if(role==='planner'&&!$('#dedicated-planner',d).checked){values.planner=null;continue}
-      if($(`[data-preset="${role}"]`,d).value==='blocked')throw new Error('Select OmniRoute or local Ollama for each role before saving.');
-      const omni=usingOmni(role);
-      if(omni&&roleGateway(role).status!=='ready')throw new Error('Connect the gateway before saving its model choices.');
-      values[role]={gateway:omni?'omniroute':'openai',base_url:omni?roleGateway(role).settings.base_url:String(f.get(role+'_url')).trim(),model:String(f.get(role+'_model')).trim(),input_rate:Number(f.get(role+'_input')),output_rate:Number(f.get(role+'_output'))};
-      if(omni){values[role].gateway_type=roleGateway(role).settings.gateway_type||'omniroute';values[role].connection_id=$(`[data-preset="${role}"]`,d).value;}
-      if(omni&&includedSelected(role)){
-        if(!CheapOSGuide.includedChoice(values[role].model,roleGateway(role).settings,true))throw new Error('Save included access for this exact model ID first.');
-        values[role].access='included';delete values[role].input_rate;delete values[role].output_rate;
-      }
-    }
-    state.config=await api('/config',values);form.reset();d.close();renderSidebar();if(state.task)renderInspector();else renderHome();toast('Connections saved for new tasks.');if(taskContext){const command=taskContext.check_command.map(arg=>"'"+arg.replaceAll("'","'\"'\"'")+"'").join(' ');newTask((taskContext.requests||[taskContext.prompt]).join('\n\nFollow-up:\n'),{repository:taskContext.source,check_command:command})}else if(typeof afterSave==='function')afterSave();
-  })};
   updateGateway();
-  api('/gateway/refresh',{}).then(g=>{state.gateway=g;updateGateway();return loadGateway()}).catch(e=>toast(e.message));
+  // Opening this surface uses cached metadata; Refresh models is explicit.
 }
 function renderConnectionNotice() {
   const element=$('#connection-notice');if(!element)return;
@@ -2097,8 +1794,8 @@ $('#home-trigger').onclick=()=>openProject();
 $('.brand').onclick=e=>{e.preventDefault();home()};
 $('#new-task').onclick=()=>newTask();
 $('#search-trigger').onclick=openSearch;
-$('#settings-trigger').onclick=()=>openConnections();
-$('#session-settings').onclick=()=>openConnections();
+$('#settings-trigger').onclick=()=>scopedSettings('defaults');
+$('#session-settings').onclick=()=>scopedSettings();
 $('#demo-trigger').onclick=sampleDialog;
 $('#composer-project').onclick=()=>openProject();
 $('#chat-budget').onclick=chatLimits;
@@ -2165,8 +1862,8 @@ if(hideDemo) hideDemo.onclick=()=>{compactMenu(hideDemo,'Demo options',[{label:'
 if(typeof localStorage!=='undefined'&&localStorage.getItem('cheapos-demo-hidden')==='true') $('#demo-row')?.classList.add('hidden');
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
-const branchUI=CheapOSBranchUI.mount({api,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),showChanges:()=>setView('changes'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
-document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else openConnections()}});
+const branchUI=CheapOSBranchUI.mount({api,preparePlanningSettings:capturedDraftSetup,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),showChanges:()=>setView('changes'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else scopedSettings('defaults')}});
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);setInterval(()=>updateLifetimeSavingsBadge(),15000);
 
 $('#rename-task').onclick=()=>renameTask();

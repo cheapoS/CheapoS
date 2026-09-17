@@ -86,6 +86,7 @@ class UploadStorageTests(LocalCase):
         base_task = self.fixture(paid=True)
         content = b"def calculate(): return 100\n"
         record = save_upload(self.engine.store.root, "calc.py", base64.b64encode(content).decode("ascii"))
+        settings = self.engine.settings_store.view(base_task["source"])
 
         task = self.engine.create({
             "prompt": "Inspect the attached calculation module",
@@ -93,10 +94,15 @@ class UploadStorageTests(LocalCase):
             "check_command": "true",
             "conversational": True,
             "attachments": [record],
-        }, demo=True)
+            "settings": {"expected_revision": settings["revision"],
+                         "expected_parent_revision": settings["parent_revision"],
+                         "overrides": {"keep_up_to_date": True}},
+        })
         self.assertEqual(len(task["attachments"]), 1)
         self.assertIn("### Attached Document: calc.py", task["prompt"])
         self.assertIn("def calculate():", task["prompt"])
+        self.assertTrue(task["settings_snapshot"]["values"]["keep_up_to_date"])
+        self.assertTrue(task["integration_policy"]["keep_up_to_date"])
 
         # Followup message with attachment
         img_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"

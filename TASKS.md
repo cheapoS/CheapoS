@@ -10,6 +10,16 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+### Settings and integration recovery — September 17
+
+| ID | Task | Status |
+| --- | --- | --- |
+| [T92](docs/tasks/T92-unified-integration-recovery.md) | Resolve integration conflicts without operator troubleshooting | Done |
+| [T91](docs/tasks/T91-settings-system.md) | Explicit settings scopes and safe chat changes | Done |
+
+Settings usage: [Settings scopes](docs/USER_GUIDE.md#settings-scopes).
+
+
 **Active roadmap:** [Durable milestones for empowering smaller models](docs/ROADMAP.md). Milestone 1 (**Reliable small changes**) is in progress on branch `feature/reliable-small-changes`.
 
 **Next milestone: a continuous agent session that finishes the job.**

@@ -211,6 +211,8 @@ def _select_connections(engine, runtime, role, replace):
         except RoutingPause as error:
             pauses.append(error)
             engine.event(task,'routing','Trying another enabled gateway',{'connection_id':entry['connection_id'], 'gateway':entry['name'], 'role':role, 'reason':str(error)})
+    if len(pauses) == 1:
+        raise pauses[0]
     retry = [p.retry_at for p in pauses if p.retry_at]
     raise RoutingPause('No authorized gateway is ready. Saved work and usage are retained; checking enabled connections again.' if pauses else
                        'The connections authorized for this task are disabled or changed. Restore their saved settings in Models.',

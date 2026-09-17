@@ -12,11 +12,14 @@
   <link rel="stylesheet" href="./branch_ui.css" />
   <script src="./guidance.js" defer></script>
   <script src="./panels.js" defer></script>
+  <script src="./integration.js" defer></script>
   <script src="./branch_ui.js" defer></script>
   <link rel="stylesheet" href="./lifetime_usage.css" />
   <script src="./lifetime_usage.js" defer></script>
   <script src="./preview.js" defer></script>
   <script src="./carto.js" defer></script>
+  <link rel="stylesheet" href="./settings.css" />
+  <script src="./settings.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
@@ -69,7 +72,7 @@
       <button class="settings-trigger" id="demo-trigger"><svg><use href="#i-play"/></svg>Try a sample task</button>
       <button class="task-menu-button hide-btn" id="hide-demo" aria-label="Demo options" aria-haspopup="menu" aria-expanded="false">⋯</button>
     </div>
-    <button class="settings-trigger" id="settings-trigger"><svg><use href="#i-settings"/></svg>Models <span id="connection-indicator">Set up</span></button>
+    <button class="settings-trigger" id="settings-trigger"><svg><use href="#i-settings"/></svg>Settings <span id="connection-indicator">Set up</span></button>
     <button class="settings-trigger" id="restart-button"><svg><use href="#i-arrow"/></svg>Restart</button>
     <div class="profile"><div class="avatar"><svg><use href="#i-code"/></svg></div><div>Local workspace<span>No account required</span></div><span class="version">v0.2</span></div>
    </div>
@@ -88,7 +91,7 @@
      <p class="composer-note" id="composer-note">Edits stay in a separate copy. You review the result.</p>
     </div>
    </main>
-   <aside class="inspector hidden" id="inspector"><div class="panel-resizer right-resizer" role="separator" tabindex="0" aria-label="Resize session details" aria-controls="inspector" aria-orientation="vertical" aria-valuemin="0" title="Drag to resize; drag right to hide. Arrow keys resize; Home hides; End maximizes."></div><div class="inspector-header"><span>SESSION</span><button class="icon-btn" id="session-settings" aria-label="Open model connections"><svg><use href="#i-settings"/></svg></button></div><div class="inspector-scroll" id="session-details"></div><div class="inspector-footer"><span class="status-dot"></span>Make expensive compute the exception.</div></aside>
+   <aside class="inspector hidden" id="inspector"><div class="panel-resizer right-resizer" role="separator" tabindex="0" aria-label="Resize session details" aria-controls="inspector" aria-orientation="vertical" aria-valuemin="0" title="Drag to resize; drag right to hide. Arrow keys resize; Home hides; End maximizes."></div><div class="inspector-header"><span>SESSION</span><button class="icon-btn" id="session-settings" aria-label="Chat setup"><svg><use href="#i-settings"/></svg></button></div><div class="inspector-scroll" id="session-details"></div><div class="inspector-footer"><span class="status-dot"></span>Make expensive compute the exception.</div></aside>
   </div>
  </div>
 </div>

@@ -111,10 +111,11 @@ class DevelopmentTests(unittest.TestCase):
         messages += [{'tool_calls':[{'id':str(n),'name':'read_final_context','result':read}]} for n in range(7)]
         messages += [{'tool_calls':[{'id':'done','name':'final_review_decision','result':result}]}]
         engine=SimpleNamespace(store=SimpleNamespace(save=Mock()),event=Mock(),request=Mock(side_effect=messages),parse_call=lambda c:(c['name'],c['result']))
-        with patch.object(branch_final.review_context,'read',return_value={'path':'a.py','available':True,'content':'saved source'}):
+        with patch.object(branch_final.review_context,'read',return_value={'path':'a.py','available':True,'content':'saved source'}) as read_context:
             reviewed=branch_final._review(engine,runtime,{'id':'m'}, {}, [], [])
         self.assertEqual(reviewed['decision'],'APPROVE')
         self.assertEqual(engine.request.call_count,12)
         self.assertEqual(next(iter(task['branch_run']['final_review_corrections'].values())),4)
         self.assertEqual(next(iter(task['branch_run']['final_context_reads'].values()))['count'],7)
-        self.assertIn('already read',reviewed['context_references'][-1]['guidance'])
+        read_context.assert_called_once()
+        self.assertIn('This exact context is already available',str(engine.request.call_args.args[1]))

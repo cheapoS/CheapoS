@@ -23,6 +23,9 @@ MAX_HANDOFFS = 2
 
 
 def automatic(task, role):
+    selection = task.get("settings_snapshot", {}).get("values", {}).get("roles", {}).get(role, {})
+    if selection.get("strategy") == "only" or (role == "reviewer" and task.get("operator_reviewer_model")):
+        return False
     if role == "worker" and task.get("operator_worker_model") and task["operator_worker_model"] == (task.get("providers", {}).get("worker") or {}).get("model"):
         return False
     return (not task.get("demo") and task.get("execution", {}).get("mode") in {"delegate", "remote"}

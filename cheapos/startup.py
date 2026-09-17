@@ -168,6 +168,11 @@ class StartupManager:
 
     def _candidates(self, saved):
         execution = self.engine.preferences()["execution"]
+        # A fresh free-only work default is not consent for a cloud greeting.
+        # Keep startup's local-first/allow-cloud rule until placement is chosen.
+        settings = getattr(self.engine, 'settings_store', None)
+        if settings and settings.read().get('placement_confirmed') is False:
+            execution = {**execution, 'mode': 'manual'}
         if execution["mode"] == "remote":
             yield from (c for c in self._omni() if not c["local"])
             return
@@ -287,8 +292,7 @@ class StartupManager:
                         selected["worker"] = config
                         if not selected.get("reviewer"):
                             selected["reviewer"] = validate_provider({**config, "key_env":config["key_env"]}, "reviewer")
-                        write_json(self.engine.store.root / "config.json", selected)
-                        self.engine.config = selected
+                        self.engine.remember_provider_defaults(selected)
                     self._attempt(attempt, status="ready", finished_at=timestamp())
                     self._set(status="ready", message="The model answered. Open a project to start.", content=content.strip()[:2000], thinking="", verified_at=timestamp())
                     return

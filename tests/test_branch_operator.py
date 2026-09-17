@@ -42,6 +42,19 @@ class BranchOperatorTests(unittest.TestCase):
         task['branch_run']['authorization_ref']='different'
         self.assertFalse(enabled(task))
 
+    def test_legacy_controls_sync_captured_setup_after_explicit_authority_change(self):
+        import sys
+        self.saved['settings_snapshot']={'revision':1,'values':{}}
+        seen=[]
+        helper=SimpleNamespace(sync_saved=lambda task:seen.append((task['execution'].get('development_mode'),task['branch_run']['authorization_ref'])))
+        with patch.dict(sys.modules,{'cheapos.task_settings':helper}):
+            control(self.controller,'task',{'action':'enable','approved':True})
+            before=self.saved['branch_run']['authorization_ref']
+            with patch('cheapos.branch_workspace.validate_owned'):
+                recover(self.controller,'task',{'action':'revise','approved':True,'revision_token':revision_token(self.saved['branch_run'],self.saved),'instructions':'Refined original scope','resume':False})
+        self.assertEqual(len(seen),2)
+        self.assertTrue(seen[0][0]);self.assertNotEqual(seen[1][1],before)
+
     def test_saved_guidance_reports_consent_and_precise_blocker_without_dispatch(self):
         task=continue_saved(self.controller,'task')
         self.assertEqual(task['operator_continue']['status'],'needs_consent')
@@ -151,7 +164,8 @@ class BranchOperatorTests(unittest.TestCase):
         from cheapos import branch_final
         task=copy.deepcopy(self.saved);task['branch_run']['guidance']=[{'message':'Use the regression evidence and check the actual requirement.'}]
         runtime=SimpleNamespace(task=task,guard=Mock())
-        engine=SimpleNamespace(event=Mock(),request=Mock(side_effect=RuntimeError('fixture stops before inference')))
+        engine=SimpleNamespace(event=Mock(),store=SimpleNamespace(save=Mock()),
+                               request=Mock(side_effect=RuntimeError('fixture stops before inference')))
         with self.assertRaisesRegex(RuntimeError,'fixture stops'):
             branch_final._review(engine,runtime,{'id':'candidate','requirements':[]},{},[],[])
         messages=engine.request.call_args.args[1]

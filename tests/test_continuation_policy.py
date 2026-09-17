@@ -11,6 +11,17 @@ class ContinuationPolicyTests(unittest.TestCase):
         task['pending_approval']={'command':['test']}
         self.assertEqual(decide(task)['action'],'approve_command')
 
+    def test_final_stall_respects_saved_routing_and_authority(self):
+        task={'branch_run':{},'execution':{'mode':'remote'},'route':{'base_url':'gateway'},
+              'providers':{'reviewer':{'model':'reviewer'}}}
+        self.assertEqual(decide(task,'final_review_stall')['action'],'recover_review')
+        task['operator_reviewer_model']='reviewer'
+        self.assertEqual(decide(task,'final_review_stall')['action'],'choose_reviewer')
+        task['pending_approval']={'command':['test']}
+        self.assertEqual(decide(task,'final_review_stall')['action'],'approve_command')
+        task.pop('pending_approval');task['limit_hit']={'key':'dollars'}
+        self.assertEqual(decide(task,'final_review_stall')['action'],'review_limits')
+
     def test_actions_and_idempotent_episode(self):
         for patch, action in [({'pending_approval':{'command':['test']}},'approve_command'),({'environment_setup':{'status':'missing'}},'repair_environment'),({'limit_hit':{'key':'dollars'}},'review_limits'),({'pending_review':{'id':'x'}},'continue_review'),({'error_code':'http_429'},'route_recovery')]:
             task={'prompt':'Fix',**patch};self.assertEqual(decide(task)['action'],action)
