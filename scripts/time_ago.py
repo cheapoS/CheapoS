@@ -43,7 +43,6 @@ def time_ago(target, now=None):
 
     minutes = total_seconds / 60
     hours = total_seconds / 3600
-    days = total_seconds / 86400
 
     if total_seconds < 60:
         return "just now"
@@ -53,12 +52,12 @@ def time_ago(target, now=None):
     if hours < 24:
         n = int(hours)
         return f"{n} hour{'s' if n != 1 else ''} ago"
-    if days < 7:
-        n = int(days)
-        if n == 1:
-            return "yesterday"
-        return f"{n} day{'s' if n != 1 else ''} ago"
-    return target.strftime("%Y-%m-%d")
+    n = int(total_seconds // 86400)
+    if n >= 7:
+        return target.strftime("%Y-%m-%d")
+    if n == 1:
+        return "yesterday"
+    return f"{n} day{'s' if n != 1 else ''} ago"
 
 
 def main():

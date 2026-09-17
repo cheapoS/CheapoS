@@ -58,6 +58,14 @@ class TestTimeAgo(unittest.TestCase):
         now = datetime(2023, 11, 14, 12, 0, 0, tzinfo=timezone.utc)
         self.assertEqual(time_ago(now - timedelta(days=2), now=now), "2 days ago")
 
+    def test_just_under_one_day(self):
+        now = datetime(2023, 11, 14, 12, 0, 0, tzinfo=timezone.utc)
+        self.assertEqual(time_ago(now - timedelta(hours=23, minutes=59), now=now), "23 hours ago")
+
+    def test_just_under_two_days(self):
+        now = datetime(2023, 11, 14, 12, 0, 0, tzinfo=timezone.utc)
+        self.assertEqual(time_ago(now - timedelta(days=1, hours=23, minutes=59), now=now), "yesterday")
+
     def test_old_date(self):
         now = datetime(2023, 11, 14, 12, 0, 0, tzinfo=timezone.utc)
         self.assertEqual(time_ago(now - timedelta(days=10), now=now), "2023-11-04")
