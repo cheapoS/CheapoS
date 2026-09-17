@@ -333,6 +333,109 @@ class InstructionCatalogTests(unittest.TestCase):
             self.assertIn("validation.change_scoped", rule_ids_invalid)
             self.assertNotIn("validation.full_suite_mandatory", rule_ids_invalid)
 
+    def test_full_suite_approval_not_mandated_for_unrelated_item(self):
+        """Approval for final checks does not mandate full suite during an active item with focused checks."""
+        from cheapos import test_policy
+        from cheapos.instructions import is_full_suite_authorized, rules_for_task, triggers_for_task
+
+        # Active UI item with focused checks, but full suite approved in final_checks
+        task_ui = {
+            "branch_run": {
+                "current_item_id": "item-ui",
+                "items": [
+                    {
+                        "id": "item-ui",
+                        "title": "UI layout polish",
+                        "required_checks": ["node --check dist/app.js"],
+                    }
+                ],
+                "plan": {
+                    "items": [
+                        {
+                            "id": "item-ui",
+                            "required_checks": ["node --check dist/app.js"],
+                        }
+                    ],
+                    "final_checks": ["python3 -B scripts/check.py --full"],
+                },
+            },
+        }
+        test_policy.approve(task_ui, True)
+        self.assertIn("python3 -B scripts/check.py --full", task_ui["full_suite_approval"])
+
+        # For the active UI item: full suite must NOT be authorized/mandated
+        self.assertFalse(is_full_suite_authorized(task_ui))
+        triggers_ui = triggers_for_task(task_ui)
+        self.assertNotIn("full_suite_requested", triggers_ui)
+
+        rules_ui = rules_for_task(task_ui, role="worker")
+        rule_ids_ui = {r.id for r in rules_ui}
+        self.assertIn("validation.change_scoped", rule_ids_ui)
+        self.assertNotIn("validation.full_suite_mandatory", rule_ids_ui)
+
+        # But when the active item itself requires a full suite, it must be mandated
+        task_full_item = {
+            "branch_run": {
+                "current_item_id": "item-core",
+                "items": [
+                    {
+                        "id": "item-core",
+                        "title": "Core refactor",
+                        "required_checks": ["python3 -B scripts/check.py --full"],
+                    }
+                ],
+                "plan": {
+                    "items": [
+                        {
+                            "id": "item-core",
+                            "required_checks": ["python3 -B scripts/check.py --full"],
+                        }
+                    ],
+                    "final_checks": [],
+                },
+            },
+        }
+        test_policy.approve(task_full_item, True)
+        self.assertTrue(is_full_suite_authorized(task_full_item))
+        triggers_full = triggers_for_task(task_full_item)
+        self.assertIn("full_suite_requested", triggers_full)
+        rules_full = rules_for_task(task_full_item, role="worker")
+        rule_ids_full = {r.id for r in rules_full}
+        self.assertIn("validation.full_suite_mandatory", rule_ids_full)
+        self.assertNotIn("validation.change_scoped", rule_ids_full)
+
+        # And during final review / final checks phase, final_checks full suite is mandated
+        task_final = {
+            "purpose": "branch_final",
+            "branch_run": {
+                "current_item_id": None,
+                "items": [
+                    {
+                        "id": "item-ui",
+                        "status": "completed",
+                        "required_checks": ["node --check dist/app.js"],
+                    }
+                ],
+                "plan": {
+                    "items": [
+                        {
+                            "id": "item-ui",
+                            "required_checks": ["node --check dist/app.js"],
+                        }
+                    ],
+                    "final_checks": ["python3 -B scripts/check.py --full"],
+                },
+            },
+            "full_suite_approval": ["python3 -B scripts/check.py --full"],
+        }
+        self.assertTrue(is_full_suite_authorized(task_final))
+        triggers_final = triggers_for_task(task_final)
+        self.assertIn("full_suite_requested", triggers_final)
+        rules_final = rules_for_task(task_final, role="worker")
+        rule_ids_final = {r.id for r in rules_final}
+        self.assertIn("validation.full_suite_mandatory", rule_ids_final)
+        self.assertNotIn("validation.change_scoped", rule_ids_final)
+
     def test_self_supersession_rejected(self):
         """A rule cannot supersede itself in resolution or catalog audit."""
         rule = InstructionRule(
