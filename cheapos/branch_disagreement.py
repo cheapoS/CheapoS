@@ -114,10 +114,10 @@ def validate(result, criteria):
     return cleaned_defects
 
 
-def ensure_available(task, key):
+def ensure_available(task, key, *, baseline=0):
     from .engine import ProgressPause
     saved = task['branch_run'].get('review_disagreements', {}).get(key, {})
-    if not developing(task) and saved.get('unsupported_attempts', 0) >= 3:
+    if not developing(task) and saved.get('unsupported_attempts', 0) - baseline >= 3:
         raise ProgressPause('Unsupported review disagreement persisted three times. Saved evidence is retained; Resume does not renew these attempts. Provide new evidence or revise the task explicitly.')
 
 

@@ -81,6 +81,10 @@ def specific(diagnostic):
         if diagnostic.get('validation_error') == 'approval_with_defects':
             reason+=' The last response combined APPROVE with a nonempty defects list. Approval requires defects: []; positive confirmations belong in criterion evidence or feedback.'
         recovery=' cheapoS already requested a focused reassessment using saved findings and check evidence.' if diagnostic['coached'] else ''
+        recovery += {
+            'manual': ' Automatic replacement is disabled for this reviewer choice. Choose another reviewer for this saved task.',
+            'identity': ' Historical worker identity is missing; another reviewer cannot establish independence until it is repaired.',
+        }.get(diagnostic.get('recovery') if isinstance(diagnostic.get('recovery'), str) else '', '')
         return reason+recovery+' Review remains unfinished. Inspect the review attempts or choose another reviewer.'
     if kind=='missing_executable':
         runner=diagnostic.get('executable')
@@ -113,6 +117,9 @@ def public(value):
         if diagnostic.get('kind')=='transport' else {'kind':'safe_message','message':explanation})
     if result.get('diagnostic',{}).get('kind')=='review_stall' and diagnostic.get('validation_error')=='approval_with_defects':
         result['diagnostic']['validation_error']='approval_with_defects'
+    if result.get('diagnostic',{}).get('kind')=='review_stall' and isinstance(diagnostic.get('recovery'),str) and diagnostic['recovery'] in {'manual','identity'}:
+        result['diagnostic']['recovery']=diagnostic['recovery']
+        result['next_action']='reviewer'
     for key in ('item_id','model','diagnostic_id'):
         if label(value.get(key)):result[key]=label(value[key])
     if value.get('role') in ('worker','reviewer','coordinator','planner'):result['role']=value['role']

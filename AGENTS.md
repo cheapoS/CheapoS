@@ -7,6 +7,17 @@ Stage only the changes you made for the current task. Preserve any unrelated use
 Tell the operator when changes are committed. The operator handles app reloads
 with the restart button; do not restart cheapoS automatically unless asked.
 
+# Autonomous completion is the product standard
+
+Follow [AUTONOMOUS_WORKFLOW.md](AUTONOMOUS_WORKFLOW.md) when changing agent
+execution, recovery, or Resume. Ordinary model/provider failures should trigger
+an authorized automatic continuation, not operator troubleshooting. A clearer
+error banner or another recovery button alone does not complete a recovery fix.
+Preserve context, valid check evidence, attempt history, independent review and
+the operator's spending/model/command authority. Treat non-progress thresholds
+as signals to change strategy; do not add arbitrary stop counters. Verify the
+path to completion without operator rescue using small deterministic cases.
+
 # Validation while iterating
 
 Follow the current change-scoped policy in CONTRIBUTING.md. Start with

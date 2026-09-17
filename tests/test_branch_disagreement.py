@@ -229,7 +229,8 @@ class ReviewCoachingTests(unittest.TestCase):
         detail=branch_pause.classify(failure.exception,task)
         self.assertIn('same unchanged evidence three times',detail['explanation'])
         self.assertIn('already requested a focused reassessment',detail['explanation'])
-        self.assertEqual(detail['next_action'],'inspect');self.assertEqual(detail['stage'],'reviewing')
+        self.assertEqual(detail['next_action'],'reviewer');self.assertEqual(detail['stage'],'reviewing')
+        self.assertIn('Automatic replacement is disabled',detail['explanation'])
         self.assertEqual(engine.request.call_count,3)
         restored=json.loads(json.dumps(task));runtime.task=restored
         # Mirrors the engine wrapper which retains only progress_limit and saved task state.

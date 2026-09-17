@@ -58,6 +58,22 @@ Supported unittest profile grants can cover multiple selectors. Other authorized
 
 Items, retries, model requests, tool actions, working time, tokens, and cost share cumulative limits. Pausing or restarting does not refill them. Restart preserves progress but never automatically resumes execution. Resume may ask you to inspect a renewed command grant; a retained merge operation has a separate explicit recovery action.
 
+If an item reviewer keeps returning invalid decisions, repeating unchanged reads,
+or failing to reach a decision after reassessment, automatic remote runs select
+another eligible independent reviewer before pausing. Chat shows the handoff. The
+replacement receives the current patch, criteria, check evidence, unresolved
+findings and operator guidance; the worker does not start over. Valid requests
+for changes return to the worker rather than searching for an easier approval.
+
+Failed review exchanges remain saved. Resume on an older stalled item uses this
+same recovery path and excludes reviewers that already failed that candidate.
+Runs continue through unused eligible reviewers within the remaining authorized
+work and spending limits. There is no additional handoff-count cutoff. No run
+repeatedly cycles through failed reviewers or resets cumulative usage. Manual placement and explicitly chosen reviewers stay
+pinned: **Choose reviewer** authorizes a replacement for this task. Missing
+identity evidence, exhausted allowances, or unavailable authorized routes still
+need the specific action shown in the pause.
+
 Final check failures and reviewer corrections can produce at most three bounded repair items, preserving original commits and using the original criteria, checks, and remaining limits. Operator corrections also use this allowance and require confirmation of their proposal. Repairs spanning more than twelve distinct original criteria need a smaller explicit amendment. New requirements, broader commands, different models/destinations, or increased limits require a new authorization rather than an implicit expansion.
 
 ## Finish the branch

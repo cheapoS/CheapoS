@@ -25,6 +25,8 @@ def candidates(engine, task):
     policy = access_policy.for_config(task, current) if task.get('gateway_connections') is not None else (task.get('route') or {}).get('access_policy', task.get('branch_run', {}).get('model_policy', {}).get('gateway_access'))
     access_policy.validate_current(policy, access_policy.effective_settings(task, gateway.settings))
     used = {normalized(task.get('providers', {}).get('worker', {}).get('model'))}
+    from .branch_review_recovery import failed_models
+    used.update(normalized(model) for model in failed_models(task))
     for worker in workers(task):
         used.update(normalized(worker.get(k)) for k in ('model', 'requested_model', 'served_model'))
     catalog = gateway.catalog(fresh=True)
