@@ -19,7 +19,7 @@ def busy(engine, task_id):
 def saved_values(task):
     snapshot = task.get('settings_snapshot')
     if snapshot:
-        return copy.deepcopy(snapshot['values'])
+        return _saved_authority(task, copy.deepcopy(snapshot['values']))
     # Historical compatibility is explicit, never today's defaults. Preserve
     # missing fields instead of inventing provenance or changing task authority.
     from .routing import execution_from
@@ -32,9 +32,25 @@ def saved_values(task):
                            'connection_id': provider.get('connection_id')}
         else:
             roles[role] = {'strategy': 'automatic'}
-    return {'execution': execution_from(task.get('execution') or {}),
+    return _saved_authority(task, {'execution': execution_from(task.get('execution') or {}),
             'limits': copy.deepcopy(task.get('limits') or {}), 'roles': roles,
-            'keep_up_to_date': bool(task.get('integration_policy', {}).get('keep_up_to_date', False))}
+            'keep_up_to_date': bool(task.get('integration_policy', {}).get('keep_up_to_date', False))})
+
+
+def _saved_authority(task, values):
+    """Display approved task allowances without rewriting their capture receipt."""
+    values.setdefault('limits', {}).update(copy.deepcopy(task.get('limits') or {}))
+    run = task.get('branch_run') or {}
+    limits = run.get('limits') or {}
+    for key in ('dollars', 'worker_turns', 'reviewer_tokens', 'check_seconds', 'output_tokens'):
+        if key in limits:
+            values['limits'][key] = limits[key]
+    if 'working_seconds' in limits:
+        minutes = limits['working_seconds'] / 60
+        values['limits']['run_minutes'] = int(minutes) if minutes.is_integer() else minutes
+    if run and 'uncapped_work' in run.get('plan', {}):
+        values['limits']['uncapped_work'] = run['plan']['uncapped_work']
+    return values
 
 
 def view(engine, task_id):
@@ -43,6 +59,12 @@ def view(engine, task_id):
         values = saved_values(task)
         snapshot = task.get('settings_snapshot') or {}
         run = task.get('branch_run') or {}
+        sources = copy.deepcopy(snapshot.get('sources') or {}) if snapshot else {
+            key: {'scope': 'saved', 'provenance': 'unknown'} for key in fields(values)}
+        captured = fields(snapshot.get('values') or {})
+        for key, value in fields(values).items():
+            if snapshot and (key not in captured or captured[key] != value):
+                sources[key] = {'scope': 'task', 'provenance': 'approved_plan' if run else 'saved_task'}
         active = busy(engine, task_id)
         unfinished = task.get('status') not in TERMINAL and run.get('status') not in TERMINAL
         eligible = unfinished and not task.get('demo') and not task.get('commit_pending')
@@ -52,8 +74,8 @@ def view(engine, task_id):
         return {'task_id': task_id, 'title': task.get('title', task_id), 'project': task.get('source'),
                 'values': values, 'revision': snapshot.get('revision', 0),
                 'active': active, 'paused': bool(eligible and not active and task.get('status') not in {'approved', 'awaiting_reply'}),
-                'sources': copy.deepcopy(snapshot.get('sources')) if snapshot else {
-                    key: {'scope': 'saved', 'provenance': 'unknown'} for key in fields(values)},
+                'sources': sources,
+                'approved_allowance': copy.deepcopy(run.get('limits')) if run else None,
                 'current_models': {role: (provider or {}).get('model') for role, provider in task.get('providers', {}).items() if isinstance(provider, dict)},
                 'editable_fields': editable, 'capabilities': {'apply': bool(eligible and not active),
                     'apply_and_continue': bool(eligible and not active and task.get('status') not in {'approved', 'awaiting_reply'}), 'pause_apply_and_continue': False,

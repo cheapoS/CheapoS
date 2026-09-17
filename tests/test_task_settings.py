@@ -53,6 +53,27 @@ class TaskSettingsTests(unittest.TestCase):
             'review_disagreements': {'real': 'retain'}, 'items': [{'id': '1', 'status': 'committed'}]}
         self.engine.store = MemoryStore(self.task)
 
+    def test_view_uses_approved_allowance_without_rewriting_snapshot(self):
+        self.make_branch()
+        task = self.engine.store.get('a')
+        captured = {'execution': {'mode': 'remote'}, 'limits': {'worker_turns': 200,
+                    'run_minutes': 90, 'dollars': 2}, 'roles': {'worker': {'strategy': 'automatic'}}}
+        task['settings_snapshot'] = {'revision': 3, 'values': captured,
+            'sources': {'limits.worker_turns': {'scope': 'app'}}}
+        task['branch_run']['limits']['working_seconds'] = 901
+        self.engine.store.save(task)
+        before = self.engine.store.get('a')
+        result = task_settings.view(self.engine, 'a')
+        self.assertEqual(result['values']['limits']['worker_turns'], 40)
+        self.assertEqual(result['values']['limits']['dollars'], 0)
+        self.assertEqual(result['values']['limits']['run_minutes'], 901 / 60)
+        self.assertEqual(result['approved_allowance']['working_seconds'], 901)
+        self.assertEqual(result['sources']['limits.worker_turns'],
+                         {'scope': 'task', 'provenance': 'approved_plan'})
+        self.assertEqual(result['values']['roles']['worker'], {'strategy': 'automatic'})
+        self.assertEqual(result['revision'], 3)
+        self.assertEqual(self.engine.store.get('a'), before)
+
     def test_apply_is_one_record_and_does_not_touch_other_chat(self):
         self.engine.store.tasks['b'] = {**copy.deepcopy(self.task), 'id': 'b'}
         before_b = copy.deepcopy(self.engine.store.tasks['b'])
