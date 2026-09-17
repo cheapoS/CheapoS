@@ -145,6 +145,38 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertFalse(report["valid"])
         self.assertTrue(any("nonexistent.override" in err for err in report["errors"]))
 
+    def test_boundary_firewall_fails_when_rule_omits_required_role(self):
+        """Boundary audit and probe must fail if internal commit rule omits worker or planner role."""
+        from cheapos.instructions.catalog import RULES
+        from cheapos.instructions.linter import probe_context_matrix
+
+        # Mutate git.internal.controller_owns_commits to planner only (omitting worker)
+        mutated_rules = []
+        for r in RULES:
+            if r.id == "git.internal.controller_owns_commits":
+                mutated_rules.append(InstructionRule(
+                    id=r.id,
+                    audience=r.audience,
+                    category=r.category,
+                    roles=("planner",),
+                    modes=r.modes,
+                    text=r.text,
+                    supersedes=r.supersedes,
+                    incompatible_with=r.incompatible_with,
+                    priority=r.priority,
+                ))
+            else:
+                mutated_rules.append(r)
+
+        cat = InstructionCatalog(mutated_rules)
+        report_audit = audit_catalog(cat)
+        self.assertFalse(report_audit["valid"])
+        self.assertTrue(any("absent from worker composition" in err for err in report_audit["errors"]))
+
+        report_probe = probe_context_matrix(cat)
+        self.assertFalse(report_probe["valid"])
+        self.assertTrue(any("Required internal commit rule missing for role worker" in err for err in report_probe["errors"]))
+
     def test_rules_for_task(self):
         """rules_for_task resolves mode and triggers directly from runtime task dictionaries."""
         from cheapos.instructions import rules_for_task, triggers_for_task

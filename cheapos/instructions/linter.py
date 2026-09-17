@@ -45,34 +45,32 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
         errors.append(f"Supersession cycle detected in catalog: {' -> '.join(catalog_cycle)}")
 
     # 2. Persona Boundary Verification
-    # For rules with internal_disambiguation_required, ensure internal worker and planner composition includes the disambiguator
+    # Required recipient roles and modes for internal disambiguation of external rules
+    required_internal_roles = ("worker", "planner")
+    applicable_modes = ("unattended", "interactive", "worker", "planning")
+    catalog_triggers = sorted(list({t for r in rules for t in r.state_triggers}))
+    trigger_scenarios: List[Tuple[str, ...]] = [()] + [(t,) for t in catalog_triggers]
+
     for r in rules:
         if r.internal_disambiguation_required:
             disambiguator = catalog.get(r.internal_disambiguation_required)
             if disambiguator is None:
                 continue
-            if disambiguator.applies_to_role("worker"):
-                try:
-                    worker_rules = compose(role="worker", mode="unattended", catalog=catalog)
-                    worker_rule_ids = {wr.id for wr in worker_rules}
-                    if disambiguator.id not in worker_rule_ids:
-                        errors.append(
-                            f"Boundary violation: External rule '{r.id}' requires disambiguation '{disambiguator.id}', "
-                            f"but it is absent from worker unattended composition."
-                        )
-                except (InstructionConflictError, ValueError) as e:
-                    errors.append(f"Boundary verification worker composition error for rule '{r.id}': {e}")
-            if disambiguator.applies_to_role("planner"):
-                try:
-                    planner_rules = compose(role="planner", mode="unattended", catalog=catalog)
-                    planner_rule_ids = {pr.id for pr in planner_rules}
-                    if disambiguator.id not in planner_rule_ids:
-                        errors.append(
-                            f"Boundary violation: External rule '{r.id}' requires disambiguation '{disambiguator.id}', "
-                            f"but it is absent from planner unattended composition."
-                        )
-                except (InstructionConflictError, ValueError) as e:
-                    errors.append(f"Boundary verification planner composition error for rule '{r.id}': {e}")
+            for req_role in required_internal_roles:
+                for req_mode in applicable_modes:
+                    for trigs in trigger_scenarios:
+                        try:
+                            composed = compose(role=req_role, mode=req_mode, triggers=trigs, catalog=catalog)
+                            composed_ids = {cr.id for cr in composed}
+                            if disambiguator.id not in composed_ids:
+                                errors.append(
+                                    f"Boundary violation: External rule '{r.id}' requires disambiguation '{disambiguator.id}', "
+                                    f"but it is absent from {req_role} composition in mode '{req_mode}' with triggers {trigs}."
+                                )
+                        except (InstructionConflictError, ValueError) as e:
+                            errors.append(
+                                f"Boundary verification error for rule '{r.id}' in ({req_role}, {req_mode}, {trigs}): {e}"
+                            )
 
     # 3. State Matrix Permutations
     # Include all roles present in ROLE_TO_AUDIENCE plus any explicit roles in catalog rules
@@ -203,6 +201,9 @@ def probe_context_matrix(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[
                     # Invariant 4: Persona boundary coverage
                     if "git.external.commit_on_finish" in active_ids:
                         errors.append(f"External git rule leaked into internal role {role}")
+                    if role in ("worker", "planner"):
+                        if "git.internal.controller_owns_commits" not in active_ids:
+                            errors.append(f"Required internal commit rule missing for role {role} at mode {mode}")
 
                 except Exception as e:
                     errors.append(f"Exception at ({role}, {mode}, {triggers}): {e}")
