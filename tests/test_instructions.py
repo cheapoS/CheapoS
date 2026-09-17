@@ -318,20 +318,20 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertIn("validation.full_suite_mandatory", rule_ids)
         self.assertNotIn("validation.change_scoped", rule_ids)
 
-        # 2. String "false" must never activate authorization
-        task_string_false = {
-            "conversational": True,
-            "full_suite_approved": "false",
-            "output_recovery": "false",
-        }
-        triggers_false = triggers_for_task(task_string_false)
-        self.assertNotIn("full_suite_requested", triggers_false)
-        self.assertNotIn("output_cap", triggers_false)
+        # 2. Non-boolean values (strings, ints, dicts) must never activate authorization
+        for non_bool in ("false", "true", "yes", 1, "1", {"approved": False}):
+            task_invalid = {
+                "conversational": True,
+                "full_suite_approved": non_bool,
+                "output_recovery": "false",
+            }
+            triggers_invalid = triggers_for_task(task_invalid)
+            self.assertNotIn("full_suite_requested", triggers_invalid)
 
-        rules_false = rules_for_task(task_string_false, role="worker")
-        rule_ids_false = {r.id for r in rules_false}
-        self.assertIn("validation.change_scoped", rule_ids_false)
-        self.assertNotIn("validation.full_suite_mandatory", rule_ids_false)
+            rules_invalid = rules_for_task(task_invalid, role="worker")
+            rule_ids_invalid = {r.id for r in rules_invalid}
+            self.assertIn("validation.change_scoped", rule_ids_invalid)
+            self.assertNotIn("validation.full_suite_mandatory", rule_ids_invalid)
 
     def test_self_supersession_rejected(self):
         """A rule cannot supersede itself in resolution or catalog audit."""

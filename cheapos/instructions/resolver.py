@@ -18,7 +18,7 @@ def is_full_suite_authorized(task: dict) -> bool:
     """Check if task has explicit, saved authorization for full-suite test execution."""
     if not isinstance(task, dict):
         return False
-    if _is_truthy(task.get("full_suite_approved")) or _is_truthy(task.get("full_suite")):
+    if task.get("full_suite_approved") is True or task.get("full_suite") is True:
         return True
     approval = task.get("full_suite_approval")
     if isinstance(approval, (list, tuple, set)) and len(approval) > 0:
