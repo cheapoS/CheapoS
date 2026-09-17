@@ -319,3 +319,10 @@ branch refs remain untouched while constructing the review.
 
 Coverage uses one small Git comparison fixture plus in-memory packet and
 continuation cases; it does not add another full agent workflow or live model run.
+
+Integration retries carry an existing dispatch only when the candidate, requested
+target, target ref and task-copy identity still match. A reviewed branch paused
+because its target advanced returns to the update path instead of repeating final
+review against the old branch. Unfinished resolutions keep their existing worker
+assignment. In-memory cases cover both new updates and restored stale dispatches;
+checks, spending authority and independent review remain unchanged.
