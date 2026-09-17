@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from cheapos import branch_evidence as evidence, branch_review, branch_review_pages as pages
 from cheapos import branch_runs, branch_review_recovery, context_evidence, routing
+from cheapos import branch_integration_review
 from cheapos.engine import Engine, ProgressPause
 from cheapos.providers import BudgetError
 from tests.test_branch_disagreement import defect
@@ -110,6 +111,63 @@ class ItemPageTests(unittest.TestCase):
         first = json.loads(engine.request.call_args_list[0].args[1][1]['content'])
         self.assertEqual(first['chunk_ids'], ['item:2'])
         engine.checks.assert_not_called()
+
+    def test_integration_comparison_keeps_full_receipt_and_resumes_paged_review(self):
+        for paged in (False, True):
+            with self.subTest(paged=paged):
+                task, engine, runtime, current = self.fixture()
+                run = task['branch_run']
+                merge = {'old_tip': 'tip', 'target_tip': 'frozen-target', 'tree': 'suggested',
+                         'conflicts': ['report.py']}
+                key = evidence._digest(merge)
+                run['plan']['items'][0]['instructions'] += ' Captured context: ' + key
+                run['conflict_resolution'] = {'item_id': 'one', 'status': 'working',
+                                              'context': merge, 'context_digest': key}
+                run['workspace_mapping'] = {'source': '/source', 'workspace': '/fixture',
+                                            'workspace_head': 'private-head'}
+                current['private_baseline'] = 'private-head'
+                current.pop('id'); current['id'] = evidence._digest(current)
+                target_diff = '+task change\n' * (6000 if paged else 1)
+                def respond(rt, messages, tools, role, **kwargs):
+                    packet = json.loads(messages[1]['content'])
+                    basis = packet.get('integration_comparison', packet.get('integration_review'))
+                    self.assertEqual(basis['target_tip'], 'frozen-target')
+                    self.assertIn('empty target diff is not proof', basis['instruction'])
+                    if 'chunk' in packet:
+                        return self.respond(rt, messages, tools, role, **kwargs)
+                    if not paged:
+                        self.assertEqual(packet['diff'], target_diff)
+                        self.assertEqual(basis['resolution_diff'], '-dropped task change\n')
+                    return self.call('review_decision', {'decision': 'APPROVE', 'feedback': 'Verified integration.',
+                        'candidate_id': packet['candidate_id'], 'integration_review': {'target_tip': 'invented'},
+                        'criteria_outcomes': {'exact values': {'passed': True, 'evidence': 'Checked combined source.'}}})
+                engine.request.side_effect = respond
+                with patch.object(branch_integration_review.branch_workspace, 'validate_owned'), \
+                     patch.object(branch_integration_review, 'comparisons',
+                                  return_value=('candidate-tree', target_diff, '-dropped task change\n')):
+                    if paged:
+                        def interrupt(*args, **kwargs):
+                            if engine.request.call_count == 2: raise InterruptedError('Stop requested')
+                            return respond(*args, **kwargs)
+                        engine.request.side_effect = interrupt
+                        with self.assertRaises(InterruptedError): branch_review.checkpoint(engine, runtime, {})
+                        runtime.task = json.loads(json.dumps(task))
+                        engine.request.reset_mock(side_effect=True); engine.request.side_effect = respond
+                    self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+                if paged:
+                    first = json.loads(engine.request.call_args_list[0].args[1][1]['content'])
+                    self.assertEqual(first['chunk_ids'], ['item:2'])
+                receipt = json.loads(runtime.task['branch_run']['items'][0]['ready_receipt'])
+                self.assertEqual(receipt['candidate'], current)
+                self.assertEqual(receipt['review']['integration_review']['target_tip'], 'frozen-target')
+                engine.checks.assert_not_called()
+                for field in ('candidate_id', 'task_tip', 'full_patch_digest', 'invalid_shape'):
+                    bad = copy.deepcopy(receipt['review'])
+                    if field == 'invalid_shape': bad['integration_review'] = 'invalid'
+                    else: bad['integration_review'][field] = 'stale'
+                    with self.subTest(field=field), self.assertRaises(ValueError):
+                        evidence.ready_receipt(current, receipt['checks'], bad, 'worker', 'reviewer',
+                                               receipt['criteria_outcomes'])
 
     def test_chunk_failure_switches_reviewer_automatically_with_saved_history(self):
         task, engine, runtime, current = self.fixture()

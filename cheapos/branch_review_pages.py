@@ -44,6 +44,9 @@ def prepare(engine, runtime, current, packet):
     coverage = {'manifest_id': manifest['id'], 'candidate_id': current['id'],
                 'packet_reference': reference, 'characters': len(text), 'chunks': []}
     parts = review_context.chunks(text, 12000)
+    basis = packet.get('integration_review')
+    comparison = ({key: copy.deepcopy(basis[key]) for key in
+                   ('candidate_id', 'task_tip', 'target_tip', 'instruction')} if basis else None)
     task['status'] = 'reviewing'
     engine.event(task, 'review_paging', 'Reviewing the large item in smaller packets', {
         'item_id': current['context']['item_id'], 'candidate_id': current['id'],
@@ -61,6 +64,8 @@ def prepare(engine, runtime, current, packet):
                 'Do not reject solely because related evidence appears in a different part. '
                 'Read surrounding candidate source or frozen merge evidence when needed. '
                 'Approval covers only this part. A separate item decision must still verify every criterion.'}
+        if comparison:
+            part['integration_comparison'] = comparison
         review = _review(engine, runtime, manifest, part, [chunk['id']], [],
                          progress={'chunk_index': index, 'chunk_total': len(parts)},
                          context_reader=lambda args: read_candidate(task, current, manifest, args))
@@ -85,6 +90,8 @@ def prepare(engine, runtime, current, packet):
             compact[key] = copy.deepcopy(value)
     compact['packet_coverage'] = {'reference': coverage_reference, 'packets_reviewed': len(parts),
         'candidate_id': current['id'], 'manifest_id': manifest['id'], 'all_parts_approved': True}
+    if comparison:
+        compact['integration_comparison'] = comparison
     compact['instruction'] = ('Synthesize the independently reviewed complete evidence against every acceptance '
         'criterion. Use read_context_evidence to retrieve full fields and packet feedback, and source tools '
         'to verify behavior as needed. Packet approvals do not establish criterion completion. '

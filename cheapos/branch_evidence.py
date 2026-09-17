@@ -114,6 +114,11 @@ def ready_receipt(current, checks, review, worker_model, reviewer_model, criteri
     decision(review)
     if review.get('candidate_id') != current['id'] or review.get('decision') != 'APPROVE' or not isinstance(review.get('feedback'), str):
         raise ValueError('Independent APPROVE for this candidate is required')
+    basis = review.get('integration_review')
+    if basis is not None and (not isinstance(basis, dict) or basis.get('candidate_id') != current['id']
+            or basis.get('task_tip') != current['context']['feature_parent']
+            or basis.get('full_patch_digest') != _digest(current['patch'])):
+        raise ValueError('Integration review belongs to a different complete candidate.')
     if review.get('packet_coverage') is not None:
         from .branch_review_pages import validate
         validate(review['packet_coverage'], current, worker_model)

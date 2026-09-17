@@ -300,3 +300,22 @@ Before a conflict worker continues, the controller applies captured Git-combined
 nonconflicting files that still match their original task version. Existing edits
 and textual conflicts remain untouched. This preparation is restart-safe and
 does not approve or commit the result; verification and review still follow.
+
+## Implemented: review integration changes against the captured target
+
+Conflict-resolution item review compares the complete candidate with the frozen
+incoming target. Unchanged imported target code no longer fills review pages.
+A second diff against Git's captured suggested merge exposes dropped task work,
+missing incoming changes and unexpected edits, including outside conflict paths.
+Original task requirements accompany both comparisons, and every review page
+identifies their bases. Reviewers can inspect current source, frozen merge
+versions and the retained full item patch when assessing interactions.
+
+The candidate, required checks and commit receipt still bind the complete patch.
+Independent approval and all acceptance criteria remain required. An already
+started legacy packet keeps its exact contents and completed page approvals on
+Resume; new candidates use the smaller comparison. Source checkout, index and
+branch refs remain untouched while constructing the review.
+
+Coverage uses one small Git comparison fixture plus in-memory packet and
+continuation cases; it does not add another full agent workflow or live model run.

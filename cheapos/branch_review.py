@@ -214,6 +214,9 @@ def _checkpoint(engine, runtime, args):
                 n=3
             ))[:30000]
         packet['worker_summary'] = str(args.get('summary', ''))[:4000]
+    from . import branch_integration_review
+    packet = branch_integration_review.prepare(task, current, packet)
+    review_basis_packet = packet
     limit = 80000 if item.get('review_repair') else 60000
     branch_runs.transition_item(run, item['id'], 'reviewing')
     packet_coverage = None
@@ -390,6 +393,7 @@ def _checkpoint(engine, runtime, args):
                         params.pop('packet_coverage', None)
                         if packet_coverage is not None:
                             params['packet_coverage'] = copy.deepcopy(packet_coverage)
+                        branch_integration_review.bind(params, review_basis_packet, current)
                         receipt = evidence.ready_receipt(current, checks, params, task['providers']['worker'], task['providers']['reviewer'], params.get('criteria_outcomes'))
                         evidence.revalidate(receipt, task, ctx, specs, criteria)
                     except ValueError as error:
