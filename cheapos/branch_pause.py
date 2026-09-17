@@ -78,6 +78,8 @@ def specific(diagnostic):
             'request_limit':'The reviewer reached the item-review request limit without a valid decision.'}
         reason=reasons.get(diagnostic.get('reason'))
         if reason is None:return None
+        if diagnostic.get('validation_error') == 'approval_with_defects':
+            reason+=' The last response combined APPROVE with a nonempty defects list. Approval requires defects: []; positive confirmations belong in criterion evidence or feedback.'
         recovery=' cheapoS already requested a focused reassessment using saved findings and check evidence.' if diagnostic['coached'] else ''
         return reason+recovery+' Review remains unfinished. Inspect the review attempts or choose another reviewer.'
     if kind=='missing_executable':
@@ -102,12 +104,15 @@ def public(value):
     explanation,action=TEMPLATES[cause]
     diagnostic=value.get('diagnostic')
     if specific(diagnostic):explanation=specific(diagnostic)
-    if isinstance(diagnostic,dict) and diagnostic.get('kind')=='review_stall' and specific(diagnostic):action='inspect'
+    if isinstance(diagnostic,dict) and diagnostic.get('kind')=='review_stall' and specific(diagnostic):
+        action='reviewer' if diagnostic.get('reason')=='invalid_decision' else 'inspect'
     if cause=='provider_connection' and isinstance(diagnostic,dict) and diagnostic.get('kind')=='transport' and specific(diagnostic):action='resume'
     result={'version':1,'cause':cause,'explanation':explanation,'next_action':action,'stage':value.get('stage') if value.get('stage') in STAGES else 'unknown'}
     if specific(diagnostic):result['diagnostic']=({'kind':'review_stall','reason':diagnostic['reason'],'coached':diagnostic['coached']}
         if diagnostic.get('kind')=='review_stall' else {'kind':'transport','code':diagnostic['code']}
         if diagnostic.get('kind')=='transport' else {'kind':'safe_message','message':explanation})
+    if result.get('diagnostic',{}).get('kind')=='review_stall' and diagnostic.get('validation_error')=='approval_with_defects':
+        result['diagnostic']['validation_error']='approval_with_defects'
     for key in ('item_id','model','diagnostic_id'):
         if label(value.get(key)):result[key]=label(value[key])
     if value.get('role') in ('worker','reviewer','coordinator','planner'):result['role']=value['role']
@@ -117,6 +122,18 @@ def public(value):
         if type(at) in (float,int) and math.isfinite(at) and at>0:result['retry_at']=at
         if result.get('cooldown_scope'):result['explanation']+=' The reported cooldown applies to the '+result['cooldown_scope']+'.'
     return result
+
+def review_diagnostic(task, diagnostic):
+    """Describe a known validation conflict without publishing model-generated text."""
+    if not isinstance(diagnostic,dict) or diagnostic.get('kind')!='review_stall' or diagnostic.get('reason')!='invalid_decision':
+        return diagnostic
+    candidate=(task.get('pending_review') or {}).get('branch_candidate_id')
+    saved=(task.get('branch_run') or {}).get('review_disagreements',{}).get(candidate,{})
+    result=saved.get('last_unsupported',{})
+    if (isinstance(result,dict) and isinstance(result.get('decision'),str)
+            and result['decision'].strip().upper()=='APPROVE' and result.get('defects') not in (None, [])):
+        return {**diagnostic,'validation_error':'approval_with_defects'}
+    return diagnostic
 
 def classify(error=None, task=None, cause=None, stage=None):
     task=task or {};run=task.get('branch_run') or {}
@@ -168,6 +185,7 @@ def classify(error=None, task=None, cause=None, stage=None):
     if isinstance(error, LimitExceeded): diagnostic = {'kind': 'limit', 'key': error.key, 'used': error.used, 'allowed': error.allowed}
     if isinstance(error, BudgetError) and error.limit_hit:
         diagnostic = {'kind': 'request_budget', **error.limit_hit}
+    diagnostic=review_diagnostic(task,diagnostic)
     if diagnostic: detail['diagnostic'] = diagnostic
     if explicit == 'malformed_output' and not specific(diagnostic):
         role = detail.get('role') or ('planner' if detail.get('stage') == 'planning' else 'model')
@@ -184,7 +202,8 @@ def for_task(task):
     """
     run = task.get('branch_run') or {}
     if run.get('status') not in {'paused', 'blocked'}: return None
-    detail = public(run.get('pause_detail'))
+    saved=run.get('pause_detail')
+    detail = public({**saved,'diagnostic':review_diagnostic(task,saved.get('diagnostic'))} if isinstance(saved,dict) else saved)
     request = (task.get('request_metrics') or [{}])[-1]
     if (detail and detail['cause'] in {'unknown', 'provider_connection'}
             and not detail.get('diagnostic')
