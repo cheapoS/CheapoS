@@ -228,7 +228,7 @@ def amend(controller, task_id, values):
             engine.store.save(task)
             return task
     if action=='reviewer':return continue_saved(controller,task_id)
-    message=values.get('message') or ('Continue the current item with the approved '+('worker model.' if action=='model' else 'revised verification requirements. Do not claim removed checks passed.' if action=='checks' else 'revised instructions.'))
+    message=values.get('message') or ('Continue the current item with the approved '+('worker model.' if action=='model' else 'revised verification commands. Run only the checks now in scope and do not claim the replaced checks passed.' if action=='checks' else 'revised instructions.'))
     result=controller.message(task_id,{'message':message})
     if action=='checks' and not enabled(result):return continue_saved(controller,task_id)
     return result
