@@ -34,7 +34,7 @@ def saved_values(task):
             roles[role] = {'strategy': 'automatic'}
     return {'execution': execution_from(task.get('execution') or {}),
             'limits': copy.deepcopy(task.get('limits') or {}), 'roles': roles,
-            'keep_up_to_date': bool((task.get('branch_run') or {}).get('plan', {}).get('keep_up_to_date', False))}
+            'keep_up_to_date': bool(task.get('integration_policy', {}).get('keep_up_to_date', False))}
 
 
 def view(engine, task_id):
@@ -51,6 +51,7 @@ def view(engine, task_id):
         editable = sorted(EXECUTION_FIELDS | {f'limits.{key}' for key in values['limits']} | {'limits.uncapped_work', 'roles.reviewer'}) if eligible else []
         return {'task_id': task_id, 'title': task.get('title', task_id), 'project': task.get('source'),
                 'values': values, 'revision': snapshot.get('revision', 0),
+                'active': active, 'paused': bool(eligible and not active and task.get('status') not in {'approved', 'awaiting_reply'}),
                 'sources': copy.deepcopy(snapshot.get('sources')) if snapshot else {
                     key: {'scope': 'saved', 'provenance': 'unknown'} for key in fields(values)},
                 'current_models': {role: (provider or {}).get('model') for role, provider in task.get('providers', {}).items() if isinstance(provider, dict)},
@@ -166,7 +167,9 @@ def prepare(engine, task, patch):
             run['model_policy']['providers'] = copy.deepcopy(updated['providers'])
         contract = run['authorization']['contract']
         contract['limits'] = copy.deepcopy(run['limits'])
-        contract['plan'] = copy.deepcopy(run['plan'])
+        contract['plan']['limits'] = copy.deepcopy(run['limits'])
+        for flag in ('uncapped_work', 'measurement'):
+            if flag in run['plan']: contract['plan'][flag] = run['plan'][flag]
         contract['model_policy'] = copy.deepcopy(run['model_policy'])
         run['authorization']['digest'] = digest(contract)
         run['plan_digest'] = digest(run['plan'])
@@ -213,11 +216,12 @@ def save(engine, task_id, request):
             sources[key] = {'scope': 'task', 'revision': revision}
         candidate['settings_snapshot'] = {**candidate.get('settings_snapshot', {}), 'schema_version': 1,
                                           'revision': revision, 'values': values, 'sources': sources}
-        snapshot = candidate['settings_snapshot']
-        if 'model_policy' in snapshot:
-            snapshot['model_policy']['execution'] = copy.deepcopy(candidate.get('execution', {}))
-            snapshot['model_policy']['providers'] = copy.deepcopy(candidate.get('providers', {}))
-            snapshot['policy_values_digest'] = digest(snapshot['values'])
+        _refresh_snapshot_policy(candidate)
+        if candidate.get('branch_run', {}).get('authorization'):
+            run = candidate['branch_run']
+            run['settings_snapshot_digest'] = digest(candidate['settings_snapshot'])
+            run['authorization']['contract']['settings_snapshot_digest'] = run['settings_snapshot_digest']
+            run['authorization']['digest'] = digest(run['authorization']['contract'])
         result = {'saved': True, 'applied': True, 'pending': intent == 'apply-and-continue',
                   'continuing': False, 'revision': revision, 'task_id': task_id, 'operation_id': operation_id}
         candidate.setdefault('settings_operations', {})[operation_id] = {'fingerprint': fingerprint,
@@ -254,3 +258,66 @@ def continue_operation(engine, task_id, operation_id):
         operation['result'].update(pending=not continued, continuing=continued, reason=reason)
         engine.store.save(task)
         return copy.deepcopy(operation['result'])
+
+
+def restore(engine):
+    """Recover acknowledged apply-and-continue after process loss, using saved work."""
+    for task in engine.store.list():
+        for operation_id, operation in task.get('settings_operations', {}).items():
+            if operation.get('stage') not in {'pending', 'dispatching'}:
+                continue
+            with engine.lock:
+                saved = engine.store.get(task['id'])
+                current = saved['settings_operations'][operation_id]
+                if busy(engine, task['id']):
+                    current['stage'] = 'continuing'
+                    current['result'].update(pending=False, continuing=True)
+                    engine.store.save(saved)
+                    continue
+                current['stage'] = 'pending'
+                engine.store.save(saved)
+            continue_operation(engine, task['id'], operation_id)
+
+
+def sync_saved(task):
+    """Keep legacy operator controls on the same task snapshot owner."""
+    snapshot = task.get('settings_snapshot')
+    if not snapshot:
+        return
+    values = copy.deepcopy(snapshot['values'])
+    patch = {}
+    for group in ('limits', 'execution'):
+        for key, value in task.get(group, {}).items():
+            if values.get(group, {}).get(key) != value:
+                patch[group+'.'+key] = copy.deepcopy(value)
+    for role in ('worker','reviewer'):
+        if task.get('operator_'+role+'_model'):
+            provider = task.get('providers', {}).get(role) or {}
+            choice = {'strategy':'only','model':provider.get('model'),'connection_id':provider.get('connection_id')}
+            if values.get('roles', {}).get(role) != choice:
+                patch['roles.'+role] = choice
+    if not patch:
+        return
+    snapshot['revision'] += 1
+    snapshot['values'] = overlay(values, patch)
+    for key in patch:
+        snapshot.setdefault('sources', {})[key] = {'scope':'task','revision':snapshot['revision']}
+    _refresh_snapshot_policy(task)
+    run = task.get('branch_run')
+    if run and 'settings_snapshot_digest' in run:
+        run['settings_snapshot_digest'] = digest(snapshot)
+        if run.get('authorization'):
+            run['authorization']['contract']['settings_snapshot_digest'] = run['settings_snapshot_digest']
+            run['authorization']['digest'] = digest(run['authorization']['contract'])
+
+
+def _refresh_snapshot_policy(task):
+    snapshot = task['settings_snapshot']
+    if 'model_policy' not in snapshot:
+        return
+    policy = copy.deepcopy(snapshot['model_policy'])
+    policy['execution'] = copy.deepcopy(task['execution'])
+    for role, choice in snapshot['values']['roles'].items():
+        policy['providers'][role] = copy.deepcopy(task.get('providers', {}).get(role)) if choice['strategy'] == 'only' else None
+    snapshot['model_policy'] = policy
+    snapshot['policy_values_digest'] = digest(snapshot['values'])

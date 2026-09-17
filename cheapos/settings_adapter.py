@@ -182,8 +182,10 @@ def _capture_policy(engine, snapshot):
         if provider and provider.get('gateway') != 'omniroute':
             # Preserve an exact legacy local binding. No direct remote path.
             from .providers import is_local_ollama
-            if not is_local_ollama(provider):
+            if not is_local_ollama(provider) and values['execution']['mode'] != 'manual':
                 raise ValueError(f'The saved {role} needs a gateway connection')
+            # Preserve legacy/custom bindings without dispatching them. The
+            # existing inference route guard still rejects unsupported endpoints.
             if values['execution']['mode'] in {'remote', 'delegate'}:
                 raise ValueError(f'The pinned local {role} conflicts with remote placement')
             config[role] = validate_provider(provider, role)
