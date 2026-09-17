@@ -5,7 +5,9 @@ import json
 import re
 from .development import enabled as developing
 
-REVIEW_INSTRUCTION = (' When decision is REQUEST_CHANGES, you MUST provide 1–8 defects in the defects array. '
+REVIEW_INSTRUCTION = (' When decision is APPROVE, return defects: []. Put positive confirmations in criteria_outcomes evidence '
+    '(or feedback for final review), never in defects. Do not manufacture a defect to populate the array. '
+    'When decision is REQUEST_CHANGES, you MUST provide 1–8 defects in the defects array. '
     'Each defect object MUST use these exact keys: '
     '"criterion" (must match the exact criterion value in the supplied schema), '
     '"location" (string file and line, e.g. "cache.py:17"), '
@@ -40,7 +42,9 @@ def decision(result, takeover=False):
         raise invalid_review('Return an explicit valid review decision; feedback cannot imply approval.')
     value = value.strip().upper()
     if value == 'APPROVE' and result.get('defects') not in (None, []):
-        raise invalid_review('APPROVE cannot contain unresolved blocking defects.')
+        raise invalid_review('APPROVE cannot contain unresolved blocking defects. If no blocking defect remains, '
+            'return defects: [] and put confirmations in criteria_outcomes evidence or feedback. '
+            'If a blocking defect remains, return REQUEST_CHANGES with concrete defects.')
     return value
 
 def schema(criteria=None):
@@ -51,7 +55,8 @@ def schema(criteria=None):
         fields['criterion']['description'] = f"Must be one of exact criteria: {json.dumps(list(criteria))}"
     fields['finding_id'] = {'type':'string','description':'Optional existing finding ID from the repair brief; omit for a new claim.'}
     fields['kind'] = {'type': 'string', 'enum': ['static', 'executable']}
-    return {'type': 'array', 'minItems': 1, 'maxItems': 8, 'items': {
+    return {'type': 'array', 'minItems': 0, 'maxItems': 8,
+        'description': 'Blocking defects only. For APPROVE return []; REQUEST_CHANGES requires 1–8 supported defects. Positive confirmations belong in criterion evidence or feedback; optional advice belongs in suggestions.', 'items': {
         'type': 'object', 'properties': fields, 'required': [k for k in fields if k!='finding_id'], 'additionalProperties': False}}
 
 
@@ -109,10 +114,10 @@ def validate(result, criteria):
     return cleaned_defects
 
 
-def ensure_available(task, key):
+def ensure_available(task, key, *, baseline=0):
     from .engine import ProgressPause
     saved = task['branch_run'].get('review_disagreements', {}).get(key, {})
-    if not developing(task) and saved.get('unsupported_attempts', 0) >= 3:
+    if not developing(task) and saved.get('unsupported_attempts', 0) - baseline >= 3:
         raise ProgressPause('Unsupported review disagreement persisted three times. Saved evidence is retained; Resume does not renew these attempts. Provide new evidence or revise the task explicitly.')
 
 

@@ -71,6 +71,14 @@ def decide(task, trigger=None):
     if task.get('limit_hit') or task.get('status')=='budget_paused':
         return {'kind':'allowance','action':'review_limits','reason':'Review the exhausted allowance; Continue does not replenish usage.'}
     if task.get('pending_review') or task.get('status')=='reviewing':
+        stalled = (task.get('pending_review') or {}).get('stop_diagnostic') or {}
+        if run and stalled.get('kind') == 'review_stall':
+            from .model_pool import automatic
+            reviewer = (task.get('providers', {}).get('reviewer') or {}).get('model')
+            can_switch = automatic(task, 'reviewer') and task.get('operator_reviewer_model') != reviewer
+            return {'kind':'review','action':'recover_review' if can_switch else 'choose_reviewer',
+                    'reason':'Continue saved review with an unused authorized reviewer.' if can_switch else
+                             'The selected reviewer stalled; approve a replacement for this task.'}
         return {'kind':'review','action':'continue_review','reason':'Continue the independent review against its saved candidate.'}
     if code in OUTAGES or code=='routing_unavailable':
         return {'kind':'transport','action':'route_recovery','reason':'Continue through existing authorized route recovery; keep completed tool results.'}

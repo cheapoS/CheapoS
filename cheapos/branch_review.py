@@ -41,13 +41,17 @@ def _coach(engine, task, messages, reason):
 
 
 def _stop(engine, task, reason):
-    if developing(task):
+    from .model_pool import automatic
+    if developing(task) and not automatic(task, 'reviewer'):
         return  # Keep evidence and retry counters; explicit work/money limits still apply.
     from .engine import ProgressPause
     from .branch_pause import specific
     pending = task['pending_review']
+    recovery = pending.get('stop_diagnostic', {}).get('recovery')
     pending['stop_diagnostic'] = {'kind': 'review_stall', 'reason': reason,
                                   'coached': bool(pending.get('coaching'))}
+    if recovery in ('manual', 'identity'):
+        pending['stop_diagnostic']['recovery'] = recovery
     engine.store.save(task)
     error = ProgressPause(specific(pending['stop_diagnostic']))
     error.code = 'progress_limit'
@@ -109,6 +113,22 @@ def extract_embedded_decision(text, candidate_id, criteria):
 
 
 def checkpoint(engine, runtime, args):
+    from .engine import ProgressPause
+    from .branch_review_recovery import recover
+    while True:
+        try:
+            return _checkpoint(engine, runtime, args)
+        except ProgressPause as error:
+            diagnostic = getattr(error, 'safe_diagnostic', None)
+            if not isinstance(diagnostic, dict) or diagnostic.get('kind') != 'review_stall':
+                raise
+            if not recover(engine, runtime, diagnostic):
+                # Rebuild the pause with the precise reason recovery needs help.
+                _stop(engine, runtime.task, diagnostic['reason'])
+                raise
+
+
+def _checkpoint(engine, runtime, args):
     from .engine import REVIEW_TOOLS, REVIEW_SYSTEM, ProgressPause
     task = runtime.task
     run = branch_runs.require_supported(task['branch_run'])
@@ -271,12 +291,15 @@ def checkpoint(engine, runtime, args):
             _stop(engine, task, pending['stop_diagnostic']['reason'])
         if any(count >= 3 for count in pending.get('observations', {}).values()):
             _stop(engine, task, 'repeated_evidence')
-        if run.get('review_disagreements', {}).get(current['id'], {}).get('unsupported_attempts', 0) >= 3:
+        from .branch_review_recovery import invalid_attempts
+        if invalid_attempts(task, pending) >= 3:
             _stop(engine, task, 'invalid_decision')
-        disagreement.ensure_available(task, current['id'])
+        disagreement.ensure_available(task, current['id'], baseline=pending.get('unsupported_baseline', 0))
         runtime.guard()
         from .provider_recovery import review_turns
         turns = review_turns(task, pending)
+        if not developing(task) and not measuring(task) and turns >= max_rounds:
+            _stop(engine, task, 'request_limit')
         needs_decision = bool(pending.get('require_decision')) or any(count >= 3 for count in pending.get('observations', {}).values())
         deciding = ((not developing(task) and not measuring(task) and turns >= max_rounds - 1)
                     or (developing(task) and turns >= 12)
@@ -389,7 +412,7 @@ def checkpoint(engine, runtime, args):
         repeated[fingerprint] = repeated.get(fingerprint,0) + 1
         save_history(task['pending_review'], messages)
         engine.store.save(task)
-        invalid = run.get('review_disagreements', {}).get(current['id'], {}).get('unsupported_attempts', 0)
+        invalid = invalid_attempts(task, task['pending_review'])
         repeated_reason = ('repeated_tool_error' if any(isinstance(o['result'],dict) and o['result'].get('error') for o in observations)
                            else 'repeated_evidence' if observations else 'missing_decision')
         if invalid >= 3:

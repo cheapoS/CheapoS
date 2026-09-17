@@ -2,6 +2,15 @@ import unittest
 from cheapos.continuation_policy import decide, is_continue, record, implementation_handoff
 from cheapos import progress, work_policy
 class ContinuationPolicyTests(unittest.TestCase):
+    def test_stalled_review_selects_recovery_instead_of_replaying_exhausted_step(self):
+        task={'branch_run':{'current_item_id':'one'},'execution':{'mode':'remote'},'route':{'base_url':'gateway'},
+              'providers':{'reviewer':{'model':'reviewer'}},'pending_review':{'stop_diagnostic':{'kind':'review_stall'}}}
+        self.assertEqual(decide(task)['action'],'recover_review')
+        task['operator_reviewer_model']='reviewer'
+        self.assertEqual(decide(task)['action'],'choose_reviewer')
+        task['pending_approval']={'command':['test']}
+        self.assertEqual(decide(task)['action'],'approve_command')
+
     def test_actions_and_idempotent_episode(self):
         for patch, action in [({'pending_approval':{'command':['test']}},'approve_command'),({'environment_setup':{'status':'missing'}},'repair_environment'),({'limit_hit':{'key':'dollars'}},'review_limits'),({'pending_review':{'id':'x'}},'continue_review'),({'error_code':'http_429'},'route_recovery')]:
             task={'prompt':'Fix',**patch};self.assertEqual(decide(task)['action'],action)

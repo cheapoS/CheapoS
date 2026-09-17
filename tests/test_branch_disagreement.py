@@ -23,7 +23,9 @@ class DisagreementTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 disagreement.decision({'decision':value,'feedback':'Looks good'})
         self.assertEqual(disagreement.decision({'decision':' approve '}),'APPROVE')
-        with self.assertRaises(ValueError):
+        self.assertEqual(disagreement.decision({'decision':'APPROVE','defects':[]}),'APPROVE')
+        self.assertEqual(disagreement.schema()['minItems'],0)
+        with self.assertRaisesRegex(ValueError,'return defects: \\[\\]'):
             disagreement.decision({'decision':'APPROVE','defects':[defect()]})
         runtime=SimpleNamespace(task={'branch_run':{}},guard=lambda:None)
         response={'manifest_id':'m','chunk_ids':[],'criteria_ids':[],'feedback':'Looks good'}
@@ -33,6 +35,8 @@ class DisagreementTests(unittest.TestCase):
         for _ in range(2):
             with self.assertRaises(ValueError):branch_final._review(engine,runtime,{'id':'m'}, {}, [], [])
         self.assertEqual(engine.request.call_count,3)
+        tools=engine.request.call_args.args[2]
+        self.assertEqual(tools[0]['function']['parameters']['properties']['defects']['minItems'],0)
 
     def test_legacy_findings_normalize_and_cannot_bypass_saved_guard(self):
         finding=defect('executable');finding.pop('kind')
@@ -141,6 +145,28 @@ class DisagreementTests(unittest.TestCase):
 
 
 class ReviewCoachingTests(unittest.TestCase):
+    def test_approval_confirmation_is_corrected_without_dropping_a_defect_or_rerunning_checks(self):
+        task,engine,runtime=self.fixture()
+        approval={'decision':'APPROVE','candidate_id':'candidate','feedback':'Exact values are preserved.',
+                  'criteria_outcomes':{'exact values':{'passed':True,'evidence':'Source and supplied checks.'}}}
+        def respond(rt,messages,tools,role):
+            offered=next(t for t in tools if t['function']['name']=='review_decision')
+            self.assertEqual(offered['function']['parameters']['properties']['defects']['minItems'],0)
+            if engine.request.call_count==1:
+                confirmation={**defect(),'observed':'Exact values are preserved; this confirms the requirement.'}
+                return {'tool_calls':[{'id':'bad','name':'review_decision','result':{**approval,'defects':[confirmation]}}]}
+            branch_review.evidence.ready_receipt.assert_not_called()
+            self.assertIn('return defects: []',messages[-1]['content'])
+            self.assertIn('criteria_outcomes evidence',messages[-1]['content'])
+            return {'tool_calls':[{'id':'corrected','name':'review_decision','result':{**approval,'defects':[]}}]}
+        engine.request.side_effect=respond
+        self.assertEqual(branch_review.checkpoint(engine,runtime,{})['decision'],'APPROVE')
+        self.assertEqual(engine.request.call_count,2)
+        self.assertEqual(task['branch_run']['review_disagreements']['candidate']['unsupported_attempts'],1)
+        branch_review.evidence.ready_receipt.assert_called_once()
+        self.assertEqual(branch_review.evidence.ready_receipt.call_args.args[2]['defects'],[])
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+
     def test_last_saved_request_requires_decision_without_renewing_allowance(self):
         task,engine,runtime=self.fixture()
         task['pending_review']={'branch_candidate_id':'candidate','review_requests':7,
@@ -203,7 +229,8 @@ class ReviewCoachingTests(unittest.TestCase):
         detail=branch_pause.classify(failure.exception,task)
         self.assertIn('same unchanged evidence three times',detail['explanation'])
         self.assertIn('already requested a focused reassessment',detail['explanation'])
-        self.assertEqual(detail['next_action'],'inspect');self.assertEqual(detail['stage'],'reviewing')
+        self.assertEqual(detail['next_action'],'reviewer');self.assertEqual(detail['stage'],'reviewing')
+        self.assertIn('Automatic replacement is disabled',detail['explanation'])
         self.assertEqual(engine.request.call_count,3)
         restored=json.loads(json.dumps(task));runtime.task=restored
         # Mirrors the engine wrapper which retains only progress_limit and saved task state.

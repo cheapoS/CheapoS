@@ -40,4 +40,4 @@ def review_turns(task, pending):
         if (same and r.get('id') and r.get('role') == 'reviewer' and r.get('purpose') == 'work'
                 and r.get('status') == 'failed' and r.get('dispatched') and r.get('error_code') in OUTAGES):
             failed.add(r['id'])
-    return max(0, pending.get('review_requests', 0) - len(failed))
+    return max(0, pending.get('review_requests', 0) - len(failed) - pending.get('review_turn_baseline', 0))

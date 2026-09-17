@@ -99,14 +99,31 @@ class PauseDetails(unittest.TestCase):
   t.pop('request_metrics');t['branch_run']['pause_detail'].pop('diagnostic_id',None)
   self.assertNotIn('explicit valid review decision',pause.classify(ValueError('new unrelated failure'),t)['explanation'])
 
- def test_review_stall_is_specific_and_preserves_inspection_action_after_public_round_trip(self):
+ def test_invalid_review_stall_offers_reviewer_recovery_after_public_round_trip(self):
   t=self.task();t['error_code']='progress_limit';t['pending_review']={'stop_diagnostic':{'kind':'review_stall','reason':'invalid_decision','coached':True}}
   d=pause.classify(ValueError('private outer exception'),t)
   self.assertIn('failed validation three times',d['explanation']);self.assertIn('already requested',d['explanation'])
-  self.assertEqual(d['next_action'],'inspect');self.assertEqual(pause.public(d),d)
+  self.assertEqual(d['next_action'],'reviewer');self.assertEqual(pause.public(d),d)
   for malformed in ({'kind':'review_stall','reason':[],'coached':True},{'kind':'review_stall','reason':'bad reason','coached':True},'not a diagnostic'):
    t['pending_review']['stop_diagnostic']=malformed
    self.assertNotIn('diagnostic',pause.classify(ValueError('private'),t))
+
+ def test_saved_approval_conflict_is_explained_without_mutation_or_model_text(self):
+  import copy
+  t=self.task();t['error_code']='progress_limit'
+  t['pending_review']={'branch_candidate_id':'candidate','stop_diagnostic':{'kind':'review_stall','reason':'invalid_decision','coached':True}}
+  pause.apply(t,ValueError('outer wrapper'))
+  t['branch_run']['review_disagreements']={'candidate':{'unsupported_attempts':3,'last_unsupported':{
+   'decision':'APPROVE','defects':[{'support':'PRIVATE provider text'}]}}}
+  before=copy.deepcopy(t)
+  for d in (pause.for_task(t),pause.classify(ValueError('wrapper'),t)):
+   self.assertIn('APPROVE with a nonempty defects list',d['explanation'])
+   self.assertIn('defects: []',d['explanation']);self.assertNotIn('PRIVATE',str(d))
+   self.assertEqual(d['next_action'],'reviewer');self.assertEqual(pause.public(d),d)
+  self.assertEqual(t,before)
+  pause.apply(t,cause='operator')
+  self.assertEqual(pause.for_task(t)['next_action'],'resume')
+  self.assertNotIn('nonempty defects',pause.for_task(t)['explanation'])
 
  def test_item_review_stall_uses_reviewer_request_not_worker_implementation_role(self):
   t=self.task();t['active_role']='worker';t['error_code']='progress_limit'

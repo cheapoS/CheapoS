@@ -1,0 +1,118 @@
+# Complete the work without operator rescue
+
+cheapoS should feel like working with agents that remember the task and finish
+it. An unattended task succeeds when it reaches a trustworthy, reviewable result
+within the operator's authorization. Displaying an understandable error and a
+Resume button is not a successful recovery.
+
+This is the development direction for the next iteration. The item-review
+handoff described below is implemented; the broader changes are milestones,
+not claims about current behavior.
+
+## What went wrong
+
+We have repeatedly treated engine failures as operator decisions. The recent
+review incident illustrates both layers: a contradictory tool schema provoked
+invalid approvals, then Resume reopened the exhausted review state. Explaining
+the failure and adding a reviewer-selection button still required the operator
+to diagnose the engine and rescue work that was already implemented and checked.
+
+Local recovery counters and scattered exception handlers have become accidental
+task-completion policy. Worker, reviewer, planner and transport recovery need to
+agree on what remains unfinished and what can happen next.
+
+## Development contract
+
+- Ordinary model, transport, formatting and non-progress failures belong to the
+  engine. Preserve the work, choose a materially different next action, and
+  continue automatically when it is authorized.
+- A progress threshold triggers a change of strategy, not a task stop by itself.
+  Do not add another arbitrary retry-count ceiling on top of the operator's
+  chosen work and spending limits.
+- Retain the objective, approved scope, conversation, current operation, edits,
+  check evidence, unresolved findings and attempt history across handoffs and
+  restarts. Another model should continue the job rather than rediscover it.
+- Respect a provider's cooldown. Try another eligible route or wait for a useful
+  availability check; repeatedly hitting the same endpoint is not recovery.
+- Reuse checks only while their command, candidate and environment still match.
+  Do not send the worker back through implementation when only review is left.
+- A valid reviewer rejection goes to focused repair. Changing reviewers must not
+  be a way to discard a real defect or hunt for approval.
+- Ask the operator for a decision only when it cannot be made within the saved
+  authority: essential scope information, credentials, command approval, changed
+  spending/model policy, or final integration. Describe the actual decision.
+- If no authorized strategy can proceed, state what was tried and the specific
+  remaining prerequisite. The operator should never need a magic chat phrase.
+
+Errors remain available as diagnostics. Chat should show useful progress such
+as “The reviewer couldn't complete its decision; continuing review with …” or
+“Waiting for an available authorized provider.” These updates describe actual
+engine actions, not optimistic status text.
+
+## One continuation decision, existing executors
+
+Extend `cheapos/continuation_policy.py` into the common next-action decision for
+planner, worker, reviewer and transport failures. Keep it deterministic; do not
+add a paid model request just to decide whether to retry a known failure.
+
+The decision consumes the saved operation and current evidence. It selects one
+of: continue the current operation, repair malformed output, use another
+authorized route, resume focused implementation, reuse/run the required check,
+wait for availability, or request a necessary operator decision. Existing
+executors keep ownership of file operations, command grants, accounting, model
+dispatch and Git integration.
+
+Persist the selected continuation before dispatch, with its candidate/operation
+identity, attempted routes, evidence references, next eligible time when known,
+and outcome. Restart must distinguish “selected but not dispatched” from
+“dispatched with uncertain outcome.” A new model conversation does not reset
+the task's cumulative usage or erase an unresolved finding.
+
+Resume should invoke this decision from saved state. It must not blindly replay
+an exhausted operation, manufacture a new task, or clear counters until the same
+broken request happens to run again.
+
+## Milestones, in order
+
+1. **Finish the current reviewer recovery path.** Invalid decisions, repeated
+   reads and missing decisions lead to another unused authorized independent
+   reviewer after focused reassessment. Preserve the failed exchange and reuse
+   valid checks. Resume on existing stalled items takes this same path. No new
+   handoff-count cutoff; existing task limits and route eligibility still apply.
+   Acceptance: a scripted reviewer fails, another finishes review, and no
+   operator message, worker rerun, extra verification or synthetic approval is
+   needed. A valid rejection still leads to repair.
+
+2. **Unify continuation across phases.** Audit planning, implementation, item
+   review and final review entry points and their exception handlers. Replace
+   stop-by-counter paths with common continuation decisions. Keep genuine
+   authority failures distinct from model failures. Acceptance: each recoverable
+   failure has a demonstrated automatic next action; unsupported recovery ends
+   in an explicit prerequisite, not “add a correction.”
+
+3. **Make saved context sufficient to continue.** Build a shared continuation
+   packet from durable task state: objective, scope, current candidate, finished
+   work, exact remaining action, current checks and unresolved findings. Treat
+   model summaries as advisory and bind evidence to the actual candidate.
+   Acceptance: replacing a worker/reviewer or interrupting dispatch does not
+   lose the current operation, repeat completed edits or hide a review finding.
+
+4. **Make temporary unavailability a waiting state.** Carry connection/model
+   cooldowns and next eligible checks into continuation. A queued task remains
+   visibly alive and cancellable, resumes when a route is eligible, and does not
+   flood providers while waiting. Acceptance: fake-clock cases cover cooldown,
+   alternate provider, cancellation and restart without real sleeps or calls.
+
+5. **Qualify completion, not error presentation.** Maintain a small deterministic
+   set of complete continuation scenarios: invalid reviewer output, provider
+   cooldown, malformed plan, worker stall, and restart between dispatch stages.
+   Track successful completion without operator intervention, repeated calls,
+   repeated checks, handoffs and total usage. Live trials remain explicit,
+   measured and within the selected spending policy. Do not add expensive test
+   fixtures without the repository's test-cost disclosure and approval.
+
+## Review every recovery change against this question
+
+Does this change let the task continue and finish without the operator doing the
+engine's work? If it only adds error wording, another button or instructions to
+type into Chat, the underlying recovery work is still incomplete.

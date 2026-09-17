@@ -251,6 +251,10 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
                     and e["detail"].get("model"))
     used.update(runtime.failed_models)
     used.update(task.get('branch_run',{}).get('implementation_recovery',{}).get('failed_models',[]))
+    from .branch_review_recovery import failed_models
+    from .served_identity import normalized
+    failed_reviewers = {normalized(model) for model in failed_models(task)} if role == 'reviewer' else set()
+    used.update(model['id'] for model in catalog['models'] if normalized(model['id']) in failed_reviewers)
     connection_revision=(policy or {}).get('connection_revision')
     from .provider_recovery import outage, provider
     # Pool records carry actual outage scope and expiry. Legacy request-level
