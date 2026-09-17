@@ -2036,7 +2036,7 @@ $('#composer-permissions').onclick=sessionPermissions;
   if(restartBoth)restartBoth.onclick=()=>restartAction({refresh:true});
   if(restartOmniroute)restartOmniroute.onclick=()=>restartAction({refresh:true,restart:false});
 })();
-$('#lifetime-usage-trigger').onclick=()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader});
+if($('#lifetime-usage-trigger')) $('#lifetime-usage-trigger').onclick=()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader});
 let lifetimeUsageData=null, lifetimeUsageLoadedAt=0;
 function renderLifetimeSavingsBadge(data){
   if(!data)return;
