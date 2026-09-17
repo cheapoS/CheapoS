@@ -16,7 +16,7 @@ class EditSequenceTests(unittest.TestCase):
             ws=Workspace(directory)
             engine=Engine.__new__(Engine)
             engine.lock=threading.RLock()
-            engine.file_tool=lambda task,name,args:getattr(ws,name)(**args)
+            engine.file_tool=lambda task,name,args,runtime=None:getattr(ws,name)(**args)
             runtime=SimpleNamespace(task={'workspace':directory,'compact_edits':True},edit_versions={},guard=lambda:None)
             versions={name:ws.read_file(name)['hash'] for name in ('x.txt','y.txt')}
             mutated=set()

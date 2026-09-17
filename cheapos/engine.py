@@ -2566,9 +2566,16 @@ class Engine:
             previous = task.get('edit_recovery', {}).get(path, {})
             if previous.get('fingerprint') == fingerprint(args):
                 raise FileRangeError('This exact edit was already rejected for this file version. It was not executed again. Correct the range using the supplied current lines.')
-        with self.lock:
+        if name == "inspect_image":
+            # Vision is a metered model request, not a local file mutation.
+            # Never hold the app-wide lock while waiting for a provider slot
+            # or response: other tasks and the operator's Pause need it too.
             runtime.guard()
             result = self.file_tool(task, name, args, runtime=runtime)
+        else:
+            with self.lock:
+                runtime.guard()
+                result = self.file_tool(task, name, args, runtime=runtime)
         if name == "read_file":
             self.remember_file_version(runtime, result)
         elif name in MUTATIONS:

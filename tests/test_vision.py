@@ -2,11 +2,107 @@
 
 import base64
 import copy
+import tempfile
+import threading
+import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from cheapos.uploads import save_upload
 from cheapos.vision import inspect_image_tool, resolve_image_path
 from test_engine import LocalCase
+
+
+class VisionResponsivenessTests(unittest.TestCase):
+    """No providers, Git workflows, or timed sleeps; use a second thread as the UI."""
+
+    def setUp(self):
+        from cheapos.admission import Admission
+        from cheapos.engine import Engine
+
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        (root / 'image.png').write_bytes(b'\x89PNG\r\n\x1a\n')
+        self.task = {'id': 'image', 'workspace': str(root), 'demo': False,
+                     'status': 'running', 'active_role': 'worker', 'tool_actions': 0,
+                     'providers': {'worker': {'model': 'fixture-vision'}}}
+        self.runtime = SimpleNamespace(task=self.task, guard=Mock(), stop=threading.Event(),
+                                       approval=threading.Event(), thread=Mock(is_alive=lambda: True))
+        self.engine = Engine.__new__(Engine)
+        self.engine.lock = threading.RLock()
+        self.engine.store = SimpleNamespace(root=root)
+        self.engine.event = Mock()
+        self.engine.require_active_task = Mock()
+        other = SimpleNamespace(task={'branch_run': {}}, thread=Mock(is_alive=lambda: True))
+        self.engine.runtimes = {'image': self.runtime, 'other': other}
+        self.engine.admission = Admission(self.engine)
+
+    def operator_access(self, *, pause=False):
+        observations = []
+        def inspect():
+            # Nonblocking acquisition makes the old bug fail immediately rather
+            # than deadlocking the test or requiring a real timeout.
+            acquired = self.engine.lock.acquire(blocking=False)
+            observations.append(acquired)
+            if acquired:
+                try:
+                    observations.append(len(self.engine.admission.snapshot()['active']))
+                    if pause:
+                        observations.append(self.engine.stop('image'))
+                finally:
+                    self.engine.lock.release()
+        thread = threading.Thread(target=inspect)
+        thread.start()
+        thread.join()
+        return observations
+
+    def test_image_request_keeps_other_task_and_operator_accessible(self):
+        observations = []
+        def request(runtime, messages, tools, role, purpose):
+            observations.extend(self.operator_access())
+            self.assertIs(runtime, self.runtime)
+            self.assertEqual((role, purpose, tools), ('worker', 'vision', []))
+            return {'content': 'The image shows a diagram.'}
+        self.engine._request = Mock(side_effect=request)
+
+        result = self.engine.worker_file_tool(self.runtime, 'inspect_image', {'path': 'image.png'}, {})
+
+        self.assertEqual(observations, [True, 2])
+        self.assertEqual(result['analysis'], 'The image shows a diagram.')
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(self.task['tool_actions'], 1)
+        self.engine._request.assert_called_once()
+
+    def test_pause_interrupts_image_inspection_without_fallback_success(self):
+        observations = []
+        def request(*args, **kwargs):
+            observations.extend(self.operator_access(pause=True))
+            if self.runtime.stop.is_set():
+                raise InterruptedError('Image inspection paused')
+            return {'content': 'Must not complete after Pause'}
+        self.engine._request = Mock(side_effect=request)
+
+        with self.assertRaisesRegex(InterruptedError, 'paused'):
+            self.engine.worker_file_tool(self.runtime, 'inspect_image', {'path': 'image.png'}, {})
+
+        self.assertEqual(observations, [True, 2, {'stopping': True}])
+        self.assertEqual(self.task['status'], 'stopping')
+        self.assertEqual(self.task['tool_actions'], 0)
+
+    def test_file_mutations_keep_existing_lock(self):
+        observations = []
+        def edit(*args, **kwargs):
+            observations.extend(self.operator_access())
+            return {'written': True}
+        self.engine.file_tool = Mock(side_effect=edit)
+        self.runtime.edit_versions = {}
+
+        result = self.engine.worker_file_tool(self.runtime, 'write_file', {'path': 'note.txt', 'content': 'ok'}, {})
+
+        self.assertEqual(observations, [False])
+        self.assertEqual(result, {'written': True})
 
 
 class VisionToolTests(LocalCase):
