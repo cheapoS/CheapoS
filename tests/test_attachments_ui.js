@@ -170,3 +170,27 @@ test('choosing a project while sending carries attachments without replacing its
   f.c.restoreDraft();
   assert.deepEqual(Array.from(f.state.composerAttachments, a => a.id), ['saved-project-file', 'unassigned']);
 });
+test('user message text hides attachment metadata notes from the chat body', () => {
+  const c = {};
+  vm.createContext(c);
+  vm.runInContext(source.slice(source.indexOf('function stripAttachmentNotes('), source.indexOf('function messageText(')), c);
+  assert.equal(typeof c.stripAttachmentNotes, 'function');
+
+  // Plain text with no attachment note is unchanged.
+  assert.equal(c.stripAttachmentNotes('explain this image'), 'explain this image');
+
+  // A single image note with a full filesystem path is stripped.
+  const imageNote = 'explain this image\n\n### Attached Image: cover-v1.jpg\n[Image file saved at /Users/carlosa8c/Library/Application Support/cheapoS/uploads/abcd/cover-v1.jpg. Use inspect_image tool to analyze visual details.]';
+  assert.equal(c.stripAttachmentNotes(imageNote), 'explain this image');
+
+  // An image note without a title line is stripped cleanly.
+  assert.equal(c.stripAttachmentNotes('### Attached Image: cover-v1.jpg\n[Image file saved at /path/to/cover-v1.jpg.]'), '');
+
+  // A document note with an embedded code fence is stripped in full.
+  const docNote = 'review this\n\n### Attached Document: calc.py\n```py\ndef calculate():\n    return 1\n```';
+  assert.equal(c.stripAttachmentNotes(docNote), 'review this');
+
+  // Multiple attached notes after one title line are all stripped.
+  const multi = 'look\n\n### Attached Image: a.png\n[Image file saved at /a.png.]\n\n### Attached Document: b.txt\n```\nhi\n```';
+  assert.equal(c.stripAttachmentNotes(multi), 'look');
+});

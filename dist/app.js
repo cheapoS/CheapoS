@@ -100,7 +100,7 @@ const CheapOSChatView = (() => {
         const isImg=att.media_type==='image'||(att.mime_type&&att.mime_type.startsWith('image/'));
         return `<div class="chat-attachment-item">${isImg&&att.url?`<a href="${esc(att.url)}" target="_blank" rel="noopener"><img class="chat-attachment-thumb" src="${esc(att.url)}" alt="${esc(att.name)}"></a>`:`<svg class="attachment-icon"><use href="#i-paperclip"/></svg>`}<span class="attachment-name">${esc(att.name)}</span></div>`;
       }).join('')}</div>`:'';
-      return `<article class="chat-message from-user ${entry.steer?'steer-bubble':''}" data-message="${entry.id}"><div class="chat-author"><strong>You</strong>${entry.steer?'<span>Follow-up while working</span>':''}</div><div class="chat-message-body">${attMarkup}${messageText(entry.text)}</div></article>`;
+      return `<article class="chat-message from-user ${entry.steer?'steer-bubble':''}" data-message="${entry.id}"><div class="chat-author"><strong>You</strong>${entry.steer?'<span>Follow-up while working</span>':''}</div><div class="chat-message-body">${attMarkup}${messageText(stripAttachmentNotes(entry.text))}</div></article>`;
     }
     const steps=entry.steps, older=steps.length>4?steps.slice(0,-3):[], visible=older.length?steps.slice(-3):steps;
     if(!steps.length&&!entry.reply&&!decision&&!entry.live&&!entry.owner)return '';
@@ -869,6 +869,9 @@ function eventDetail(event) {
 function sourceLink(url,label) {
   try{if(new URL(url).protocol==='https:')return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`}catch{}
   return esc(label);
+}
+function stripAttachmentNotes(value) {
+  return String(value||'').replace(/(^|\n\n)### Attached (?:Image|Document): .+?(?=\n\n### Attached (?:Image|Document): |\s*$)/gs,'').trimEnd();
 }
 function messageText(value) {
   const inline=text=>text.split(/(\[[^\]\n]+\]\(https:\/\/[^\s)]+\))/g).map(part=>{
