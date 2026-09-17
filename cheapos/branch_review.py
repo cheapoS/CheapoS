@@ -303,6 +303,10 @@ def checkpoint(engine, runtime, args):
                 message = engine.request(runtime, request_messages, offered, 'reviewer')
         except TypeError:
             message = engine.request(runtime, request_messages, offered, 'reviewer')
+        except ProviderError as error:
+            engine.event(task, 'routing', 'Reviewer request failed; trying another reviewer', {'error': str(error)})
+            engine.defer_route(task, 'reviewer', error)
+            continue
         task['review_count'] += 1
         messages.append(message)
         calls = message.get('tool_calls', [])

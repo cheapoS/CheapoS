@@ -39,6 +39,16 @@ class ContinuationPolicyTests(unittest.TestCase):
         self.assertIsNone(work_policy.small_edit_reason(task))
         task.update(status='paused',error_code='progress_limit',active_role='worker',pending_review={'id':'x'})
         self.assertFalse(implementation_handoff(task,{'status':'working'}))
+    def test_worker_error_status_recovers_via_implementation_handoff(self):
+        task={'prompt':'Implement feature','active_role':'worker','status':'error','error_code':'stream_interrupted'}
+        self.assertTrue(implementation_handoff(task,{'status':'working'}))
+        task['status'] = 'paused'
+        task['error_code'] = 'progress_limit'
+        self.assertTrue(implementation_handoff(task,{'status':'working'}))
+        task['error_code'] = 'worker_turn_limit'
+        self.assertFalse(implementation_handoff(task,{'status':'working'}))
+        task['error_code'] = 'environment_setup'
+        self.assertFalse(implementation_handoff(task,{'status':'working'}))
     def test_repeated_clicks_do_not_dispatch_or_renew(self):
         from threading import RLock
         from types import SimpleNamespace
