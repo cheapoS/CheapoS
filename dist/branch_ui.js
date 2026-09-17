@@ -278,33 +278,121 @@ function mount(options){
   const retry=view.querySelector('[data-retry-planning]');if(retry)retry.onclick=()=>submitPlanning(request);return true;
  }
  function commandText(value){if(typeof value==='string')return value;const command=value?.argv||value?.command||[];return typeof command==='string'?command:command.join(' ');}
- function showProposal(existingDialog){
-  const captured=proposal,contract=captured.contract,plan=contract?.plan,task=getState().task;
-  if(!plan?.items?.length){toast('The planner did not return a valid finite plan. Your draft is preserved.');return;}
-  const readiness=proposalReadiness(captured),metrics=(task?.request_metrics||[]).filter(r=>r.role==='planner'),last=metrics.at(-1),planner=last?.served_model||last?.model||task?.providers?.planner?.model||'Identity unavailable';
-  const usage=task?.usage?.planner;
-  const body=`<div class="branch-review-body"><p><strong>${escape(contract.original_request||task?.title||'Document-based job')}</strong></p>${contract.inputs?.document?.path?`<p>Captured document: <code>${escape(contract.inputs.document.path)}</code></p>`:''}<button type="button" class="text-link" data-revise-scope>Discuss scope changes in this chat</button><p class="branch-subtle">Project <code>${escape(contract.project?.source||captured.request?.repository)}</code> · committed base ${escape(short(contract.base_ref))} at ${escape((contract.base_sha||'').slice(0,12))}. Uncommitted source edits are excluded. Changing the source or committed base requires a new captured planning request.</p><form><h3>Proposed work</h3><ol class="branch-plan-items">${plan.items.map((item,i)=>`<li><label>Task ${i+1}<input data-title="${i}" value="${escape(item.title)}" maxlength="120" required></label><label>Instructions<textarea data-instructions="${i}" rows="3" required>${escape(item.instructions)}</textarea></label><label>Acceptance criteria · one per line<textarea data-criteria="${i}" rows="3" required>${escape(item.acceptance_criteria.join('\n'))}</textarea></label><label>Required checks · one command per line<textarea data-checks="${i}" rows="2" required>${escape(item.required_checks.map(commandText).join('\n'))}</textarea></label></li>`).join('')}</ol><label>Final integration checks<textarea data-final-checks rows="2" required>${escape((plan.final_checks||[]).map(commandText).join('\n'))}</textarea></label><h3>Execution settings</h3><p>Planner used: <strong>${escape(planner)}</strong>${last?.served_model?' · reported model identity':last?' · requested identity; served model unavailable':task?.providers?.planner?.model?' · saved configuration; actual identity unavailable':''}</p><p>Planning already accounted: ${usage?`${Number(usage.tokens||0).toLocaleString()} tokens · $${Number(usage.cost||0).toFixed(4)}`:'usage unavailable in this saved record'}. Execution edits do not renew or increase the planning allowance.</p><p>${escape(contract.model_policy?.execution?.mode||'Configured placement')} · ${escape(['worker','reviewer'].map(role=>role+': '+(contract.model_policy?.providers?.[role]?.model||'authorized automatic route, selected when needed')).join(' · '))}</p><p class="branch-subtle">Model access stays bound to this captured policy. Changing providers or destinations requires a new planning request with those configured choices.</p><label class="planning-measurement"><input name="uncapped_work" type="checkbox" ${plan.uncapped_work||plan.measurement?'checked':''}>Uncapped work · ∞</label><p>Remove cumulative work caps while keeping spending limits, permissions and review. Per-command timeouts and output limits remain in effect.</p><details class="review-execution"><summary>Branches, allowances and measurement</summary><div class="branch-ref-fields"><label>Local target<input name="target_ref" value="${escape(contract.target_ref)}" required></label><label>Feature branch<input name="feature_ref" value="${escape(contract.feature_ref)}" required></label></div><label class="planning-measurement"><input name="measurement" type="checkbox" ${plan.measurement?'checked':''}>Measurement execution · track usage without work limits</label><p>Measurement is an explicit execution choice. It does not change previously authorized planning or permit paid fallback.</p><div class="review-limit-grid">${Object.entries(plan.limits||contract.limits||{}).map(([name,value])=>`<label>${escape(name.replace(/_/g,' '))}<input data-limit="${escape(name)}" type="number" min="0" step="${name==='dollars'?'0.01':'1'}" value="${escape(value)}" required></label>`).join('')}</div></details><details class="review-permissions"><summary>Exact test permission scopes</summary><ul>${(contract.check_scope||[]).map(scope=>`<li><code>${escape(commandText(scope))}</code>${scope.kind?` · ${escape(scope.kind)}`:''}</li>`).join('')||'<li>Inspect the required checks above. Complete validated command scopes must be available before Start.</li>'}</ul><p>Start authorizes only the displayed checks in this private task copy. New commands or changed scope may still need approval. Feature commits are local; merge and push remain separate decisions.</p></details>${fullSuiteConsent(captured)}<div data-review-readiness>${readiness.html}</div><p data-review-status role="status">${readiness.blocked?'Resolve the listed setup issue before Start.':'This proposal is current and ready for your review.'}</p><p class="branch-error" role="alert"></p><div class="branch-actions"><button type="submit" class="primary" ${readiness.blocked?'disabled':''}>Start run</button><button type="button" data-validate hidden>Validate changes</button><button type="button" data-close-plan>Keep draft</button></div></form></div>`;
-  const d=existingDialog?.isConnected?existingDialog:dialog('Review & start',body);
-  if(existingDialog?.isConnected)d.querySelector('.branch-review-body').outerHTML=body;
-  const form=d.querySelector('form'),start=form.querySelector('[type=submit]'),validate=form.querySelector('[data-validate]'),status=form.querySelector('[data-review-status]');
-  const validation=proposalValidation(captured,values=>api('/tasks/'+captured.task_id+'/branch-proposal-edit',values));
-  const edited=event=>{if(event?.target?.name==='full_suite_approved')return;validation.edit();start.disabled=true;validate.hidden=false;validate.disabled=validation.get().pending;status.textContent='Changes need validation. Start is disabled until this displayed proposal is current.';};
-  const workChoice=form.elements.uncapped_work,measurementChoice=form.elements.measurement;
-  const showWorkLimits=()=>{for(const el of form.querySelectorAll('[data-limit]'))if(['worker_turns','requests','tool_actions','reviewer_tokens','working_seconds'].includes(el.dataset.limit))el.closest('label').hidden=workChoice.checked;};
-  workChoice.onchange=()=>{if(!workChoice.checked)measurementChoice.checked=false;showWorkLimits();};
-  measurementChoice.onchange=()=>{if(measurementChoice.checked)workChoice.checked=true;showWorkLimits();};
-  showWorkLimits();
-  form.oninput=edited;form.onchange=edited;d.querySelector('[data-close-plan]').onclick=()=>d.close();
-  d.querySelector('[data-revise-scope]').onclick=()=>{d.close();options.planningGuidance?.(captured.task_id);input.focus();};
-  validate.onclick=async()=>{
-   if(!form.reportValidity()||validation.get().pending)return;
-   const next=structuredClone(plan);next.items.forEach((item,i)=>{item.title=form.querySelector(`[data-title="${i}"]`).value;item.instructions=form.querySelector(`[data-instructions="${i}"]`).value;item.acceptance_criteria=form.querySelector(`[data-criteria="${i}"]`).value.split('\n').filter(x=>x.trim());item.required_checks=form.querySelector(`[data-checks="${i}"]`).value.split('\n').filter(x=>x.trim());});next.final_checks=form.querySelector('[data-final-checks]').value.split('\n').filter(x=>x.trim());next.measurement=form.elements.measurement.checked;next.uncapped_work=form.elements.uncapped_work.checked;for(const el of form.querySelectorAll('[data-limit]'))next.limits[el.dataset.limit]=Number(el.value);
-   const values={repository:contract.project?.source||captured.request?.repository,prompt:contract.original_request,inputs:contract.inputs,base_ref:contract.base_ref,target_ref:form.elements.target_ref.value,feature_ref:form.elements.feature_ref.value,plan:next};
-   validate.disabled=true;status.textContent='Validating the displayed plan and execution settings…';form.querySelector('.branch-error').textContent='';
-   try{const result=await validation.validate(values);if(!result){status.textContent='Fields changed during validation. Validate the current values before Start.';return;}proposal={...result,request:captured.request};showProposal(d);}catch(err){error(form,err);status.textContent='Validation failed. Your edits are preserved; correct the reported field or setup issue and validate again.';const message=String(err.message||'');for(const el of form.querySelectorAll('[name],[data-limit]'))if(message.toLowerCase().includes((el.name||el.dataset.limit).replace(/_/g,' ').toLowerCase()))el.setAttribute('aria-invalid','true');}finally{if(validate.isConnected)validate.disabled=false;}
-  };
-  form.onsubmit=e=>{e.preventDefault();if(!validation.get().canStart||readiness.blocked)return;if((captured.full_suite_checks||[]).length&&!form.elements.full_suite_approved?.checked){error(form,new Error('Approve the listed full-suite checks before starting, or revise the checks.'));return;}guarded(start,async()=>{const exact={...validation.get().current,...(form.elements.full_suite_approved?.checked?{full_suite_approved:true}:{})},submittedInput=input.value,submittedKey=key();d.close();const result=await starts.start(exact);if(result.status==='accepted'){if(key()===submittedKey&&input.value===submittedInput){delete drafts[submittedKey];try{localStorage.setItem(storageKey,JSON.stringify(drafts));}catch(_){}input.value='';}if(proposal===captured)proposal=null;}await refresh();},d);};
- }
+  function autoResize(el){
+    if(!el)return;
+    el.style.height='auto';
+    el.style.height=Math.max(68,el.scrollHeight+4)+'px';
+  }
+  function showProposal(existingTarget,initialTab='tasks'){
+   const captured=proposal,contract=captured?.contract,plan=contract?.plan,task=getState().task;
+   if(!plan?.items?.length){toast('The planner did not return a valid finite plan. Your draft is preserved.');return;}
+   const readiness=proposalReadiness(captured),metrics=(task?.request_metrics||[]).filter(r=>r.role==='planner'),last=metrics.at(-1),planner=last?.served_model||last?.model||task?.providers?.planner?.model||'Identity unavailable';
+   const usage=task?.usage?.planner;
+   const body=`<div class="branch-review-body plan-proposal-view">
+    <div class="proposal-header">
+      <div class="proposal-header-main">
+        <h2>Review &amp; start unattended run</h2>
+        <p class="proposal-objective"><strong>${escape(contract.original_request||task?.title||'Document-based job')}</strong></p>
+        ${contract.inputs?.document?.path?`<p class="proposal-doc">Captured document: <code>${escape(contract.inputs.document.path)}</code></p>`:''}
+        <p class="branch-subtle">Project <code>${escape(contract.project?.source||captured.request?.repository)}</code> · committed base ${escape(short(contract.base_ref))} at ${escape((contract.base_sha||'').slice(0,12))}.</p>
+      </div>
+      <div class="proposal-header-actions">
+        <button type="button" class="outline-button" data-revise-scope>Discuss scope changes in Chat ↗</button>
+      </div>
+    </div>
+    <nav class="proposal-tabs" role="tablist" aria-label="Review steps">
+      <button type="button" role="tab" class="proposal-tab-btn" data-tab-target="tasks" aria-selected="true"><span class="step-num">1</span> Plan &amp; Tasks (${plan.items.length})</button>
+      <button type="button" role="tab" class="proposal-tab-btn" data-tab-target="checks" aria-selected="false"><span class="step-num">2</span> Checks &amp; Target</button>
+      <button type="button" role="tab" class="proposal-tab-btn" data-tab-target="start" aria-selected="false"><span class="step-num">3</span> Review &amp; Start</button>
+    </nav>
+    <form>
+      <section class="proposal-tab-panel" data-tab-panel="tasks">
+        <div class="proposal-intro-note">
+          <p>Read through each task in the generated plan below. You can refine the title, instructions, acceptance criteria, or required verification commands directly. Changes will be validated before starting.</p>
+        </div>
+        <ol class="branch-plan-items">${plan.items.map((item,i)=>`<li class="plan-item-card"><div class="plan-item-header"><span class="plan-item-badge">Task ${i+1} of ${plan.items.length}</span><span class="plan-item-id"><code>${escape(item.id||('item-'+(i+1)))}</code></span></div><div class="plan-item-fields"><label class="proposal-field"><span class="proposal-field-label">Task Title</span><input data-title="${i}" value="${escape(item.title)}" maxlength="120" class="proposal-title-input" required></label><label class="proposal-field"><span class="proposal-field-label">Instructions</span><textarea data-instructions="${i}" class="proposal-textarea proposal-auto-expand" required>${escape(item.instructions)}</textarea></label><label class="proposal-field"><span class="proposal-field-label">Acceptance criteria · one per line</span><textarea data-criteria="${i}" class="proposal-textarea proposal-auto-expand" required>${escape(item.acceptance_criteria.join('\n'))}</textarea></label><label class="proposal-field"><span class="proposal-field-label">Required checks for this task · one command per line</span><textarea data-checks="${i}" class="proposal-textarea proposal-auto-expand code-font" required>${escape(item.required_checks.map(commandText).join('\n'))}</textarea></label></div></li>`).join('')}</ol>
+        <div class="proposal-step-nav"><div></div><button type="button" class="primary-button step-next-btn" data-goto-tab="checks">Next: Checks &amp; Target →</button></div>
+      </section>
+      <section class="proposal-tab-panel hidden" data-tab-panel="checks">
+        <div class="proposal-card"><label class="proposal-field"><span class="proposal-field-label">Final integration checks · verified before merge</span><textarea data-final-checks class="proposal-textarea proposal-auto-expand code-font" required>${escape((plan.final_checks||[]).map(commandText).join('\n'))}</textarea></label><p class="small muted">Final checks run on the cumulative result before merge. Per-item checks run during task execution.</p></div>
+        <div class="proposal-card"><h4>Integration branches</h4><div class="branch-ref-fields"><label class="proposal-field"><span class="proposal-field-label">Local target branch</span><input name="target_ref" value="${escape(contract.target_ref)}" required></label><label class="proposal-field"><span class="proposal-field-label">Feature branch</span><input name="feature_ref" value="${escape(contract.feature_ref)}" required></label></div></div>
+        <div class="proposal-card"><details class="review-permissions" open><summary>Exact test permission scopes</summary><ul>${(contract.check_scope||[]).map(scope=>`<li><code>${escape(commandText(scope))}</code>${scope.kind?` · ${escape(scope.kind)}`:''}</li>`).join('')||'<li>Inspect the required checks above. Complete validated command scopes must be available before Start.</li>'}</ul><p class="small muted">Start authorizes only the displayed checks in this private task copy. New commands or changed scope may still need approval. Feature commits are local; merge and push remain separate decisions.</p></details></div>
+        <div class="proposal-step-nav"><button type="button" class="outline-button" data-goto-tab="tasks">← Back: Plan &amp; Tasks</button><button type="button" class="primary-button step-next-btn" data-goto-tab="start">Next: Review &amp; Start →</button></div>
+      </section>
+      <section class="proposal-tab-panel hidden" data-tab-panel="start">
+        <div class="proposal-card execution-summary-card">
+          <h4>Execution models &amp; planning compute</h4>
+          <p>Planner used: <strong>${escape(planner)}</strong>${last?.served_model?' · reported model identity':last?' · requested identity; served model unavailable':task?.providers?.planner?.model?' · saved configuration; actual identity unavailable':''}</p>
+          <p>Planning compute spent: ${usage?`${Number(usage.tokens||0).toLocaleString()} tokens · $${Number(usage.cost||0).toFixed(4)}`:'usage unavailable in this saved record'}. Execution edits do not renew or increase the planning allowance.</p>
+          <p>${escape(contract.model_policy?.execution?.mode||'Configured placement')} · ${escape(['worker','reviewer'].map(role=>role+': '+(contract.model_policy?.providers?.[role]?.model||'authorized automatic route, selected when needed')).join(' · '))}</p>
+          <p class="branch-subtle small">Model access stays bound to this captured policy. Changing providers or destinations requires a new planning request with those configured choices.</p>
+        </div>
+        <div class="proposal-card">
+          <h4>Work allowances &amp; spending</h4>
+          <label class="planning-measurement"><input name="uncapped_work" type="checkbox" ${plan.uncapped_work||plan.measurement?'checked':''}>Uncapped work · ∞</label>
+          <p class="small muted">Remove cumulative work caps while keeping spending limits, permissions and review. Per-command timeouts and output limits remain in effect.</p>
+          <details class="review-execution"><summary>Branches, allowances and measurement</summary><label class="planning-measurement"><input name="measurement" type="checkbox" ${plan.measurement?'checked':''}>Measurement execution · track usage without work limits</label><p class="small muted">Measurement is an explicit execution choice. It does not change previously authorized planning or permit paid fallback.</p><div class="review-limit-grid">${Object.entries(plan.limits||contract.limits||{}).map(([name,value])=>`<label class="proposal-field"><span>${escape(name.replace(/_/g,' '))}</span><input data-limit="${escape(name)}" type="number" min="0" step="${name==='dollars'?'0.01':'1'}" value="${escape(value)}" required></label>`).join('')}</div></details>
+        </div>
+        ${fullSuiteConsent(captured) || ''}
+        <div data-review-readiness>${readiness?.html || ''}</div>
+        <p data-review-status role="status">${readiness.blocked?'Resolve the listed setup issue before Start.':'This proposal is current and ready for your review.'}</p>
+        <p class="branch-error" role="alert"></p>
+        <div class="proposal-step-nav proposal-actions-row">
+          <button type="button" class="outline-button" data-goto-tab="checks">← Back: Checks &amp; Target</button>
+          <div class="branch-actions">
+            <button type="button" data-close-plan class="outline-button">Keep draft</button>
+            <button type="button" data-validate hidden class="outline-button">Validate changes</button>
+            <button type="submit" class="primary primary-button start-run-btn" ${readiness.blocked?'disabled':''}>Start run</button>
+          </div>
+        </div>
+      </section>
+    </form>
+   </div>`;
+   const isPanel=existingTarget&&existingTarget.tagName!=='DIALOG';
+   const isDialog=existingTarget?.tagName==='DIALOG'||(!isPanel&&typeof dialog==='function');
+   let d;
+   if(isPanel){
+     d=existingTarget;
+     d.innerHTML=body;
+   }else{
+     d=existingTarget?.isConnected?existingTarget:dialog('Review & start',body);
+     if(existingTarget?.isConnected)d.querySelector('.branch-review-body').outerHTML=body;
+   }
+   let currentTab=initialTab||'tasks';
+   const switchTab=target=>{
+     currentTab=target;
+     d.querySelectorAll('.proposal-tab-btn').forEach(b=>{const active=b.dataset.tabTarget===target;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));});
+     d.querySelectorAll('.proposal-tab-panel').forEach(p=>p.classList.toggle('hidden',p.dataset.tabPanel!==target));
+     d.querySelectorAll('.proposal-tab-panel:not(.hidden) textarea').forEach(autoResize);
+     if(isPanel)d.scrollIntoView({block:'start',behavior:'smooth'});
+   };
+   d.querySelectorAll('[data-tab-target]').forEach(b=>b.onclick=()=>switchTab(b.dataset.tabTarget));
+   d.querySelectorAll('[data-goto-tab]').forEach(b=>b.onclick=()=>switchTab(b.dataset.gotoTab));
+   switchTab(currentTab);
+   d.querySelectorAll('textarea').forEach(el=>{
+     autoResize(el);
+     el.addEventListener('input',()=>autoResize(el));
+   });
+   const form=d.querySelector('form'),start=form.querySelector('[type=submit]'),validate=form.querySelector('[data-validate]'),status=form.querySelector('[data-review-status]');
+   const validation=proposalValidation(captured,values=>api('/tasks/'+captured.task_id+'/branch-proposal-edit',values));
+   const edited=event=>{if(event?.target?.name==='full_suite_approved')return;validation.edit();start.disabled=true;validate.hidden=false;validate.disabled=validation.get().pending;status.textContent='Changes need validation. Start is disabled until this displayed proposal is current.';};
+   const workChoice=form.elements.uncapped_work,measurementChoice=form.elements.measurement;
+   const showWorkLimits=()=>{for(const el of form.querySelectorAll('[data-limit]'))if(['worker_turns','requests','tool_actions','reviewer_tokens','working_seconds'].includes(el.dataset.limit))el.closest('label').hidden=workChoice.checked;};
+   workChoice.onchange=()=>{if(!workChoice.checked)measurementChoice.checked=false;showWorkLimits();};
+   measurementChoice.onchange=()=>{if(measurementChoice.checked)workChoice.checked=true;showWorkLimits();};
+   showWorkLimits();
+   form.oninput=edited;form.onchange=edited;
+   d.querySelector('[data-close-plan]').onclick=()=>{if(isDialog)d.close();else options.showChat?.();};
+   d.querySelector('[data-revise-scope]').onclick=()=>{if(isDialog)d.close();options.showChat?.();options.planningGuidance?.(captured.task_id);input.focus();};
+   validate.onclick=async()=>{
+    if(!form.reportValidity()||validation.get().pending)return;
+    const next=structuredClone(plan);next.items.forEach((item,i)=>{item.title=form.querySelector(`[data-title="${i}"]`).value;item.instructions=form.querySelector(`[data-instructions="${i}"]`).value;item.acceptance_criteria=form.querySelector(`[data-criteria="${i}"]`).value.split('\n').filter(x=>x.trim());item.required_checks=form.querySelector(`[data-checks="${i}"]`).value.split('\n').filter(x=>x.trim());});next.final_checks=form.querySelector('[data-final-checks]').value.split('\n').filter(x=>x.trim());next.measurement=form.elements.measurement.checked;next.uncapped_work=form.elements.uncapped_work.checked;for(const el of form.querySelectorAll('[data-limit]'))next.limits[el.dataset.limit]=Number(el.value);
+    const values={repository:contract.project?.source||captured.request?.repository,prompt:contract.original_request,inputs:contract.inputs,base_ref:contract.base_ref,target_ref:form.elements.target_ref.value,feature_ref:form.elements.feature_ref.value,plan:next};
+    validate.disabled=true;status.textContent='Validating the displayed plan and execution settings…';form.querySelector('.branch-error').textContent='';
+    try{const result=await validation.validate(values);if(!result){status.textContent='Fields changed during validation. Validate the current values before Start.';return;}proposal={...result,task_id:captured.task_id,request:captured.request};showProposal(d,currentTab);}catch(err){error(form,err);status.textContent='Validation failed. Your edits are preserved; correct the reported field or setup issue and validate again.';const message=String(err.message||'');for(const el of form.querySelectorAll('[name],[data-limit]'))if(message.toLowerCase().includes((el.name||el.dataset.limit).replace(/_/g,' ').toLowerCase()))el.setAttribute('aria-invalid','true');}finally{if(validate.isConnected)validate.disabled=false;}
+   };
+   form.onsubmit=e=>{e.preventDefault();if(!validation.get().canStart||readiness.blocked)return;if((captured.full_suite_checks||[]).length&&!form.elements.full_suite_approved?.checked){error(form,new Error('Approve the listed full-suite checks before starting, or revise the checks.'));return;}guarded(start,async()=>{const exact={...validation.get().current,...(form.elements.full_suite_approved?.checked?{full_suite_approved:true}:{})},submittedInput=input.value,submittedKey=key();if(isDialog)d.close();const result=await starts.start(exact);if(result.status==='accepted'){if(key()===submittedKey&&input.value===submittedInput){delete drafts[submittedKey];try{localStorage.setItem(storageKey,JSON.stringify(drafts));}catch(_){}input.value='';}if(proposal===captured)proposal=null;options.showChat?.();}await refresh();},d);};
+  }
  function render(task){sync();const view=document.querySelector('#chat-view');if(!view)return;let panel=view.querySelector('#branch-run-summary');const p=projectRun(task),pause=pausePresentation(task),owner=view.querySelector('[data-operation-actions]');if(!p||!owner){panel?.remove();return;}if(!panel){panel=document.createElement('section');panel.id='branch-run-summary';panel.className='branch-operation-actions';owner.append(panel);summaryHTML='';}
  const starting=starts.get(task.id);const startup=starting&&(starting.status!=='accepted'||!task.branch_run.authorization_ref)?`<section class="branch-start-status" role="${['pending','accepted'].includes(starting.status)?'status':'alert'}"><p>${escape(starting.status==='pending'?'Starting your approved plan… Awaiting server confirmation.':starting.status==='accepted'?'Plan accepted. Loading the saved run…':starting.error)}</p>${['pending','accepted'].includes(starting.status)?`<span data-start-time="${escape(starting.started_at)}">0s</span>`:''}${['unknown','partial'].includes(starting.status)?`<button type="button" data-reconcile-start>Check saved start status</button>${starting.status==='partial'?'<button type="button" data-retry-start>Retry saved startup</button>':''}`:starting.status==='rejected'?'<p>Inspect the saved proposal to correct or start it again.</p>':''}</section>`:'';
  const continuation=getState().branchResumeStatus?.get(task.id);
@@ -321,11 +409,32 @@ function mount(options){
  const recheck=panel.querySelector('[data-recheck-run]');if(recheck)recheck.onclick=()=>guarded(recheck,async()=>{const result=await api('/tasks/'+task.id+'/branch-final-recheck',{});await options.handleResumeResult?.(task,result);await refresh();},panel);
  const resume=panel.querySelector('[data-resume]');if(resume){resume.disabled=!options.resume;resume.onclick=()=>guarded(resume,()=>options.resume(task),panel);if(!options.resume)resume.title='Resume needs command permission revalidation';}
  const preview=panel.querySelector('[data-preview]');if(preview)preview.onclick=()=>guarded(preview,()=>showFinal(task),panel);
- const inspect=panel.querySelector('[data-proposal]');if(inspect)inspect.onclick=()=>guarded(inspect,async()=>{const result=await api('/tasks/'+task.id+'/branch-proposal',{});proposal={...result,request:{repository:task.source,prompt:result.contract.original_request,document:result.contract.inputs?.document?.path||''}};showProposal();},panel);
+ const inspect=panel.querySelector('[data-proposal]');if(inspect)inspect.onclick=()=>guarded(inspect,async()=>{if(options.showPlan){options.showPlan();return;}const result=await api('/tasks/'+task.id+'/branch-proposal',{});proposal={...result,task_id:task.id,request:{repository:task.source,prompt:result.contract?.original_request,document:result.contract?.inputs?.document?.path||''}};showProposal();},panel);
  }
  function renderPlan(task){
   const panel=document.querySelector('#plan-view');if(!panel)return;
   panel.onclick=null;
+  if(task?.branch_run?.status==='awaiting_authorization'&&!task?.branch_run?.authorization_ref){
+    if(panel.dataset.task!==task.id||!panel.querySelector('.branch-review-body')){
+      panel.dataset.task=task.id;
+      if(proposal?.task_id===task.id&&proposal.contract){
+        showProposal(panel);
+      } else {
+        panel.innerHTML='<div class="plan-proposal-loading" role="status"><span class="spinner" aria-hidden="true"></span><h3>Loading proposal…</h3><p>Preparing the captured plan and verification requirements.</p></div>';
+        api('/tasks/'+task.id+'/branch-proposal',{}).then(result=>{
+          if(getState().task?.id!==task.id||!panel.isConnected)return;
+          proposal={...result,task_id:task.id,request:{repository:task.source,prompt:result.contract?.original_request,document:result.contract?.inputs?.document?.path||''}};
+          showProposal(panel);
+        }).catch(err=>{
+          if(panel.isConnected){
+            panel.innerHTML=`<div class="plan-proposal-error" role="alert"><h3>Could not load proposal</h3><p>${escape(err.message||String(err))}</p><button type="button" class="primary-button" data-retry-proposal>Try again</button></div>`;
+            panel.querySelector('[data-retry-proposal]').onclick=()=>{delete panel.dataset.task;renderPlan(task);};
+          }
+        });
+      }
+    }
+    return;
+  }
   if(panel.dataset.task!==task.id||!panel.querySelector('[data-plan-content]')){panel.dataset.task=task.id;panel.innerHTML='<div class="plan-review-heading"><div><h2>Plan &amp; review</h2><p>Compare the completed work with the plan you approved.</p></div><button type="button" data-jump-changes class="primary-button">Review changes in Changes tab →</button><button type="button" data-jump-review>Jump to results ↓</button></div><details class="plan-contract" data-event="review-plan" open><summary>Plan and acceptance criteria</summary><div data-plan-content></div></details><div data-review-slot></div>';panel.querySelector('[data-jump-review]').onclick=()=>panel.querySelector('[data-review-slot]').scrollIntoView({block:'start',behavior:'instant'});panel.querySelector('[data-jump-changes]').onclick=()=>options.showChanges?options.showChanges():panel.querySelector('[data-jump-review]').click();}
   const plan=panel.querySelector('[data-plan-content]'),markup=planMarkup(task);if(plan._markup!==markup){plan._markup=markup;plan.innerHTML=markup;}
   const slot=panel.querySelector('[data-review-slot]'),run=task.branch_run;

@@ -545,6 +545,7 @@ function renderTask({resetScroll=false}={}) {
 function renderView() {
   $('#compact-session').hidden=true;
   const hasPlan=Boolean(CheapOSBranchUI.savedPlan(state.task));$('[data-view=plan]').hidden=!hasPlan;if(state.view==='plan'&&!hasPlan)state.view='chat';
+  const planTab=$('[data-view=plan]');if(planTab){const awaiting=state.task?.branch_run?.status==='awaiting_authorization'&&!state.task?.branch_run?.authorization_ref;planTab.innerHTML=`<svg><use href="#i-branch"/></svg>Plan &amp; review${awaiting?' <span class="badge-dot" title="Proposal ready for review">●</span>':''}`;}
   $$('.tab').forEach(b=>{const selected=b.dataset.view===state.view;b.classList.toggle('active',selected);b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;b.id='tab-'+b.dataset.view;b.setAttribute('aria-controls',b.dataset.view+'-view')});
   $$('.view').forEach(v=>{v.classList.toggle('hidden',v.id!==state.view+'-view');v.setAttribute('aria-labelledby','tab-'+v.id.replace(/-view$/,''));if(v.id!==state.view+'-view'&&(v.id!=='plan-view'||v.dataset.task!==state.task?.id)){v.innerHTML='';delete v.dataset.task;}});
   if(!state.task){renderHome();return}
