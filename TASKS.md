@@ -10,6 +10,12 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+### Next UI task
+
+| ID | Task | Status |
+| --- | --- | --- |
+| [T93](docs/tasks/T93-session-action-total.md) | Show “This session · N actions” above the full breakdown | Planned — after current merge-conflict work |
+
 ### Settings and integration recovery — September 17
 
 | ID | Task | Status |
