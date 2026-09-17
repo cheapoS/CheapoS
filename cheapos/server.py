@@ -155,15 +155,19 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     else:
                         target_path = (base_dir / requested_path_obj).resolve()
                         
-                    if not str(target_path).startswith(str(base_dir)):
+                    # (1) Secure check
+                    if target_path != base_dir and base_dir not in target_path.parents:
                         self.reply({"error": "Access denied"}, 403)
                     elif not target_path.is_dir():
                         self.reply({"error": "Not a directory"}, 400)
                     else:
-                        items = []
-                        for item in target_path.iterdir():
-                            items.append({"name": item.name, "is_dir": item.is_dir()})
-                        self.reply(sorted(items, key=lambda x: (not x["is_dir"], x["name"])))
+                        try:
+                            items = []
+                            for item in target_path.iterdir():
+                                items.append({"name": item.name, "is_dir": item.is_dir()})
+                            self.reply(sorted(items, key=lambda x: (not x["is_dir"], x["name"])))
+                        except PermissionError:
+                             self.reply({"error": "Permission denied accessing directory"}, 403)
                 except Exception as e:
                     self.reply({"error": str(e)}, 500)
             elif path == "/api/role-mappings/effective":
@@ -257,7 +261,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
             elif path == "/api/projects/create":
                 name = values.get("name")
                 parent = values.get("parent", ".")
-                if not name or not isinstance(name, str):
+                if not name or not isinstance(name, str) or any(sep in name for sep in ('/', '\\')) or name in ('.', '..'):
                     self.reply({"error": "Invalid name"}, 400)
                     return
                 base_dir = self.server.directory
@@ -268,7 +272,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     else:
                          target_dir = (base_dir / parent_path / name).resolve()
                     
-                    if not str(target_dir).startswith(str(base_dir)):
+                    if target_dir != base_dir and base_dir not in target_dir.parents:
                         self.reply({"error": "Access denied"}, 403)
                         return
                     elif target_dir.exists():

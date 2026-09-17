@@ -707,3 +707,21 @@ if __name__ == '__main__':
         # Test security: try to access outside base directory
         status, _, _ = self.request('GET', '/api/list-directories?path=/')
         self.assertEqual(status, 403)
+
+    def test_list_directories_hardening(self):
+        # 403 on traversal
+        status, _, _ = self.request('GET', '/api/list-directories?path=../')
+        self.assertEqual(status, 403)
+        # 400 on non-existent path
+        status, _, _ = self.request('GET', '/api/list-directories?path=non-existent-dir')
+        self.assertEqual(status, 400)
+    
+    def test_create_project_hardening(self):
+        # 400 on invalid name
+        status, _, _ = self.post('/api/projects/create', {'name': '..'})
+        self.assertEqual(status, 400)
+        status, _, _ = self.post('/api/projects/create', {'name': 'subdir/name'})
+        self.assertEqual(status, 400)
+        # Success path
+        status, _, body = self.post('/api/projects/create', {'name': 'newproject'})
+        self.assertEqual(status, 200)
