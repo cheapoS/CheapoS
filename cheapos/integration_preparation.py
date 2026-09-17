@@ -15,7 +15,7 @@ LABELS = {'accepted':'Update request saved', 'checking':'Checking latest project
           'combining':'Combining changes', 'resolving':'Resolving overlaps',
           'checks':'Running checks', 'review':'Independent review',
           'ready':'Ready for your review', 'waiting':'Waiting for local changes',
-          'decision':'A decision is needed', 'failed':'Preparation needs attention'}
+          'decision':'A decision is needed', 'failed':'Preparation needs attention', 'cancelled':'Preparation cancelled; saved work retained'}
 TERMINAL = {'ready','decision','failed','cancelled'}
 
 
@@ -92,8 +92,14 @@ def readiness(engine,task_id):
 
 
 def _publish(engine,task,stage,status='running',**values):
-    op=task['integration_preparation'];op.update(stage=stage,status=status,label=LABELS[stage],**values)
-    engine.store.save(task)
+    with engine.lock:
+        current=engine.store.get(task['id']).get('integration_preparation',{})
+        if current.get('id')!=task.get('integration_preparation',{}).get('id') or current.get('status')=='cancelled':
+            task['integration_preparation']=copy.deepcopy(current)
+            return False
+        op=task['integration_preparation'];op.update(stage=stage,status=status,label=LABELS[stage],**values)
+        engine.store.save(task)
+        return True
 
 
 def _active(engine):
@@ -110,7 +116,8 @@ def start(engine,task_id,values):
         task=engine.store.get(task_id);saved=task.get('integration_preparation')
         if saved and saved.get('id')==values.get('operation_id') and (saved.get('requested_target_tip',saved.get('target_tip'))!=values['target_tip'] or saved.get('candidate')!=values['candidate']):
             raise ValueError('That operation ID belongs to a different captured candidate or target.')
-        if saved and (saved.get('id')==values.get('operation_id') or (saved.get('requested_target_tip',saved.get('target_tip'))==values['target_tip'] and saved.get('candidate')==values['candidate'])):
+        retry_failed=bool(saved and saved.get('status')=='failed' and values.get('operation_id') and values['operation_id']!=saved.get('id'))
+        if saved and not retry_failed and (saved.get('id')==values.get('operation_id') or (saved.get('requested_target_tip',saved.get('target_tip'))==values['target_tip'] and saved.get('candidate')==values['candidate'])):
             if saved.get('status') not in TERMINAL:_launch(engine,task_id)
             return copy.deepcopy(task)
         engine.admission.require_idle(task_id)
@@ -124,6 +131,8 @@ def start(engine,task_id,values):
             'target_ref':values.get('target_ref') or task.get('branch_run',{}).get('target_ref') or task.get('integration_target_ref'),
             'status':'running','stage':'accepted','label':LABELS['accepted'],'authorized':True,
             'workspace_generation':task.get('workspace_generation',0),'workspace':task.get('workspace')}
+        if retry_failed and saved.get('dispatched'):
+            task['integration_preparation']['dispatched']=True
         engine.store.save(task)
         receipt=copy.deepcopy(task)
         _launch(engine,task_id)
@@ -176,6 +185,7 @@ def _drive(engine,task_id):
                     op.pop('dispatched',None);dispatched=False
                 else:_wait(engine,task,current);return
             if dispatched:
+                if not _permitted(engine,task):return
                 mode='unattended' if run else 'interactive'
                 if not engine.admission.snapshot()[mode]['allowed']:_wait(engine,task,'task_slot');return
                 _publish(engine,task,'resolving' if (run and run.get('conflict_resolution')) or task.get('reconciliation',{}).get('conflicts') else 'checks')
@@ -184,6 +194,7 @@ def _drive(engine,task_id):
                 return
         _publish(engine,task,'checking')
         state=readiness(engine,task_id)
+        if not _permitted(engine,task):return
         if state['code'] in {'dirty_destination','git_operation','integration_busy'}:_wait(engine,task,state);return
         if state['code'] not in {'ready','target_advanced','text_conflicts','review_required'}:
             _publish(engine,task,'decision','decision',reason=state);return
@@ -196,7 +207,7 @@ def _drive(engine,task_id):
             op.setdefault('targets',[]).append(op['target_tip']);op['target_tip']=state['target_tip'];engine.store.save(task)
         mode='unattended' if run else 'interactive'
         if not engine.admission.snapshot()[mode]['allowed']:_wait(engine,task,'task_slot');return
-        _publish(engine,task,'combining')
+        if not _publish(engine,task,'combining') or not _permitted(engine,task):return
         if run:
             from . import branch_completion,branch_conflicts
             if state['code'] in {'ready','review_required'}:
@@ -207,7 +218,7 @@ def _drive(engine,task_id):
                 result=branch_completion.update_branch(engine.branch,task_id,{'approved':True,'update_token':branch_completion.update_token(run)})
                 if isinstance(result,dict) and result.get('needs_conflict_resolution'):
                     task=engine.store.get(task_id);run=task['branch_run'];op=task['integration_preparation']
-                    _publish(engine,task,'resolving')
+                    if not _publish(engine,task,'resolving') or not _permitted(engine,task):return
                     branch_conflicts.start(engine.branch,task_id,{'approved':True,'update_token':branch_completion.update_token(run)})
         else:
             engine.reconcile_project(task_id,{'patch_digest':candidate(task)})
@@ -288,6 +299,7 @@ def automatic(engine,task):
         saved=run.get('authorization',{}).get('contract',{}).get('integration_policy',{})
         if saved!=policy:return False
     existing=task.get('integration_preparation')
+    if existing and existing.get('status')=='cancelled':return False
     if existing and existing.get('status') not in TERMINAL:
         resume(engine,task['id']);return True
     current=readiness(engine,task['id'])
@@ -302,6 +314,7 @@ def automatic(engine,task):
 
 
 def _resume_interactive(engine,task):
+    if not _permitted(engine,task):return
     if not task.get('patch') and task['integration_preparation'].get('already_included'):
         # Reconciliation found the requested patch already present. Verify the
         # new environment and original criteria; no synthetic approval/commit.
@@ -310,3 +323,22 @@ def _resume_interactive(engine,task):
                                     'uncertainties':'Check original acceptance criteria and preservation of incoming behavior with current evidence.'}
         engine.store.save(task)
     engine.start(task['id'])
+
+
+def _permitted(engine,task):
+    current=engine.store.get(task['id']).get('integration_preparation',{})
+    return bool(current.get('authorized') and current.get('id')==task.get('integration_preparation',{}).get('id') and current.get('status')!='cancelled')
+
+
+def cancel(engine,task_id):
+    """Withdraw preparation dispatch, never discard candidate/files/evidence."""
+    with engine.lock:
+        task=engine.store.get(task_id)
+        op=task.setdefault('integration_preparation',{'id':uuid.uuid4().hex})
+        if op:
+            op.update(status='cancelled',stage='cancelled',label=LABELS['cancelled'],authorized=False)
+            engine.store.save(task)
+            runtime=engine.runtimes.get(task_id)
+            if runtime and runtime.task.get('integration_preparation',{}).get('id')==op['id']:
+                runtime.task['integration_preparation']=copy.deepcopy(op)
+        return task

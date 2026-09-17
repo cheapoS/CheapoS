@@ -400,4 +400,6 @@ def update_branch(controller, task_id, values):
         engine.event(task,'branch_updated','Task branch updated. Rechecking the combined changes before merge.',
                      {'target_tip':finished['target_tip'],'feature_tip':finished['new_tip']})
         engine.store.save(task)
+    current=engine.store.get(task_id)
+    if current.get('integration_preparation',{}).get('status')=='cancelled':return current
     return controller.resume(task_id,{})

@@ -318,7 +318,8 @@ class BranchController:
     def revoke(self, task_id):
         with self.engine.lock:
             self.engine.admission.require_mutable(task_id)
-            task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            from .integration_preparation import cancel
+            task=cancel(self.engine,task_id);run=state.require_supported(task['branch_run'])
             if not run.get('authorization'): raise ValueError('Run is not authorized')
             run['authorization']['status']='revoked'
             runtime=self.engine.runtimes.get(task_id)

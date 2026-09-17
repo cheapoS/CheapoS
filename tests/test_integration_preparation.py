@@ -115,7 +115,7 @@ class IntegrationPreparationTests(unittest.TestCase):
         from tests.test_finish_review import FinishReviewTests
         from cheapos.engine import Engine
         fixture=FinishReviewTests();fixture.setUp()
-        fixture.task.update(patch='',integration_preparation={'already_included':True})
+        fixture.task.update(patch='',integration_preparation={'already_included':True,'authorized':True,'id':'op'})
         fixture.engine.start=lambda task_id:Engine.start(fixture.engine,task_id)
         with patch('cheapos.engine.Runtime'),patch('cheapos.engine.threading.Thread'):
             prep._resume_interactive(fixture.engine,fixture.task)
@@ -123,3 +123,27 @@ class IntegrationPreparationTests(unittest.TestCase):
         self.assertTrue(fixture.task['finish_review'])
         self.assertIn('pending_checkpoint',fixture.task)
         self.assertIn('saved',fixture.engine.runtimes)
+
+    def test_cancel_during_inspection_prevents_dispatch_and_stale_publish(self):
+        engine,task=self.fixture();self.accepted(engine,task)
+        def inspection(*args):
+            prep.cancel(engine,'task')
+            return {'code':'target_advanced','target_tip':'target'}
+        with patch.object(prep,'readiness',side_effect=inspection),patch('cheapos.branch_completion.update_branch') as update:
+            prep._drive(engine,'task')
+        update.assert_not_called()
+        self.assertEqual(task['integration_preparation']['status'],'cancelled')
+        self.assertFalse(task['integration_preparation']['authorized'])
+        self.assertFalse(prep.automatic(engine,task))
+
+    def test_new_request_can_retry_failed_identity_but_not_duplicate_active_work(self):
+        engine,task=self.fixture();values=self.accepted(engine,task)
+        with patch.object(prep,'_launch'):
+            prep.start(engine,'task',{**values,'operation_id':'duplicate'})
+        self.assertEqual(task['integration_preparation']['id'],'op')
+        task['integration_preparation'].update(status='failed',dispatched=True)
+        with patch.object(prep,'_launch'):
+            prep.start(engine,'task',{**values,'operation_id':'retry'})
+        self.assertEqual(task['integration_preparation']['id'],'retry')
+        self.assertTrue(task['integration_preparation']['dispatched'])
+        self.assertEqual(task['integration_preparation_history'][0]['id'],'op')

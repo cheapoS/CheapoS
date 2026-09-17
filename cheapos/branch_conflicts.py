@@ -112,6 +112,8 @@ def start(controller, task_id, values):
             task['integration_preparation']['dispatched']=True
         engine.event(task,'conflict_resolution','Assigning merge conflicts to the agents',{'item_id':item_id,'files':context['conflicts']})
         engine.store.save(task)
+    current=engine.store.get(task_id)
+    if current.get('integration_preparation',{}).get('status')=='cancelled':return current
     return controller.resume(task_id,{})
 
 
