@@ -519,6 +519,8 @@ class Engine:
             self.config = json.loads((self.store.root / "config.json").read_text())
         except (OSError, ValueError):
             self.config = {"worker": None, "reviewer": None}
+        from .settings_adapter import initialize
+        initialize(self)
         self.startup = StartupManager(self)
         self.readiness = ReadinessManager(self)
         from .branch_controller import BranchController
@@ -621,81 +623,55 @@ class Engine:
             write_json(self.store.root / "hidden-projects.json", sorted(self.hidden_project_paths() - {source}))
         return {"path": source, "name": Path(source).name}
 
+    @property
+    def config(self):
+        if hasattr(self, 'settings_store'):
+            return self.settings_store.provider_defaults()
+        return getattr(self, '_legacy_config', {})
+
+    @config.setter
+    def config(self, value):
+        if not hasattr(self, 'settings_store'):
+            self._legacy_config = value
+            return
+        # Compatibility for local callers assigning a complete public pair.
+        current = self.settings_store.view()
+        patch = {f'roles.{role}': ({'strategy': 'only', 'model': provider['model'],
+            'connection_id': provider.get('connection_id'), 'provider': provider} if provider else {'strategy': 'automatic'})
+            for role, provider in value.items() if role in {'planner', 'worker', 'reviewer'}}
+        self.settings_store.save(patch, expected_revision=current['revision'], operation_id=uuid.uuid4().hex, public_config=value)
+
     def preferences(self):
-        # Each preference group recovers independently. An old/invalid limit must
-        # not erase the operator's saved local model or execution mode.
-        result = {"limits": limits_from({"dollars": 0}), "execution": dict(DEFAULT_EXECUTION)}
-        try:
-            saved = json.loads((self.store.root / "preferences.json").read_text())
-        except (OSError, ValueError):
-            return result
-        if isinstance(saved, dict):
-            for name, validate in (("limits", limits_from), ("execution", execution_from)):
-                try:
-                    value = saved[name]
-                    if not isinstance(value, dict):
-                        continue
-                    result[name] = validate({"dollars":0, **value} if name == 'limits' else value)
-                except (ValueError, KeyError, TypeError):
-                    pass
-        return result
+        from .settings_adapter import preferences
+        return preferences(self)
 
     def save_preferences(self, values):
-        if not values or set(values) - {"limits", "execution"}:
-            raise ValueError("Provide limits or execution preferences")
-        if "limits" in values and not isinstance(values["limits"], dict):
-            raise ValueError("Provide the new chat limits")
-        if "execution" in values and not isinstance(values["execution"], dict):
-            raise ValueError("Provide valid execution preferences")
-        with self.lock:
-            current = self.preferences()
-            result = {"limits": limits_from(values.get("limits", current["limits"])),
-                      "execution": execution_from({**current["execution"], **values.get("execution", {})})}
-            write_json(self.store.root / "preferences.json", result)
-        return result
-
-    # --- Agent role mappings (planner / worker / reviewer) ---
+        from .settings_adapter import preferences
+        return preferences(self, values)
 
     def role_mappings(self):
-        from . import role_mappings as role_mappings_mod
-        return role_mappings_mod.load(self.store.root / "role-mappings.json")
+        from .settings_adapter import role_mappings
+        return role_mappings(self)
 
     def save_role_mappings(self, values):
-        from . import role_mappings as role_mappings_mod
-        if not isinstance(values, dict) or (set(values) - {"defaults", "projects"}):
-            raise ValueError("Provide defaults and/or project role mappings")
-        for key in ("defaults", "projects"):
-            if key in values and not isinstance(values[key], dict):
-                raise ValueError("Provide %s as an object" % key)
-        path = self.store.root / "role-mappings.json"
-        with self.lock:
-            current = role_mappings_mod.load(path)
-            merged = dict(current)
-            if "defaults" in values:
-                merged["defaults"] = role_mappings_mod._clean_roles(values["defaults"])
-            if "projects" in values:
-                projects = dict(current.get("projects", {}))
-                for project, section in values["projects"].items():
-                    if not isinstance(project, str) or not project:
-                        continue
-                    clean = role_mappings_mod._clean_roles(section)
-                    if clean:
-                        projects[project] = clean
-                    else:
-                        projects.pop(project, None)
-                merged["projects"] = projects
-            # Hard block: reject a save whose effective mapping for any
-            # affected project has worker == planner or worker == reviewer.
-            for project in ([p for p in (values.get("projects") or {}) if isinstance(p, str)] + [None]):
-                result = role_mappings_mod.effective(merged, project)
-                if result["error"] == "worker-duplicate":
-                    raise ValueError(result["reason"])
-            saved = role_mappings_mod.save(path, merged)
-        return saved
+        from .settings_adapter import role_mappings
+        return role_mappings(self, values)
 
     def effective_role_mapping(self, project=None):
-        from . import role_mappings as role_mappings_mod
-        return role_mappings_mod.effective(self.role_mappings(), project)
+        from .settings_adapter import effective_roles
+        return effective_roles(self, project)
+
+    def settings_project(self, project):
+        from .settings_adapter import project_key
+        return project_key(self, project) if project else None
+
+    def settings_capture(self, values, project=None):
+        from .settings_adapter import capture
+        return capture(self, values, project)
+
+    def settings_policy(self, snapshot):
+        from .settings_adapter import policy
+        return policy(self, snapshot)
 
     def connection_for(self, config):
         if config.get("gateway") == "omniroute" and getattr(self,"connections",None):
@@ -755,7 +731,6 @@ class Engine:
         with self.lock:
             if self.startup.busy():
                 raise ValueError("Stop the startup connection check before changing models")
-            write_json(self.store.root / "config.json", normalized)
             self.config = normalized
             self.startup.models_changed()
         return self.configuration()

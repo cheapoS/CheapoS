@@ -213,6 +213,11 @@ def save(engine, task_id, request):
             sources[key] = {'scope': 'task', 'revision': revision}
         candidate['settings_snapshot'] = {**candidate.get('settings_snapshot', {}), 'schema_version': 1,
                                           'revision': revision, 'values': values, 'sources': sources}
+        snapshot = candidate['settings_snapshot']
+        if 'model_policy' in snapshot:
+            snapshot['model_policy']['execution'] = copy.deepcopy(candidate.get('execution', {}))
+            snapshot['model_policy']['providers'] = copy.deepcopy(candidate.get('providers', {}))
+            snapshot['policy_values_digest'] = digest(snapshot['values'])
         result = {'saved': True, 'applied': True, 'pending': intent == 'apply-and-continue',
                   'continuing': False, 'revision': revision, 'task_id': task_id, 'operation_id': operation_id}
         candidate.setdefault('settings_operations', {})[operation_id] = {'fingerprint': fingerprint,

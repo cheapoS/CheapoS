@@ -163,7 +163,7 @@ class SettingsStore:
             if pair != before and pair[0][0] == pair[1][0] == 'only' and pair[0][1] == pair[1][1]:
                 raise ValueError(f'The worker must use a different model from the {other}')
 
-    def initialize(self, preferences, mappings=None, providers=None):
+    def initialize(self, preferences, mappings=None, providers=None, *, notices=None):
         """Migrate once from public legacy data. Invalid values never reset policy.
 
         Keep the public migration input in the same atomic document as a recovery
@@ -190,7 +190,7 @@ class SettingsStore:
                         roles[role].update(provider=public, connection_id=public.get('connection_id'))
             values = {'execution': execution, 'limits': self.limits_validator(preferences.get('limits', {'dollars': 0})), 'roles': roles, 'keep_up_to_date': False}
             document = {'schema_version': 1, 'generation': 1,
-                        'defaults': {'revision': 1, 'values': values}, 'projects': {}, 'operations': {}}
+                        'defaults': {'revision': 1, 'values': values}, 'projects': {}, 'operations': {}, 'migration_notices': copy.deepcopy(notices or [])}
             for project, choices in mappings.get('projects', {}).items():
                 key = canonical_project(project)
                 overrides = {}
@@ -214,6 +214,7 @@ class SettingsStore:
             public_providers = {role: {k: copy.deepcopy(v) for k, v in provider.items() if k in PROVIDER_FIELDS} for role, provider in providers.items() if role in ROLES and provider}
             for role, provider in public_providers.items():
                 self.provider_validator(provider, role)
+            document['public_config'] = copy.deepcopy(public_providers)
             document['migration'] = {'version': 1, 'public_providers': public_providers, 'defaults': copy.deepcopy(document['defaults']),
                                      'projects': copy.deepcopy(document['projects'])}
             write_json(self.path, document)
@@ -227,7 +228,8 @@ class SettingsStore:
 
     def view(self, project=None):
         with self.lock:
-            return resolve(self.read(), project)
+            document = self.read()
+            return {**resolve(document, project), 'migration_notices': copy.deepcopy(document.get('migration_notices', []))}
 
     def capture(self, project=None, *, draft=None, expected_revision=None, expected_parent_revision=None):
         with self.lock:
@@ -243,8 +245,17 @@ class SettingsStore:
                     'source_parent_revision': current['parent_revision']}
 
     def save(self, patch, *, expected_revision, operation_id, project=None,
-             expected_parent_revision=None, remove=()):
+             expected_parent_revision=None, remove=(), public_config=None):
         project = canonical_project(project) if project else None
+        if public_config is not None and project:
+            raise ValueError('Public model configuration belongs to new chat defaults')
+        if public_config is not None:
+            if not isinstance(public_config, dict) or set(public_config) - set(ROLES):
+                raise ValueError('Invalid public model configuration')
+            public_config = {role: ({k: copy.deepcopy(v) for k, v in provider.items() if k in PROVIDER_FIELDS} if provider else None) for role, provider in public_config.items()}
+            for role, provider in public_config.items():
+                if provider:
+                    self.provider_validator(provider, role)
         patch = self.validate_patch(patch)
         if not isinstance(remove, (list, tuple)) or any(k not in self.allowed for k in remove) or set(remove) & set(patch):
             raise ValueError('Invalid override removals')
@@ -253,7 +264,7 @@ class SettingsStore:
         if not isinstance(operation_id, str) or not 1 <= len(operation_id) <= 200:
             raise ValueError('Provide a client operation ID')
         payload = {'patch': patch, 'project': project, 'remove': list(remove),
-                   'expected_revision': expected_revision, 'expected_parent_revision': expected_parent_revision}
+                   'expected_revision': expected_revision, 'expected_parent_revision': expected_parent_revision, 'public_config': public_config}
         fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, allow_nan=False).encode()).hexdigest()
         with self.lock:
             document = self.read()
@@ -283,6 +294,10 @@ class SettingsStore:
                     self.validate_transition(old, proposed)
                 except ValueError as error:
                     raise ValueError(f'{key or "New chat defaults"}: {error}') from error
+            if not project:
+                updated['migration_notices'] = [notice for notice in updated.get('migration_notices', []) if notice['field'] not in patch]
+            if public_config is not None:
+                updated['public_config'] = copy.deepcopy(public_config)
             updated['generation'] += 1
             result = {**resolve(updated, project), 'saved': True}
             updated['operations'][operation_id] = {'fingerprint': fingerprint, 'result': result}
@@ -300,3 +315,12 @@ class SettingsStore:
         return {'defaults': pins(document['defaults']['values']['roles']),
                 'projects': {key: pins({field.split('.')[1]: value for field, value in record['overrides'].items()
                                        if field.startswith('roles.')}) for key, record in document['projects'].items()}}
+
+    def provider_defaults(self):
+        with self.lock:
+            document = self.read()
+            result = copy.deepcopy(document.get('public_config', document.get('migration', {}).get('public_providers', {})))
+            for role, selection in document['defaults']['values']['roles'].items():
+                if selection.get('provider'):
+                    result[role] = copy.deepcopy(selection['provider'])
+            return {role: result.get(role) for role in ROLES}
