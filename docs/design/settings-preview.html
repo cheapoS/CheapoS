@@ -1,0 +1,163 @@
+<!-- Design study only. All interactions are in-memory; no application APIs. -->
+<div id="cheapos-settings-study" aria-label="cheapoS settings design">
+  <style>
+    #cheapos-settings-study { --cs-bg:light-dark(#f6f8f6,#171b19); --cs-nav:light-dark(#eef2ef,#121713); --cs-panel:light-dark(#ffffff,#1d2420); --cs-text:light-dark(#21362c,#e3ece6); --cs-muted:light-dark(#51665a,#a5b6aa); --cs-line:light-dark(#cdd8d0,#35463b); --cs-accent:light-dark(#1d6345,#a2dabc); --cs-on:light-dark(#ffffff,#163c28); color:var(--cs-text); font:400 14px/1.5 system-ui,sans-serif; width:100%; }
+    #cheapos-settings-study * { box-sizing:border-box; }
+    #cheapos-settings-study .cs-window { background:var(--cs-bg); border:1px solid var(--cs-line); border-radius:16px; overflow:hidden; }
+    #cheapos-settings-study .cs-top { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 24px; border-bottom:1px solid var(--cs-line); }
+    #cheapos-settings-study .cs-brand { color:var(--cs-accent); font-size:20px; font-weight:500; letter-spacing:-.5px; }
+    #cheapos-settings-study .cs-preview { color:var(--cs-muted); font-size:12px; }
+    #cheapos-settings-study .cs-layout { display:grid; grid-template-columns:190px minmax(0,1fr); }
+    #cheapos-settings-study .cs-nav { background:var(--cs-nav); padding:22px 12px; display:flex; flex-direction:column; align-items:stretch; gap:5px; }
+    #cheapos-settings-study .cs-nav-label { color:var(--cs-muted); font-size:11px; letter-spacing:1px; text-transform:uppercase; padding:4px 10px 8px; }
+    #cheapos-settings-study button,#cheapos-settings-study select,#cheapos-settings-study input { font:inherit; }
+    #cheapos-settings-study button { cursor:pointer; color:var(--cs-text); background:transparent; border:1px solid var(--cs-line); border-radius:7px; padding:9px 12px; }
+    #cheapos-settings-study button:disabled { cursor:default; opacity:.5; }
+    #cheapos-settings-study .cs-nav button { text-align:left; border-color:transparent; padding:10px; }
+    #cheapos-settings-study .cs-nav button[aria-current="page"] { background:var(--cs-panel); border-color:var(--cs-line); color:var(--cs-accent); }
+    #cheapos-settings-study .cs-nav small { display:block; color:var(--cs-muted); font-size:12px; margin-top:2px; }
+    #cheapos-settings-study .cs-rule { border:0; border-top:1px solid var(--cs-line); margin:13px 10px; }
+    #cheapos-settings-study .cs-main { min-width:0; padding:25px 28px 18px; }
+    #cheapos-settings-study .cs-eyebrow { font-size:11px; letter-spacing:1.2px; color:var(--cs-accent); text-transform:uppercase; margin:0 0 7px; }
+    #cheapos-settings-study h2 { font-size:23px; line-height:1.25; font-weight:500; margin:0 0 9px; letter-spacing:-.4px; }
+    #cheapos-settings-study h3 { font-size:15px; font-weight:500; margin:0; }
+    #cheapos-settings-study p { margin:5px 0 0; }
+    #cheapos-settings-study .cs-sub { color:var(--cs-muted); font-size:13px; }
+    #cheapos-settings-study .cs-context { margin:16px 0 22px; padding:10px 13px; background:var(--cs-panel); border-left:2px solid var(--cs-accent); font-size:13px; }
+    #cheapos-settings-study .cs-tabs { display:flex; flex-wrap:wrap; gap:6px; border-bottom:1px solid var(--cs-line); padding-bottom:11px; margin-bottom:20px; }
+    #cheapos-settings-study .cs-tabs button { border-color:transparent; padding:7px 9px; }
+    #cheapos-settings-study .cs-tabs button[aria-pressed="true"] { color:var(--cs-accent); background:var(--cs-panel); border-color:var(--cs-line); }
+    #cheapos-settings-study .cs-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(170px,46%); gap:14px; align-items:center; padding:15px 0; border-bottom:1px solid var(--cs-line); }
+    #cheapos-settings-study .cs-row:first-child { padding-top:0; }
+    #cheapos-settings-study .cs-row label { display:block; font-weight:500; }
+    #cheapos-settings-study .cs-source { color:var(--cs-muted); font-size:12px; margin-top:3px; }
+    #cheapos-settings-study select,#cheapos-settings-study input[type="number"] { width:100%; min-width:0; color:var(--cs-text); background:var(--cs-panel); border:1px solid var(--cs-line); border-radius:7px; padding:9px; }
+    #cheapos-settings-study .cs-model { margin-top:8px; }
+    #cheapos-settings-study .cs-help { margin-top:20px; }
+    #cheapos-settings-study .cs-check { display:flex; align-items:center; gap:9px; }
+    #cheapos-settings-study input[type="checkbox"] { width:17px; height:17px; accent-color:var(--cs-accent); }
+    #cheapos-settings-study .cs-help select { margin-top:10px; }
+    #cheapos-settings-study .cs-footer { margin-top:24px; padding-top:18px; border-top:1px solid var(--cs-line); }
+    #cheapos-settings-study .cs-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    #cheapos-settings-study button.cs-primary { background:var(--cs-accent); color:var(--cs-on); border-color:var(--cs-accent); font-weight:500; }
+    #cheapos-settings-study .cs-status { color:var(--cs-accent); margin-top:12px; min-height:20px; font-size:13px; }
+    #cheapos-settings-study .cs-notice { background:var(--cs-panel); padding:15px; border:1px solid var(--cs-line); border-radius:8px; }
+    #cheapos-settings-study .cs-grant { padding:16px 0; border-bottom:1px solid var(--cs-line); }
+    #cheapos-settings-study code { font:12px ui-monospace,monospace; overflow-wrap:anywhere; }
+    #cheapos-settings-study details { margin-top:15px; }
+    #cheapos-settings-study summary { cursor:pointer; color:var(--cs-accent); }
+    #cheapos-settings-study [hidden] { display:none!important; }
+    @media(max-width:650px) {
+      #cheapos-settings-study .cs-layout { grid-template-columns:1fr; }
+      #cheapos-settings-study .cs-nav { flex-direction:row; flex-wrap:wrap; padding:12px; border-bottom:1px solid var(--cs-line); }
+      #cheapos-settings-study .cs-nav button { flex:1 1 135px; }
+      #cheapos-settings-study .cs-nav-label,#cheapos-settings-study .cs-rule { display:none; }
+      #cheapos-settings-study .cs-main { padding:20px; }
+    }
+    @media(max-width:420px) {
+      #cheapos-settings-study .cs-main { padding:16px; }
+      #cheapos-settings-study .cs-row { grid-template-columns:1fr; gap:8px; }
+      #cheapos-settings-study .cs-top { padding:14px 16px; }
+      #cheapos-settings-study .cs-actions button { width:100%; }
+    }
+    @media(pointer:coarse) { #cheapos-settings-study button,#cheapos-settings-study select,#cheapos-settings-study input[type="number"] { min-height:44px; } #cheapos-settings-study select,#cheapos-settings-study input { font-size:16px; } }
+  </style>
+  <div class="cs-window">
+    <header class="cs-top"><span class="cs-brand">cheapoS <span class="cs-sub">/ Settings</span></span><span class="cs-preview">Design preview · sample data</span></header>
+    <div class="cs-layout">
+      <nav class="cs-nav" aria-label="Settings destinations">
+        <div class="cs-nav-label">In this workspace</div>
+        <button type="button" data-scope="chat" aria-current="page">This chat<small>Fix project manager</small></button>
+        <button type="button" data-scope="project">Project defaults<small>cheapoS</small></button>
+        <hr class="cs-rule">
+        <div class="cs-nav-label">Across the app</div>
+        <button type="button" data-scope="defaults">New chat defaults</button>
+        <button type="button" data-scope="connections">Connections<small>Shared across chats</small></button>
+      </nav>
+      <main class="cs-main">
+        <p class="cs-eyebrow" id="cs-scope-name">This chat</p>
+        <h2 id="cs-title">Fix project manager</h2>
+        <p class="cs-sub" id="cs-description">Changes affect only this chat.</p>
+        <div class="cs-context" id="cs-context">Paused at final review · Your work and passing checks are saved.</div>
+        <div class="cs-notice" id="cs-dirty-prompt" hidden>
+          <h3>Keep your unsaved changes?</h3><p class="cs-sub">Save in this scope, or discard before switching.</p>
+          <div class="cs-actions"><button type="button" id="cs-keep">Keep editing</button><button type="button" id="cs-discard">Discard & switch</button></div>
+        </div>
+        <div class="cs-tabs" aria-label="Work settings sections">
+          <button type="button" data-section="agents" aria-pressed="true">Agents</button>
+          <button type="button" data-section="spending" aria-pressed="false">Spending & work</button>
+          <button type="button" data-section="permissions" aria-pressed="false">Permissions</button>
+        </div>
+        <form id="cs-form">
+          <div id="cs-fields"></div>
+          <div class="cs-footer" id="cs-footer">
+            <p class="cs-sub" id="cs-impact">Saved for this chat. Other chats and defaults stay as they are.</p>
+            <div class="cs-actions"><button type="button" class="cs-primary" id="cs-save" disabled>Apply & continue</button><button type="button" id="cs-save-only" disabled>Apply without continuing</button></div>
+          </div>
+          <p class="cs-status" id="cs-status" role="status" aria-live="polite"></p>
+        </form>
+      </main>
+    </div>
+  </div>
+  <script>
+  (() => {
+    const root=document.getElementById('cheapos-settings-study');
+    const q=s=>root.querySelector(s);
+    const config={
+      chat:{eyebrow:'This chat',title:'Fix project manager',description:'Changes affect only this chat.',context:'Paused at final review · Your work and passing checks are saved.',source:'Saved for this chat',impact:'Other chats and defaults stay as they are.',save:'Apply & continue'},
+      project:{eyebrow:'Project defaults',title:'cheapoS',description:'Used by new chats in this project.',context:'Override only what this project needs. Everything else follows new chat defaults.',source:'New chat default',impact:'Existing chats keep their saved setup.',save:'Save project defaults'},
+      defaults:{eyebrow:'New chat defaults',title:'A starting setup for future chats',description:'Used unless a project chooses its own defaults.',context:'These are starting values. Each chat saves its own setup when it begins.',source:'New chat default',impact:'Existing chats and explicit project overrides stay as they are.',save:'Save new chat defaults'},
+      connections:{eyebrow:'Shared connections',title:'Your connections',description:'Connection changes can affect every chat using them.',context:'Agent choices belong to chat setup. Credentials and access belong here.'}
+    };
+    const fresh=()=>({planner:'automatic',worker:'automatic',reviewer:'automatic',coordinator:true,paid:false,cap:'0.50',work:'uncapped'});
+    const saved={chat:fresh(),project:{...fresh(),planner:'inherit',worker:'inherit',reviewer:'inherit'},defaults:fresh()};
+    let scope='chat',section='agents',draft={...saved.chat},dirty=false,pendingScope=null;
+    const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
+    function options(values,selected){return values.map(([value,label])=>`<option value="${escape(value)}" ${value===selected?'selected':''}>${escape(label)}</option>`).join('');}
+    function markDirty(){dirty=JSON.stringify(draft)!==JSON.stringify(saved[scope]);q('#cs-save').disabled=!dirty;q('#cs-save-only').disabled=!dirty;q('#cs-status').textContent='';}
+    function roleRow(role,label){
+      const choices=[...(scope==='project'?[['inherit','Use new chat default']]:[]),['automatic','Automatic'],['only','Use only this model']];
+      const source=scope==='project'?(draft[role]==='inherit'?'New chat default · Automatic':'Project override'):config[scope].source;
+      return `<div class="cs-row"><div><label for="cs-${role}">${label}</label><div class="cs-source">${source}</div>${scope==='chat'?'<div class="cs-source">Last used: '+(role==='worker'?'Gemini Flash Lite':'Qwen')+' via OmniRoute</div>':''}</div><div><select id="cs-${role}" data-field="${role}">${options(choices,draft[role])}</select>${draft[role]==='only'?'<div class="cs-model">'+ (role==='worker'?'Gemini Flash Lite':'Qwen')+' · OmniRoute</div><div class="cs-source">Wait if unavailable; no automatic model change.</div>':''}</div></div>`;
+    }
+    function agents(){return `<div class="cs-row"><div><label>Where agents run</label><div class="cs-source">${config[scope].source}</div></div><div>Remote through OmniRoute</div></div>${roleRow('planner','Planner')}${roleRow('worker','Worker')}${roleRow('reviewer','Reviewer')}<div class="cs-help"><label class="cs-check"><input type="checkbox" id="cs-coordinator" data-field="coordinator" ${draft.coordinator?'checked':''}> Local help when needed</label><p class="cs-sub">${scope==='project'?'Project choice. ':''}Consulted when an eligible stall needs help. Idle otherwise.</p>${draft.coordinator?'<div class="cs-source">Local model · gemma4:31b</div>':''}</div>`;}
+    function spending(){return `<div class="cs-row"><div><label for="cs-paid">Spending</label><div class="cs-source">${config[scope].source}</div></div><select id="cs-paid" data-field="paid">${options([['false','Free only'],['true','Allow paid models']],String(draft.paid))}</select></div>${draft.paid?`<div class="cs-row"><div><label for="cs-cap">Total chat cap · USD</label><div class="cs-source">Includes any usage already accounted.</div></div><input id="cs-cap" type="number" min="0.01" max="100" step="0.01" required data-field="cap" value="${escape(draft.cap)}"></div>`:'<p class="cs-sub">Uses authorized free and included-access routes. Provider billing can differ from estimates.</p>'}<div class="cs-row"><div><label for="cs-work">Work allowance</label><div class="cs-source">Separate from spending</div></div><select id="cs-work" data-field="work">${options([['bounded','Bounded'],['uncapped','Uncapped work']],draft.work)}</select></div><p class="cs-sub">${draft.work==='uncapped'?'No cumulative work caps. Spending limits, permissions, and review still apply.':'Use the saved work limits. Detailed limit controls are omitted from this screen study.'}</p>${scope==='chat'?'<details><summary>Token accounting</summary><p class="cs-sub">Reported usage, reservations, and uncertain requests stay available here.</p></details>':''}`;}
+    function permissions(){return scope==='chat'?'<h3>Permissions for this chat</h3><div class="cs-grant">Verification commands approved with this plan<p class="cs-sub">Applies to this task copy.</p></div><div class="cs-grant">Merge locally<p class="cs-sub">Your approval is required when the reviewed work is ready.</p></div><p class="cs-sub cs-help">Model or limit changes do not grant new command permissions.</p>':'<h3>Permissions are authorized separately</h3><p class="cs-sub cs-help">Work defaults choose agents and allowances. They do not approve commands or merges.</p><div class="cs-grant">'+(scope==='project'?'Project test grants remain in the existing project permission flow.':'Each chat shows its own permissions and any applicable project grants.')+'</div>';}
+    function connections(){return '<div class="cs-row"><div><h3>OmniRoute</h3><p class="cs-sub">Connected · last checked 2 minutes ago</p></div><div class="cs-sub">Used by 3 saved chats</div></div><details><summary>Connection details</summary><p class="cs-sub">Shared gateway · Remote inference routes through this connection.</p><p class="cs-sub">Changing its address or access policy requires reviewing the affected chats. No connection is changed by this preview.</p></details><div class="cs-row cs-help"><div><h3>Local Ollama</h3><p class="cs-sub">Installed model: gemma4:31b</p></div><div class="cs-sub">Idle</div></div><p class="cs-sub cs-help">Opening settings does not start a model or check every provider.</p>';}
+    function render(){
+      const c=config[scope];
+      q('#cs-scope-name').textContent=c.eyebrow;q('#cs-title').textContent=c.title;q('#cs-description').textContent=c.description;q('#cs-context').textContent=c.context;
+      root.querySelectorAll('[data-scope]').forEach(b=>{if(b.dataset.scope===scope)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+      root.querySelectorAll('[data-section]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.section===section)));
+      q('.cs-tabs').hidden=scope==='connections';
+      q('#cs-fields').innerHTML=scope==='connections'?connections():section==='agents'?agents():section==='spending'?spending():permissions();
+      q('#cs-footer').hidden=scope==='connections';q('#cs-impact').textContent=c.impact||'';q('#cs-save').textContent=c.save||'';
+      q('#cs-save-only').hidden=scope!=='chat';q('#cs-save').disabled=!dirty;q('#cs-save-only').disabled=!dirty;
+    }
+    function switchScope(next){scope=next;draft={...(saved[next]||{})};dirty=false;pendingScope=null;q('#cs-dirty-prompt').hidden=true;q('#cs-status').textContent='';render();}
+    root.addEventListener('click',event=>{
+      const target=event.target.closest('button');if(!target)return;
+      if(target.dataset.scope&&target.dataset.scope!==scope){if(dirty){pendingScope=target.dataset.scope;q('#cs-dirty-prompt').hidden=false;}else switchScope(target.dataset.scope);}
+      if(target.dataset.section){section=target.dataset.section;render();}
+    });
+    q('#cs-fields').addEventListener('change',event=>{
+      const field=event.target.dataset.field;if(!field)return;
+      draft[field]=event.target.type==='checkbox'?event.target.checked:field==='paid'?event.target.value==='true':event.target.value;
+      markDirty();if(field!=='cap'){const id=event.target.id;render();if(id)q('#'+id)?.focus();}
+    });
+    q('#cs-keep').onclick=()=>{pendingScope=null;q('#cs-dirty-prompt').hidden=true;};
+    q('#cs-discard').onclick=()=>{if(pendingScope)switchScope(pendingScope);};
+    function save(continueWork){
+      if(!q('#cs-form').reportValidity())return;
+      saved[scope]={...draft};dirty=false;render();
+      q('#cs-status').textContent=scope==='chat'?'Preview: setup saved for this chat. '+(continueWork?'The remaining review would continue.':'Chat would remain paused.'):'Preview: '+(scope==='project'?'Project defaults':'New chat defaults')+' saved. Existing chats are unchanged.';
+      if(pendingScope){const next=pendingScope;switchScope(next);q('#cs-status').textContent='Preview: previous scope saved. Now editing '+config[next].eyebrow.toLowerCase()+'.';}
+    }
+    q('#cs-form').onsubmit=event=>event.preventDefault();
+    q('#cs-save').onclick=()=>save(scope==='chat');
+    q('#cs-save-only').onclick=()=>save(false);
+    render();
+    if(globalThis.Tweak){const design={navigation:'Left sidebar'};const tweak=new Tweak({container:root,onChange:()=>{q('.cs-layout').style.gridTemplateColumns=design.navigation==='Above content'?'1fr':'';q('.cs-nav').style.flexDirection=design.navigation==='Above content'?'row':'';q('.cs-nav').style.flexWrap=design.navigation==='Above content'?'wrap':'';}});tweak.addSelect(design,'navigation',{label:'Navigation placement',options:['Left sidebar','Above content']});}
+  })();
+  </script>
+</div>

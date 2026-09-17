@@ -57,6 +57,9 @@
 * **Key capabilities:**
   - Clear visual distinction between live streaming, tool exploration, and final answers.
   - Intuitive approval controls and permission scopes.
+  - Explicit **This chat / Project defaults / New chat defaults** settings, with
+    shared connections kept separate. [Design](design/settings-system.md) and
+    [implementation task T91](tasks/T91-settings-system.md) are ready for implementation.
 
 ### 8. Measured efficiency
 * **What we strengthen:** Compare model combinations, context size, review churn, latency, and free/paid usage.
