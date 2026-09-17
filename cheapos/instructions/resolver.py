@@ -15,6 +15,16 @@ def _is_truthy(val: Any) -> bool:
     return bool(val)
 
 
+def _has_guidance_text(val: Any) -> bool:
+    """Check if a guidance text field contains non-empty prose or explicit activation."""
+    if val is True:
+        return True
+    if isinstance(val, str):
+        cleaned = val.strip()
+        return bool(cleaned) and cleaned.lower() not in ("false", "none", "null", "0")
+    return False
+
+
 def active_branch_item(task: dict) -> Optional[dict]:
     """Retrieve the currently active branch run item from task if present."""
     if not isinstance(task, dict):
@@ -195,7 +205,7 @@ def triggers_for_task(task: dict) -> List[str]:
         triggers.append("output_cap")
     if _is_truthy(task.get("compact_edits")):
         triggers.append("compact_edits")
-    if _is_truthy(task.get("action_pending")) or _is_truthy(task.get("loop_guidance")):
+    if _is_truthy(task.get("action_pending")) or _has_guidance_text(task.get("loop_guidance")):
         triggers.append("loop_detected")
     if _is_truthy(task.get("finish_review")):
         triggers.append("finish_review")

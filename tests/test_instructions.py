@@ -436,6 +436,40 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertIn("validation.full_suite_mandatory", rule_ids_final)
         self.assertNotIn("validation.change_scoped", rule_ids_final)
 
+    def test_loop_guidance_prose_without_pending_action_triggers_loop_detected(self):
+        """Controller-generated prose in loop_guidance activates loop_detected even when action_pending is False."""
+        from cheapos.instructions import rules_for_task, triggers_for_task
+
+        # Runtime shape produced by Engine.prepare_loop_recovery() when action is continue_worker
+        controller_prose = (
+            "Repeated identical read operations detected without file modifications. "
+            "Examine alternative approaches or execute the next verification check."
+        )
+        task_loop = {
+            "answer_pending": False,
+            "action_pending": False,
+            "loop_guidance": controller_prose,
+        }
+
+        triggers = triggers_for_task(task_loop)
+        self.assertIn("loop_detected", triggers)
+
+        rules = rules_for_task(task_loop, role="worker")
+        rule_ids = {r.id for r in rules}
+        self.assertIn("recovery.action_guidance", rule_ids)
+
+        # Empty or false strings must not trigger loop_detected when action_pending is False
+        for falsy_guidance in ("", "   ", "false", "0", "None"):
+            task_clean = {
+                "action_pending": False,
+                "loop_guidance": falsy_guidance,
+            }
+            triggers_clean = triggers_for_task(task_clean)
+            self.assertNotIn("loop_detected", triggers_clean)
+            rules_clean = rules_for_task(task_clean, role="worker")
+            rule_ids_clean = {r.id for r in rules_clean}
+            self.assertNotIn("recovery.action_guidance", rule_ids_clean)
+
     def test_self_supersession_rejected(self):
         """A rule cannot supersede itself in resolution or catalog audit."""
         rule = InstructionRule(
