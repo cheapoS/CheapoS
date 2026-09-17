@@ -109,10 +109,13 @@ def save_upload(
     is_pdf = detected_mime == "application/pdf" or Path(safe_name).suffix.lower() == ".pdf"
     is_text = detected_mime.startswith("text/") or Path(safe_name).suffix.lower() in TEXT_EXTENSIONS
 
+    url = f"/api/uploads/{upload_id}/{safe_name}"
     return {
         "id": upload_id,
         "filename": safe_name,
+        "name": safe_name,
         "path": str(target_path),
+        "url": url,
         "mime_type": detected_mime,
         "size": len(data),
         "is_image": is_image,
@@ -122,21 +125,84 @@ def save_upload(
 
 
 def get_upload_path(store_root: Path, upload_id: str, filename: Optional[str] = None) -> Optional[Path]:
-    """Resolve an uploaded file path safely, rejecting path traversal."""
+    """Resolve an uploaded file path safely, rejecting path traversal and symlinks."""
     if not isinstance(upload_id, str) or not re.match(r"^[a-zA-Z0-9_-]{8,64}$", upload_id):
         return None
-    upload_dir = (Path(store_root).resolve() / "uploads" / upload_id).resolve()
-    if not upload_dir.exists() or not upload_dir.is_dir():
+    uploads_root = (Path(store_root).resolve() / "uploads").resolve()
+    upload_dir = uploads_root / upload_id
+
+    # Symlink check on directory components
+    curr = upload_dir
+    while curr != uploads_root:
+        if curr.is_symlink():
+            return None
+        curr = curr.parent
+
+    try:
+        resolved_dir = upload_dir.resolve()
+        if not resolved_dir.is_relative_to(uploads_root):
+            return None
+    except (ValueError, OSError):
         return None
+
+    if not resolved_dir.exists() or not resolved_dir.is_dir():
+        return None
+
     if filename:
         safe_name = sanitize_filename(filename)
-        candidate = (upload_dir / safe_name).resolve()
-        if candidate.is_file() and str(candidate).startswith(str(upload_dir)):
-            return candidate
+        candidate = upload_dir / safe_name
+        if candidate.is_symlink():
+            return None
+        try:
+            resolved_candidate = candidate.resolve()
+            if not resolved_candidate.is_relative_to(resolved_dir):
+                return None
+            if resolved_candidate.is_file():
+                return resolved_candidate
+        except (ValueError, OSError):
+            return None
         return None
-    # Return first file in upload_dir if no filename given
-    files = [f for f in upload_dir.iterdir() if f.is_file()]
-    return files[0] if files else None
+
+    # Return first file in upload_dir if no filename given, rejecting symlinks
+    for f in resolved_dir.iterdir():
+        if f.is_symlink():
+            continue
+        try:
+            res = f.resolve()
+            if res.is_file() and res.is_relative_to(resolved_dir):
+                return res
+        except (ValueError, OSError):
+            continue
+    return None
+
+
+def get_upload_record(store_root: Path, upload_id: str, filename: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Derive trusted upload record server-side from disk, preventing spoofed classification."""
+    file_path = get_upload_path(store_root, upload_id, filename)
+    if not file_path or not file_path.is_file():
+        return None
+    try:
+        data = file_path.read_bytes()
+    except (OSError, PermissionError):
+        return None
+    safe_name = file_path.name
+    detected_mime = detect_mime_type(safe_name, data)
+    ext = Path(safe_name).suffix.lower()
+    is_image = detected_mime.startswith("image/") or ext in IMAGE_EXTENSIONS
+    is_pdf = detected_mime == "application/pdf" or ext == ".pdf"
+    is_text = detected_mime.startswith("text/") or ext in TEXT_EXTENSIONS
+    return {
+        "id": upload_id,
+        "filename": safe_name,
+        "name": safe_name,
+        "path": str(file_path),
+        "url": f"/api/uploads/{upload_id}/{safe_name}",
+        "mime_type": detected_mime,
+        "size": len(data),
+        "is_image": is_image,
+        "is_pdf": is_pdf,
+        "is_text": is_text,
+    }
 
 
 def extract_document_text(file_path: Path, max_chars: int = MAX_DOC_CHARS) -> str:

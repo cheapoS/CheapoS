@@ -534,8 +534,14 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]['name'], 'file1.txt')
 
-        # Security: root access rejected
+        # Security: root and system access rejected
         status, _, _ = self.request('GET', '/api/list-directories?path=/')
+        self.assertEqual(status, 403)
+        status, _, _ = self.request('GET', '/api/list-directories?path=/var')
+        self.assertEqual(status, 403)
+        status, _, _ = self.request('GET', '/api/list-directories?path=/etc')
+        self.assertEqual(status, 403)
+        status, _, _ = self.request('GET', '/api/list-directories?path=/bin')
         self.assertEqual(status, 403)
 
     def test_create_project_endpoint(self):
@@ -549,6 +555,27 @@ class HTTPTests(unittest.TestCase):
         data = json.loads(body)
         self.assertTrue((base_path / 'new-sample-proj/.git').is_dir())
         self.assertEqual(data['name'], 'new-sample-proj')
+
+        # Project creation with init_git: false (finding 8)
+        status_nogit, _, body_nogit = self.post('/api/projects/create', {
+            'name': 'folder-only-proj',
+            'parent': str(base_path),
+            'init_git': False
+        })
+        self.assertEqual(status_nogit, 200)
+        data_nogit = json.loads(body_nogit)
+        self.assertEqual(data_nogit['name'], 'folder-only-proj')
+        self.assertFalse(data_nogit['git'])
+        self.assertTrue((base_path / 'folder-only-proj').is_dir())
+        self.assertFalse((base_path / 'folder-only-proj/.git').exists())
+
+        # System parent directory rejected (finding 10)
+        status_blocked, _, _ = self.post('/api/projects/create', {
+            'name': 'bad-proj',
+            'parent': '/var',
+            'init_git': False
+        })
+        self.assertEqual(status_blocked, 400)
 
 
 class FakeModelHandler(BaseHTTPRequestHandler):

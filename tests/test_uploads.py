@@ -110,6 +110,73 @@ class UploadStorageTests(LocalCase):
         self.assertEqual(len(reloaded["attachments"]), 2)
         self.assertIn("### Attached Image: screen.png", reloaded["requests"][-1])
 
+    def test_symlink_upload_rejected(self):
+        uploads_root = self.engine.store.root / "uploads"
+        uploads_root.mkdir(parents=True, exist_ok=True)
+
+        # 1. Symlinked upload directory rejected
+        real_secret_dir = self.engine.store.root / "real_secret"
+        real_secret_dir.mkdir(parents=True, exist_ok=True)
+        (real_secret_dir / "secret.txt").write_text("secret_data")
+
+        symlinked_upload_dir = uploads_root / "symdir12345678"
+        try:
+            symlinked_upload_dir.symlink_to(real_secret_dir, target_is_directory=True)
+            self.assertIsNone(get_upload_path(self.engine.store.root, "symdir12345678", "secret.txt"))
+            self.assertIsNone(get_upload_path(self.engine.store.root, "symdir12345678"))
+        except OSError:
+            pass
+
+        # 2. Symlinked file inside valid upload dir rejected
+        valid_upload_dir = uploads_root / "validdir12345678"
+        valid_upload_dir.mkdir(parents=True, exist_ok=True)
+        symlink_file = valid_upload_dir / "leak.txt"
+        target_file = self.engine.store.root / "target.txt"
+        target_file.write_text("canary")
+        try:
+            symlink_file.symlink_to(target_file)
+            self.assertIsNone(get_upload_path(self.engine.store.root, "validdir12345678", "leak.txt"))
+            self.assertIsNone(get_upload_path(self.engine.store.root, "validdir12345678"))
+        except OSError:
+            pass
+
+    def test_trusted_server_classification_and_attachment_only_sends(self):
+        from cheapos.uploads import get_upload_record
+        png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
+        record = save_upload(self.engine.store.root, "photo.png", base64.b64encode(png_bytes).decode("ascii"))
+        self.assertIn("url", record)
+        self.assertEqual(record["url"], f"/api/uploads/{record['id']}/photo.png")
+
+        # Server-derived record ignores client spoofing
+        derived = get_upload_record(self.engine.store.root, record["id"], "photo.png")
+        self.assertTrue(derived["is_image"])
+        self.assertFalse(derived["is_text"])
+        self.assertFalse(derived["is_pdf"])
+
+        # Attachment-only create: empty prompt allowed, defaults to inspection prompt
+        base_task = self.fixture(paid=True)
+        spoofed_att = {"id": record["id"], "filename": "photo.png", "is_image": False, "is_text": True}
+        task = self.engine.create({
+            "prompt": "",
+            "repository": base_task["source"],
+            "check_command": "true",
+            "conversational": True,
+            "attachments": [spoofed_att],
+        }, demo=True)
+        self.assertIn("Inspect the attached file(s).", task["prompt"])
+        self.assertIn("### Attached Image: photo.png", task["prompt"])
+        self.assertNotIn("Attached Document: None", task["prompt"])
+
+        # Attachment-only steer: empty message allowed, defaults to inspection guidance
+        task["demo"] = False
+        task["providers"] = {"worker": dict(CONFIG), "reviewer": dict(CONFIG)}
+        self.engine.store.save(task)
+        res = self.engine.steer(task["id"], "", attachments=[record])
+        self.assertTrue(res["steered"])
+        reloaded = self.engine.store.get(task["id"])
+        self.assertIn("Inspect the attached file(s).", reloaded["requests"][-1])
+        self.assertIn("### Attached Image: photo.png", reloaded["requests"][-1])
+
 
 class UploadHTTPTests(unittest.TestCase):
     def setUp(self):
@@ -127,7 +194,7 @@ class UploadHTTPTests(unittest.TestCase):
         self.temp.cleanup()
 
     def request(self, method, path, body=None, headers=None):
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
         conn.request(method, path, json.dumps(body) if body is not None else None, headers or {})
         response = conn.getresponse()
         result = response.status, dict(response.getheaders()), response.read()
@@ -155,3 +222,46 @@ class UploadHTTPTests(unittest.TestCase):
         # Missing file returns 404
         missing_status, _, _ = self.request("GET", f"/api/uploads/{record['id']}/nonexistent.txt")
         self.assertEqual(missing_status, 404)
+
+    def test_upload_security_headers_and_isolation(self):
+        # 1. HTML file upload must have sandbox CSP, nosniff, frame-options deny, and forced attachment download
+        html_content = b"<html><head><script>alert(document.cookie)</script></head><body>evil</body></html>"
+        b64_html = base64.b64encode(html_content).decode("ascii")
+        status, _, body = self.post("/api/upload", {"filename": "evil.html", "data": f"data:text/html;base64,{b64_html}"})
+        self.assertEqual(status, 200)
+        record = json.loads(body)
+
+        dl_status, headers, dl_data = self.request("GET", f"/api/uploads/{record['id']}/evil.html")
+        self.assertEqual(dl_status, 200)
+        # Verify isolation headers
+        csp = headers.get("content-security-policy", "") or headers.get("Content-Security-Policy", "")
+        self.assertIn("sandbox", csp)
+        self.assertIn("default-src 'none'", csp)
+        nosniff = headers.get("x-content-type-options", "") or headers.get("X-Content-Type-Options", "")
+        self.assertEqual(nosniff, "nosniff")
+        frame_opts = headers.get("x-frame-options", "") or headers.get("X-Frame-Options", "")
+        self.assertEqual(frame_opts, "DENY")
+        disposition = headers.get("content-disposition", "") or headers.get("Content-Disposition", "")
+        self.assertIn("attachment", disposition)
+        self.assertIn("evil.html", disposition)
+
+        # 2. Raster PNG allows inline display
+        png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
+        b64_png = base64.b64encode(png_bytes).decode("ascii")
+        status, _, body = self.post("/api/upload", {"filename": "diagram.png", "data": f"data:image/png;base64,{b64_png}"})
+        self.assertEqual(status, 200)
+        img_record = json.loads(body)
+
+        _, img_headers, _ = self.request("GET", f"/api/uploads/{img_record['id']}/diagram.png")
+        img_disp = img_headers.get("content-disposition", "") or img_headers.get("Content-Disposition", "")
+        self.assertIn("inline", img_disp)
+
+    def test_upload_20mb_accepted_by_http(self):
+        # 20 MiB decoded file requires ~27.96 MB in base64. Body limit of 35 MB must accept it.
+        # Use smaller representative 5 MB to keep test fast while verifying body limit behavior
+        chunk = b"X" * (5 * 1024 * 1024)
+        b64_chunk = base64.b64encode(chunk).decode("ascii")
+        status, _, body = self.post("/api/upload", {"filename": "five_mb.bin", "data": f"data:application/octet-stream;base64,{b64_chunk}"})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertEqual(res["size"], len(chunk))

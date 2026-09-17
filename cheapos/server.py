@@ -4,17 +4,72 @@ import json
 import hashlib
 import secrets
 import os
+import shutil
 import sys
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Union
 from urllib.parse import unquote, urlsplit, parse_qs
 
 from . import __version__
 from .gateways import gateway_for
 from .providers import validate_provider, ProviderError
 from . import metrics, check_output, branch_runs, branch_pause
+
+BLOCKED_SYSTEM_ROOTS = {
+    Path("/bin"),
+    Path("/sbin"),
+    Path("/usr"),
+    Path("/System"),
+    Path("/Library"),
+    Path("/dev"),
+    Path("/proc"),
+    Path("/sys"),
+    Path("/etc"),
+    Path("/private/etc"),
+    Path("/var"),
+    Path("/private/var"),
+}
+
+ALLOWED_TEMP_ROOTS = {
+    Path("/tmp"),
+    Path("/private/tmp"),
+    Path("/var/tmp"),
+    Path("/private/var/tmp"),
+    Path("/var/folders"),
+    Path("/private/var/folders"),
+}
+
+
+def is_blocked_system_directory(target: Union[str, Path]) -> bool:
+    """Component-aware check to ensure a path is not a system directory or descendant of one."""
+    try:
+        cand = Path(target).expanduser().resolve()
+    except (ValueError, OSError):
+        return True
+
+    if cand == Path("/"):
+        return True
+
+    for allowed in ALLOWED_TEMP_ROOTS:
+        try:
+            res_allowed = allowed.resolve()
+            if cand == allowed or cand == res_allowed or cand.is_relative_to(allowed) or cand.is_relative_to(res_allowed):
+                return False
+        except (ValueError, OSError):
+            continue
+
+    for blocked in BLOCKED_SYSTEM_ROOTS:
+        try:
+            res_blocked = blocked.resolve()
+            if cand == blocked or cand == res_blocked or cand.is_relative_to(blocked) or cand.is_relative_to(res_blocked):
+                return True
+        except (ValueError, OSError):
+            continue
+
+    return False
 
 
 def public_task(task, summary=False, store=None):
@@ -57,7 +112,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        if not getattr(self, "_custom_csp", False):
+            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         super().end_headers()
 
     def trusted(self, mutation=False):
@@ -152,11 +208,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
                         target_path = Path(unquote(requested_path.strip())).expanduser().resolve()
                     else:
                         target_path = self.server.directory if not (self.server.directory / "index.html").is_file() else Path.home()
-                    if target_path == Path("/") or str(target_path) in {"/bin", "/sbin", "/etc", "/var", "/private/etc"}:
-                        self.reply({"error": "Access denied"}, 403)
-                        return
                     if not target_path.exists():
                         self.reply({"error": "Directory not found"}, 404)
+                        return
+                    if is_blocked_system_directory(target_path):
+                        self.reply({"error": "Access denied"}, 403)
                         return
                     if not target_path.is_dir():
                         self.reply({"error": "Not a directory"}, 400)
@@ -201,9 +257,15 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     if file_path and file_path.is_file():
                         data = file_path.read_bytes()
                         mime = detect_mime_type(file_path.name, data)
+                        safe_name = file_path.name
+                        safe_raster = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+                        disposition = "inline" if mime in safe_raster else "attachment"
                         self.send_response(200)
                         self.send_header("Content-Type", mime)
                         self.send_header("Content-Length", str(len(data)))
+                        self.send_header("Content-Disposition", f'{disposition}; filename="{safe_name}"')
+                        self._custom_csp = True
+                        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
                         self.end_headers()
                         self.wfile.write(data)
                         return
@@ -253,7 +315,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
             path = urlsplit(self.path).path
             while path.startswith("/api/api/"):
                 path = path[4:]
-            max_bytes = 25_000_000 if path == "/api/upload" else 1_000_000
+            max_bytes = 35_000_000 if path == "/api/upload" else 1_000_000
             if not 0 < length <= max_bytes:
                 raise ValueError(f"Request body must be under {max_bytes // (1024 * 1024)} MB")
             if self.headers.get_content_type() != "application/json":
@@ -311,17 +373,34 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 parent_path = Path(unquote(parent_str)).expanduser().resolve() if parent_str and parent_str != "." else (
                     self.server.directory if not (self.server.directory / "index.html").is_file() else Path.home()
                 )
-                if not parent_path.is_dir() or parent_path == Path("/"):
+                if not parent_path.is_dir() or is_blocked_system_directory(parent_path):
                     raise ValueError(f"Invalid parent directory: {parent_path}")
                 target_dir = (parent_path / safe_name).resolve()
+                if is_blocked_system_directory(target_dir):
+                    raise ValueError(f"Invalid project location: {target_dir}")
                 if target_dir.exists():
                     raise ValueError(f"Directory already exists: {target_dir}")
-                target_dir.mkdir(parents=True, exist_ok=True)
-                if values.get("init_git", True):
-                    from .workspace import git
-                    git(target_dir, "init", "-q")
-                    git(target_dir, "-c", "user.name=cheapoS", "-c", "user.email=local@cheapos.invalid", "commit", "--allow-empty", "-qm", "Initial commit")
-                result = engine.open_project({"repository": str(target_dir)})
+                created_dir = False
+                try:
+                    target_dir.mkdir(parents=True, exist_ok=False)
+                    created_dir = True
+                    init_git = values.get("init_git", True)
+                    if init_git:
+                        from .workspace import git
+                        git(target_dir, "init", "-q")
+                        git(target_dir, "-c", "user.name=cheapoS", "-c", "user.email=local@cheapos.invalid", "commit", "--allow-empty", "-qm", "Initial commit")
+                        result = engine.open_project({"repository": str(target_dir)})
+                    else:
+                        result = {
+                            "path": str(target_dir),
+                            "name": safe_name,
+                            "git": False,
+                            "repository": str(target_dir),
+                        }
+                except Exception:
+                    if created_dir and target_dir.exists():
+                        shutil.rmtree(target_dir, ignore_errors=True)
+                    raise
             elif path == "/api/projects/preview":
                 result = engine.previews.settings(values)
             elif path == "/api/projects/hide":
@@ -450,9 +529,13 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 elif action == "start":
                     result = public_task(engine.start(task_id, values))
                 elif action == "message":
-                    if not isinstance(values.get("message"), str):
+                    msg = values.get("message", "")
+                    attachments = values.get("attachments", [])
+                    if not isinstance(msg, str):
                         raise ValueError("Provide a message")
-                    result = public_task(engine.start(task_id, {"message": values["message"], "attachments": values.get("attachments", [])}))
+                    if not msg.strip() and not attachments:
+                        raise ValueError("Provide a message")
+                    result = public_task(engine.start(task_id, {"message": msg, "attachments": attachments}))
                 elif action == "limits":
                     result = public_task(engine.update_limits(task_id, values))
                 elif action == "stop":
@@ -484,10 +567,13 @@ class LocalHandler(SimpleHTTPRequestHandler):
                         raise ValueError("Provide a checkpoint number to rollback to")
                     result = public_task(engine.rollback_checkpoint(task_id, checkpoint))
                 elif action == "steer":
-                    message = values.get("message")
-                    if not message or not isinstance(message, str):
-                        raise ValueError("Provide a steering message")
-                    result = engine.steer(task_id, message)
+                    message = values.get("message", "")
+                    attachments = values.get("attachments", [])
+                    if not isinstance(message, str):
+                        raise ValueError("Provide a steering guidance message")
+                    if not message.strip() and not attachments:
+                        raise ValueError("Provide a steering guidance message")
+                    result = engine.steer(task_id, message, attachments=attachments)
                     if isinstance(result, dict) and "task" in result:
                         result["task"] = public_task(result["task"])
                 elif action == "headroom":

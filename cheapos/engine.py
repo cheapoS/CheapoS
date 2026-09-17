@@ -778,7 +778,17 @@ class Engine:
         conversational = values.get("conversational", False)
         if not isinstance(conversational, bool):
             raise ValueError("Conversational must be true or false")
-        if not isinstance(prompt, str) or not (1 if conversational else 5) <= len(prompt.strip()) <= 8000:
+        attachments = values.get("attachments")
+        if attachments is not None and not isinstance(attachments, list):
+            raise ValueError("Attachments must be a list")
+        if not isinstance(prompt, str):
+            raise ValueError("Enter a message of up to 8,000 characters")
+        if not prompt.strip():
+            if attachments and len(attachments) > 0:
+                prompt = "Inspect the attached file(s)."
+            else:
+                raise ValueError("Enter a message of up to 8,000 characters")
+        elif not (1 if conversational else 5) <= len(prompt.strip()) <= 8000:
             raise ValueError("Enter a message of up to 8,000 characters")
         limits = limits_from(values.get("limits", self.preferences()["limits"] if conversational else None))
         execution = self.preferences()["execution"] if conversational and not demo else dict(DEFAULT_EXECUTION)
@@ -792,33 +802,30 @@ class Engine:
             raise ValueError("A verification command is required for this release")
         if not isinstance(values.get("auto_approve_checks", False), bool):
             raise ValueError("Command approval preference must be true or false")
-        attachments = values.get("attachments")
-        if attachments is not None and not isinstance(attachments, list):
-            raise ValueError("Attachments must be a list")
         safe_attachments = []
         augmented_prompt = prompt.strip()
         if attachments:
-            from .uploads import get_upload_path, extract_document_text
+            from .uploads import extract_document_text, get_upload_record
             for att in attachments:
                 if not isinstance(att, dict):
                     continue
                 upload_id = att.get("id")
-                filename = att.get("filename", "")
-                resolved_path = get_upload_path(self.store.root, upload_id, filename) if upload_id else None
-                if not resolved_path and att.get("path"):
+                filename = att.get("filename") or att.get("name", "")
+                record = get_upload_record(self.store.root, upload_id, filename) if upload_id else None
+                if not record and att.get("path"):
                     cand = Path(att["path"]).resolve()
-                    if cand.is_file() and str(cand).startswith(str((self.store.root / "uploads").resolve())):
-                        resolved_path = cand
-                if resolved_path and resolved_path.is_file():
-                    att_record = dict(att)
-                    att_record["path"] = str(resolved_path)
-                    safe_attachments.append(att_record)
-                    if att_record.get("is_text") or att_record.get("is_pdf") or not att_record.get("is_image"):
+                    uploads_root = (self.store.root / "uploads").resolve()
+                    if cand.is_file() and cand.is_relative_to(uploads_root):
+                        record = get_upload_record(self.store.root, cand.parent.name, cand.name)
+                if record:
+                    safe_attachments.append(record)
+                    resolved_path = Path(record["path"])
+                    if record.get("is_text") or record.get("is_pdf") or not record.get("is_image"):
                         doc_text = extract_document_text(resolved_path)
                         if doc_text:
-                            augmented_prompt += f"\n\n### Attached Document: {att_record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
-                    elif att_record.get("is_image"):
-                        augmented_prompt += f"\n\n### Attached Image: {att_record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
+                            augmented_prompt += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
+                    elif record.get("is_image"):
+                        augmented_prompt += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
         task_id = task_id or uuid.uuid4().hex
         directory = self.store.root / "tasks" / task_id
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
@@ -995,7 +1002,15 @@ class Engine:
             if followup is not None:
                 if task["demo"]:
                     raise ValueError("The demo uses scripted responses. Open a project to start a real chat.")
-                if not isinstance(followup, str) or not 1 <= len(followup.strip()) <= 8000:
+                new_attachments = (changes or {}).get("attachments") or []
+                if not isinstance(followup, str):
+                    raise ValueError("Enter a message of up to 8,000 characters")
+                if not followup.strip():
+                    if new_attachments and len(new_attachments) > 0:
+                        followup = "Inspect the attached file(s)."
+                    else:
+                        raise ValueError("Enter a message of up to 8,000 characters")
+                elif not 1 <= len(followup.strip()) <= 8000:
                     raise ValueError("Enter a message of up to 8,000 characters")
                 requests = task.get("requests", [task["prompt"]])
                 if sum(map(len, requests)) + len(followup) > 24000 and not developing(task):
@@ -1055,27 +1070,27 @@ class Engine:
                 augmented_followup = followup.strip()
                 new_safe = []
                 if new_attachments:
-                    from .uploads import get_upload_path, extract_document_text
+                    from .uploads import extract_document_text, get_upload_record
                     for att in new_attachments:
                         if not isinstance(att, dict):
                             continue
                         upload_id = att.get("id")
-                        filename = att.get("filename", "")
-                        resolved_path = get_upload_path(self.store.root, upload_id, filename) if upload_id else None
-                        if not resolved_path and att.get("path"):
+                        filename = att.get("filename") or att.get("name", "")
+                        record = get_upload_record(self.store.root, upload_id, filename) if upload_id else None
+                        if not record and att.get("path"):
                             cand = Path(att["path"]).resolve()
-                            if cand.is_file() and str(cand).startswith(str((self.store.root / "uploads").resolve())):
-                                resolved_path = cand
-                        if resolved_path and resolved_path.is_file():
-                            att_record = dict(att)
-                            att_record["path"] = str(resolved_path)
-                            new_safe.append(att_record)
-                            if att_record.get("is_text") or att_record.get("is_pdf") or not att_record.get("is_image"):
+                            uploads_root = (self.store.root / "uploads").resolve()
+                            if cand.is_file() and cand.is_relative_to(uploads_root):
+                                record = get_upload_record(self.store.root, cand.parent.name, cand.name)
+                        if record:
+                            new_safe.append(record)
+                            resolved_path = Path(record["path"])
+                            if record.get("is_text") or record.get("is_pdf") or not record.get("is_image"):
                                 doc_text = extract_document_text(resolved_path)
                                 if doc_text:
-                                    augmented_followup += f"\n\n### Attached Document: {att_record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
-                            elif att_record.get("is_image"):
-                                augmented_followup += f"\n\n### Attached Image: {att_record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
+                                    augmented_followup += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
+                            elif record.get("is_image"):
+                                augmented_followup += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
                     task.setdefault("attachments", []).extend(new_safe)
                 task["requests"] = task.get("requests", [task["prompt"]]) + [augmented_followup]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
@@ -1343,8 +1358,17 @@ class Engine:
             self.store.save(task)
             return task
 
-    def steer(self, task_id, message):
-        if not isinstance(message, str) or not 1 <= len(message.strip()) <= 4000:
+    def steer(self, task_id, message, attachments=None):
+        if attachments is not None and not isinstance(attachments, list):
+            raise ValueError("Attachments must be a list")
+        if not isinstance(message, str):
+            raise ValueError("Enter a steering guidance message of up to 4,000 characters")
+        if not message.strip():
+            if attachments and len(attachments) > 0:
+                message = "Inspect the attached file(s)."
+            else:
+                raise ValueError("Enter a steering guidance message of up to 4,000 characters")
+        elif not 1 <= len(message.strip()) <= 4000:
             raise ValueError("Enter a steering guidance message of up to 4,000 characters")
         cleaned = message.strip()
         with self.lock:
@@ -1362,22 +1386,48 @@ class Engine:
             if is_continue(cleaned):
                 started = self.start(task_id)
                 return {'steered':False,'running':True,'task':started}
+            safe_attachments = []
+            augmented_guidance = cleaned
+            if attachments:
+                from .uploads import extract_document_text, get_upload_record
+                for att in attachments:
+                    if not isinstance(att, dict):
+                        continue
+                    upload_id = att.get("id")
+                    filename = att.get("filename") or att.get("name", "")
+                    record = get_upload_record(self.store.root, upload_id, filename) if upload_id else None
+                    if not record and att.get("path"):
+                        cand = Path(att["path"]).resolve()
+                        uploads_root = (self.store.root / "uploads").resolve()
+                        if cand.is_file() and cand.is_relative_to(uploads_root):
+                            record = get_upload_record(self.store.root, cand.parent.name, cand.name)
+                    if record:
+                        safe_attachments.append(record)
+                        resolved_path = Path(record["path"])
+                        if record.get("is_text") or record.get("is_pdf") or not record.get("is_image"):
+                            doc_text = extract_document_text(resolved_path)
+                            if doc_text:
+                                augmented_guidance += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
+                        elif record.get("is_image"):
+                            augmented_guidance += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
+                task.setdefault("attachments", []).extend(safe_attachments)
+
             if developing(task):
                 if runtime and runtime.thread and runtime.thread.is_alive():
-                    self.queue_operator_direction(runtime, cleaned)
+                    self.queue_operator_direction(runtime, augmented_guidance)
                     return {"steered": True, "running": True, "task": task, "operator_continue": task["operator_continue"]}
-                return self.operator_recovery(task_id, {"action":"retry", "message":cleaned})
+                return self.operator_recovery(task_id, {"action":"retry", "message":augmented_guidance})
             self.event(task, "steer", "User Guidance", cleaned)
             # Worker and reviewer must receive the same ordered requirements.
             # Append a new list so earlier checkpoint evidence stays immutable.
-            task["requests"] = task.get("requests", [task["prompt"]]) + [cleaned]
-            task["steer_guidance"] = cleaned
+            task["requests"] = task.get("requests", [task["prompt"]]) + [augmented_guidance]
+            task["steer_guidance"] = augmented_guidance
             if runtime and runtime.thread and runtime.thread.is_alive():
-                runtime.steer_queue.append(cleaned)
+                runtime.steer_queue.append(augmented_guidance)
                 self.store.save(task)
                 return {"steered": True, "running": True, "task": task}
             else:
-                guidance_prompt = f"USER COURSE CORRECTION: {cleaned}\nPrioritize this guidance immediately over any conflicting previous plans."
+                guidance_prompt = f"USER COURSE CORRECTION: {augmented_guidance}\nPrioritize this guidance immediately over any conflicting previous plans."
                 task.setdefault("messages", []).append({"role": "user", "content": guidance_prompt})
                 if task.get("error_code") in {"checkpoint_turn_limit", "progress_limit", "stalled", "worker_turn_limit"}:
                     task["error"] = None
@@ -2537,7 +2587,7 @@ class Engine:
                 raise FileRangeError('This exact edit was already rejected for this file version. It was not executed again. Correct the range using the supplied current lines.')
         with self.lock:
             runtime.guard()
-            result = self.file_tool(task, name, args)
+            result = self.file_tool(task, name, args, runtime=runtime)
         if name == "read_file":
             self.remember_file_version(runtime, result)
         elif name in MUTATIONS:
@@ -2575,11 +2625,11 @@ class Engine:
         except (ValueError, OSError, TypeError, UnicodeError) as error:
             return {"path": args.get("path"), "error": str(error)[:500]}
 
-    def file_tool(self, task, name, args):
-        runtime=self.runtimes.get(task["id"])
-        if runtime and hasattr(runtime,"branch_ledger"):
-            runtime.guard()
-            runtime.branch_ledger.guard(next_action=True)
+    def file_tool(self, task, name, args, runtime=None):
+        active_runtime = runtime or self.runtimes.get(task["id"])
+        if active_runtime and hasattr(active_runtime, "branch_ledger"):
+            active_runtime.guard()
+            active_runtime.branch_ledger.guard(next_action=True)
         if name == "apply_merge_version":
             from .branch_conflicts import apply_version
             result=apply_version(task, **args)
@@ -2608,7 +2658,7 @@ class Engine:
             return result
         if name == "inspect_image":
             from .vision import inspect_image_tool
-            result = inspect_image_tool(self, task, args)
+            result = inspect_image_tool(self, task, args, runtime=active_runtime)
             task["tool_actions"] += 1
             self.event(task, "tool", "inspect image", {"arguments": args, "result": result})
             return result
@@ -3007,7 +3057,7 @@ class Engine:
                         return {"decision": decision, "feedback": checkpoint["feedback"]}
                 elif name in {"read_file", "outline_file", "get_project_context", "search", "list_files", "get_diff", "read_url", "read_check_output", "read_merge_context", "read_context_evidence", "read_edit_history"}:
                     try:
-                        result = self.read_url(runtime, params) if name == "read_url" else self.file_tool(task, name, params)
+                        result = self.read_url(runtime, params) if name == "read_url" else self.file_tool(task, name, params, runtime=runtime)
                     except InterruptedError:
                         raise
                     except (ValueError, OSError, TypeError, UnicodeError) as error:

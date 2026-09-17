@@ -131,7 +131,7 @@ const icon = name => `<svg aria-hidden="true" focusable="false" tabindex="-1"><u
 const taskBusy=task=>CheapOSBranchUI.isBusy(task);
 const activeStatuses = new Set(['running', 'reviewing', 'waiting_approval', 'waiting_retry', 'stopping']);
 const labels = {awaiting_reply:'Ready for your message',ready:'Ready to start',running:'cheapoS is working',reviewing:'Checking your changes',waiting_approval:'Command approval needed',waiting_retry:'Waiting for a free route',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
-const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},composerAttachments:[],sending:false,pendingSends:new Set(),startErrors:new Map(),admission:null,pausingTask:null,stoppingStartup:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',diffWrap:true,diffContext:false,diffExpanded:false,diffFont:14,run:-1,online:false,loading:false};
+const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},composerAttachments:[],sending:false,pendingSends:new Set(),startErrors:new Map(),admission:null,pausingTask:null,stoppingStartup:false,drafts:new Map(),draftAttachments:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',diffWrap:true,diffContext:false,diffExpanded:false,diffFont:14,run:-1,online:false,loading:false};
 const money = value => '$' + Number(value || 0).toFixed(Number(value || 0) > 0 && value < .01 ? 4 : 2);
 const date = value => new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
@@ -260,8 +260,18 @@ async function restoreTrash(task) {
   await refresh();toast(restored.archived_at?'Restored to Archived.':'Restored to active history.');
 }
 const draftKey=()=>state.task?.id||state.project?.path||'new';
-function saveDraft(){state.drafts.set(draftKey(),$('#chat-input').value)}
-function restoreDraft(){$('#chat-input').value=state.drafts.get(draftKey())||'';branchUI?.restoreDraft();renderComposer()}
+function saveDraft(){
+  state.drafts.set(draftKey(),$('#chat-input').value);
+  state.draftAttachments ||= new Map();
+  state.draftAttachments.set(draftKey(), [...(state.composerAttachments||[])]);
+}
+function restoreDraft(){
+  $('#chat-input').value=state.drafts.get(draftKey())||'';
+  state.draftAttachments ||= new Map();
+  state.composerAttachments = [...(state.draftAttachments.get(draftKey())||[])];
+  branchUI?.restoreDraft();
+  renderComposer();
+}
 function home() {
   sidebarMenu?.close(false);
   saveDraft();state.selection++;state.loading=false;state.task=null;state.view='chat';
@@ -391,7 +401,23 @@ function submissionAvailability(task=state.task,mode=branchUI?.getMode()||'inter
 }
 function sendingHere(){return state.pendingSends.has(draftKey());}
 async function loadAdmission({render=true}={}){try{state.admission=await api('/admission');}catch(e){state.admission=e.status===404?{legacy:true}:null;}if(render)renderComposer();}
-function clearOwnedDraft(key,message){if(typeof branchUI!=='undefined')branchUI?.clearSubmittedDraft?.(key,message);if(state.drafts.get(key)===message)state.drafts.delete(key);if(draftKey()===key&&$('#chat-input').value.trim()===message)$('#chat-input').value='';}
+function clearOwnedDraft(key,message,submittedAttachments=null){
+  if(typeof branchUI!=='undefined')branchUI?.clearSubmittedDraft?.(key,message);
+  if(state.drafts.get(key)===message)state.drafts.delete(key);
+  if(draftKey()===key&&$('#chat-input').value.trim()===message)$('#chat-input').value='';
+  if(submittedAttachments&&submittedAttachments.length){
+    const submittedIds=new Set(submittedAttachments.map(a=>a.id));
+    if(state.draftAttachments&&state.draftAttachments.has(key)){
+      const remaining=(state.draftAttachments.get(key)||[]).filter(a=>!submittedIds.has(a.id));
+      if(remaining.length)state.draftAttachments.set(key,remaining);
+      else state.draftAttachments.delete(key);
+    }
+    if(draftKey()===key){
+      state.composerAttachments=(state.composerAttachments||[]).filter(a=>!submittedIds.has(a.id));
+      if(typeof renderComposerAttachments==='function')renderComposerAttachments();
+    }
+  }
+}
 function pendingMessageMarkup(){
   const pending=state.pendingMessages?.get(draftKey());if(!pending)return '';
   // A poll can observe server acceptance before the POST response arrives.
@@ -460,13 +486,18 @@ async function uploadFiles(files) {
       });
       state.composerAttachments.push({
         id: res.id,
-        name: res.filename || file.name,
+        filename: res.filename || res.name || file.name,
+        name: res.name || res.filename || file.name,
         path: res.path,
         url: res.url,
         mime_type: res.mime_type,
-        media_type: res.media_type,
-        size: res.size || file.size
+        media_type: res.media_type || (res.is_image ? 'image' : res.is_pdf ? 'pdf' : 'doc'),
+        size: res.size || file.size,
+        is_image: Boolean(res.is_image),
+        is_pdf: Boolean(res.is_pdf),
+        is_text: Boolean(res.is_text)
       });
+      saveDraft();
     } catch (err) {
       toast(err.message || 'Upload failed');
     }
@@ -1653,20 +1684,19 @@ async function dispatchChat() {
     if(task){
       const saved=await api('/tasks/'+task.id+'/message',{message,attachments});
       state.pendingMessages.delete(key);
-      clearOwnedDraft(key,message);
-      state.composerAttachments=[];
-      renderComposerAttachments();
+      clearOwnedDraft(key,message,attachments);
+      if(typeof renderComposerAttachments==='function')renderComposerAttachments();
       if(state.selection===selection&&state.task?.id===task.id){state.task=saved;renderTask();}
       void refreshContext();
     }
     else {
       const created=await api('/tasks',{repository,prompt:message,attachments,conversational:true,limits:state.preferences.limits});
       await loadTasks();
-      state.composerAttachments=[];
-      renderComposerAttachments();
+      clearOwnedDraft(key,message,attachments);
+      if(typeof renderComposerAttachments==='function')renderComposerAttachments();
       if(state.selection===selection){await selectTask(created.id);}
       state.pendingSends.add(created.id);
-      try{const started=await startTask(created.id);if(started)clearOwnedDraft(key,message);}finally{state.pendingSends.delete(created.id);}
+      try{const started=await startTask(created.id);if(started)clearOwnedDraft(key,message,attachments);}finally{state.pendingSends.delete(created.id);}
     }
     if(state.selection===selection)$('#view-container').scrollTop=$('#view-container').scrollHeight;
   }catch(e){state.sendErrors.set(key,e.message);toast(e.message);}
@@ -1674,13 +1704,15 @@ async function dispatchChat() {
 }
 async function steerTask(text) {
   const task=state.task,message=text||$('#chat-input').value.trim();
-  if(!task||!message||sendingHere()||task.status==='stopping'||state.pausingTask===task.id)return;
+  const attachments=[...(state.composerAttachments||[])];
+  if(!task||(!message&&!attachments.length)||sendingHere()||task.status==='stopping'||state.pausingTask===task.id)return;
   const key=draftKey(),selection=state.selection;beginMessageSend(key,message);
   let delivered=false;
   try {
-    const saved=await api('/tasks/'+task.id+(task.branch_run?'/branch-message':'/steer'),{message});
+    const saved=await api('/tasks/'+task.id+(task.branch_run?'/branch-message':'/steer'),{message,attachments});
     delivered=true;
-    state.pendingMessages.delete(key);clearOwnedDraft(key,message);
+    state.pendingMessages.delete(key);clearOwnedDraft(key,message,attachments);
+    if(typeof renderComposerAttachments==='function')renderComposerAttachments();
     if(saved?.id&&state.selection===selection&&state.task?.id===task.id){state.task=saved;renderTask();}
     if(!saved?.operator_continue&&saved?.branch_run?.authorization_ref&&['paused','blocked'].includes(saved.branch_run.status)){
       await resumeBranchRun(saved);
@@ -2068,35 +2100,38 @@ if(attachBtn&&fileInput){
     }
   };
 }
-$('#chat-input').addEventListener('paste',e=>{
-  const items=e.clipboardData?.items;
-  if(!items)return;
-  const files=[];
-  for(const item of items){
-    if(item.kind==='file'){
-      const file=item.getAsFile();
-      if(file)files.push(file);
+const chatInput=$('#chat-input');
+if(chatInput){
+  chatInput.onpaste=e=>{
+    const items=e.clipboardData?.items;
+    if(!items)return;
+    const files=[];
+    for(const item of items){
+      if(item.kind==='file'){
+        const file=item.getAsFile();
+        if(file)files.push(file);
+      }
     }
-  }
-  if(files.length){
-    e.preventDefault();
-    uploadFiles(files);
-  }
-});
+    if(files.length){
+      e.preventDefault();
+      uploadFiles(files);
+    }
+  };
+}
 const chatForm=$('#chat-form');
-if(chatForm){
+if(chatForm&&chatForm.addEventListener){
   ['dragenter','dragover'].forEach(name=>{
     chatForm.addEventListener(name,e=>{
       e.preventDefault();
       e.stopPropagation();
-      chatForm.classList.add('dragover');
+      if(chatForm.classList?.add)chatForm.classList.add('dragover');
     });
   });
   ['dragleave','dragend','drop'].forEach(name=>{
     chatForm.addEventListener(name,e=>{
       e.preventDefault();
       e.stopPropagation();
-      chatForm.classList.remove('dragover');
+      if(chatForm.classList?.remove)chatForm.classList.remove('dragover');
     });
   });
   chatForm.addEventListener('drop',e=>{
