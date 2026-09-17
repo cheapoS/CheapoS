@@ -423,16 +423,8 @@ def plan(engine, runtime, inputs):
         raise ValueError('Supply displayed finite planning_limits on the planning task')
     if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
     context = project_context(captured['source'])
-    if hasattr(engine, 'effective_role_mapping'):
-        effective = engine.effective_role_mapping(captured['source'])
-        if effective.get('error') == 'worker-duplicate':
-            raise ValueError(effective['reason'])
-        for role in ('planner', 'worker', 'reviewer'):
-            model = (effective.get('mapping') or {}).get(role)
-            if model:
-                runtime.task.setdefault('providers', {})[role] = {'model': model}
-
-
+    # Providers were captured by chat setup. Live project defaults must not
+    # replace a saved provider configuration or erase its endpoint/credentials.
     if hasattr(engine, 'carto'):
         carto = engine.carto.context(captured['source'], captured['source'])
         if carto['status'] != 'disabled': context['carto'] = carto

@@ -40,6 +40,8 @@ def contract_builder(run, workspace_proposal, model_policy, check_scope):
              'workspace_proposal': workspace_proposal, 'model_policy': model_policy,
              'limits': run['limits'], 'check_scope': check_scope,
              'scope': 'local_reviewed_feature_commits'}
+    if 'settings_snapshot_digest' in run:
+        value['settings_snapshot_digest']=run['settings_snapshot_digest']
     if 'integration_policy' in run:
         policy=run['integration_policy']
         if not isinstance(policy,dict) or set(policy)!={'keep_up_to_date','target_ref','target_tip'} or type(policy['keep_up_to_date']) is not bool or policy['target_ref']!=run['target_ref'] or not isinstance(policy['target_tip'],str) or not policy['target_tip']:

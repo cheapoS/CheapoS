@@ -72,6 +72,27 @@ class SavedPolicyTests(unittest.TestCase):
             controller.proposals.validate(auth,controller.contract(task))
         controller.model_policy.assert_called_once()
 
+    def test_captured_draft_defaults_are_bound_without_rereading_live_defaults(self):
+        from cheapos.branch_authorization import digest
+        task,controller,_=self.fixture();run=task['branch_run']
+        run.pop('authorization');run.pop('authorization_ref')
+        task['settings_snapshot']={'revision':'captured','values':{'execution':{'mode':'delegate'}}}
+        run['settings_snapshot_digest']=digest(task['settings_snapshot'])
+        controller.model_policy.return_value={'execution':{'mode':'remote'},'providers':{}}
+        result=controller.contract(task)
+        self.assertEqual(result['model_policy'],run['model_policy'])
+        self.assertEqual(result['settings_snapshot_digest'],run['settings_snapshot_digest'])
+        controller.model_policy.assert_not_called()
+        task['settings_snapshot']['revision']='different'
+        with self.assertRaisesRegex(ValueError,'Captured chat setup changed'):controller.contract(task)
+
+    def test_planning_limits_use_captured_settings_with_explicit_request_overrides(self):
+        from cheapos.branch_controller import planning_limits_from_settings
+        snapshot={'values':{'limits':{'dollars':0,'run_minutes':12,'worker_turns':45,'iterations':8}}}
+        self.assertEqual(planning_limits_from_settings(snapshot,{'worker_turns':60}),
+                         {'dollars':0,'working_seconds':720,'worker_turns':60})
+        self.assertEqual(snapshot['values']['limits']['worker_turns'],45)
+
     def test_current_connection_still_validated_and_new_access_is_not_adopted(self):
         task,controller,settings=self.fixture();before=copy.deepcopy(task['branch_run']['authorization'])
         settings['included_models']=['provider/new-model']
