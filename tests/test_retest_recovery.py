@@ -81,8 +81,10 @@ class RetestRecoveryTests(unittest.TestCase):
         self.assertEqual(result['verification_identity'],'inputs')
 
     def test_repeat_test_advances_to_review_without_assuming_approval(self):
-        engine=SimpleNamespace(checks=Mock(return_value={'reused':True}),event=Mock(),
-                               checkpoint_feedback=Mock(return_value={'decision':'REQUEST_CHANGES'}))
+        engine=Engine.__new__(Engine)
+        engine.checks=Mock(return_value={'reused':True,'passed':True})
+        engine.event=Mock()
+        engine.checkpoint_feedback=Mock(return_value={'decision':'REQUEST_CHANGES'})
         runtime=SimpleNamespace(task={'branch_run':{'status':'running'}})
         result=Engine.worker_checks(engine,runtime,{})
         self.assertEqual(result['decision'],'REQUEST_CHANGES')

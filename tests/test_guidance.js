@@ -357,6 +357,17 @@ test('activityItem formats outline file and syntax_warning',()=>{
   assert.equal(editWithWarning.note,'⚠ SyntaxError at line 5: invalid syntax');
 });
 
+test('automatic syntax restoration and targeted undo are visible without claiming a saved bad edit',()=>{
+  const restored={kind:'tool',title:'replace text',detail:{arguments:{path:'app.py'},result:{rolled_back:true,syntax_warning:'invalid indentation'}}};
+  assert.match(activityItem(restored).title,/Restored app.py/);
+  assert.match(activityItem(restored).note,/automatically/);
+  assert.equal(workLabel([restored]),'Work details');
+  const undone={kind:'tool',title:'undo edit',detail:{arguments:{path:'app.py'},result:{undone_edit_id:'one'}}};
+  assert.equal(activityItem(undone).title,'Undid edit to app.py');
+  assert.match(activityItem(undone).note,/verification and review still required/);
+  assert.equal(workLabel([undone]),'Made 1 edit');
+});
+
 test('groupActivityItems and turns handle outline file events',()=>{
   const events=[
     {kind:'tool',title:'outline file',detail:{arguments:{path:'cheapos/engine.py'},result:{total_lines:1300}}},

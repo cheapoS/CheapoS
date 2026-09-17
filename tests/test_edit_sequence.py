@@ -1,5 +1,6 @@
 """Tiny filesystem-only coverage, without repeated Git/agent fixtures."""
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,8 +15,9 @@ class EditSequenceTests(unittest.TestCase):
             (root/'y.txt').write_text('other\n')
             ws=Workspace(directory)
             engine=Engine.__new__(Engine)
+            engine.lock=threading.RLock()
             engine.file_tool=lambda task,name,args:getattr(ws,name)(**args)
-            runtime=SimpleNamespace(task={'workspace':directory,'compact_edits':True},edit_versions={})
+            runtime=SimpleNamespace(task={'workspace':directory,'compact_edits':True},edit_versions={},guard=lambda:None)
             versions={name:ws.read_file(name)['hash'] for name in ('x.txt','y.txt')}
             mutated=set()
             result=engine.worker_file_tool(runtime,'replace_lines',{'path':'x.txt','start_line':1,'end_line':1,'new_text':'one'},versions,mutated)

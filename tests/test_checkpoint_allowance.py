@@ -66,31 +66,31 @@ class CheckpointAllowanceTests(unittest.TestCase):
         self.assertNotIn('pending_review', runtime.task)
         self.assertNotIn('pending_checkpoint', runtime.task)
 
-    def test_repeated_check_failures_on_checkpoint_pause_loop(self):
-        from cheapos.engine import ProgressPause
+    def test_repeated_checkpoint_failures_keep_repair_evidence_without_operator_pause(self):
         engine, runtime = self.setup_run(True)
         def fail_checks(*args):
             c = {'passed': False, 'command': runtime.task['check_command'], 'digest': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}
             runtime.task['checks'].append(c)
             return c
         engine.checks = Mock(side_effect=fail_checks)
-        for _ in range(2):
+        for _ in range(6):
             result = self.run_checkpoint(engine, runtime)
             self.assertEqual(result['decision'], 'REQUEST_CHANGES')
-        with self.assertRaisesRegex(ProgressPause, 'Verification has failed 3 consecutive times on unchanged files'):
-            self.run_checkpoint(engine, runtime)
+            self.assertFalse(result['checks']['passed'])
+            self.assertIn('repair_context', result['checks'])
+        self.assertEqual(engine.request.call_count, 0)  # Failed checks cannot enter review.
 
-    def test_repeated_worker_check_failures_pause_loop(self):
-        from cheapos.engine import ProgressPause
+    def test_repeated_worker_check_failures_continue_with_focused_evidence(self):
         engine, runtime = self.setup_run(True)
         engine.checks = Mock(return_value={'passed': False, 'output': 'test failure', 'command': runtime.task['check_command']})
-        for i in range(5):
+        for i in range(7):
             res = engine.worker_checks(runtime, {})
             self.assertIn('test failure', res['output'])
+            self.assertIn('repair_context', res)
             if i >= 2:
-                self.assertIn('Verification has failed', res.get('guidance', ''))
-        with self.assertRaisesRegex(ProgressPause, 'Worker has failed verification 6 consecutive times'):
-            engine.worker_checks(runtime, {})
+                self.assertIn('change the repair approach', res['guidance'])
+                self.assertNotIn('complete, correct implementation', res['guidance'])
+        self.assertEqual(runtime.task['consecutive_worker_check_failures'], 7)
 
     def test_json_checkpoint_text_dispatches_feedback_directly(self):
         import hashlib
