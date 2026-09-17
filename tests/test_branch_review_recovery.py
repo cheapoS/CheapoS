@@ -193,3 +193,12 @@ class ReviewerRouteExclusionTests(unittest.TestCase):
         routing.select_remote(engine, runtime, 'reviewer', replace=True)
         self.assertEqual(task['providers']['reviewer']['model'], 'good/model')
         engine.request.assert_called_once()
+        # Final review uses the same route eligibility gates and alias exclusions.
+        task.pop('pending_review')
+        task['branch_run']={'current_item_id':None,'active_final_review':{'manifest_id':'manifest'},
+            'final_review_recovery':{'manifest':{'failed_models':['failed/model']}}}
+        task['providers']['reviewer']={'model':'failed/model'}
+        engine.request.reset_mock()
+        routing.select_remote(engine,runtime,'reviewer',replace=True)
+        self.assertEqual(task['providers']['reviewer']['model'],'good/model')
+        engine.request.assert_called_once()
