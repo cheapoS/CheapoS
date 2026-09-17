@@ -118,3 +118,36 @@ could not be completed. After the idle app was restarted, a read-only inspection
 of the existing saved session verified the header, role totals, and expanded
 three-request breakdown in the real UI. Its task remained paused. No live
 inference or retry trial was performed.
+
+## Planner file discovery recovery
+
+A later September 17 run successfully switched to Groq after cooldowns, read
+`scripts/check.py`, then invented a different repository root and nonexistent
+filenames. Its captured project and file inventory were correct. These were
+invalid model tool arguments after failover, not evidence of another connection
+failure.
+
+Failed inspections now return suggested paths from the actual project inventory
+and metadata pointing to excerpts already present in the conversation. Repeated
+identical failed reads reuse the error instead of attempting another filesystem
+read. Directory discovery supplies usable project-relative paths and applies
+the same secret-file and symlink exclusions as file reads. Absolute POSIX paths
+are rejected clearly instead of stripping the leading slash and reporting a
+misleading missing `Users` directory. Existing proposal/discovery allowances and
+operator authorization are unchanged; the patch does not automatically resume
+paused work or guarantee that a model follows the recovery guidance.
+
+This run's **51,079 reserved tokens** came from two cooldown responses without
+complete usage: **2,499** for an Antigravity tool probe and **48,580** for an
+OpenRouter planning request. The latter was 39,364 serialized bytes + 1,024 buffer
++ 8,192 output allowance. Its **73,847 reported tokens** are separate. Cancelling
+the final Groq request did not add another unresolved reservation: that response
+provided usage. Reservations therefore depend on retained usage evidence, not
+just the final request status.
+
+Validation covered 54 focused planner, allowance, repair and gateway-contract
+tests in 1.85 seconds. Four new deterministic cases use tiny temporary files
+and scripted replies; they took 0.009–0.017 seconds with no Git workflow, network
+calls or deliberate waits. The affected planner tests were rechecked after final
+wording changes. No live inference trial was run; the operator's task stayed
+paused.

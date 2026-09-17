@@ -4,6 +4,9 @@ After completing and validating changes, commit your work before handing the pro
 
 Stage only the changes you made for the current task. Preserve any unrelated user or worker changes; do not include, discard, or overwrite them just to make the working tree clean. If they prevent completion, explain what remains.
 
+Tell the operator when changes are committed. The operator handles app reloads
+with the restart button; do not restart cheapoS automatically unless asked.
+
 # Validation while iterating
 
 Follow the current change-scoped policy in CONTRIBUTING.md. Start with
