@@ -1513,16 +1513,14 @@ function executionPreferences(initialTab='execution') {
           state.task=await api('/tasks/'+state.task.id+'/limits',{limits:limitsData});
         }catch{}
       }
-      if(worker||planner||reviewer){
-        const roles={planner:planner||null,worker:worker||null,reviewer:reviewer||null};
-        const payload={};
-        if(state.task?.source){
-          payload.projects={[state.task.source]:roles};
-        }else{
-          payload.defaults=roles;
-        }
-        await api('/role-mappings',payload);
+      const roles={planner:planner||null,worker:worker||null,reviewer:reviewer||null};
+      const payload={};
+      if(state.task?.source){
+        payload.projects={[state.task.source]:roles};
+      }else{
+        payload.defaults=roles;
       }
+      await api('/role-mappings',payload);
       d.close();
       renderComposer();
       if(state.task){

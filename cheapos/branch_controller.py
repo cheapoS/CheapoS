@@ -654,11 +654,14 @@ class BranchController:
         from .engine import Runtime
         with self.engine.lock:
             self.engine.require_active_task(task_id)
+            task=self.engine.store.get(task_id)
             live = self.engine.runtimes.get(task_id)
             if live and live.thread and live.thread.is_alive():
-                return {'needs_consent': False, 'task': self.engine.store.get(task_id)}
+                if task.get('branch_run') and not task['branch_run'].get('authorization_ref'):
+                    raise ValueError('This run is currently preparing a plan.')
+                return {'needs_consent': False, 'task': task}
             self.engine.admission.require('unattended', task_id)
-            task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            run=state.require_supported(task['branch_run'])
             from .continuation_policy import record
             record(task, 'operator_continue')
             self.engine.store.save(task)

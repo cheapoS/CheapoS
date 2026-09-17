@@ -292,12 +292,15 @@ def plan(engine, runtime, inputs):
         raise ValueError('Supply displayed finite planning_limits on the planning task')
     if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
     context = project_context(captured['source'])
-    effective = engine.effective_role_mapping(captured['source'])
-    if effective.get('error'):
-        raise ValueError(effective['reason'])
-    runtime.task.setdefault('providers', {})['planner'] = {'model': effective['mapping']['planner']}
-    runtime.task['providers']['worker'] = {'model': effective['mapping']['worker']}
-    runtime.task['providers']['reviewer'] = {'model': effective['mapping']['reviewer']}
+    if hasattr(engine, 'effective_role_mapping'):
+        effective = engine.effective_role_mapping(captured['source'])
+        if effective.get('error') == 'worker-duplicate':
+            raise ValueError(effective['reason'])
+        for role in ('planner', 'worker', 'reviewer'):
+            model = (effective.get('mapping') or {}).get(role)
+            if model:
+                runtime.task.setdefault('providers', {})[role] = {'model': model}
+
 
     if hasattr(engine, 'carto'):
         carto = engine.carto.context(captured['source'], captured['source'])

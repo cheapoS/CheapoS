@@ -911,22 +911,25 @@ class Engine:
             if type(finish_review) is not bool or (finish_review and set(changes) != {'finish_review'}):
                 raise ValueError('Finish review cannot include a new message, limits, or other start options.')
             self.require_active_task(task_id)
+            task = self.store.get(task_id)
+            if "branch_run" in task:
+                compatibility = branch_runs.compatibility(task["branch_run"])
+                raise ValueError(compatibility["message"] if not compatibility["supported"] else
+                                 "Use the authorized Unattended run controls; ordinary chat Start cannot dispatch a branch run.")
             if self.startup.busy():
                 raise ValueError("Wait for the startup greeting or stop its connection check before starting a chat")
             previous = self.runtimes.get(task_id)
             if previous and previous.thread and previous.thread.is_alive():
                 from .continuation_policy import is_continue
                 if not changes or finish_review or is_continue((changes or {}).get('message')):
-                    return self.store.get(task_id)
+                    return task
                 raise ValueError("This task is already running")
             try:
                 self.admission.require("interactive", task_id)
             except ValueError as error:
-                task = self.store.get(task_id)
                 task["start_error"] = str(error)
                 self.store.save(task)
                 raise
-            task = self.store.get(task_id)
             task.pop("start_error", None)
             reassess = (changes or {}).get('coordinator_reassessment', False)
             if type(reassess) is not bool or (reassess and set(changes) != {'coordinator_reassessment'}):
@@ -939,10 +942,6 @@ class Engine:
                 if not measuring(task):
                     recovery_elapsed = task['limits'].get('run_minutes', 15) * 60 - remaining_work_seconds(task)
                 reassessment_reason = task.get('error') or 'Worker inspection stopped making progress.'
-            if "branch_run" in task:
-                compatibility = branch_runs.compatibility(task["branch_run"])
-                raise ValueError(compatibility["message"] if not compatibility["supported"] else
-                                 "Use the authorized Unattended run controls; ordinary chat Start cannot dispatch a branch run.")
             if task.get("commit_pending"):
                 raise ValueError("Finish the saved commit attempt in Chat before continuing this task")
             if finish_review:
