@@ -243,15 +243,18 @@ class BranchController:
         run=task['branch_run']
         mapping=run['workspace_mapping']
         if work.inspect_source(mapping['source'])!={k:mapping[k] for k in ('source','source_identity','common_identity')}:
-            raise ValueError('Project changed; prepare a fresh proposal')
-        if work._tip(mapping['source'],mapping['base_ref'])!=mapping['base_sha']:
-            raise ValueError('Base changed; prepare a fresh proposal')
+            raise work.WorkspaceChanged('Project identity changed; prepare a fresh proposal for the selected project.')
+        current_base=work.validate_base(mapping)
         work._available(mapping['source'],mapping['feature_ref'],mapping['target_ref'],mapping['protected_refs'])
-        if work._tip(mapping['source'],mapping['feature_ref']): raise ValueError('Feature branch now exists')
+        if work._tip(mapping['source'],mapping['feature_ref']):
+            raise work.WorkspaceChanged('Feature branch now exists; inspect branch ownership before continuing.')
         for scope in run['check_scope']:
-            if self.scopes.prepare(task,scope['command'])!=scope: raise ValueError('Check scope changed; prepare a fresh proposal')
+            if self.scopes.prepare(task,scope['command'])!=scope:
+                raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
+                    'message':'Verification command scope changed; inspect task setup before continuing.'})
         from .unattended_setup import require_ready
         require_ready(task,run['check_scope'])
+        return current_base
 
     def _finish_start(self, task, runtime=None):
         """Retry only journaled setup under the same inspected authorization."""
@@ -261,10 +264,17 @@ class BranchController:
         run=task['branch_run'];self.validate_authority(task,run)
         if notify:
             notify('verifying_snapshot')
-            if run['workspace_mapping']['stage']=='prepared': self._validate_start_inputs(task)
+        if run['workspace_mapping']['stage']=='prepared':
+            current_base=self._validate_start_inputs(task)
+            if current_base!=run['workspace_mapping']['base_sha']:
+                self.engine.event(task,'branch_startup','Continuing from the approved snapshot',
+                    {'stage':'verifying_snapshot','base_sha':run['workspace_mapping']['base_sha'],
+                     'current_base_sha':current_base,
+                     'message':'The base branch has newer commits. Work uses the approved task copy; integration will check the updated target.'})
         for scope in run['check_scope']:
             if self.scopes.prepare(task,scope['command'])!=scope:
-                raise ValueError('Check scope changed; inspect task setup before continuing')
+                raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
+                    'message':'Verification command scope changed; inspect task setup before continuing.'})
         from .unattended_setup import require_ready
         require_ready(task,run['check_scope'])
         def save_mapping(value):

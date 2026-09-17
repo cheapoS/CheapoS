@@ -205,3 +205,18 @@ Stopped Uncapped Interactive chats show Resume without requiring a new prompt.
 Validation includes an in-memory continuation through repeated inspection, edit,
 verification and independent approval, plus permission gates and retained usage.
 These cases use no model calls, Git workflows or real-time waits.
+
+## Implemented: start an approved snapshot after another task merges
+
+When the base branch advances while a prepared task waits for approval, startup
+continues from the same inspected private snapshot and pinned base commit.
+It does not adopt the newer files, replan, or change the approved scope, commands,
+models or limits. Startup records that it is using the approved snapshot. Final
+integration still requires the existing target update, verification and review.
+
+Rewritten/deleted base history, changed private snapshots, branch ownership
+conflicts and changed command scope still block startup. Known repository failures
+retain their specific explanation; unexpected startup errors retain a diagnostic
+reference and server traceback, without attributing setup to an old planner call.
+Validation uses small deterministic startup cases and the existing Git/HTTP
+fixtures for sibling merges, immutable copies, authorization and integration.

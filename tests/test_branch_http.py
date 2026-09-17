@@ -60,6 +60,10 @@ class BranchHTTPTests(unittest.TestCase):
         proposal = self.proposal()
         self.assertIsNone(_tip(self.source, self.values['feature_ref']))
         self.assertEqual(self.engine.runtimes, {})
+        # A normal sibling merge advances main but cannot replace this task's
+        # inspected copy or its already captured authorization contract.
+        git(self.source,'commit','--allow-empty','-qm','sibling task merged')
+        before=(before[0],before[1],git(self.source,'rev-parse','HEAD'))
         endpoint = '/api/tasks/' + proposal['task_id'] + '/branch-start'
         decision = {'proposal_id':proposal['proposal_id'], 'approved':True,'full_suite_approved':True}
         entered, release = threading.Event(), threading.Event()
@@ -67,7 +71,7 @@ class BranchHTTPTests(unittest.TestCase):
         def blocked_validation(task):
             entered.set()
             if not release.wait(10): raise AssertionError('Startup gate was not released')
-            validate(task)
+            return validate(task)
         with patch.object(self.engine.branch, '_validate_start_inputs', side_effect=blocked_validation):
             try:
                 status, first = self.post(endpoint, decision)
@@ -101,15 +105,18 @@ class BranchHTTPTests(unittest.TestCase):
         self.assertEqual(status,403)
         self.assertIsNone(_tip(self.source,self.values['feature_ref']))
 
-    def test_stale_base_and_proposal_expiry_rejected(self):
+    def test_rewritten_base_and_proposal_expiry_rejected(self):
         proposal = self.proposal()
-        (self.source/'hello.py').write_text('value=2\n'); git(self.source,'add','.'); git(self.source,'commit','-qm','changed base')
+        replacement=git(self.source,'commit-tree','HEAD^{tree}','-m','unrelated history').strip()
+        git(self.source,'update-ref','refs/heads/main',replacement)
         decision={'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True}
         status, _=self.post('/api/tasks/'+proposal['task_id']+'/branch-start',decision)
-        self.assertEqual(status,200)  # Approval saved; stale base still blocks execution.
+        self.assertEqual(status,200)  # Approval saved; rewritten history still blocks execution.
         self.engine.runtimes[proposal['task_id']].thread.join(15)
         saved = self.engine.store.get(proposal['task_id'])
         self.assertEqual(saved['branch_run']['startup']['status'], 'failed')
+        self.assertEqual(saved['branch_run']['pause_detail']['cause'],'branch_drift')
+        self.assertIn('outside the saved history',saved['branch_run']['startup']['error'])
         self.engine.branch.execute.assert_not_called()
         self.assertIsNone(_tip(self.source,self.values['feature_ref']))
         proposal=self.proposal()
