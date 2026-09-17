@@ -46,3 +46,14 @@ class ScopedRuntimeTests(unittest.TestCase):
         self.assertEqual(task['settings_operations']['same']['stage'],'continuing')
         task_settings.restore(engine)
         engine.start.assert_called_once()
+
+    def test_dispatch_acknowledgement_updates_live_runtime_record(self):
+        task={'id':'saved','settings_operations':{'same':{'stage':'pending','result':{'pending':True}}}}
+        store=Mock();store.get.side_effect=lambda _:copy.deepcopy(task)
+        engine=SimpleNamespace(store=store,lock=threading.RLock(),runtimes={})
+        def start(*args):
+            engine.runtimes['saved']=SimpleNamespace(task=copy.deepcopy(task),thread=SimpleNamespace(is_alive=lambda:True))
+        engine.start=start
+        result=task_settings.continue_operation(engine,'saved','same')
+        self.assertTrue(result['continuing'])
+        self.assertEqual(engine.runtimes['saved'].task['settings_operations']['same']['stage'],'continuing')

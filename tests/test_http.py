@@ -82,6 +82,27 @@ class HTTPTests(unittest.TestCase):
             start.assert_called_once_with(self.engine,'saved',{'approved':True,'operation_id':'one'})
             inspect.assert_called_once_with(self.engine,'saved')
 
+    def test_scoped_settings_http_revisions_and_idempotency(self):
+        status, _, body = self.request('GET', '/api/settings/defaults')
+        self.assertEqual(status, 200)
+        initial = json.loads(body)
+        request = {'patch': {'execution.coordinator_assistance': True},
+                   'expected_revision': initial['revision'], 'operation_id': 'settings-once'}
+        self.assertEqual(self.request('POST', '/api/settings/defaults', request)[0], 403)
+        status, _, body = self.post('/api/settings/defaults', request)
+        self.assertEqual(status, 200)
+        saved = json.loads(body)
+        self.assertTrue(saved['values']['execution']['coordinator_assistance'])
+        status, _, body = self.post('/api/settings/defaults', request)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), saved)
+        status, _, body = self.post('/api/settings/defaults', {**request, 'operation_id': 'stale'})
+        self.assertEqual(status, 409)
+        self.assertEqual(json.loads(body)['current']['revision'], saved['revision'])
+        self.assertEqual(self.post('/api/projects/settings', {**request, 'project': '/not/registered'})[0], 400)
+        self.assertEqual(self.request('GET', '/settings.js')[0], 200)
+        self.assertEqual(self.request('GET', '/settings.css')[0], 200)
+
     def test_carto_settings_require_token_and_registered_project(self):
         source = str(Path(self.temp.name).resolve())
         with patch('cheapos.workspace.Workspace.project_root', return_value=Path(source)), patch.object(self.engine, 'projects', return_value=[{'path':source}]), patch.object(self.engine.carto, 'context', return_value={'status':'indexing'}):
@@ -406,7 +427,8 @@ class HTTPTests(unittest.TestCase):
         status, _, body = self.post('/api/projects', {'repository':source})
         self.assertEqual(status,200)
         self.assertEqual(json.loads(body)['path'],source)
-        config = {role:{'base_url':'http://127.0.0.1:11434/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']}
+        config = {role:{'base_url':'http://127.0.0.1:11434/v1','model':'fixture-'+role,'input_rate':0,'output_rate':0} for role in ['worker','reviewer']}
+        self.assertEqual(self.post('/api/preferences', {'execution': {'mode': 'manual'}})[0], 200)
         self.assertEqual(self.post('/api/config', config)[0],200)
         status, _, body = self.post('/api/tasks', {'repository':source,'prompt':'Hi','conversational':True})
         self.assertEqual(status,200)

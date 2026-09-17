@@ -174,7 +174,7 @@ def prepare(engine, task, patch):
         run['authorization']['digest'] = digest(contract)
         run['plan_digest'] = digest(run['plan'])
         if run.get('development_authorization'):
-            run['development_authorization']['plan_digest'] = digest(run['plan'])
+            run['development_authorization']['plan_digest'] = digest(contract['plan'])
     values = overlay(values, patch)
     if limit_patch:
         values['limits'] = copy.deepcopy(updated['limits'])
@@ -252,7 +252,8 @@ def continue_operation(engine, task_id, operation_id):
     except (ValueError, OSError) as error:
         continued, reason = False, str(error)
     with engine.lock:
-        task = engine.store.get(task_id)
+        runtime = engine.runtimes.get(task_id)
+        task = runtime.task if busy(engine, task_id) and hasattr(runtime, 'task') else engine.store.get(task_id)
         operation = task['settings_operations'][operation_id]
         operation['stage'] = 'continuing' if continued else 'waiting'
         operation['result'].update(pending=not continued, continuing=continued, reason=reason)
