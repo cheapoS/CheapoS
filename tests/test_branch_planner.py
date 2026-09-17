@@ -275,6 +275,18 @@ class FinalCheckParserTests(unittest.TestCase):
         self.assertEqual(len(result['final_checks']), 12)
         self.assertEqual(result['final_checks'], [i['required_checks'][0] for i in items[:12]])
 
+    def test_parse_filters_plan_preview_when_real_checks_exist(self):
+        limits = {'dollars': 0, 'working_seconds': 900, 'requests': 30}
+        items = [{'id': 'item1', 'title': 'Item', 'instructions': 'Implement',
+                  'acceptance_criteria': ['Works'],
+                  'required_checks': ['python3 -m unittest test_1', 'python3 -B scripts/check.py --plan']}]
+        message = {'tool_calls': [{'function': {'name': 'propose_branch_plan', 'arguments': json.dumps(
+            {'status': 'plan', 'clarification': '', 'plan': {'items': items, 'limits': limits,
+             'final_checks': ['python3 -m unittest test_1', 'scripts/check.py --plan']}})}}]}
+        result = planner._parse(message, limits)
+        self.assertEqual(result['items'][0]['required_checks'], ['python3 -m unittest test_1'])
+        self.assertEqual(result['final_checks'], ['python3 -m unittest test_1'])
+
 
 class PlannerExcerptTests(unittest.TestCase):
     """Small file/provider fixtures; no Git workflow, server, or live inference."""

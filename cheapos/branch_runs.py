@@ -74,7 +74,15 @@ def validate_plan(plan):
         _text(key, 'Limit name', 80)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value > 10 ** 15 or (isinstance(value, float) and not math.isfinite(value)):
             raise ValueError('Limits must be finite nonnegative numbers')
-    output = {'items': [], 'limits': copy.deepcopy(limits), 'final_checks': _checks(plan.get('final_checks', []))}
+    from .test_policy import is_plan_preview
+    final = _checks(plan.get('final_checks', []))
+    if any(is_plan_preview(c) for c in final):
+        filtered = [c for c in final if not is_plan_preview(c)]
+        if filtered:
+            final = filtered
+        else:
+            raise ValueError("check.py --plan lists checks but runs none; specify executable check commands in final_checks")
+    output = {'items': [], 'limits': copy.deepcopy(limits), 'final_checks': final}
     if 'measurement' in plan: output['measurement'] = plan['measurement']
     if 'uncapped_work' in plan: output['uncapped_work'] = plan['uncapped_work']
     if 'continue_independent' in plan: output['continue_independent'] = plan['continue_independent']
@@ -93,10 +101,17 @@ def validate_plan(plan):
         deps = item.get('dependencies', [])
         if not isinstance(deps, list) or len(deps) > 50 or len(set(_id(d) for d in deps)) != len(deps):
             raise ValueError('Invalid or duplicate dependencies')
+        req_checks = _checks(item.get('required_checks', []))
+        if any(is_plan_preview(c) for c in req_checks):
+            filtered = [c for c in req_checks if not is_plan_preview(c)]
+            if filtered:
+                req_checks = filtered
+            else:
+                raise ValueError("Item %s: check.py --plan lists checks but runs none; specify executable check commands in required_checks" % identity)
         normalized = dict(id=identity, title=_text(item.get('title'), 'Title', 120),
                           instructions=_text(item.get('instructions'), 'Instructions', 4000),
                           dependencies=list(deps), acceptance_criteria=[_text(c, 'Criterion', 500) for c in criteria],
-                          required_checks=_checks(item.get('required_checks', [])))
+                          required_checks=req_checks)
         if item.get('revision_of') is not None:
             normalized['revision_of'] = _id(item['revision_of'])
         output['items'].append(normalized)

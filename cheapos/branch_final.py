@@ -238,6 +238,12 @@ def final_check_review(engine, runtime):
     specifications = run['plan']['final_checks']
     if not specifications:
         raise ValueError('Final integration checks are required')
+    from .test_policy import is_plan_preview
+    if any(is_plan_preview(s) for s in specifications):
+        real_specs = [s for s in specifications if not is_plan_preview(s)]
+        if real_specs:
+            specifications = real_specs
+            run['plan']['final_checks'] = real_specs
     criteria = [r['id'] for r in manifest['requirements']]
     context = {'run_id': run['id'], 'plan_revision': run['plan_revision'], 'item_id': 'final', 'item_revision': 1,
                'feature_parent': run['expected_feature_tip']}

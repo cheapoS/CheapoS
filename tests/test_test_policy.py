@@ -65,3 +65,38 @@ class TestPolicyTests(unittest.TestCase):
         record=dict(command=command,passed=True,exit_code=0,verification_identity='same',input_identity='same')
         with self.assertRaisesRegex(ValueError, 'lists checks'):
             bind_check(current, command, record)
+
+    def test_is_plan_preview_identifies_selection_previews(self):
+        self.assertTrue(policy.is_plan_preview('python3 -B scripts/check.py --plan'))
+        self.assertTrue(policy.is_plan_preview(['scripts/check.py', '--plan']))
+        self.assertFalse(policy.is_plan_preview('python3 -B scripts/check.py --files dist/app.js'))
+        self.assertFalse(policy.is_plan_preview('python3 -B -m unittest tests/test_something.py -v'))
+
+    def test_validate_plan_filters_plan_preview_when_real_checks_exist(self):
+        from cheapos.branch_runs import validate_plan
+        plan = {
+            'items': [{
+                'id': 'one', 'title': 'Test Item', 'instructions': 'Instructions',
+                'acceptance_criteria': ['Criterion'],
+                'required_checks': ['python3 -B -m unittest tests.test_time_ago -v', 'scripts/check.py --plan']
+            }],
+            'limits': {'dollars': 1, 'working_seconds': 60},
+            'final_checks': ['git diff --check', 'python3 -B scripts/check.py --plan']
+        }
+        validated = validate_plan(plan)
+        self.assertEqual(validated['items'][0]['required_checks'], ['python3 -B -m unittest tests.test_time_ago -v'])
+        self.assertEqual(validated['final_checks'], ['git diff --check'])
+
+    def test_validate_plan_rejects_plan_preview_when_only_check(self):
+        from cheapos.branch_runs import validate_plan
+        plan = {
+            'items': [{
+                'id': 'one', 'title': 'Test Item', 'instructions': 'Instructions',
+                'acceptance_criteria': ['Criterion'],
+                'required_checks': ['scripts/check.py --plan']
+            }],
+            'limits': {'dollars': 1, 'working_seconds': 60},
+            'final_checks': ['git diff --check']
+        }
+        with self.assertRaisesRegex(ValueError, 'lists checks but runs none'):
+            validate_plan(plan)

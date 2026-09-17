@@ -44,6 +44,18 @@ class BranchReviewTests(LocalCase):
         self.assertEqual(self.engine.request.call_count,2)
         self.assertTrue(any(e['title']=='Taking verified changes to independent review' for e in task['events']))
 
+    def test_checkpoint_filters_spurious_plan_preview_when_real_checks_exist(self):
+        task = self.task()
+        task['branch_run']['items'][0]['required_checks'].append('python3 -B scripts/check.py --plan')
+        runtime = Runtime(task)
+        def review(runtime, messages, tools, role):
+            packet = json.loads(messages[1]['content'])
+            return call('review_decision', {'decision': 'APPROVE', 'feedback': 'Inspected both bounds', 'candidate_id': packet['candidate_id'], 'criteria_outcomes': {'Both bounds work': {'passed': True, 'evidence': 'Tests pass'}}})
+        self.engine.request = Mock(side_effect=review)
+        result = checkpoint(self.engine, runtime, {})
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertNotIn('python3 -B scripts/check.py --plan', task['branch_run']['items'][0]['required_checks'])
+
     def test_partial_completion_and_same_model_cannot_get_receipt(self):
         task=self.task(); task['providers']['reviewer']=dict(task['providers']['worker'])
         def review(runtime,messages,tools,role):

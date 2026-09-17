@@ -68,9 +68,13 @@ def approve(task, approved):
     task['branch_run']['test_policy_version']=1
 
 
-def require_verification(command):
+def is_plan_preview(command):
     args = argv(command)
-    if 'check.py' in [PurePath(a).name for a in args] and '--plan' in args:
+    return 'check.py' in [PurePath(a).name for a in args] and '--plan' in args
+
+
+def require_verification(command):
+    if is_plan_preview(command):
         raise ValueError('check.py --plan lists checks but runs none. Inspect its suggested commands, then call run_checks with the relevant executable check command. Do not substitute the full suite.')
 
 
