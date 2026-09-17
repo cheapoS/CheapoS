@@ -1046,8 +1046,9 @@ function bindTerminalCopy() {
 function tokenUsageLabel(task,role=null) {
   const a=role?task.token_accounting?.roles?.[role]:task.token_accounting;
   const fallback=role?task.usage?.[role]?.tokens:task.metrics?.tokens?.accounted_total;
+  if(role)return `${(a?.accounted??fallback??0).toLocaleString()} tokens`;
   if(!a)return `${(fallback||0).toLocaleString()} accounted tokens`;
-  if(role?(!a.consistent||a.unclassified):a.coverage!=='complete')return `${(a.accounted||0).toLocaleString()} accounted tokens · breakdown partial`;
+  if(a.coverage!=='complete')return `${(a.accounted||0).toLocaleString()} accounted tokens · breakdown partial`;
   return `${a.reported.toLocaleString()} reported${a.reserved?` + ${a.reserved.toLocaleString()} reserved`:''} tokens`;
 }
 function tokenReservationDetails(task) {
