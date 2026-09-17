@@ -233,66 +233,77 @@ def _merge_revalidate(task, operation):
     return True
 
 
-def merge(controller, task_id, values):
+def merge(controller, task_id, values, *, background=False):
     values = dict(values)
     if 'preview_id' in values:
         if 'proposal_id' in values: raise ValueError('Use only one preview ID')
         values['proposal_id'] = values.pop('preview_id')
+    if background:
+        from .branch_integration import start
+        return start(controller, task_id, values)
     source = controller.engine.store.get(task_id)['branch_run']['workspace_mapping']['source']
     with controller.engine.admission.integration(task_id, source):
-        task = _task(controller, task_id); run = task['branch_run']
-        if run['status'] == 'merged':
-            # Successful duplicate actions identify the same inspected proposal.
-            contract = _proposal(controller, task_id, values, 'merge')
-            if contract['operation']['id'] != run['merge_receipt']['id']: raise ValueError('A different merge already completed')
-            return task
-        controller.validate_authority(task, run)
-        if run.get('readiness', {}).get('integration_blocker'): raise ValueError(run['readiness']['integration_blocker'])
-        operation = run.get('merge_operation')
-        if operation is None:
-            contract = _proposal(controller, task_id, values, 'merge')
-            if contract['run_id'] != run['id'] or contract['readiness_id'] != run.get('readiness', {}).get('id'):
-                raise ValueError('Readiness changed after preview')
-            final.validate(run['readiness'], task)
-            operation = copy.deepcopy(contract['operation']); branch_merge._validate(operation)
-            auth = controller.final_proposals.authorize(task_id, values['proposal_id'], True, contract)
-            run['merge_authorization'] = auth; run['merge_authorization_ref'] = auth['id']
-            state.transition(run, 'merging')
-        else:
-            if values != {'approved':True,'recover':True}:
-                raise ValueError('Explicitly resume the saved local merge operation')
-        def persist(value):
-            run['merge_operation'] = copy.deepcopy(value)
-            controller.engine.store.save(task)
-        def authorize(value):
-            auth = run.get('merge_authorization', {})
-            if auth.get('status') != 'active' or auth.get('contract', {}).get('operation', {}).get('id') != value['id'] or auth['contract'].get('readiness_id') != run['readiness']['id']:
-                raise ValueError('Saved merge authority does not match this operation')
-            expected = dict(auth['contract']['operation']); expected.pop('stage',None)
-            actual = dict(value); actual.pop('stage',None)
-            if expected != actual or auth.get('digest') != digest(auth['contract']):
-                raise ValueError('Saved integration operation changed after approval')
-            _merge_revalidate(task, value)
-        try:
-            finished = branch_merge.integrate(operation, persist, authorize)
-        except Exception as error:
-            if run.get('merge_operation'):
-                run['status']='paused';run['pause_reason']='branch_drift';task['status']='paused'
-                task['error']='Local integration needs inspection or explicit recovery: '+str(error)
-                try:
-                    controller.engine.store.save(task)
-                except Exception:
-                    # The already durable intent remains the recovery authority;
-                    # do not mask the original Git/storage failure.
-                    pass
-            raise
-        run['merge_receipt'] = finished; run.pop('merge_operation', None)
-        run['status'] = 'merged'; task['status'] = 'completed'; task['error'] = None
-        controller.engine.gateway.pool.mark_integrated(task['id'],run['id'])
-        state.append_event(run, 'merged', {'target_ref':run['target_ref'], 'sha':finished['feature_tip']}, event_key=finished['id'])
-        controller.engine.event(task, 'branch_merged', 'Merged locally. What would you like to work on next?', {'target_ref':run['target_ref'], 'sha':finished['feature_tip']})
-        controller.engine.store.save(task)
+        return _integrate(controller, task_id, values)
+
+
+def _integrate(controller, task_id, values, progress=None):
+    # Caller owns the task's admission reservation and repository lock.
+    task = _task(controller, task_id); run = task['branch_run']
+    if run['status'] == 'merged':
+        # Successful duplicate actions identify the same inspected proposal.
+        contract = _proposal(controller, task_id, values, 'merge')
+        if contract['operation']['id'] != run['merge_receipt']['id']: raise ValueError('A different merge already completed')
         return task
+    if progress: progress(task, 'checking')
+    controller.validate_authority(task, run)
+    if run.get('readiness', {}).get('integration_blocker'): raise ValueError(run['readiness']['integration_blocker'])
+    operation = run.get('merge_operation')
+    if operation is None:
+        contract = _proposal(controller, task_id, values, 'merge')
+        if contract['run_id'] != run['id'] or contract['readiness_id'] != run.get('readiness', {}).get('id'):
+            raise ValueError('Readiness changed after preview')
+        final.validate(run['readiness'], task)
+        operation = copy.deepcopy(contract['operation']); branch_merge._validate(operation)
+        auth = controller.final_proposals.authorize(task_id, values['proposal_id'], True, contract)
+        run['merge_authorization'] = auth; run['merge_authorization_ref'] = auth['id']
+        state.transition(run, 'merging')
+    else:
+        if values != {'approved':True,'recover':True}:
+            raise ValueError('Explicitly resume the saved local merge operation')
+    def persist(value):
+        run['merge_operation'] = copy.deepcopy(value)
+        controller.engine.store.save(task)
+    def authorize(value):
+        auth = run.get('merge_authorization', {})
+        if auth.get('status') != 'active' or auth.get('contract', {}).get('operation', {}).get('id') != value['id'] or auth['contract'].get('readiness_id') != run['readiness']['id']:
+            raise ValueError('Saved merge authority does not match this operation')
+        expected = dict(auth['contract']['operation']); expected.pop('stage',None)
+        actual = dict(value); actual.pop('stage',None)
+        if expected != actual or auth.get('digest') != digest(auth['contract']):
+            raise ValueError('Saved integration operation changed after approval')
+        _merge_revalidate(task, value)
+    try:
+        finished = branch_merge.integrate(operation, persist, authorize,
+                                          progress=(lambda stage: progress(task, stage)) if progress else None)
+    except Exception as error:
+        if run.get('merge_operation'):
+            run['status']='paused';run['pause_reason']='branch_drift';task['status']='paused'
+            task['error']='Local integration needs inspection or explicit recovery: '+str(error)
+            try:
+                controller.engine.store.save(task)
+            except Exception:
+                # The already durable intent remains the recovery authority;
+                # do not mask the original Git/storage failure.
+                pass
+        raise
+    run['merge_receipt'] = finished; run.pop('merge_operation', None)
+    run['status'] = 'merged'; task['status'] = 'completed'; task['error'] = None
+    controller.engine.gateway.pool.mark_integrated(task['id'],run['id'])
+    state.append_event(run, 'merged', {'target_ref':run['target_ref'], 'sha':finished['feature_tip']}, event_key=finished['id'])
+    controller.engine.event(task, 'branch_merged', 'Merged locally. What would you like to work on next?', {'target_ref':run['target_ref'], 'sha':finished['feature_tip']})
+    if progress: progress(task, 'completed')
+    controller.engine.store.save(task)
+    return task
 
 
 def revise(controller, task_id, values):

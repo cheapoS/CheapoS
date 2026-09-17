@@ -212,12 +212,34 @@ function technicalMarkup(task){
  return `<div class="view-title"><div><h2>Technical logs</h2><p>Newest saved event first · ${events.length} retained events. Text is bounded; raw provider payloads and credentials are omitted.</p></div></div>${cause}${task?.events_truncated||task?.history_truncated?'<p>Older history was truncated in the saved record.</p>':''}${rows||'<p class="empty-state">No technical events have been saved for this task.</p>'}`;
 }
 function fullSuiteConsent(response){const checks=response.full_suite_checks||[];if(!checks.length)return '';const seconds=response.full_suite_last_seconds;return `<section class="execution-notice"><h3>Full-suite test approval</h3><p>These broad checks can take longer than focused tests. Last measured runtime: ${Number.isFinite(seconds)?escape(seconds)+' seconds':'unknown'}. Approve once before starting this plan.</p><ul>${checks.map(c=>`<li><code>${escape(typeof c==='string'?c:Array.isArray(c)?c.join(' '):Array.isArray(c.argv||c.command)?(c.argv||c.command).join(' '):String(c.command||''))}</code></li>`).join('')}</ul><label><input type="checkbox" name="full_suite_approved">I approve these full-suite checks for this plan</label></section>`;}
-async function mergeAndPublish({api,task,values,onTask=()=>{},refresh=()=>Promise.resolve()}){
- const saved=await api('/tasks/'+task.id+'/branch-merge',values);
- if(saved?.id===task.id&&saved.branch_run)onTask(saved);
- // Sidebar/connection refresh must not delay the confirmed task result.
- Promise.resolve().then(()=>refresh({background:true})).catch(()=>{});
- return saved;
+const mergeRequests=new Map();
+function mergeProgressMarkup(task){
+ const run=task?.branch_run;if(run?.status!=='merging')return '';
+ return `<section class="branch-start-status request-progress" role="status" aria-live="polite"><div class="request-progress-heading"><span class="spinner" aria-hidden="true"></span><strong>${escape(run.merge_progress?.label||'Merging locally')}</strong></div><p>Your approval is saved. Finishing the reviewed merge into ${escape(short(run.target_ref))}. You can keep using the other tabs.</p></section>`;
+}
+function mergeAndPublish({api,task,values,onPending=()=>{},onTask=()=>{},refresh=()=>Promise.resolve()}){
+ if(mergeRequests.has(task.id))return mergeRequests.get(task.id);
+ // Publish local feedback before even dispatching the HTTP request.
+ onPending();
+ const pending=Promise.resolve().then(async()=>{
+  let saved;
+  try{saved=await api('/tasks/'+task.id+'/branch-merge',values);}
+  catch(error){
+   // The server may have saved approval before the response was lost. Read it
+   // back; never send another merge merely because the connection disappeared.
+   try{
+    const current=await api('/tasks/'+task.id),run=current?.branch_run;
+    const operation=run?.merge_operation||run?.merge_receipt;
+    const same=values?.recover?operation?.id===task.branch_run?.merge_operation?.id:run?.merge_preview_id===(values?.preview_id||values?.proposal_id);
+    if(current?.id===task.id&&operation&&same)saved=current;
+   }catch(_){}
+   if(!saved)throw error;
+  }
+  if(saved?.id===task.id&&saved.branch_run)onTask(saved);
+  Promise.resolve().then(()=>refresh({background:true})).catch(()=>{});
+  return saved;
+ }).finally(()=>mergeRequests.delete(task.id));
+ mergeRequests.set(task.id,pending);return pending;
 }
 function startController({api,onChange=()=>{},onTask=()=>{},transition=()=>{}}){
  const records=new Map();
@@ -397,7 +419,7 @@ function mount(options){
  const starting=starts.get(task.id),savedStartup=task.branch_run.startup,unfinishedStartup=task.branch_run.status==='awaiting_authorization'&&savedStartup&&savedStartup.status!=='running'&&savedStartup.status!=='complete';const startup=unfinishedStartup?`<section class="branch-start-status" role="alert"><strong>${savedStartup.status==='paused'?'Startup paused':'Startup needs attention'}</strong><p>${escape(savedStartup.error||task.error||'Approval is saved. Inspect task setup before continuing.')}</p></section>`:starting&&(starting.status!=='accepted'||!task.branch_run.authorization_ref)?`<section class="branch-start-status" role="${['pending','accepted'].includes(starting.status)?'status':'alert'}"><p>${escape(starting.status==='pending'?'Starting your approved plan… Awaiting server confirmation.':starting.status==='accepted'?'Plan accepted. Loading the saved run…':starting.error)}</p>${['pending','accepted'].includes(starting.status)?`<span data-start-time="${escape(starting.started_at)}">0s</span>`:''}${['unknown','partial'].includes(starting.status)?`<button type="button" data-reconcile-start>Check saved start status</button>${starting.status==='partial'?'<button type="button" data-retry-start>Retry saved startup</button>':''}`:starting.status==='rejected'?'<p>Inspect the saved proposal to correct or start it again.</p>':''}</section>`:'';
  const continuation=getState().branchResumeStatus?.get(task.id);
  const continuationHTML=continuation?`<section class="branch-start-status" role="${continuation.status==='pending'?'status':'alert'}"><strong>${continuation.status==='pending'?'Continuing saved work…':'Could not continue saved work'}</strong><p>${continuation.status==='pending'?'Checking the saved run and its existing permissions. Your guidance and edits are kept.':escape(continuation.message)}</p></section>`:'';
- const html=`${startup}${continuationHTML}${pause?`<section class="branch-pause" aria-label="Paused work"><strong>${escape(pause.headline)}</strong><p>${escape(pause.explanation)} ${escape(pause.saved)}</p>${pause.question?`<p>${escape(pause.question)}</p>`:''}<details data-pause-details><summary>Pause details</summary><ul>${pause.details.map(line=>`<li>${escape(line)}</li>`).join('')}</ul></details><button type="button" data-pause-action>${escape(pause.actionLabel)}</button>${pause.action!=='resume'&&task.branch_run.authorization_ref&&!p.planning?`<button type="button" data-resume ${continuation?.status==='pending'?'disabled':''}>Resume</button>`:''}<button type="button" data-view-logs>View technical logs</button></section>`:''}${!pause&&p.reason?`<p class="branch-run-reason">${escape(p.reason.replace(/_/g,' '))}</p>`:''}<div class="branch-actions">${['merged','left_on_branch'].includes(p.status)?'<button type="button" data-new-chat>Start a new chat</button>':''}${!pause&&!p.planning&&(['paused','blocked'].includes(p.status)||p.pendingMerge)&&!p.canRecheck?`<button type="button" data-resume>${p.pendingMerge?'Finish saved integration':'Resume run'}</button>`:''}${!pause&&!p.planning&&p.canRecheck?'<button type="button" data-recheck-run>Recheck changes</button>':''}${!p.planning&&(p.ready||p.canRecheck||p.status==='left_on_branch')?'<button type="button" data-preview>Review changes</button>':''}${p.status==='awaiting_authorization'&&(unfinishedStartup||(!savedStartup&&!['pending','unknown','accepted'].includes(starting?.status)))?(task.branch_run.authorization_ref?'<button type="button" data-finish-startup>Finish saved startup</button>':'<button type="button" data-proposal>Review &amp; start</button>'):''}</div><p class="branch-error" role="alert"></p>`;
+ const html=`${startup}${mergeProgressMarkup(task)}${continuationHTML}${pause?`<section class="branch-pause" aria-label="Paused work"><strong>${escape(pause.headline)}</strong><p>${escape(pause.explanation)} ${escape(pause.saved)}</p>${pause.question?`<p>${escape(pause.question)}</p>`:''}<details data-pause-details><summary>Pause details</summary><ul>${pause.details.map(line=>`<li>${escape(line)}</li>`).join('')}</ul></details><button type="button" data-pause-action>${escape(pause.actionLabel)}</button>${pause.action!=='resume'&&task.branch_run.authorization_ref&&!p.planning?`<button type="button" data-resume ${continuation?.status==='pending'?'disabled':''}>Resume</button>`:''}<button type="button" data-view-logs>View technical logs</button></section>`:''}${!pause&&p.reason?`<p class="branch-run-reason">${escape(p.reason.replace(/_/g,' '))}</p>`:''}<div class="branch-actions">${['merged','left_on_branch'].includes(p.status)?'<button type="button" data-new-chat>Start a new chat</button>':''}${!pause&&!p.planning&&(['paused','blocked'].includes(p.status)||p.pendingMerge&&p.status!=='merging')&&!p.canRecheck?`<button type="button" data-resume>${p.pendingMerge?'Finish saved integration':'Resume run'}</button>`:''}${!pause&&!p.planning&&p.canRecheck?'<button type="button" data-recheck-run>Recheck changes</button>':''}${!p.planning&&(p.ready||p.canRecheck||p.status==='left_on_branch')?'<button type="button" data-preview>Review changes</button>':''}${p.status==='awaiting_authorization'&&(unfinishedStartup||(!savedStartup&&!['pending','unknown','accepted'].includes(starting?.status)))?(task.branch_run.authorization_ref?'<button type="button" data-finish-startup>Finish saved startup</button>':'<button type="button" data-proposal>Review &amp; start</button>'):''}</div><p class="branch-error" role="alert"></p>`;
  if(html===summaryHTML)return;const pauseExpanded=panel.querySelector('[data-pause-details]')?.open??detailStates.get(p.id+':pause');const expanded=panel.querySelector('[data-branch-details]')?.open??detailStates.get(p.id);panel.innerHTML=html;summaryHTML=html;const details=panel.querySelector('[data-branch-details]');if(details){if(expanded)details.open=true;details.ontoggle=()=>detailStates.set(p.id,details.open);}
  const pauseDetails=panel.querySelector('[data-pause-details]');if(pauseDetails){pauseDetails.open=Boolean(pauseExpanded);pauseDetails.ontoggle=()=>detailStates.set(p.id+':pause',pauseDetails.open);}
  const pauseButton=panel.querySelector('[data-pause-action]');if(pauseButton)pauseButton.onclick=()=>guarded(pauseButton,async()=>{if(pause.action==='resume')return options.resume?.(task);if(options.pauseAction)return options.pauseAction(pause.action,task);throw new Error('Open the saved task details to continue.');},panel);
@@ -442,9 +464,10 @@ function mount(options){
  function renderChanges(task){
   const panel=document.querySelector('#changes-view');if(!panel)return;
   panel.classList.remove('changes-expanded','diff-wrap');panel.onkeydown=null;
-  const run=task.branch_run,signature=JSON.stringify([run?.readiness?.id,run?.status,run?.expected_feature_tip,task.archived_at,task.trashed_at]);
+  const run=task.branch_run,signature=JSON.stringify([run?.readiness?.id,run?.status,run?.expected_feature_tip,run?.merge_progress?.stage,task.archived_at,task.trashed_at]);
   if(panel.dataset.task===task.id&&panel.dataset.signature===signature)return;
   panel.dataset.task=task.id;panel.dataset.signature=signature;
+  if(run?.status==='merging'){panel.innerHTML=mergeProgressMarkup(task);return;}
   if(!run?.readiness){panel.innerHTML='<div class="empty-state"><h2>Cumulative review is not ready yet.</h2><p>The saved branch diff and merge controls will appear here after final checks and independent review. Follow current work in Chat or item progress in Plan.</p></div>';return;}
   loadFinal(task,panel);
  }
@@ -462,7 +485,16 @@ function mount(options){
   if(typeof CheapOSPreview!=='undefined')CheapOSPreview.mount(d.querySelector('.review-overview'),task,api,preview.feature_tip);
   const merge=d.querySelector('[data-merge]');const readOnly=terminalRun(task)||Boolean(task.archived_at||task.trashed_at);if(readOnly)merge.disabled=true;
   for(const selector of ['[data-revise]','[data-recheck]','[data-leave]'])d.querySelector(selector).hidden=readOnly;
-  merge.onclick=()=>guarded(merge,()=>mergeAndPublish({api,task,values:{preview_id:preview.preview_id,approved:true},onTask:saved=>{slot.dataset.signature='';options.showChat?.();options.receiveUpdatedTask?.(saved);toast('Reviewed changes merged locally.');},refresh}),d);
+  merge.onclick=()=>guarded(merge,async()=>{
+   const controls=[...d.querySelectorAll('button')].map(button=>[button,button.disabled]);
+   const label=merge.textContent;
+   try{await mergeAndPublish({api,task,values:{preview_id:preview.preview_id,approved:true},onPending:()=>{
+    controls.forEach(([button])=>button.disabled=true);merge.textContent='Saving merge approval…';
+    d.setAttribute('aria-busy','true');
+    merge.insertAdjacentHTML('beforebegin','<p data-merge-pending role="status" aria-live="polite">Saving your approval… The merge will continue in this task.</p>');
+   },onTask:saved=>{slot.dataset.signature='';options.receiveUpdatedTask?.(saved);options.showChat?.();if(projectRun(saved).merged)toast('Reviewed changes merged locally.');},refresh});}
+   finally{if(d.isConnected){controls.forEach(([button,disabled])=>button.disabled=disabled);merge.textContent=label;d.removeAttribute('aria-busy');d.querySelector('[data-merge-pending]')?.remove();}}
+  },d);
   const resolve=d.querySelector('[data-resolve-conflicts]');if(resolve){resolve.hidden=readOnly;resolve.onclick=()=>guarded(resolve,async()=>{const result=await api('/tasks/'+task.id+'/branch-resolve-conflicts',{approved:true,update_token:preview.update_token});slot.dataset.signature='';await options.handleResumeResult?.(task,result);await refresh();},d);}
   const update=d.querySelector('[data-update-branch]');if(update){update.hidden=readOnly;update.onclick=()=>guarded(update,async()=>{const result=await api('/tasks/'+task.id+'/branch-update',{approved:true,update_token:preview.update_token});slot.dataset.signature='';if(result.needs_conflict_resolution){await loadFinal(task,slot);}else{await options.handleResumeResult?.(task,result);await refresh();}},d);}
   const leave=d.querySelector('[data-leave]');leave.onclick=()=>guarded(leave,async()=>{await api('/tasks/'+task.id+'/branch-leave',{});slot.dataset.signature='';await refresh();},d);
@@ -494,5 +526,5 @@ function mount(options){
  }
  sync();return {clearSubmittedDraft:(owner,message)=>{if(drafts[owner]?.prompt?.trim()===message){drafts[owner].prompt='';try{localStorage.setItem(storageKey,JSON.stringify(drafts));}catch(_){}}},isSubmitting:()=>busy&&busySelection===getState().selection,interceptSubmit,render,renderPlan,renderChanges,renderStart,showProposal,showFinal,sync,restoreDraft:()=>{sync();if(!input.value&&drafts[key()]?.prompt)input.value=drafts[key()].prompt;},hasDocument:()=>selector.value==='unattended'&&Boolean(documentInput.value.trim()),getMode:()=>selector.value,newChat:()=>{sync();selector.value='interactive';documentInput.value='';delete group.dataset.revising;save();sync();options.onDraftChange?.();}};
 }
-return {mergeAndPublish,fullSuiteConsent,diffPath,reviewDiffs,reviewFiles,reviewDiffMarkup,finalReviewMarkup,finalDiffState,mountFinalDiff,planningPayload,proposalValidation,technicalEvents,technicalText,technicalMarkup,startController,savedPlan,planMarkup,pausePresentation,proposalReadiness,mount,intent,terminalRun,hasRun,isPlanning,duration,isBusy,isRevisionTarget,resumeAction,proposedLimits,projectRun,diffSections,escape};
+return {mergeAndPublish,mergeProgressMarkup,fullSuiteConsent,diffPath,reviewDiffs,reviewFiles,reviewDiffMarkup,finalReviewMarkup,finalDiffState,mountFinalDiff,planningPayload,proposalValidation,technicalEvents,technicalText,technicalMarkup,startController,savedPlan,planMarkup,pausePresentation,proposalReadiness,mount,intent,terminalRun,hasRun,isPlanning,duration,isBusy,isRevisionTarget,resumeAction,proposedLimits,projectRun,diffSections,escape};
 });

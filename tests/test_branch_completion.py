@@ -58,7 +58,18 @@ class BranchCompletionTests(unittest.TestCase):
         self.assertEqual(git(self.source,'rev-parse','HEAD'),before)
         with self.assertRaises(ValueError):completion.merge(self.controller,'task',{'preview_id':preview['preview_id'],'approved':False})
         decision={'preview_id':preview['preview_id'],'approved':True}
-        result=completion.merge(self.controller,'task',decision)
+        # Reuse this Git fixture for the HTTP-style background approval path.
+        from unittest.mock import patch
+        from cheapos import branch_integration
+        self.engine.event=lambda task,kind,title,detail:self.engine.store.save(task)
+        with patch.object(branch_integration.threading, 'Thread'):
+            receipt=completion.merge(self.controller,'task',decision,background=True)
+            self.assertEqual(receipt['branch_run']['status'],'merging')
+            self.assertEqual(git(self.source,'rev-parse','HEAD'),before)
+            self.assertEqual(completion.merge(self.controller,'task',decision,background=True),receipt)
+        branch_integration.complete(self.controller,'task')
+        result=self.saved_task
+        self.assertEqual(result['branch_run']['merge_progress']['stage'],'completed')
         self.assertEqual(result['branch_run']['status'],'merged')
         self.assertEqual(git(self.source,'rev-parse','HEAD').strip(),self.run['expected_feature_tip'])
         self.assertEqual(completion.merge(self.controller,'task',decision),result)

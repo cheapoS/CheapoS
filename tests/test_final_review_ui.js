@@ -131,6 +131,40 @@ test('failed merge does not publish completion, and another task response is ign
  assert.equal(published,false);
 });
 
+test('merge gives immediate feedback and double clicks share one pending request',async()=>{
+ let release,calls=0,pending=0,published;
+ const options={task:{id:'pending-merge'},values:{preview_id:'preview',approved:true},
+  api:()=>{calls++;return new Promise(resolve=>release=resolve);},onPending:()=>pending++,onTask:t=>published=t};
+ const first=ui.mergeAndPublish(options),second=ui.mergeAndPublish(options);
+ assert.equal(pending,1);assert.equal(first,second);assert.equal(published,undefined);
+ await Promise.resolve();assert.equal(calls,1);
+ const accepted={id:'pending-merge',branch_run:{status:'merging',target_ref:'refs/heads/main',merge_progress:{label:'Checking reviewed changes'}}};
+ release(accepted);await first;assert.equal(published,accepted);
+ assert.match(ui.mergeProgressMarkup(accepted),/Checking reviewed changes/);
+ assert.equal(ui.projectRun(accepted).merged,false);
+});
+
+test('lost merge response reconciles the exact saved approval without another POST',async()=>{
+ const calls=[],saved={id:'lost-merge',branch_run:{status:'merging',merge_operation:{id:'operation'},merge_preview_id:'preview'}};
+ const result=await ui.mergeAndPublish({task:{id:'lost-merge'},values:{preview_id:'preview',approved:true},api:async(path,body)=>{
+  calls.push([path,body]);if(body)throw Error('Connection lost');return saved;
+ }});
+ assert.equal(result,saved);assert.equal(calls.length,2);assert.equal(calls[1][1],undefined);
+ saved.branch_run.merge_preview_id='other';
+ await assert.rejects(ui.mergeAndPublish({task:{id:'lost-merge'},values:{preview_id:'preview',approved:true},api:async(path,body)=>{
+  if(body)throw Error('Connection lost');return saved;
+ }}),/Connection lost/);
+});
+
+test('merge progress never presents an accepted approval as a completed merge',()=>{
+ const task={branch_run:{status:'merging',target_ref:'refs/heads/<main>',merge_progress:{label:'Confirming merge'}}};
+ assert.match(ui.mergeProgressMarkup(task),/Confirming merge/);
+ assert.match(ui.mergeProgressMarkup(task),/&lt;main&gt;/);
+ task.branch_run.status='paused';assert.equal(ui.mergeProgressMarkup(task),'');
+ task.branch_run.status='merged';task.branch_run.merge_receipt={stage:'completed'};
+ assert.equal(ui.projectRun(task).merged,true);assert.equal(ui.mergeProgressMarkup(task),'');
+});
+
 test('dense replacements expose deleted characters without truncation',()=>{
  const removed='sendChat();'.repeat(50),added='hideSample();';
  const text=`diff --git a/app.js b/app.js\n--- a/app.js\n+++ b/app.js\n@@ -1 +1 @@\n-${removed}\n+${added}\n`;

@@ -99,7 +99,7 @@ def _save(operation, stage, persist):
     persist(copy.deepcopy(operation))
 
 
-def integrate(operation, persist, validate_approval):
+def integrate(operation, persist, validate_approval, *, progress=None):
     """Apply/recover exactly the journaled fast-forward, preserving all commits."""
     operation = copy.deepcopy(operation)
     mapping = operation['mapping']
@@ -111,6 +111,7 @@ def integrate(operation, persist, validate_approval):
         if operation['stage'] == 'prepared':
             _save(operation, 'intent', persist)
         if current != operation['feature_tip']:
+            if progress: progress('integrating')
             # Recheck after durable save, immediately before the Git mutation.
             _validate(operation)
             validate_approval(copy.deepcopy(operation))
@@ -126,6 +127,7 @@ def integrate(operation, persist, validate_approval):
                                + '\nupdate ' + operation['target_ref'] + ' ' + operation['feature_tip'] + ' ' + operation['target_old']
                                + '\nprepare\ncommit\n')
                 workspace.source_git(source, 'update-ref', '--stdin', input=transaction)
+        if progress: progress('confirming')
         if _validate(operation, recovering=True) != operation['feature_tip']:
             raise ValueError('Integration did not reach the approved target; inspect the retained operation')
         _save(operation, 'target_integrated', persist)

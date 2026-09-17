@@ -128,7 +128,7 @@ test('actual startup renderer covers pending, accepted-stale, running and paused
  const snippet=source.slice(source.indexOf(' function render(task)'),source.indexOf(' function renderPlan(task)'));
  let record={status:'pending',started_at:'2026-09-14T12:00:00Z'};const panel={innerHTML:'',querySelector:()=>null};
  const branchResumeStatus=new Map();
- const context={sync:()=>{},getState:()=>({branchResumeStatus}),document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
+ const context={sync:()=>{},getState:()=>({branchResumeStatus}),document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,mergeProgressMarkup:ui.mergeProgressMarkup,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
  vm.createContext(context);vm.runInContext(snippet,context);
  const t={id:'a',status:'awaiting_reply',branch_run:{id:'run1',status:'awaiting_authorization',items:[]}};
  context.render(t);assert.match(panel.innerHTML,/Starting your approved plan/);assert.match(panel.innerHTML,/data-start-time/);assert.doesNotMatch(panel.innerHTML,/data-proposal/);
