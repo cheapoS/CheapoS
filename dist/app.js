@@ -1048,16 +1048,13 @@ function bindTerminalCopy() {
 function tokenUsageLabel(task,role=null) {
   const a=role?task.token_accounting?.roles?.[role]:task.token_accounting;
   const fallback=role?task.usage?.[role]?.tokens:task.metrics?.tokens?.accounted_total;
-  if(role)return `${(a?.accounted??fallback??0).toLocaleString()} tokens`;
-  if(!a)return `${(fallback||0).toLocaleString()} accounted tokens`;
-  if(a.coverage!=='complete')return `${(a.accounted||0).toLocaleString()} accounted tokens · breakdown partial`;
-  return `${a.reported.toLocaleString()} reported${a.reserved?` + ${a.reserved.toLocaleString()} reserved`:''} tokens`;
+  return `${(a?.accounted??fallback??0).toLocaleString()} tokens`;
 }
 function tokenReservationDetails(task) {
   const a=task.token_accounting;
   if(!a)return '';
   const count=n=>n==null?'unknown':Number(n).toLocaleString();
-  return `<details class="token-reservations" data-event="token-reservations-${esc(task.id)}"><summary>Token accounting${a.reserved?` · ${count(a.reserved)} reserved`:''}</summary>
+  return `<details class="token-reservations" data-event="token-reservations-${esc(task.id)}"><summary>Token accounting</summary>
     <p>${count(a.reported)} reported · ${count(a.reserved)} reserved${a.unclassified?` · ${count(a.unclassified)} unclassified`:''}</p>
     <p class="small muted">Reserved tokens are local budget estimates, not confirmed consumption or money held by a provider. Before each request, cheapoS counts the serialized prompt and tools in UTF-8 bytes, adds a 1,024-token buffer, then adds the output allowance. This conservative estimate is replaced when complete token usage arrives. Failed or interrupted requests without usage keep their estimate.</p>
     ${a.coverage!=='complete'?'<p class="small muted">Historical request evidence is incomplete. The breakdown may explain only part of the accounted total.</p>':''}
