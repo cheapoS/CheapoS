@@ -22,7 +22,16 @@ refuses to overwrite subsequent task edits. Evidence survives restart and source
 branch movement without depending on temporary Git merge objects. Existing
 resolutions with inline evidence remain readable. The former 600 KB aggregate
 context limit no longer blocks ordinary updates containing several large source
-files; snapshot file-size/path restrictions and the 100-file boundary still apply.
+files. There is also no separate 100-file merge cutoff: all supported affected
+files are retained, with unique Git versions captured in bounded batches.
+
+`read_merge_context` lists at most 50 paths per page with a character budget and
+`next_file_offset` to continue. File reads return at most 300 numbered lines and
+16,000 characters; oversized ranges return a page rather than an error. Long
+lines continue with `next_line` and `next_column`, so every character remains
+available. Worker and reviewer tools share these cursors. Existing snapshot
+limits (2 MB per file, 5,000 files / 100 MB per tree), regular-text/path rules,
+evidence integrity, command permissions and independent review still apply.
 
 ## Unified preparation (T92)
 
