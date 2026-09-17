@@ -74,6 +74,14 @@ def decide(task, trigger=None):
         return {'kind':'authorization','action':'answer_question','reason':run['waiting_for_user']}
     if task.get('limit_hit') or task.get('status')=='budget_paused':
         return {'kind':'allowance','action':'review_limits','reason':'Review the exhausted allowance; Continue does not replenish usage.'}
+    if trigger=='final_review_stall':
+        from .model_pool import automatic
+        config=task.get('providers',{}).get('reviewer') or {}
+        reviewer=config.get('model') if isinstance(config,dict) else config
+        can_switch=automatic(task,'reviewer') and task.get('operator_reviewer_model')!=reviewer
+        return {'kind':'review','action':'recover_review' if can_switch else 'choose_reviewer',
+                'reason':'Continue final review with an unused authorized reviewer.' if can_switch else
+                         'The selected reviewer could not finish; choose another reviewer for this saved task.'}
     if task.get('pending_review') or task.get('status')=='reviewing':
         stalled = (task.get('pending_review') or {}).get('stop_diagnostic') or {}
         if run and stalled.get('kind') == 'review_stall':

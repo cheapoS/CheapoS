@@ -135,9 +135,23 @@ class BranchWorkspaceTests(unittest.TestCase):
         self.assertEqual(git(self.source, 'show-ref'), refs)
         self.assertEqual(sorted(str(p.relative_to(self.source / '.git/objects')) for p in (self.source / '.git/objects').rglob('*')), objects)
         self.assertEqual(bw.materialize(materialized, self.save), materialized)
+        # A sibling task can merge while this proposal awaits approval. Keep
+        # this same fixture to exercise actual Git ancestry and integration.
+        (self.source / 'hello').write_bytes(b'newer task\n')
+        git(self.source, 'add', 'hello')
+        git(self.source, 'commit', '-qm', 'sibling task')
+        current=git(self.source, 'rev-parse', 'HEAD').strip()
         result = bw.create(materialized, self.save)
         self.assertEqual(result['workspace_identity'], materialized['workspace_identity'])
         self.assertEqual(result['workspace_head'], materialized['workspace_head'])
+        self.assertEqual(result['base_sha'],materialized['base_sha'])
+        self.assertEqual(result['feature_tip'],materialized['base_sha'])
+        self.assertEqual(git(self.source,'rev-parse','HEAD').strip(),current)
+        self.assertEqual((self.source/'hello').read_bytes(),b'newer task\n')
+        self.assertEqual((self.destination/'hello').read_bytes(),b'hello\n\xff\n')
+        from cheapos import branch_merge
+        with self.assertRaisesRegex(ValueError,'Target diverged'):
+            branch_merge.prepare(result,result['feature_tip'],result['target_ref'])
 
     def test_modified_materialized_snapshot_blocks_source_ref_creation(self):
         plan = bw.materialize(self.prepare(), self.save)

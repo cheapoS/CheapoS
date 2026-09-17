@@ -33,12 +33,14 @@ class PreferencePersistenceTests(unittest.TestCase):
             saved = {'execution':self.execution}
             if limits != 'missing': saved['limits'] = limits
             write_json(self.engine.store.root/'preferences.json', saved)
+            (self.engine.store.root/'settings.json').unlink()
             preferences = self.restart().preferences()
             self.assertEqual(preferences['execution'], self.execution)
             self.assertEqual(preferences['limits']['dollars'], 0)
 
     def test_invalid_execution_does_not_reset_valid_limits(self):
         write_json(self.engine.store.root/'preferences.json', {'execution':{'mode':'obsolete'},'limits':{'dollars':0,'worker_turns':1200,'uncapped_work':True}})
+        (self.engine.store.root/'settings.json').unlink()
         preferences = self.restart().preferences()
         self.assertEqual(preferences['limits']['worker_turns'], 1200)
         self.assertTrue(preferences['limits']['uncapped_work'])
@@ -59,7 +61,8 @@ class PreferencePersistenceTests(unittest.TestCase):
             self.assertEqual(saved['coordinator_model'],'unavailable-local')
             verify.assert_not_called()
         write_json(self.engine.store.root/'preferences.json',{'execution':{'mode':'remote'}})
-        self.assertFalse(self.restart().preferences()['execution']['coordinator_assistance'])
+        # Once migrated, legacy files can no longer reset scoped defaults.
+        self.assertTrue(self.restart().preferences()['execution']['coordinator_assistance'])
 
 
 if __name__ == '__main__': unittest.main()

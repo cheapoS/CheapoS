@@ -62,10 +62,15 @@ def interactive(engine, task_id, values=None):
             if task.get('route'):
                 task['route'].get('recovery',{}).pop('worker',None)
                 task['route'].setdefault('preferred',{})['worker']=selected
+        if action == 'model':
+            from .task_settings import sync_saved
+            sync_saved(task)
         if action in {'enable','takeover'}:
             task['execution']={**task.get('execution',{}),'development_mode':True}
             task['limits']['uncapped_work']=True
             task['operator_bounded_work']=False
+            from .task_settings import sync_saved
+            sync_saved(task)
             engine.event(task,'operator_control','Development mode enabled for this task',
                          'Work and recovery caps are off. Usage, spending policy, permissions and independent review are retained.')
             engine.store.save(task)

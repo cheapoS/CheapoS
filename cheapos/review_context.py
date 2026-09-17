@@ -31,8 +31,10 @@ def read(run, manifest, args):
     end=args.get('end_line',start+79)
     if not isinstance(path,str) or not path or '\\' in path or '\x00' in path or PurePosixPath(path).is_absolute() or '..' in PurePosixPath(path).parts or not allowed_name(path):
         raise ValueError('Context path is outside permitted project files.')
-    if type(start) is not int or type(end) is not int or not 1<=start<=end or end-start>=200:
-        raise ValueError('Request a positive range of at most 200 lines.')
+    if type(end) is not int or not 1<=start<=end:
+        raise ValueError('Request a positive, ordered line range.')
+    requested_end=end
+    end=min(end,start+199)
     entry=work.source_git(source,'ls-tree','-z',tip,'--',path,binary=True)
     provenance={'manifest_id':manifest['id'],'candidate':tip,'tree':manifest['feature_tree'],'path':path}
     if not entry:return {**provenance,'available':False,'reason':'File absent from this candidate.'}
@@ -50,7 +52,9 @@ def read(run, manifest, args):
         value=f'{n}: {line}'
         if length+len(value)>12000:break
         numbered.append(value);length+=len(value)+1
+    range_complete=len(numbered)==max(0,min(requested_end,len(lines))-start+1)
     return {**provenance,'available':True,'blob':oid,'digest':hashlib.sha256(raw).hexdigest(),
             'start_line':start,'end_line':start+len(numbered)-1,'total_lines':len(lines),
-            'range_complete':len(numbered)==len(selected),'complete_file':start==1 and len(numbered)==len(lines),
-            'truncated':len(numbered)<len(selected) or start>1 or end<len(lines),'content':'\n'.join(numbered)}
+            'range_complete':range_complete,'complete_file':start==1 and len(numbered)==len(lines),
+            'next_start_line':start+len(numbered) if numbered and start+len(numbered)<=len(lines) else None,
+            'truncated':not range_complete or start>1 or end<len(lines),'content':'\n'.join(numbered)}

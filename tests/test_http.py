@@ -69,6 +69,40 @@ class HTTPTests(unittest.TestCase):
     def post(self, path, body):
         return self.request('POST', path, body, {'Content-Type':'application/json', 'X-CheapOS-Token': self.server.token})
 
+    def test_integration_preparation_routes_keep_read_and_write_authority_separate(self):
+        with patch('cheapos.integration_preparation.readiness', return_value={'code':'target_advanced'}) as inspect, patch('cheapos.integration_preparation.start', return_value={'id':'saved','status':'paused'}) as start:
+            status, _, body = self.request('GET','/api/tasks/saved/integration-readiness')
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body)['code'], 'target_advanced')
+            self.assertEqual(self.request('POST','/api/tasks/saved/integration-prepare', {'approved':True})[0],403)
+            self.assertFalse(start.called)
+            status, _, body = self.post('/api/tasks/saved/integration-prepare', {'approved':True,'operation_id':'one'})
+            self.assertEqual(status,200)
+            self.assertEqual(json.loads(body)['id'],'saved')
+            start.assert_called_once_with(self.engine,'saved',{'approved':True,'operation_id':'one'})
+            inspect.assert_called_once_with(self.engine,'saved')
+
+    def test_scoped_settings_http_revisions_and_idempotency(self):
+        status, _, body = self.request('GET', '/api/settings/defaults')
+        self.assertEqual(status, 200)
+        initial = json.loads(body)
+        request = {'patch': {'execution.coordinator_assistance': True},
+                   'expected_revision': initial['revision'], 'operation_id': 'settings-once'}
+        self.assertEqual(self.request('POST', '/api/settings/defaults', request)[0], 403)
+        status, _, body = self.post('/api/settings/defaults', request)
+        self.assertEqual(status, 200)
+        saved = json.loads(body)
+        self.assertTrue(saved['values']['execution']['coordinator_assistance'])
+        status, _, body = self.post('/api/settings/defaults', request)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), saved)
+        status, _, body = self.post('/api/settings/defaults', {**request, 'operation_id': 'stale'})
+        self.assertEqual(status, 409)
+        self.assertEqual(json.loads(body)['current']['revision'], saved['revision'])
+        self.assertEqual(self.post('/api/projects/settings', {**request, 'project': '/not/registered'})[0], 400)
+        self.assertEqual(self.request('GET', '/settings.js')[0], 200)
+        self.assertEqual(self.request('GET', '/settings.css')[0], 200)
+
     def test_carto_settings_require_token_and_registered_project(self):
         source = str(Path(self.temp.name).resolve())
         with patch('cheapos.workspace.Workspace.project_root', return_value=Path(source)), patch.object(self.engine, 'projects', return_value=[{'path':source}]), patch.object(self.engine.carto, 'context', return_value={'status':'indexing'}):
@@ -295,12 +329,12 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn('attachment', headers['Content-Disposition'])
         self.engine.gateway.configure({'api_key':'private-test-value'})
-        config = {role: {'base_url': self.engine.gateway.settings['base_url'], 'gateway':'omniroute', 'model':'fixture', 'input_rate':0, 'output_rate':0} for role in ['worker', 'reviewer']}
+        config = {role: {'base_url': self.engine.gateway.settings['base_url'], 'gateway':'omniroute', 'model':'fixture-'+role, 'input_rate':0, 'output_rate':0} for role in ['worker', 'reviewer']}
         status, _, body = self.post('/api/config', config)
         self.assertEqual(status, 200)
         self.assertNotIn(b'private-test-value', body)
         self.assertNotIn(b'private-test-value', self.request('GET', '/api/bootstrap')[2])
-        self.assertNotIn('private-test-value', (self.engine.store.root / 'config.json').read_text())
+        self.assertNotIn('private-test-value', (self.engine.store.root / 'settings.json').read_text())
         for gateway in ('openai','omniroute'):
             direct={**config['worker'],'gateway':gateway,'base_url':'https://openrouter.ai/api/v1'}
             with patch('cheapos.server.gateway_for') as connect:
@@ -393,7 +427,8 @@ class HTTPTests(unittest.TestCase):
         status, _, body = self.post('/api/projects', {'repository':source})
         self.assertEqual(status,200)
         self.assertEqual(json.loads(body)['path'],source)
-        config = {role:{'base_url':'http://127.0.0.1:11434/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']}
+        config = {role:{'base_url':'http://127.0.0.1:11434/v1','model':'fixture-'+role,'input_rate':0,'output_rate':0} for role in ['worker','reviewer']}
+        self.assertEqual(self.post('/api/preferences', {'execution': {'mode': 'manual'}})[0], 200)
         self.assertEqual(self.post('/api/config', config)[0],200)
         status, _, body = self.post('/api/tasks', {'repository':source,'prompt':'Hi','conversational':True})
         self.assertEqual(status,200)

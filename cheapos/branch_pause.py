@@ -33,7 +33,7 @@ CODES = {'reviewer_recovery_required':'reviewer_recovery_required','review_ident
  'worker_turn_limit':'exhausted_work','iteration_limit':'exhausted_work','reviewer_token_limit':'exhausted_work','budget_exceeded':'exhausted_work',
  'environment_missing':'missing_setup','missing_executable':'missing_setup','command_permission_required':'command_grant',
  'authority_changed':'authority_changed','branch_drift':'branch_drift','review_dispute':'repeated_review_dispute','essential_clarification':'essential_clarification'}
-STAGES={'planning','working','checking','reviewing','committing','finalizing','merging','unknown'}
+STAGES={'startup','planning','working','checking','reviewing','committing','finalizing','merging','unknown'}
 TRANSPORT_ERRORS = {
  'transport_retry_exhausted': 'The streamed model reply failed again after its transport retry was used. Saved edits and guidance are intact. Retry continues from them using proven transport compatibility or an eligible model within the saved routing policy.',
  'streaming_unsupported': 'The model connection did not support streaming. Saved work is intact. Retry continues within the saved routing policy.',
@@ -144,10 +144,11 @@ def review_diagnostic(task, diagnostic):
 
 def classify(error=None, task=None, cause=None, stage=None):
     task=task or {};run=task.get('branch_run') or {}
+    startup=(stage or getattr(error,'stage',None))=='startup'
     from .branch_budget import LimitExceeded
     from .providers import BudgetError
     explicit=cause or getattr(error,'pause_cause',None)
-    code=getattr(error,'code',None) or task.get('error_code')
+    code=getattr(error,'code',None) or (None if startup else task.get('error_code'))
     if not explicit:
         if isinstance(error,(LimitExceeded,BudgetError)):explicit='exhausted_work'
         elif isinstance(error,InterruptedError):explicit='operator'
@@ -163,12 +164,11 @@ def classify(error=None, task=None, cause=None, stage=None):
                 explicit = 'provider_quota'
             else:
                 explicit = CODES.get(code, 'unknown')
-    requests = task.get('request_metrics') or []; request = requests[-1] if requests else {}
+    requests = [] if startup else task.get('request_metrics') or []; request = requests[-1] if requests else {}
     previous = run.get('pause_detail') or {}
     if explicit == 'unknown' and not getattr(error, 'safe_diagnostic', None) and previous and run.get('status') in ('paused', 'blocked') and request.get('id') and previous.get('diagnostic_id') == request.get('id'):
         return public(run['pause_detail']) or public({'version': 1, 'cause': 'unknown'})
     item = next((i for i in run.get('items', []) if i.get('id') == run.get('current_item_id')), {})
-    requests = task.get('request_metrics') or []; request = requests[-1] if requests else {}
     if explicit == 'repeated_work':
         diagnostic = (getattr(error, 'safe_diagnostic', None) or
                       (task.get('pending_review') or {}).get('stop_diagnostic'))
@@ -178,6 +178,9 @@ def classify(error=None, task=None, cause=None, stage=None):
     detail = {'version': 1, 'cause': explicit, 'stage': stage or getattr(error, 'stage', None) or (run.get('status') if run.get('status') in STAGES else 'reviewing' if task.get('active_role') == 'reviewer' else item.get('status')),
               'item_id': item.get('id'), 'role': request.get('role') or task.get('active_role'), 'model': request.get('model'),
               'diagnostic_id': getattr(error, 'diagnostic_id', None) or request.get('id')}
+    if startup:
+        # Repository setup has no model request; do not blame an old planner.
+        detail.pop('role',None);detail.pop('model',None);detail.pop('item_id',None)
     diagnostic = getattr(error, 'safe_diagnostic', None)
     if not diagnostic and explicit == 'provider_connection' and code in TRANSPORT_ERRORS:
         diagnostic = {'kind': 'transport', 'code': code}

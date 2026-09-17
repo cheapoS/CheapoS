@@ -96,7 +96,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js", "integration.js", "settings.js", "settings.css"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():
@@ -119,8 +119,19 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 period=parse_qs(urlsplit(self.path).query).get("days", ["all"])[0]
                 summary = engine.store.lifetime.summary(days=int(period) if period != "all" else "all")
                 self.reply(engine.store.club.get_status(summary))
+            elif path in {"/api/settings/defaults", "/api/projects/settings"}:
+                project = engine.settings_project(parse_qs(urlsplit(self.path).query).get('project', [None])[0]) if path == '/api/projects/settings' else None
+                self.reply(engine.settings_store.view(project))
+            elif path.startswith('/api/tasks/') and path.endswith('/settings'):
+                from .task_settings import view
+                self.reply(view(engine, path.split('/')[3]))
             elif path == "/api/admission":
                 self.reply(engine.admission.snapshot())
+            elif path.startswith('/api/tasks/') and path.rsplit('/',1)[-1] in {'integration-readiness','integration-local-changes','integration-resolution-changes'}:
+                from . import integration_preparation
+                task_id=path.split('/')[3]
+                action=path.rsplit('/',1)[-1]
+                self.reply(getattr(integration_preparation, {'integration-readiness':'readiness','integration-local-changes':'local_changes','integration-resolution-changes':'resolution_changes'}[action])(engine,task_id))
             elif path.startswith('/api/tasks/') and path.endswith('/operator-recovery'):
                 task_id=path.split('/')[3]
                 task=engine.store.get(task_id)
@@ -237,6 +248,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     self.server.server_close()
                     os.execv(sys.executable, [sys.executable] + sys.argv)
                 threading.Thread(target=restart_backend, daemon=True).start()
+            elif path in {"/api/settings/defaults", "/api/projects/settings"}:
+                allowed = {'patch','expected_revision','operation_id'}
+                if path == '/api/projects/settings': allowed |= {'project','expected_parent_revision','remove'}
+                if set(values) - allowed: raise ValueError('Unknown scoped settings fields')
+                project = engine.settings_project(values.get('project')) if path == '/api/projects/settings' else None
+                result = engine.settings_store.save(values.get('patch'), expected_revision=values.get('expected_revision'), operation_id=values.get('operation_id'), project=project, expected_parent_revision=values.get('expected_parent_revision'), remove=values.get('remove', ()))
             elif path == "/api/role-mappings":
                 result = engine.save_role_mappings(values)
             elif path == "/api/role-mappings/effective":
@@ -380,6 +397,15 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     result = public_task(engine.trash_task(task_id) if action == "trash" else engine.restore_task(task_id))
                 elif action == "metadata":
                     result = public_task(engine.update_task_metadata(task_id, values))
+                elif action == "settings":
+                    from .task_settings import save
+                    self.reply(save(engine,task_id,values))
+                elif action == "integration-defer":
+                    from .integration_preparation import cancel
+                    self.reply(public_task(cancel(engine,task_id)))
+                elif action == "integration-prepare":
+                    from .integration_preparation import start
+                    result = public_task(start(engine,task_id,values))
                 elif action == "branch-start":
                     result = public_task(engine.branch.authorize(task_id, values, background=True))
                 elif action in {"branch-final-preview", "branch-final-diff", "branch-merge", "branch-revise", "branch-final-recheck", "branch-update"}:
@@ -470,6 +496,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result["task"] = engine.store.present(result["task"])
             self.reply(result)
         except (ValueError, TypeError, KeyError, OSError, ProviderError) as error:
-            self.reply({"error": str(error)[:1000], "code": getattr(error, "code", None), "files": getattr(error, "files", [])}, 400)
+            body = {"error": str(error)[:1000], "code": getattr(error, "code", None), "files": getattr(error, "files", [])}
+            if hasattr(error, 'current'):
+                body.update(code='settings_conflict', current=error.current)
+            self.reply(body, 409 if hasattr(error, 'current') else 400)
         except Exception:
             self.reply({"error": "The local server could not complete this action"}, 500)

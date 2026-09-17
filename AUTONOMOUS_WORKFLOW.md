@@ -5,8 +5,8 @@ it. An unattended task succeeds when it reaches a trustworthy, reviewable result
 within the operator's authorization. Displaying an understandable error and a
 Resume button is not a successful recovery.
 
-This is the development direction for the next iteration. The item-review
-handoff described below is implemented; the broader changes are milestones,
+This is the development direction for the next iteration. The item-review and
+final-review handoffs described below are implemented; the broader changes are milestones,
 not claims about current behavior.
 
 ## What went wrong
@@ -117,6 +117,38 @@ Does this change let the task continue and finish without the operator doing the
 engine's work? If it only adds error wording, another button or instructions to
 type into Chat, the underlying recovery work is still incomplete.
 
+## Implemented: continue final packet review
+
+Final review now uses the same continuation policy as item review. Repeated
+invalid decisions or unchanged context reads trigger another unused authorized
+independent reviewer when automatic placement permits it. The failed exchange,
+context references, selected route and cumulative failures survive restart.
+Manually pinned reviewers stay pinned until the operator chooses another model.
+No handoff renews task usage, command permission or spending authority.
+
+Completed packet decisions are retained against the exact manifest, packet
+evidence and operator direction. Resume reuses matching decisions and passing
+checks, then continues the remaining packets and final synthesis. Changed
+evidence must be reviewed again. Valid defects still require repair; missing or
+invalid coverage never becomes approval. Readiness records the reviewer that
+actually completed each packet and synthesis.
+
+Candidate context reads page large requested ranges at 200 lines and retain
+the existing path, candidate identity and character bounds. There is no separate
+six-read stop. Exact repeated reads reuse their saved excerpt and trigger
+reassessment or handoff when they stop adding evidence. Task limits and Pause
+still apply. Small in-memory cases cover continuation, restart, pool exhaustion,
+manual selection, context paging, cached coverage and unchanged authorization;
+the existing Git final-review tests cover readiness and integration safeguards.
+
+Approved runs also retain their captured execution and model defaults. Changing
+the default local reviewer, coordinator or model pair for new tasks does not
+invalidate a paused task's authorization on Resume. The current gateway identity
+and connection revision are still checked; saved scope, commands and spending
+authority cannot expand. Unapproved proposals still detect changed defaults
+before approval. Regression cases exercise the actual Resume entry point after
+restart using an in-memory task and retain checks, usage and authorization.
+
 ## Implemented: recover from a bad file edit
 
 Worker text edits now retain the latest 16 completed edit receipts inside the
@@ -205,3 +237,18 @@ Stopped Uncapped Interactive chats show Resume without requiring a new prompt.
 Validation includes an in-memory continuation through repeated inspection, edit,
 verification and independent approval, plus permission gates and retained usage.
 These cases use no model calls, Git workflows or real-time waits.
+
+## Implemented: start an approved snapshot after another task merges
+
+When the base branch advances while a prepared task waits for approval, startup
+continues from the same inspected private snapshot and pinned base commit.
+It does not adopt the newer files, replan, or change the approved scope, commands,
+models or limits. Startup records that it is using the approved snapshot. Final
+integration still requires the existing target update, verification and review.
+
+Rewritten/deleted base history, changed private snapshots, branch ownership
+conflicts and changed command scope still block startup. Known repository failures
+retain their specific explanation; unexpected startup errors retain a diagnostic
+reference and server traceback, without attributing setup to an old planner call.
+Validation uses small deterministic startup cases and the existing Git/HTTP
+fixtures for sibling merges, immutable copies, authorization and integration.

@@ -185,9 +185,9 @@ class FailoverTests(LocalCase):
                 if config_override['model'].startswith('openrouter/'):
                     raise ProviderError('Provider cooldown',code='gateway_cooldown',retry_after=120,scope='provider')
                 return call('routing_ready', {'marker': PROBE_MARKER})
-            # Use a separate endpoint each iteration so a persisted wait cannot mask the first probe.
-            task['route']['base_url']='http://localhost:' + str(2200+int(available_other)) + '/v1'
-            self.engine.gateway.matches=Mock(return_value=True)
+            # Each scenario starts with fresh health; task connection endpoints
+            # are captured and must not be rewritten behind their authority.
+            self.engine.gateway.pool.records.clear()
             with patch.object(self.engine,'request',side_effect=request) as requests:
                 if available_other:
                     select_remote(self.engine,runtime)
@@ -200,7 +200,7 @@ class FailoverTests(LocalCase):
                     with self.assertRaises(RoutingPause):select_remote(self.engine,runtime)
                     self.assertEqual(requests.call_count,1)
             self.assertEqual(runtime.failed_models,set())
-            self.assertEqual(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/a').get('failures',0),0)
+            self.assertEqual(self.engine.gateway.pool.observation(task['route']['base_url'],'openrouter/a',task['route']['access_policy']['connection_revision']).get('failures',0),0)
 
     def test_recent_probe_reused_but_eligibility_and_distinctness_still_apply(self):
         from cheapos.routing import select_remote

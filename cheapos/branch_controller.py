@@ -87,6 +87,17 @@ def run_limits(values, count):
     return defaults
 
 
+def planning_limits_from_settings(snapshot, overrides):
+    """Translate captured chat limits without reading defaults again."""
+    if not snapshot:return overrides
+    saved=snapshot.get('values',{}).get('limits',{})
+    values={k:copy.deepcopy(saved[k]) for k in ('dollars','worker_turns','reviewer_tokens','check_seconds','output_tokens') if k in saved}
+    if 'run_minutes' in saved:values['working_seconds']=saved['run_minutes']*60
+    if not isinstance(overrides,dict):raise ValueError('Unknown cumulative run limit')
+    values.update(overrides)
+    return values
+
+
 class BranchController:
     def __init__(self, engine):
         self.engine=engine
@@ -96,7 +107,9 @@ class BranchController:
         self.resume_proposals=ProposalRegistry()
         self.final_proposals=ProposalRegistry()
 
-    def model_policy(self):
+    def model_policy(self, settings_snapshot=None):
+        if settings_snapshot is not None:
+            return copy.deepcopy(self.engine.settings_policy(settings_snapshot))
         from .access_policy import snapshot
         result = {'execution':copy.deepcopy(self.engine.preferences()['execution']), 'providers':copy.deepcopy(self.engine.config)}
         access = snapshot(self.engine.gateway.settings)
@@ -107,6 +120,8 @@ class BranchController:
 
     def prepare(self, values, planning_task=None):
         with self.engine.lock:
+            keep_up_to_date=values.get('keep_up_to_date',False)
+            if type(keep_up_to_date) is not bool:raise ValueError('Keep up to date must be a boolean')
             plan=state.validate_plan(values.get('plan'))
             plan.setdefault('continue_independent',True)
             plan['limits']=run_limits(plan['limits'],len(plan['items']))
@@ -118,7 +133,10 @@ class BranchController:
                 argv=evidence.commands([spec])[0]
                 check_argv(shlex.join(argv))
                 if argv not in commands: commands.append(argv)
-            policy=self.model_policy()
+            settings_snapshot=copy.deepcopy((planning_task or {}).get('settings_snapshot'))
+            if settings_snapshot is None and hasattr(self.engine,'settings_capture'):
+                settings_snapshot=self.engine.settings_capture(values,values.get('repository'))
+            policy=self.model_policy(settings_snapshot) if settings_snapshot is not None else copy.deepcopy(planning_task['planning_policy']) if planning_task else self.model_policy()
             if policy['execution']['mode']=='manual':
                 if not all(policy['providers'].get(r) for r in ('worker','reviewer')):
                     raise ValueError('Choose a worker and an independent reviewer in Models')
@@ -159,8 +177,14 @@ class BranchController:
             task=self.engine.create({'repository':mapping['source'],'prompt':original or 'Complete '+str((inputs.get('document') or {}).get('path') or 'the proposed work')+': '+plan['items'][0]['title'], 'conversational':True,
                                      'check_command':shlex.join(commands[0]),'limits':{'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),
                                      'worker_turns':200,'iterations':20,'reviewer_tokens':limits['reviewer_tokens'],'check_seconds':limits['check_seconds'],'output_tokens':limits['output_tokens']}},
-                                    snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id)
+                                    snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id,
+                                    **({'settings_snapshot':settings_snapshot} if settings_snapshot is not None else {}))
             task['branch_run']=run
+            if settings_snapshot is not None:
+                task['settings_snapshot']=copy.deepcopy(settings_snapshot)
+                run['settings_snapshot_digest']=digest(settings_snapshot)
+            run['integration_policy']={'keep_up_to_date':keep_up_to_date,'target_ref':mapping['target_ref'],'target_tip':work._tip(mapping['source'],mapping['target_ref'])}
+            task['integration_policy']=copy.deepcopy(run['integration_policy'])
             run['test_policy_version']=1
             if planning_task:
                 for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
@@ -192,15 +216,23 @@ class BranchController:
 
     def contract(self, task):
         run=task['branch_run']
+        if run.get('integration_policy')!=task.get('integration_policy'):
+            raise ValueError('Task integration authority changed')
         from .branch_completion import authorization_run
-        policy = copy.deepcopy(run['model_policy']) if run.get('operator_revision_history') else self.model_policy()
+        # Defaults configure new work. Once approved, this run owns a captured
+        # model policy; changing global role defaults must not invalidate it.
+        saved_policy = bool(run.get('authorization') or run.get('operator_revision_history'))
+        snapshot=task.get('settings_snapshot')
+        if 'settings_snapshot_digest' in run and digest(snapshot)!=run['settings_snapshot_digest']:
+            raise ValueError('Captured chat setup changed; inspect a fresh proposal')
+        policy = copy.deepcopy(run['model_policy']) if saved_policy or snapshot is not None else self.model_policy()
         if run.get('model_policy', {}).get('gateway_connections') is not None:
             policy = copy.deepcopy(run['model_policy'])
             for entry in policy['gateway_connections']:
                 manager = self.engine.connections.managers.get(entry['connection_id'])
                 if manager and manager.settings['enabled'] and self.engine.connections.for_policy(entry) is None:
                     raise ValueError('An authorized gateway connection changed; inspect a fresh proposal')
-        if run.get('operator_revision_history') and not policy.get('gateway_connections'):
+        if (saved_policy or snapshot is not None) and not policy.get('gateway_connections'):
             from .access_policy import validate_current, effective_settings
             validate_current(policy.get('gateway_access'), effective_settings(task,self.engine.gateway.settings))
         if 'gateway_access' not in run.get('model_policy', {}): policy.pop('gateway_access', None)
@@ -243,15 +275,18 @@ class BranchController:
         run=task['branch_run']
         mapping=run['workspace_mapping']
         if work.inspect_source(mapping['source'])!={k:mapping[k] for k in ('source','source_identity','common_identity')}:
-            raise ValueError('Project changed; prepare a fresh proposal')
-        if work._tip(mapping['source'],mapping['base_ref'])!=mapping['base_sha']:
-            raise ValueError('Base changed; prepare a fresh proposal')
+            raise work.WorkspaceChanged('Project identity changed; prepare a fresh proposal for the selected project.')
+        current_base=work.validate_base(mapping)
         work._available(mapping['source'],mapping['feature_ref'],mapping['target_ref'],mapping['protected_refs'])
-        if work._tip(mapping['source'],mapping['feature_ref']): raise ValueError('Feature branch now exists')
+        if work._tip(mapping['source'],mapping['feature_ref']):
+            raise work.WorkspaceChanged('Feature branch now exists; inspect branch ownership before continuing.')
         for scope in run['check_scope']:
-            if self.scopes.prepare(task,scope['command'])!=scope: raise ValueError('Check scope changed; prepare a fresh proposal')
+            if self.scopes.prepare(task,scope['command'])!=scope:
+                raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
+                    'message':'Verification command scope changed; inspect task setup before continuing.'})
         from .unattended_setup import require_ready
         require_ready(task,run['check_scope'])
+        return current_base
 
     def _finish_start(self, task, runtime=None):
         """Retry only journaled setup under the same inspected authorization."""
@@ -261,10 +296,17 @@ class BranchController:
         run=task['branch_run'];self.validate_authority(task,run)
         if notify:
             notify('verifying_snapshot')
-            if run['workspace_mapping']['stage']=='prepared': self._validate_start_inputs(task)
+        if run['workspace_mapping']['stage']=='prepared':
+            current_base=self._validate_start_inputs(task)
+            if current_base!=run['workspace_mapping']['base_sha']:
+                self.engine.event(task,'branch_startup','Continuing from the approved snapshot',
+                    {'stage':'verifying_snapshot','base_sha':run['workspace_mapping']['base_sha'],
+                     'current_base_sha':current_base,
+                     'message':'The base branch has newer commits. Work uses the approved task copy; integration will check the updated target.'})
         for scope in run['check_scope']:
             if self.scopes.prepare(task,scope['command'])!=scope:
-                raise ValueError('Check scope changed; inspect task setup before continuing')
+                raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
+                    'message':'Verification command scope changed; inspect task setup before continuing.'})
         from .unattended_setup import require_ready
         require_ready(task,run['check_scope'])
         def save_mapping(value):
@@ -299,7 +341,8 @@ class BranchController:
     def revoke(self, task_id):
         with self.engine.lock:
             self.engine.admission.require_mutable(task_id)
-            task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            from .integration_preparation import cancel
+            task=cancel(self.engine,task_id);run=state.require_supported(task['branch_run'])
             if not run.get('authorization'): raise ValueError('Run is not authorized')
             run['authorization']['status']='revoked'
             runtime=self.engine.runtimes.get(task_id)
@@ -547,10 +590,13 @@ class BranchController:
             measurement=values.get('measurement',False)
             if type(measurement) is not bool:raise ValueError('Measurement mode must be a boolean')
             if type(values.get('uncapped_work', False)) is not bool:raise ValueError('Uncapped work must be a boolean')
-            limits=planning_task['planning_limits'] if planning_task else run_limits(values.get('limits',{}),3)
+            settings_snapshot=copy.deepcopy((planning_task or {}).get('settings_snapshot'))
+            if settings_snapshot is None and not planning_task and hasattr(self.engine,'settings_capture'):
+                settings_snapshot=self.engine.settings_capture(values,inputs['source'])
+            limits=planning_task['planning_limits'] if planning_task else run_limits(planning_limits_from_settings(settings_snapshot,values.get('limits',{})),3)
             if planning_task:
                 task=planning_task
-                if task['planning_policy']!=policy_for_saved(self.model_policy(), task['planning_policy']):raise ValueError('Model policy changed; start a new planning chat with the selected models.')
+                if task['planning_policy']!=policy_for_saved(self.model_policy(settings_snapshot) if settings_snapshot is not None else task['planning_policy'], task['planning_policy']):raise ValueError('Model policy changed; start a new planning chat with the selected models.')
                 restore_planning_allowance(task)
                 task['branch_run']['status']='draft'
                 task['branch_run']['pause_reason']=None
@@ -559,8 +605,10 @@ class BranchController:
                 directory=self.engine.store.root/'tasks'/task_id/'workspace'
                 task=self.engine.create({'repository':source,'prompt':inputs['prompt'] or 'Plan work from '+inputs['document']['path'], 'conversational':True,
                                           'limits':{'dollars':limits['dollars'],'run_minutes':max(1,(limits['working_seconds']+59)//60),'reviewer_tokens':limits['reviewer_tokens'],'output_tokens':limits['output_tokens']}},
-                                         task_id=task_id,snapshot_override=(Workspace(directory),{'source':source,'files':0,'skipped':[]}))
-                task['planning_limits']=limits;task['planning_task_limits']=copy.deepcopy(task['limits']);task['planning_policy']=self.model_policy()
+                                         task_id=task_id,snapshot_override=(Workspace(directory),{'source':source,'files':0,'skipped':[]}),
+                                         **({'settings_snapshot':settings_snapshot} if settings_snapshot is not None else {}))
+                if settings_snapshot is not None:task['settings_snapshot']=copy.deepcopy(settings_snapshot)
+                task['planning_limits']=limits;task['planning_task_limits']=copy.deepcopy(task['limits']);task['planning_policy']=self.model_policy(settings_snapshot)
                 task['branch_run']=state.new_run({'items':[{'id':'planning','title':'Prepare run proposal','instructions':'Prepare a bounded plan','acceptance_criteria':['A complete proposal is ready']}],'limits':limits,**({'measurement':True} if measurement else {})},original_request=inputs['prompt'],inputs=inputs,
                                                 base_ref=values.get('base_ref',''),target_ref=values.get('target_ref',''),feature_ref=values.get('feature_ref',''),run_id=task_id)
             task['planning_request']=copy.deepcopy(values)
@@ -828,7 +876,7 @@ class BranchController:
             if old['status']!='awaiting_authorization' or old.get('authorization'):
                 raise ValueError('Only an unstarted proposal can be edited')
             self.engine.admission.require_idle(task_id)
-            allowed={'plan','repository','base_ref','target_ref','feature_ref','prompt','inputs'}
+            allowed={'plan','repository','base_ref','target_ref','feature_ref','prompt','inputs','keep_up_to_date','settings'}
             if not isinstance(values,dict) or set(values)-allowed:
                 raise ValueError('Unknown proposal edit field')
             if values.get('prompt',old['original_request'])!=old['original_request'] or values.get('inputs',old['inputs'])!=old['inputs']:
@@ -839,8 +887,11 @@ class BranchController:
                 raise ValueError('Project changed; submit a fresh planning request')
             if values.get('base_ref',mapping['base_ref'])!=mapping['base_ref'] or work._tip(mapping['source'],mapping['base_ref'])!=mapping['base_sha']:
                 raise ValueError('Committed base changed; submit a fresh planning request')
-            policy=self.model_policy()
-            if policy_for_saved(policy, old['model_policy'])!=old['model_policy']:
+            settings_snapshot=copy.deepcopy(task.get('settings_snapshot'))
+            if 'settings' in values:
+                settings_snapshot=self.engine.settings_capture(values,mapping['source'])
+            policy=self.model_policy(settings_snapshot) if settings_snapshot is not None else copy.deepcopy(old['model_policy'])
+            if 'settings' not in values and policy_for_saved(policy, old['model_policy'])!=old['model_policy']:
                 raise ValueError('Model placement changed; submit a fresh planning request')
             plan=state.validate_plan(values.get('plan'))
             plan['limits']=run_limits(plan['limits'],len(plan['items']))
@@ -870,9 +921,17 @@ class BranchController:
                               feature_ref=mapping['feature_ref'],run_id=old['id'])
             for key in ('consumption','budget_ledger','created_at','events','event_sequence'):
                 if key in old:run[key]=copy.deepcopy(old[key])
+            if settings_snapshot is not None:
+                task['settings_snapshot']=copy.deepcopy(settings_snapshot)
+                run['settings_snapshot_digest']=digest(settings_snapshot)
+                if 'settings' in values:self.engine.settings_apply_snapshot(task,settings_snapshot)
             run.update(plan_revision=old['plan_revision']+1,workspace_mapping=mapping,authorization_workspace=copy.deepcopy(mapping),
                        model_policy=policy,check_scope=scopes)
             state.transition(run,'awaiting_authorization')
+            keep_up_to_date=values.get('keep_up_to_date',old.get('integration_policy',{}).get('keep_up_to_date',False))
+            if type(keep_up_to_date) is not bool:raise ValueError('Keep up to date must be a boolean')
+            run['integration_policy']={'keep_up_to_date':keep_up_to_date,'target_ref':mapping['target_ref'],'target_tip':work._tip(mapping['source'],mapping['target_ref'])}
+            task['integration_policy']=copy.deepcopy(run['integration_policy'])
             task['branch_run']=run;task['check_command']=commands[0]
             limits=run['limits']
             task['limits']=limits_from({'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),

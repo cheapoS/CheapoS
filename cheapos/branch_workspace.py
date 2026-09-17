@@ -13,6 +13,13 @@ import unicodedata
 from pathlib import Path, PurePosixPath
 
 from .workspace import Workspace, allowed_name, git, MAX_FILES, MAX_SNAPSHOT_BYTES
+from .branch_pause import PauseError
+
+
+class WorkspaceChanged(PauseError):
+    """App-authored repository diagnostics safe to retain in a pause banner."""
+    def __init__(self, message):
+        super().__init__('branch_drift', diagnostic={'kind': 'safe_message', 'message': message})
 
 
 def source_git(source, *args, input=None, binary=False, index=None, allowed_returncodes=(0,)):
@@ -173,11 +180,28 @@ def prepare(source, destination, base_ref, feature_ref, target_ref, run_id, prot
 def _revalidate(plan):
     state = inspect_source(plan['source'])
     if any(state[key] != plan[key] for key in state):
-        raise ValueError('Source repository identity changed')
+        raise WorkspaceChanged('Source repository identity changed; inspect the saved project before continuing.')
     _destination(plan['source'], plan['workspace'])
     _local_ref(plan['source'], plan['base_ref'])
     _local_ref(plan['source'], plan['target_ref'])
     _available(plan['source'], plan['feature_ref'], plan['target_ref'], plan['protected_refs'])
+
+
+def validate_base(plan):
+    """Allow newer commits without replacing an already captured private copy.
+
+    All work stays pinned to base_sha. Integration must still reconcile and
+    review the current target; startup never adopts its newer contents.
+    """
+    current = _tip(plan['source'], plan['base_ref'])
+    if current == plan['base_sha']:
+        return current
+    if current and plan.get('workspace_identity') and plan.get('workspace_head'):
+        ancestor = source_git(plan['source'], 'merge-base', plan['base_sha'], current,
+                              allowed_returncodes=(0, 1))
+        if ancestor == plan['base_sha']:
+            return current
+    raise WorkspaceChanged('Base changed outside the saved history or no private snapshot is available; prepare a fresh proposal.')
 
 
 def validate_owned(plan, expected_tip=None):
@@ -185,7 +209,7 @@ def validate_owned(plan, expected_tip=None):
     source = plan['source']
     if plan.get('workspace_identity') and (_identity(plan['workspace']) != plan['workspace_identity']
             or _identity(Path(plan['workspace']) / '.git') != plan['workspace_git_identity']):
-        raise ValueError('Private workspace identity changed')
+        raise WorkspaceChanged('Private workspace identity changed; inspect the saved task copy before continuing.')
     if _tip(source, plan['ownership_ref']) != plan.get('ownership_oid') or not plan.get('ownership_oid'):
         raise ValueError('Run branch ownership marker changed or is missing')
     expected = expected_tip or plan.get('feature_tip', plan['base_sha'])
@@ -226,19 +250,19 @@ def _verify_snapshot(plan):
     destination = Path(plan['workspace'])
     if (_identity(destination) != plan.get('workspace_identity')
             or _identity(destination / '.git') != plan.get('workspace_git_identity')):
-        raise ValueError('Private workspace identity changed')
+        raise WorkspaceChanged('Private workspace identity changed; inspect the saved task copy before continuing.')
     inspect_source(destination)
     if git(destination, 'rev-parse', 'HEAD').strip() != plan['workspace_head']:
-        raise ValueError('Private snapshot baseline changed')
+        raise WorkspaceChanged('Private snapshot baseline changed; inspect the saved task copy before continuing.')
     if (git(destination, 'status', '--porcelain', '--untracked-files=all').strip()
             or git(destination, 'ls-files', '--others', '--ignored', '--exclude-standard').strip()):
-        raise ValueError('Private snapshot is no longer clean')
+        raise WorkspaceChanged('Private snapshot is no longer clean; inspect its changed files before continuing. No files were replaced.')
     workspace = Workspace(destination)
     for entry, blob in zip(plan['entries'], _snapshot_blobs(plan)):
         path = workspace.path(entry['path'])
         if (not path.is_file() or path.read_bytes() != blob
                 or bool(path.stat().st_mode & 0o111) != (entry['mode'] == '100755')):
-            raise ValueError('Private snapshot contents changed')
+            raise WorkspaceChanged('Private snapshot contents changed; inspect the saved task copy before continuing. No files were replaced.')
 
 
 def _materialize(plan):
@@ -304,10 +328,9 @@ def create(prepared, persist_intent, progress=None):
         entries, skipped = _manifest(source, plan['base_sha'])
         if entries != plan['entries'] or skipped != plan['skipped']:
             raise ValueError('Snapshot manifest changed after preparation')
-        if _tip(source, plan['base_ref']) != plan['base_sha']:
-            raise ValueError('Base changed after proposal; prepare a fresh proposal')
+        validate_base(plan)
         if _tip(source, plan['feature_ref']) or _tip(source, plan['ownership_ref']):
-            raise ValueError('Feature branch or ownership marker already exists')
+            raise WorkspaceChanged('Feature branch or ownership marker already exists; inspect branch ownership before continuing.')
         ownership = json.dumps({k: plan[k] for k in ('run_id', 'source_identity', 'common_identity', 'feature_ref', 'base_sha')}, sort_keys=True)
         plan['ownership_oid'] = source_git(source, 'hash-object', '-w', '--stdin', input=ownership)
         plan['stage'] = 'creating'
@@ -315,8 +338,7 @@ def create(prepared, persist_intent, progress=None):
     if plan['stage'] == 'creating':
         feature, marker = _tip(source, plan['feature_ref']), _tip(source, plan['ownership_ref'])
         if feature is None and marker is None:
-            if _tip(source, plan['base_ref']) != plan['base_sha']:
-                raise ValueError('Base changed before branch creation')
+            validate_base(plan)
             transaction = ('start\noption no-deref\ncreate ' + plan['feature_ref'] + ' ' + plan['base_sha'] + '\ncreate '
                            + plan['ownership_ref'] + ' ' + plan['ownership_oid'] + '\nprepare\ncommit\n')
             source_git(source, 'update-ref', '--stdin', input=transaction)

@@ -57,7 +57,14 @@ class BranchFinalTests(unittest.TestCase):
         return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
 
     def test_cumulative_diff_clean_private_copy_and_actual_final_check(self):
+        original=self.engine.request
+        def request(*args,**kwargs):
+            self.task['providers']['reviewer']['model']='replacement'
+            return original(*args,**kwargs)
+        self.engine.request=request
         result = final.final_check_review(self.engine, self.runtime)
+        self.assertEqual(result['readiness']['reviewer_model'],'replacement')
+        self.assertTrue(all(r['reviewer_model']=='replacement' for r in result['readiness']['reviews']))
         manifest = result['readiness']['manifest']
         from cheapos.review_context import read
         excerpt=read(self.run,manifest,{'manifest_id':manifest['id'],'path':'code','start_line':1,'end_line':10})
@@ -93,6 +100,7 @@ class BranchFinalTests(unittest.TestCase):
                     'record_digest': evidence._digest(bound['record'])})
                 self.assertNotIn('output', summary)
         self.request_changes = True
+        self.task['steer_guidance']='Reassess missing edge handling against the approved requirement.'
         self.requests.clear()
         rejected = final.final_check_review(self.engine, self.runtime)
         self.assertEqual(rejected['decision'], 'REQUEST_CHANGES')
