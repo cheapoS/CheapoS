@@ -252,3 +252,19 @@ retain their specific explanation; unexpected startup errors retain a diagnostic
 reference and server traceback, without attributing setup to an old planner call.
 Validation uses small deterministic startup cases and the existing Git/HTTP
 fixtures for sibling merges, immutable copies, authorization and integration.
+
+## Implemented: large branch items are reviewed in pages
+
+A large accumulated patch, including incoming target changes during conflict
+resolution, is not an exhausted work allowance. Branch items retain the full
+patch and page oversized review evidence through the existing independent
+packet reviewer. Each byte of the packet receives recorded coverage before the
+normal item decision verifies every acceptance criterion. Full evidence and
+packet feedback remain available by reference; saved approvals cover only their
+exact candidate and evidence. Completed pages survive Resume, and invalid packet
+responses use the authorized reviewer handoff path.
+
+Concrete defects still return to focused repair. Required checks, candidate
+validation, independent review and spending limits still apply; paging does not
+approve work or increase authority. The legacy compact-review size guard remains
+on the separate Interactive review path.

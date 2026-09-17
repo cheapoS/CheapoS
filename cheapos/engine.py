@@ -1586,7 +1586,9 @@ class Engine:
         workspace = Workspace(task["workspace"])
         task["changes"] = workspace.changes()
         task["patch"] = workspace.patch(validate="branch_run" in task)
-        if len(task["patch"]) > 100000:
+        # Branch items page large review evidence. In particular, incorporating
+        # an updated target can be much larger than the worker's own edits.
+        if "branch_run" not in task and len(task["patch"]) > 100000:
             raise BudgetError("The patch is too large for a reliable compact review. Split this task into smaller changes.")
 
     def commit_task(self, task_id):

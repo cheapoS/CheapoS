@@ -114,6 +114,9 @@ def ready_receipt(current, checks, review, worker_model, reviewer_model, criteri
     decision(review)
     if review.get('candidate_id') != current['id'] or review.get('decision') != 'APPROVE' or not isinstance(review.get('feedback'), str):
         raise ValueError('Independent APPROVE for this candidate is required')
+    if review.get('packet_coverage') is not None:
+        from .branch_review_pages import validate
+        validate(review['packet_coverage'], current, worker_model)
     if not isinstance(criteria_outcomes, dict):
         raise ValueError('criteria_outcomes must be an object keyed by each exact acceptance criterion')
     if set(criteria_outcomes) != set(current['criteria']):

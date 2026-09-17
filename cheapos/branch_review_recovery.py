@@ -13,7 +13,7 @@ from .served_identity import normalized
 def failed_models(task):
     run=task.get('branch_run',{})
     active=run.get('active_final_review') or {}
-    if active and run.get('current_item_id') is None:
+    if active and (run.get('current_item_id') is None or active.get('kind') == 'item'):
         return run.get('final_review_recovery',{}).get(active.get('manifest_id'),{}).get('failed_models',[])
     candidate = (task.get('pending_review') or {}).get('branch_candidate_id')
     return task.get('branch_run', {}).get('review_recovery', {}).get(candidate, {}).get('failed_models', [])
