@@ -248,6 +248,30 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertFalse(report["valid"])
         self.assertTrue(any("Supersession cycle detected" in err for err in report["errors"]))
 
+    def test_duplicate_rule_id_rejected(self):
+        """Duplicate rule IDs must be rejected at catalog construction and in candidate set."""
+        rule1 = InstructionRule(
+            id="rule.dup",
+            audience=AgentAudience.CHEAPOS_INTERNAL,
+            category=InstructionCategory.WORKFLOW,
+            text="First rule",
+        )
+        rule2 = InstructionRule(
+            id="rule.dup",
+            audience=AgentAudience.CHEAPOS_INTERNAL,
+            category=InstructionCategory.WORKFLOW,
+            text="Second rule with same ID",
+        )
+        # Rejection in candidate set
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rules([rule1, rule2])
+        self.assertIn("Duplicate instruction rule ID in candidate set", str(ctx.exception))
+
+        # Rejection in catalog construction
+        with self.assertRaises(ValueError) as ctx:
+            InstructionCatalog([rule1, rule2])
+        self.assertIn("Duplicate instruction rule ID detected in catalog", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

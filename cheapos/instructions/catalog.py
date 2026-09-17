@@ -418,6 +418,11 @@ class InstructionCatalog:
     """Registry providing indexed lookup and filtering for instruction rules."""
 
     def __init__(self, rules: Sequence[InstructionRule] = RULES):
+        seen_ids = set()
+        for r in rules:
+            if r.id in seen_ids:
+                raise ValueError(f"Duplicate instruction rule ID detected in catalog: '{r.id}'")
+            seen_ids.add(r.id)
         self._rules: Dict[str, InstructionRule] = {r.id: r for r in rules}
 
     def get(self, rule_id: str) -> Optional[InstructionRule]:
