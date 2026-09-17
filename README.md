@@ -12,7 +12,7 @@
 
 # CheapoS
 
-**A little patience. A more deliberate way to spend intelligence.**
+**Your ideas should matter more than your budget.**
 
 CheapoS is an open-source coding workspace that lets an inexpensive model implement a change, runs real checks, and brings in a reviewer at checkpoints. Work on local Git projects, choose your models, set your limits, and inspect the result before it lands.
 
