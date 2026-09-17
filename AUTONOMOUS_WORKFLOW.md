@@ -268,3 +268,17 @@ Concrete defects still return to focused repair. Required checks, candidate
 validation, independent review and spending limits still apply; paging does not
 approve work or increase authority. The legacy compact-review size guard remains
 on the separate Interactive review path.
+
+## Implemented: inspect files accepted into the task copy
+
+Text inspection and existing-file edits share the snapshot's 2 MB file limit.
+A file accepted into the task copy must not disappear from search or fail an
+outline just because it exceeds the former 256 KB text-tool limit. Reads return
+at most 20,000 characters with line/column continuation, including long lines;
+outlines return at most 100 symbols with a continuation line. Full-file hashes
+still bind versioned edits to the inspected file. New-file generation and small
+edit limits remain separate and unchanged.
+
+Small deterministic cases cover large Python and JavaScript files, paged
+inspection, search, a versioned edit and undo, plus path/binary restrictions.
+They require no models, Git workflows or real-time waits.
