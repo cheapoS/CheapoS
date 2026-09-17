@@ -330,6 +330,9 @@ svg, svg * {
 .workflow-event .output { max-height: 260px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
 #chat-view .workflow-note p, #chat-view .workflow-event p { font-size: 14px; color: #b9c7bf; }
 .workflow-note { padding: 6px 0; }
+.workflow-note.workflow-message { padding: 4px 0 8px; line-height: 1.6; }
+.workflow-note.workflow-message p { margin: 4px 0; }
+.workflow-note .workflow-role, .thinking-panel .thinking-role { font-weight: 600; color: #d8e8de; margin-right: 4px; }
 .workflow-details .thinking-panel, .workflow-details .command-panel { margin: 10px 0; }
 .workflow-details .command-panel > summary { padding: 10px; }
 .workflow-details .terminal-viewport { max-height: 280px; }

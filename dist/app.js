@@ -9,13 +9,30 @@ const CheapOSChatView = (() => {
     const history=task.events||events;
     return events.filter(e=>!['model','checkpoint','permission'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error)&&!(e.kind==='generation'&&isProbe(e.detail,history)));
   }
+  function formatWorkflowMessage(roleLabel, text) {
+    let cleaned = String(text || '').trim();
+    if (cleaned.startsWith(`${roleLabel}:`)) {
+      cleaned = cleaned.slice(roleLabel.length + 1).trimStart();
+    }
+    const formatted = messageText(cleaned);
+    const roleBadge = `<strong class="workflow-role">${esc(roleLabel)}:</strong> `;
+    if (typeof formatted === 'string' && formatted.startsWith('<p>')) {
+      return `<div class="workflow-note workflow-message">${formatted.replace('<p>', `<p>${roleBadge}`)}</div>`;
+    }
+    return `<div class="workflow-note workflow-message"><p>${roleBadge}${formatted}</p></div>`;
+  }
   function detailEvent(event,thinkingOpen=false,entryReply='') {
     const d=event.detail||{};
-    if(event.kind==='generation') return thinkingMarkup(d,false,thinkingOpen);
+    if(event.kind==='generation') return thinkingMarkup(d,false,thinkingOpen,event.actor?.role||event.title);
     if(event.kind==='planning_inspection') return `<div class="workflow-note"><strong>${esc(d.error?'Project inspection could not finish':`Read ${d.path||'project context'}`)}</strong><p>${esc(d.error||`Inspection ${d.inspection} of ${d.limit} · evidence saved for the proposal`)}</p></div>`;
     if(event.kind==='assistant') {
-      if(typeof d==='string' && entryReply && (d.trim() === entryReply.trim() || entryReply.trim().includes(d.trim()))) return '';
-      return `<div class="workflow-note">${messageText(typeof d==='string'?d:'')}</div>`;
+      const text=typeof d==='string'?d:(d.message||d.content||'');
+      if(text && entryReply && (text.trim() === entryReply.trim() || entryReply.trim().includes(text.trim()))) return '';
+      if(!text.trim()) return '';
+      const roleKey=event.actor?.role||(typeof d==='object'?d.role:null);
+      const roleMap={worker:'Worker',reviewer:'Reviewer',planner:'Planner',coordinator:'Coordinator'};
+      const roleLabel=roleMap[roleKey]||(event.title&&!['Model thinking','Model output','output'].includes(event.title)?event.title:roleMap[event.role]||'Worker');
+      return formatWorkflowMessage(roleLabel, text);
     }
     if(event.kind==='checks') return commandMarkup(d,{key:d.run_id||event.id,open:!d.passed});
     if(event.kind==='tool_error') return `<section class="workflow-failure"><strong>${esc(event.title||'Action could not finish')}</strong><p>${esc(d.error||'The action did not finish. See Technical logs for the retained diagnostic.')}</p></section>`;
@@ -46,9 +63,9 @@ const CheapOSChatView = (() => {
     const events=operatorEvents(step.events,task);
     const probe=isProbe(stream,task.events||step.events);
     if(probe)stream={...stream,thinking:'',content:'',phase:'waiting'};
-    const streamLabel=probe?'Checking model connection':stream?.phase==='thinking'?'Thinking':stream?.phase==='answer'?'Writing a response':stream?.phase==='tool'?`Preparing ${String(stream.tool||'the next action').replaceAll('_',' ')}`:`Waiting for the ${role.toLowerCase()}’s response`;
+    const streamLabel=probe?'Checking model connection':stream?.phase==='thinking'?`${role}: Thinking`:stream?.phase==='answer'?`${role}: Writing a response`:stream?.phase==='tool'?`Preparing ${String(stream.tool||'the next action').replaceAll('_',' ')}`:`Waiting for the ${role.toLowerCase()}’s response`;
     const streamText=String(stream?.thinking||stream?.content||'');
-    const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" ${stream.phase?`data-phase="${esc(stream.phase)}"`:''} aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span><strong>${esc(streamLabel)}</strong><span data-work-elapsed>${esc(step.elapsed)}</span></div>${streamText?`<pre data-thinking="workflow-stream-${esc(stream.request_id||step.id)}">${esc(streamText)}</pre>`:''}${stream.thinking&&stream.content&&stream.content.trim()!==stream.thinking.trim()?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
+    const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" ${stream.phase?`data-phase="${esc(stream.phase)}"`:''} aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span><strong>${esc(streamLabel)}</strong><span data-work-elapsed>${esc(step.elapsed)}</span></div>${streamText?`<pre data-thinking="workflow-stream-${esc(stream.request_id||step.id)}">${esc(streamText)}</pre>`:''}${stream.thinking&&stream.content&&stream.content.trim()!==stream.thinking.trim()?formatWorkflowMessage(role,stream.content):''}</section>`:'';
     const liveText=live?String(task.check_stream?.output||stream?.content||stream?.thinking||'').trim():'';
     const preview=liveText?`<span class="workflow-preview">${esc((liveText.length>240?'…':'')+liveText.slice(-240))}</span>`:'';
     const title=live&&probe?'Checking model connection':liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
@@ -606,10 +623,13 @@ async function stopFromComposer() {
   catch(e){toast(e.message)}
   finally{state.stoppingStartup=false;renderComposer()}
 }
-function thinkingMarkup(detail,live=false,open=live) {
+function thinkingMarkup(detail,live=false,open=live,roleOverride='') {
   if(!detail.thinking)return '';
   const key='generation-'+detail.request_id;
-  return `<details class="thinking-panel ${live?'is-live':''}" data-event="${key}" ${open?'open':''}><summary>${icon('spark')}<strong>${detail.interrupted?'Thinking · interrupted':'Thinking'}</strong><span>${live?'Live':esc(detail.model)}</span>${icon('chevron')}</summary><div class="thinking-output" data-thinking="${key}">${esc(detail.thinking)}</div>${detail.truncated?'<p class="thinking-note">Showing the first 16,000 characters.</p>':''}</details>`;
+  const roleMap={worker:'Worker',reviewer:'Reviewer',planner:'Planner',coordinator:'Coordinator'};
+  const roleKey=detail.role||roleOverride;
+  const roleName=roleMap[roleKey]||(typeof roleOverride==='string'&&roleOverride&&!['Model thinking','Model output','output'].includes(roleOverride)?roleOverride:typeof detail.role==='string'&&detail.role?detail.role.charAt(0).toUpperCase()+detail.role.slice(1):'Worker');
+  return `<details class="thinking-panel ${live?'is-live':''}" data-event="${key}" ${open?'open':''} title="${esc(detail.model||'')}"><summary>${icon('spark')}<strong><span class="thinking-role">${esc(roleName)}:</span> Thinking${detail.interrupted?' · interrupted':''}</strong><span>${live?'Live':''}</span>${icon('chevron')}</summary><div class="thinking-output" data-thinking="${key}">${esc(detail.thinking)}</div>${detail.truncated?'<p class="thinking-note">Showing the first 16,000 characters.</p>':''}</details>`;
 }
 function rawCheckLink(check) {
   if(!check.raw_output?.bytes||!state.task)return '';
@@ -1209,7 +1229,7 @@ function bindTerminalCopy() {
 }
 function renderInspector() {
   const t=state.task,config=t&&!t.demo?t.providers:state.config;
-  const roles=['coordinator','worker','reviewer','planner'].filter(role=>!['coordinator','planner'].includes(role)||config[role]||t?.usage?.[role]?.tokens).map(role=>`<div class="role-row"><span class="role-icon ${role}-icon">${icon(role==='worker'?'code':'spark')}</span><span><span class="role-label">${role.toUpperCase()}</span><strong>${esc(t?.demo?'Scripted demo':(role==='planner'?(t?.request_metrics?.findLast(r=>r.role==='planner')?.served_model||t?.request_metrics?.findLast(r=>r.role==='planner')?.model):null)||config[role]?.model||'Choose a model')}</strong></span></div>`);
+  const roles=['coordinator','worker','reviewer','planner'].filter(role=>!['coordinator','planner'].includes(role)||config[role]||t?.usage?.[role]?.tokens||t?.request_metrics?.some(r=>r.role===role)).map(role=>`<div class="role-row"><span class="role-icon ${role}-icon">${icon(role==='worker'?'code':'spark')}</span><span><span class="role-label">${role.toUpperCase()}</span><strong>${esc(t?.demo?'Scripted demo':(role==='planner'?(t?.request_metrics?.findLast(r=>r.role==='planner')?.served_model||t?.request_metrics?.findLast(r=>r.role==='planner')?.model):null)||config[role]?.model||'Choose a model')}</strong></span></div>`);
   const intro=t?`<section class="economy-intro compact-intro"><div class="mode-badge">${icon('leaf')}Economy mode</div><p>Work, verify, then ask for a second opinion.</p></section>`:`<section class="economy-intro"><div class="economy-icon">${icon('leaf')}</div><h2>A little patience.<br>A little more in your pocket.</h2><p>Spend less on the loop.<br>Save the stronger model for review.</p><div class="mode-badge">${icon('leaf')}Economy mode</div></section>`;
   const models=`<section class="model-roles">${roles.join('<div class="role-connection"><span></span></div>')}</section>`;
   const usage=t?`<section class="usage"><div class="section-title">Compute, thoughtfully spent</div><div class="cost-total"><strong>${money(t.usage.cost)}</strong><span>${t.demo?'no model charges':'accounted session cost'}</span></div><div class="usage-table">${['coordinator','worker','reviewer','planner'].filter(role=>t.usage[role]).map(role=>`<div><span>${role==='worker'?'Worker':role==='coordinator'?'Local chat / coordinator':role==='planner'?'Planner':'Reviewer'}</span><span>${t.usage[role].tokens.toLocaleString()} <small>tokens</small></span><strong>${money(t.usage[role].cost)}</strong></div>`).join('')}</div><div class="budget-meter"><span style="width:${Math.min(100,t.limits.dollars>0?t.usage.cost/t.limits.dollars*100:0)}%"></span></div><p class="small muted">${money(t.limits.dollars)} estimated cap · ${workLimits(t).uncapped_work?'Uncapped work ∞':`${t.limits.reviewer_tokens.toLocaleString()} reviewer tokens`}</p><p class="small muted">${t.usage.uncertain_requests?`${t.usage.uncertain_requests} uncertain request(s): reservations remain counted.`:t.usage.estimated_requests?'Some costs use your configured token prices.':t.demo?'Demo usage is zero. No savings are claimed.':'Reported cost when available; configured prices otherwise.'}</p>${!taskBusy(t)&&!['approved','completed'].includes(t.status)?'<button class="text-link" id="edit-limits">Review limits →</button>':''}</section>`:'';

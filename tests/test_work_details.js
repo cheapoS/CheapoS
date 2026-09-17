@@ -120,3 +120,10 @@ test('earlier recorded thinking panel stays collapsed when a live stream is acti
  assert.match(html,/class="workflow-stream"[^>]*data-phase="thinking"/);
  assert.match(html,/Active live thinking/);
 });
+test('thinking panels and workflow assistant messages attribute roles clearly in chat',()=>{
+ const thinkingEvent=event('gen-1','generation','Model thinking',{request_id:'g1',role:'planner',thinking:'Inspecting the files.'});
+ const assistantEvent={id:'msg-1',kind:'assistant',title:'Planner',actor:{role:'planner'},detail:'I planned the following improvement.'};
+ const html=render([thinkingEvent,assistantEvent]);
+ assert.match(html,/<span class="thinking-role">Planner:<\/span>\s*Thinking/);
+ assert.match(html,/<strong class="workflow-role">Planner:<\/strong>\s*I planned the following improvement\./);
+});
