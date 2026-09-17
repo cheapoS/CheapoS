@@ -114,4 +114,7 @@ provider calls, or deliberate waits.
 An isolated localhost server with synthetic records returned the expected
 reported/reserved split through the real task API. Chrome blocked the temporary
 preview with `ERR_BLOCKED_BY_CLIENT`, so a visual browser check of that fixture
-could not be completed. No live inference or retry trial was performed.
+could not be completed. After the idle app was restarted, a read-only inspection
+of the existing saved session verified the header, role totals, and expanded
+three-request breakdown in the real UI. Its task remained paused. No live
+inference or retry trial was performed.
