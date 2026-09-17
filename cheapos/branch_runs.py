@@ -295,6 +295,9 @@ def task_status(run):
 
 def recover_restart(run, now=None):
     """Never dispatch at startup or renew allowances; preserve unknown records."""
+    startup=run.get('startup') or {}
+    if compatibility(run)['supported'] and startup.get('status') == 'running':
+        startup.update(status='paused', error='Startup was interrupted by a server restart. Resume saved startup when ready.')
     if compatibility(run)['supported'] and run.get('status') in {'running', 'finalizing', 'merging'}:
         old = run['status']
         run['status'] = 'paused'

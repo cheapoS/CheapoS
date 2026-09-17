@@ -213,6 +213,18 @@ test('accepted plan stays visibly active before any worker output and then yield
  reply=build(t,at).filter(e=>e.kind==='assistant').at(-1);assert.equal(reply.live,false);assert.ok(reply.steps.every(s=>!s.live));
 });
 
+test('saved startup stages stay in the active chat operation after acknowledgement and refresh',()=>{
+ const t=branchTask({updated_at:stamp,branch_run:{id:'run1',authorization_ref:'auth',status:'awaiting_authorization',current_item_id:null,items:[],startup:{status:'running',stage:'verifying_snapshot',label:'Verifying task copy',started_at:stamp}},events:[event(1,'branch_startup','Verifying task copy',{stage:'verifying_snapshot'})]});
+ for(const [stage,label] of [['verifying_snapshot','Verifying task copy'],['preparing_branch','Preparing branch'],['selecting_worker','Selecting worker']]){
+  Object.assign(t.branch_run.startup,{stage,label});t.updated_at=new Date(Date.parse(stamp)+1000).toISOString();
+  const clock=require('../dist/guidance.js').progress(t,Date.parse(stamp)+2000);assert.equal(clock.elapsed,'2s');assert.equal(clock.title,label);
+  const reply=build(JSON.parse(JSON.stringify(t)),Date.parse(stamp)+2000).filter(e=>e.kind==='assistant').at(-1);
+  assert.equal(reply.operation,'run');assert.equal(reply.live,true);assert.match(reply.intro,/approval is saved/);assert.equal(reply.steps.at(-1).title,label);assert.equal(reply.steps.at(-1).elapsed,'2s');
+ }
+ t.status='paused';t.branch_run.startup.status='paused';
+ assert.equal(replies(t).at(-1).live,false);
+});
+
 test('automatic reviewer guidance appears inside the review with inspectable evidence and no false approval',()=>{
  const t=branchTask({planning_request:null,status:'reviewing',branch_run:{id:'run1',authorization_ref:'auth',status:'running',current_item_id:'one',items:[{id:'one',title:'Review report',status:'reviewing'}]},events:[
   {...event(1,'model','Requesting reviewer: reviewer-model',{}),item_id:'one'},

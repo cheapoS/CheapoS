@@ -194,6 +194,34 @@ def validate_owned(plan, expected_tip=None):
     return True
 
 
+def _snapshot_blobs(plan):
+    """Read exact manifest objects in one Git process, including binary blobs."""
+    entries = plan['entries']
+    if not entries:
+        return []
+    if len(entries) > MAX_FILES or sum(entry['size'] for entry in entries) > MAX_SNAPSHOT_BYTES:
+        raise ValueError('Repository snapshot is too large')
+    if any(not re.fullmatch(r'[a-f0-9]{40,64}', entry['oid']) for entry in entries):
+        raise ValueError('Invalid snapshot object identity')
+    data = source_git(plan['source'], 'cat-file', '--batch',
+                      input=''.join(entry['oid'] + '\n' for entry in entries), binary=True)
+    blobs, offset = [], 0
+    for entry in entries:
+        boundary = data.find(b'\n', offset)
+        header = data[offset:boundary].split() if boundary >= 0 else []
+        expected = [entry['oid'].encode(), b'blob', str(entry['size']).encode()]
+        if header != expected:
+            raise ValueError('Snapshot object is missing or changed')
+        start, end = boundary + 1, boundary + 1 + entry['size']
+        if len(data) <= end or data[end:end+1] != b'\n':
+            raise ValueError('Snapshot object response was incomplete')
+        blobs.append(memoryview(data)[start:end])
+        offset = end + 1
+    if offset != len(data):
+        raise ValueError('Unexpected snapshot object data')
+    return blobs
+
+
 def _verify_snapshot(plan):
     destination = Path(plan['workspace'])
     if (_identity(destination) != plan.get('workspace_identity')
@@ -205,9 +233,10 @@ def _verify_snapshot(plan):
     if (git(destination, 'status', '--porcelain', '--untracked-files=all').strip()
             or git(destination, 'ls-files', '--others', '--ignored', '--exclude-standard').strip()):
         raise ValueError('Private snapshot is no longer clean')
-    for entry in plan['entries']:
-        path = Workspace(destination).path(entry['path'])
-        if (not path.is_file() or path.read_bytes() != source_git(plan['source'], 'cat-file', 'blob', entry['oid'], binary=True)
+    workspace = Workspace(destination)
+    for entry, blob in zip(plan['entries'], _snapshot_blobs(plan)):
+        path = workspace.path(entry['path'])
+        if (not path.is_file() or path.read_bytes() != blob
                 or bool(path.stat().st_mode & 0o111) != (entry['mode'] == '100755')):
             raise ValueError('Private snapshot contents changed')
 
@@ -263,12 +292,14 @@ def materialize(prepared, persist_intent):
     return plan
 
 
-def create(prepared, persist_intent):
+def create(prepared, persist_intent, progress=None):
     plan = copy.deepcopy(prepared)
+    if progress: progress('verifying_snapshot')
     _revalidate(plan)
     source = plan['source']
     if plan.get('workspace_identity') and plan['stage'] != 'ready':
         _verify_snapshot(plan)
+    if progress: progress('preparing_branch')
     if plan['stage'] == 'prepared':
         entries, skipped = _manifest(source, plan['base_sha'])
         if entries != plan['entries'] or skipped != plan['skipped']:

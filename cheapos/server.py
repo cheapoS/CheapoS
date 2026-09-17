@@ -326,7 +326,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 elif action == "metadata":
                     result = public_task(engine.update_task_metadata(task_id, values))
                 elif action == "branch-start":
-                    result = public_task(engine.branch.authorize(task_id, values))
+                    result = public_task(engine.branch.authorize(task_id, values, background=True))
                 elif action in {"branch-final-preview", "branch-final-diff", "branch-merge", "branch-revise", "branch-final-recheck", "branch-update"}:
                     from . import branch_completion
                     operation = {"branch-final-preview":"preview", "branch-final-diff":"diff", "branch-merge":"merge", "branch-revise":"revise", "branch-final-recheck":"recheck", "branch-update":"update_branch"}[action]

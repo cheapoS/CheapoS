@@ -3,6 +3,7 @@ import http.client
 import json
 import threading
 import unittest
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 from cheapos.server import LocalServer
@@ -15,6 +16,7 @@ class BranchHTTPTests(unittest.TestCase):
     def setUp(self):
         start_fixtures.BranchStartTests.setUp(self)
         self.engine.startup.busy = lambda: False
+        self.engine.branch.execute = Mock()  # Exercise real startup, never dispatch a model.
         self.server = LocalServer(('127.0.0.1', 0), Path(__file__).resolve().parent.parent / 'dist', self.engine)
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={'poll_interval': .01}, daemon=True)
         self.thread.start()
@@ -60,10 +62,30 @@ class BranchHTTPTests(unittest.TestCase):
         self.assertEqual(self.engine.runtimes, {})
         endpoint = '/api/tasks/' + proposal['task_id'] + '/branch-start'
         decision = {'proposal_id':proposal['proposal_id'], 'approved':True,'full_suite_approved':True}
-        status, first = self.post(endpoint, decision)
-        self.assertEqual(status, 200, first)
-        status, second = self.post(endpoint, decision)
-        self.assertEqual(status, 200, second)
+        entered, release = threading.Event(), threading.Event()
+        validate = self.engine.branch._validate_start_inputs
+        def blocked_validation(task):
+            entered.set()
+            if not release.wait(10): raise AssertionError('Startup gate was not released')
+            validate(task)
+        with patch.object(self.engine.branch, '_validate_start_inputs', side_effect=blocked_validation):
+            try:
+                status, first = self.post(endpoint, decision)
+                self.assertEqual(status, 200, first)
+                self.assertEqual(first['branch_run']['startup']['stage'], 'accepted')
+                self.assertTrue(entered.wait(2))
+                self.assertIsNone(_tip(self.source, self.values['feature_ref']))
+                status, live = self.request('GET', '/api/tasks/' + proposal['task_id'])
+                self.assertEqual(status, 200)
+                self.assertEqual(live['branch_run']['startup']['stage'], 'verifying_snapshot')
+                status, second = self.post(endpoint, decision)
+                self.assertEqual(status, 200, second)
+                self.engine.branch.execute.assert_not_called()
+            finally:
+                release.set()
+                self.engine.runtimes[proposal['task_id']].thread.join(15)
+        self.assertFalse(self.engine.runtimes[proposal['task_id']].thread.is_alive())
+        self.engine.branch.execute.assert_called_once()
         self.assertEqual(first['branch_run']['authorization']['id'], second['branch_run']['authorization']['id'])
         self.assertEqual(len(self.engine.store.list()), 1)
         self.assertEqual(_tip(self.source,self.values['feature_ref']), first['branch_run']['base_sha'])
@@ -84,7 +106,11 @@ class BranchHTTPTests(unittest.TestCase):
         (self.source/'hello.py').write_text('value=2\n'); git(self.source,'add','.'); git(self.source,'commit','-qm','changed base')
         decision={'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True}
         status, _=self.post('/api/tasks/'+proposal['task_id']+'/branch-start',decision)
-        self.assertEqual(status,400)
+        self.assertEqual(status,200)  # Approval saved; stale base still blocks execution.
+        self.engine.runtimes[proposal['task_id']].thread.join(15)
+        saved = self.engine.store.get(proposal['task_id'])
+        self.assertEqual(saved['branch_run']['startup']['status'], 'failed')
+        self.engine.branch.execute.assert_not_called()
         self.assertIsNone(_tip(self.source,self.values['feature_ref']))
         proposal=self.proposal()
         self.engine.branch.proposals.proposals[proposal['proposal_id']]['expires']=0

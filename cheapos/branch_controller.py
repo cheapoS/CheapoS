@@ -208,7 +208,7 @@ class BranchController:
         workspace = run['authorization_workspace'] if run.get('authorization_workspace') is not None else (run.get('workspace_mapping') or {})
         return contract_builder(authorization_run(run), workspace, policy, run.get('check_scope', []))
 
-    def authorize(self, task_id, values):
+    def authorize(self, task_id, values, *, background=False):
         with self.engine.lock:
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             if set(values)-{'proposal_id','approved','full_suite_approved'}: raise ValueError('Start accepts only the inspected proposal and operator decision')
@@ -220,50 +220,75 @@ class BranchController:
                 # A repeated same-proposal action returns the existing run, never starts another worker.
                 auth=self.proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),self.contract(task))
                 if auth['id']!=run['authorization']['id']: raise ValueError('A different authorization already owns this run')
+                if runtime and runtime.thread and runtime.thread.is_alive():
+                    return task
                 if run['status'] == 'awaiting_authorization':
+                    if background:
+                        from .branch_startup import start
+                        return start(self,task)
                     return self._finish_start(task)
                 return task
             from .test_policy import approve
             approve(task,values.get('full_suite_approved'))
-            mapping=run['workspace_mapping']
-            if work.inspect_source(mapping['source'])!={k:mapping[k] for k in ('source','source_identity','common_identity')}:
-                raise ValueError('Project changed; prepare a fresh proposal')
-            if work._tip(mapping['source'],mapping['base_ref'])!=mapping['base_sha']:
-                raise ValueError('Base changed; prepare a fresh proposal')
-            work._available(mapping['source'],mapping['feature_ref'],mapping['target_ref'],mapping['protected_refs'])
-            if work._tip(mapping['source'],mapping['feature_ref']): raise ValueError('Feature branch now exists')
-            for scope in run['check_scope']:
-                if self.scopes.prepare(task,scope['command'])!=scope: raise ValueError('Check scope changed; prepare a fresh proposal')
-            from .unattended_setup import require_ready
-            require_ready(task,run['check_scope'])
+            if not background: self._validate_start_inputs(task)
             auth=self.proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),self.contract(task))
             run['authorization']=auth;run['authorization_ref']=auth['id']
             self.engine.store.save(task)
+            if background:
+                from .branch_startup import start
+                return start(self,task)
             return self._finish_start(task)
 
-    def _finish_start(self, task):
+    def _validate_start_inputs(self, task):
+        run=task['branch_run']
+        mapping=run['workspace_mapping']
+        if work.inspect_source(mapping['source'])!={k:mapping[k] for k in ('source','source_identity','common_identity')}:
+            raise ValueError('Project changed; prepare a fresh proposal')
+        if work._tip(mapping['source'],mapping['base_ref'])!=mapping['base_sha']:
+            raise ValueError('Base changed; prepare a fresh proposal')
+        work._available(mapping['source'],mapping['feature_ref'],mapping['target_ref'],mapping['protected_refs'])
+        if work._tip(mapping['source'],mapping['feature_ref']): raise ValueError('Feature branch now exists')
+        for scope in run['check_scope']:
+            if self.scopes.prepare(task,scope['command'])!=scope: raise ValueError('Check scope changed; prepare a fresh proposal')
+        from .unattended_setup import require_ready
+        require_ready(task,run['check_scope'])
+
+    def _finish_start(self, task, runtime=None):
         """Retry only journaled setup under the same inspected authorization."""
-        self.engine.admission.require('unattended', task['id'])
+        if runtime is None: self.engine.admission.require('unattended', task['id'])
+        from .branch_startup import progress
+        notify = (lambda stage: progress(self,runtime,stage)) if runtime else None
         run=task['branch_run'];self.validate_authority(task,run)
+        if notify:
+            notify('verifying_snapshot')
+            if run['workspace_mapping']['stage']=='prepared': self._validate_start_inputs(task)
         for scope in run['check_scope']:
             if self.scopes.prepare(task,scope['command'])!=scope:
                 raise ValueError('Check scope changed; inspect task setup before continuing')
         from .unattended_setup import require_ready
         require_ready(task,run['check_scope'])
         def save_mapping(value):
-            run['workspace_mapping']=value
-            self.engine.store.save(task)
+            with self.engine.lock:
+                run['workspace_mapping']=value
+                self.engine.store.save(task)
         try:
-            mapping=work.create(run['workspace_mapping'],save_mapping)
+            mapping=work.create(run['workspace_mapping'],save_mapping, **({'progress':notify} if notify else {}))
             run['workspace_mapping']=mapping;run['expected_feature_tip']=mapping['feature_tip']
+            if notify: notify('preparing_permissions')
             for scope in run['check_scope']: self.scopes.consent(task,scope)
         except (OSError,ValueError) as error:
             task['error']=branch_pause.classify(error,task,stage='planning')['explanation']
             self.engine.store.save(task)
             raise
-        state.transition(run,'running')
-        task['status']='running';task['error']=None
-        self.engine.store.save(task)
+        with self.engine.lock:
+            if notify: notify('selecting_worker')
+            state.transition(run,'running')
+            task['status']='running';task['error']=None
+            branch_pause.clear(run)
+            self.engine.store.save(task)
+        if runtime:
+            self._launch(task['id'], runtime=runtime)
+            return task
         return self.launch(task['id'])
 
     def validate_authority(self, task, run):
@@ -297,13 +322,14 @@ class BranchController:
                     self.engine.store.save(task)
             raise
 
-    def _launch(self, task_id):
+    def _launch(self, task_id, runtime=None):
         from .engine import Runtime
         import threading
         with self.engine.lock:
             self.engine.require_active_task(task_id)
-            self.engine.admission.require('unattended', task_id)
-            task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
+            if runtime is None: self.engine.admission.require('unattended', task_id)
+            elif runtime.stop.is_set(): raise InterruptedError('Startup paused by you')
+            task=runtime.task if runtime else self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             # Reconcile exact journaled commits before limits, grants or new work.
             while run['pending_operations']:
                 item=next(i for i in run['items'] if i['id']==run['pending_operations'][0]['item_id'])
@@ -318,15 +344,19 @@ class BranchController:
             if run['status'] not in {'paused','blocked','running','finalizing'}:
                 raise ValueError('This run is not awaiting execution')
             if run['status'] in {'paused','blocked'}:state.transition(run,'running')
-            runtime=Runtime(task)
+            starting = runtime is not None
+            runtime=runtime or Runtime(task)
             runtime.branch_authority=lambda:self.validate_authority(task,run)
             task.pop('operator_continue',None)
             task.update(status='running',route_resume_on_start=False,error=None,error_code=None,stream=None,check_stream=None,pending_approval=None)
+            if run.get('startup'): run['startup']['status']='complete'
             self.engine.store.save(task)
             self.engine.runtimes[task_id]=runtime
-            runtime.thread=threading.Thread(target=self.execute,args=(runtime,),daemon=True)
-            runtime.thread.start()
-            return self.engine.store.get(task_id)
+            if not starting:
+                runtime.thread=threading.Thread(target=self.execute,args=(runtime,),daemon=True)
+                runtime.thread.start()
+                return self.engine.store.get(task_id)
+        self.execute(runtime)
 
     def commit_item(self, runtime, item):
         from . import branch_commits
