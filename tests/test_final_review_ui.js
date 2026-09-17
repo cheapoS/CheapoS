@@ -66,13 +66,13 @@ test('actual preview loader displays progress before awaiting the API and ignore
 test('app view switching retains this task’s review DOM and discards another task’s preview',()=>{
  const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
  const snippet=source.slice(source.indexOf('function renderView()'),source.indexOf('function eventDetail('));
- const plan={id:'plan-view',dataset:{task:'a'},innerHTML:'retained review',classList:{toggle(){}},setAttribute(){}},chat={...plan,id:'chat-view',dataset:{},innerHTML:'chat'};
- let renders=0;const state={view:'chat',task:{id:'a'}},context={state,CheapOSBranchUI:{savedPlan:()=>true},$:()=>({hidden:false}),$$:selector=>selector==='.view'?[chat,plan]:[],renderChat(){},bindTerminalCopy(){},branchUI:{renderPlan:()=>renders++}};
+ const plan={id:'plan-view',dataset:{task:'a'},innerHTML:'retained review',classList:{toggle(){}},setAttribute(){}},chat={...plan,id:'chat-view',dataset:{},innerHTML:'chat'},changes={...plan,id:'changes-view',dataset:{task:'a'},innerHTML:'retained diff'};
+ let renders=0;const state={view:'chat',task:{id:'a'}},context={state,CheapOSBranchUI:{savedPlan:()=>true},$:()=>({hidden:false}),$$:selector=>selector==='.view'?[chat,plan,changes]:[],renderChat(){},bindTerminalCopy(){},branchUI:{renderPlan:()=>renders++}};
  // Optional history-banner lookup must return no existing node.
  context.$=selector=>selector.includes('view-history-notice')?null:{hidden:false};vm.createContext(context);vm.runInContext(snippet,context);
- context.renderView();assert.equal(plan.innerHTML,'retained review');
- state.view='plan';context.renderView();assert.equal(plan.innerHTML,'retained review');assert.equal(renders,1);
- state.view='chat';state.task={id:'b'};context.renderView();assert.equal(plan.innerHTML,'');assert.equal(plan.dataset.task,undefined);
+ context.renderView();assert.equal(plan.innerHTML,'retained review');assert.equal(changes.innerHTML,'retained diff');
+ state.view='plan';context.renderView();assert.equal(plan.innerHTML,'retained review');assert.equal(changes.innerHTML,'retained diff');assert.equal(renders,1);
+ state.view='chat';state.task={id:'b'};context.renderView();assert.equal(plan.innerHTML,'');assert.equal(plan.dataset.task,undefined);assert.equal(changes.innerHTML,'');assert.equal(changes.dataset.task,undefined);
 });
 
 test('renderSidebar does not attach task click handler to plan-view container',()=>{
@@ -140,4 +140,57 @@ test('dense replacements expose deleted characters without truncation',()=>{
  assert.match(html,/review-inline-change/);
  assert.equal((html.match(/sendChat/g)||[]).length,50);
  assert.match(ui.reviewDiffMarkup(ui.reviewDiffs(text)[0],true),/sendChat/);
+});
+
+function diffElements(){
+ const nodes=new Map();
+ const node=()=>({value:'',innerHTML:'',textContent:'',hidden:false,disabled:false,scrollTop:0,
+  classList:{toggle(){return true;}},setAttribute(){},focus(){},scrollIntoView(){},querySelectorAll(){return [];},querySelector(){return null;}});
+ return {isConnected:true,classList:{toggle(){return true;}},querySelector(s){if(!nodes.has(s))nodes.set(s,node());return nodes.get(s);}};
+}
+const reviewTask={id:'task',branch_run:{status:'ready_for_merge'}};
+const reviewPreview={preview_id:'inspected',merge_available:true,manifest:{id:'manifest',files:[{path:'main.py',status:'M'}]},diff:patch,next_cursor:null,diff_length:Array.from(patch).length};
+test('Changes mounts a complete first-response diff without requiring another page',()=>{
+ const d=diffElements();let calls=0;
+ const mounted=ui.mountFinalDiff(d,reviewTask,reviewPreview,()=>{calls++;throw Error('No page should be fetched');});
+ assert.match(d.querySelector('.review-diff-viewport').innerHTML,/review-diff-line add/);
+ assert.match(d.querySelector('.review-diff-viewport').innerHTML,/new/);
+ assert.equal(d.querySelector('[data-merge]').disabled,false);assert.equal(calls,0);
+ d.querySelector('[data-viewed]').onclick();assert.equal(mounted.viewed.size,1);
+ assert.equal(d.querySelector('[data-review-progress]').textContent,'1 of 1 files reviewed');
+ d.querySelector('[data-evidence]').onclick({currentTarget:{setAttribute(){}}});
+ assert.equal(d.querySelector('.review-evidence').hidden,false);assert.equal(d.querySelector('.review-workspace').hidden,true);
+});
+test('paged review keeps merge disabled through failure and a blocker in the recovered page',async()=>{
+ const d=diffElements(),cut=40;let rejectPage,resolvePage;
+ const mounted=ui.mountFinalDiff(d,reviewTask,{...reviewPreview,diff:patch.slice(0,cut),next_cursor:cut},()=>new Promise((resolve,reject)=>{resolvePage=resolve;rejectPage=reject;}));
+ assert.equal(d.querySelector('[data-merge]').disabled,true);
+ rejectPage(Error('Temporary connection failure'));await new Promise(setImmediate);
+ assert.match(d.querySelector('.branch-error').textContent,/Temporary connection/);assert.equal(d.querySelector('[data-retry-diff]').hidden,false);
+ d.querySelector('[data-retry-diff]').onclick();
+ resolvePage({offset:cut,total:patch.length,manifest_id:'manifest',diff:patch.slice(cut),next_cursor:null,blocker:'Target changed'});await new Promise(setImmediate);
+ assert.equal(mounted.state.get().complete,true);assert.match(d.querySelector('.review-diff-viewport').innerHTML,/review-diff-line add/);
+ assert.equal(d.querySelector('[data-merge]').disabled,true);assert.equal(d.querySelector('.review-blocker').textContent,'Target changed');
+});
+test('Plan never fetches or mounts a diff; every review entry uses Changes and reuses its current preview',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/branch_ui.js'),'utf8');
+ const snippet=source.slice(source.indexOf(' function renderPlan(task)'),source.indexOf(' async function loadFinal(task,slot)'));
+ const content={},link={},plan={dataset:{},querySelector:s=>s==='[data-plan-content]'?content:link},changes={dataset:{},classList:{remove(){}}};
+ let loaded=0,navigated=0;const context={document:{querySelector:s=>s==='#plan-view'?plan:changes},planMarkup:()=>'<article>Approved scope</article>',options:{showChanges:()=>navigated++},loadFinal:(t,p)=>{assert.equal(p,changes);loaded++;}};
+ vm.runInNewContext(snippet,context);
+ const t={id:'a',branch_run:{status:'ready_for_merge',authorization_ref:'auth',readiness:{id:'r1'},expected_feature_tip:'tip'}};
+ context.renderPlan(t);assert.equal(loaded,0);assert.doesNotMatch(plan.innerHTML,/data-review-slot|Jump to results/);
+ link.onclick();assert.equal(navigated,1);
+ context.renderChanges(t);context.renderPlan(t);context.renderChanges(t);assert.equal(loaded,1);
+ t.branch_run.readiness.id='r2';context.renderChanges(t);assert.equal(loaded,2);
+});
+
+test('interactive chat sends approval and deferred review to Changes without a second diff',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
+ const snippet=source.slice(source.indexOf('function commitReviewLink(task)'),source.indexOf('function commitDecisionMarkup(task)'));
+ const context={CheapOSGuide:{commitDeferred:task=>Boolean(task.deferred)}};vm.createContext(context);vm.runInContext(snippet,context);
+ for(const task of [{},{deferred:true},{commit_pending:true}]){
+  const html=context.commitReviewLink(task);assert.match(html,/data-chat-action="changes"/);assert.match(html,/Review changes/);assert.doesNotMatch(html,/<form|<pre|data-commit-action/);
+ }
+ assert.match(source,/else if\(CheapOSGuide.canCommit\(task\)\)decision=commitReviewLink\(task\)/);
 });

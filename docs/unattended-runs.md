@@ -64,7 +64,7 @@ Final check failures and reviewer corrections can produce at most three bounded 
 
 Final review covers the cumulative diff, every requirement, all item receipts, and final integration checks. Large reviews use explicit chunk coverage; oversized or incomplete evidence cannot become a passing review.
 
-Open **Plan & review** to compare results with the approved plan and acceptance criteria at the top. **Inspect cumulative changes** takes you straight to the results below it, with immediate loading feedback while the saved preview is prepared. Opening this view does not rerun tests.
+Open **Changes** to inspect the cumulative diff, saved verification evidence, and merge controls. **Review changes** in Chat opens this same workspace, with immediate loading feedback while the saved preview is prepared. Opening it does not rerun tests. **Plan** contains only the approved scope, acceptance criteria, and item progress; **View plan** lets you consult it and return to Changes without losing your place. Interactive patch reviews also live in Changes, with their own approval to commit.
 
 Choose a file from the searchable list to read its colored diff with old/new line numbers. **Wrap lines** avoids horizontal scrolling; **Raw patch** shows the original Git patch. Optional **Mark reviewed** controls track your place in the current preview. File selection, scroll position, and marks survive switching tabs; refreshing the preview or opening another task starts a fresh checklist. The check/review summary opens saved commands, results, reviewer feedback, and exact revisions.
 

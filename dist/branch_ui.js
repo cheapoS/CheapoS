@@ -244,7 +244,7 @@ function mount(options){
  const controls=options.controls||document.querySelector('.composer-controls'),input=options.input||document.querySelector('#chat-input');
  if(!controls||!input)throw new Error('Branch UI needs the chat composer');
  const storageKey='cheapos-branch-drafts-v1';let drafts={};try{drafts=JSON.parse(localStorage.getItem(storageKey)||'{}');if(!drafts||typeof drafts!=='object')drafts={};}catch(_){}
- let currentKey=null,busy=false,busySelection=null,interactiveOnce=false,proposal=null,finalPreview=null,summaryHTML='',activeDialog=null,startState=null;const detailStates=new Map();
+ let currentKey=null,busy=false,busySelection=null,interactiveOnce=false,proposal=null,summaryHTML='',activeDialog=null,startState=null;const detailStates=new Map();
  const group=document.createElement('div');group.className='branch-mode-control';
  group.innerHTML='<label>Work mode <select aria-label="Work mode"><option value="interactive">Interactive</option><option value="unattended">Unattended</option></select></label>';
  controls.prepend(group);const selector=group.querySelector('select');
@@ -252,7 +252,7 @@ function mount(options){
  input.after(documentRow);const documentInput=documentRow.querySelector('input');
  const key=()=>getState().task?.id||getState().project?.path||'new';
  function save(){drafts[key()]={mode:selector.value,document:documentInput.value,prompt:input.value,overrides:Object.fromEntries([...documentRow.querySelectorAll('[data-planning]')].map(el=>[el.dataset.planning,el.type==='checkbox'?el.checked:el.value]))};try{localStorage.setItem(storageKey,JSON.stringify(drafts));}catch(_){} }
- function sync(){const next=key();if(next!==currentKey){currentKey=next;const draft=drafts[next]||{};selector.value=draft.mode==='unattended'?'unattended':'interactive';documentInput.value=draft.document||'';for(const el of documentRow.querySelectorAll('[data-planning]')){const value=draft.overrides?.[el.dataset.planning];if(el.type==='checkbox')el.checked=value===true;else el.value=value||'';}if(!input.value&&draft.prompt)input.value=draft.prompt;finalPreview=null;summaryHTML='';}const run=getState().task?.branch_run;selector.disabled=hasRun(getState().task);if(selector.disabled)selector.value='unattended';documentRow.hidden=selector.value!=='unattended'||selector.disabled;}
+ function sync(){const next=key();if(next!==currentKey){currentKey=next;const draft=drafts[next]||{};selector.value=draft.mode==='unattended'?'unattended':'interactive';documentInput.value=draft.document||'';for(const el of documentRow.querySelectorAll('[data-planning]')){const value=draft.overrides?.[el.dataset.planning];if(el.type==='checkbox')el.checked=value===true;else el.value=value||'';}if(!input.value&&draft.prompt)input.value=draft.prompt;summaryHTML='';}const run=getState().task?.branch_run;selector.disabled=hasRun(getState().task);if(selector.disabled)selector.value='unattended';documentRow.hidden=selector.value!=='unattended'||selector.disabled;}
  selector.onchange=()=>{save();sync();options.onDraftChange?.();};documentInput.oninput=()=>{save();options.onDraftChange?.();};input.addEventListener('input',save);for(const el of documentRow.querySelectorAll('[data-planning]'))el.addEventListener('input',save);
  function dialog(title,body){const previous=document.activeElement,d=document.createElement('dialog');d.className='branch-dialog modal'+(['Review & start','Inspect revision work'].includes(title)?' planner-dialog':'');d.innerHTML=`<div class="branch-dialog-heading"><h2>${escape(title)}</h2><button type="button" data-close aria-label="Close">×</button></div>${body}<p class="branch-error" role="alert"></p>`;document.body.append(d);d.querySelector('[data-close]').onclick=()=>d.close();d.addEventListener('close',()=>{d.remove();if(activeDialog===d)activeDialog=null;previous?.isConnected&&previous.focus();});d.showModal();activeDialog=d;return d;}
  function error(d,e){const node=d.querySelector('.branch-error');if(node){node.textContent=e.message||String(e);node.tabIndex=-1;node.focus();}else toast(e.message||String(e));}
@@ -435,28 +435,28 @@ function mount(options){
     }
     return;
   }
-  if(panel.dataset.task!==task.id||!panel.querySelector('[data-plan-content]')){panel.dataset.task=task.id;panel.innerHTML='<div class="plan-review-heading"><div><h2>Plan &amp; review</h2><p>Compare the completed work with the plan you approved.</p></div><button type="button" data-jump-changes class="primary-button">Review changes in Changes tab →</button><button type="button" data-jump-review>Jump to results ↓</button></div><details class="plan-contract" data-event="review-plan" open><summary>Plan and acceptance criteria</summary><div data-plan-content></div></details><div data-review-slot></div>';panel.querySelector('[data-jump-review]').onclick=()=>panel.querySelector('[data-review-slot]').scrollIntoView({block:'start',behavior:'instant'});panel.querySelector('[data-jump-changes]').onclick=()=>options.showChanges?options.showChanges():panel.querySelector('[data-jump-review]').click();}
+  if(panel.dataset.task!==task.id||!panel.querySelector('[data-plan-content]')){panel.dataset.task=task.id;panel.innerHTML='<div class="plan-review-heading"><div><h2>Plan</h2><p>Follow the approved scope, acceptance criteria, and item progress.</p></div><button type="button" data-jump-changes class="primary-button">Review changes →</button></div><div data-plan-content></div>';panel.querySelector('[data-jump-changes]').onclick=()=>showFinal(task);}
   const plan=panel.querySelector('[data-plan-content]'),markup=planMarkup(task);if(plan._markup!==markup){plan._markup=markup;plan.innerHTML=markup;}
-  const slot=panel.querySelector('[data-review-slot]'),run=task.branch_run;
-  const signature=JSON.stringify([run?.readiness?.id,run?.status,run?.expected_feature_tip,task.archived_at,task.trashed_at]);
-  if(slot.dataset.signature===signature)return;slot.dataset.signature=signature;
-  if(!run?.readiness){slot.innerHTML='<section class="review-pending"><h3>Results will appear here</h3><p>The cumulative changes, verification evidence, and merge decision will be available after final review finishes. You can follow current work in Chat.</p></section>';return;}
-  loadFinal(task,slot);
  }
- function showFinal(task){
-  if(options.showChanges){options.showChanges();return;}
-  options.showPlan?.();renderPlan(task);
-  document.querySelector('#plan-view [data-review-slot]')?.scrollIntoView({block:'start',behavior:'instant'});
+ function showFinal(task){options.showChanges?.();}
+ function renderChanges(task){
+  const panel=document.querySelector('#changes-view');if(!panel)return;
+  panel.classList.remove('changes-expanded','diff-wrap');panel.onkeydown=null;
+  const run=task.branch_run,signature=JSON.stringify([run?.readiness?.id,run?.status,run?.expected_feature_tip,task.archived_at,task.trashed_at]);
+  if(panel.dataset.task===task.id&&panel.dataset.signature===signature)return;
+  panel.dataset.task=task.id;panel.dataset.signature=signature;
+  if(!run?.readiness){panel.innerHTML='<div class="empty-state"><h2>Cumulative review is not ready yet.</h2><p>The saved branch diff and merge controls will appear here after final checks and independent review. Follow current work in Chat or item progress in Plan.</p></div>';return;}
+  loadFinal(task,panel);
  }
  async function loadFinal(task,slot){
   // Render before awaiting the expensive, server-owned readiness validation.
   const d=document.createElement('section');d.className='final-review';d.setAttribute('aria-label','Review branch changes');d.setAttribute('aria-busy','true');
-  d.innerHTML='<div class="review-heading"><h2>Review results</h2><button type="button" data-open-changes>Open in Changes view ↗</button><button type="button" data-back-plan>Back to plan ↑</button></div><div data-final-content class="review-loading" role="status"><span class="spinner" aria-hidden="true"></span><h3>Preparing your review…</h3><p>Loading the saved changes and checking whether the target branch can accept them.</p><p>You can keep using the other tabs. No merge has started.</p></div><p class="branch-error" role="alert"></p>';
-  slot.replaceChildren(d);d.querySelector('[data-back-plan]').onclick=()=>{const plan=slot.closest('#plan-view')?.querySelector('.plan-contract');if(plan){plan.open=true;plan.scrollIntoView({block:'start',behavior:'instant'});}};d.querySelector('[data-open-changes]').onclick=()=>options.showChanges?.();let preview;
+  d.innerHTML='<div class="review-heading"><div><h2>Review the work.</h2><p>Cumulative branch changes, verification, and your merge decision.</p></div><button type="button" data-back-plan>View plan</button></div><div data-final-content class="review-loading" role="status"><span class="spinner" aria-hidden="true"></span><h3>Preparing your review…</h3><p>Loading the saved changes and checking whether the target branch can accept them.</p><p>You can keep using the other tabs. No merge has started.</p></div><p class="branch-error" role="alert"></p>';
+  slot.replaceChildren(d);d.querySelector('[data-back-plan]').onclick=()=>options.showPlan?.();let preview;
   try{preview=await api('/tasks/'+task.id+'/branch-final-preview',{});}
   catch(e){if(d.isConnected){d.removeAttribute('aria-busy');d.querySelector('[data-final-content]').innerHTML='<h3>Could not load the review</h3><p>The saved branch has not been merged.</p><button type="button" data-retry-preview>Try again</button>';error(d,e);d.querySelector('[data-retry-preview]').onclick=()=>loadFinal(task,slot);}return;}
   if(!d.isConnected)return;
-  finalPreview=preview;d.removeAttribute('aria-busy');d.querySelector('[data-final-content]').remove();d.querySelector('.branch-error').remove();
+  d.removeAttribute('aria-busy');d.querySelector('[data-final-content]').remove();d.querySelector('.branch-error').remove();
   d.insertAdjacentHTML('beforeend',finalReviewMarkup(task,preview));
   mountFinalDiff(d,task,preview,api);
   if(typeof CheapOSPreview!=='undefined')CheapOSPreview.mount(d.querySelector('.review-overview'),task,api,preview.feature_tip);
@@ -492,7 +492,7 @@ function mount(options){
  if(selector.value==='unattended'){save();submitPlanning(startState?.error&&getState().selection===startState.selection&&startState.draftSignature===JSON.stringify(drafts[key()])?startState.request:undefined);return true;}
  if(intent(input.value)==='offer'){const d=dialog('Choose how to work',`<p>This sounds like a branch run. Unattended prepares a bounded plan for your approval.</p><div class="branch-actions"><button type="button" data-unattended>Prepare unattended proposal</button><button type="button" data-interactive>Keep Interactive</button></div>`);d.querySelector('[data-unattended]').onclick=()=>{selector.value='unattended';save();sync();d.close();submitPlanning();};d.querySelector('[data-interactive]').onclick=()=>{interactiveOnce=true;d.close();toast('Interactive selected. Send your message to continue conversationally.');};return true;}return false;
  }
- sync();return {clearSubmittedDraft:(owner,message)=>{if(drafts[owner]?.prompt?.trim()===message){drafts[owner].prompt='';try{localStorage.setItem(storageKey,JSON.stringify(drafts));}catch(_){}}},isSubmitting:()=>busy&&busySelection===getState().selection,interceptSubmit,render,renderPlan,renderStart,showProposal,showFinal,sync,restoreDraft:()=>{sync();if(!input.value&&drafts[key()]?.prompt)input.value=drafts[key()].prompt;},hasDocument:()=>selector.value==='unattended'&&Boolean(documentInput.value.trim()),getMode:()=>selector.value,newChat:()=>{sync();selector.value='interactive';documentInput.value='';delete group.dataset.revising;save();sync();options.onDraftChange?.();}};
+ sync();return {clearSubmittedDraft:(owner,message)=>{if(drafts[owner]?.prompt?.trim()===message){drafts[owner].prompt='';try{localStorage.setItem(storageKey,JSON.stringify(drafts));}catch(_){}}},isSubmitting:()=>busy&&busySelection===getState().selection,interceptSubmit,render,renderPlan,renderChanges,renderStart,showProposal,showFinal,sync,restoreDraft:()=>{sync();if(!input.value&&drafts[key()]?.prompt)input.value=drafts[key()].prompt;},hasDocument:()=>selector.value==='unattended'&&Boolean(documentInput.value.trim()),getMode:()=>selector.value,newChat:()=>{sync();selector.value='interactive';documentInput.value='';delete group.dataset.revising;save();sync();options.onDraftChange?.();}};
 }
 return {mergeAndPublish,fullSuiteConsent,diffPath,reviewDiffs,reviewFiles,reviewDiffMarkup,finalReviewMarkup,finalDiffState,mountFinalDiff,planningPayload,proposalValidation,technicalEvents,technicalText,technicalMarkup,startController,savedPlan,planMarkup,pausePresentation,proposalReadiness,mount,intent,terminalRun,hasRun,isPlanning,duration,isBusy,isRevisionTarget,resumeAction,proposedLimits,projectRun,diffSections,escape};
 });

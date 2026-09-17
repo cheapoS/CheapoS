@@ -113,7 +113,7 @@ Make expensive compute the exception. Keep the work visible and the decisions yo
 
 Automatic remote selection uses different worker and reviewer model IDs. All local and manual setups can use the same model in separate requests; that is not an independent model review. Unattended runs require a distinct reviewer.
 
-**Follow the plan as it happens.** The **Plan & review** tab keeps the approved scope, item progress, and planned verification commands together. When final review finishes, the cumulative changes and review evidence appear below the plan for your merge decision.
+**Follow the plan as it happens.** The **Plan** tab keeps the approved scope, item progress, and planned verification commands together. **Changes** is the review workspace in both modes: inspect an interactive patch before committing, or the cumulative unattended diff and saved review evidence before merging. Every **Review changes** action opens Changes.
 
 ![CheapoS unattended plan in progress: the first of five items is committed, the second is working, and three remain pending. Planned final checks are listed below; results are not yet available.](docs/assets/unattended-plan-progress.png)
 
