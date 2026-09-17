@@ -113,7 +113,18 @@ def inspect_project_file(source, path, start_line=1, end_line=None, query=None, 
                     path = normalized
             elif normalized:
                 path = normalized
-    document = _read_project_text(Workspace(source).root, path, MAX_FILE_BYTES)
+    root_path = Workspace(source).root
+    target = (root_path / path).resolve()
+    if target.is_dir() and (target == root_path or root_path in target.parents):
+        entries = sorted(p.name + ('/' if p.is_dir() else '') for p in target.iterdir() if not p.name.startswith('.'))
+        return {
+            'path': path,
+            'is_directory': True,
+            'entries': entries[:60],
+            'total_entries': len(entries),
+            'guidance': f"'{path}' is a directory. Select a specific file path from entries to inspect its contents."
+        }
+    document = _read_project_text(root_path, path, MAX_FILE_BYTES)
     content = document['contents']
     lines = content.splitlines(keepends=True) or ['']
     offsets = [0]
@@ -380,9 +391,10 @@ def plan(engine, runtime, inputs):
     while attempt < 3:
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         runtime.guard()
-        # The proposal parser owns repair of stale/invalid tool calls. Once
-        # discovery is complete, stop advertising an action we cannot execute.
-        available = TOOLS if discovery < MAX_DISCOVERY_REQUESTS else TOOLS[:1]
+        # Keep both tools recognized so gateways like OmniRoute (which strictly
+        # validate tool calls against request.tools) do not reject late/stale
+        # inspection calls with HTTP 400. CheapoS's proposal parser owns repair.
+        available = TOOLS
         options = {'config_override':runtime.task['planning_override']} if runtime.task.get('planning_override') else {}
         if discovery >= MAX_DISCOVERY_REQUESTS:
             options['tool_choice'] = {'type': 'function', 'function': {'name': 'propose_branch_plan'}}

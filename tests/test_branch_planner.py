@@ -194,10 +194,20 @@ class PlannerTests(unittest.TestCase):
         self.assertIn('inspection allowance is complete', self.requests[-1][-1]['content'])
         self.assertEqual([t['function']['name'] for t in self.offered[0][0]], ['propose_branch_plan', 'inspect_project_file'])
         for tools, options in self.offered[planner.MAX_DISCOVERY_REQUESTS:]:
-            self.assertEqual([t['function']['name'] for t in tools], ['propose_branch_plan'])
+            self.assertEqual([t['function']['name'] for t in tools], ['propose_branch_plan', 'inspect_project_file'])
             self.assertEqual(options['tool_choice']['function']['name'], 'propose_branch_plan')
         with self.assertRaises(ValueError):
             planner.inspect_project_file(self.root, '../outside')
+
+    def test_inspect_project_file_lists_directory_entries(self):
+        (self.root / 'subdir').mkdir(exist_ok=True)
+        (self.root / 'subdir' / 'a.py').write_text('a = 1')
+        (self.root / 'subdir' / 'b.py').write_text('b = 2')
+        result = planner.inspect_project_file(self.root, 'subdir')
+        self.assertTrue(result['is_directory'])
+        self.assertEqual(result['entries'], ['a.py', 'b.py'])
+        self.assertEqual(result['total_entries'], 2)
+        self.assertIn('Select a specific file path', result['guidance'])
 
     def test_inspect_project_file_normalizes_drive_letters_and_diff_prefixes(self):
         (self.root / 'module.py').write_text('def hello(): pass\n')
