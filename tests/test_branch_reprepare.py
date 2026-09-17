@@ -32,7 +32,7 @@ class BranchReprepareTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.engine.branch.authorize(task_id,{'proposal_id':proposal['proposal_id'],'approved':True})
         self.assertIsNone(_tip(self.source,self.values['feature_ref']))
         self.assertIsNone(_tip(self.source,values['feature_ref']))
-        saved['planning_policy']=self.engine.branch.model_policy()
+        saved['planning_policy']=copy.deepcopy(saved['branch_run']['model_policy'])
         for tips,message in (([None],'Integration target'),(['base','existing'],'Feature branch')):
             with patch('cheapos.branch_controller.work._tip',side_effect=tips),self.assertRaisesRegex(ValueError,message):
                 self.engine.branch.prepare(values,planning_task=saved)
