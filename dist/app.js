@@ -676,6 +676,16 @@ async function submitPermission(task,scope) {
 function bindPermissions(task) {
   $$('[data-permission]').forEach(button=>button.onclick=()=>submitPermission(task,button.dataset.permission));
 }
+function recoveryActionAvailable(task) {
+  if(!task||taskBusy(task)||task.demo||task.archived_at||task.trashed_at||task.pending_approval||!['paused','blocked','interrupted','error','budget_paused'].includes(task.status))return false;
+  const run=task.branch_run;
+  if(!run)return true;
+  // Integration and proposal controls already provide the appropriate next step.
+  if(['ready_for_merge','merged','left_on_branch','awaiting_authorization'].includes(run.status)||run.merge_operation)return false;
+  const readiness=run.readiness;
+  const waitingForTarget=run.pause_reason==='branch_drift'&&readiness?.integration_blocker&&task.error===readiness.integration_blocker&&readiness.review?.decision==='APPROVE'&&CheapOSBranchUI.projectRun(task).canRecheck&&(!run.pause_detail||run.pause_detail.cause==='branch_drift');
+  return !waitingForTarget;
+}
 function renderChat() {
   const task=state.task;if(!task)return;
   const guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
@@ -723,7 +733,7 @@ function renderChat() {
       const details=$('details',pause)||$('.button-row',pause);pause.insertBefore(notice,details);
     }
   }
-  if(!taskBusy(task)&&!task.demo&&!task.archived_at&&!task.trashed_at&&['paused','blocked','interrupted','error','budget_paused'].includes(task.status)){const recovery=document.createElement('button');recovery.className='outline-button';recovery.textContent='Choose recovery action';recovery.onclick=()=>operatorRecovery(task);$('#chat-view').append(recovery);}
+  if(recoveryActionAvailable(task)){const recovery=document.createElement('button');recovery.className='outline-button';recovery.textContent='Choose recovery action';recovery.onclick=()=>operatorRecovery(task);$('#chat-view').append(recovery);}
   const continuation=operatorContinuationMarkup(task);if(continuation){const notice=document.createElement('div');notice.innerHTML=continuation;$('#chat-view').append(notice);}
   if(task.error&&!task.branch_run){const logs=document.createElement('button');logs.className='text-link';logs.textContent='View technical logs';logs.onclick=()=>setView('logs');$('#chat-view').append(logs);}
   $$('[data-workflow-logs]').forEach(b=>b.onclick=()=>{setView('logs');const routing=$('#routing-diagnostics');if(routing){routing.open=true;routing.scrollIntoView({block:'start',behavior:'instant'});$('summary',routing)?.focus({preventScroll:true});}});
