@@ -1,5 +1,6 @@
 """Deterministic conflict task/evidence tests; no model calls or Git fixture costs."""
 import copy
+import hashlib
 import json
 import tempfile
 import unittest
@@ -13,7 +14,7 @@ from tests import test_branch_operator as fixtures
 
 class ConflictTests(unittest.TestCase):
     @contextmanager
-    def captured_repository(self, skipped=False):
+    def captured_repository(self, skipped=False, extra_files=0):
         # Over 600 KB across versions, including incoming additions/deletions.
         # Git plumbing is stubbed; evidence storage and assignment are real.
         blobs={key:(key+'\n').encode()*40000 for key in ('base','ours','theirs','combined')}
@@ -22,15 +23,20 @@ class ConflictTests(unittest.TestCase):
                   'old':{'a.py':'ours','removed.py':'removed'},
                   'target':{'a.py':'theirs','incoming.py':'incoming'},
                   'tree':{'a.py':'combined','incoming.py':'incoming'}}
+        for number in range(extra_files):
+            key=f'extra-{number:04d}';blobs[key]=(key+'\n').encode()
+            for version in ('target','tree'):versions[version][key+'.py']=key
+        objects={hashlib.sha1(blob).hexdigest():blob for blob in blobs.values()}
         def manifest(source,tip):
-            entries=[{'path':name,'oid':oid,'mode':'100755' if name=='incoming.py' else '100644','size':len(blobs[oid])}
+            entries=[{'path':name,'oid':hashlib.sha1(blobs[oid]).hexdigest(),'mode':'100755' if name=='incoming.py' else '100644','size':len(blobs[oid])}
                      for name,oid in versions[tip].items() if not skipped or name!='a.py']
             return entries,['a.py'] if skipped else []
         def git(source,*args,**kwargs):
             if args[0]=='status':return ''
             if args[0]=='merge-base':return 'base'
-            if args[0]=='diff':return b'a.py\0incoming.py\0removed.py\0'
-            if args[:2]==('cat-file','blob'):return blobs[args[2]]
+            if args[0]=='diff':return '\0'.join(sorted(set().union(*(v.keys() for v in versions.values())))).encode()+b'\0'
+            if args[:2]==('cat-file','--batch'):
+                return b''.join((oid+' blob '+str(len(objects[oid]))+'\n').encode()+objects[oid]+b'\n' for oid in kwargs['input'].splitlines())
             raise AssertionError(args)
         with patch.object(conflicts.work,'validate_owned'),patch.object(conflicts.work,'_tip',return_value='target'),patch.object(conflicts.branch_update,'merge_candidate',return_value=('tree',['a.py'])),patch.object(conflicts.branch_update,'_preserve_exclusions'),patch.object(conflicts.work,'_manifest',side_effect=manifest),patch.object(conflicts.work,'source_git',side_effect=git):
             yield blobs
@@ -101,6 +107,76 @@ class ConflictTests(unittest.TestCase):
             with self.assertRaises(conflicts.UnsupportedIntegration) as raised:
                 conflicts.capture({'workspace_mapping':{'source':'source'},'expected_feature_tip':'old','target_ref':'refs/heads/main'})
         self.assertEqual(raised.exception.paths,['a.py'])
+
+    def test_more_than_100_files_are_captured_in_batches_and_fully_discoverable(self):
+        with tempfile.TemporaryDirectory() as directory,self.captured_repository(extra_files=130):
+            workspace=Path(directory).resolve()/'workspace';workspace.mkdir()
+            context=conflicts.capture({'workspace_mapping':{'source':'source','workspace':str(workspace)},'expected_feature_tip':'old','target_ref':'main'})
+            self.assertEqual(len(context['files']),133)
+            batches=[call for call in conflicts.work.source_git.call_args_list if call.args[1:3]==('cat-file','--batch')]
+            self.assertEqual(len(batches),2)
+            task=self.task();run=task['branch_run'];key=digest(context)
+            run['conflict_resolution'].update(context=context,context_digest=key)
+            run['plan']['items'][0]['instructions']=key
+            # The actual worker tool must accept the cursor offered by the schema.
+            from types import SimpleNamespace
+            from cheapos.engine import Engine,READ_TOOLS
+            schema=next(t['function']['parameters'] for t in READ_TOOLS if t['function']['name']=='read_merge_context')
+            self.assertIn('file_offset',schema['properties'])
+            engine=SimpleNamespace(runtimes={},event=Mock());task.update(id='task',tool_actions=0)
+            seen=[];seen_conflicts=[];offset=0
+            while offset is not None:
+                page=Engine.file_tool(engine,task,'read_merge_context',{'file_offset':offset})
+                self.assertEqual(page['file_count'],133)
+                self.assertLessEqual(len(page['files']),50)
+                seen.extend(page['files']);seen_conflicts.extend(page['conflicts'])
+                next_offset=page['next_file_offset']
+                if next_offset is not None:self.assertGreater(next_offset,offset)
+                offset=next_offset
+            self.assertEqual(seen,sorted(context['files']))
+            self.assertEqual(seen_conflicts,context['conflicts'])
+            self.assertEqual(task['tool_actions'],3)
+            for invalid in (-1,True,134):
+                with self.assertRaises(ValueError):conflicts.read(task,file_offset=invalid)
+
+    def test_long_lines_page_without_losing_evidence_or_exceeding_read_bound(self):
+        from types import SimpleNamespace
+        from cheapos.engine import Engine,READ_TOOLS
+        schema=next(t['function']['parameters'] for t in READ_TOOLS if t['function']['name']=='read_merge_context')
+        self.assertIn('start_column',schema['properties'])
+        task=self.task();context=task['branch_run']['conflict_resolution']['context']
+        text='Ω'*33000+'\n\nlast line\n'
+        context['files']['a.py']['target']=text
+        key=digest(context);task['branch_run']['conflict_resolution']['context_digest']=key
+        task['branch_run']['plan']['items'][0]['instructions']=key
+        task.update(id='task',tool_actions=0);engine=SimpleNamespace(runtimes={},event=Mock())
+        line=column=1;received={};pages=0
+        while line is not None:
+            page=Engine.file_tool(engine,task,'read_merge_context',{'path':'a.py','version':'target','start_line':line,'start_column':column})
+            pages+=1;self.assertLessEqual(pages,4)
+            self.assertLessEqual(len(page['content']),16000)
+            for segment in page['content'].split('\n'):
+                number,content=segment.split(': ',1)
+                received.setdefault(int(number),[]).append(content)
+            next_line,next_column=page['next_line'],page['next_column']
+            if next_line is not None:self.assertGreater((next_line,next_column),(line,column))
+            line,column=next_line,next_column
+        self.assertEqual([''.join(received[n]) for n in sorted(received)],text.splitlines())
+        self.assertEqual(pages,3)
+
+    def test_oversized_ranges_continue_and_late_reads_get_a_useful_default(self):
+        task=self.task();context=task['branch_run']['conflict_resolution']['context']
+        context['files']['a.py']['target']='line\n'*1000
+        key=digest(context);task['branch_run']['conflict_resolution']['context_digest']=key
+        task['branch_run']['plan']['items'][0]['instructions']=key
+        first=conflicts.read(task,'a.py','target',1,10000)
+        self.assertEqual(len(first['content'].splitlines()),300)
+        self.assertEqual((first['next_line'],first['next_column']),(301,1))
+        late=conflicts.read(task,'a.py','target',701)
+        self.assertTrue(late['content'].startswith('701: line\n'))
+        self.assertEqual(late['next_line'],821)
+        for invalid in (-1,0,True,10):
+            with self.assertRaises(ValueError):conflicts.read(task,'a.py','target',start_column=invalid)
 
     def context(self):
         return {'old_tip':'old','target_tip':'target','base_tip':'base','tree':'tree','conflicts':['a.py'],
