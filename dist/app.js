@@ -559,7 +559,12 @@ function bindProjectManagerControls() {
 }
 (async function startupProjectManager() {
   bindProjectManagerControls();
-  if(!state.project&&!state.task)openProject();
+  if (!state.projects) {
+     state.projects = await api('/projects');
+  }
+  if(!state.project && !state.task && state.projects.length === 0) {
+      openProject();
+  }
 })();
 async function selectTask(id) {
   saveDraft();rememberView();const request=++state.selection;state.loading=true;
