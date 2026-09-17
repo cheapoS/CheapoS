@@ -151,3 +151,18 @@ and independent review requirements still apply. Undo is never a passing check.
 Validation uses tiny deterministic file and controller cases, including a bad
 edit followed by repair, a passing check and independent approval. No live model
 calls or new multi-item Git qualification runs are required for these cases.
+
+## Implemented: continue an unfinished worker recovery
+
+A recovering worker can inspect missing file context. Its guidance now matches
+the offered read/search tools instead of telling it to ask the operator when a
+snapshot is incomplete. An omitted `read_file.end_line` reads up to 200 lines
+from the requested start, including starts past line 200. Existing path, size
+and explicit-range bounds remain in force.
+
+A text-only response during recovery stays in the worker loop for the next
+action. It no longer returns a still-running item to the branch controller and
+turns useful saved context into an unknown-stop banner. Existing non-progress
+handling, task limits, command permissions, independent review and operator
+Pause still apply. Deterministic cases exercise text followed by a late-file
+read, edit and checkpoint dispatch, plus stopping before another model call.

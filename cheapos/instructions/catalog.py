@@ -250,11 +250,11 @@ RULES: List[InstructionRule] = [
         priority=80,
         state_triggers=("loop_detected",),
         text=(
-            "Repeated inspection has stopped. The controller supplies fresh current file contents below, not replayed reads.\n"
+            "Continue the unfinished action from the saved evidence and current file contents below.\n"
             "Follow the latest user request. Finish its edits, run the requested focused verification, and submit checkpoint.\n"
-            "Only the offered edit, check, checkpoint, and clarification tools are available. Do not request read_file, search, list_files, or get_diff.\n"
+            "The offered inspection tools remain available. If a snapshot is incomplete, use read_file for the missing range or a focused search; avoid rereading unchanged evidence.\n"
             "Do not rerun a failed command unchanged. Commands are argument lists, not a shell: no pipes or redirection.\n"
-            "If a file snapshot is incomplete and essential information is missing, ask_user with the specific blocker instead of guessing.\n"
+            "Missing file context is not an operator decision. Inspect it before editing; use the offered clarification tool only for an essential requirement or authorization that the saved evidence cannot resolve.\n"
             "All limits and command permissions still apply; only the controller can approve the result."
         ),
         rationale="Breaks repeated inspection loops by supplying fresh state."
