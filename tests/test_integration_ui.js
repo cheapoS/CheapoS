@@ -22,3 +22,17 @@ test('lost acknowledgement reads the same task instead of creating another opera
  const result=await integration.prepare(api,{id:'lost'},{target_tip:'a',candidate:'b'});
  assert.equal(result.integration_preparation.id,id);assert.deepEqual(calls,['/tasks/lost/integration-prepare','/tasks/lost']);
 });
+test('update explains exact check renewal and required permission is actionable in Changes',async()=>{
+ const task={id:'permission',branch_run:{check_scope:[{command:['python3','test.py'],directory:'private'}]},integration_preparation:{authorized:true,status:'decision',reason:{code:'command_permission_required',message:'Permission changed'}}};
+ const html=integration.markup(task,{actions:['update_resolve']});
+ assert.match(html,/Verification included in this update/);assert.match(html,/python3 test.py/);
+ assert.match(html,/Review test permissions &amp; continue/);
+ const button={disabled:false},error={textContent:''};
+ const host={querySelector:s=>s==='[data-integration-permission]'?button:s==='[data-integration-error]'?error:null};
+ const calls=[];let finish;
+ integration.bind(host,task,null,()=>{throw Error('must use current Resume permission protocol');},()=>{},null,async saved=>{calls.push(saved);await new Promise(resolve=>finish=resolve);});
+ const first=button.onclick();await button.onclick();assert.equal(calls.length,1);assert.equal(calls[0],task);
+ finish();await first;assert.equal(button.disabled,false);assert.equal(error.textContent,'');
+ task.integration_preparation.status='running';assert.doesNotMatch(integration.markup(task),/data-integration-permission/);
+ task.integration_preparation.status='cancelled';assert.doesNotMatch(integration.markup(task),/data-integration-permission/);
+});

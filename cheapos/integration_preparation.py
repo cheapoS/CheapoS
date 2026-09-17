@@ -107,7 +107,48 @@ def _active(engine):
     return engine._integration_preparing
 
 
-def start(engine,task_id,values):
+def _renew_unchanged_checks(engine,task):
+    """The explicit update-and-recheck click covers the saved exact checks.
+
+    Session grants expire on restart. Renew only commands whose approved runner,
+    configuration and task-copy binding are still identical; never grant a wider
+    project profile or carry this consent through background restore.
+    """
+    run=task.get('branch_run')
+    if not run:return
+    engine.branch.validate_authority(task,run)
+    scopes=engine.branch.scopes
+    for scope in run.get('check_scope',[]):
+        if not scopes.authorize(task,scope['command']) and scopes.prepare(task,scope['command'])==scope:
+            scopes.consent(task,scope,exact=True)
+
+
+def _continued(engine,task_id,result,operation_id):
+    """A background executor must retain an unmet permission, not drop it."""
+    if not isinstance(result,dict):return
+    if result.get('needs_consent'):
+        reason={'code':'command_permission_required',
+                'message':'The verification environment or session permissions changed. Review test permissions here to continue the saved update.',
+                'commands':[scope['command'] for scope in result.get('scopes',[])]}
+    elif result.get('needs_merge_recovery'):
+        reason={'code':'merge_recovery_required','message':'Finish the already approved local integration before continuing.'}
+    else:return
+    with engine.lock:
+        task=engine.store.get(task_id)
+        if task.get('integration_preparation',{}).get('id')==operation_id and _permitted(engine,task) and not _running(engine,task_id):
+            _publish(engine,task,'decision','decision',reason=reason)
+
+
+def continuing(task):
+    """Clear a fulfilled preparation prerequisite when the executor starts."""
+    op=task.get('integration_preparation',{})
+    if op.get('authorized') and op.get('status')=='decision' and op.get('reason',{}).get('code') in {'command_permission_required','merge_recovery_required'}:
+        stage='resolving' if task.get('branch_run',{}).get('conflict_resolution') else 'checks'
+        op.update(status='running',stage=stage,label=LABELS[stage])
+        op.pop('reason',None)
+
+
+def start(engine,task_id,values,*,renew_checks=True):
     allowed={'approved','target_tip','candidate','operation_id','target_ref'}
     if set(values)-allowed or values.get('approved') is not True or not all(isinstance(values.get(k),str) and values[k] for k in ('target_tip','candidate')):
         raise ValueError('Approve preparation of the displayed target and candidate.')
@@ -118,6 +159,11 @@ def start(engine,task_id,values):
             raise ValueError('That operation ID belongs to a different captured candidate or target.')
         retry_failed=bool(saved and saved.get('status') in {'failed','cancelled'} and values.get('operation_id') and values['operation_id']!=saved.get('id'))
         if saved and not retry_failed and (saved.get('id')==values.get('operation_id') or (saved.get('requested_target_tip',saved.get('target_tip'))==values['target_tip'] and saved.get('candidate')==values['candidate'])):
+            if renew_checks and saved.get('authorized') and saved.get('status')=='decision' and saved.get('reason',{}).get('code')=='command_permission_required':
+                engine.admission.require_idle(task_id)
+                _renew_unchanged_checks(engine,task)
+                continuing(task)
+                engine.store.save(task)
             if saved.get('status') not in TERMINAL:_launch(engine,task_id)
             return copy.deepcopy(task)
         engine.admission.require_idle(task_id)
@@ -126,6 +172,7 @@ def start(engine,task_id,values):
         if candidate(task)!=values['candidate']:raise ValueError('The saved candidate changed. Refresh Changes.')
         opid=values.get('operation_id') or uuid.uuid4().hex
         if not isinstance(opid,str) or len(opid)>100:raise ValueError('Invalid operation ID')
+        if renew_checks:_renew_unchanged_checks(engine,task)
         if saved:task.setdefault('integration_preparation_history',[]).append(copy.deepcopy(saved))
         task['integration_preparation']={'id':opid,'candidate':values['candidate'],'target_tip':values['target_tip'],'requested_target_tip':values['target_tip'],
             'target_ref':values.get('target_ref') or task.get('branch_run',{}).get('target_ref') or task.get('integration_target_ref'),
@@ -173,7 +220,8 @@ def _drive(engine,task_id):
         run=task.get('branch_run')
         if run and run.get('target_update') and run['target_update'].get('origin')!='conflict_resolution':
             from . import branch_completion
-            branch_completion.update_branch(engine.branch,task_id,{'approved':True,'update_token':branch_completion.update_token(run)})
+            result=branch_completion.update_branch(engine.branch,task_id,{'approved':True,'update_token':branch_completion.update_token(run)})
+            _continued(engine,task_id,result,op['id'])
             return
         # A saved assignment/reconciliation is resumed, never created twice.
         dispatched=op.get('dispatched') or (run and run.get('conflict_resolution',{}).get('preparation_id')==op['id'] and run.get('conflict_resolution',{}).get('status')!='integrated') or task.get('workspace_generation',0)>op['workspace_generation']
@@ -189,7 +237,7 @@ def _drive(engine,task_id):
                 mode='unattended' if run else 'interactive'
                 if not engine.admission.snapshot()[mode]['allowed']:_wait(engine,task,'task_slot');return
                 _publish(engine,task,'resolving' if (run and run.get('conflict_resolution')) or task.get('reconciliation',{}).get('conflicts') else 'checks')
-                if run:engine.branch.resume(task_id,{})
+                if run:_continued(engine,task_id,engine.branch.resume(task_id,{}),op['id'])
                 else:_resume_interactive(engine,task)
                 return
         _publish(engine,task,'checking')
@@ -213,13 +261,14 @@ def _drive(engine,task_id):
             if state['code'] in {'ready','review_required'}:
                 op['dispatched']=True;engine.store.save(task)
                 if state['code']=='ready':_publish(engine,task,'ready','ready')
-                else:engine.branch.resume(task_id,{})
+                else:_continued(engine,task_id,engine.branch.resume(task_id,{}),op['id'])
             else:
                 result=branch_completion.update_branch(engine.branch,task_id,{'approved':True,'update_token':branch_completion.update_token(run)})
                 if isinstance(result,dict) and result.get('needs_conflict_resolution'):
                     task=engine.store.get(task_id);run=task['branch_run'];op=task['integration_preparation']
                     if not _publish(engine,task,'resolving') or not _permitted(engine,task):return
-                    branch_conflicts.start(engine.branch,task_id,{'approved':True,'update_token':branch_completion.update_token(run)})
+                    result=branch_conflicts.start(engine.branch,task_id,{'approved':True,'update_token':branch_completion.update_token(run)})
+                _continued(engine,task_id,result,op['id'])
         else:
             engine.reconcile_project(task_id,{'patch_digest':candidate(task)})
             task=engine.store.get(task_id);op=task['integration_preparation']
@@ -311,7 +360,7 @@ def automatic(engine,task):
     if not authorized_target or policy.get('target_ref')!=current['target_ref']:return False
     try:work.source_git(source,'merge-base','--is-ancestor',authorized_target,current['target_tip'])
     except ValueError:return False
-    start(engine,task['id'],{'approved':True,'target_tip':current['target_tip'],'candidate':current['candidate'],'target_ref':current['target_ref']})
+    start(engine,task['id'],{'approved':True,'target_tip':current['target_tip'],'candidate':current['candidate'],'target_ref':current['target_ref']},renew_checks=False)
     return True
 
 

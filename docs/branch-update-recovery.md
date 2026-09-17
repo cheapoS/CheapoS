@@ -69,8 +69,8 @@ workers are instructed to preserve both incoming behavior and unique task work,
 including nonconflicting incoming files, and final review still covers the original
 criteria. No update broadens test commands, spending or model authority.
 
-The new continuation tests use in-memory executors and fake timers (15 tests,
-about 0.09 seconds in isolation). Existing real-Git completion and authorization fixtures
+The continuation tests use in-memory executors, tiny permission fixtures and fake timers (20 tests,
+about 0.11 seconds in isolation). Existing real-Git completion and authorization fixtures
 remain the integration coverage; no new live-agent or multi-item fixture was added.
 
 Cancellation retains the candidate and prevents waiting preparation from starting
@@ -78,6 +78,17 @@ again automatically. A new explicit **Update & resolve** request can reauthorize
 the same saved candidate; repeated requests for active work still reuse the same
 operation. Failed preparation similarly accepts a new explicit retry without
 throwing away an already assigned resolution item.
+
+An explicit **Update & resolve** click also renews the run's exact approved
+verification commands when their task copy, runner and configuration still match
+the saved scope. This handles session permissions expiring after an app restart
+without a second Resume click. It does not create a broader project test grant.
+The included commands are inspectable in Changes before starting the update.
+Automatic preparation and background restore cannot renew these permissions.
+If the environment changed, the background operation retains the permission
+request and Changes offers **Review test permissions & continue**. Approval uses
+a fresh command-scope proposal and continues the same saved assignment. Usage,
+independent review and final merge approval remain unchanged.
 
 Interactive **Changes from conflict resolution** compares the retained previous
 task copy with the current task copy, including uncommitted edits. It labels both

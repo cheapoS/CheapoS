@@ -497,8 +497,8 @@ function mount(options){
    },onTask:saved=>{slot.dataset.signature='';options.receiveUpdatedTask?.(saved);options.showChat?.();if(projectRun(saved).merged)toast('Reviewed changes merged locally.');},refresh});}
    finally{if(d.isConnected){controls.forEach(([button,disabled])=>button.disabled=disabled);merge.textContent=label;d.removeAttribute('aria-busy');d.querySelector('[data-merge-pending]')?.remove();}}
   },d);
-  if(readOnly)d.querySelectorAll('[data-integration-prepare],[data-integration-keep]').forEach(button=>button.hidden=true);
-  integration.bind(d,task,preview.integration_readiness,api,async()=>{slot.dataset.signature='';await refresh();},()=>options.showChat?.());
+  if(readOnly)d.querySelectorAll('[data-integration-prepare],[data-integration-keep],[data-integration-permission]').forEach(button=>button.hidden=true);
+  integration.bind(d,task,preview.integration_readiness,api,async()=>{slot.dataset.signature='';await refresh();},()=>options.showChat?.(),saved=>options.resume(saved));
   const leave=d.querySelector('[data-leave]');leave.onclick=()=>guarded(leave,async()=>{await api('/tasks/'+task.id+'/branch-leave',{});slot.dataset.signature='';await refresh();},d);
   d.querySelector('[data-recheck]').onclick=()=>guarded(d.querySelector('[data-recheck]'),async()=>{const result=await api('/tasks/'+task.id+'/branch-final-recheck',{});await options.handleResumeResult?.(task,result);await refresh();},d);
   d.querySelector('[data-revise]').onclick=()=>{options.showChat?.();input.focus();input.placeholder='Describe the changes you want in this run…';group.dataset.revising=task.id;};

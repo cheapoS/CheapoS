@@ -392,6 +392,8 @@ class BranchController:
             runtime.branch_authority=lambda:self.validate_authority(task,run)
             task.pop('operator_continue',None)
             task.update(status='running',route_resume_on_start=False,error=None,error_code=None,stream=None,check_stream=None,pending_approval=None)
+            from .integration_preparation import continuing
+            continuing(task)
             if run.get('startup'): run['startup']['status']='complete'
             self.engine.store.save(task)
             self.engine.runtimes[task_id]=runtime
