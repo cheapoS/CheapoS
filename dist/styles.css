@@ -1200,3 +1200,13 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 .reservation-list li{margin:14px 0;overflow-wrap:anywhere}
 .reservation-list p{margin:4px 0}
 .usage-table>div>span:nth-child(2){text-align:right;white-space:normal}
+
+.project-manager-modal .modal-inner{background:var(--panel);width: 500px;max-width: 90vw;border-radius: 8px;padding: 20px;}
+.project-manager-modal .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;color:var(--text);font-weight:600;}
+.project-manager-modal .modal-tabs{display:flex;gap:10px;margin-bottom:20px;}
+.project-manager-modal .tab{padding:8px 16px;border-radius:4px;cursor:pointer;color:var(--muted);background:var(--surface);}
+.project-manager-modal .tab.active{background:var(--mint-dark);color:var(--mint);}
+.project-manager-modal .hidden{display:none;}
+.project-manager-modal #create-project-form{display:flex;flex-direction:column;gap:10px;}
+.project-manager-modal input{padding:8px;border-radius:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);}
+.project-manager-modal button[type="submit"]{padding:8px;background:var(--mint);color:var(--bg);border-radius:4px;font-weight:600;}
