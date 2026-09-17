@@ -12,7 +12,7 @@ from .providers import ChatProvider, NoRedirects, ProviderError
 class ModelGateway(Protocol):
     def health(self): ...
     def list_models(self): ...
-    def chat(self, messages, tools, max_tokens): ...
+    def chat(self, messages, tools, max_tokens, tool_choice=None): ...
 
 
 def normalize_models(data, openrouter=False, infer_access=True):
@@ -130,12 +130,12 @@ class OpenAICompatibleGateway(ChatProvider):
         except ProviderError:
             return False
 
-    def chat(self, messages, tools, max_tokens):
-        return super().complete(messages, tools, max_tokens)
+    def chat(self, messages, tools, max_tokens, tool_choice=None):
+        return super().complete(messages, tools, max_tokens, tool_choice=tool_choice)
 
     # Preserve the engine's existing injectable provider contract.
-    def complete(self, messages, tools, max_tokens):
-        return self.chat(messages, tools, max_tokens)
+    def complete(self, messages, tools, max_tokens, tool_choice=None):
+        return self.chat(messages, tools, max_tokens, tool_choice=tool_choice)
 
 
 class OmniRouteGateway(OpenAICompatibleGateway):

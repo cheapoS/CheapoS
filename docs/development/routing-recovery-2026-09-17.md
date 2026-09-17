@@ -71,3 +71,35 @@ A final planning-focused run passed all 36 cases in 1.756 seconds, including
 proposal parsing, recovery, allowance handling, and planner accounting.
 Full-suite validation and live provider inference were not performed. Successful
 local fixtures establish controller behavior, not upstream service availability.
+
+## Follow-up: the gateway dropped the planner's tool choice
+
+A subsequent paused planning run exposed a separate adapter bug. After the six
+inspections, retained OmniRoute request payloads still contained
+`tool_choice: "auto"`, even though the planner supplied an explicit
+`propose_branch_plan` choice. Its captured request and inspection evidence were
+present; the missing field was the tool-selection instruction.
+
+`ChatProvider.complete` accepted `tool_choice`, but
+`OpenAICompatibleGateway.complete` and `.chat` did not. OmniRoute inherits those
+wrappers. The engine's compatibility fallback caught the resulting `TypeError`
+and dispatched again without the choice, permitting another inspection. The
+planner then exhausted its repair attempts rejecting those extra reads.
+
+Both wrappers and the gateway protocol now accept and forward the choice to the
+serialized request. Three-argument callers retain automatic selection. The
+inspection allowance, proposal validation, spending policy, and requirement for
+operator approval are unchanged.
+
+The earlier engine-level tests used providers that already accepted the keyword,
+so they missed the production adapter. New coverage uses the real gateway
+factory and HTTP serialization with a mocked network boundary. It checks both
+gateway types, normal and streaming dispatch, explicit and automatic choices,
+and a planner that performs all six inspections before submitting its proposal.
+The final outgoing request retains all six evidence results and forces the
+proposal tool. The new cases failed before the wrapper fix and pass after it.
+
+Validation: **96 focused tests passed in 2.340 seconds**, covering gateways,
+planner parsing/recovery, and transport. The **three new cases took 0.014
+seconds** within that run (0.012 seconds standalone); they use no sockets, Git
+fixtures, live inference, or timed waits. No full suite or new live task was run.
