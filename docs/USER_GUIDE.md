@@ -331,18 +331,18 @@ connection settings so account cooldowns apply across those gateways. See the
 
 ## Role Mappings
 
-In **New chat defaults** or **Project defaults**, choose Automatic or Use only this model for the **Planner**, **Worker**, and **Reviewer** roles.
+In **App defaults** or **Project overrides**, choose Automatic or Use only this model for the **Planner**, **Worker**, and **Reviewer** roles.
 
 - **Planner**: Responsible for task planning.
 - **Worker**: Responsible for implementing the task.
 - **Reviewer**: Responsible for reviewing the implementation.
 
-Project defaults override app defaults. Chat setup can override those defaults for a new chat.
+Project overrides override app defaults. Chat setup can override those defaults for a new chat.
 - Planner and Reviewer roles can share the same model.
 - The **Worker model must NOT be the same** as the Planner or Reviewer models.
 
 Explicit mappings do not alter budget, permissions, or merge authorization. Operator selection remains required to start work.
-Source labels identify New chat defaults, Project defaults, or the saved chat setup. Historical settings with unknown provenance are labeled explicitly.
+Source labels identify App defaults, Project overrides, or the saved chat setup. Historical settings with unknown provenance are labeled explicitly.
 
 ## Settings scopes
 
@@ -351,8 +351,8 @@ A chat keeps its saved setup. Saving one scope never silently saves another.
 - **Chat setup** in the composer opens the named chat. Before first submission,
   it edits **This new chat**, captured when you send the request.
 - **Project menu → Project settings** changes defaults for later chats in that
-  project. **Use new chat default** removes a project override.
-- **Settings → New chat defaults** changes the starting setup for future chats.
+  project. **Use app default** removes a project override.
+- **Settings → App defaults** changes the starting setup for future chats.
 - **Connections** owns shared gateway credentials, endpoints and access. Choose
   the named connection carefully: existing chats may use it. Agent roles belong
   to the scoped setup screens, not this connection form.
