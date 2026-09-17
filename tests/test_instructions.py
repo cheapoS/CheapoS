@@ -436,6 +436,84 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertIn("validation.full_suite_mandatory", rule_ids_final)
         self.assertNotIn("validation.change_scoped", rule_ids_final)
 
+    def test_branch_full_suite_guidance_requires_controller_command_approval(self):
+        from cheapos import test_policy
+        from cheapos.instructions import is_full_suite_authorized
+
+        command = "python3 -B scripts/check.py --full"
+        item = {"id": "one", "status": "working", "required_checks": [command]}
+        task = {"full_suite_approval": [], "branch_run": {
+            "status": "running", "test_policy_version": 1,
+            "current_item_id": "one", "items": [item],
+            "authorization_ref": {"id": "grant"},
+            "plan": {"items": [item], "final_checks": []},
+        }}
+        for flag in ("full_suite_approved", "full_suite"):
+            with self.subTest(flag=flag):
+                task[flag] = True
+                with self.assertRaises(ValueError):
+                    test_policy.guard(task, command)
+                self.assertFalse(is_full_suite_authorized(task))
+            task.pop(flag)
+
+        test_policy.approve(task, True)
+        test_policy.guard(task, command)
+        self.assertTrue(is_full_suite_authorized(task))
+        item["required_checks"] = ["python3 -m unittest discover"]
+        self.assertFalse(is_full_suite_authorized(task))
+
+        # Legacy runs retain exactly their captured command, as the controller does.
+        item["required_checks"] = [command]
+        task.pop("full_suite_approval")
+        task["branch_run"].pop("test_policy_version")
+        test_policy.guard(task, command)
+        self.assertTrue(is_full_suite_authorized(task))
+
+    def test_full_suite_guidance_follows_real_finalization_states(self):
+        from cheapos import branch_runs, test_policy
+        from cheapos.instructions import is_full_suite_authorized
+
+        command = "python3 -B scripts/check.py --full"
+        focused = "node --check dist/app.js"
+        item = {"id": "one", "status": "working", "required_checks": [command]}
+        run = {"status": "running", "current_item_id": "one", "items": [item],
+               "plan": {"items": [item], "final_checks": [focused]}}
+        task = {"status": "running", "branch_run": run}
+        test_policy.approve(task, True)
+        self.assertTrue(is_full_suite_authorized(task))
+
+        # Completion clears current_item_id. An earlier suite does not become a final check.
+        run["current_item_id"] = None
+        for status in branch_runs.DONE:
+            item["status"] = status
+            for phase in ("running", "finalizing"):
+                with self.subTest(item_status=status, phase=phase):
+                    run["status"] = phase
+                    self.assertFalse(is_full_suite_authorized(task))
+
+        item["required_checks"] = [focused]
+        run["plan"]["final_checks"] = [command]
+        test_policy.approve(task, True)
+        run["status"] = "finalizing"
+        self.assertTrue(is_full_suite_authorized(task))
+        # A retained last-item pointer must not hide the controller's final phase.
+        run["current_item_id"] = "one"
+        self.assertTrue(is_full_suite_authorized(task))
+        for phase in ("ready_for_merge", "merging", "merged", "left_on_branch"):
+            with self.subTest(phase=phase):
+                run["status"] = phase
+                self.assertFalse(is_full_suite_authorized(task))
+
+    def test_standalone_full_suite_approval_respects_selected_check(self):
+        from cheapos.instructions import is_full_suite_authorized
+
+        for flag in ("full_suite_approved", "full_suite"):
+            with self.subTest(flag=flag):
+                task = {flag: True, "check_command": ["node", "--check", "dist/app.js"]}
+                self.assertFalse(is_full_suite_authorized(task))
+                task["check_command"] = ["python3", "-B", "scripts/check.py", "--full"]
+                self.assertTrue(is_full_suite_authorized(task))
+
     def test_loop_guidance_prose_without_pending_action_triggers_loop_detected(self):
         """Controller-generated prose in loop_guidance activates loop_detected even when action_pending is False."""
         from cheapos.instructions import rules_for_task, triggers_for_task

@@ -33,6 +33,8 @@ def active_branch_item(task: dict) -> Optional[dict]:
     if not isinstance(run, dict):
         return None
     current_id = run.get("current_item_id")
+    if not current_id:
+        return None
     items = run.get("items")
     if not isinstance(items, list):
         return None
@@ -40,19 +42,22 @@ def active_branch_item(task: dict) -> Optional[dict]:
 
 
 def is_command_authorized(task: dict, run: dict, command: Union[str, Sequence]) -> bool:
-    """Check whether a specific test command is authorized for execution."""
+    """Check full-suite consent; this never replaces execution/command grants."""
+    from cheapos import test_policy
+    if isinstance(task.get("branch_run"), dict):
+        # Request flags are not the controller's persisted, command-bound approval.
+        if not run:
+            return False
+        try:
+            test_policy.guard(task, command)
+        except ValueError:
+            return False
+        return True
     if task.get("full_suite_approved") is True or task.get("full_suite") is True:
         return True
-    from cheapos import test_policy
     canonical = shlex.join(test_policy.argv(command))
     approval = task.get("full_suite_approval")
-    if isinstance(approval, (list, tuple, set)) and canonical in approval:
-        return True
-    if isinstance(run, dict) and not run.get("test_policy_version") and run.get("authorization_ref"):
-        plan = run.get("plan")
-        if isinstance(plan, dict) and canonical in test_policy.plan_commands(plan):
-            return True
-    return False
+    return isinstance(approval, (list, tuple, set)) and canonical in approval
 
 
 def is_full_suite_authorized(task: dict) -> bool:
@@ -64,60 +69,44 @@ def is_full_suite_authorized(task: dict) -> bool:
 
     run = task.get("branch_run")
     if isinstance(run, dict):
-        item = active_branch_item(task)
-        if item is not None and isinstance(item, dict):
-            # Active item context: must check if this specific item requires a full suite
-            checks = item.get("required_checks")
-            if isinstance(checks, list):
-                fs_checks = [c for c in checks if test_policy.full_suite(c)]
-                if not fs_checks:
-                    # Item requires only scoped/focused checks; approval for other items/phases
-                    # does not mandate full suite during this item.
-                    return False
-                return any(is_command_authorized(task, run, c) for c in fs_checks)
-            return task.get("full_suite_approved") is True or task.get("full_suite") is True
+        from cheapos.branch_runs import DONE
 
-        # No active item: check if we are in final checks / review phase
+        if run.get("status") in ("ready_for_merge", "merging", "merged", "left_on_branch"):
+            return False
         plan = run.get("plan") if isinstance(run.get("plan"), dict) else {}
+        item = active_branch_item(task)
+        items = run.get("items")
+        items_finished = (isinstance(items, list) and bool(items)
+                          and all(isinstance(i, dict) and i.get("status") in DONE for i in items))
+        # The controller's phase wins over a retained last-item pointer. An item
+        # review (task.status == 'reviewing') is not itself final validation.
         is_final_phase = (
-            task.get("purpose") in ("branch_final", "final_checks", "final_review")
-            or task.get("status") in ("final_review", "reviewing", "completed")
-            or (
-                isinstance(run.get("items"), list)
-                and len(run.get("items")) > 0
-                and all(i.get("status") in ("completed", "done", "merged", "reviewed") for i in run.get("items") if isinstance(i, dict))
-            )
+            run.get("status") == "finalizing"
+            or (item is None and (items_finished or task.get("purpose") in
+                                 ("branch_final", "final_checks", "final_review")))
         )
         if is_final_phase:
-            final_checks = plan.get("final_checks", [])
-            if isinstance(final_checks, list):
-                fs_final = [c for c in final_checks if test_policy.full_suite(c)]
-                if not fs_final:
-                    return False
-                return any(is_command_authorized(task, run, c) for c in fs_final)
-
-        # Plan-level fallback when no item is selected and not in final phase (e.g. plan preview/approval)
-        if task.get("full_suite_approved") is True or task.get("full_suite") is True:
-            return True
-        approval = task.get("full_suite_approval")
-        if isinstance(approval, (list, tuple, set)) and len(approval) > 0:
-            return True
-        if not run.get("test_policy_version") and run.get("authorization_ref"):
-            if test_policy.plan_commands(plan):
-                return True
-        return False
+            checks = plan.get("final_checks", [])
+        elif item is not None:
+            checks = item.get("required_checks", [])
+        elif not run.get("current_item_id") and run.get("status") in (None, "draft", "awaiting_authorization"):
+            # Planning may describe saved approvals, but must not invent consent
+            # from a request flag or apply them to an unselected running item.
+            checks = test_policy.plan_commands(plan)
+        else:
+            return False
+        return isinstance(checks, list) and any(
+            test_policy.full_suite(c) and is_command_authorized(task, run, c) for c in checks)
 
     # Standalone task without branch_run
-    if task.get("full_suite_approved") is True or task.get("full_suite") is True:
-        return True
     if task.get("check_command"):
         if test_policy.full_suite(task["check_command"]):
             return is_command_authorized(task, {}, task["check_command"])
         return False
-    approval = task.get("full_suite_approval")
-    if isinstance(approval, (list, tuple, set)) and len(approval) > 0:
+    if task.get("full_suite_approved") is True or task.get("full_suite") is True:
         return True
-    return False
+    approval = task.get("full_suite_approval")
+    return isinstance(approval, (list, tuple, set)) and any(test_policy.full_suite(c) for c in approval)
 
 
 def resolve_rules(candidate_rules: Sequence[InstructionRule]) -> List[InstructionRule]:
