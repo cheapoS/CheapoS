@@ -113,3 +113,8 @@ class VerificationTests(LocalCase):
         self.assertEqual(second['outcome'], 'test_failure')
         self.assertTrue(second['next_action'].startswith('Repeated test failure:'))
 
+    def test_run_checks_includes_pythonpath_for_tests_and_root(self):
+        workspace = Workspace(self.fixture()['workspace'])
+        check = workspace.run_checks([sys.executable, '-c', 'import os; print("PP:" + os.environ.get("PYTHONPATH", ""))'], threading.Event(), timeout=5)
+        self.assertTrue(check['passed'])
+        self.assertIn(str(workspace.root), check['output'])

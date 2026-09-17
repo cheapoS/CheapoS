@@ -3401,10 +3401,10 @@ class Engine:
                                     result = {"observation": result, "guidance": task["loop_guidance"]}
                                     self.event(task, "guard", "Asking the worker to use what it found", "The same read returned unchanged information twice. cheapoS asked for an answer, a relevant web read, or a clear explanation of what is missing.")
                                 elif observations >= 3:
-                                    if recovering:
-                                        blocker = 'Recovery repeated already available file evidence.'
+                                    if recovering or observations >= 4:
+                                        blocker = 'Recovery repeated already available file evidence.' if recovering else 'Repeated unchanged file evidence.'
                                         coordinator_applied = coordinator_dispatch.consult(self, runtime, blocker)
-                                        if not coordinator_applied and not developing(task):
+                                        if not coordinator_applied:
                                             raise ProgressPause('Worker could not choose the next step after recovery. ' + blocker + ' Saved edits remain intact.')
                                         result = {'observation': result, 'guidance': 'Follow the saved coordinator guidance on the next ordinary turn.'}
                                     else:
@@ -3417,7 +3417,7 @@ class Engine:
                                                       "next_action": "Use the findings already established. If a specific fact is still missing, name it and inspect only that fact; otherwise finish the edit or submit checkpoint with current verification."}
                                         else:
                                             coordinator_applied = coordinator_dispatch.consult(self, runtime, 'The worker repeated unchanged evidence after deterministic guidance.')
-                                            if not coordinator_applied and not developing(task):
+                                            if not coordinator_applied:
                                                 raise ProgressPause('Worker could not choose the next step after recovery. The same inspection was repeated; saved work is intact.')
 
                         coordinator_dispatch.observe(self, task, name)

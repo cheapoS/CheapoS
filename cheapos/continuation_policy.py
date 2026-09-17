@@ -56,10 +56,9 @@ def is_implementation(task):
 
 def decide(task, trigger=None):
     if trigger=='repeated_evidence':
-        from .development import enabled
         implementation = is_implementation(task)
         return {'kind':'implementation' if implementation else 'investigation',
-                'action':'continue_worker' if enabled(task) else 'act' if implementation else 'answer',
+                'action':'act' if implementation else 'answer',
                 'reason':'Use the saved findings to take the next unfinished action; do not repeat unchanged inspection.'}
     code=task.get('error_code')
     run=task.get('branch_run') or {}

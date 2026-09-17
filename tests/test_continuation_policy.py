@@ -66,3 +66,7 @@ class ContinuationPolicyTests(unittest.TestCase):
         read_only_prompt = work_policy.READ_ONLY_STARTERS[0]
         task_read = {'prompt': read_only_prompt, 'patch': '', 'conversational': True}
         self.assertEqual(decide(task_read, trigger='repeated_evidence')['action'], 'answer')
+
+        # Development mode must not loop on continue_worker
+        task_dev = {'prompt': 'Lets fix these issues', 'patch': '', 'execution': {'development_mode': True}}
+        self.assertEqual(decide(task_dev, trigger='repeated_evidence')['action'], 'act')

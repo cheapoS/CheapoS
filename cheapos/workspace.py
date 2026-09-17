@@ -415,7 +415,16 @@ class Workspace:
         started = time.monotonic()
         home = self.root.parent / "process-home"
         home.mkdir(exist_ok=True)
-        env = {k: v for k, v in os.environ.items() if k in {"PATH", "SystemRoot", "WINDIR", "LANG", "LC_ALL"}}
+        env = {k: v for k, v in os.environ.items() if k in {"PATH", "SystemRoot", "WINDIR", "LANG", "LC_ALL", "PYTHONPATH"}}
+        pythonpaths = []
+        if (self.root / "tests").is_dir():
+            pythonpaths.append(str(self.root / "tests"))
+        pythonpaths.append(str(self.root))
+        if env.get("PYTHONPATH"):
+            pythonpaths.append(env["PYTHONPATH"])
+        seen = set()
+        deduped = [p for p in pythonpaths if not (p in seen or seen.add(p))]
+        env["PYTHONPATH"] = os.pathsep.join(deduped)
         env.update({"HOME": str(home), "TMPDIR": str(home), "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1", "CI": "1", "NO_COLOR": "1", "GIT_TERMINAL_PROMPT": "0"})
         # Independent handles keep preview reads from moving the child's write
         # position. A disk spool avoids blocking a noisy child on a full pipe.
