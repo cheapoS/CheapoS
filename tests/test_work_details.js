@@ -113,3 +113,10 @@ test('technical routing view keeps every retained attempt, newest first with unk
  assert.ok(html.indexOf('Request last')<html.indexOf('Request first'));
  assert.match(html,/Attempt evidence is partial/);assert.match(html,/served unknown/);
 });
+test('earlier recorded thinking panel stays collapsed when a live stream is active',()=>{
+ const html=render([event('a','generation','Output',{request_id:'past',thinking:'Past finished thought'})],
+   {live:true,stream:{phase:'thinking',request_id:'live',thinking:'Active live thinking'}});
+ assert.doesNotMatch(html,/data-event="generation-past" open/);
+ assert.match(html,/class="workflow-stream"[^>]*data-phase="thinking"/);
+ assert.match(html,/Active live thinking/);
+});

@@ -3228,18 +3228,28 @@ class Engine:
                             last_check = (task.get("checks") or [{}])[-1]
                             current_digest = hashlib.sha256(task.get("patch", "").encode()).hexdigest()
                             if last_check.get("passed") and last_check.get("digest") == current_digest:
+                                checkpoint_payload = None
+                                content_raw = str(message.get("content", "")).strip()
+                                if content_raw.startswith("```"):
+                                    lines = content_raw.splitlines()
+                                    if lines and lines[0].startswith("```"):
+                                        lines = lines[1:]
+                                    if lines and lines[-1].startswith("```"):
+                                        lines = lines[:-1]
+                                    content_raw = "\n".join(lines).strip()
+                                if content_raw.startswith("{") and content_raw.endswith("}"):
+                                    try:
+                                        parsed = json.loads(content_raw)
+                                        if isinstance(parsed, dict) and ("repair_dispositions" in parsed or "summary" in parsed or "uncertainties" in parsed):
+                                            checkpoint_payload = parsed
+                                    except Exception:
+                                        pass
                                 no_calls = task.get("no_call_turns", 0)
-                                if no_calls >= 1:
+                                if checkpoint_payload is not None or no_calls >= 1:
                                     self.event(task, "state", "Submitting verified changes for review")
                                     checkpoint_args = {"summary": str(message.get("content", ""))[:4000], "uncertainties": "Verified changes submitted for review."}
-                                    content_raw = str(message.get("content", "")).strip()
-                                    if content_raw.startswith("{") and content_raw.endswith("}"):
-                                        try:
-                                            parsed = json.loads(content_raw)
-                                            if isinstance(parsed, dict):
-                                                checkpoint_args.update(parsed)
-                                        except Exception:
-                                            pass
+                                    if checkpoint_payload:
+                                        checkpoint_args.update(checkpoint_payload)
                                     run = task.get("branch_run")
                                     item = None
                                     if isinstance(run, dict) and "items" in run:
@@ -3266,15 +3276,32 @@ class Engine:
                                 content_lower = str(message.get("content", "")).lower()
                                 no_calls = task.get("no_call_turns", 0)
                                 if "run_checks" in content_lower or "unittest" in content_lower or "test" in content_lower or no_calls >= 1:
-                                    self.event(task, "state", "Running verification checks")
-                                    result = self.worker_checks(runtime, {}, last_call=True)
-                                    task["messages"].append({"role": "user", "content": "Verification check result: " + json.dumps(result)})
-                                    task["no_call_turns"] = 0
+                                    if last_check.get("digest") == current_digest and not last_check.get("passed"):
+                                        task["no_call_turns"] = no_calls + 1
+                                        if no_calls >= 3:
+                                            from . import coordinator_dispatch
+                                            if coordinator_dispatch.consult(self, runtime, "The worker repeatedly output text instead of fixing failing checks."):
+                                                self.store.save(task)
+                                                continue
+                                            raise ProgressPause("The worker did not take action to resolve failing verification checks. Saved edits are intact.")
+                                        task["messages"].append({"role": "user", "content": "Verification checks previously failed on this patch. Do not repeat text or rerun unchanged checks; use write_file or replace_text to fix the issues, then run_checks."})
+                                    else:
+                                        self.event(task, "state", "Running verification checks")
+                                        result = self.worker_checks(runtime, {}, last_call=True)
+                                        task["messages"].append({"role": "user", "content": "Verification check result: " + json.dumps(result)})
+                                        task["no_call_turns"] = 0
                                 else:
                                     task["no_call_turns"] = no_calls + 1
                                     task["messages"].append({"role": "user", "content": "Edits are present in the workspace. Call run_checks directly to verify your changes. Outputting text does not verify code."})
                         else:
-                            task["no_call_turns"] = 0
+                            no_calls = task.get("no_call_turns", 0) + 1
+                            task["no_call_turns"] = no_calls
+                            if no_calls > 3:
+                                from . import coordinator_dispatch
+                                if coordinator_dispatch.consult(self, runtime, "The worker repeatedly output text without making any edits."):
+                                    self.store.save(task)
+                                    continue
+                                raise ProgressPause("The worker repeatedly output text without making edits. Use offered tools to continue.")
                             if message.get("reasoning_fallback"):
                                 task["messages"].append({"role": "user", "content": "You generated reasoning without executing a tool call. Call write_file, replace_text, or other offered tools to apply your changes directly to repository files."})
                             else:
@@ -3292,9 +3319,6 @@ class Engine:
                             task["status"] = "awaiting_reply"
                             task["action_pending"] = False
                     elif task.get("conversational") and message.get("content") and not message.get("reasoning_fallback") and task["patch"] and task["check_command"]:
-                        # A completed editing response must reach review even if
-                        # the worker forgets the checkpoint tool. Questions and
-                        # explicit ask_user calls still finish as conversation.
                         self.event(task, "state", "Preparing finished changes for review")
                         result = self.checkpoint_feedback(runtime, {"summary": str(message["content"])[:4000], "uncertainties": "The controller submitted this checkpoint after the worker's final response."})
                         task["messages"].append({"role": "user", "content": "Checkpoint result: " + json.dumps(result)})
@@ -3304,6 +3328,7 @@ class Engine:
                         if no_calls > 3:
                             from . import coordinator_dispatch
                             if coordinator_dispatch.consult(self, runtime, "The worker repeatedly returned reasoning without taking any action or providing an answer."):
+                                self.store.save(task)
                                 continue
                         if task.get("patch") == task.get("turn_start_patch", ""):
                             task["messages"].append({"role": "user", "content": "You generated reasoning without executing a tool call or outputting a final answer. Proceed with your planned action using the offered tools (e.g. search, view_file, write_file), or provide your answer to the user."})
@@ -3311,6 +3336,11 @@ class Engine:
                             task["messages"].append({"role": "user", "content": "You generated reasoning without executing a tool call or outputting a final answer. Continue with the offered tools to complete or verify your changes, or submit them for review."})
                     else:
                         task["messages"].append({"role": "user", "content": "Changes need verification and checkpoint review. Continue with tools, or use ask_user if you need a decision." if (task.get("conversational") and not task.get("branch_run")) else "Continue with tools, or call checkpoint when ready for review. Text alone does not complete this task."})
+
+                    self.store.save(task)
+                    if task.get("status") not in ACTIVE or task.get("answer_pending") or task.get("action_pending"):
+                        break
+                    continue
                 coordinator_applied = False
                 task["no_call_turns"] = 0
                 for call_index, call in enumerate(calls):

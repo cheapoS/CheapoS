@@ -91,3 +91,46 @@ class CheckpointAllowanceTests(unittest.TestCase):
                 self.assertIn('Verification has failed', res.get('guidance', ''))
         with self.assertRaisesRegex(ProgressPause, 'Worker has failed verification 6 consecutive times'):
             engine.worker_checks(runtime, {})
+
+    def test_json_checkpoint_text_dispatches_feedback_directly(self):
+        import hashlib
+        from cheapos.engine import limits_from
+        engine, runtime = self.setup_run(True)
+        task = runtime.task
+        task['status'] = 'running'
+        task['limits'] = limits_from({})
+        task['branch_run'] = {'items': [{'id': 'item1', 'review_repair': None}], 'current_item_id': 'item1'}
+        task['patch'] = 'diff --git a/test b/test\n+fix'
+        digest = hashlib.sha256(task['patch'].encode()).hexdigest()
+        task['checks'] = [{'passed': True, 'digest': digest}]
+        task['messages'] = []
+        task['no_call_turns'] = 0
+        task['turn_start_patch'] = task['patch']
+        task['turn'] = 0
+        task['worker_turns'] = 0
+        task['request_worker_turns'] = 0
+        runtime.started = 0
+        runtime.step_turns = 0
+        runtime.steer_queue = []
+        engine.fit_worker_context = Mock()
+        engine.deliver_loop_guidance = Mock()
+        engine.validate_offered_tools = Mock()
+        json_content = json.dumps({
+            "repair_dispositions": [{"candidate_id": "c1", "finding_id": "f1", "disposition": "disproved", "evidence": "Test"}],
+            "summary": "Fixed issue and passing tests.",
+            "uncertainties": "None"
+        })
+        checkpoint_called = []
+        def mock_cp(rt, args):
+            checkpoint_called.append(args)
+            task['status'] = 'paused'
+            return {'decision': 'APPROVE'}
+        engine.checkpoint_feedback = Mock(side_effect=mock_cp)
+        engine.request = Mock(return_value={'role': 'assistant', 'content': json_content, 'tool_calls': []})
+        runtime.edit_versions = {}
+
+        engine._run_until_pause(runtime)
+        self.assertEqual(len(checkpoint_called), 1)
+        self.assertEqual(checkpoint_called[0]['summary'], 'Fixed issue and passing tests.')
+        self.assertEqual(checkpoint_called[0]['repair_dispositions'][0]['disposition'], 'disproved')
+        self.assertTrue(any('Submitting verified changes for review' in str(call) for call in engine.event.call_args_list))

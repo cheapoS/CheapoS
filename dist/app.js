@@ -24,8 +24,8 @@ const CheapOSChatView = (() => {
     const important=['review','review_coaching'].includes(event.kind)||Boolean(d.error||d.result?.error||d.result?.syntax_warning);
     return `<details class="workflow-event ${important?'needs-reading':''}" data-event="work-event-${esc(event.id)}" ${important?'open':''}><summary>${icon('chevron')}<span>${esc(title)}</span>${event.time?`<time>${new Date(event.time).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</time>`:''}</summary>${d.result?.syntax_warning?`<p class="error">${esc(d.result.syntax_warning)}</p>`:''}${d.result?.error?`<p class="error">${esc(d.result.error)}</p>`:eventDetail(event)}</details>`;
   }
-  function eventsMarkup(events,entryReply='') {
-    const latestThinking=events.findLast(e=>e.kind==='generation'&&e.detail?.thinking);
+  function eventsMarkup(events,entryReply='',suppressThinkingOpen=false) {
+    const latestThinking=suppressThinkingOpen?null:events.findLast(e=>e.kind==='generation'&&e.detail?.thinking);
     const blocks=[];let inspections=[];
     function flush() {
       if(!inspections.length)return;
@@ -48,7 +48,7 @@ const CheapOSChatView = (() => {
     if(probe)stream={...stream,thinking:'',content:'',phase:'waiting'};
     const streamLabel=probe?'Checking model connection':stream?.phase==='thinking'?'Thinking':stream?.phase==='answer'?'Writing a response':stream?.phase==='tool'?`Preparing ${String(stream.tool||'the next action').replaceAll('_',' ')}`:`Waiting for the ${role.toLowerCase()}’s response`;
     const streamText=String(stream?.thinking||stream?.content||'');
-    const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span><strong>${esc(streamLabel)}</strong><span data-work-elapsed>${esc(step.elapsed)}</span></div>${streamText?`<pre data-thinking="workflow-stream-${esc(stream.request_id||step.id)}">${esc(streamText)}</pre>`:''}${stream.thinking&&stream.content&&stream.content.trim()!==stream.thinking.trim()?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
+    const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<section class="workflow-stream" ${stream.phase?`data-phase="${esc(stream.phase)}"`:''} aria-label="Live ${role.toLowerCase()} output"><div class="stream-label"><span class="task-dot pulsing"></span><strong>${esc(streamLabel)}</strong><span data-work-elapsed>${esc(step.elapsed)}</span></div>${streamText?`<pre data-thinking="workflow-stream-${esc(stream.request_id||step.id)}">${esc(streamText)}</pre>`:''}${stream.thinking&&stream.content&&stream.content.trim()!==stream.thinking.trim()?`<div class="workflow-note">${messageText(stream.content)}</div>`:''}</section>`:'';
     const liveText=live?String(task.check_stream?.output||stream?.content||stream?.thinking||'').trim():'';
     const preview=liveText?`<span class="workflow-preview">${esc((liveText.length>240?'…':'')+liveText.slice(-240))}</span>`:'';
     const title=live&&probe?'Checking model connection':liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
@@ -57,7 +57,7 @@ const CheapOSChatView = (() => {
       <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(status)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
       <div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||(task.demo?'Scripted local model':live?'Model selection pending':'Model identity unavailable'))}</strong></div>
         ${events.length>80?'<p class="small muted">Showing the latest 80 progress events. Earlier events remain in Technical logs.</p>':''}
-        <div class="workflow-events">${eventsMarkup(events.slice(-80),entryReply)||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div>
+        <div class="workflow-events">${eventsMarkup(events.slice(-80),entryReply,Boolean(live&&stream))||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div>
         ${liveOutput}
         <button type="button" class="text-link workflow-log-link" data-workflow-logs>Routing &amp; request details in Technical logs ${icon('chevron')}</button>
       </div></details>`;

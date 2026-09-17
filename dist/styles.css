@@ -313,9 +313,14 @@ svg, svg * {
 .workflow-model { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding-bottom: 12px; font-size: 12px; color: #a4b1a9; }
 .workflow-model strong { font-weight: 500; overflow-wrap: anywhere; color: #c6d2ca; }
 .workflow-stream { border: 1px solid #344339; background: #101612; border-radius: 8px; margin-bottom: 14px; overflow: hidden; }
+.workflow-stream[data-phase="thinking"] { border-color: #53495f; background: #1c1f21; }
 .stream-label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #b2cfbe; padding: 10px 14px; border-bottom: 1px solid #28372e; }
+.workflow-stream[data-phase="thinking"] .stream-label { border-bottom-color: #383142; color: #d6ccdf; }
+.workflow-stream[data-phase="thinking"] .stream-label strong { color: var(--purple); }
+.workflow-stream[data-phase="thinking"] .task-dot.pulsing { background: var(--purple); box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.4); }
 .stream-label > span:last-child { margin-left: auto; }
 #chat-view .workflow-stream pre { background: transparent; border: 0; border-radius: 0; padding: 14px; margin: 0; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 var(--font-mono); color: #c1cfc6; }
+#chat-view .workflow-stream[data-phase="thinking"] pre { font-family: var(--font); font-size: .875rem; line-height: 1.75; color: var(--secondary); padding: 14px 16px; }
 .workflow-event { border-bottom: 1px solid #28322c; }
 .workflow-event:last-child { border-bottom: 0; }
 .workflow-event > summary { display: flex; align-items: center; gap: 8px; padding: 10px 0; list-style: none; cursor: pointer; color: #c0cfc5; font-size: 13px; }
