@@ -276,7 +276,7 @@ def observe(engine, task, action):
     episode = next((e for e in task.get('coordinator_recovery', [])
                     if e['key'] == contract.episode_key(task) and e['state'] == 'applied'), None)
     if not episode or episode.get('result'): return
-    if action in {'write_file', 'replace_text', 'replace_lines'} and contract.identity(task) != episode['identity']:
+    if action in {'write_file', 'replace_text', 'replace_lines', 'undo_edit'} and contract.identity(task) != episode['identity']:
         result = {'action': action, 'saved_files': [f['path'] for f in task.get('changes', [])]}
         summary = 'The worker saved an edit after coordinator guidance. Verification and review are still required.'
     elif action in {'run_checks', 'checkpoint'} and task.get('checks'):

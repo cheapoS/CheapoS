@@ -149,7 +149,7 @@ def classify(error=None, task=None, cause=None, stage=None):
     explicit=cause or getattr(error,'pause_cause',None)
     code=getattr(error,'code',None) or task.get('error_code')
     if not explicit:
-        if isinstance(error,LimitExceeded):explicit='exhausted_work'
+        if isinstance(error,(LimitExceeded,BudgetError)):explicit='exhausted_work'
         elif isinstance(error,InterruptedError):explicit='operator'
         elif task.get('pending_approval'):explicit='command_grant'
         elif task.get('environment_setup',{}).get('status')=='missing':explicit='missing_setup'
@@ -192,6 +192,8 @@ def classify(error=None, task=None, cause=None, stage=None):
     if isinstance(error, LimitExceeded): diagnostic = {'kind': 'limit', 'key': error.key, 'used': error.used, 'allowed': error.allowed}
     if isinstance(error, BudgetError) and error.limit_hit:
         diagnostic = {'kind': 'request_budget', **error.limit_hit}
+    elif code == 'budget_exceeded' and isinstance(task.get('limit_hit'), dict):
+        diagnostic = {'kind': 'request_budget', **task['limit_hit']}
     diagnostic=review_diagnostic(task,diagnostic)
     if diagnostic: detail['diagnostic'] = diagnostic
     if explicit == 'malformed_output' and not specific(diagnostic):
@@ -202,7 +204,7 @@ def classify(error=None, task=None, cause=None, stage=None):
     return public(detail)
 
 def for_task(task):
-    """Reclassify an old unknown transport stop from its same retained request.
+    """Reclassify an old unknown stop from its same retained request.
 
     Do not relabel a newer operator/permission/limit stop using an older error.
     This read-only projection preserves the original record for diagnostics.
@@ -212,6 +214,14 @@ def for_task(task):
     saved=run.get('pause_detail')
     detail = public({**saved,'diagnostic':review_diagnostic(task,saved.get('diagnostic'))} if isinstance(saved,dict) else saved)
     request = (task.get('request_metrics') or [{}])[-1]
+    if (detail and detail['cause'] == 'unknown' and request.get('id')
+            and detail.get('diagnostic_id') == request['id']
+            and request.get('error_code') == 'budget_exceeded' and request.get('status') == 'failed'):
+        # Older engine wrappers erased the BudgetError code. Recover only from
+        # this exact request, never an earlier limit or a later operator pause.
+        return classify(task={**task, 'error_code': 'budget_exceeded',
+                              'limit_hit': request.get('limit_hit') or task.get('limit_hit')},
+                        stage=detail.get('stage'))
     if (detail and detail['cause'] in {'unknown', 'provider_connection'}
             and not detail.get('diagnostic')
             and (task.get('error_code') in TRANSPORT_ERRORS or task.get('error_code') in {'review_identity_unknown','review_identity_conflict','reviewer_recovery_required'} or (task.get('route_unavailable') or {}).get('scope') in {'model', 'provider'})

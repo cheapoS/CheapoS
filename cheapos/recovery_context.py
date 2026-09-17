@@ -36,9 +36,10 @@ def packet(task):
                  'Use the findings and current files to choose the smallest missing verification step. '
                  'Inspect the exact failed assertion or run a focused check; avoid rereading unchanged files.')
     from .working_state import project
+    from .edit_recovery import repair_packet
     working = project(task)
     if working.get('next_action'): next_step = working['next_action']
-    return {'working_state': working, 'latest_operator_direction': latest[:8000], 'prior_worker_statements_unverified': list(reversed(statements)),
+    return {'working_state': working, 'edit_recovery': repair_packet(task), 'latest_operator_direction': latest[:8000], 'prior_worker_statements_unverified': list(reversed(statements)),
             'completed_items': [{'id': item['id'], 'summary': item.get('outcome_summary', '')[:800]}
                                 for item in run.get('items', []) if item.get('status') in {'committed', 'satisfied_without_change'}][-12:],
             'recent_check_receipts': checks, 'next_step': next_step, 'validation_policy': TEST_POLICY,

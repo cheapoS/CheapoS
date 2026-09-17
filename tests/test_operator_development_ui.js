@@ -5,6 +5,27 @@ test('operator development is explicit opt-in with truthful preserved safeguards
 test('correction acknowledgment distinguishes interruption, running, consent, and actual blocker',()=>{assert.equal(c.operatorContinuationMarkup({}),'');for(const status of ['interrupting','blocked','needs_consent']){const html=c.operatorContinuationMarkup({status:'running',operator_continue:{status,reason:'Exact <blocker>'}});assert.match(html,/Exact &lt;blocker>/);assert.equal(html.includes('data-chat-action="resume"'),status==='needs_consent');}assert.match(c.operatorContinuationMarkup({status:'running',operator_continue:{status:'interrupting'}}),/stopping the previous approach/);});
 vm.runInContext(source.slice(source.indexOf('function operatorRecoveryFields'),source.indexOf('async function operatorRecovery')),c);
 test('recovery controls follow server capabilities and revision approval is explicit',()=>{const none=c.operatorRecoveryFields({reason:'Wait for pause'});assert.doesNotMatch(none,/data-recovery=/);const html=c.operatorRecoveryFields({can_enable:true,can_retry:true,can_model:true,can_revise:true,models:[{id:'allowed',label:'Allowed model'}]});assert.match(html,/Enable development mode for this task/);assert.match(html,/value="allowed"/);assert.match(html,/Approve item revision &amp; continue/);assert.match(html,/Other accepted criteria, checks, spending and permissions remain in force/);});
+c.CheapOSBranchUI=require('../dist/branch_ui.js');c.taskBusy=c.CheapOSBranchUI.isBusy;
+vm.runInContext(source.slice(source.indexOf('function recoveryActionAvailable'),source.indexOf('function renderChat')),c);
+test('completed branch awaiting target update keeps review controls without worker recovery',()=>{
+ const task={status:'paused',error:'Target branch has new commits',branch_run:{id:'run',status:'paused',pause_reason:'branch_drift',
+  readiness:{integration_blocker:'Target branch has new commits',review:{decision:'APPROVE'}},
+  items:[{id:'one',status:'committed',commit_receipt:{stage:'completed',run_id:'run',item_id:'one',new_tip:'a'.repeat(40)}}]}};
+ assert.equal(c.CheapOSBranchUI.projectRun(task).canRecheck,true);
+ assert.equal(c.recoveryActionAvailable(task),false);
+ assert.equal(c.recoveryActionAvailable(JSON.parse(JSON.stringify(task))),false);
+ task.error='Reviewer failed on new final evidence';task.branch_run.pause_detail={cause:'malformed_output'};
+ assert.equal(c.recoveryActionAvailable(task),true);
+ task.branch_run.items[0].status='reviewing';delete task.branch_run.readiness;
+ assert.equal(c.recoveryActionAvailable(task),true);
+ for(const status of ['ready_for_merge','merged','left_on_branch','awaiting_authorization']){
+  task.branch_run.status=status;assert.equal(c.recoveryActionAvailable(task),false,status);
+ }
+});
+test('recovery remains available for actual stops but not active or permission-waiting tasks',()=>{
+ for(const status of ['paused','blocked','interrupted','error','budget_paused'])assert.equal(c.recoveryActionAvailable({status}),true,status);
+ for(const task of [{status:'running'},{status:'approved'},{status:'paused',pending_approval:{}},{status:'paused',demo:true},{status:'error',archived_at:'now'},{status:'error',trashed_at:'now'}])assert.equal(c.recoveryActionAvailable(task),false);
+});
 vm.runInContext(source.slice(source.indexOf('function canTakeOver'),source.indexOf('async function takeOverTask')),c);
 test('failed saved tasks offer takeover but routine replies and genuine questions do not',()=>{for(const status of ['paused','error','blocked','budget_paused'])assert.equal(c.canTakeOver({status}),true);assert.equal(c.canTakeOver({status:'awaiting_reply'}),false);assert.equal(c.canTakeOver({status:'paused',pause_summary:{question:'Choose format'}}),false);assert.equal(c.canTakeOver({status:'paused',branch_run:{authorization_ref:null}}),false);assert.equal(c.canTakeOver({status:'paused',branch_run:{authorization_ref:'approved'}}),true);});
 

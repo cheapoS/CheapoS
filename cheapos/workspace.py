@@ -133,10 +133,12 @@ class Workspace:
         names = git(self.root, "ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0")
         return sorted(n for n in set(names) if n and n.startswith(prefix) and allowed_name(n) and not (self.root / n).is_symlink())[:MAX_FILES]
 
-    def read_file(self, path, start_line=1, end_line=200):
+    def read_file(self, path, start_line=1, end_line=None):
         data = self.text_bytes(path)
+        if end_line is None and type(start_line) is int:
+            end_line = start_line + 199
         if type(start_line) is not int or type(end_line) is not int or start_line < 1 or end_line < start_line:
-            raise ValueError("Invalid line range")
+            raise ValueError("Invalid line range: start_line must be a positive integer and end_line must be at least start_line. Omit end_line to read the next 200 lines.")
         lines = data.decode("utf-8").splitlines()
         end_line = min(end_line, start_line + 299)
         content = "\n".join(f"{i + 1}: {line}" for i, line in enumerate(lines) if start_line - 1 <= i < end_line)

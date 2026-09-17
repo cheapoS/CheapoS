@@ -47,6 +47,27 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(metrics.aggregate(task)['outcome'],'error')
 
 class TokenAccountingTests(unittest.TestCase):
+    def test_preflight_budget_failure_records_limit_without_usage_or_provider_blame(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from copy import deepcopy
+        import threading
+        from cheapos.engine import Engine
+        from cheapos.providers import BudgetError
+        task = MetricsTests().task();before=deepcopy(task['usage'])
+        engine=Engine.__new__(Engine);engine.store=Mock();engine.provider_factory=None
+        config={'model':'fixture/reviewer','base_url':'http://127.0.0.1:20128/v1','input_rate':0,'output_rate':0}
+        engine._resolve_provider_config=Mock(return_value=config)
+        engine._perform_request=Mock(side_effect=BudgetError('Private detail','reviewer_tokens',159110,200000))
+        runtime=SimpleNamespace(task=task,stop=threading.Event())
+        with self.assertRaises(BudgetError):
+            engine._request_attempt(runtime, [], [], 'reviewer')
+        record=task['request_metrics'][-1]
+        self.assertFalse(record['dispatched']);self.assertNotIn('reservation',record)
+        self.assertEqual(record['failure_category'],'local_budget')
+        self.assertEqual(record['limit_hit']['remaining'],40890)
+        self.assertEqual(task['usage'],before)
+
     def test_reservation_breakdown_reconciles_and_survives_serialization(self):
         task = MetricsTests().task()
         config = {'input_rate': 0, 'output_rate': 0}

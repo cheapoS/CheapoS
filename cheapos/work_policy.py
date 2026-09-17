@@ -9,7 +9,7 @@ READ_ONLY_STARTERS = (
     'Look through this project and suggest one small improvement. Explain it before making changes.',
 )
 READ_ONLY_TOOLS = frozenset({'list_files', 'read_file', 'outline_file', 'search',
-                             'read_url', 'read_merge_context', 'get_diff', 'read_context_evidence', 'read_check_output', 'update_working_state', 'ask_user'})
+                             'read_url', 'read_merge_context', 'get_diff', 'read_context_evidence', 'read_check_output', 'read_edit_history', 'update_working_state', 'ask_user'})
 
 
 class ReadOnlyViolation(ValueError):
@@ -54,9 +54,9 @@ def attempted_edit(task):
     for event in task.get('events', []):
         if event.get('kind') in {'tool', 'tool_error'}:
             detail = event.get('detail') if isinstance(event.get('detail'), dict) else {}
-            if detail.get('tool') in {'write_file', 'replace_text', 'replace_lines', 'append_text', 'apply_merge_version', 'delete_file'}:
+            if detail.get('tool') in {'write_file', 'replace_text', 'replace_lines', 'append_text', 'apply_merge_version', 'delete_file', 'undo_edit'}:
                 return True
-            if event.get('title') in {'write file', 'replace text', 'replace lines', 'append text', 'apply merge version', 'delete file'}:
+            if event.get('title') in {'write file', 'replace text', 'replace lines', 'append text', 'apply merge version', 'delete file', 'undo edit'}:
                 return True
     return False
 

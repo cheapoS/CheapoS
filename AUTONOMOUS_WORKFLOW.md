@@ -116,3 +116,70 @@ broken request happens to run again.
 Does this change let the task continue and finish without the operator doing the
 engine's work? If it only adds error wording, another button or instructions to
 type into Chat, the underlying recovery work is still incomplete.
+
+## Implemented: recover from a bad file edit
+
+Worker text edits now retain the latest 16 completed edit receipts inside the
+task record. These include the exact pre-edit bytes and file mode, but the
+worker's context and browser task payload never receive the stored file bodies.
+`read_edit_history` exposes receipt IDs and current-version status; `undo_edit`
+restores only the selected file when that receipt is its latest unchanged edit.
+Newer same-file changes, another item's work, a changed feature tip or a completed
+interactive commit make an old receipt ineligible. Path restrictions, branch
+write authority and the one-mutation-per-file-per-response rule also apply to
+undo. Existing tasks get receipts for edits made after this upgrade; old edits
+are not retroactively given undo authority.
+
+A text edit that introduces invalid Python or JSON syntax into a valid existing
+file is automatically restored before the worker continues. The tool returns
+the actual current lines and explains which edit was rejected. New files being
+written in chunks and files that already contain syntax errors remain editable.
+Python edits also report added/removed qualified symbols, possible scope moves
+and new duplicate definitions. These are evidence, not a ban on refactoring:
+the worker can see that `Manager.run` became `helper.run`, or that a new test was
+appended to a class without its intended fixture.
+
+Repair packets group identical exception messages and label whether the latest
+check predates the current patch. Full original check output stays retained.
+After repeated failed verification, automatic placement requests an eligible
+worker handoff with this evidence; fixed worker choices remain fixed. The old
+six-failure stop and instruction to rewrite the whole implementation are gone.
+Explicit checks and checkpoint verification use the same repair feedback.
+All approved check commands, remaining work/spending limits, provider eligibility
+and independent review requirements still apply. Undo is never a passing check.
+
+Validation uses tiny deterministic file and controller cases, including a bad
+edit followed by repair, a passing check and independent approval. No live model
+calls or new multi-item Git qualification runs are required for these cases.
+
+## Implemented: continue an unfinished worker recovery
+
+A recovering worker can inspect missing file context. Its guidance now matches
+the offered read/search tools instead of telling it to ask the operator when a
+snapshot is incomplete. An omitted `read_file.end_line` reads up to 200 lines
+from the requested start, including starts past line 200. Existing path, size
+and explicit-range bounds remain in force.
+
+A text-only response during recovery stays in the worker loop for the next
+action. It no longer returns a still-running item to the branch controller and
+turns useful saved context into an unknown-stop banner. Existing non-progress
+handling, task limits, command permissions, independent review and operator
+Pause still apply. Deterministic cases exercise text followed by a late-file
+read, edit and checkpoint dispatch, plus stopping before another model call.
+
+## Implemented: smaller review inventories and precise allowance stops
+
+Interactive and item reviewers receive a bounded preview of large `list_files`
+results, with a task-local reference for retrieving the complete listing.
+Saved reviews get the same treatment when resumed. Source reads, diffs,
+criteria, findings and check evidence remain unchanged; directory discovery
+does not need to consume the full prompt allowance on every subsequent turn.
+
+The request reservation still checks the existing authorized allowance before
+dispatch. If a request cannot fit, its structured budget reason survives the
+worker/branch wrappers and appears as a work-limit stop. Older unknown stops
+can recover that explanation from the exact associated failed request. A local
+budget refusal is not recorded as an invalid model response, and cannot grant
+more tokens or spending. A small deterministic case resumes a saved review,
+fits its listing into the remaining allowance, and reaches independent approval
+without repeating implementation or checks.

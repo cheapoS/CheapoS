@@ -157,7 +157,9 @@ def _checkpoint(engine, runtime, args):
             result = engine.checks(runtime, shlex.join(expected['command']))
             if not result['passed']:
                 branch_runs.transition_item(run, item['id'], 'working')
-                return {'decision':'REQUEST_CHANGES', 'feedback':'Repair the failing required check.', 'checks':result}
+                feedback = engine.worker_check_feedback(runtime, result)
+                return {'decision':'REQUEST_CHANGES', 'feedback':'Repair the failing required check.', 'checks':feedback,
+                        'handoff_queued':bool(feedback.get('handoff_queued'))}
     current = evidence.candidate(task, ctx, specs, criteria)
     checks = evidence.current_checks(current, task['checks'])
     from . import review_disputes
@@ -306,6 +308,8 @@ def _checkpoint(engine, runtime, args):
                     or needs_decision)
         if deciding:
             _coach(engine, task, messages, 'request_limit' if turns >= max_rounds - 1 else 'missing_decision')
+        from .context_evidence import review_inventories
+        messages = review_inventories(task, messages)
         offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools
         tool_choice = {'type': 'function', 'function': {'name': 'review_decision'}} if deciding else None
         request_messages = messages
@@ -397,7 +401,7 @@ def _checkpoint(engine, runtime, args):
                         engine.store.save(task)
                         return result
                 else: result = {'error':'Return a valid independent review decision.'}
-            elif name in {'read_file','outline_file','get_project_context','search','list_files','get_diff','read_check_output','read_merge_context','read_context_evidence'}:
+            elif name in {'read_file','outline_file','get_project_context','search','list_files','get_diff','read_check_output','read_merge_context','read_context_evidence','read_edit_history'}:
                 try: result = engine.file_tool(task,name,params)
                 except (ValueError,OSError,TypeError,UnicodeError) as error: result = {'error':str(error)[:1000]}
             elif name == 'read_url': result = engine.read_url(runtime,params)

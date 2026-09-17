@@ -641,6 +641,8 @@ function eventDetail(event) {
     const result=detail?.result,args=detail?.arguments||{};
     if(event.title==='read url')return `<p>${sourceLink(result.source_url,'Open source page')} · Read ${esc(result.fetched_at)}</p><pre class="output">${esc(result.content)}</pre><p class="muted">${result.has_more?'More lines are available. ':''}${result.truncated||result.excerpt_truncated?'Document preview was shortened. ':''}External source text.</p>`;
     if(event.title==='read file')return `<pre class="output">${esc(result?.content||'No content returned.')}</pre>`;
+    if(result?.rolled_back)return `<p>Restored ${esc(args.path)} automatically after a syntax-breaking edit. The worker can correct the edit and continue.</p>`;
+    if(event.title==='undo edit')return `<p>Restored ${esc(args.path)} to before the selected edit. Verification and review remain required.</p>`;
     if(['write file','replace text','replace lines','append text'].includes(event.title))return `<p>Saved ${esc(args.path)} in the task copy.</p>`;
     if(event.title==='delete file')return `<p>Deleted ${esc(args.path)} from the task copy.</p>`;
     if(Array.isArray(result))return `<pre class="output">${esc(result.map(r=>typeof r==='string'?r:JSON.stringify(r)).join('\n'))}</pre>`;
@@ -750,6 +752,16 @@ async function submitPermission(task,scope) {
 function bindPermissions(task) {
   $$('[data-permission]').forEach(button=>button.onclick=()=>submitPermission(task,button.dataset.permission));
 }
+function recoveryActionAvailable(task) {
+  if(!task||taskBusy(task)||task.demo||task.archived_at||task.trashed_at||task.pending_approval||!['paused','blocked','interrupted','error','budget_paused'].includes(task.status))return false;
+  const run=task.branch_run;
+  if(!run)return true;
+  // Integration and proposal controls already provide the appropriate next step.
+  if(['ready_for_merge','merged','left_on_branch','awaiting_authorization'].includes(run.status)||run.merge_operation)return false;
+  const readiness=run.readiness;
+  const waitingForTarget=run.pause_reason==='branch_drift'&&readiness?.integration_blocker&&task.error===readiness.integration_blocker&&readiness.review?.decision==='APPROVE'&&CheapOSBranchUI.projectRun(task).canRecheck&&(!run.pause_detail||run.pause_detail.cause==='branch_drift');
+  return !waitingForTarget;
+}
 function renderChat() {
   const task=state.task;if(!task)return;
   const guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
@@ -797,7 +809,7 @@ function renderChat() {
       const details=$('details',pause)||$('.button-row',pause);pause.insertBefore(notice,details);
     }
   }
-  if(!taskBusy(task)&&!task.demo&&!task.archived_at&&!task.trashed_at&&['paused','blocked','interrupted','error','budget_paused'].includes(task.status)){const recovery=document.createElement('button');recovery.className='outline-button';recovery.textContent='Choose recovery action';recovery.onclick=()=>operatorRecovery(task);$('#chat-view').append(recovery);}
+  if(recoveryActionAvailable(task)){const recovery=document.createElement('button');recovery.className='outline-button';recovery.textContent='Choose recovery action';recovery.onclick=()=>operatorRecovery(task);$('#chat-view').append(recovery);}
   const continuation=operatorContinuationMarkup(task);if(continuation){const notice=document.createElement('div');notice.innerHTML=continuation;$('#chat-view').append(notice);}
   if(task.error&&!task.branch_run){const logs=document.createElement('button');logs.className='text-link';logs.textContent='View technical logs';logs.onclick=()=>setView('logs');$('#chat-view').append(logs);}
   $$('[data-workflow-logs]').forEach(b=>b.onclick=()=>{setView('logs');const routing=$('#routing-diagnostics');if(routing){routing.open=true;routing.scrollIntoView({block:'start',behavior:'instant'});$('summary',routing)?.focus({preventScroll:true});}});
@@ -1122,16 +1134,13 @@ function bindTerminalCopy() {
 function tokenUsageLabel(task,role=null) {
   const a=role?task.token_accounting?.roles?.[role]:task.token_accounting;
   const fallback=role?task.usage?.[role]?.tokens:task.metrics?.tokens?.accounted_total;
-  if(role)return `${(a?.accounted??fallback??0).toLocaleString()} tokens`;
-  if(!a)return `${(fallback||0).toLocaleString()} accounted tokens`;
-  if(a.coverage!=='complete')return `${(a.accounted||0).toLocaleString()} accounted tokens · breakdown partial`;
-  return `${a.reported.toLocaleString()} reported${a.reserved?` + ${a.reserved.toLocaleString()} reserved`:''} tokens`;
+  return `${(a?.accounted??fallback??0).toLocaleString()} tokens`;
 }
 function tokenReservationDetails(task) {
   const a=task.token_accounting;
   if(!a)return '';
   const count=n=>n==null?'unknown':Number(n).toLocaleString();
-  return `<details class="token-reservations" data-event="token-reservations-${esc(task.id)}"><summary>Token accounting${a.reserved?` · ${count(a.reserved)} reserved`:''}</summary>
+  return `<details class="token-reservations" data-event="token-reservations-${esc(task.id)}"><summary>Token accounting</summary>
     <p>${count(a.reported)} reported · ${count(a.reserved)} reserved${a.unclassified?` · ${count(a.unclassified)} unclassified`:''}</p>
     <p class="small muted">Reserved tokens are local budget estimates, not confirmed consumption or money held by a provider. Before each request, cheapoS counts the serialized prompt and tools in UTF-8 bytes, adds a 1,024-token buffer, then adds the output allowance. This conservative estimate is replaced when complete token usage arrives. Failed or interrupted requests without usage keep their estimate.</p>
     ${a.coverage!=='complete'?'<p class="small muted">Historical request evidence is incomplete. The breakdown may explain only part of the accounted total.</p>':''}
