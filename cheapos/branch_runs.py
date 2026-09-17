@@ -56,8 +56,12 @@ def _id(value):
 
 
 def validate_plan(plan):
-    if not isinstance(plan, dict) or set(plan) - {'items', 'limits', 'final_checks', 'measurement', 'uncapped_work', 'continue_independent'}:
-        raise ValueError('Plan must contain items, limits and optional final_checks')
+    if not isinstance(plan, dict):
+        raise ValueError('plan must be an object containing items and limits, not ' + type(plan).__name__)
+    extra = set(plan) - {'items', 'limits', 'final_checks', 'measurement', 'uncapped_work', 'continue_independent'}
+    if extra:
+        raise ValueError('Unexpected plan fields: ' + ', '.join('plan.' + str(k)[:80] for k in sorted(extra, key=str))[:400]
+                         + '. Keep items, limits and optional final_checks; put assumptions beside plan.')
     if 'measurement' in plan and type(plan['measurement']) is not bool:
         raise ValueError('Measurement mode must be explicitly true or false')
     if 'uncapped_work' in plan and type(plan['uncapped_work']) is not bool:
@@ -87,10 +91,12 @@ def validate_plan(plan):
     if 'uncapped_work' in plan: output['uncapped_work'] = plan['uncapped_work']
     if 'continue_independent' in plan: output['continue_independent'] = plan['continue_independent']
     seen = set()
-    for item in items:
+    for index, item in enumerate(items):
         allowed = {'id', 'title', 'instructions', 'dependencies', 'acceptance_criteria', 'required_checks', 'revision_of'}
-        if not isinstance(item, dict) or set(item) - allowed:
-            raise ValueError('Unknown plan item fields')
+        if not isinstance(item, dict):
+            raise ValueError('plan.items[%s] must be an object' % index)
+        if set(item) - allowed:
+            raise ValueError('Unexpected item fields: ' + ', '.join('plan.items[%s].%s' % (index, str(k)[:80]) for k in sorted(set(item) - allowed, key=str))[:400])
         identity = _id(item.get('id'))
         if identity in seen:
             raise ValueError('Duplicate item ID')

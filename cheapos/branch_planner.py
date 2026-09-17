@@ -265,6 +265,14 @@ def _parse(message, limits, source=None, assumptions=None):
         choices = value.pop('assumptions', [])
         if not isinstance(choices, list) or len(choices) > 12 or any(not isinstance(x, str) or not x.strip() or len(x) > 500 for x in choices):
             raise ValueError('Assumptions must be up to twelve concise strings')
+        # Some planners place this descriptive metadata inside plan. Preserve
+        # and validate it exactly as the documented outer field; never drop it.
+        nested = value['plan'].pop('assumptions', []) if isinstance(value.get('plan'), dict) else []
+        if not isinstance(nested, list) or any(not isinstance(x, str) or not x.strip() or len(x) > 500 for x in nested) or len(nested) > 12:
+            raise ValueError('plan.assumptions must be up to twelve concise strings; put assumptions beside plan')
+        choices = list(dict.fromkeys(choices + nested))
+        if len(choices) > 12:
+            raise ValueError('Supply at most twelve assumptions across the proposal')
         if assumptions is not None:
             assumptions[:] = choices
     if not isinstance(value, dict) or set(value) != {'status', 'plan', 'clarification'}:
@@ -323,7 +331,8 @@ def _parse(message, limits, source=None, assumptions=None):
     if result.get('uncapped_work'):
         raise ValueError('Only the operator can select uncapped work')
     if result['limits'] != limits:
-        raise ValueError('Retain the displayed finite proposal limits exactly')
+        differing = sorted(k for k in set(result['limits']) | set(limits) if result['limits'].get(k) != limits.get(k))
+        raise ValueError('Retain the displayed finite proposal limits exactly. Copy displayed_limits into plan.limits; differing fields: ' + ', '.join(str(k)[:80] for k in differing)[:400])
     from .engine import check_argv
     from .test_profiles import executable_identity
     from .test_policy import is_plan_preview, is_git_command

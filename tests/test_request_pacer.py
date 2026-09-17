@@ -57,6 +57,9 @@ class TestRequestPacer(unittest.TestCase):
         self.assertEqual(pacing_interval({"model": "cohere/north-mini-code:free"}, payload_bytes=80_000), 7.0)
         self.assertEqual(pacing_interval({"model": "cohere/north-mini-code:free"}, payload_bytes=200_000), 9.0)
 
+        self.assertEqual(pacing_interval({"model": "groq/qwen/planner"}, payload_bytes=80_000), 4.0)
+        self.assertEqual(pacing_interval({"model": "groq/qwen/planner"}, payload_bytes=200_000), 6.0)
+
         # Local, fixture, and paid models
         self.assertEqual(pacing_interval({"local": True}), 0.0)
         self.assertEqual(pacing_interval({"model": "fixture"}), 0.0)

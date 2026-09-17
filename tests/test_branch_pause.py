@@ -150,3 +150,13 @@ class IdentityPauseTests(unittest.TestCase):
   self.assertEqual(t['branch_run']['pause_detail']['cause'],'unknown')
   t['branch_run']['pause_detail']['cause']='operator'
   self.assertEqual(pause.for_task(t)['cause'],'operator')
+
+class RoutingAccessDetails(unittest.TestCase):
+ def test_connection_scope_does_not_turn_an_access_error_into_quota(self):
+  from cheapos.routing import RoutingPause
+  error=RoutingPause('Inspect access',scope='connection')
+  for category in ('credential_access','malformed_request'):
+   task={'request_metrics':[{'role':'planner','status':'failed','failure_category':category}]}
+   detail=pause.classify(error,task)
+   self.assertEqual(detail['cause'],'provider_connection')
+   self.assertNotIn('quota',detail['explanation'])

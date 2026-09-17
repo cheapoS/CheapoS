@@ -2304,7 +2304,7 @@ class Engine:
         reservation = reserve(account, config, messages, tools, role)
         record=task['request_metrics'][-1]
         reservation['metric_id']=record['id']
-        record['reservation'] = {k: reservation[k] for k in ('tokens', 'cost', 'prompt_tokens', 'completion_tokens')}
+        record['reservation'] = {k: reservation[k] for k in ('tokens', 'cost', 'prompt_tokens', 'completion_tokens', 'basis', 'prompt_bytes', 'buffer_tokens')}
         record.update(reservation_tokens=reservation['tokens'],reservation_cost=reservation['cost'])
         task["in_flight"] = reservation
         if developing(task): config = {**config, "_operator_interruptible": True}

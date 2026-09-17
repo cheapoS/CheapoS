@@ -26,6 +26,57 @@ def record_accounted(record, config, reservation, usage, known):
         (usage['prompt_tokens'] * config['input_rate'] + usage['completion_tokens'] * config['output_rate']) / 1_000_000) if known else max(reservation['cost'], reported or 0)
 
 
+def token_accounting(task):
+    """Explain retained budget estimates without changing the authoritative ledger.
+
+    Only reconciled requests establish reported consumption. Missing historical
+    evidence stays unclassified, even when the session cost happens to be zero.
+    """
+    from .routing_trace import model_label
+    roles = {role: {'reported': 0, 'reserved': 0,
+                   'accounted': number((task.get('usage', {}).get(role) or {}).get('tokens'))}
+             for role in ('coordinator', 'planner', 'worker', 'reviewer')}
+    pending = []
+    for record in task.get('request_metrics', []):
+        bucket = roles.get(record.get('role'))
+        if bucket is None:
+            continue
+        if record.get('usage_reconciled') is True:
+            counts = [number(record.get(k)) for k in ('input_tokens', 'output_tokens')]
+            if all(v is not None for v in counts):
+                bucket['reported'] += sum(counts)
+            continue
+        reservation = record.get('reservation') or {}
+        total = number(reservation.get('tokens'))
+        if total is None:
+            continue
+        bucket['reserved'] += total
+        basis = reservation.get('basis') == 'serialized_utf8_bytes_plus_buffer_v1'
+        pending.append({'role': record['role'], 'model': model_label(record.get('model')),
+                        'purpose': 'probe' if record.get('purpose') == 'probe' else 'planning' if record.get('purpose') == 'branch_planning' else 'model request',
+                        'status': record.get('status') if record.get('status') in ('failed', 'cancelled', 'responded') else 'pending',
+                        'error_code': model_label(record.get('error_code')) if record.get('error_code') else None,
+                        'prompt_tokens': number(reservation.get('prompt_tokens')),
+                        'output_tokens': number(reservation.get('completion_tokens')), 'tokens': total,
+                        'prompt_bytes': number(reservation.get('prompt_bytes')) if basis else None,
+                        'buffer_tokens': number(reservation.get('buffer_tokens')) if basis else None})
+    for bucket in roles.values():
+        accounted = bucket['accounted']
+        explained = bucket['reported'] + bucket['reserved']
+        bucket['unclassified'] = max(0, accounted - explained) if accounted is not None else None
+        bucket['consistent'] = accounted is not None and explained <= accounted
+    complete = (task.get('metrics_schema') == 1 and not task.get('request_metrics_truncated')
+                and not task.get('metrics_history_truncated')
+                and all(b['consistent'] and b['unclassified'] == 0 for b in roles.values() if b['accounted'] is not None))
+    return {'reported': sum(b['reported'] for b in roles.values()),
+            'reserved': sum(b['reserved'] for b in roles.values()),
+            'accounted': sum(b['accounted'] or 0 for b in roles.values()),
+            'unclassified': sum(b['unclassified'] or 0 for b in roles.values()),
+            'coverage': 'complete' if complete else 'partial', 'roles': roles,
+            'requests': list(reversed(pending[-50:])), 'reservation_count': len(pending),
+            'omitted_requests': max(0, len(pending) - 50)}
+
+
 def aggregate(task):
     events=task.get('events',[]);records=task.get('request_metrics',[]);runs=task.get('run_metrics',[])
     complete=task.get('metrics_schema')==1 and not task.get('request_metrics_truncated') and not task.get('metrics_history_truncated')

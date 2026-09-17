@@ -15,13 +15,13 @@ from urllib.parse import urlsplit
 
 # Local quiet-interval defaults, not advertised provider quota guarantees.
 PROVIDER_PACING_SECONDS = {
-    "openrouter": 5.0,     # OpenRouter :free tier: smooth 12 RPM, avoids burst rate/TPM limit
-    "nvidia": 4.0,         # NVIDIA NIM: concurrency=1, token recovery, avoids 500 crashes
-    "opencode": 4.0,       # OpenCode / Ling: endpoint recovery, avoids 503
+    "openrouter": 5.0,
+    "nvidia": 4.0,
+    "opencode": 4.0,
     "oc": 4.0,
-    "antigravity": 4.0,    # Google Gemini free tier: 15 RPM
+    "antigravity": 4.0,
     "google": 4.0,
-    "groq": 2.0,           # Groq: high throughput
+    "groq": 2.0,
     "kiro": 3.0,           # Kiro endpoint pacing
     "openai": 4.0,         # OpenAI free/shared tier pacing
     "omniroute": 4.0,      # Fallback for an explicitly unidentified upstream
@@ -126,9 +126,11 @@ def pacing_interval(config, provider=None, payload_bytes=0):
             pass
 
     base = PROVIDER_PACING_SECONDS.get(ident, DEFAULT_FREE_PACING_SECONDS)
-    # Payload-aware token scaling to prevent TPM exhaustion on large context turns
+    # Larger contexts consume more of a token quota even with few requests.
+    # Apply the existing size heuristic to every remote free provider, including
+    # Groq. This is smoothing, not a claim about an account's actual TPM limit.
     extra = 0.0
-    if ident != "groq" and payload_bytes:
+    if payload_bytes:
         if payload_bytes > 160_000:       # ~40k+ prompt tokens
             extra = 4.0
         elif payload_bytes > 60_000:      # ~15k+ prompt tokens

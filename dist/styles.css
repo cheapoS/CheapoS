@@ -1192,3 +1192,11 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat-action):not(.chat-work):not(.activity-step):not(.workflow-event):not(.workflow-exploration):not(.workflow-history):not(.activity-card):not(.advanced):not(#planner-options):not(.planning-overrides):not(.review-execution):not(.review-permissions):not(.patch-help):not(.workspace-info)[open] > summary::before {
   transform: rotate(45deg);
 }
+
+/* Session estimates stay readable beside reported consumption. */
+.token-reservations{margin:16px 0;font-size:13px;line-height:1.5}
+.token-reservations summary{cursor:pointer;color:var(--mint)}
+.reservation-list{padding-left:18px}
+.reservation-list li{margin:14px 0;overflow-wrap:anywhere}
+.reservation-list p{margin:4px 0}
+.usage-table>div>span:nth-child(2){text-align:right;white-space:normal}

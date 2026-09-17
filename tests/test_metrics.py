@@ -45,3 +45,65 @@ class MetricsTests(unittest.TestCase):
     def test_later_failed_request_does_not_inherit_human_acceptance(self):
         task=self.task();task.update(commits=[{'commit':'old'}],status='error')
         self.assertEqual(metrics.aggregate(task)['outcome'],'error')
+
+class TokenAccountingTests(unittest.TestCase):
+    def test_reservation_breakdown_reconciles_and_survives_serialization(self):
+        task = MetricsTests().task()
+        config = {'input_rate': 0, 'output_rate': 0}
+        failed = reserve(task, config, [{'role': 'user', 'content': 'café'}], [], 'worker')
+        request = {'role': 'worker', 'model': 'fixture/model', 'purpose': 'probe',
+                   'status': 'failed', 'error_code': 'http_403', 'reservation': failed}
+        task['request_metrics'] = [request]
+        good = reserve(task, config, [], [], 'worker')
+        usage = {'prompt_tokens': 20, 'completion_tokens': 10}
+        known = reconcile(task, config, good, usage)
+        record = {'role': 'worker', 'reservation': good}
+        metrics.record_usage(record, usage, known)
+        metrics.record_accounted(record, config, good, usage, known)
+        task['request_metrics'].append(record)
+        result = metrics.token_accounting(json.loads(json.dumps(task)))
+        self.assertEqual(result['reported'], 30)
+        self.assertEqual(result['reserved'], failed['tokens'])
+        self.assertEqual(result['accounted'], 30 + failed['tokens'])
+        self.assertEqual(result['coverage'], 'complete')
+        row = result['requests'][0]
+        self.assertEqual(row['prompt_tokens'], row['prompt_bytes'] + 1024)
+        self.assertEqual(row['tokens'], row['prompt_tokens'] + row['output_tokens'])
+        self.assertEqual(row['purpose'], 'probe')
+        self.assertEqual(row['error_code'], 'http_403')
+        self.assertEqual(task['usage']['uncertain_requests'], 1)
+        # Later complete evidence replaces the reservation, including on failure.
+        known = reconcile(task, config, failed, usage)
+        metrics.record_usage(request, usage, known)
+        metrics.record_accounted(request, config, failed, usage, known)
+        result = metrics.token_accounting(task)
+        self.assertEqual((result['reported'], result['reserved'], result['requests']), (60, 0, []))
+
+    def test_partial_historical_evidence_and_pending_request_are_not_reported_usage(self):
+        task = {'usage': {'planner': {'tokens': 600}}, 'metrics_schema': 1,
+                'request_metrics': [{'role': 'planner', 'reservation': {'tokens': 500,
+                 'prompt_tokens': 400, 'completion_tokens': 100}, 'model': 'https://secret.example/token'}]}
+        result = metrics.token_accounting(task)
+        self.assertEqual((result['reported'], result['reserved'], result['unclassified']), (0, 500, 100))
+        self.assertEqual(result['coverage'], 'partial')
+        self.assertEqual(result['requests'][0]['status'], 'pending')
+        self.assertIsNone(result['requests'][0]['prompt_bytes'])
+        self.assertNotIn('secret', json.dumps(result))
+        task['usage']['planner']['tokens'] = 500
+        task['request_metrics_truncated'] = True
+        self.assertEqual(metrics.token_accounting(task)['coverage'], 'partial')
+
+    def test_public_projection_is_read_only_bounded_and_omits_payloads(self):
+        from copy import deepcopy
+        from cheapos.server import public_task
+        task = MetricsTests().task()
+        task['usage']['worker']['tokens'] = 60
+        task['request_metrics'] = [{'role': 'worker', 'model': 'fixture/model',
+             'reservation': {'tokens': 1}, 'prompt': 'SECRET PROMPT', 'api_key': 'SECRET KEY'} for _ in range(60)]
+        before = deepcopy(task)
+        result = public_task(task)
+        self.assertEqual(task, before)
+        self.assertNotIn('request_metrics', result)
+        accounting = result['token_accounting']
+        self.assertEqual((len(accounting['requests']), accounting['omitted_requests'], accounting['reserved']), (50, 10, 60))
+        self.assertNotIn('SECRET', json.dumps(accounting))

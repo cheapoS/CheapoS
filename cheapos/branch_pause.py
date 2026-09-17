@@ -130,7 +130,12 @@ def classify(error=None, task=None, cause=None, stage=None):
         elif task.get('pending_approval'):explicit='command_grant'
         elif task.get('environment_setup',{}).get('status')=='missing':explicit='missing_setup'
         else:
-            if code == 'routing_unavailable' and ((task.get('route_unavailable') or {}).get('scope') in {'model', 'provider', 'connection', 'account'} or getattr(error, 'scope', None) in {'model', 'provider', 'connection', 'account'} or (task.get('route_unavailable') or {}).get('retry_at') or getattr(error, 'retry_at', None)):
+            latest = (task.get('request_metrics') or [{}])[-1]
+            if code == 'routing_unavailable' and latest.get('status') == 'failed' and latest.get('failure_category') in {'credential_access', 'malformed_request'}:
+                # Connection scope identifies where a failure happened; it is
+                # not evidence of quota exhaustion (e.g. a rejected API key).
+                explicit = 'provider_connection'
+            elif code == 'routing_unavailable' and ((task.get('route_unavailable') or {}).get('scope') in {'model', 'provider', 'connection', 'account'} or getattr(error, 'scope', None) in {'model', 'provider', 'connection', 'account'} or (task.get('route_unavailable') or {}).get('retry_at') or getattr(error, 'retry_at', None)):
                 explicit = 'provider_quota'
             else:
                 explicit = CODES.get(code, 'unknown')

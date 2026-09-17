@@ -61,6 +61,9 @@ Open **Models**. OmniRoute is the first-class local gateway, with separate model
 
 ### OmniRoute companion
 
+For cooldown retry ownership and an explanation of reported versus reserved
+tokens, see [request pacing and token accounting](development/request-accounting.md).
+
 Use **Set up connection** on the welcome screen for guided setup. It reuses an identified gateway, explains missing prerequisites, and re-checks while the dialog is open. Install and provider login steps stay in your terminal and OmniRoute dashboard. **Use this connection** opens project selection; project work starts only after you send a request. Existing explicit model pairs are preserved.
 
 Install OmniRoute with these two simple commands:

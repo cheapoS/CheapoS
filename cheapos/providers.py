@@ -346,7 +346,8 @@ def reserve(task, config, messages, tools, role):
     if not isinstance(bucket, dict) or any(isinstance(bucket.get(k), bool) or not isinstance(bucket.get(k), (int, float)) or not math.isfinite(bucket[k]) or bucket[k] < 0 for k in ('tokens', 'cost')):
         raise ValueError('Saved role accounting is invalid; inspect the saved task before resuming')
     # A deliberately conservative preflight estimate; provider tokenizers/billing can differ.
-    prompt_bound = len(json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False).encode("utf-8")) + 1024
+    prompt_bytes = len(json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False).encode("utf-8"))
+    prompt_bound = prompt_bytes + 1024
     output = int(task["limits"]["output_tokens"])
     if role == "reviewer" and not measuring(task):
         remaining = task["limits"]["reviewer_tokens"] - task["usage"]["reviewer"]["tokens"]
@@ -362,6 +363,7 @@ def reserve(task, config, messages, tools, role):
         used = task['usage']['reviewer']['tokens'] if key == 'reviewer_tokens' else task['usage']['cost']
         raise BudgetError("The next model request does not fit the remaining budget. Increase the task limit or use a smaller checkpoint/model.", key, used, task['limits'][key])
     reservation = {"role": role, "prompt_tokens": prompt_bound, "completion_tokens": output, "tokens": prompt_bound + output, "cost": projected}
+    reservation.update(basis='serialized_utf8_bytes_plus_buffer_v1', prompt_bytes=prompt_bytes, buffer_tokens=1024)
     bucket = task["usage"][role]
     bucket["tokens"] += reservation["tokens"]
     bucket["cost"] += projected
