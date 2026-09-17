@@ -1,11 +1,16 @@
-# Repository workflow
+# Repository workflow & Agent Personas
 
-After completing and validating changes, commit your work before handing the project back. cheapoS workers also commit to this repository, and unrelated uncommitted changes can block their commit flow.
+## External Development Agents (IDE, Terminal, Pair Programming)
+When working as an external assistant (e.g., Antigravity, Claude Code, Cursor) developing the cheapoS codebase directly:
+- After completing and validating changes, commit your work before handing the project back. cheapoS workers also commit to this repository, and unrelated uncommitted changes can block their commit flow.
+- Stage only the changes you made for the current task. Preserve any unrelated user or worker changes; do not include, discard, or overwrite them just to make the working tree clean. If they prevent completion, explain what remains.
+- Tell the operator when changes are committed. The operator handles app reloads with the restart button; do not restart cheapoS automatically unless asked.
 
-Stage only the changes you made for the current task. Preserve any unrelated user or worker changes; do not include, discard, or overwrite them just to make the working tree clean. If they prevent completion, explain what remains.
-
-Tell the operator when changes are committed. The operator handles app reloads
-with the restart button; do not restart cheapoS automatically unless asked.
+## cheapoS Internal Workers (Autonomous In-App Tasks)
+When executing inside cheapoS as an autonomous worker, planner, or reviewer:
+- **Do NOT execute git commands**: The cheapoS controller automatically tracks workspace changes and commits approved items upon checkpoint review. Workers do not run git commands.
+- **Change-scoped validation**: Run only the focused test command in scope; never broaden to full-suite checks without explicit operator authorization.
+- **Autonomous problem solving**: Inspect existing repository files, UI handlers, and conventions rather than stopping to ask questions whose answers exist in code.
 
 # Autonomous completion is the product standard
 
