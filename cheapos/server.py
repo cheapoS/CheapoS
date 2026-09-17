@@ -254,6 +254,35 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     raise ValueError('Choose a registered project')
                 if 'enabled' in values: engine.carto.configure(source, values['enabled'])
                 result = {**engine.carto.status(source), 'index':engine.carto.context(source,source,rebuild=values.get('rebuild') is True)}
+            elif path == "/api/projects/create":
+                name = values.get("name")
+                parent = values.get("parent", ".")
+                if not name or not isinstance(name, str):
+                    self.reply({"error": "Invalid name"}, 400)
+                    return
+                base_dir = self.server.directory
+                try:
+                    parent_path = Path(unquote(parent))
+                    if parent_path.is_absolute():
+                         target_dir = parent_path.resolve() / name
+                    else:
+                         target_dir = (base_dir / parent_path / name).resolve()
+                    
+                    if not str(target_dir).startswith(str(base_dir)):
+                        self.reply({"error": "Access denied"}, 403)
+                        return
+                    elif target_dir.exists():
+                        self.reply({"error": "Already exists"}, 400)
+                        return
+                    else:
+                        os.makedirs(target_dir)
+                        if values.get("init_git", False):
+                            from cheapos.workspace import git
+                            git(target_dir, "init")
+                        result = {"path": str(target_dir)}
+                except Exception as e:
+                    self.reply({"error": str(e)}, 500)
+                    return
             elif path == "/api/projects/preview":
                 result = engine.previews.settings(values)
             elif path == "/api/projects/hide":
