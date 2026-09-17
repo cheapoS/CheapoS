@@ -138,6 +138,24 @@ class CoordinatorDispatchTests(LocalCase):
         self.assertEqual(task['usage']['uncertain_requests'],1)
         self.assertFalse(self.engine.admission.resources['local_inference'].locked())
 
+    def test_new_failed_candidate_gets_fresh_help_in_same_unattended_item(self):
+        task, runtime = self.prepare()
+        task['branch_run'] = {'id':'run','current_item_id':'resolve','items':[{'id':'resolve','status':'working'}]}
+        task['checks'] = [{'passed':True,'digest':'before','command':['test']}]
+        with patch.object(self.engine, 'request', return_value={'content':json.dumps(self.answer())}) as request:
+            self.assertTrue(recovery.consult(self.engine, runtime, 'Earlier inspection stalled'))
+            first = copy.deepcopy(task['coordinator_recovery'][0])
+            self.engine.file_tool(task, 'write_file', {'path':'notes.txt','content':'new integration work\n'})
+            task['checks'].append({'passed':False,'digest':'after','command':['test'],'output':'FAIL: missing asset'})
+            self.assertTrue(recovery.consult(self.engine, runtime, 'Worker is not repairing new failures'))
+            self.assertFalse(recovery.consult(self.engine, runtime, 'Repeated failure'))
+            self.assertEqual(request.call_count, 2)
+        self.assertEqual(task['coordinator_recovery'][0], first)
+        self.assertEqual(len(task['coordinator_recovery']), 2)
+        availability = recovery.reassessment_availability(task)
+        self.assertTrue(availability['automatic'])
+        self.assertNotIn('Interactive only', availability['reason'])
+
     def test_late_advice_after_pause_or_candidate_change_is_not_applied(self):
         task,runtime=self.prepare()
         def response(*args,**kwargs):

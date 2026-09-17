@@ -484,6 +484,8 @@ def plan(engine, runtime, inputs):
                         arguments = json.loads(raw)
                         if not isinstance(arguments, dict) or 'path' not in arguments or set(arguments) - {'path', 'start_line', 'end_line', 'start_column', 'query'}:
                             raise ValueError('Supply path and optional line/column coordinates or literal query')
+                        from .metrics import tool_action
+                        tool_action(runtime.task)
                         read_key = json.dumps(arguments, sort_keys=True)
                         if read_key in failed_reads:
                             result = {**failed_reads[read_key], 'repeated_failed_read': True}
@@ -516,6 +518,9 @@ def plan(engine, runtime, inputs):
                 raise PlanningResponseError('The planning inspection allowance is complete. Use the saved file evidence to call propose_branch_plan, or request clarification there if essential information is still missing. No further file inspection was executed.')
             assumptions = []
             result = _parse(response, limits, captured['source'], assumptions)
+            if calls:
+                from .metrics import tool_action
+                tool_action(runtime.task)
             runtime.task['planning_assumptions'] = assumptions
             planner_cfg = runtime.task.get('providers', {}).get('planner') or {}
             if planner_cfg.get('model') and planner_cfg.get('base_url') and hasattr(engine, 'connection_for'):
@@ -527,6 +532,8 @@ def plan(engine, runtime, inputs):
                     pass
             return result
         except ClarificationRequired:
+            from .metrics import tool_action
+            tool_action(runtime.task)
             raise
         except (ValueError, TypeError, KeyError, AttributeError) as error:
             detail = {'attempt': attempt + 1, 'error': str(error)[:1000]}

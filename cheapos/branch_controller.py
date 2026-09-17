@@ -187,7 +187,9 @@ class BranchController:
             task['integration_policy']=copy.deepcopy(run['integration_policy'])
             run['test_policy_version']=1
             if planning_task:
-                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
+                from .metrics import initialize_actions
+                initialize_actions(planning_task)
+                for key in ('session_actions','usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
@@ -392,6 +394,8 @@ class BranchController:
             runtime.branch_authority=lambda:self.validate_authority(task,run)
             task.pop('operator_continue',None)
             task.update(status='running',route_resume_on_start=False,error=None,error_code=None,stream=None,check_stream=None,pending_approval=None)
+            from .integration_preparation import continuing
+            continuing(task)
             if run.get('startup'): run['startup']['status']='complete'
             self.engine.store.save(task)
             self.engine.runtimes[task_id]=runtime
@@ -449,6 +453,10 @@ class BranchController:
             if result['decision'] not in {'REQUEST_CHANGES', 'REQUEST_TESTS'}:
                 return
         task['status'] = 'running'
+        if item['status'] == 'working' and task.get('branch_run', {}).get('conflict_resolution'):
+            from .branch_conflicts import prepare_clean_files
+            task['active_role'] = 'worker'
+            prepare_clean_files(self.engine, runtime)
         from .worker_conversation import continue_session
         continue_session(task, self.engine.initial_messages(task),
                          'review_repair' if result and result.get('decision') == 'REQUEST_CHANGES' else 'test_expansion' if result and result.get('decision') == 'REQUEST_TESTS' else 'item_resume', result)
@@ -800,17 +808,31 @@ class BranchController:
             return {'task_id':task_id,**self.proposals.prepare(task_id,self.contract(task)),'readiness':self.readiness(task),**self.test_disclosure(task)}
 
     def message(self, task_id, values):
-        message=values.get('message')
-        if not isinstance(message,str) or not message.strip() or len(message)>8000:
+        message = values.get('message', '')
+        attachments = values.get('attachments', [])
+        if attachments is not None and not isinstance(attachments, list):
+            raise ValueError('Attachments must be a list')
+        if not isinstance(message, str):
             raise ValueError('Provide guidance of up to 8,000 characters')
+        if not message.strip():
+            if attachments and len(attachments) > 0:
+                message = "Inspect the attached file(s)."
+            else:
+                raise ValueError('Provide guidance of up to 8,000 characters')
+        elif len(message.strip()) > 8000:
+            raise ValueError('Provide guidance of up to 8,000 characters')
+        from .uploads import prepare_attachments, append_attachments
+        safe_attachments, augmented_message = prepare_attachments(self.engine.store.root, attachments, message.strip()) if attachments else ([], message.strip())
         from .continuation_policy import is_continue
-        if is_continue(message):
+        continuing = is_continue(message)
+        if continuing and not safe_attachments:
             from .branch_operator import continue_saved
             with self.engine.lock:
                 task = self.engine.store.get(task_id)
                 self.engine.event(task, 'user', 'You', message.strip())
                 self.engine.store.save(task)
             return continue_saved(self, task_id)
+
         with self.engine.lock:
             self.engine.require_active_task(task_id)
             runtime=self.engine.runtimes.get(task_id)
@@ -819,45 +841,47 @@ class BranchController:
             if run.get('target_update'): raise ValueError('Finish the saved branch update: open Review changes, then Update branch & recheck.')
             if task.get('planning_request') and not run.get('authorization_ref'):
                 if run.get('status') == 'awaiting_authorization':
-                    if is_continue(message):
+                    if continuing and not safe_attachments:
                         from .branch_operator import continue_saved
                         self.engine.event(task, 'user', 'You', message.strip())
                         self.engine.store.save(task)
                         return continue_saved(self, task_id)
-                return self.planning_message(task,message.strip())
+                append_attachments(task, safe_attachments)
+                return self.planning_message(task,augmented_message)
             if run['status'] not in {'running','paused','blocked'}:
                 raise ValueError('Use Request changes to revise completed work')
             self.validate_authority(task,run)
             from .development import enabled
             guidance=run.setdefault('guidance',[])
-            if not enabled(task) and sum(len(g['message']) for g in guidance)+len(message)>24000:
+            if not enabled(task) and sum(len(g['message']) for g in guidance)+len(augmented_message)>24000:
                 raise ValueError('Guidance is full; prepare an explicit revision')
-            guidance.append({'item_id':run['current_item_id'],'message':message.strip()})
+            append_attachments(task, safe_attachments)
+            guidance.append({'item_id':run['current_item_id'],'message':augmented_message})
             task.pop('recovery_blocked', None)
-            task['steer_guidance'] = message.strip()
+            task['steer_guidance'] = augmented_message
             answering_blocker=bool(run.pop('waiting_for_user',None))
             if answering_blocker:
                 for item in run['items']:
                     if item.get('question'):
-                        item.setdefault('clarification_history',[]).append({'question':item.pop('question'),'guidance':message.strip()})
+                        item.setdefault('clarification_history',[]).append({'question':item.pop('question'),'guidance':augmented_message})
             self.engine.event(task,'user','You',message.strip())
             from .development import enabled
             development=enabled(task)
             active=bool(runtime and runtime.thread and runtime.thread.is_alive())
             if active and hasattr(runtime, 'task'):
-                runtime.task['steer_guidance'] = message.strip()
+                runtime.task['steer_guidance'] = augmented_message
                 runtime.task.setdefault('messages', []).append({
                     'role': 'user',
-                    'content': f"USER INSTRUCTION: {message.strip()}\nPlease acknowledge this instruction directly and prioritize it."
+                    'content': f"USER INSTRUCTION: {augmented_message}\nPlease acknowledge this instruction directly and prioritize it."
                 })
             self.engine.event(task,'branch_guidance','Guidance saved within the accepted plan',
                               'Applying your correction and continuing within the approved scope.' if development else
                               'Your update is saved for continuation from the current files. The plan and remaining limits are unchanged.' if task['status']=='paused' else 'The worker will receive this on its next turn.')
             if development and active:
-                self.engine.queue_operator_direction(runtime,message.strip(),record=False)
+                self.engine.queue_operator_direction(runtime,augmented_message,record=False)
                 return runtime.task
-            if not development:return task
-            self.engine.archive_operator_state(task,'Operator corrected paused work')
+            if not development and (not continuing or active):return task
+            if development:self.engine.archive_operator_state(task,'Operator corrected paused work')
             self.engine.store.save(task)
         from .branch_operator import continue_saved
         return continue_saved(self,task_id)

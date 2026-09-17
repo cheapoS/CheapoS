@@ -120,6 +120,11 @@ class BranchFinalTests(unittest.TestCase):
             ready = final.final_check_review(self.engine, self.runtime)['readiness']
         packets = [packet for packet in self.requests if 'chunk' in packet]
         self.assertGreater(len(packets), 3)
+        for kind in ('review_request', 'review'):
+            events = [e[3] for e in self.events if e[1] == kind]
+            self.assertEqual([(e['chunk_index'], e['chunk_total']) for e in events[:-1]],
+                             [(i, len(packets)) for i in range(1, len(packets) + 1)])
+            self.assertNotIn('chunk_index', events[-1])  # Synthesis is not another chunk.
         for index, packet in enumerate(packets, 1):
             self.assertEqual(packet['scope'], {
                 'kind': packet['chunk']['kind'], 'chunk_index': index, 'chunk_total': len(packets),

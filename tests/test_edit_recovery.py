@@ -16,7 +16,7 @@ class EditRecoveryTests(unittest.TestCase):
             path=Path(directory)/'x.txt';path.write_text('one\ntwo\n')
             workspace=Workspace(directory)
             engine=Engine.__new__(Engine);engine.lock=threading.RLock()
-            engine.file_tool=Mock(side_effect=lambda task,name,args:getattr(workspace,name)(**args))
+            engine.file_tool=Mock(side_effect=lambda task,name,args,runtime=None:getattr(workspace,name)(**args))
             runtime=SimpleNamespace(task={'workspace':directory},edit_versions={},guard=lambda:None)
             version=workspace.read_file('x.txt')['hash']
             args={'path':'x.txt','start_line':900,'end_line':901,'new_text':'replacement'}

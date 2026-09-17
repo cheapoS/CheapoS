@@ -11,7 +11,10 @@ import time
 from pathlib import Path, PurePosixPath
 
 
-MAX_FILE_BYTES = 256_000
+# Existing project files must be usable by tools when they fit the snapshot.
+# Input size is independent of model-visible excerpts and new-file generation.
+MAX_FILE_BYTES = 2_000_000
+MAX_CREATE_FILE_BYTES = 256_000
 MAX_EDIT_BYTES = 3_000
 MAX_EDIT_LINES = 80
 MAX_SNAPSHOT_BYTES = 100_000_000
@@ -86,7 +89,7 @@ class Workspace:
                 skipped.append(name)
                 continue
             data = candidate.read_bytes()
-            if len(data) > 2_000_000:
+            if len(data) > MAX_FILE_BYTES:
                 skipped.append(name)
                 continue
             size += len(data)
@@ -133,18 +136,35 @@ class Workspace:
         names = git(self.root, "ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0")
         return sorted(n for n in set(names) if n and n.startswith(prefix) and allowed_name(n) and not (self.root / n).is_symlink())[:MAX_FILES]
 
-    def read_file(self, path, start_line=1, end_line=None):
+    def read_file(self, path, start_line=1, end_line=None, start_column=1):
         data = self.text_bytes(path)
         if end_line is None and type(start_line) is int:
             end_line = start_line + 199
         if type(start_line) is not int or type(end_line) is not int or start_line < 1 or end_line < start_line:
             raise ValueError("Invalid line range: start_line must be a positive integer and end_line must be at least start_line. Omit end_line to read the next 200 lines.")
         lines = data.decode("utf-8").splitlines()
+        if type(start_column) is not int or start_column < 1 or (start_column > 1 and
+                (start_line > len(lines) or start_column > len(lines[start_line - 1]) + 1)):
+            raise ValueError("Invalid start column; use the returned next_line and next_column to continue.")
         end_line = min(end_line, start_line + 299)
-        content = "\n".join(f"{i + 1}: {line}" for i, line in enumerate(lines) if start_line - 1 <= i < end_line)
-        return {"path": path, "total_lines": len(lines), "start_line": start_line, "end_line": min(end_line, len(lines)),
-                "hash": hashlib.sha256(data).hexdigest(), "content": content[:20_000],
-                "complete": start_line == 1 and end_line >= len(lines) and len(content) <= 20_000}
+        chosen, remaining, line, column, last_line = [], 20_000, start_line, start_column, start_line - 1
+        while line <= min(end_line, len(lines)):
+            prefix = f'{line}: '
+            room = remaining - len(prefix) - (1 if chosen else 0)
+            if room <= 0:
+                break
+            part = lines[line - 1][column - 1:column - 1 + room]
+            remaining -= len(prefix) + len(part) + (1 if chosen else 0)
+            chosen.append(prefix + part); last_line = line; column += len(part)
+            if column <= len(lines[line - 1]):
+                break
+            line += 1; column = 1
+        more = line <= len(lines)
+        return {"path": path, "total_lines": len(lines), "start_line": start_line, "end_line": min(last_line, len(lines)),
+                "hash": hashlib.sha256(data).hexdigest(), "content": '\n'.join(chosen),
+                "start_column": start_column, "next_line": line if more else None,
+                "next_column": column if more else None,
+                "complete": start_line == 1 and start_column == 1 and not more}
 
     def text_bytes(self, path):
         target = self.path(path)
@@ -211,42 +231,44 @@ class Workspace:
             return None
         return None
 
-    def outline_file(self, path):
-        """Return the class, method, and function outlines with line numbers for a file."""
+    def outline_file(self, path, start_line=1):
+        """Page declarations without sending the whole source or outline to a model."""
+        if type(start_line) is not int or start_line < 1:
+            raise ValueError('start_line must be a positive integer')
         data = self.text_bytes(path)
         text = data.decode("utf-8")
+        outline = []
         if path.endswith(".py"):
             import ast
             try:
                 tree = ast.parse(data, filename=path)
             except SyntaxError as err:
                 return {"path": path, "outline": f"SyntaxError at line {err.lineno}: {err.msg}", "total_lines": len(text.splitlines())}
-            outline = []
             for node in tree.body:
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     end = getattr(node, "end_lineno", node.lineno)
                     args = [a.arg for a in node.args.args]
-                    outline.append(f"def {node.name}({', '.join(args)}) (lines {node.lineno}–{end})")
+                    outline.append((node.lineno, f"def {node.name}({', '.join(args)}) (lines {node.lineno}–{end})"))
                 elif isinstance(node, ast.ClassDef):
                     end = getattr(node, "end_lineno", node.lineno)
-                    outline.append(f"class {node.name} (lines {node.lineno}–{end})")
+                    outline.append((node.lineno, f"class {node.name} (lines {node.lineno}–{end})"))
                     for sub in node.body:
                         if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
                             sub_end = getattr(sub, "end_lineno", sub.lineno)
                             sub_args = [a.arg for a in sub.args.args]
-                            outline.append(f"  def {sub.name}({', '.join(sub_args)}) (lines {sub.lineno}–{sub_end})")
-            if not outline:
-                return {"path": path, "outline": "(No top-level functions or classes found)", "total_lines": len(text.splitlines())}
-            return {"path": path, "outline": "\n".join(outline), "total_lines": len(text.splitlines())}
+                            outline.append((sub.lineno, f"  def {sub.name}({', '.join(sub_args)}) (lines {sub.lineno}–{sub_end})"))
         else:
-            outline = []
             for i, line in enumerate(text.splitlines(), 1):
                 stripped = line.strip()
-                if stripped.startswith(("#", "function ", "class ", "export function ", "export class ", "def ")):
-                    outline.append(f"line {i}: {stripped[:100]}")
-                    if len(outline) >= 100:
-                        break
-            return {"path": path, "outline": "\n".join(outline) if outline else "(No outline symbols found)", "total_lines": len(text.splitlines())}
+                if stripped.startswith(("#", "function ", "async function ", "class ", "export function ", "export async function ", "export class ", "def ")):
+                    outline.append((i, f"line {i}: {stripped[:100]}"))
+        selected = [(line, label) for line, label in outline if line >= start_line]
+        page = selected[:100]
+        return {"path": path, "outline": '\n'.join(label[:180] for _, label in page) or '(No outline symbols in this range)',
+                "total_lines": len(text.splitlines()), "hash": hashlib.sha256(data).hexdigest(),
+                "start_line": start_line, "symbols_returned": len(page),
+                "has_more": len(selected) > len(page),
+                "next_start_line": selected[100][0] if len(selected) > 100 else None}
 
     def search(self, query):
         if not isinstance(query, str) or not query or len(query) > 200:
@@ -254,10 +276,7 @@ class Workspace:
         matches = []
         for name in self.list_files():
             try:
-                target = self.path(name)
-                if target.stat().st_size > MAX_FILE_BYTES:
-                    continue
-                for line_number, line in enumerate(target.read_text(encoding="utf-8").splitlines(), 1):
+                for line_number, line in enumerate(self.text_bytes(name).decode('utf-8').splitlines(), 1):
                     if query.casefold() in line.casefold():
                         matches.append({"path": name, "line": line_number, "text": line[:300]})
                         if len(matches) >= 60:
@@ -267,7 +286,7 @@ class Workspace:
         return matches
 
     def write_file(self, path, content):
-        if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_FILE_BYTES:
+        if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_CREATE_FILE_BYTES:
             raise ValueError("Content must be text under 256 KB")
         target = self.path(path)
         if target.exists():
@@ -345,7 +364,7 @@ class Workspace:
         names = self.list_files()
         for name in names:
             target = self.path(name)
-            if target.is_file() and target.stat().st_size > 2_000_000:
+            if target.is_file() and target.stat().st_size > MAX_FILE_BYTES:
                 raise ValueError("Changed file exceeds the 2 MB limit: " + name)
         if names:
             git(self.root, "add", "-A", "--", *names)

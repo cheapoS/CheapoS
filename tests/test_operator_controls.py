@@ -52,14 +52,31 @@ class OperatorControlsTests(LocalCase):
         dollars=task['limits']['dollars']
         with self.assertRaises(ValueError):self.engine.operator_recovery(task['id'],{'action':'enable'})
         responses=iter([call('ask_user',{'question':'I can continue with the new approach. Which example comes next?'})])
+        from cheapos.uploads import save_upload
+        record=save_upload(self.engine.store.root,'correction.png',b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR')
+        with self.assertRaisesRegex(ValueError,'Attachments must be a list'):
+            self.engine.operator_recovery(task['id'],{'action':'takeover','approved':True,'attachments':'invalid'})
+        self.assertFalse(self.engine.store.get(task['id'])['execution']['development_mode'])
+        seen=[]
         class Provider:
-            def complete(_,messages,tools,maximum):return next(responses),{'prompt_tokens':2,'completion_tokens':2}
+            def complete(_,messages,tools,maximum):
+                seen.append(json.dumps(messages))
+                return next(responses),{'prompt_tokens':2,'completion_tokens':2}
         self.engine.provider_factory=lambda *args:Provider()
-        saved=self.engine.operator_recovery(task['id'],{'action':'takeover','approved':True,'message':'Use the saved files and explain the next step.'})
+        saved=self.engine.operator_recovery(task['id'],{'action':'takeover','approved':True,'message':'Use the saved files and explain the next step.','attachments':[record]})
         result=self.finish(task)
         self.assertEqual(result['status'],'awaiting_reply',result.get('error'))
         self.assertEqual(result['limits']['dollars'],dollars)
         self.assertEqual(result['operator_history'][-1]['progress_state']['route_probes']['worker'],9)
+        self.assertEqual([a['id'] for a in result['attachments']],[record['id']])
+        self.assertIn('correction.png',seen[0])
+        self.assertIn('### Attached Image:',result['requests'][-1])
+        with patch.object(self.engine,'start',side_effect=ValueError('Command consent required')):
+            blocked=self.engine.operator_recovery(task['id'],{'action':'takeover','approved':True,'message':'','attachments':[record]})
+        self.assertEqual(blocked['operator_continue']['status'],'blocked')
+        self.assertIn('Inspect the attached file(s).',blocked['task']['steer_guidance'])
+        self.assertIn('### Attached Image:',blocked['task']['steer_guidance'])
+        self.assertEqual([a['id'] for a in blocked['task']['attachments']],[record['id']])
 
     def test_repeated_inspection_has_feedback_without_fixed_stop(self):
         task=self.task();responses=iter([call('read_file',{'path':'math_utils.py'})]*6 + [call('ask_user',{'question':'The file is inspected. Which behavior should change next?'})])

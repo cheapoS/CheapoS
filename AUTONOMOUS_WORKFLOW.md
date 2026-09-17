@@ -252,3 +252,70 @@ retain their specific explanation; unexpected startup errors retain a diagnostic
 reference and server traceback, without attributing setup to an old planner call.
 Validation uses small deterministic startup cases and the existing Git/HTTP
 fixtures for sibling merges, immutable copies, authorization and integration.
+
+## Implemented: large branch items are reviewed in pages
+
+A large accumulated patch, including incoming target changes during conflict
+resolution, is not an exhausted work allowance. Branch items retain the full
+patch and page oversized review evidence through the existing independent
+packet reviewer. Each byte of the packet receives recorded coverage before the
+normal item decision verifies every acceptance criterion. Full evidence and
+packet feedback remain available by reference; saved approvals cover only their
+exact candidate and evidence. Completed pages survive Resume, and invalid packet
+responses use the authorized reviewer handoff path.
+
+Concrete defects still return to focused repair. Required checks, candidate
+validation, independent review and spending limits still apply; paging does not
+approve work or increase authority. The legacy compact-review size guard remains
+on the separate Interactive review path.
+
+## Implemented: inspect files accepted into the task copy
+
+Text inspection and existing-file edits share the snapshot's 2 MB file limit.
+A file accepted into the task copy must not disappear from search or fail an
+outline just because it exceeds the former 256 KB text-tool limit. Reads return
+at most 20,000 characters with line/column continuation, including long lines;
+outlines return at most 100 symbols with a continuation line. Full-file hashes
+still bind versioned edits to the inspected file. New-file generation and small
+edit limits remain separate and unchanged.
+
+Small deterministic cases cover large Python and JavaScript files, paged
+inspection, search, a versioned edit and undo, plus path/binary restrictions.
+They require no models, Git workflows or real-time waits.
+
+## Implemented: reassess new recovery evidence and prepare clean merge files
+
+Optional coordinator help now follows the current patch, check result and review
+evidence within an item. A later failure after code changes can receive fresh
+help. Unchanged reads, repeated checks, Resume, elapsed time and usage do not
+renew the same consultation; previous attempts and accounting remain saved.
+Coordinator packets retain the failure end of test output instead of only the
+initial passing tests. Unattended UI describes automatic assistance accurately.
+
+Automatic branch-worker recovery may try further unused authorized workers after
+the old two-handoff threshold. It retains failed-model exclusions, task limits,
+spending and command authority, check evidence and independent review.
+
+Before a conflict worker continues, the controller applies captured Git-combined
+nonconflicting files that still match their original task version. Existing edits
+and textual conflicts remain untouched. This preparation is restart-safe and
+does not approve or commit the result; verification and review still follow.
+
+## Implemented: review integration changes against the captured target
+
+Conflict-resolution item review compares the complete candidate with the frozen
+incoming target. Unchanged imported target code no longer fills review pages.
+A second diff against Git's captured suggested merge exposes dropped task work,
+missing incoming changes and unexpected edits, including outside conflict paths.
+Original task requirements accompany both comparisons, and every review page
+identifies their bases. Reviewers can inspect current source, frozen merge
+versions and the retained full item patch when assessing interactions.
+
+The candidate, required checks and commit receipt still bind the complete patch.
+Independent approval and all acceptance criteria remain required. An already
+started legacy packet keeps its exact contents and completed page approvals on
+Resume; new candidates use the smaller comparison. Source checkout, index and
+branch refs remain untouched while constructing the review.
+
+Coverage uses one small Git comparison fixture plus in-memory packet and
+continuation cases; it does not add another full agent workflow or live model run.

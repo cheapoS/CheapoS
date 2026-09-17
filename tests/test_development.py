@@ -2,7 +2,8 @@
 import copy
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+from cheapos import route_schedule
 from cheapos.development import enabled
 from cheapos.branch_authorization import digest
 from cheapos.providers import ProviderError
@@ -38,24 +39,33 @@ class DevelopmentTests(unittest.TestCase):
             gateway=SimpleNamespace(settings=policy,matches=lambda _:True,catalog=lambda **k:{'status':'ready','models':models},pool=pool)
             engine=SimpleNamespace(gateway=gateway,event=Mock(),store=SimpleNamespace(save=Mock()),request=Mock(return_value={'tool_calls':[{'id':'probe'}]}),parse_call=lambda _:('routing_ready',{'marker':PROBE_MARKER}))
             runtime=SimpleNamespace(task=task,failed_models=set())
-            if development:
+            with patch('cheapos.route_schedule.time.time',return_value=1000) as clock:
                 select_remote(engine,runtime)
                 self.assertEqual(task['providers']['worker']['model'],'provider0/model')
                 self.assertEqual(task['progress_state']['route_probes']['worker'],5)
-                self.assertEqual(task['route']['failure_history'][0]['model'],'previous')
+                if development:
+                    self.assertEqual(task['route']['failure_history'][0]['model'],'previous')
                 task['providers']['worker']=None
                 engine.request.reset_mock()
                 engine.request.side_effect=ProviderError('Invalid tool output',code='unsupported_tool')
-                with self.assertRaises(RoutingPause):select_remote(engine,runtime)
-                self.assertEqual(engine.request.call_count,len(models))
-                self.assertEqual(task['progress_state']['route_probes']['worker'],11)
-                return 1
-            else:
-                with self.assertRaises(RoutingPause) as failure:select_remote(engine,runtime)
-                self.assertEqual(failure.exception.scope,'probe_limit')
-            return engine.request.call_count
-        self.assertEqual(run(False),0)
-        self.assertEqual(run(True),1)
+                clock.return_value += route_schedule.ROUND_SECONDS
+                with self.assertRaises(RoutingPause) as paused:select_remote(engine,runtime)
+                self.assertEqual(paused.exception.scope,'probe_capacity')
+                self.assertEqual(engine.request.call_count,route_schedule.BATCH_SIZE)
+                clock.return_value = paused.exception.retry_at
+                with self.assertRaises(RoutingPause) as exhausted:select_remote(engine,runtime)
+                self.assertIn('No eligible independent model remains',str(exhausted.exception))
+                self.assertIsNone(exhausted.exception.retry_at)
+            self.assertEqual(engine.request.call_count,len(models))
+            self.assertEqual(task['progress_state']['route_probes']['worker'],11)
+            attempted=[call.kwargs['config_override']['model'] for call in engine.request.call_args_list]
+            self.assertEqual(attempted,[model['id'] for model in models])
+            if development:
+                failures=task['route']['failure_history'] + task['route']['failures']
+                self.assertEqual([failure['model'] for failure in failures],['previous'] + attempted)
+        for development in (False, True):
+            with self.subTest(development=development):
+                run(development)
 
     def test_review_retries_keep_claims_and_require_real_decision(self):
         from cheapos import branch_disagreement, branch_review, review_disputes

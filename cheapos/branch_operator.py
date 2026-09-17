@@ -246,10 +246,14 @@ def recover(controller, task_id, values):
     action=values.get('action')
     if action in {'model','reviewer','revise','checks'}:return amend(controller,task_id,values)
     if action=='takeover':
-        if set(values)-{'action','approved','message'} or values.get('approved') is not True:
+        if set(values)-{'action','approved','message','attachments'} or values.get('approved') is not True:
             raise ValueError('Explicitly approve takeover with your correction')
-        message=values.get('message')
+        attachments=values.get('attachments')
+        if attachments is not None and not isinstance(attachments,list):raise ValueError('Attachments must be a list')
+        message=values.get('message') or ('Inspect the attached file(s).' if attachments else '')
         if not isinstance(message,str) or not message.strip() or len(message)>8000:raise ValueError('Enter a correction of up to 8,000 characters')
+        from .uploads import prepare_attachments
+        safe_attachments,_=prepare_attachments(controller.engine.store.root,attachments,'') if attachments else ([], '')
         with controller.engine.lock:
             task=control(controller,task_id,{'action':'enable','approved':True})
             try:
@@ -260,7 +264,7 @@ def recover(controller, task_id, values):
                 # Direction is still captured below; resume explains the exact
                 # environmental/identity blocker without granting invalid scope.
                 pass
-            return controller.message(task_id,{'message':message})
+            return controller.message(task_id,{'message':message,**({'attachments':safe_attachments} if attachments else {})})
     if action=='retry':
         from .development import enabled
         if set(values)-{'action','message'}:raise ValueError('Retry accepts only a correction message')

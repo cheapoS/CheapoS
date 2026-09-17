@@ -122,7 +122,7 @@ def build_manifest(run):
     return result
 
 
-def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
+def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None, progress=None):
     from .engine import tool, ToolArgumentsError
     chunk_prop = {'type': 'array', 'items': {'type': 'string'}, 'description': f"Must be exact chunk_ids: {json.dumps(chunk_ids)}"}
     if chunk_ids: chunk_prop['enum'] = [chunk_ids]
@@ -143,6 +143,9 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
     if runtime.task['branch_run'].get('conflict_resolution'):
         from .engine import READ_TOOLS
         tools.extend(t for t in READ_TOOLS if t['function']['name']=='read_merge_context')
+    if manifest.get('kind') == 'item':
+        from .engine import READ_TOOLS
+        tools.extend(t for t in READ_TOOLS if t['function']['name'] == 'read_context_evidence')
     encoded = _json(packet)
     if len(encoded) > 60000:
         raise ValueError('Final review packet exceeds 60,000 characters; nothing was omitted')
@@ -166,12 +169,17 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
             return copy.deepcopy(cached)
     messages.extend(copy.deepcopy(state.get('messages',[])))
     packet['context_references']=copy.deepcopy(state.get('context_references',[]))
+    # Display metadata stays outside packet bindings so a label change cannot
+    # invalidate already reviewed evidence during continuation.
+    scope = progress if progress is not None else packet.get('scope', {})
+    display = {k: scope[k] for k in ('chunk_index', 'chunk_total') if k in scope} if not criterion_ids else {}
     engine.store.save(runtime.task)
     while True:
         recovery.guard(runtime)
         if recovery.needed(runtime.task,key,state):
             recovery.recover(engine,runtime,key,state,messages)
-        engine.event(runtime.task,'review_request','Requesting final packet review',{'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'stage':'synthesis' if criterion_ids else 'chunk'})
+        label = 'item' if manifest.get('kind') == 'item' else 'final'
+        engine.event(runtime.task,'review_request',f'Requesting {label} packet review',{'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'stage':'synthesis' if criterion_ids else 'chunk',**display})
         message = engine.request(runtime, messages, tools, 'reviewer', purpose='branch_final')
         state['reviewer_model']=recovery.model(runtime.task)
         calls = message.get('tool_calls', [])
@@ -179,6 +187,9 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
             if len(calls) != 1:
                 raise ValueError('Return exactly one final_review_decision tool call.')
             name, result = engine.parse_call(calls[0])
+            if name in {tool['function']['name'] for tool in tools}:
+                from .metrics import tool_action
+                tool_action(runtime.task)
             if name == 'report_review_context_blocker':
                 if result.get('manifest_id')!=manifest['id'] or not any(r.get('path')==result.get('path') and r.get('available') is False for r in packet.get('context_references',[])):
                     raise ValueError('Report a context blocker only after a recorded unavailable read of this exact candidate/path.')
@@ -186,7 +197,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
                 raise PauseError('review_context_unavailable',stage='finalizing')
             if name == 'read_final_context':
                 excerpt=recovery.context_read(engine,runtime,key,state,result,
-                    lambda:review_context.read(runtime.task['branch_run'],manifest,result))
+                    lambda:context_reader(result) if context_reader else review_context.read(runtime.task['branch_run'],manifest,result))
                 messages.append(message);messages.append({'role':'tool','tool_call_id':calls[0]['id'],'content':_json(excerpt)})
                 packet['context_references']=copy.deepcopy(state['context_references'])
                 recovery.persist(engine,runtime.task,state,messages)
@@ -197,6 +208,13 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
                     lambda:read(runtime.task,**result))
                 messages.append(message);messages.append({'role':'tool','tool_call_id':calls[0]['id'],'content':_json(excerpt)})
                 recovery.persist(engine,runtime.task,state,messages)
+                continue
+            if name == 'read_context_evidence' and manifest.get('kind') == 'item':
+                from .context_evidence import read
+                excerpt = recovery.context_read(engine, runtime, key, state,
+                    {'tool': name, 'arguments': result}, lambda: read(runtime.task, **result))
+                messages.append(message); messages.append({'role': 'tool', 'tool_call_id': calls[0]['id'], 'content': _json(excerpt)})
+                recovery.persist(engine, runtime.task, state, messages)
                 continue
             expected = {'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'criteria_ids':criterion_ids}
             wrong = [field for field,value in expected.items() if result.get(field) != value]
@@ -232,7 +250,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
         _independent(runtime.task,result.get('reviewer_model'))
         state['result']=copy.deepcopy(result);state['result_digest']=_hash(result)
         recovery.persist(engine,runtime.task,state,messages)
-        engine.event(runtime.task,'review','Final packet review completed',{'decision':result['decision'],'feedback':result['feedback'],'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'defects':result.get('defects')})
+        engine.event(runtime.task,'review',f'{label.capitalize()} packet review completed',{'decision':result['decision'],'feedback':result['feedback'],'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'defects':result.get('defects'),**display})
         return result
 
 

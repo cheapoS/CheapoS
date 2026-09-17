@@ -101,7 +101,7 @@ def aggregate(task):
     for key in ('elapsed_seconds','provider_request_seconds','provider_cooldown_seconds','operator_wait_seconds','controller_work_seconds'):
         timing[key]=sum(r[key] for r in runs) if complete and finished and runs and all(number(r.get(key)) is not None for r in runs) else None
     return {'schema_version':1,'coverage':'complete_instrumented' if complete else 'partial_historical',
-            'outcome':outcome,'human_accepted_commits':len(task.get('commits',[])),
+            'actions':action_totals(task),'outcome':outcome,'human_accepted_commits':len(task.get('commits',[])),
             'commit_conflict_observed':bool(task.get('commit_conflict_observed')) if complete else None,
             'checks':{'runs':len(checks),'passed':sum(bool(c.get('passed')) for c in checks),'outcomes':[c.get('outcome','unknown') for c in checks]},
             'reviews':{'requests':sum(r.get('role')=='reviewer' and r.get('dispatched',False) for r in records) if complete else None,
@@ -129,3 +129,52 @@ def export(tasks):
                        'human_accepted':sum(r['outcome']=='human_accepted' for r in records),'cancelled':sum(r['outcome']=='cancelled' for r in records),
                        'check_approval_interruptions':sum(r['operator']['check_approvals_requested'] or 0 for r in records),
                        'resumes_observed':sum(r['operator']['resumes'] or 0 for r in records)},'tasks':records}
+
+
+ACTION_ROLES = ('worker', 'reviewer', 'planner', 'coordinator')
+
+
+def action_totals(task):
+    """Read-only projection; historical tool counters omitted some tool handlers."""
+    saved = task.get('session_actions')
+    if saved is not None:
+        counts = dict(saved['counts'])
+        coverage = saved['coverage']
+    else:
+        counts = {role: 0 for role in ACTION_ROLES}
+        seen = set()
+        for index, record in enumerate(task.get('request_metrics', [])):
+            identity = record.get('id') or ('retained-row', index)
+            if not record.get('dispatched') or identity in seen:
+                continue
+            seen.add(identity)
+            role = record.get('role') if record.get('role') in ACTION_ROLES else 'other'
+            counts[role] = counts.get(role, 0) + 1
+        counts['tools'] = task.get('tool_actions', 0)
+        coverage = 'partial'
+    return {'total': sum(counts.values()), 'counts': counts, 'coverage': coverage,
+            'details': ('Every dispatched model request (including probes, failed requests and retries) and executed tool call is counted once. Checkpoints and check outcomes are context, not additional actions.'
+                        + (' Older history is incomplete: this is the known total from retained requests and the saved tool counter, plus all actions tracked since this counter was introduced.' if coverage == 'partial' else ' Counts cover this chat from creation.'))}
+
+
+def initialize_actions(task, *, fresh=False):
+    if 'session_actions' not in task:
+        summary = action_totals(task)
+        task['session_actions'] = {'version': 1, 'counts': summary['counts'],
+                                   'coverage': 'complete' if fresh else 'partial'}
+
+
+def dispatched_action(task, record):
+    initialize_actions(task)
+    if record.get('session_action_counted'):
+        return
+    # Called immediately before the dispatch marker is set, not for queued work.
+    role = record.get('role') if record.get('role') in ACTION_ROLES else 'other'
+    counts = task['session_actions']['counts']
+    counts[role] = counts.get(role, 0) + 1
+    record['session_action_counted'] = True
+
+
+def tool_action(task):
+    initialize_actions(task)
+    task['session_actions']['counts']['tools'] += 1

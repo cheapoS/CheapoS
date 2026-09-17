@@ -1,13 +1,138 @@
 """In-memory continuation cases. No Git fixtures, providers, or real waits."""
 import copy
+import shlex
 import threading
 import unittest
+from contextlib import ExitStack
+from pathlib import Path
 from types import SimpleNamespace
+from types import MethodType
 from unittest.mock import Mock,patch
 from cheapos import integration_preparation as prep
 
 
 class IntegrationPreparationTests(unittest.TestCase):
+    def authorized_fixture(self):
+        """Real consent/Resume/launch with tiny directories, no Git or execution."""
+        from tests.test_branch_authorization import CheckScopeTests
+        from tests.test_branch_operator import BranchOperatorTests
+        from cheapos.branch_controller import BranchController
+        from cheapos.branch_authorization import contract_builder,ProposalRegistry
+        permissions=CheckScopeTests();permissions.setUp();self.addCleanup(permissions.doCleanups)
+        fixture=BranchOperatorTests();fixture.setUp()
+        task=fixture.saved;run=task['branch_run'];engine=fixture.engine;controller=fixture.controller
+        task.update({k:permissions.task[k] for k in ('source','workspace','snapshot')})
+        # Register this task ID without restoring any expired session grant.
+        permissions.grants.workspaces['task']=permissions.grants.workspaces['t']
+        run['workspace_mapping'].update(source=task['source'],workspace=task['workspace'],stage='ready')
+        run['items'][0]['status']='committed'
+        run['check_scope']=[permissions.scopes.prepare(task,permissions.argv)]
+        command=shlex.join(permissions.argv)
+        run['plan']['items'][0]['required_checks']=[command]
+        run['plan']['final_checks']=[command]
+        run['items'][0]['required_checks']=[command]
+        controller.scopes=permissions.scopes;controller.resume_proposals=ProposalRegistry()
+        controller.validate_authority=lambda task,run:controller.proposals.validate(run['authorization'],contract_builder(run,{},run['model_policy'],run['check_scope']))
+        proposal=controller.proposals.prepare('task',contract_builder(run,{},run['model_policy'],run['check_scope']))
+        auth=controller.proposals.authorize('task',proposal['proposal_id'],True,proposal['contract'])
+        run.update(authorization=auth,authorization_ref=auth['id'])
+        engine.branch=controller;engine.runtimes={};engine.gateway.pool=Mock()
+        engine.admission=Mock();engine.admission.snapshot.return_value={'unattended':{'allowed':True}}
+        engine.route_restore_stop=threading.Event()
+        for name in ('resume','launch','_launch'):setattr(controller,name,MethodType(getattr(BranchController,name),controller))
+        controller.execute=Mock()
+        return fixture,permissions
+
+    def test_update_click_renews_exact_checks_and_starts_conflict_worker(self):
+        from cheapos import branch_conflicts
+        from tests.test_branch_conflicts import ConflictTests
+        fixture,permissions=self.authorized_fixture();engine=fixture.engine
+        before=copy.deepcopy(fixture.saved)
+        self.assertIsNone(permissions.scopes.authorize(fixture.saved,permissions.argv))
+        self.accepted(engine,fixture.saved)
+        self.assertTrue(permissions.scopes.authorize(fixture.saved,permissions.argv))
+        self.assertEqual(permissions.grants.grants,{})  # No project-wide grant.
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(prep,'readiness',return_value={'code':'target_advanced','target_tip':'target'}))
+            stack.enter_context(patch('cheapos.branch_completion.update_token',return_value='token'))
+            stack.enter_context(patch('cheapos.branch_completion.update_branch',return_value={'needs_conflict_resolution':True}))
+            stack.enter_context(patch.object(branch_conflicts,'capture',return_value=ConflictTests().context()))
+            stack.enter_context(patch.object(branch_conflicts.work,'source_git',return_value=''))
+            stack.enter_context(patch.object(branch_conflicts.work,'validate_owned'))
+            stack.enter_context(patch('cheapos.model_pool.observe_completions'))
+            thread=stack.enter_context(patch('threading.Thread'))
+            prep._drive(engine,'task')
+        self.assertEqual(fixture.saved['status'],'running')
+        self.assertEqual(fixture.saved['branch_run']['items'][-1]['id'],'resolve-conflicts-1')
+        thread.return_value.start.assert_called_once()
+        self.assertEqual(thread.call_args.kwargs['target'],fixture.controller.execute)
+        self.assertEqual(fixture.saved['usage'],before['usage'])
+        self.assertEqual(fixture.saved['branch_run']['limits'],before['branch_run']['limits'])
+        self.assertEqual(fixture.saved['branch_run']['model_policy'],before['branch_run']['model_policy'])
+        self.assertEqual(fixture.saved['branch_run']['final_evidence'],{})
+
+    def test_changed_environment_requires_permission_in_same_update_then_continues(self):
+        fixture,permissions=self.authorized_fixture();engine=fixture.engine
+        (Path(fixture.saved['workspace'])/'setup.cfg').write_text('[test]\nchanged = true\n')
+        self.accepted(engine,fixture.saved)
+        self.assertIsNone(permissions.scopes.authorize(fixture.saved,permissions.argv))
+        fixture.saved['integration_preparation']['dispatched']=True
+        with patch('cheapos.branch_workspace.validate_owned'),patch('cheapos.model_pool.observe_completions'):
+            prep._drive(engine,'task')
+        op=fixture.saved['integration_preparation']
+        self.assertEqual(op['status'],'decision')
+        self.assertEqual(op['reason']['code'],'command_permission_required')
+        self.assertEqual(op['reason']['commands'],[permissions.argv])
+        self.assertEqual(engine.runtimes,{})
+        # A fresh permission proposal can continue that same assignment in Changes.
+        with patch('cheapos.branch_workspace.validate_owned'),patch('cheapos.model_pool.observe_completions'),patch('threading.Thread') as thread:
+            proposal=fixture.controller.resume('task',{})
+            result=fixture.controller.resume('task',{'approved':True,'proposal_id':proposal['proposal_id']})
+        self.assertFalse(result['needs_consent'])
+        self.assertEqual(fixture.saved['status'],'running')
+        self.assertEqual(fixture.saved['integration_preparation']['id'],op['id'])
+        self.assertEqual(fixture.saved['integration_preparation']['status'],'running')
+        self.assertNotIn('reason',fixture.saved['integration_preparation'])
+        thread.return_value.start.assert_called_once()
+
+    def test_background_preparation_never_renews_expired_checks(self):
+        fixture,permissions=self.authorized_fixture();engine=fixture.engine
+        values={'approved':True,'target_tip':'target','candidate':prep.candidate(fixture.saved)}
+        with patch.object(prep,'_launch'):prep.start(engine,'task',values,renew_checks=False)
+        self.assertIsNone(permissions.scopes.authorize(fixture.saved,permissions.argv))
+        fixture.saved['integration_preparation']['dispatched']=True
+        with patch('cheapos.branch_workspace.validate_owned'),patch('cheapos.model_pool.observe_completions'):
+            prep._drive(engine,'task')
+        self.assertEqual(fixture.saved['integration_preparation']['reason']['code'],'command_permission_required')
+        self.assertIsNone(permissions.scopes.authorize(fixture.saved,permissions.argv))
+        with patch.object(prep,'_launch') as launch:prep.start(engine,'task',values)
+        self.assertTrue(permissions.scopes.authorize(fixture.saved,permissions.argv))
+        launch.assert_called_once_with(engine,'task')
+
+    def test_each_background_handoff_retains_required_permission(self):
+        consent={'needs_consent':True,'scopes':[{'command':['python3','test.py']}]}
+        for path in ('conflict','clean_update','pending_update','review'):
+            with self.subTest(path=path):
+                engine,task=self.fixture();self.accepted(engine,task)
+                if path=='pending_update':task['branch_run']['target_update']={'stage':'prepared'}
+                state={'code':'review_required' if path=='review' else 'target_advanced','target_tip':'target'}
+                engine.branch.resume.return_value=consent
+                with patch.object(prep,'readiness',return_value=state),patch('cheapos.branch_completion.update_token',return_value='token'),patch('cheapos.branch_completion.update_branch',return_value={'needs_conflict_resolution':True} if path=='conflict' else consent),patch('cheapos.branch_conflicts.start',return_value=consent):
+                    prep._drive(engine,'task')
+                self.assertEqual(task['integration_preparation']['reason']['code'],'command_permission_required')
+                self.assertEqual(task['integration_preparation']['status'],'decision')
+
+    def test_cancelled_or_running_task_ignores_late_permission_result(self):
+        for state in ('cancelled','running','replaced'):
+            with self.subTest(state=state):
+                engine,task=self.fixture();self.accepted(engine,task)
+                if state=='cancelled':prep.cancel(engine,'task')
+                elif state=='replaced':task['integration_preparation']['id']='new-operation'
+                else:engine.runtimes['task']=SimpleNamespace(thread=Mock())
+                before=copy.deepcopy(task)
+                prep._continued(engine,'task',{'needs_consent':True,'scopes':[]},'op')
+                self.assertEqual(task,before)
+
     def fixture(self,branch=True):
         task={'id':'task','source':'source','workspace':'private','patch':'patch','workspace_generation':0,'status':'paused',
               'usage':{'tokens':23},'checks':[{'passed':True}]}

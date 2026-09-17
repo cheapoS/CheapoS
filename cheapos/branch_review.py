@@ -214,10 +214,39 @@ def _checkpoint(engine, runtime, args):
                 n=3
             ))[:30000]
         packet['worker_summary'] = str(args.get('summary', ''))[:4000]
+    from . import branch_integration_review
+    packet = branch_integration_review.prepare(task, current, packet)
+    review_basis_packet = packet
     limit = 80000 if item.get('review_repair') else 60000
-    if len(json.dumps(packet)) > limit:
-        raise ProgressPause(f'Item review exceeds {limit:,} characters. Split the item in a revised proposal; no evidence was omitted.')
     branch_runs.transition_item(run, item['id'], 'reviewing')
+    packet_coverage = None
+    if len(json.dumps(packet)) > limit:
+        from .branch_review_pages import prepare
+        # A restart during page review resumes this same checkpoint, including
+        # uncertainties and validated repair dispositions used in its digest.
+        saved = task.setdefault('pending_review', {})
+        saved['worker_summary'] = str(args.get('summary', ''))[:4000]
+        saved['uncertainties'] = str(args.get('uncertainties', ''))[:2000]
+        if item.get('review_repair'):
+            saved['repair_dispositions'] = copy.deepcopy(item['review_repair'].get('dispositions', []))
+        packet, packet_coverage, finding = prepare(engine, runtime, current, packet)
+        if finding:
+            # Supported defects from a page enter the same focused repair path
+            # as ordinary item review. Partial coverage can never approve.
+            result = disagreement.repair(finding, current['id'], checks)
+            result['source_patch'] = current['patch']
+            refs = item.get('review_repair', {}).get('requirement_refs')
+            if refs:
+                result['requirement_refs'] = copy.deepcopy(refs)
+            disagreement.attach(task, item, result)
+            task.pop('pending_review', None)
+            task['status'] = 'running'
+            branch_runs.transition_item(run, item['id'], 'working')
+            engine.event(task, 'repair_attempt', 'Preparing focused item repair', {
+                'item_id': item['id'], 'candidate_id': current['id'],
+                'finding_ids': item['review_repair']['finding_ids']})
+            engine.store.save(task)
+            return result
     tools = copy.deepcopy(REVIEW_TOOLS)
     decision = next(t for t in tools if t['function']['name'] == 'review_decision')['function']['parameters']
     outcome = {'type':'object','properties':{'passed':{'type':'boolean'},'evidence':{'type':'string'}},'required':['passed','evidence'],'additionalProperties':False}
@@ -225,7 +254,7 @@ def _checkpoint(engine, runtime, args):
     decision['properties']['suggestions']={'type':'array','maxItems':8,'items':{'type':'string'}}
     decision['properties']['defects'] = disagreement.schema(criteria)
     decision['required'] += ['candidate_id','criteria_outcomes']
-    diff_notice = ' If packet diff is empty, the change may already be present in the repository from earlier commits; if files and passing checks satisfy the criteria, call review_decision with APPROVE.' if not packet.get('diff') else ''
+    diff_notice = ' If packet diff is empty, the change may already be present in the repository from earlier commits; if files and passing checks satisfy the criteria, call review_decision with APPROVE.' if not current.get('patch') else ''
     direct_call = ' Do not output conversational text or preamble. Call review_decision directly as your tool call.'
     messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.' + diff_notice + direct_call + disagreement.REVIEW_INSTRUCTION}, {'role':'user','content':json.dumps(packet)}]
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
@@ -347,6 +376,9 @@ def _checkpoint(engine, runtime, args):
         for call in calls:
             if runtime.stop.is_set(): raise InterruptedError('Task stopped')
             name, params = engine.parse_call(call)
+            from .metrics import tool_action
+            if name == 'review_decision':
+                tool_action(task)
             if name == 'review_decision':
                 try:
                     choice = disagreement.decision(params, takeover=True)
@@ -357,6 +389,11 @@ def _checkpoint(engine, runtime, args):
                     continue
                 if choice == 'APPROVE':
                     try:
+                        # Coverage is controller-owned, never supplied by a model.
+                        params.pop('packet_coverage', None)
+                        if packet_coverage is not None:
+                            params['packet_coverage'] = copy.deepcopy(packet_coverage)
+                        branch_integration_review.bind(params, review_basis_packet, current)
                         receipt = evidence.ready_receipt(current, checks, params, task['providers']['worker'], task['providers']['reviewer'], params.get('criteria_outcomes'))
                         evidence.revalidate(receipt, task, ctx, specs, criteria)
                     except ValueError as error:

@@ -14,6 +14,8 @@ def model(task):
 def begin(task, manifest, key, packet, messages):
     run=task['branch_run']
     run['active_final_review']={'manifest_id':manifest['id'],'key':key}
+    if manifest.get('kind') == 'item':
+        run['active_final_review']['kind'] = 'item'
     packets=run.setdefault('final_review_packets',{})
     binding=digest({'packet':packet,'instructions':messages})
     saved=packets.get(key)

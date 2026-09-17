@@ -13,6 +13,37 @@ from tests import test_branch_operator as fixtures
 
 
 class ConflictTests(unittest.TestCase):
+    def test_clean_files_apply_once_and_preserve_conflicts_and_existing_edits(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = {
+                'clean.txt':dict(task='old',suggested='combined'),
+                'conflict.txt':dict(task='ours',suggested='<<<<<<< conflict'),
+                'edited.txt':dict(task='old',suggested='combined'),
+                'added.txt':dict(task=None,suggested='new'),
+                'removed.txt':dict(task='old',suggested=None)}
+            for name, versions in files.items():
+                if versions['task'] is not None:(root/name).write_text(versions['task'])
+            (root/'edited.txt').write_text('valuable agent repair')
+            context={'files':files,'conflicts':['conflict.txt']}
+            resolution={'status':'working','item_id':'resolve','context':context,'context_digest':digest(context)}
+            task={'workspace':directory,'active_role':'worker','branch_run':{
+                'current_item_id':'resolve','conflict_resolution':resolution,
+                'plan':{'items':[{'id':'resolve','instructions':digest(context)}]}}}
+            runtime=SimpleNamespace(task=task,guard=Mock())
+            engine=SimpleNamespace(refresh_changes=Mock(),event=Mock(),store=SimpleNamespace(save=Mock()))
+            with patch('cheapos.branch_disagreement.before_write'):
+                conflicts.prepare_clean_files(engine,runtime)
+                conflicts.prepare_clean_files(engine,runtime)
+            self.assertEqual((root/'clean.txt').read_text(),'combined')
+            self.assertEqual((root/'added.txt').read_text(),'new')
+            self.assertFalse((root/'removed.txt').exists())
+            self.assertEqual((root/'conflict.txt').read_text(),'ours')
+            self.assertEqual((root/'edited.txt').read_text(),'valuable agent repair')
+            self.assertEqual(engine.store.save.call_count,1)
+            self.assertEqual(engine.event.call_args.args[3]['files'],['added.txt','clean.txt','removed.txt'])
+
     @contextmanager
     def captured_repository(self, skipped=False, extra_files=0):
         # Over 600 KB across versions, including incoming additions/deletions.

@@ -10,7 +10,7 @@ from pathlib import Path
 from cheapos.engine import COMPACT_GUIDANCE, MAX_CREATE_BYTES, Runtime, check_argv, record_observation
 from cheapos.providers import ProviderError
 from cheapos.routing import PROBE_MESSAGES
-from cheapos.workspace import MAX_EDIT_BYTES, Workspace
+from cheapos.workspace import MAX_EDIT_BYTES, MAX_FILE_BYTES, Workspace
 from test_engine import LocalCase, call, wait_for
 import test_routing as routing_fixture
 from test_routing import model
@@ -65,7 +65,7 @@ class LineEditTests(LocalCase):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 ws.replace_lines(path, 1, 1, 'changed', 'hash')
         self.assertEqual(outside.read_text(), 'outside')
-        for content in (b'x' * 256001, b'\x00binary', b'\xff'):
+        for content in (b'x' * (MAX_FILE_BYTES + 1), b'\x00binary', b'\xff'):
             ws.path('lines.txt').write_bytes(content)
             with self.assertRaises((ValueError, UnicodeError)):
                 ws.replace_lines('lines.txt', 1, 1, 'changed', hashlib.sha256(content).hexdigest())

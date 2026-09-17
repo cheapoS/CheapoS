@@ -188,14 +188,17 @@ class EngineTests(LocalCase):
     def test_keys_are_memory_only_and_settings_are_validated_atomically(self):
         self.engine.gateway.configure({'api_key':'secret-test-key'})
         config = {role: dict(CONFIG, gateway='omniroute', base_url=self.engine.gateway.settings['base_url']) for role in ['worker', 'reviewer']}
+        config['reviewer']['model'] = 'independent-reviewer'
         result = self.engine.configure(config)
         self.assertTrue(result['worker']['key_configured'])
         self.assertNotIn('secret-test-key', json.dumps(result))
-        self.assertNotIn('secret-test-key', (self.root / 'state/config.json').read_text())
+        self.assertNotIn('secret-test-key', (self.root / 'state/settings.json').read_text())
+        saved_settings = self.engine.settings_store.read()
         config['reviewer']['input_rate'] = float('nan')
         with self.assertRaises(ValueError):
             self.engine.configure(config)
         self.assertEqual(self.engine.config['worker']['model'], 'test-model')
+        self.assertEqual(self.engine.settings_store.read(), saved_settings)
 
 
 class BudgetTests(LocalCase):

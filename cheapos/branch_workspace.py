@@ -12,7 +12,7 @@ import subprocess
 import unicodedata
 from pathlib import Path, PurePosixPath
 
-from .workspace import Workspace, allowed_name, git, MAX_FILES, MAX_SNAPSHOT_BYTES
+from .workspace import Workspace, allowed_name, git, MAX_FILES, MAX_SNAPSHOT_BYTES, MAX_FILE_BYTES
 from .branch_pause import PauseError
 
 
@@ -120,7 +120,7 @@ def _manifest(source, base):
         relative = PurePosixPath(name)
         safe = (not relative.is_absolute() and '..' not in relative.parts and '\\' not in name
                 and str(relative) == name and allowed_name(name))
-        if not safe or kind != 'blob' or mode not in ('100644', '100755') or int(size) > 2_000_000:
+        if not safe or kind != 'blob' or mode not in ('100644', '100755') or int(size) > MAX_FILE_BYTES:
             skipped.append(name)
             continue
         for length in range(1, len(relative.parts) + 1):

@@ -2,7 +2,7 @@ import json
 import shlex
 import sys
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -110,7 +110,7 @@ class BranchReviewTests(LocalCase):
             execute.assert_not_called()
         self.assertTrue(any(e['kind']=='permission' for e in task['events']))
 
-    def test_branch_review_packet_limit_and_plan_trimming(self):
+    def test_branch_review_packet_paging_thresholds_and_plan_trimming(self):
         task = self.task()
         run = task['branch_run']
         cmd_str = shlex.join(task['check_command'])
@@ -143,7 +143,7 @@ class BranchReviewTests(LocalCase):
         fix = next(it for it in items if it['id'] == 'fix')
         self.assertIn('instructions', fix)
 
-        # Verify limit enforcement at 60,000 characters
+        # Small packets remain direct; large packets use exhaustive paging.
         from cheapos import branch_evidence
         orig_review_packet = branch_evidence.review_packet
         try:
@@ -160,7 +160,7 @@ class BranchReviewTests(LocalCase):
             result = checkpoint(self.engine, Runtime(task), {})
             self.assertEqual(result['decision'], 'APPROVE')
 
-            # 2. 65,000 characters raises ProgressPause for regular item
+            # 2. 65,000 characters delegates to the paged-review path.
             run['items'][0]['status'] = 'working'
             run['items'][0].pop('ready_receipt', None)
             task['status'] = 'running'
@@ -170,8 +170,11 @@ class BranchReviewTests(LocalCase):
                 return pkt
 
             branch_evidence.review_packet = over_limit_packet
-            with self.assertRaisesRegex(ProgressPause, 'Item review exceeds 60,000 characters'):
-                checkpoint(self.engine, Runtime(task), {})
+            with patch('cheapos.branch_review_pages.prepare', side_effect=lambda e, rt, cur, pkt:
+                       ({**pkt, 'uncertainties': 'Reviewed in retained pages'}, None, None)) as pages:
+                self.assertEqual(checkpoint(self.engine, Runtime(task), {})['decision'], 'APPROVE')
+                pages.assert_called_once()
+                self.assertEqual(len(pages.call_args.args[3]['uncertainties']), 65000)
 
             # 3. 70,000 characters with review_repair passes (under 80,000 limit)
             run['items'][0]['status'] = 'working'
@@ -187,7 +190,7 @@ class BranchReviewTests(LocalCase):
             result = checkpoint(self.engine, Runtime(task), {})
             self.assertEqual(result['decision'], 'APPROVE')
 
-            # 4. 85,000 characters with review_repair raises ProgressPause
+            # 4. Repair packets also page instead of stopping at 80,000.
             run['items'][0]['status'] = 'working'
             run['items'][0].pop('ready_receipt', None)
             task['status'] = 'running'
@@ -197,8 +200,11 @@ class BranchReviewTests(LocalCase):
                 return pkt
 
             branch_evidence.review_packet = over_repair_packet
-            with self.assertRaisesRegex(ProgressPause, 'Item review exceeds 80,000 characters'):
-                checkpoint(self.engine, Runtime(task), {})
+            with patch('cheapos.branch_review_pages.prepare', side_effect=lambda e, rt, cur, pkt:
+                       ({**pkt, 'uncertainties': 'Reviewed in retained pages'}, None, None)) as pages:
+                self.assertEqual(checkpoint(self.engine, Runtime(task), {})['decision'], 'APPROVE')
+                pages.assert_called_once()
+                self.assertEqual(len(pages.call_args.args[3]['uncertainties']), 85000)
         finally:
             branch_evidence.review_packet = orig_review_packet
 

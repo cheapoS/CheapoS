@@ -45,6 +45,40 @@ class RecoveryContractTests(unittest.TestCase):
         task['branch_run']['current_item_id'] = '2'
         self.assertNotEqual(recovery.episode_key(task), before)
 
+    def test_new_work_evidence_allows_help_but_polling_and_same_retest_do_not(self):
+        task = self.task()
+        task['checks'] = [{'digest':'candidate-a','passed':False,'command':['test'],'output':'failure','id':'old'}]
+        episode = {'key':recovery.episode_key(task),'work_evidence':recovery.recovery_evidence(task),'state':'applied'}
+        task['coordinator_recovery'] = [episode]
+        task['checks'].append({**task['checks'][-1], 'id':'new', 'output':'failure with a new timestamp'})
+        task['worker_turns'] = 900
+        self.assertIs(recovery.current_episode(task), episode)
+        task['patch'] = 'repaired code'
+        self.assertIsNone(recovery.current_episode(task))
+        task['patch'] = 'patch'
+        self.assertEqual(recovery.current_episode(json.loads(json.dumps(task)))['state'], episode['state'])
+        task['checks'][-1]['passed'] = True
+        self.assertIsNone(recovery.current_episode(task))
+
+    def test_legacy_checked_candidate_does_not_block_a_new_failure(self):
+        task = self.task()
+        task['checks'] = [{'digest':'new-candidate','passed':False}]
+        legacy = {'key':recovery.episode_key(task), 'state':'applied', 'packet':{'evidence':[
+            {'kind':'last_verification','text':json.dumps({'digest':'old-candidate','passed':True})}]}}
+        task['coordinator_recovery'] = [legacy]
+        self.assertIsNone(recovery.current_episode(task))
+        task['checks'][-1]['digest'] = 'old-candidate'
+        self.assertIs(recovery.current_episode(task), legacy)
+
+    def test_failed_check_packet_keeps_failure_tail(self):
+        task = self.task()
+        task['checks'] = [{'passed':False,'output':('passing test ... ok\n'*150)+
+                          'FAIL: test_static_files\nAssertionError: 404 != 200\nFAILED (failures=3)'}]
+        packet = self.packet(task)
+        evidence = next(e for e in packet['evidence'] if e['kind']=='last_verification')
+        self.assertIn('404 != 200', evidence['text'])
+        self.assertLessEqual(len(json.dumps(packet)), recovery.MAX_PACKET)
+
     def test_scope_identity_and_current_file_freshness(self):
         task = self.task()
         task['branch_run'] = {'current_item_id': '1', 'items': [{'id': '1', 'title': 'Feature', 'instructions': 'Implement handler', 'acceptance_criteria': ['Must preserve approval'], 'required_checks': ['test']} ]}

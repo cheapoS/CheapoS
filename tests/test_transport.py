@@ -234,6 +234,8 @@ class TransportTests(unittest.TestCase):
         runtime.task=json.loads(json.dumps(runtime.task))
         engine._request(runtime,[],[],'worker')
         self.assertEqual(calls,['sse','json','json','json'])
+        from cheapos.metrics import action_totals
+        self.assertEqual(action_totals(runtime.task)['counts']['worker'], 4)
         self.assertEqual(runtime.task['transport_retries'],original_retries)
 
     def test_successful_transport_memory_is_route_role_purpose_and_connection_scoped(self):

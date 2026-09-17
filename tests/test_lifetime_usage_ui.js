@@ -81,3 +81,33 @@ test('sidebar zero-cost tokens card formats lifetime percentage and token count'
   assert.equal(zeroCostShare,96);
   assert.equal(zeroCostTokens.toLocaleString('en-US'),'118,357,086');
 });
+
+test('reconciliation switches between local installation and remote club scoreboard',()=>{
+  const data=fixture();
+  data.tokens.reported=154800000;
+  data.club={
+    is_linked:true,
+    sync_enabled:true,
+    x_identity:{handle:'cheaposnumero1',name:'Free token lover'},
+    remote_profile:{
+      handle:'cheaposnumero1',
+      display_name:'Free token lover 0909',
+      tokens:80191727,
+      categories:{local:232499,included:1601645,public_free:78357583},
+      share_models:true,
+      models:[{name:'gemini-3.1-flash-lite',tokens:26295820}],
+      roles:[{name:'worker',tokens:32486200},{name:'reviewer',tokens:1671606}]
+    }
+  };
+  const localHtml=ui.render(data,'local');
+  assert.match(localHtml,/154,800,000/);
+  assert.doesNotMatch(localHtml,/Club Scoreboard/);
+
+  const remoteHtml=ui.render(data,'remote');
+  assert.match(remoteHtml,/80,191,727/);
+  assert.match(remoteHtml,/Club Scoreboard/);
+  assert.match(remoteHtml,/gemini-3.1-flash-lite/);
+  assert.match(remoteHtml,/worker/);
+  assert.match(remoteHtml,/cheaposnumero1/);
+  assert.match(remoteHtml,/cheapskate-club.vercel.app/);
+});

@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const {createSession,changes,sourceLabel}=require('../dist/settings.js');
 (async()=>{
  assert.equal(sourceLabel('task',{scope:'saved',provenance:'unknown'}),'Saved for this chat · source unknown');
- assert.equal(sourceLabel('draft',{scope:'project'}),'From project defaults');
+ assert.equal(sourceLabel('draft',{scope:'project'}),'From project overrides');
  assert.equal(sourceLabel('project',{scope:'project'}),'Project override');
  const calls=[];let fail=false;
  const api=async(path,body)=>{calls.push({path,body});if(!body)return {revision:3,parent_revision:7,values:{execution:{mode:'remote'},limits:{dollars:0,uncapped_work:false},roles:{reviewer:{strategy:'only',model:'old',connection_id:'gateway'}}}};if(fail)throw Error('offline');return {revision:4,saved:true};};

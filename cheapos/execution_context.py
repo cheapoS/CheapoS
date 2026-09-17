@@ -4,6 +4,8 @@
 def mode(task, role=None, purpose=None):
     if role == 'reviewer' or task.get('status') == 'reviewing':
         return 'review'
+    if purpose == 'vision':
+        return 'vision'
     run = task.get('branch_run')
     if run:
         return 'unattended' if run.get('authorization_ref') else 'planning'
