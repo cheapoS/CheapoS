@@ -8,6 +8,8 @@ import sys
 
 def count(text):
     """Return (lines, words, chars) for the given text."""
+    if text == "":
+        return 0, 0, 0
     lines = text.count("\n")
     if not text.endswith("\n"):
         lines += 1

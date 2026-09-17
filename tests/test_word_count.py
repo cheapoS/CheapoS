@@ -10,7 +10,7 @@ from scripts.word_count import count, main
 
 class TestCount(unittest.TestCase):
     def test_empty(self):
-        self.assertEqual(count(""), (1, 0, 0))
+        self.assertEqual(count(""), (0, 0, 0))
 
     def test_single_line_no_newline(self):
         self.assertEqual(count("hello world"), (1, 2, 11))
