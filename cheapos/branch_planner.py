@@ -104,6 +104,13 @@ def inspect_project_file(source, path, start_line=1, end_line=None, query=None, 
                 path = normalized
             elif (normalized.startswith('a/') or normalized.startswith('b/')) and (root_path / normalized[2:]).exists():
                 path = normalized[2:]
+            elif '/' not in normalized:
+                matches = [p.relative_to(root_path).as_posix() for p in root_path.rglob(normalized)
+                           if p.is_file() and not any(part.startswith('.') for part in p.parts)]
+                if len(matches) == 1:
+                    path = matches[0]
+                elif normalized:
+                    path = normalized
             elif normalized:
                 path = normalized
     document = _read_project_text(Workspace(source).root, path, MAX_FILE_BYTES)

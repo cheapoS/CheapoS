@@ -207,6 +207,11 @@ class PlannerTests(unittest.TestCase):
         result2 = planner.inspect_project_file(self.root, 'a/module.py')
         self.assertEqual(result2['path'], 'module.py')
         self.assertIn('def hello', result2['contents'])
+        (self.root / 'subdir').mkdir(exist_ok=True)
+        (self.root / 'subdir' / 'nested.py').write_text('def nested(): pass\n')
+        result3 = planner.inspect_project_file(self.root, 'nested.py')
+        self.assertEqual(result3['path'], 'subdir/nested.py')
+        self.assertIn('def nested', result3['contents'])
 
     def test_cancellation_never_creates_or_authorizes_work(self):
         captured = planner.capture_inputs(self.root, 'Work')
