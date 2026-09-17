@@ -68,6 +68,12 @@ class ProviderError(Exception):
         self.usage = usage
 
 
+class ToolCallValidationError(ProviderError):
+    """A gateway rejected generated tool arguments before returning the call."""
+    def __init__(self):
+        super().__init__('The provider rejected the generated tool call because its arguments did not match the tool schema. No tools were executed.', code='http_400')
+
+
 def http_failure(error, config):
     """Read bounded machine metadata only; do not expose upstream bodies/secrets."""
     reason = {401: "API key was rejected", 402: "Provider credit limit reached", 403: "Provider denied access", 429: "Provider rate limit reached"}.get(error.code, f"Provider returned HTTP {error.code}")
@@ -78,7 +84,15 @@ def http_failure(error, config):
             metadata = data.get("error", {}) if isinstance(data, dict) else {}
             code = metadata.get('code') if isinstance(metadata, dict) else None
         except (ValueError, OSError):
+            metadata = {}
             code = None
+        detail = metadata.get('message', '') if isinstance(metadata, dict) else ''
+        # Groq can reject a generated call at the gateway before CheapOS sees
+        # its arguments. Keep this distinct from a bad HTTP request/connection,
+        # without retaining failed_generation or arbitrary upstream error text.
+        if error.code == 400 and (code in {'tool_use_failed', 'tool_call_validation_failed'}
+                or (isinstance(detail, str) and detail.lower().startswith('tool call validation failed:'))):
+            return ToolCallValidationError()
         delay = None
         try:
             value = error.headers.get("Retry-After", "")

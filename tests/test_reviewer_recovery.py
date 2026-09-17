@@ -50,6 +50,18 @@ class ReviewerRecoveryTests(unittest.TestCase):
                 recovery.request(engine, runtime, [], [], 'reviewer')
             engine._request.assert_not_called()
 
+    def test_access_and_outage_errors_are_not_mislabeled_as_identity_failures(self):
+        for code in ('http_401', 'http_402', 'gateway_cooldown', 'http_503'):
+            engine, runtime = self.fixture()
+            error = ProviderError('Original diagnosis', code=code)
+            engine._request.side_effect = error
+            with patch.object(recovery, 'candidates', return_value=[{'id': 'next'}, {'id': 'another'}]), patch.object(
+                    recovery, 'config', return_value={'model': 'next'}), self.assertRaises(ProviderError) as caught:
+                recovery.request(engine, runtime, [], [], 'reviewer')
+            self.assertIs(caught.exception, error)
+            engine._request.assert_called_once()
+            self.assertEqual(runtime.task['checks'], [{'passed': True}])
+
     def test_recovery_requires_reported_identity_and_rejects_same_author(self):
         task = {'served_identity_version': 1, 'reviewer_identity_recovery': {'attempted': ['old']},
                 'request_metrics': [{'role': 'worker', 'dispatched': True, **metadata('worker', 'actual/worker')}]}

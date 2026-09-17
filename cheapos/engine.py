@@ -2069,6 +2069,11 @@ class Engine:
                 if (purpose or role != 'worker') and not (role == 'planner' and purpose == 'branch_planning'):
                     self.validate_offered_tools(message, tools)
             except ProviderError as error:
+                from .providers import ToolCallValidationError
+                if role == 'planner' and purpose == 'branch_planning' and isinstance(error, ToolCallValidationError):
+                    # The planner owns bounded schema repair, including calls
+                    # rejected upstream. Do not cool down a working connection.
+                    raise
                 if task.get("gateway_connections") and error.code in {"http_401","http_402","http_403","client_key_rejected"}:
                     gateway.pool.record(cfg["base_url"],cfg["model"],role,error=error,connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
                     select_remote(self,runtime,role,replace=True)

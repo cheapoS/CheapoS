@@ -10,7 +10,6 @@ from . import branch_evidence as evidence
 from . import branch_runs, branch_disagreement as disagreement
 from .measurement import enabled as measuring
 from .development import enabled as developing
-from .providers import ProviderError
 
 
 def _coach(engine, task, messages, reason):
@@ -303,10 +302,6 @@ def checkpoint(engine, runtime, args):
                 message = engine.request(runtime, request_messages, offered, 'reviewer')
         except TypeError:
             message = engine.request(runtime, request_messages, offered, 'reviewer')
-        except ProviderError as error:
-            engine.event(task, 'routing', 'Reviewer request failed; trying another reviewer', {'error': str(error)})
-            engine.defer_route(task, 'reviewer', error)
-            continue
         task['review_count'] += 1
         messages.append(message)
         calls = message.get('tool_calls', [])

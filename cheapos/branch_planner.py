@@ -11,6 +11,7 @@ from pathlib import PurePosixPath
 from . import branch_runs
 from .branch_evidence import commands
 from .workspace import Workspace, MAX_FILE_BYTES
+from .providers import ToolCallValidationError
 
 MAX_DOCUMENT_BYTES = 64000
 
@@ -398,9 +399,19 @@ def plan(engine, runtime, inputs):
         options = {'config_override':runtime.task['planning_override']} if runtime.task.get('planning_override') else {}
         if discovery >= MAX_DISCOVERY_REQUESTS:
             options['tool_choice'] = {'type': 'function', 'function': {'name': 'propose_branch_plan'}}
-        response = engine.request(runtime, messages, available, 'planner', purpose='branch_planning', **options)
+        response = {}
+        rejected_call = None
+        try:
+            response = engine.request(runtime, messages, available, 'planner', purpose='branch_planning', **options)
+        except ToolCallValidationError as error:
+            rejected_call = error
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         try:
+            if rejected_call:
+                raise PlanningResponseError(
+                    'Tool arguments were rejected. Use status, plan, clarification, and optional assumptions only. '
+                    'Put items in plan.items, keep displayed limits unchanged, and supply final_checks. '
+                    'Preserve constraints in item instructions/acceptance_criteria.') from rejected_call
             calls = response.get('tool_calls') or []
             if (response.get('finish_reason') not in ('length', 'max_tokens') and calls
                     and all(isinstance(c, dict) and c.get('function', {}).get('name') == 'inspect_project_file' for c in calls)
@@ -415,6 +426,7 @@ def plan(engine, runtime, inputs):
                     assistant_calls.append(call)
                 messages.append({'role': 'assistant', 'content': '', 'tool_calls': assistant_calls})
                 for call in assistant_calls:
+                    arguments = None
                     try:
                         raw = call['function'].get('arguments', '')
                         if not isinstance(raw, str) or len(raw) > 2000:

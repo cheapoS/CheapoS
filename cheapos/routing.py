@@ -170,8 +170,11 @@ def select_remote(engine, runtime, role="worker", replace=False):
         except RoutingPause as error:
             if not getattr(runtime, 'route_autorecover', False):
                 raise
+            # Only availability failures with a known retry schedule can wait.
+            # Credentials, invalid requests and exhausted repair attempts need
+            # their own recovery; inventing a five-second reset replays them.
             if not getattr(error, 'retry_at', None):
-                error.retry_at = time.time() + 5
+                raise
             info = engine.route_wait_info(runtime, error)
             if not info['can_wait']:
                 raise

@@ -89,6 +89,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
 
     def test_remote_planning_probes_before_inference_without_starting_work(self):
         from cheapos.routing import PROBE_MESSAGES
+        from cheapos.providers import ToolCallValidationError
         self.engine.save_preferences({'execution': {'mode': 'remote'}})
         self.engine.gateway.catalog = Mock(return_value={'status': 'ready', 'models': [
             {'id': 'planner:free', 'free': True, 'local': False, 'tool_calling': True}]})
@@ -99,15 +100,24 @@ class BranchPlanningHTTPTests(unittest.TestCase):
                 dispatched.append([t['function']['name'] for t in tools])
                 if messages == PROBE_MESSAGES:
                     return call('routing_ready', {'marker': PROBE_MARKER}), {'prompt_tokens': 3, 'completion_tokens': 1, 'cost': 0}
+                if len(dispatched) == 2:
+                    raise ToolCallValidationError()
                 return provider.complete(messages, tools, max_tokens)
         self.engine.provider_factory = lambda *args: RemoteProvider()
         status, proposal = self.post('/api/branch-runs/plan', self.request_values())
         self.assertEqual(status, 200, proposal)
         task = self.engine.store.get(proposal['task_id'])
-        self.assertEqual(dispatched, [['routing_ready'], ['propose_branch_plan', 'inspect_project_file']])
+        self.assertEqual(dispatched, [['routing_ready']] + [['propose_branch_plan', 'inspect_project_file']] * 2)
         self.assertEqual(task['branch_run']['status'], 'awaiting_authorization')
-        self.assertEqual([r['purpose'] for r in task['request_metrics']], ['probe', 'branch_planning'])
-        self.assertEqual(task['usage']['planner']['tokens'], 34)
+        self.assertEqual([r['purpose'] for r in task['request_metrics']], ['probe', 'branch_planning', 'branch_planning'])
+        self.assertEqual(task['request_metrics'][1]['status'], 'failed')
+        self.assertEqual(task['request_metrics'][1]['error_code'], 'http_400')
+        self.assertGreater(task['usage']['planner']['tokens'], 34)  # rejected request's reservation is retained
+        self.assertEqual(task['usage']['uncertain_requests'], 1)
+        self.assertEqual(len([e for e in task['events'] if e['kind'] == 'planning_repair']), 1)
+        self.assertEqual({r['model'] for r in task['request_metrics']}, {'planner:free'})
+        repair_index = next(i for i, e in enumerate(task['events']) if e['kind'] == 'planning_repair')
+        self.assertFalse(any(e['kind'] == 'handoff' for e in task['events'][repair_index:]))
         self.assertEqual(task['usage']['cost'], 0)
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
         self.assertFalse(self.engine.runtimes)

@@ -103,6 +103,8 @@ def request(engine, runtime, messages, tools, role, config_override=None, purpos
             selected_config = config(engine, task, model_id)
             result = engine._request(runtime, messages, tools, role, selected_config, purpose, tool_choice=tool_choice)
         except ProviderError as error:
+            if error.code not in IDENTITY_ERRORS and error.code != 'output_limit':
+                raise
             engine.store.save(task)
             continue
         task['providers']['reviewer'] = selected_config
