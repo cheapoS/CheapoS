@@ -163,7 +163,7 @@ class CheckpointAllowanceTests(unittest.TestCase):
             engine.fit_worker_context = Mock()
             engine.deliver_loop_guidance = Mock()
             engine.refresh_worker_conversation = Mock()
-            engine.file_tool = lambda task,name,args: getattr(workspace,name)(**args)
+            engine.file_tool = lambda task,name,args,runtime=None: getattr(workspace,name)(**args)
             requested = []
             responses = iter([
                 {'role':'assistant','content':"I'll wire the Project Manager now."},

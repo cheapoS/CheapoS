@@ -3670,10 +3670,10 @@ class Engine:
                     task['continuation_episodes'][-1]['result'] = task.get('status')
             task["pending_approval"] = None
             self.store.save(task)
-            from .integration_preparation import observe, automatic
-            observe(self, task)
+            from . import integration_preparation
+            integration_preparation.observe(self, task)
             if task.get("status") in {"approved", "completed"}:
-                automatic(self, task)
+                integration_preparation.automatic(self, task)
 
     def fixture_response(self, task, role):
         if role == "reviewer":

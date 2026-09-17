@@ -71,6 +71,62 @@ class EditHistoryTests(unittest.TestCase):
         self.assertEqual(self.engine.checks.call_count, 1)
         self.assertTrue(self.task['checkpoints'][0]['checks']['passed'])
 
+    def test_repeated_text_mismatch_recovers_with_line_edit_and_independent_review(self):
+        from cheapos.engine import Runtime, limits_from
+        task = self.task
+        task.update(limits=limits_from({'uncapped_work': True}), messages=[], worker_turns=0)
+        runtime = Runtime(task)
+        engine = self.engine
+        engine.fit_worker_context = Mock()
+        engine.deliver_loop_guidance = Mock()
+        engine.refresh_worker_conversation = Mock()
+
+        def call(name, args, identity):
+            return {'role': 'assistant', 'tool_calls': [{'id': identity, 'function': {
+                'name': name, 'arguments': json.dumps(args)}}]}
+        responses = iter([
+            call('replace_text', {'path': 'app.py', 'old_text': 'missing', 'new_text': 'hi'}, 'bad1'),
+            call('replace_text', {'path': 'app.py', 'old_text': 'missing', 'new_text': 'hi'}, 'bad2'),
+            call('replace_lines', {'path': 'app.py', 'start_line': 3, 'end_line': 3,
+                                  'new_text': '        return "hello"\n'}, 'fixed'),
+            call('checkpoint', {'summary': 'Normalize greeting', 'uncertainties': ''}, 'done'),
+        ])
+        def request(rt, messages, tools, role):
+            if role == 'reviewer':
+                self.assertTrue(task['checks'][-1]['passed'])
+                self.assertIn('return "hello"', task['checkpoints'][-1]['diff'])
+                return call('review_decision', {'decision': 'APPROVE',
+                            'feedback': 'Greeting normalized; Manager.run preserved.'}, 'review')
+            return next(responses)
+        engine.request = Mock(side_effect=request)
+        def check(*args):
+            namespace = {}
+            exec((self.root / 'app.py').read_text(), namespace)
+            self.assertEqual(namespace['Manager']().run(), 'hello')
+            result = {'passed': True, 'command': task['check_command'],
+                      'digest': hashlib.sha256(task['patch'].encode()).hexdigest()}
+            task['checks'].append(result)
+            return result
+        engine.checks = Mock(side_effect=check)
+        with patch('cheapos.engine.automatic', return_value=True) as placement, \
+                patch('cheapos.engine.reconciliation.ensure_resolved'), \
+                patch('cheapos.integration_preparation.observe'), \
+                patch('cheapos.integration_preparation.automatic') as integrate:
+            engine._run_until_pause(runtime)
+            self.assertEqual(task['status'], 'approved', task.get('error'))
+            placement.assert_any_call(task, 'worker')
+            integrate.assert_called_once_with(engine, task)
+        errors = [json.loads(m['content']) for m in task['messages']
+                  if m.get('tool_call_id') in ('bad1', 'bad2')]
+        self.assertEqual(len(errors), 2)
+        self.assertIn('old_text was not found', errors[0]['error'])
+        self.assertIn('current_file', errors[1])
+        self.assertTrue(task['compact_edits'])
+        self.assertEqual(task['worker_turns'], 4)
+        self.assertEqual(task['review_count'], 1)
+        self.assertEqual(task['checkpoints'][0]['decision'], 'APPROVE')
+        engine.checks.assert_called_once()
+
     def test_scope_loss_undo_survives_restart_and_keeps_other_files(self):
         moved = 'def clean(text):\n    return text.strip()\n\n    def run(self):\n        return "  hello  "\n'
         result = self.edit(self.original, moved)
