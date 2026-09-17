@@ -1201,12 +1201,22 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 .reservation-list p{margin:4px 0}
 .usage-table>div>span:nth-child(2){text-align:right;white-space:normal}
 
-.project-manager-modal .modal-inner{background:var(--panel);width: 500px;max-width: 90vw;border-radius: 8px;padding: 20px;}
-.project-manager-modal .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;color:var(--text);font-weight:600;}
-.project-manager-modal .modal-tabs{display:flex;gap:10px;margin-bottom:20px;}
-.project-manager-modal .tab{padding:8px 16px;border-radius:4px;cursor:pointer;color:var(--muted);background:var(--surface);}
-.project-manager-modal .tab.active{background:var(--mint-dark);color:var(--mint);}
+.project-manager-modal .modal-inner{background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.5);width:100%;max-width:520px;padding:24px;}
+.project-manager-modal .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
+.project-manager-modal .modal-header span{letter-spacing:0.05em;font-weight:600;color:var(--text);}
+.project-manager-modal .modal-header .icon-btn{width:32px;height:32px;}
+.project-manager-modal .modal-tabs{display:flex;gap:8px;margin-bottom:24px;}
+.project-manager-modal .tab{padding:6px 16px;border-radius:20px;cursor:pointer;color:var(--muted);background:var(--surface);transition:background 0.2s,color 0.2s;}
+.project-manager-modal .tab.active{background:var(--mint);color:var(--bg);}
+.modal-content{margin-top:16px;}
+.directory-list{min-height:200px;max-height:400px;overflow-y:auto;padding:0;}
+.dir-entries{display:flex;flex-direction:column;gap:4px;}
+.dir-entries button{width:100%;text-align:left;padding:8px 12px;border-radius:6px;background:transparent;border:0;cursor:pointer;color:var(--text);}
+.dir-entries button:hover{background:var(--surface);}
+.dir-entries button.primary-button{background:var(--mint);color:var(--bg);}
+.dir-entries .subtle-button{color:var(--muted);border:1px solid var(--border);}
+#create-project-form{display:flex;flex-direction:column;gap:12px;}
+#create-project-form input{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--text);}
+#project-manager-action{padding:10px 16px;border-radius:6px;background:var(--mint);color:var(--bg);font-weight:600;border:0;cursor:pointer;}
+#project-manager-error{color:var(--red);margin-top:10px;font-size:0.9em;}
 .project-manager-modal .hidden{display:none;}
-.project-manager-modal #create-project-form{display:flex;flex-direction:column;gap:10px;}
-.project-manager-modal input{padding:8px;border-radius:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);}
-.project-manager-modal button[type="submit"]{padding:8px;background:var(--mint);color:var(--bg);border-radius:4px;font-weight:600;}
