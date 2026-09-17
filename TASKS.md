@@ -14,8 +14,8 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 | ID | Task | Status |
 | --- | --- | --- |
-| [T92](docs/tasks/T92-unified-integration-recovery.md) | Resolve integration conflicts without operator troubleshooting | See task card and integration qualification |
-| [T91](docs/tasks/T91-settings-system.md) | Explicit settings scopes and safe chat changes | Implemented; final integration qualification pending |
+| [T92](docs/tasks/T92-unified-integration-recovery.md) | Resolve integration conflicts without operator troubleshooting | Done |
+| [T91](docs/tasks/T91-settings-system.md) | Explicit settings scopes and safe chat changes | Done |
 
 Settings usage: [Settings scopes](docs/USER_GUIDE.md#settings-scopes).
 

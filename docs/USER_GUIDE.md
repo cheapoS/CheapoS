@@ -331,18 +331,18 @@ connection settings so account cooldowns apply across those gateways. See the
 
 ## Role Mappings
 
-In **Settings**, you can map a specific model for the **Planner**, **Worker**, and **Reviewer** roles.
+In **New chat defaults** or **Project defaults**, choose Automatic or Use only this model for the **Planner**, **Worker**, and **Reviewer** roles.
 
 - **Planner**: Responsible for task planning.
 - **Worker**: Responsible for implementing the task.
 - **Reviewer**: Responsible for reviewing the implementation.
 
-These mappings can be overridden per project in the chat "**work setup**" by the operator.
+Project defaults override app defaults. Chat setup can override those defaults for a new chat.
 - Planner and Reviewer roles can share the same model.
 - The **Worker model must NOT be the same** as the Planner or Reviewer models.
 
 Explicit mappings do not alter budget, permissions, or merge authorization. Operator selection remains required to start work.
-Role mappings are labeled with their source: '**operator**' for defaults configured in Settings, and '**user**' for explicit per-project overrides configured in chat work setup.
+Source labels identify New chat defaults, Project defaults, or the saved chat setup. Historical settings with unknown provenance are labeled explicitly.
 
 ## Settings scopes
 

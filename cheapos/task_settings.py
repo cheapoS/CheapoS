@@ -199,7 +199,7 @@ def prepare(engine, task, patch):
             run['development_authorization']['plan_digest'] = digest(contract['plan'])
     values = overlay(values, patch)
     if limit_patch:
-        values['limits'] = copy.deepcopy(updated['limits'])
+        values['limits'] = saved_values(updated)['limits']
     return updated, values
 
 

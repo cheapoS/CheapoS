@@ -1,6 +1,6 @@
 # T91 — Explicit settings scopes and safe chat changes
 
-Status: **implemented; final integration qualification pending**. Canonical product/behavior contract:
+Status: **completed**. Canonical product/behavior contract:
 [Settings that make their scope obvious](../design/settings-system.md).
 Screen study: [settings-preview.html](../design/settings-preview.html).
 
@@ -136,8 +136,8 @@ connections separate from role selection. Saved drafts carry scope revisions;
 transport failures retain edits and operation IDs. Legacy provenance remains
 explicitly unknown, and migration repair notices remain visible.
 
-Frontend qualification: all 254 selected JavaScript cases passed in approximately
-0.18 seconds. The new pure scoped-save contract fixture takes approximately
+Frontend qualification: all 257 JavaScript cases passed in approximately
+0.19 seconds. The new pure scoped-save contract fixture takes approximately
 0.04 seconds standalone, with no Git workflow, provider calls, or real waits.
 Browser fixtures verified named chat save, dirty scope switching/Keep editing,
 shared connection controls after role removal, and a 320px viewport with visible
@@ -148,5 +148,4 @@ edit draft; the UI does not claim seamless queued pause/apply/continue. Existing
 chat placement, worker/planner pins, workflow conversion, accepted plan changes,
 command grants, and merge approval stay in their owning flows. Editable reviewer
 changes use eligible independent models on the saved connection. Preferred-model
-fallthrough is not exposed. The backend acceptance results and final Done status
-are recorded by the integrating agent after its focused qualification.
+fallthrough is not exposed. Backend qualification is recorded in [the implementation report](../development/t91-t92-validation.md).
