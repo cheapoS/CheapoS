@@ -52,6 +52,15 @@ class RecoveryPolicyTests(unittest.TestCase):
     else:
      with self.assertRaises(ValueError):queue(c,r,i)
    c.engine.store.save.assert_not_called()
+ def test_worker_error_status_queues_recovery(self):
+  c,r,i=self.fixture()
+  r.task.update(status='error',error_code='stream_interrupted',error='Stream connection failed')
+  with patch('cheapos.branch_worker_recovery.branch_workspace.validate_owned'):
+   self.assertTrue(queue(c,r,i))
+  self.assertEqual(r.task['status'],'running')
+  self.assertIsNone(r.task['error'])
+  self.assertEqual(r.task['route']['recovery']['worker']['from'],'worker-a')
+  self.assertEqual(r.task['branch_run']['implementation_recovery']['failed_models'],['worker-a'])
 
 class RecoveryExecutionTests(unittest.TestCase):
  setUp=fixture.BranchStartTests.setUp

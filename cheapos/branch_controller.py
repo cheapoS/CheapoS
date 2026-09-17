@@ -369,10 +369,16 @@ class BranchController:
             saved = task.get('pending_review') or (task.get('operator_review_history') or [{}])[-1]
             self.engine.event(task, 'state', 'Continuing independent review from saved evidence',
                               {'item_id': item['id']})
-            result = checkpoint(self.engine, runtime, {
-                'summary': saved.get('worker_summary', 'Continuing the interrupted item review.'),
-                'uncertainties': saved.get('uncertainties', ''),
-                'repair_dispositions': saved.get('repair_dispositions', item.get('review_repair', {}).get('dispositions', []))})
+            try:
+                result = checkpoint(self.engine, runtime, {
+                    'summary': saved.get('worker_summary', 'Continuing the interrupted item review.'),
+                    'uncertainties': saved.get('uncertainties', ''),
+                    'repair_dispositions': saved.get('repair_dispositions', item.get('review_repair', {}).get('dispositions', []))})
+            except Exception as error:
+                if runtime.stop.is_set(): raise
+                self.engine.event(task, 'routing', 'Review attempt failed; retrying with another reviewer', {'error': str(error)})
+                self.engine.defer_route(task, 'reviewer', error)
+                return
             if result['decision'] not in {'REQUEST_CHANGES', 'REQUEST_TESTS'}:
                 return
         task['status'] = 'running'
@@ -446,7 +452,13 @@ class BranchController:
                     if task['status']=='awaiting_reply':
                         # Even an unchanged outcome requires actual criteria review.
                         from .branch_review import checkpoint
-                        result=checkpoint(self.engine,runtime,{'summary':'Worker reported the item finished.'})
+                        try:
+                            result=checkpoint(self.engine,runtime,{'summary':'Worker reported the item finished.'})
+                        except Exception as error:
+                            if runtime.stop.is_set(): raise
+                            self.engine.event(task, 'routing', 'Review attempt failed; retrying with another reviewer', {'error': str(error)})
+                            self.engine.defer_route(task, 'reviewer', error)
+                            continue
                         if result['decision'] in {'REQUEST_CHANGES', 'REQUEST_TESTS'}:
                             task['messages'].append({'role':'user','content':json.dumps(result)})
                             self.engine._run_with_wait(runtime)

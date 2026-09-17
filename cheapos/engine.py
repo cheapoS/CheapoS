@@ -1004,7 +1004,7 @@ class Engine:
                 task["active_role"] = "reviewer"
             # Migrate an already-failed automatic chat on its next explicit resume.
             # Starting the server alone never dispatches saved work.
-            if task.get("error_code") in RECOVERABLE_CODES:
+            if (task.get("error_code") in RECOVERABLE_CODES and task.get("error_code") != "output_limit") or (isinstance(task.get("error_code"), str) and task.get("error_code").startswith("http_5")):
                 last_request = next((e for e in reversed(task["events"]) if e["kind"] == "model"), {})
                 failed_role = "reviewer" if last_request.get("title", "").startswith("Requesting reviewer:") else task["active_role"]
                 cfg = task["providers"].get(failed_role)
@@ -2085,7 +2085,10 @@ class Engine:
                     self.connection_for(cfg).pool.record(cfg["base_url"], cfg["model"], role, error=error, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
                     select_remote(self, runtime, role, replace=True)
                     continue
-                if error.code not in RECOVERABLE_CODES and error.code != 'gateway_cooldown':
+                is_recoverable = (error.code in RECOVERABLE_CODES
+                                  or (isinstance(error.code, str) and (error.code.startswith("http_5") or error.code.startswith("http_429") or error.code.startswith("http_408")))
+                                  or error.code == 'gateway_cooldown')
+                if not is_recoverable:
                     raise
                 attempted = True
                 if error.code == "unsupported_tool":

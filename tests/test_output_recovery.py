@@ -126,6 +126,48 @@ class OutputRecoveryTests(LocalCase):
         self.assertEqual([r['role'] for r in requests], ['worker', 'worker', 'reviewer', 'reviewer'])
         self.assertEqual([r['model'] for r in requests], ['a', 'a', 'b', 'c'])
 
+    def test_reviewer_http_502_defers_and_completes_review(self):
+        task = self.chat('remote')
+        task.update(check_command=[sys.executable, '-m', 'unittest', 'discover', '-v'], auto_approve_checks=True)
+        self.engine.store.save(task)
+        requests = self.responses([call('replace_text', {'path': 'math_utils.py', 'old_text': 'return min(value, upper)',
+                                                       'new_text': 'return max(lower, min(value, upper))'}),
+                                  call('checkpoint', {'summary': 'Ready', 'uncertainties': ''}),
+                                  ProviderError('HTTP 502', code='http_502'),
+                                  call('review_decision', {'decision': 'APPROVE', 'feedback': 'Checks passed.'})])
+        self.engine.start(task['id']); result = self.finish(task)
+        self.assertEqual(result['status'], 'approved', result['error'])
+        self.assertEqual([r['role'] for r in requests], ['worker', 'worker', 'reviewer', 'reviewer'])
+        self.assertEqual([r['model'] for r in requests], ['a', 'a', 'b', 'c'])
+
+    def test_reviewer_stream_interrupted_defers_and_completes_review(self):
+        task = self.chat('remote')
+        task.update(check_command=[sys.executable, '-m', 'unittest', 'discover', '-v'], auto_approve_checks=True)
+        self.engine.store.save(task)
+        requests = self.responses([call('replace_text', {'path': 'math_utils.py', 'old_text': 'return min(value, upper)',
+                                                       'new_text': 'return max(lower, min(value, upper))'}),
+                                  call('checkpoint', {'summary': 'Ready', 'uncertainties': ''}),
+                                  ProviderError('Stream interrupted', code='stream_interrupted'),
+                                  call('review_decision', {'decision': 'APPROVE', 'feedback': 'Checks passed.'})])
+        self.engine.start(task['id']); result = self.finish(task)
+        self.assertEqual(result['status'], 'approved', result['error'])
+        self.assertEqual([r['role'] for r in requests], ['worker', 'worker', 'reviewer', 'reviewer'])
+        self.assertEqual([r['model'] for r in requests], ['a', 'a', 'b', 'c'])
+
+    def test_reviewer_cloudflare_524_defers_and_completes_review(self):
+        task = self.chat('remote')
+        task.update(check_command=[sys.executable, '-m', 'unittest', 'discover', '-v'], auto_approve_checks=True)
+        self.engine.store.save(task)
+        requests = self.responses([call('replace_text', {'path': 'math_utils.py', 'old_text': 'return min(value, upper)',
+                                                       'new_text': 'return max(lower, min(value, upper))'}),
+                                  call('checkpoint', {'summary': 'Ready', 'uncertainties': ''}),
+                                  ProviderError('HTTP 524 Timeout', code='http_524'),
+                                  call('review_decision', {'decision': 'APPROVE', 'feedback': 'Checks passed.'})])
+        self.engine.start(task['id']); result = self.finish(task)
+        self.assertEqual(result['status'], 'approved', result['error'])
+        self.assertEqual([r['role'] for r in requests], ['worker', 'worker', 'reviewer', 'reviewer'])
+        self.assertEqual([r['model'] for r in requests], ['a', 'a', 'b', 'c'])
+
     def test_nonstreamed_length_never_returns_even_a_complete_looking_tool(self):
         usage = {'prompt_tokens': 10, 'completion_tokens': 100, 'cost': 0}
         response = io.BytesIO(json.dumps({'choices': [{'finish_reason': 'length', 'message': call('write_file',

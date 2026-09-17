@@ -94,6 +94,8 @@ def record(task, trigger):
 
 def implementation_handoff(task, item, stopped=False):
     """Only stalled implementation reaches the branch's existing route executor."""
-    return (not stopped and task.get('status')=='paused' and task.get('error_code')=='progress_limit'
+    return (not stopped and task.get('status') in {'paused', 'error'}
+            and task.get('error_code') not in {'environment_setup', 'worker_turn_limit', 'working_time_limit'}
+            and not task.get('limit_hit') and task.get('status') != 'budget_paused'
             and item.get('status')=='working' and task.get('active_role')=='worker'
-            and decide(task)['action'] in {'continue_worker','repair','expand_tests'})
+            and decide(task)['action'] in {'continue_worker','repair','expand_tests','route_recovery'})
