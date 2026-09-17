@@ -144,6 +144,28 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply(engine.gateway.catalog())
             elif path == "/api/role-mappings":
                 self.reply(engine.role_mappings())
+            elif path == "/api/list-directories":
+                query_params = parse_qs(urlsplit(self.path).query)
+                requested_path = query_params.get("path", [str(self.server.directory)])[0]
+                base_dir = self.server.directory
+                try:
+                    requested_path_obj = Path(unquote(requested_path))
+                    if requested_path_obj.is_absolute():
+                        target_path = requested_path_obj.resolve()
+                    else:
+                        target_path = (base_dir / requested_path_obj).resolve()
+                        
+                    if not str(target_path).startswith(str(base_dir)):
+                        self.reply({"error": "Access denied"}, 403)
+                    elif not target_path.is_dir():
+                        self.reply({"error": "Not a directory"}, 400)
+                    else:
+                        items = []
+                        for item in target_path.iterdir():
+                            items.append({"name": item.name, "is_dir": item.is_dir()})
+                        self.reply(sorted(items, key=lambda x: (not x["is_dir"], x["name"])))
+                except Exception as e:
+                    self.reply({"error": str(e)}, 500)
             elif path == "/api/role-mappings/effective":
                 query_params = parse_qs(urlsplit(self.path).query)
                 project = query_params.get("project", [None])[0]
