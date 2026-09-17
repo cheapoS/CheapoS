@@ -119,13 +119,15 @@
         </section>
         <section class="project-view hidden" id="project-create">
           <form id="create-project-form">
-            <input type="text" id="new-project-name" placeholder="Project name" required>
-            <input type="text" id="new-project-parent" placeholder="Parent path (default: .)" value=".">
-            <label><input type="checkbox" id="init-git"> Initialize Git</label>
-            <button type="submit">Create Project</button>
+            <input type="text" id="new-project-name" name="new_project_name" placeholder="Project name" required>
+            <input type="text" id="new-project-parent" name="new_project_parent" placeholder="Parent path (default: .)" value=".">
+            <label><input type="checkbox" id="init-git" name="init_git"> Initialize Git</label>
           </form>
         </section>
       </div>
+      <footer id="project-manager-footer">
+        <button type="submit" id="project-manager-action" form="create-project-form">Create Project</button>
+      </footer>
     </div>
   </dialog>
 </body></html>

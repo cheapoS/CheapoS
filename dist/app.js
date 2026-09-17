@@ -498,6 +498,23 @@ function showProjectView(view) {
   const openView=$('#project-open'),createView=$('#project-create');
   if(openView)openView.classList.toggle('hidden',view!=='open');
   if(createView)createView.classList.toggle('hidden',view!=='create');
+  
+  const actionBtn=$('#project-manager-action');
+  if(actionBtn) {
+    if(view==='open') {
+      actionBtn.textContent='Open Project';
+      actionBtn.removeAttribute('form');
+      actionBtn.type='button';
+      actionBtn.style.display='block';
+      // In open mode, this button doesn't do much on its own, 
+      // the directory-specific 'Open' buttons handle the action.
+    } else {
+      actionBtn.textContent='Create Project';
+      actionBtn.setAttribute('form', 'create-project-form');
+      actionBtn.type='submit';
+      actionBtn.style.display='block';
+    }
+  }
 }
 function closeProjectManager() {
   const d=$('#project-manager-modal');
@@ -524,7 +541,13 @@ async function loadProjectManagerDirectory() {
   catch(e){if(!$('#project-manager-modal')?.isConnected)return;list.innerHTML='';projectManagerError(e.message);return}
   const here=stack.length?stack[stack.length-1]:basename(projectManagerFull());
   const dirs=items.filter(i=>i.is_dir);
-  list.innerHTML=`<p class="small muted">Browsing ${esc(projectManagerFull(stack))}</p><div class="dir-entries"><button type="button" class="primary-button dir-open" data-action="open">${icon('check')}Open ${esc(here)}</button>${stack.length?'<button type="button" class="subtle-button" data-action="up">.. up one folder</button>':''}${dirs.length?dirs.map(d=>`<button type="button" class="subtle-button" data-name="${esc(d.name)}">${icon('folder')}${esc(d.name)}</button>`).join(''):'<p class="small muted">No subfolders here. Open this folder or go up.</p>'}</div>`;
+  
+  if (stack.length === 0) {
+      list.innerHTML=`<p class="small muted">Browsing ${esc(projectManagerFull(stack))}</p><p class="small muted">Navigate into a folder, then click Open to select it as your project.</p><div class="dir-entries">${dirs.length?dirs.map(d=>`<button type="button" class="subtle-button" data-name="${esc(d.name)}">${icon('folder')}${esc(d.name)}</button>`).join(''):'<p class="small muted">No subfolders here.</p>'}</div>`;
+  } else {
+      list.innerHTML=`<p class="small muted">Browsing ${esc(projectManagerFull(stack))}</p><div class="dir-entries"><button type="button" class="primary-button dir-open" data-action="open">${icon('check')}Open ${esc(here)}</button><button type="button" class="subtle-button" data-action="up">.. up one folder</button>${dirs.length?dirs.map(d=>`<button type="button" class="subtle-button" data-name="${esc(d.name)}">${icon('folder')}${esc(d.name)}</button>`).join(''):'<p class="small muted">No subfolders here. Go up.</p>'}</div>`;
+  }
+  
   $$('[data-action="up"]',list).forEach(b=>b.onclick=()=>{projectManager.stack=stack.slice(0,-1);loadProjectManagerDirectory()});
   $$('[data-action="open"]',list).forEach(b=>b.onclick=async()=>{b.disabled=true;const target=stack.length?stack.join('/'):projectManagerRoot();try{await chooseProjectFromPath(target)}catch(e){projectManagerError(e.message);b.disabled=false}});
   $$('[data-name]',list).forEach(b=>b.onclick=()=>{projectManager.stack=[...stack,b.dataset.name];loadProjectManagerDirectory()});
