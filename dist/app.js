@@ -137,10 +137,12 @@ const date = value => new Date(value).toLocaleString([], {month:'short',day:'num
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
 let toastTimer;
 function toast(message) { clearTimeout(toastTimer); $('#toast').textContent=message; $('#toast').classList.add('visible'); toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),5000); }
-async function api(path, body) {
-  const response = await fetch('/api' + path, body === undefined ? {cache:'no-store'} : {method:'POST',headers:{'Content-Type':'application/json','X-CheapOS-Token':state.token},body:JSON.stringify(body)});
+async function api(path, body, etag) {
+  const response = await fetch('/api' + path, body === undefined ? {cache:'no-store',...(etag?{headers:{'If-None-Match':etag}}:{})} : {method:'POST',headers:{'Content-Type':'application/json','X-CheapOS-Token':state.token},body:JSON.stringify(body)});
+  if(body===undefined&&etag&&response.status===304)return null;
   const data = await response.json();
   if (!response.ok) throw Object.assign(new Error(data.error || 'The local server could not complete this action'),{status:response.status,code:data.code,files:data.files});
+  if(body===undefined&&/^\/tasks\/[^/?]+$/.test(path)&&response.headers?.get('ETag'))data.poll_etag=response.headers.get('ETag');
   return data;
 }
 function dialog(html, cls='') {
@@ -841,7 +843,7 @@ function renderTask({resetScroll=false}={}) {
   if(focusedDetail&&!resetScroll)$$('details[data-event]').find(d=>d.dataset.event===focusedDetail)?.querySelector('summary')?.focus({preventScroll:true});
   for(const el of $$('[data-thinking], [data-command-output]')){const saved=outputScroll.get(el.dataset.thinking||el.dataset.commandOutput);el.scrollTop=!saved||saved.bottom?el.scrollHeight:saved.top}
   scroller.scrollTop=resetScroll?scroller.scrollHeight:state.view==='chat'&&bottom?scroller.scrollHeight:oldScroll;
-  if(state.view==='logs'&&logKey){const anchor=$$('#logs-view details[data-event]').find(d=>d.dataset.event===logKey);if(anchor)scroller.scrollTop+=anchor.getBoundingClientRect().top-logPosition;const latest=document.createElement('button');latest.className='logs-latest outline-button';latest.textContent='Return to latest events';latest.onclick=()=>{latest.remove();scroller.scrollTo({top:0,behavior:'instant'});};$('#logs-view').prepend(latest);if(anchor)scroller.scrollTop+=anchor.getBoundingClientRect().top-logPosition;}
+  if(state.view==='logs'&&logKey){const anchor=$$('#logs-view details[data-event]').find(d=>d.dataset.event===logKey);if(anchor)scroller.scrollTop+=anchor.getBoundingClientRect().top-logPosition;const latest=document.createElement('button');latest.className='logs-latest outline-button';latest.textContent='Return to latest events';latest.onclick=()=>{state.logPages?.delete(task.id);renderTechnicalLogs();scroller.scrollTo({top:0,behavior:'instant'});};$('#logs-view').prepend(latest);if(anchor)scroller.scrollTop+=anchor.getBoundingClientRect().top-logPosition;}
 
 }
 function renderView() {
@@ -1092,7 +1094,11 @@ function renderActivity() {
   updateProgressClock();
 }
 function renderTechnicalLogs(){
- const view=$('#logs-view');view.innerHTML=CheapOSBranchUI.technicalMarkup(state.task)+CheapOSChatView.routingDetails(state.task);const back=$('[data-log-chat]',view);if(back)back.onclick=()=>setView('chat');
+ state.logPages ||= new Map();
+ const view=$('#logs-view');view.innerHTML=CheapOSBranchUI.technicalMarkup(state.task,state.logPages.get(state.task.id))+CheapOSChatView.routingDetails(state.task);const back=$('[data-log-chat]',view);if(back)back.onclick=()=>setView('chat');
+ $$('[data-log-page]',view).forEach(button=>button.onclick=()=>{
+   state.logPages.set(state.task.id,button.dataset.logPage);setView('logs');$('#view-container').scrollTo({top:0,behavior:'instant'});
+ });
 }
 function checkpointDialog(number) {
   const checkpoint=state.task.checkpoints.find(c=>c.number===number);if(!checkpoint)return;
@@ -1801,10 +1807,10 @@ async function refresh({background=false}={}) {
   if(state.loading)return;
   const context=refreshContext(),previous=state.task,selected=previous?.id,selection=state.selection;
   if(selected){
-    const task=await api('/tasks/'+selected);
+    const task=await api('/tasks/'+selected,undefined,state.renderFailed?undefined:previous.poll_etag);
     // A slow request must not replace a newer Start response or another chat.
-    if(state.selection===selection&&state.task?.id===selected&&!(state.task!==previous&&Date.parse(task.updated_at)<=Date.parse(state.task.updated_at))){
-      if(state.renderFailed||['updated_at','status','title','custom_title','pinned','archived_at','trashed_at'].some(key=>task[key]!==state.task[key])){state.task=task;renderTask();state.renderFailed=false}
+    if(task&&state.selection===selection&&state.task?.id===selected&&!(state.task!==previous&&Date.parse(task.updated_at)<=Date.parse(state.task.updated_at))){
+      if(state.renderFailed||['poll_etag','updated_at','status','title','custom_title','pinned','archived_at','trashed_at'].some(key=>task[key]!==state.task[key])){state.task=task;renderTask();state.renderFailed=false}
     }
   }
   if(!background)await context;

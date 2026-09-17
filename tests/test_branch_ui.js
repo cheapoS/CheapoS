@@ -62,6 +62,24 @@ test('lost acknowledgement reconciles active background startup without retrying
 });
 test('technical logs reverse saved append order without mutating it, escape and redact bounded fields',()=>{const events=[1,2,3].map(id=>({id,time:'same',kind:'error',title:'<script>',detail:{error:'api_key=secret-value bad schema',headers:{authorization:'hidden'},output:'<b>failure</b>',request_id:'r'+id}}));const task={events,error:'specific schema failure'};assert.deepEqual(ui.technicalEvents(task).map(e=>e.id),[3,2,1]);assert.deepEqual(events.map(e=>e.id),[1,2,3]);const html=ui.technicalMarkup(task);assert.ok(html.indexOf('raw-3')<html.indexOf('raw-1'));assert.match(html,/specific schema failure/);assert.match(html,/&lt;b&gt;failure/);assert.doesNotMatch(html,/secret-value|hidden|<script>/);assert.match(html,/redacted/);assert.match(ui.technicalMarkup({}),/No technical events/);assert.match(ui.technicalMarkup({events_truncated:true}),/history was truncated/);});
 test('specific canonical unknown pause remains prominent and escaped before housekeeping logs',()=>{const task={branch_run:{status:'paused',pause_detail:{version:1,cause:'unknown',explanation:'Planner rejected <bad> schema',next_action:'inspect'}},events:[{id:'latest',title:'Housekeeping',kind:'status'}]};const html=ui.technicalMarkup(task);assert.ok(html.indexOf('Planner rejected &lt;bad&gt; schema')<html.indexOf('Housekeeping'));assert.match(html,/Back to chat actions/);});
+test('technical log pages bound rendered history without dropping any saved events',()=>{
+ const events=Array.from({length:250},(_,i)=>({id:String(i),title:'Event '+i,kind:'tool',detail:{output:'Evidence '+i}}));
+ const task={events},first=ui.technicalPage(task),second=ui.technicalPage(task,first.older),third=ui.technicalPage(task,second.older);
+ assert.equal(first.events.length,100);assert.equal(second.events.length,100);assert.equal(third.events.length,50);
+ assert.deepEqual([...first.events,...second.events,...third.events].map(e=>e.id),events.map(e=>e.id).reverse());
+ assert.equal(third.older,null);assert.equal(first.newer,null);
+ assert.deepEqual(ui.technicalPage(task,third.newer).events,second.events);
+ const html=ui.technicalMarkup(task);
+ assert.equal((html.match(/class="activity-card"/g)||[]).length,100);
+ assert.match(html,/250 retained events/);assert.match(html,/Events 1–100 of 250/);
+ assert.doesNotMatch(html,/raw-149"/);
+ const anchor=first.older;
+ events.push({id:'new',title:'Fresh event'});
+ assert.deepEqual(ui.technicalPage(task,anchor).events,second.events,'new output must not move an older page');
+ assert.equal(ui.technicalPage(task).events[0].id,'new');
+ assert.equal(ui.technicalPage({events:[]},anchor).events.length,0);
+ assert.equal(ui.technicalPage(task,'missing').events[0].id,'new');
+});
 test('partial startup retry is explicit and reuses the exact inspected proposal',async()=>{let writes=0;const bodies=[];const c=ui.startController({api:async(url,body)=>{if(body){writes++;bodies.push(body);if(writes===1)throw Error('setup failed');return {};}return {branch_run:{authorization_ref:'saved',status:'awaiting_authorization'}};}});await c.start({task_id:'a',proposal_id:'original'});await c.start({task_id:'a',proposal_id:'different'});assert.equal(writes,1);await c.retry('a');assert.equal(writes,2);assert.deepEqual(bodies,[{proposal_id:'original',approved:true},{proposal_id:'original',approved:true}]);assert.equal(c.get('a').status,'accepted');});
 
 test('direct planning payload supports prompt, document, combined input and explicit overrides',()=>{
@@ -101,11 +119,36 @@ function refreshFixture(){
  const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
  const snippet=source.slice(source.indexOf('let contextRefresh=null;'),source.indexOf('async function resumeBranchRun'));
  const state={task:{id:'a',status:'awaiting_reply',updated_at:'2026-09-14T12:00:00Z'},selection:1};let renderCount=0,gatewayCalls=0,releaseGateway,resolveTask;
- const gateway=new Promise(r=>releaseGateway=r);const replies=[];
- const context={state,console,toast:()=>{},loadStartup:async()=>{},loadReadiness:async()=>{},loadTasks:async()=>{},loadAdmission:async()=>{},loadGateway:()=>{gatewayCalls++;return gateway;},api:()=>replies.length?Promise.resolve(replies.shift()):new Promise(r=>resolveTask=r),renderTask:()=>renderCount++};
+ const gateway=new Promise(r=>releaseGateway=r);const replies=[],requests=[];
+ const context={state,console,toast:()=>{},loadStartup:async()=>{},loadReadiness:async()=>{},loadTasks:async()=>{},loadAdmission:async()=>{},loadGateway:()=>{gatewayCalls++;return gateway;},api:(...args)=>{requests.push(args);return replies.length?Promise.resolve(replies.shift()):new Promise(r=>resolveTask=r)},renderTask:()=>renderCount++};
  vm.createContext(context);vm.runInContext(snippet,context);
- return {state,context,replies,releaseGateway,resolveTask:t=>resolveTask(t),renderCount:()=>renderCount,gatewayCalls:()=>gatewayCalls};
+ return {state,context,replies,requests,releaseGateway,resolveTask:t=>resolveTask(t),renderCount:()=>renderCount,gatewayCalls:()=>gatewayCalls};
 }
+test('unchanged polling preserves the view; a changed revision renders even at the same timestamp',async()=>{
+ const f=refreshFixture();f.state.task.poll_etag='"old"';
+ f.replies.push(null);await f.context.refresh({background:true});
+ assert.equal(f.requests[0][2],'"old"');assert.equal(f.renderCount(),0);
+ f.replies.push({...f.state.task,poll_etag:'"new"',stream:{content:'next chunk'}});
+ await f.context.refresh({background:true});assert.equal(f.renderCount(),1);assert.equal(f.state.task.stream.content,'next chunk');
+ f.state.renderFailed=true;f.replies.push({...f.state.task});await f.context.refresh({background:true});
+ assert.equal(f.requests.at(-1)[2],undefined);assert.equal(f.renderCount(),2);
+ f.releaseGateway();await f.context.refreshContext();
+});
+test('API conditional reads skip JSON parsing for 304 and preserve normal errors and write authority',async()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
+ const snippet=source.slice(source.indexOf('async function api('),source.indexOf('function dialog('));
+ let response,options,jsonCalls=0;
+ const context={state:{token:'local-token'},fetch:async(url,opts)=>{options=opts;return {...response,json:async()=>{jsonCalls++;return response.data}}}};
+ vm.createContext(context);vm.runInContext(snippet,context);
+ response={status:304};assert.equal(await context.api('/tasks/a',undefined,'"version"'),null);assert.equal(jsonCalls,0);
+ assert.equal(options.headers['If-None-Match'],'"version"');assert.equal(options.cache,'no-store');
+ response={status:200,ok:true,data:{id:'a'},headers:{get:()=>'"changed"'}};
+ assert.equal((await context.api('/tasks/a')).poll_etag,'"changed"');
+ await context.api('/tasks/a/resume',{approved:true});assert.equal(options.method,'POST');assert.equal(options.headers['X-CheapOS-Token'],'local-token');
+ assert.equal(options.headers['If-None-Match'],undefined);
+ response={status:404,ok:false,data:{error:'Task not found'}};
+ await assert.rejects(context.api('/tasks/a',undefined,'"version"'),/Task not found/);
+});
 test('task polling and later output continue while one gateway refresh is unresolved',async()=>{
  const f=refreshFixture();
  for(const status of ['running','reviewing','paused']){

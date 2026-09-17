@@ -1,11 +1,13 @@
 """Atomic, private, device-local task storage."""
 
 import copy
+import hashlib
 import json
 import time
 import os
 import threading
 import unicodedata
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +33,7 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock = threading.RLock()
         self.tasks = {}
+        self._view_versions = {}
         from .lifetime_usage import LifetimeUsage
         self.lifetime = LifetimeUsage(self.root)
         from .club import ClubManager
@@ -73,6 +76,7 @@ class Store:
         with self.lock:
             write_json(self.root / "tasks" / task["id"] / "task.json", task)
             self.tasks[task["id"]] = copy.deepcopy(task)
+            self._view_versions[task["id"]] = uuid.uuid4().hex
             self.lifetime.ingest_task(task)
 
     def get(self, task_id):
@@ -85,6 +89,24 @@ class Store:
         """Publish live output without fsyncing the entire task for each token."""
         with self.lock:
             self.tasks[task["id"]] = copy.deepcopy(task)
+            self._view_versions[task["id"]] = uuid.uuid4().hex
+
+    def poll(self, task_id, previous=None):
+        """Skip the full snapshot when this browser already has the current view.
+
+        Versions are process-local, independent of worker timestamps, and change
+        on every save/publish. Metadata participates without copying task history.
+        The version and snapshot are captured under the same lock.
+        """
+        with self.lock:
+            metadata = self.metadata(task_id)
+            version = self._view_versions.setdefault(task_id, uuid.uuid4().hex)
+            digest = hashlib.sha256(json.dumps([version, metadata], sort_keys=True).encode()).hexdigest()
+            etag = '"' + digest + '"'
+            if previous == etag:
+                return None, etag
+            task = copy.deepcopy(self.tasks[task_id])
+            return self._present(task, metadata, task), etag
 
     def list(self, summary=False):
         with self.lock:
@@ -98,7 +120,8 @@ class Store:
     def metadata(self, task_id):
         """UI state is independent of worker-owned execution records."""
         with self.lock:
-            self.get(task_id)
+            if task_id not in self.tasks:
+                raise ValueError("Task not found")
             defaults = dict(custom_title=None, pinned=False, archived_at=None, trashed_at=None, trash_archived_at=None)
             try:
                 value = json.loads((self.root / "tasks" / task_id / "metadata.json").read_text())
@@ -140,8 +163,16 @@ class Store:
             return current
 
     def present(self, task):
-        metadata = self.metadata(task["id"])
-        return {**task, **metadata, "saved_change_count": len(self.get(task["id"]).get("changes", [])), "title": metadata["custom_title"] or automatic_title(self.get(task["id"]))}
+        with self.lock:
+            metadata = self.metadata(task["id"])
+            return self._present(task, metadata, self.tasks[task["id"]])
+
+    @staticmethod
+    def _present(task, metadata, saved):
+        # Only scalar presentation fields are read from the worker-owned record.
+        # Copying the whole history here made even the sidebar scale with it.
+        return {**task, **metadata, "saved_change_count": len(saved.get("changes", [])),
+                "title": metadata["custom_title"] or automatic_title(saved)}
 
     def visible(self, view="active"):
         if view not in {"active", "archived", "trash"}:
@@ -169,6 +200,7 @@ class Store:
         with self.lock:
             if task_id in self.tasks:
                 del self.tasks[task_id]
+            self._view_versions.pop(task_id, None)
             import shutil
             task_path = self.root / "tasks" / task_id
             if task_path.exists():
@@ -179,4 +211,3 @@ class Store:
             trashed_tasks = self.visible(view="trash")
             for task in trashed_tasks:
                 self.delete_task(task["id"])
-
