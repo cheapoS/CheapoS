@@ -147,3 +147,30 @@ class IntegrationPreparationTests(unittest.TestCase):
         self.assertEqual(task['integration_preparation']['id'],'retry')
         self.assertTrue(task['integration_preparation']['dispatched'])
         self.assertEqual(task['integration_preparation_history'][0]['id'],'op')
+
+    def test_explicit_new_id_reauthorizes_cancelled_preparation(self):
+        engine,task=self.fixture();values=self.accepted(engine,task)
+        prep.cancel(engine,'task')
+        self.assertFalse(prep.automatic(engine,task))
+        with patch.object(prep,'_launch'):
+            prep.start(engine,'task',{**values,'operation_id':'new-consent'})
+        self.assertTrue(task['integration_preparation']['authorized'])
+        self.assertEqual(task['integration_preparation']['id'],'new-consent')
+        self.assertEqual(task['integration_preparation_history'][0]['status'],'cancelled')
+
+    def test_interactive_resolution_comparison_reads_only_captured_paths(self):
+        import tempfile
+        from pathlib import Path
+        engine,task=self.fixture(False)
+        with tempfile.TemporaryDirectory() as directory:
+            previous=Path(directory)/'previous';current=Path(directory)/'current'
+            previous.mkdir();current.mkdir()
+            (previous/'a.py').write_text('before\n');(current/'a.py').write_text('combined\n')
+            task.update(workspace=str(current),reconciliation={'previous_workspace':str(previous),
+                'source_head':'target','files':['a.py'],'conflicts':['a.py']})
+            with patch.object(prep.work,'source_git',return_value='old-baseline'):
+                result=prep.resolution_changes(engine,'task')
+            self.assertIn('-before',result['diff']);self.assertIn('+combined',result['diff'])
+            self.assertEqual(result['target_tip'],'target');self.assertEqual(result['files'],['a.py'])
+            task['reconciliation']['files']=['../outside']
+            with self.assertRaises(ValueError):prep.resolution_changes(engine,'task')

@@ -116,7 +116,7 @@ def start(engine,task_id,values):
         task=engine.store.get(task_id);saved=task.get('integration_preparation')
         if saved and saved.get('id')==values.get('operation_id') and (saved.get('requested_target_tip',saved.get('target_tip'))!=values['target_tip'] or saved.get('candidate')!=values['candidate']):
             raise ValueError('That operation ID belongs to a different captured candidate or target.')
-        retry_failed=bool(saved and saved.get('status')=='failed' and values.get('operation_id') and values['operation_id']!=saved.get('id'))
+        retry_failed=bool(saved and saved.get('status') in {'failed','cancelled'} and values.get('operation_id') and values['operation_id']!=saved.get('id'))
         if saved and not retry_failed and (saved.get('id')==values.get('operation_id') or (saved.get('requested_target_tip',saved.get('target_tip'))==values['target_tip'] and saved.get('candidate')==values['candidate'])):
             if saved.get('status') not in TERMINAL:_launch(engine,task_id)
             return copy.deepcopy(task)
@@ -277,7 +277,9 @@ def local_changes(engine,task_id):
 def resolution_changes(engine,task_id):
     task=engine.store.get(task_id);run=task.get('branch_run',{});resolution=run.get('conflict_resolution',{})
     context=resolution.get('context',{})
-    if not context:return {'diff':'','files':[], 'label':'No captured conflict resolution'}
+    if not context:
+        if task.get('reconciliation'):return _interactive_resolution_changes(task)
+        return {'diff':'','files':[], 'label':'No captured conflict resolution'}
     source=run['workspace_mapping']['source']
     current=run['expected_feature_tip']
     return {'diff':work.source_git(source,'diff','--no-ext-diff','--no-renames',context['old_tip'],current),
@@ -342,3 +344,24 @@ def cancel(engine,task_id):
             if runtime and runtime.task.get('integration_preparation',{}).get('id')==op['id']:
                 runtime.task['integration_preparation']=copy.deepcopy(op)
         return task
+
+
+def _interactive_resolution_changes(task):
+    """Compare retained isolated copies; never read arbitrary destination paths."""
+    import difflib
+    from .workspace import Workspace
+    info=task['reconciliation']
+    previous=Workspace(info['previous_workspace']);current=Workspace(task['workspace'])
+    chunks=[]
+    for name in sorted(set(info.get('files',[]))):
+        versions=[]
+        for workspace in (previous,current):
+            path=workspace.path(name)
+            versions.append(workspace.text_bytes(name).decode('utf-8').splitlines(keepends=True) if path.exists() else [])
+        chunks.extend(difflib.unified_diff(*versions,fromfile='before-update/'+name,tofile='current-candidate/'+name))
+    diff=''.join(chunks)
+    return {'diff':diff,'files':info.get('conflicts',[]),'target_tip':info['source_head'],
+            'base':work.source_git(str(previous.root),'rev-parse','HEAD'),
+            'candidate':candidate(task),'comparison_id':hashlib.sha256(diff.encode()).hexdigest(),
+            'label':'Previous saved task copy → current task copy (including uncommitted edits)',
+            'summary':'Combined with project revision '+info['source_head'][:12]+'. The retained comparison supplements the final changes against the project.'}

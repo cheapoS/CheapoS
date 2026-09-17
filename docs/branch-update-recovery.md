@@ -50,7 +50,17 @@ workers are instructed to preserve both incoming behavior and unique task work,
 including nonconflicting incoming files, and final review still covers the original
 criteria. No update broadens test commands, spending or model authority.
 
-The new continuation tests use in-memory executors and fake timers (10 tests,
-about 0.02 seconds in isolation; about 0.06 seconds together with existing conflict
-and update unit cases). Existing real-Git completion and authorization fixtures
+The new continuation tests use in-memory executors and fake timers (15 tests,
+about 0.09 seconds in isolation). Existing real-Git completion and authorization fixtures
 remain the integration coverage; no new live-agent or multi-item fixture was added.
+
+Cancellation retains the candidate and prevents waiting preparation from starting
+again automatically. A new explicit **Update & resolve** request can reauthorize
+the same saved candidate; repeated requests for active work still reuse the same
+operation. Failed preparation similarly accepts a new explicit retry without
+throwing away an already assigned resolution item.
+
+Interactive **Changes from conflict resolution** compares the retained previous
+task copy with the current task copy, including uncommitted edits. It labels both
+copies and the incorporated target revision; the final project comparison remains
+the primary integration diff. Reads stay restricted to captured task paths.

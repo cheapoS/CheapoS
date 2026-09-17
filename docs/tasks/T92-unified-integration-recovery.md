@@ -1,6 +1,11 @@
 # T92 — Resolve integration conflicts without operator troubleshooting
 
-Status: **design ready; not implemented**, 2026-09-17.
+Status: **implemented**, 2026-09-17.
+Delivery details and retained limitations: [branch update recovery](../branch-update-recovery.md).
+The shared Changes preparation operation, server-owned continuation, scoped opt-in
+automatic preparation and exact-result final approval are implemented. Unsupported
+binary/protected-path/file-mode/context-size cases remain explicit decisions; they
+are never silently resolved by selecting a whole side.
 Follows [T91 settings scopes](T91-settings-system.md). This is an incremental
 workflow over existing integration code, not a replacement Git engine.
 
