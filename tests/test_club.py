@@ -120,3 +120,36 @@ class ClubTests(unittest.TestCase):
         self.assertEqual(event['event_id'],first['event_id'])
         self.club.set_sync(True,False);self.club.sync_now(self.ledger)
         self.assertTrue(all('model_name' not in e for e in json.loads(self.sent[-1]['payload'])['events']))
+
+    def test_remote_profile_caching_and_fallback(self):
+        from unittest.mock import patch, MagicMock
+        fake_profile={'handle':'alice','tokens':5000,'categories':{'local':5000},'models':[],'roles':[]}
+        mock_response=MagicMock()
+        mock_response.status=200
+        mock_response.read.return_value=json.dumps(fake_profile).encode('utf-8')
+        mock_response.__enter__.return_value=mock_response
+
+        with patch('urllib.request.urlopen',return_value=mock_response) as mock_urlopen:
+            profile=self.club.get_remote_profile()
+            self.assertEqual(profile['tokens'],5000)
+            mock_urlopen.assert_called_once()
+
+            mock_urlopen.reset_mock()
+            profile2=self.club.get_remote_profile()
+            self.assertEqual(profile2['tokens'],5000)
+            mock_urlopen.assert_not_called()
+
+            mock_urlopen.side_effect=OSError('offline')
+            profile3=self.club.get_remote_profile(force=True)
+            self.assertEqual(profile3['tokens'],5000)
+
+        status=self.club.get_status(include_remote=False)
+        self.assertEqual(status['remote_profile']['tokens'],5000)
+
+    def test_remote_profile_cleared_on_disconnect(self):
+        self.club._remote_profile_cache={'handle':'alice','tokens':5000}
+        self.club._remote_profile_cache_time=12345
+        self.club._call=Mock(return_value={'status':'disconnected'})
+        self.club.disconnect()
+        self.assertIsNone(self.club._remote_profile_cache)
+        self.assertEqual(self.club._remote_profile_cache_time,0)

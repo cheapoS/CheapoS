@@ -169,12 +169,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 if period not in {"all","7","30"}:return self.reply({"error":"Usage period must be all, 7 or 30 days"},400)
                 summary = engine.store.lifetime.summary(days=int(period) if period != "all" else "all")
                 if hasattr(engine.store, 'club'):
-                    summary['club'] = engine.store.club.get_status(summary)
+                    summary['club'] = engine.store.club.get_status(summary, include_remote=True)
                 self.reply(summary)
             elif path == "/api/club/status":
                 period=parse_qs(urlsplit(self.path).query).get("days", ["all"])[0]
                 summary = engine.store.lifetime.summary(days=int(period) if period != "all" else "all")
-                self.reply(engine.store.club.get_status(summary))
+                self.reply(engine.store.club.get_status(summary, include_remote=True))
             elif path in {"/api/settings/defaults", "/api/projects/settings"}:
                 project = engine.settings_project(parse_qs(urlsplit(self.path).query).get('project', [None])[0]) if path == '/api/projects/settings' else None
                 self.reply(engine.settings_store.view(project))

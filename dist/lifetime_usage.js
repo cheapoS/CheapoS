@@ -41,6 +41,15 @@ const CheapOSLifetimeUsage = (() => {
           handle:data.club.x_identity.handle,
           name:data.club.x_identity.name,
           avatar_url:data.club.x_identity.avatar_url
+        }:null,
+        remote_profile:data.club.remote_profile && typeof data.club.remote_profile==='object'?{
+          handle:String(data.club.remote_profile.handle||''),
+          display_name:String(data.club.remote_profile.display_name||''),
+          tokens:Number(data.club.remote_profile.tokens)||0,
+          categories:typeof data.club.remote_profile.categories==='object'&&data.club.remote_profile.categories!==null?data.club.remote_profile.categories:{},
+          share_models:Boolean(data.club.remote_profile.share_models),
+          models:Array.isArray(data.club.remote_profile.models)?data.club.remote_profile.models:[],
+          roles:Array.isArray(data.club.remote_profile.roles)?data.club.remote_profile.roles:[]
         }:null
       }:null
     };
@@ -80,40 +89,74 @@ const CheapOSLifetimeUsage = (() => {
     },null,2);
   }
   function markdown(data){const s=safeSummary(data);return '# cheapoS · Usage & savings\n\n'+`Local installation · ${s.period==='all'?'All time':s.period+' days'} · app ${s.app_version}\nRecorded since ${s.recorded_since||'unknown'} · updated ${s.updated_at||'unknown'}${s.partial_earlier_history?' · partial earlier history':''}\n\n`+`Reported tokens: ${number(s.tokens.reported)}\nTotal zero-cost tokens: ${number(s.total_free_tokens)}\nHistorical accounted tokens: ${number(s.tokens.accounted_historical)}\nAccounted API cost: ${money(s.cost.accounted)}\nEstimated savings: ${money(s.estimated_savings)}\n\n`+Object.entries(s.categories).map(([k,v])=>`${categories[k]}: ${number(v.tokens)} tokens (${number(v.requests)} requests)`).join('\n')+'\n\n## Exact accounting and coverage\n\n```json\n'+JSON.stringify(s,null,2)+'\n```\n';}
-  function renderClub(club={}){
-    const isLinked=Boolean(club.is_linked),isSyncing=Boolean(club.sync_enabled),op=club.x_identity||{};
+  function renderClub(club={}, viewMode='local'){
+    const isLinked=Boolean(club.is_linked),isSyncing=Boolean(club.sync_enabled),op=club.x_identity||{},rp=club.remote_profile;
     return `<section class="club-panel"><div class="club-card-content"><h3>The Cheapskate Club</h3>
-      ${isLinked?`<p>Connected to <strong>@${escape(op.handle)}</strong>. One installation connects to one Club account at a time.</p><p>Sharing ${isSyncing?'enabled':'paused'} · Last confirmed upload: ${club.last_synced_at?escape(date(club.last_synced_at)):'None yet'}</p><p>Only new settled request counts, usage category, accounting date, and anonymous event/installation IDs are sent. No prompts, code, paths or provider keys. Existing usage stays with its original account when you disconnect.</p><div class="club-pref-row"><label><input type="checkbox" data-club-models ${club.share_models?'checked':''}/> Share model names for my Club profile</label><button type="button" data-club-preferences>Save model preference</button><span class="club-pref-feedback" data-club-pref-feedback aria-live="polite"></span></div><div class="club-actions-row">${isSyncing?'<button type="button" data-club-sync>Sync now</button><button type="button" data-club-pause>Pause sharing</button>':'<button type="button" data-club-share>Enable sharing for new usage</button>'}<button type="button" data-club-disconnect>Disconnect</button></div>`:`<p>Connect your Club account, then choose whether to share new usage. Your local work never depends on the Club.</p>${club.pairing_pending?'':'<button class="primary-button" type="button" data-club-connect>Connect to Club →</button>'}${club.pairing_pending?`<p><a href="${escape(club.connect_url)}" target="_blank" rel="noopener noreferrer">Approve connection in the Club ↗</a></p><button type="button" data-club-check>Check connection</button><p>Waiting for browser approval. This updates automatically.</p><button type="button" data-club-connect>Refresh approval link</button>`:''}`}
+      ${isLinked?`<p>Connected to <strong>@${escape(op.handle)}</strong>. One installation connects to one Club account at a time.</p><p>Sharing ${isSyncing?'enabled':'paused'} · Last confirmed upload: ${club.last_synced_at?escape(date(club.last_synced_at)):'None yet'}</p><p>Only new settled request counts, usage category, accounting date, and anonymous event/installation IDs are sent. No prompts, code, paths or provider keys. Existing usage stays with its original account when you disconnect.</p><div class="club-pref-row"><label><input type="checkbox" data-club-models ${club.share_models?'checked':''}/> Share model names for my Club profile</label><button type="button" data-club-preferences>Save model preference</button><span class="club-pref-feedback" data-club-pref-feedback aria-live="polite"></span></div><div class="club-actions-row">${isSyncing?'<button type="button" data-club-sync>Sync now</button><button type="button" data-club-pause>Pause sharing</button>':'<button type="button" data-club-share>Enable sharing for new usage</button>'}<button type="button" data-club-disconnect>Disconnect</button></div>
+      ${rp?`<div class="club-reconcile-settings-box"><h4>Usage View Reconciliation</h4><p>Choose whether cheapoS displays machine-local activity or reconciles with your official Cheapskate Club scoreboard.</p><div class="club-view-options"><label><input type="radio" name="club_usage_view_pref" value="local" ${viewMode==='local'?'checked':''}/> <strong>Local installation</strong> (Machine-local activity)</label><label><input type="radio" name="club_usage_view_pref" value="remote" ${viewMode==='remote'?'checked':''}/> <strong>Club scoreboard</strong> (Reconciled with @${escape(rp.handle)}: ${number(rp.tokens)} zero-cost tokens)</label></div></div>`:''}`:`<p>Connect your Club account, then choose whether to share new usage. Your local work never depends on the Club.</p>${club.pairing_pending?'':'<button class="primary-button" type="button" data-club-connect>Connect to Club →</button>'}${club.pairing_pending?`<p><a href="${escape(club.connect_url)}" target="_blank" rel="noopener noreferrer">Approve connection in the Club ↗</a></p><button type="button" data-club-check>Check connection</button><p>Waiting for browser approval. This updates automatically.</p><button type="button" data-club-connect>Refresh approval link</button>`:''}`}
       ${club.sync_message?`<p role="status">${escape(club.sync_message)}</p>`:''}${club.error?`<p role="status">${escape(club.error)}</p>`:''}<p><a href="${escape(club.leaderboard_url||'https://cheapskate-club.vercel.app')}/account" target="_blank" rel="noopener noreferrer">My Club account ↗</a></p><p data-club-error role="alert"></p></div></section>`;
   }
-  function render(data){const s=safeSummary(data),known=Object.values(s.categories).reduce((n,v)=>n+(v.tokens||0),0),free=s.categories.public_free.tokens,paid=s.categories.paid.tokens,denom=(free||0)+(paid||0);
-    const zeroCostTokens=s.total_free_tokens||0;
-    const zeroCostShare=s.tokens.reported>0?Math.round((zeroCostTokens/s.tokens.reported)*100):100;
-    const estSavings=s.estimated_savings!=null?'$'+Number(s.estimated_savings).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):money(zeroCostTokens*0.000003);
-    const cards=[
-      ['Reported model tokens',s.tokens.reported,'tokens'],
-      ['Total zero-cost tokens',zeroCostTokens,'zero-cost'],
-      ['Public-free model tokens',free,'public-free'],
-      ['Paid-model tokens',paid,'paid'],
-      ['Accounted API cost',s.cost.accounted,'cost'],
-      ['Est. commercial savings',s.estimated_savings,'savings']
-    ];
-    const club=s.club||{},isLinked=Boolean(club.is_linked),isSyncing=Boolean(club.sync_enabled),op=club.x_identity||{},modelsEntries=Object.entries(s.models||{});
-    const clubSection=renderClub(s.club||{});
+  function render(data, viewMode='local'){
+    const s=safeSummary(data);
+    const rp=s.club?.remote_profile;
+    const isRemote=viewMode==='remote'&&Boolean(rp);
+    const club=s.club||{},isLinked=Boolean(club.is_linked),isSyncing=Boolean(club.sync_enabled),op=club.x_identity||{};
+    const clubSection=renderClub(club, viewMode);
+
+    const remoteCats = isRemote ? {
+      public_free: { tokens: rp.categories?.public_free || 0, requests: null },
+      included: { tokens: rp.categories?.included || 0, requests: null },
+      local: { tokens: rp.categories?.local || 0, requests: null }
+    } : s.categories;
+
+    const known=Object.values(remoteCats).reduce((n,v)=>n+(v.tokens||0),0);
+    const free=remoteCats.public_free?.tokens || 0;
+    const includedTokens=remoteCats.included?.tokens || 0;
+    const localTokens=remoteCats.local?.tokens || 0;
+    const paid=isRemote ? 0 : s.categories.paid.tokens;
+    const denom=(free||0)+(paid||0);
+    const zeroCostTokens=isRemote ? rp.tokens : (s.total_free_tokens||0);
+    const reportedTokens=isRemote ? rp.tokens : s.tokens.reported;
+    const zeroCostShare=reportedTokens>0?Math.round((zeroCostTokens/reportedTokens)*100):100;
+    const estSavings=isRemote
+      ? '$'+(Math.round(zeroCostTokens*0.000003*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+      : (s.estimated_savings!=null?'$'+Number(s.estimated_savings).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):money(zeroCostTokens*0.000003));
+
+    const rolesEntries = isRemote && rp.roles && rp.roles.length
+      ? rp.roles.map(r => [r.name, { tokens: r.tokens, requests: null }])
+      : Object.entries(s.roles);
+
+    const modelsList = isRemote && rp.models && rp.models.length
+      ? rp.models.map(m => ({ name: m.name, tokens: m.tokens, requests: null }))
+      : Object.entries(s.models).map(([name, obj]) => ({ name, tokens: obj.tokens, requests: obj.requests }));
+
+    const bannerHtml = isRemote ? `
+      <div class="scoreboard-reconcile-banner">
+        <div class="scoreboard-banner-left">
+          <span class="scoreboard-pill">🌐 Club Scoreboard</span>
+          <span>Official leaderboard score for <strong>@${escape(rp.handle)}</strong>${rp.display_name ? ` (${escape(rp.display_name)})` : ''}</span>
+        </div>
+        <div class="scoreboard-banner-right">
+          <a href="${escape(club.leaderboard_url || 'https://cheapskate-club.vercel.app')}/${escape(rp.handle)}" target="_blank" rel="noopener noreferrer" class="scoreboard-link">
+            View on cheapskate-club.vercel.app ↗
+          </a>
+        </div>
+      </div>` : '';
 
     return `
     <!-- TAB 1: OVERVIEW & SAVINGS -->
     <div class="usage-tab-panel" data-tab-panel="overview">
+      ${bannerHtml}
       <div class="usage-meta-bar">
-        <span>Recorded since <strong>${escape(date(s.recorded_since))}</strong> ${s.partial_earlier_history?'· <span class="history-badge">partial earlier history</span>':''}</span>
-        <span>Updated <strong>${escape(date(s.updated_at))}</strong> · <strong>${s.period==='all'?'All time':s.period+' days (UTC)'}</strong></span>
+        <span>${isRemote ? `Official verified score for <strong>@${escape(rp.handle)}</strong>` : `Recorded since <strong>${escape(date(s.recorded_since))}</strong> ${s.partial_earlier_history?'· <span class="history-badge">partial earlier history</span>':''}`}</span>
+        <span>${isRemote ? `Last synced <strong>${club.last_synced_at?escape(date(club.last_synced_at)):'Live'}</strong>` : `Updated <strong>${escape(date(s.updated_at))}</strong> · <strong>${s.period==='all'?'All time':s.period+' days (UTC)'}</strong>`}</span>
       </div>
 
       <div class="lifetime-figures">
         <div class="figure-card">
-          <span class="figure-label">Reported model tokens</span>
-          <strong class="figure-val">${number(s.tokens.reported)}</strong>
-          <span class="figure-sub">Total recorded compute</span>
+          <span class="figure-label">${isRemote ? 'Verified zero-cost tokens' : 'Reported model tokens'}</span>
+          <strong class="figure-val">${number(reportedTokens)}</strong>
+          <span class="figure-sub">${isRemote ? 'Live leaderboard score' : 'Total recorded compute'}</span>
         </div>
         <div class="figure-card highlight-zero">
           <div class="figure-label-row">
@@ -133,16 +176,16 @@ const CheapOSLifetimeUsage = (() => {
         </div>
         <div class="figure-card">
           <div class="figure-label-row">
-            <span class="figure-label">Paid-model tokens</span>
-            <span class="pill-badge amber">Metered</span>
+            <span class="figure-label">${isRemote ? 'Account-included tokens' : 'Paid-model tokens'}</span>
+            <span class="pill-badge ${isRemote ? '' : 'amber'}">${isRemote ? 'Included' : 'Metered'}</span>
           </div>
-          <strong class="figure-val">${number(paid)}</strong>
-          <span class="figure-sub">Metered API usage</span>
+          <strong class="figure-val">${number(isRemote ? includedTokens : paid)}</strong>
+          <span class="figure-sub">${isRemote ? 'Included quota' : 'Metered API usage'}</span>
         </div>
         <div class="figure-card">
-          <span class="figure-label">Accounted API cost</span>
-          <strong class="figure-val">${money(s.cost.accounted)}</strong>
-          <span class="figure-sub">Direct provider spend</span>
+          <span class="figure-label">${isRemote ? 'Local model compute' : 'Accounted API cost'}</span>
+          <strong class="figure-val">${isRemote ? number(localTokens) : money(s.cost.accounted)}</strong>
+          <span class="figure-sub">${isRemote ? 'On-device models' : 'Direct provider spend'}</span>
         </div>
         <div class="figure-card highlight-savings">
           <span class="figure-label">Est. commercial savings</span>
@@ -153,27 +196,43 @@ const CheapOSLifetimeUsage = (() => {
 
       <div class="savings-highlight-card">
         <div class="savings-highlight-badge">⚡ ${zeroCostShare}% zero-cost compute</div>
-        <p class="savings-highlight-main"><strong>${number(zeroCostTokens)} tokens</strong> consumed at $0 out-of-pocket API cost across public-free, account-included, and local models.</p>
-        <p class="savings-highlight-note">${denom?`${number(100*(free||0)/denom)}% of classified free-or-paid remote tokens used public-free models.`:'Free-model share is unavailable: no classified free-or-paid remote tokens.'} Local, included and unknown are excluded. Charged-free anomalies count as paid usage in this comparison.</p>
+        <p class="savings-highlight-main"><strong>${number(zeroCostTokens)} tokens</strong> ${isRemote ? `verified on the Cheapskate Club scoreboard for @${escape(rp.handle)} at $0 out-of-pocket API cost.` : 'consumed at $0 out-of-pocket API cost across public-free, account-included, and local models.'}</p>
+        <p class="savings-highlight-note">${isRemote ? `${number(known ? Math.round(100*(free||0)/known) : 100)}% of remote tokens used public-free models. ${rp.models.length} distinct models and ${rp.roles.length} agent roles active.` : (denom?`${number(100*(free||0)/denom)}% of classified free-or-paid remote tokens used public-free models.`:'Free-model share is unavailable: no classified free-or-paid remote tokens.')+' Local, included and unknown are excluded. Charged-free anomalies count as paid usage in this comparison.'}</p>
       </div>
 
       <div class="lifetime-stack-wrapper">
         <div class="stack-header">
           <h4>Compute distribution</h4>
-          <span class="small muted">Categorized token share</span>
+          <span class="small muted">${isRemote ? 'Verified Club token share' : 'Categorized token share'}</span>
         </div>
-        <div class="lifetime-stack" aria-hidden="true">${Object.entries(s.categories).map(([k,v])=>`<span class="usage-${k}" style="flex:${known?(v.tokens||0)/known:0}" title="${categories[k]}: ${number(v.tokens)} tokens"></span>`).join('')}</div>
-        <div class="stack-legend">${Object.entries(s.categories).map(([k,v])=>`
+        <div class="lifetime-stack" aria-hidden="true">${Object.entries(remoteCats).map(([k,v])=>`<span class="usage-${k}" style="flex:${known?(v.tokens||0)/known:0}" title="${categories[k]||k}: ${number(v.tokens)} tokens"></span>`).join('')}</div>
+        <div class="stack-legend">${Object.entries(remoteCats).map(([k,v])=>`
           <div class="stack-legend-item">
             <span class="legend-dot usage-${k}"></span>
-            <span class="legend-label">${categories[k]}</span>
+            <span class="legend-label">${categories[k]||k}</span>
             <span class="legend-pct">${known?Math.round(((v.tokens||0)/known)*100):0}%</span>
           </div>`).join('')}
         </div>
       </div>
 
       <div class="completed-work-card">
-        <h4>Completed work outcomes</h4>
+        <h4>${isRemote ? 'Club Workshop activity' : 'Completed work outcomes'}</h4>
+        ${isRemote ? `
+        <div class="completed-work-grid">
+          <div class="work-stat">
+            <span>🤖 Models tracked</span>
+            <strong>${rp.models.length}</strong>
+          </div>
+          <div class="work-stat">
+            <span>🎭 Active roles</span>
+            <strong>${rp.roles.length}</strong>
+          </div>
+          <div class="work-stat">
+            <span>🔒 Sharing mode</span>
+            <strong>${rp.share_models ? 'Public Models' : 'Private'}</strong>
+          </div>
+        </div>
+        <p class="small muted">Scoreboard data is signed with your local Ed25519 installation key and verified by the Club leaderboard.</p>` : `
         <div class="completed-work-grid">
           <div class="work-stat">
             <span>🧑‍💻 Human-accepted jobs</span>
@@ -188,64 +247,72 @@ const CheapOSLifetimeUsage = (() => {
             <strong>${number(s.completion.independent_review_approved_jobs)}</strong>
           </div>
         </div>
-        <p class="small muted">${s.completion_definitions} Failed work still consumes tokens.</p>
+        <p class="small muted">${s.completion_definitions} Failed work still consumes tokens.</p>`}
       </div>
     </div>
 
     <!-- TAB 2: BREAKDOWN & HISTORY -->
     <div class="usage-tab-panel" data-tab-panel="breakdown" hidden>
+      ${bannerHtml}
       <div class="breakdown-section">
-        <h4>Reported token access breakdown</h4>
+        <h4>${isRemote ? 'Club Scoreboard token breakdown' : 'Reported token access breakdown'}</h4>
         <table class="usage-table">
           <thead>
             <tr>
               <th scope="col">Access category</th>
               <th scope="col" style="text-align:right">Tokens</th>
-              <th scope="col" style="text-align:right">Requests</th>
+              ${isRemote ? '' : '<th scope="col" style="text-align:right">Requests</th>'}
               <th scope="col" style="text-align:right">Share</th>
             </tr>
           </thead>
           <tbody>
-            ${Object.entries(s.categories).map(([k,v])=>`
+            ${Object.entries(remoteCats).map(([k,v])=>`
               <tr>
                 <th scope="row">
                   <span class="legend-dot usage-${k}" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>
-                  ${categories[k]}
+                  ${categories[k]||k}
                 </th>
                 <td style="text-align:right">${number(v.tokens)}</td>
-                <td style="text-align:right">${number(v.requests)}</td>
+                ${isRemote ? '' : `<td style="text-align:right">${number(v.requests)}</td>`}
                 <td style="text-align:right">${known?Math.round(((v.tokens||0)/known)*100):0}%</td>
               </tr>
             `).join('')}
           </tbody>
         </table>
-        <p class="small muted" style="margin-top:10px">Unknown-usage requests: ${number(s.tokens.unknown_requests)} · Historical accounted tokens: ${number(s.tokens.accounted_historical)} · Charged-free requests: ${number(s.charged_free_requests)}. Missing usage is unknown, not zero.</p>
+        ${isRemote ? `<p class="small muted" style="margin-top:10px">Reconciled with live Club profile for @${escape(rp.handle)}. Paid metered tokens are not tracked by the Club.</p>` : `<p class="small muted" style="margin-top:10px">Unknown-usage requests: ${number(s.tokens.unknown_requests)} · Historical accounted tokens: ${number(s.tokens.accounted_historical)} · Charged-free requests: ${number(s.charged_free_requests)}. Missing usage is unknown, not zero.</p>`}
       </div>
 
       <details class="advanced" open>
-        <summary>Accounting details and roles</summary>
+        <summary>${isRemote ? 'Club Scoreboard role breakdown' : 'Accounting details and roles'}</summary>
+        ${isRemote ? `<p>Role distribution of tokens uploaded and acknowledged by the Club scoreboard.</p>` : `
         <p>Reported input ${number(s.tokens.input)} · output ${number(s.tokens.output)}. Reasoning ${number(s.tokens.reasoning)} and cached ${number(s.tokens.cached)} are reported subsets, not added again; missing subset coverage may be incomplete (reasoning: ${number(s.tokens.unknown_reasoning_requests)} requests; cached: ${number(s.tokens.unknown_cached_requests)} requests).</p>
         <p>Estimated tokens ${number(s.tokens.estimated)} · outstanding reserved tokens ${number(s.tokens.reserved)}; both are separate from reported usage.</p>
-        <p>Provider-reported cost ${money(s.cost.provider_reported)} · configured-price estimate ${money(s.cost.configured_estimate)} · historical accounted cost ${money(s.cost.historical_accounted)} · outstanding reservation ${money(s.cost.reserved)}.</p>
+        <p>Provider-reported cost ${money(s.cost.provider_reported)} · configured-price estimate ${money(s.cost.configured_estimate)} · historical accounted cost ${money(s.cost.historical_accounted)} · outstanding reservation ${money(s.cost.reserved)}.</p>`}
         <table class="usage-table" style="margin-top:12px">
-          <caption>Reported role usage</caption>
+          <caption>${isRemote ? 'Club Scoreboard role usage' : 'Reported role usage'}</caption>
           <thead>
             <tr>
               <th scope="col">Role</th>
               <th scope="col" style="text-align:right">Tokens</th>
-              <th scope="col" style="text-align:right">Requests</th>
+              ${isRemote ? '' : '<th scope="col" style="text-align:right">Requests</th>'}
             </tr>
           </thead>
           <tbody>
-            ${Object.entries(s.roles).map(([k,v])=>`<tr><th scope="row">${escape(k)}</th><td style="text-align:right">${number(v.tokens)} tokens</td><td style="text-align:right">${number(v.requests)} requests</td></tr>`).join('')}
+            ${rolesEntries.map(([k,v])=>`<tr><th scope="row">${escape(k)}</th><td style="text-align:right">${number(v.tokens)} tokens</td>${isRemote ? '' : `<td style="text-align:right">${number(v.requests)} requests</td>`}</tr>`).join('')}
           </tbody>
         </table>
       </details>
 
       <details class="advanced" open>
+        <summary>${isRemote ? `Club Scoreboard models (${modelsList.length})` : `Models used (${modelsList.length})`}</summary>
+        ${modelsList.length ? `<div class="table-scroll-container"><table class="usage-table"><thead><tr><th scope="col">Model</th><th scope="col" style="text-align:right">Tokens</th>${isRemote ? '' : '<th scope="col" style="text-align:right">Requests</th>'}</tr></thead><tbody>${modelsList.map(m => `<tr><th scope="row">${escape(m.name)}</th><td style="text-align:right">${number(m.tokens)} tokens</td>${isRemote ? '' : `<td style="text-align:right">${number(m.requests)} requests</td>`}</tr>`).join('')}</tbody></table></div>` : '<p>No model usage recorded.</p>'}
+      </details>
+
+      <details class="advanced" ${isRemote ? '' : 'open'}>
         <summary>Daily recorded history (UTC)</summary>
+        ${isRemote ? `<p class="muted">Daily logs are stored locally on this installation. Toggle to <strong>Local</strong> view above to review daily calendar breakdowns.</p>` : `
         <p>Only dated evidence is shown. Missing dates are gaps, not zero usage.${s.history_truncated?' Showing the latest 366 recorded dates; lifetime totals include older dates.':''}</p>
-        ${s.history.length?`<div class="table-scroll-container"><table class="usage-table"><thead><tr><th scope="col">Date</th><th scope="col" style="text-align:right">Tokens</th><th scope="col" style="text-align:right">API cost</th></tr></thead><tbody>${s.history.map(r=>`<tr><th scope="row">${escape(r.date)}</th><td style="text-align:right">${number(r.tokens)}</td><td style="text-align:right">${money(r.cost)}</td></tr>`).join('')}</tbody></table></div>`:'<p>No dated usage is available for this period.</p>'}
+        ${s.history.length?`<div class="table-scroll-container"><table class="usage-table"><thead><tr><th scope="col">Date</th><th scope="col" style="text-align:right">Tokens</th><th scope="col" style="text-align:right">API cost</th></tr></thead><tbody>${s.history.map(r=>`<tr><th scope="row">${escape(r.date)}</th><td style="text-align:right">${number(r.tokens)}</td><td style="text-align:right">${money(r.cost)}</td></tr>`).join('')}</tbody></table></div>`:'<p>No dated usage is available for this period.</p>'}`}
       </details>
 
       <div class="coverage-card">
@@ -279,12 +346,21 @@ const CheapOSLifetimeUsage = (() => {
           <span>💾 Export</span>
         </button>
       </div>
-      <div class="lifetime-period-wrapper">
-        <label>Period <select data-period>
-          <option value="all">All time</option>
-          <option value="7">Last 7 days</option>
-          <option value="30">Last 30 days</option>
-        </select></label>
+      <div class="lifetime-controls-wrapper">
+        <div class="usage-view-switch" data-usage-view-switch style="display:none">
+          <span class="usage-view-label">Show:</span>
+          <div class="usage-view-toggle-group" role="radiogroup" aria-label="Usage view mode">
+            <button type="button" class="usage-view-btn active" data-view="local" role="radio" aria-checked="true">💻 Local</button>
+            <button type="button" class="usage-view-btn" data-view="remote" role="radio" aria-checked="false">🌐 Club Scoreboard</button>
+          </div>
+        </div>
+        <div class="lifetime-period-wrapper">
+          <label>Period <select data-period>
+            <option value="all">All time</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+          </select></label>
+        </div>
       </div>
     </div>
     <div data-usage-body aria-live="polite"></div>
@@ -310,6 +386,8 @@ const CheapOSLifetimeUsage = (() => {
     </section>`,'lifetime-modal');
 
     const q=s=>d.querySelector(s),body=q('[data-usage-body]');let request=0,current=null,pairTimer=null,pairChecking=false,closed=false,activeTab='overview';
+    const storage=(typeof localStorage!=='undefined'?localStorage:null);
+    let viewMode=(storage?.getItem?.('cheapos_usage_view'))||'local';
     const $$=(sel,el=d)=>(typeof el.querySelectorAll==='function'?Array.from(el.querySelectorAll(sel)):[]);
 
     function switchTab(tabName){
@@ -330,6 +408,39 @@ const CheapOSLifetimeUsage = (() => {
       }
     }
 
+    function switchView(mode){
+      viewMode=mode;
+      try{storage?.setItem?.('cheapos_usage_view',mode);}catch{}
+      $$('.usage-view-btn',d).forEach(btn=>{
+        const active=btn.dataset.view===mode;
+        btn.classList.toggle('active',active);
+        btn.setAttribute('aria-checked',String(active));
+      });
+      $$('input[name="club_usage_view_pref"]',d).forEach(r=>{
+        r.checked=(r.value===mode);
+      });
+      const periodWrapper=q('.lifetime-period-wrapper');
+      if(periodWrapper){
+        if(periodWrapper.style)periodWrapper.style.display=(mode==='remote'?'none':'');
+        periodWrapper.hidden=(mode==='remote');
+      }
+      if(current){
+        body.innerHTML=render(current,viewMode);
+        switchTab(activeTab);
+        bindClubActions();
+        bindReconcileActions();
+      }
+    }
+
+    function bindReconcileActions(){
+      $$('.usage-view-btn',d).forEach(btn=>{
+        btn.onclick=()=>switchView(btn.dataset.view);
+      });
+      $$('input[name="club_usage_view_pref"]',d).forEach(radio=>{
+        radio.onchange=()=>{if(radio.checked)switchView(radio.value);};
+      });
+    }
+
     $$('.usage-tabs .settings-tab-btn',d).forEach(btn=>{
       btn.onclick=()=>switchTab(btn.dataset.tab);
     });
@@ -340,9 +451,17 @@ const CheapOSLifetimeUsage = (() => {
     function updateClub(status){
       if(closed||!d.isConnected||!current)return;
       current.club=safeSummary({...current,club:status}).club;
+      const hasRemote=Boolean(current.club?.remote_profile);
+      const switchEl=q('[data-usage-view-switch]');
+      if(switchEl){
+        if(switchEl.style)switchEl.style.display=(hasRemote?'':'none');
+        switchEl.hidden=!hasRemote;
+      }
       const scroll=d.scrollTop,panel=q('.club-panel');
-      if(panel)panel.outerHTML=renderClub(current.club||{});
-      bindClubActions();schedulePairCheck();
+      if(panel)panel.outerHTML=renderClub(current.club||{}, viewMode);
+      bindClubActions();
+      bindReconcileActions();
+      schedulePairCheck();
       d.scrollTop=scroll;
     }
     function bindClubActions(){
@@ -410,9 +529,27 @@ const CheapOSLifetimeUsage = (() => {
         const data=await api('/lifetime-usage?days='+q('[data-period]').value);
         if(seq!==request||!d.isConnected)return;
         current=safeSummary(data);
-        body.innerHTML=render(current);
+        const hasRemote=Boolean(current?.club?.remote_profile);
+        const switchEl=q('[data-usage-view-switch]');
+        if(switchEl){
+          if(switchEl.style)switchEl.style.display=(hasRemote?'':'none');
+          switchEl.hidden=!hasRemote;
+        }
+        const effectiveView=(viewMode==='remote'&&hasRemote)?'remote':'local';
+        const periodWrapper=q('.lifetime-period-wrapper');
+        if(periodWrapper){
+          if(periodWrapper.style)periodWrapper.style.display=(effectiveView==='remote'?'none':'');
+          periodWrapper.hidden=(effectiveView==='remote');
+        }
+        $$('.usage-view-btn',d).forEach(btn=>{
+          const active=btn.dataset.view===effectiveView;
+          btn.classList.toggle('active',active);
+          btn.setAttribute('aria-checked',String(active));
+        });
+        body.innerHTML=render(current,effectiveView);
         switchTab(activeTab);
         bindClubActions();
+        bindReconcileActions();
         schedulePairCheck();
         if(expBtn)expBtn.disabled=false;
       }catch(e){

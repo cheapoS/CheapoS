@@ -39,6 +39,9 @@ class ClubManager:
         self.stop=threading.Event()
         self.thread=None
         self.lifetime=None
+        self._remote_profile_cache=None
+        self._remote_profile_cache_time=0
+        self._remote_profile_lock=threading.Lock()
         default=dict(installation_id=str(uuid.uuid4()),pairing_id=None,identity=None,sync_enabled=False,sequence=0,previous_hash='',baseline=[],sent={},pending=None,last_synced_at=None,error=None)
         self.blocked=None
         try:
@@ -104,10 +107,40 @@ class ClubManager:
     def _call(self,action,**fields):
         return self._request(self._signed(self._message(action,**fields)))
 
-    def get_status(self,summary_dict=None):
+    def get_remote_profile(self, force=False):
+        """Fetch and cache the public member profile from the Club leaderboard."""
+        with self.lock:
+            identity=self.state.get('identity')
+            if not identity or not identity.get('handle'):
+                return None
+            handle=identity['handle'].lstrip('@').lower()
+
+        now_ts=datetime.now(timezone.utc).timestamp()
+        with self._remote_profile_lock:
+            if not force and self._remote_profile_cache and (now_ts - self._remote_profile_cache_time < 60):
+                return self._remote_profile_cache
+
+        try:
+            url=f"{self.leaderboard_url}/api/profile/{handle}"
+            req=urllib.request.Request(url,headers={'User-Agent':'cheapoS','Accept':'application/json'})
+            with urllib.request.urlopen(req,timeout=4) as response:
+                if response.status==200:
+                    data=json.loads(response.read(65536).decode('utf-8'))
+                    with self._remote_profile_lock:
+                        self._remote_profile_cache=data
+                        self._remote_profile_cache_time=now_ts
+                    return data
+        except Exception:
+            with self._remote_profile_lock:
+                if self._remote_profile_cache:
+                    return self._remote_profile_cache
+        return None
+
+    def get_status(self,summary_dict=None,include_remote=False):
         with self.lock:
             s=self.state
-            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],share_models=s.get('share_models',False),last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']))
+            remote=self.get_remote_profile() if include_remote and s.get('identity') else self._remote_profile_cache
+            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],share_models=s.get('share_models',False),last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']),remote_profile=remote)
 
     def start_pairing(self,lifetime):
         with self.lock:
@@ -244,6 +277,9 @@ class ClubManager:
                 if result.get('status')!='disconnected': raise ValueError('Club did not confirm disconnection. Sharing remains stopped.')
             self.state.update(identity=None,pairing_id=None,pending=None,sent={},baseline=[],revoking=False,error=None,share_models=False)
             self._save()
+            with self._remote_profile_lock:
+                self._remote_profile_cache=None
+                self._remote_profile_cache_time=0
             return {'status':'disconnected'}
 
     def start_background(self,lifetime):
