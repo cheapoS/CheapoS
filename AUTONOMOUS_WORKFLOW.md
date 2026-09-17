@@ -141,6 +141,14 @@ still apply. Small in-memory cases cover continuation, restart, pool exhaustion,
 manual selection, context paging, cached coverage and unchanged authorization;
 the existing Git final-review tests cover readiness and integration safeguards.
 
+Approved runs also retain their captured execution and model defaults. Changing
+the default local reviewer, coordinator or model pair for new tasks does not
+invalidate a paused task's authorization on Resume. The current gateway identity
+and connection revision are still checked; saved scope, commands and spending
+authority cannot expand. Unapproved proposals still detect changed defaults
+before approval. Regression cases exercise the actual Resume entry point after
+restart using an in-memory task and retain checks, usage and authorization.
+
 ## Implemented: recover from a bad file edit
 
 Worker text edits now retain the latest 16 completed edit receipts inside the

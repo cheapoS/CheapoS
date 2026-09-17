@@ -151,7 +151,8 @@ class BranchOperatorTests(unittest.TestCase):
         from cheapos import branch_final
         task=copy.deepcopy(self.saved);task['branch_run']['guidance']=[{'message':'Use the regression evidence and check the actual requirement.'}]
         runtime=SimpleNamespace(task=task,guard=Mock())
-        engine=SimpleNamespace(event=Mock(),request=Mock(side_effect=RuntimeError('fixture stops before inference')))
+        engine=SimpleNamespace(event=Mock(),store=SimpleNamespace(save=Mock()),
+                               request=Mock(side_effect=RuntimeError('fixture stops before inference')))
         with self.assertRaisesRegex(RuntimeError,'fixture stops'):
             branch_final._review(engine,runtime,{'id':'candidate','requirements':[]},{},[],[])
         messages=engine.request.call_args.args[1]

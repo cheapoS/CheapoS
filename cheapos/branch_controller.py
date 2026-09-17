@@ -193,14 +193,17 @@ class BranchController:
     def contract(self, task):
         run=task['branch_run']
         from .branch_completion import authorization_run
-        policy = copy.deepcopy(run['model_policy']) if run.get('operator_revision_history') else self.model_policy()
+        # Defaults configure new work. Once approved, this run owns a captured
+        # model policy; changing global role defaults must not invalidate it.
+        saved_policy = bool(run.get('authorization') or run.get('operator_revision_history'))
+        policy = copy.deepcopy(run['model_policy']) if saved_policy else self.model_policy()
         if run.get('model_policy', {}).get('gateway_connections') is not None:
             policy = copy.deepcopy(run['model_policy'])
             for entry in policy['gateway_connections']:
                 manager = self.engine.connections.managers.get(entry['connection_id'])
                 if manager and manager.settings['enabled'] and self.engine.connections.for_policy(entry) is None:
                     raise ValueError('An authorized gateway connection changed; inspect a fresh proposal')
-        if run.get('operator_revision_history') and not policy.get('gateway_connections'):
+        if saved_policy and not policy.get('gateway_connections'):
             from .access_policy import validate_current, effective_settings
             validate_current(policy.get('gateway_access'), effective_settings(task,self.engine.gateway.settings))
         if 'gateway_access' not in run.get('model_policy', {}): policy.pop('gateway_access', None)
