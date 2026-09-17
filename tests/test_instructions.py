@@ -205,6 +205,49 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertIn("recovery.review_repair", rule_ids)
         self.assertIn("recovery.disagreement", rule_ids)
 
+    def test_self_supersession_rejected(self):
+        """A rule cannot supersede itself in resolution or catalog audit."""
+        rule = InstructionRule(
+            id="rule.self",
+            audience=AgentAudience.CHEAPOS_INTERNAL,
+            category=InstructionCategory.WORKFLOW,
+            text="Self loop rule",
+            supersedes=("rule.self",),
+        )
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rules([rule])
+        self.assertIn("cannot supersede itself", str(ctx.exception))
+
+        custom_catalog = InstructionCatalog([rule])
+        report = audit_catalog(custom_catalog)
+        self.assertFalse(report["valid"])
+        self.assertTrue(any("cannot supersede itself" in err for err in report["errors"]))
+
+    def test_supersession_cycle_rejected(self):
+        """Directed cycles in supersession graph must be rejected in resolution and catalog audit."""
+        rule_a = InstructionRule(
+            id="rule.a",
+            audience=AgentAudience.CHEAPOS_INTERNAL,
+            category=InstructionCategory.WORKFLOW,
+            text="Rule A",
+            supersedes=("rule.b",),
+        )
+        rule_b = InstructionRule(
+            id="rule.b",
+            audience=AgentAudience.CHEAPOS_INTERNAL,
+            category=InstructionCategory.WORKFLOW,
+            text="Rule B",
+            supersedes=("rule.a",),
+        )
+        with self.assertRaises(ValueError) as ctx:
+            resolve_rules([rule_a, rule_b])
+        self.assertIn("Supersession cycle detected", str(ctx.exception))
+
+        custom_catalog = InstructionCatalog([rule_a, rule_b])
+        report = audit_catalog(custom_catalog)
+        self.assertFalse(report["valid"])
+        self.assertTrue(any("Supersession cycle detected" in err for err in report["errors"]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,20 +1,21 @@
 """Audit and static verification linter for the cheapoS instruction catalog."""
 from typing import Any, Dict, List, Set, Tuple
 from .catalog import DEFAULT_CATALOG, InstructionCatalog
-from .resolver import compose, resolve_rules
+from .resolver import compose, detect_supersession_cycles, resolve_rules
 from .types import AgentAudience, InstructionConflictError, InstructionRule
 
 
 def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, Any]:
     """Perform static linting and full state matrix verification on the catalog.
-    
+
     Verifies:
-    1. Reference integrity: All rule IDs in supersedes, incompatible_with, and 
+    1. Reference integrity: All rule IDs in supersedes, incompatible_with, and
        internal_disambiguation_required exist.
-    2. Symmetry / consistency: Incompatible rules are reciprocal or properly handled.
-    3. Permutation matrix: Composing instructions for every valid (role, mode, triggers)
+    2. Acyclicity: No self-supersessions or directed cycles in the supersession graph.
+    3. Symmetry / consistency: Incompatible rules are reciprocal or properly handled.
+    4. Permutation matrix: Composing instructions for every valid (role, mode, triggers)
        state executes without raising unhandled InstructionConflictError.
-    4. Persona boundary: Every rule with an internal_disambiguation_required tag has its
+    5. Persona boundary: Every rule with an internal_disambiguation_required tag has its
        counterpart active when composing instructions for cheapoS internal agents.
     """
     rules = catalog.all_rules()
@@ -22,8 +23,10 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
     errors: List[str] = []
     warnings: List[str] = []
 
-    # 1. Reference integrity
+    # 1. Reference integrity & Acyclicity
     for r in rules:
+        if r.id in r.supersedes:
+            errors.append(f"Rule '{r.id}' cannot supersede itself.")
         for s_id in r.supersedes:
             if s_id not in rule_ids:
                 errors.append(f"Rule '{r.id}' supersedes nonexistent rule '{s_id}'.")
@@ -35,6 +38,10 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
                 errors.append(
                     f"Rule '{r.id}' requires nonexistent internal disambiguation '{r.internal_disambiguation_required}'."
                 )
+
+    catalog_cycle = detect_supersession_cycles(rules)
+    if catalog_cycle:
+        errors.append(f"Supersession cycle detected in catalog: {' -> '.join(catalog_cycle)}")
 
     # 2. Persona Boundary Verification
     # For rules with internal_disambiguation_required, ensure internal worker/planner composition includes the disambiguator
@@ -82,9 +89,9 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
                                     f"State collision in (role={role}, mode={mode}, triggers={triggers}): "
                                     f"Rules '{a.id}' and '{incomp}' are both active."
                                 )
-                except InstructionConflictError as e:
+                except (InstructionConflictError, ValueError) as e:
                     errors.append(
-                        f"Unhandled InstructionConflictError in valid state (role={role}, mode={mode}, triggers={triggers}): {e}"
+                        f"Unhandled error in valid state (role={role}, mode={mode}, triggers={triggers}): {e}"
                     )
 
     return {

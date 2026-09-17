@@ -4,23 +4,71 @@ from .catalog import DEFAULT_CATALOG, InstructionCatalog
 from .types import AgentAudience, InstructionConflictError, InstructionRule
 
 
+def detect_supersession_cycles(rules: Sequence[InstructionRule]) -> Optional[List[str]]:
+    """Detect directed cycles in the supersession graph of candidate rules."""
+    rule_ids = {r.id for r in rules}
+    adj = {r.id: [s for s in r.supersedes if s in rule_ids] for r in rules}
+
+    visited: Set[str] = set()
+    rec_stack: List[str] = []
+    rec_set: Set[str] = set()
+
+    def dfs(node: str) -> Optional[List[str]]:
+        visited.add(node)
+        rec_stack.append(node)
+        rec_set.add(node)
+        for neighbor in adj.get(node, []):
+            if neighbor in rec_set:
+                cycle_start = rec_stack.index(neighbor)
+                return rec_stack[cycle_start:] + [neighbor]
+            if neighbor not in visited:
+                found = dfs(neighbor)
+                if found:
+                    return found
+        rec_stack.pop()
+        rec_set.remove(node)
+        return None
+
+    for node in adj:
+        if node not in visited:
+            cycle = dfs(node)
+            if cycle:
+                return cycle
+    return None
+
+
 def resolve_rules(candidate_rules: Sequence[InstructionRule]) -> List[InstructionRule]:
     """Resolve a candidate set of rules by applying supersessions and checking conflicts.
-    
-    1. Collects supersessions: if any rule supersedes other rules, those are pruned.
-    2. Checks for mutual exclusions: if rule X declares incompatibility with rule Y, and
+
+    1. Checks candidate integrity: rejects duplicate IDs, self-supersessions, and cycles.
+    2. Collects supersessions among active candidates and prunes superseded rules.
+    3. Checks for mutual exclusions: if rule X declares incompatibility with rule Y, and
        both are present after pruning, raises InstructionConflictError.
-    3. Orders rules deterministically by priority (descending) and ID (ascending).
+    4. Orders rules deterministically by priority (descending) and ID (ascending).
     """
-    rule_map = {r.id: r for r in candidate_rules}
-    
-    # Apply supersessions
+    seen_ids: Set[str] = set()
+    rule_map = {}
+    for r in candidate_rules:
+        if r.id in seen_ids:
+            raise ValueError(f"Duplicate instruction rule ID in candidate set: '{r.id}'")
+        seen_ids.add(r.id)
+        rule_map[r.id] = r
+
+    for r in rule_map.values():
+        if r.id in r.supersedes:
+            raise ValueError(f"Rule '{r.id}' cannot supersede itself.")
+
+    cycle = detect_supersession_cycles(candidate_rules)
+    if cycle:
+        raise ValueError(f"Supersession cycle detected: {' -> '.join(cycle)}")
+
+    # Apply supersessions among active candidates
     superseded_ids: Set[str] = set()
     for r in rule_map.values():
         superseded_ids.update(r.supersedes)
-        
+
     active_map = {r_id: r for r_id, r in rule_map.items() if r_id not in superseded_ids}
-    
+
     # Conflict detection
     active_ids = set(active_map.keys())
     for r in active_map.values():
@@ -30,7 +78,7 @@ def resolve_rules(candidate_rules: Sequence[InstructionRule]) -> List[Instructio
                     f"Conflicting instructions detected: Rule '{r.id}' is incompatible with active rule '{forbidden}'.",
                     rule_ids=[r.id, forbidden]
                 )
-                
+
     # Sort deterministically by priority descending, then id ascending
     sorted_rules = sorted(active_map.values(), key=lambda r: (-r.priority, r.id))
     return sorted_rules
