@@ -73,9 +73,33 @@ def is_plan_preview(command):
     return 'check.py' in [PurePath(a).name for a in args] and '--plan' in args
 
 
+def is_git_command(command):
+    args = argv(command)
+    if not args:
+        return False
+    name = PurePath(args[0]).name
+    if name == 'git':
+        # git diff --check is a valid formatting/whitespace check
+        if len(args) >= 3 and args[1] == 'diff' and '--check' in args[2:]:
+            return False
+        return True
+    return False
+
+
+def is_git_commit_criterion(criterion):
+    if not isinstance(criterion, str):
+        return False
+    lower = criterion.lower()
+    if 'commit' in lower or 'stage' in lower or 'git add' in lower:
+        return any(k in lower for k in ('branch', 'git', 'agent', 'repo', 'changes', 'work', 'staged'))
+    return False
+
+
 def require_verification(command):
     if is_plan_preview(command):
         raise ValueError('check.py --plan lists checks but runs none. Inspect its suggested commands, then call run_checks with the relevant executable check command. Do not substitute the full suite.')
+    if is_git_command(command):
+        raise ValueError('run_checks is strictly for running verification test commands, not git operations. cheapoS tracks workspace edits and creates commits automatically upon checkpoint approval. Do not call git add or git commit.')
 
 
 def guard(task, command):

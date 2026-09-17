@@ -42,7 +42,7 @@ WORKER_POLICY = ('This is an authorized unattended run. Use the permitted workin
     'Inspect code, manifests, existing UI and restart mechanisms before asking the operator for facts available there. '
     'For unspecified reversible details, follow existing conventions and record the assumption in your checkpoint summary. '
     'Ask only for an essential decision that inspection cannot resolve, describing the evidence inspected and why proceeding is blocked. '
-    'New commands outside the grant, installation, external effects, spending or destructive actions still require authority.')
+    'The controller automatically tracks workspace edits and creates feature branch commits upon checkpoint approval; never execute git commands (such as git add, git commit, git push, or git checkout), and never use run_checks to stage or commit code.')
 
 
 def reconsider_question(task, question):

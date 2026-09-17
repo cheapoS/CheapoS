@@ -74,14 +74,14 @@ def validate_plan(plan):
         _text(key, 'Limit name', 80)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value > 10 ** 15 or (isinstance(value, float) and not math.isfinite(value)):
             raise ValueError('Limits must be finite nonnegative numbers')
-    from .test_policy import is_plan_preview
+    from .test_policy import is_plan_preview, is_git_command, is_git_commit_criterion
     final = _checks(plan.get('final_checks', []))
-    if any(is_plan_preview(c) for c in final):
-        filtered = [c for c in final if not is_plan_preview(c)]
+    if any(is_plan_preview(c) or is_git_command(c) for c in final):
+        filtered = [c for c in final if not is_plan_preview(c) and not is_git_command(c)]
         if filtered:
             final = filtered
         else:
-            raise ValueError("check.py --plan lists checks but runs none; specify executable check commands in final_checks")
+            raise ValueError("Specify executable check commands in final_checks (not check.py --plan or git commands)")
     output = {'items': [], 'limits': copy.deepcopy(limits), 'final_checks': final}
     if 'measurement' in plan: output['measurement'] = plan['measurement']
     if 'uncapped_work' in plan: output['uncapped_work'] = plan['uncapped_work']
@@ -98,16 +98,18 @@ def validate_plan(plan):
         criteria = item.get('acceptance_criteria')
         if not isinstance(criteria, list) or not 1 <= len(criteria) <= 12:
             raise ValueError('Each item requires 1–12 acceptance criteria')
+        non_git_criteria = [c for c in criteria if not is_git_commit_criterion(c)]
+        criteria = non_git_criteria if non_git_criteria else ['Changes are implemented, verified by tests, and ready for controller commit.']
         deps = item.get('dependencies', [])
         if not isinstance(deps, list) or len(deps) > 50 or len(set(_id(d) for d in deps)) != len(deps):
             raise ValueError('Invalid or duplicate dependencies')
         req_checks = _checks(item.get('required_checks', []))
-        if any(is_plan_preview(c) for c in req_checks):
-            filtered = [c for c in req_checks if not is_plan_preview(c)]
+        if any(is_plan_preview(c) or is_git_command(c) for c in req_checks):
+            filtered = [c for c in req_checks if not is_plan_preview(c) and not is_git_command(c)]
             if filtered:
                 req_checks = filtered
             else:
-                raise ValueError("Item %s: check.py --plan lists checks but runs none; specify executable check commands in required_checks" % identity)
+                raise ValueError("Item %s: specify executable check commands in required_checks (not check.py --plan or git commands)" % identity)
         normalized = dict(id=identity, title=_text(item.get('title'), 'Title', 120),
                           instructions=_text(item.get('instructions'), 'Instructions', 4000),
                           dependencies=list(deps), acceptance_criteria=[_text(c, 'Criterion', 500) for c in criteria],

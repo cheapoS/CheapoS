@@ -137,7 +137,7 @@ def worker_system(task):
     if context == 'unattended':
         from .unattended_setup import WORKER_POLICY
         text = WORKER_SYSTEM.replace("Commits are handled by the app after the user clicks Approve & commit on the final reviewed diff. Never use verification commands to apply patches, commit, or push. If asked to commit, explain that approval step.",
-                                     "The controller owns branch commits after verified independent approval. Never use verification commands to commit, push or apply patches. Text alone cannot complete an item.")
+                                     "The controller owns branch commits after verified independent approval. Never use verification commands or run_checks to commit, push, stage, or apply patches (do not call git add or git commit). Text alone cannot complete an item.")
         return text + "\n" + WORKER_POLICY + " Use report_blocker for a genuine essential decision, including inspected evidence and why it cannot be resolved within scope."
     return WORKER_SYSTEM
 
@@ -408,7 +408,11 @@ def check_argv(command):
     lexer.commenters = ""
     if any(token and all(c in "|&;<>()" for c in token) for token in lexer):
         raise ValueError("Verification runs one program directly, without shell pipes, redirects, or chaining. Send only the test command; cheapoS captures its output automatically.")
-    return shlex.split(command)
+    args = shlex.split(command)
+    from .test_policy import is_git_command
+    if is_git_command(args):
+        raise ValueError("run_checks is strictly for running verification test commands, not git operations. cheapoS tracks workspace edits and creates commits automatically upon checkpoint approval. Do not call git add or git commit.")
+    return args
 
 
 def current_evidence(task, evidence, identity=None):
@@ -2245,7 +2249,7 @@ class Engine:
             messages=copy.deepcopy(messages)
             from .unattended_setup import WORKER_POLICY
             messages[0]['content'] += '\n'+WORKER_POLICY
-            messages[0]['content'] += '\nUnattended work: implement ONLY the active item below. The controller owns branch commits and next-item selection. Finish all acceptance criteria and request checkpoint. Existing code may already satisfy an item: verify it and submit checkpoint even with an empty diff; independent review must confirm it. Do not manufacture edits just to create a patch. A partial implementation is never complete. No model tool can grant execution/merge authority.'
+            messages[0]['content'] += '\nUnattended work: implement ONLY the active item below. The controller owns branch commits and next-item selection. Do not attempt to run git add or git commit with run_checks; cheapoS commits your edits automatically upon checkpoint approval. Finish all acceptance criteria and request checkpoint. Existing code may already satisfy an item: verify it and submit checkpoint even with an empty diff; independent review must confirm it. Do not manufacture edits just to create a patch. A partial implementation is never complete. No model tool can grant execution/merge authority.'
             if item.get('review_repair'):
                 from .review_disputes import brief
                 from .branch_disagreement import pending

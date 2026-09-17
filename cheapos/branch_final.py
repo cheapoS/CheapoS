@@ -238,9 +238,9 @@ def final_check_review(engine, runtime):
     specifications = run['plan']['final_checks']
     if not specifications:
         raise ValueError('Final integration checks are required')
-    from .test_policy import is_plan_preview
-    if any(is_plan_preview(s) for s in specifications):
-        real_specs = [s for s in specifications if not is_plan_preview(s)]
+    from .test_policy import is_plan_preview, is_git_command
+    if any(is_plan_preview(s) or is_git_command(s) for s in specifications):
+        real_specs = [s for s in specifications if not is_plan_preview(s) and not is_git_command(s)]
         if real_specs:
             specifications = real_specs
             run['plan']['final_checks'] = real_specs

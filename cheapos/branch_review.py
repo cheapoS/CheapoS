@@ -120,9 +120,9 @@ def checkpoint(engine, runtime, args):
         raise ProgressPause('Takeover implementation needs a different independent reviewer before a branch commit.')
     ctx = context(run, item)
     specs, criteria = item['required_checks'], item['acceptance_criteria']
-    from .test_policy import is_plan_preview
-    if any(is_plan_preview(s) for s in specs):
-        real_specs = [s for s in specs if not is_plan_preview(s)]
+    from .test_policy import is_plan_preview, is_git_command
+    if any(is_plan_preview(s) or is_git_command(s) for s in specs):
+        real_specs = [s for s in specs if not is_plan_preview(s) and not is_git_command(s)]
         if real_specs:
             specs = real_specs
             item['required_checks'] = real_specs

@@ -98,5 +98,52 @@ class TestPolicyTests(unittest.TestCase):
             'limits': {'dollars': 1, 'working_seconds': 60},
             'final_checks': ['git diff --check']
         }
-        with self.assertRaisesRegex(ValueError, 'lists checks but runs none'):
+        with self.assertRaisesRegex(ValueError, 'specify executable check commands'):
             validate_plan(plan)
+
+    def test_is_git_command_identifies_git_commands_except_diff_check(self):
+        self.assertTrue(policy.is_git_command('git add scripts/time_ago.py'))
+        self.assertTrue(policy.is_git_command(['git', 'commit', '-m', 'fix']))
+        self.assertTrue(policy.is_git_command('/usr/bin/git checkout main'))
+        self.assertFalse(policy.is_git_command('git diff --check'))
+        self.assertFalse(policy.is_git_command(['git', 'diff', '--check', 'HEAD']))
+        self.assertFalse(policy.is_git_command('python3 -B -m unittest tests/test_time_ago.py -v'))
+
+    def test_is_git_commit_criterion_identifies_commit_and_staging_criteria(self):
+        self.assertTrue(policy.is_git_commit_criterion("Changes are committed to a branch (AGENTS.md 'commit your work')"))
+        self.assertTrue(policy.is_git_commit_criterion("Commit changes to the feature branch"))
+        self.assertTrue(policy.is_git_commit_criterion("Stage modified files with git add"))
+        self.assertFalse(policy.is_git_commit_criterion("time_ago returns '23 hours ago' for a target 23 hours before now"))
+        self.assertFalse(policy.is_git_commit_criterion("All existing tests in tests/test_time_ago.py still pass unchanged"))
+
+    def test_require_verification_rejects_git_mutating_commands(self):
+        with self.assertRaisesRegex(ValueError, 'strictly for running verification'):
+            policy.require_verification('git add scripts/time_ago.py tests/test_time_ago.py')
+        with self.assertRaisesRegex(ValueError, 'strictly for running verification'):
+            policy.require_verification(['git', 'commit', '-m', 'test'])
+
+    def test_validate_plan_filters_git_commands_and_commit_criteria(self):
+        from cheapos.branch_runs import validate_plan
+        plan = {
+            'items': [{
+                'id': 'one', 'title': 'Test Item', 'instructions': 'Instructions',
+                'acceptance_criteria': [
+                    "time_ago returns '23 hours ago' for a target 23 hours before now",
+                    "Changes are committed to a branch (AGENTS.md 'commit your work')"
+                ],
+                'required_checks': ['python3 -B -m unittest tests.test_time_ago -v', 'git add scripts/time_ago.py']
+            }],
+            'limits': {'dollars': 1, 'working_seconds': 60},
+            'final_checks': ['git diff --check', 'git commit -m "done"']
+        }
+        validated = validate_plan(plan)
+        self.assertEqual(validated['items'][0]['required_checks'], ['python3 -B -m unittest tests.test_time_ago -v'])
+        self.assertEqual(validated['items'][0]['acceptance_criteria'], ["time_ago returns '23 hours ago' for a target 23 hours before now"])
+        self.assertEqual(validated['final_checks'], ['git diff --check'])
+
+    def test_check_argv_rejects_git_add(self):
+        from cheapos.engine import check_argv
+        with self.assertRaisesRegex(ValueError, 'strictly for running verification'):
+            check_argv('git add scripts/time_ago.py tests/test_time_ago.py')
+        # But git diff --check is allowed
+        self.assertEqual(check_argv('git diff --check'), ['git', 'diff', '--check'])
