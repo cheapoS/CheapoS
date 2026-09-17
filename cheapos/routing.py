@@ -256,10 +256,16 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
     # A model-scoped outage must not ban its healthy siblings, but their cached
     # probes/preferences must not crowd out other providers during failover.
     deferred_providers = set()
+    active_failure_provider = set()
     recovery = route.get('recovery', {}).get(role)
     current = task['providers'].get(role) or {}
-    if current.get('connection_id') == connection_id and outage(task, role, recovery) and recovery.get('from'):
-        deferred_providers.add(provider(recovery['from']))
+    if (not connection_id or not current.get('connection_id') or current.get('connection_id') == connection_id):
+        if recovery and recovery.get('from'):
+            active_failure_provider.add(provider(recovery['from']))
+        elif replace and current.get('model'):
+            active_failure_provider.add(provider(current['model']))
+    for failed_model in runtime.failed_models:
+        deferred_providers.add(provider(failed_model))
     round_state = route_schedule.begin(task, role + ":" + connection_id if connection_id else role)
     rejected_probes = route.setdefault('rejected_probes', {})
     candidates = []
@@ -292,12 +298,17 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
     tried = set()
     probes = task.setdefault("progress_state", {}).setdefault("route_probes", {})
     probes.setdefault(role, 0)
+    def provider_penalty(p):
+        if p in active_failure_provider: return 2
+        if p in deferred_providers: return 1
+        return 0
+
     rank_order = {model['id']: index for index, model in enumerate(candidates)}
     remaining = list(candidates)
     while remaining:
         # Preserve ranking within each group. Reorder after availability errors,
         # so one provider cannot consume this discovery batch with siblings.
-        remaining.sort(key=lambda model: (provider(model['id']) in deferred_providers, rank_order[model['id']]))
+        remaining.sort(key=lambda model: (provider_penalty(provider(model['id'])), rank_order[model['id']]))
         model = remaining.pop(0)
         # A preceding probe may have cooled the whole provider. Do not repeat
         # its cached error against every other model or count those as failures.
@@ -310,10 +321,11 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         if model['id'] in tried or (not cached and round_state['probes'] >= route_schedule.BATCH_SIZE): continue
         tried.add(model['id'])
         candidate_provider = provider(model['id'])
-        if deferred_providers and candidate_provider not in deferred_providers:
+        all_deferred = deferred_providers | active_failure_provider
+        if all_deferred and candidate_provider not in all_deferred:
             engine.event(task, 'routing', 'Trying another provider', {
                 'model': model['id'], 'role': role, 'provider': candidate_provider,
-                'deferred_providers': sorted(deferred_providers),
+                'deferred_providers': sorted(all_deferred),
                 'summary': 'Trying a different eligible provider after an availability failure. Saved work and model permissions are unchanged.'})
         cfg = validate_provider({"gateway_type": gateway.settings.get("gateway_type", "omniroute"), "gateway": "omniroute", "base_url": base_url, "model": model["id"],
                                  "input_rate": 0, "output_rate": 0, **({"provider": model["provider"]} if model.get("provider") else {})}, role)
@@ -378,7 +390,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
                     rejected_probes.pop(next(iter(rejected_probes)))
                 used.add(model['id'])
             cooldown = classification['category'] == 'rate_limit_quota'
-            if cooldown or classification['category'] in {'transient_provider', 'unavailable_route', 'candidate_rejected'}:
+            if cooldown or classification['category'] in {'transient_provider', 'unavailable_route', 'candidate_rejected', 'malformed_request'}:
                 deferred_providers.add(provider(model['id']))
             if classification['quality_impact']: runtime.failed_models.add(model['id'])
             gateway.pool.record(base_url, model['id'], role, error=error, connection_revision=connection_revision,

@@ -267,8 +267,9 @@ class FreeModelPool:
         by_tier = {}
         for m in sorted_models:
             k = key_fn(m)
-            tier = k[:9]
-            p = m["id"].lower().split("/")[0] if "/" in m["id"] else "other"
+            tier = (k[0], k[1], k[2], k[3], k[4], k[5], k[8])
+            raw_id = m["id"].lower().removeprefix("no-think/")
+            p = raw_id.split("/")[0] if "/" in raw_id else "other"
             by_tier.setdefault(tier, {}).setdefault(p, []).append(m)
         result = []
         for tier in sorted(by_tier.keys()):

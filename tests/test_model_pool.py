@@ -107,6 +107,7 @@ class PoolTests(unittest.TestCase):
             finally: manager.shutdown()
 
     def test_interleave_candidates_round_robins_providers_and_prioritizes_coding_models(self):
+        from cheapos import route_health
         with tempfile.TemporaryDirectory() as directory:
             pool = FreeModelPool(directory); endpoint = 'http://localhost:20128/v1'
             models = [
@@ -123,6 +124,11 @@ class PoolTests(unittest.TestCase):
             self.assertEqual(ordered_ids[-1], 'nvidia/nemotron-parse')
             top3_providers = [m['id'].split('/')[0] for m in ordered[:3]]
             self.assertEqual(len(set(top3_providers)), 3)
+            # A fresh probe on one provider must not crowd out other providers
+            pool.record(endpoint, 'nvidia/starcoder2-15b', 'worker', probe=True,
+                        probe_identity=route_health.probe_identity(endpoint, {'id': 'nvidia/starcoder2-15b'}, None))
+            ordered_probed = pool.interleave(endpoint, models, 'worker')
+            self.assertEqual(len(set(m['id'].split('/')[0] for m in ordered_probed[:3])), 3)
             pinned = pool.interleave(endpoint, models, 'worker', preferred='openrouter/cohere/north-mini-code:free')
             self.assertEqual(pinned[0]['id'], 'openrouter/cohere/north-mini-code:free')
 
@@ -240,6 +246,22 @@ class FailoverTests(LocalCase):
         self.assertEqual(result['status'],'approved',result['error'])
         self.assertEqual(result['providers']['worker']['model'],'zprovider/b')
         self.assertEqual(result['providers']['reviewer']['model'],'openrouter/b')
+        self.assertTrue(any(e['kind']=='handoff' for e in result['events']))
+
+    def test_worker_failure_rotates_to_another_provider_instead_of_siblings(self):
+        task=self.chat('remote')
+        task['check_command']=[sys.executable,'-m','unittest','discover','-v'];task['auto_approve_checks']=True
+        self.engine.store.save(task)
+        requests=self.responding([
+            ProviderError('Bad request parameter',code='http_400'),
+            call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
+            call('checkpoint',{'summary':'Fixed clamp.'}),
+            call('review_decision',{'decision':'APPROVE','feedback':'Verified.'})
+        ],names=('groq/gpt-oss-120b','groq/qwen-27b','openrouter/llama-70b','groq/qwen-32b'))
+        self.engine.start(task['id']);result=self.finish(task)
+        self.assertEqual(result['status'],'approved',result['error'])
+        # Must rotate away from groq to openrouter, not pick sibling groq/qwen-27b
+        self.assertEqual(result['providers']['worker']['model'],'openrouter/llama-70b')
         self.assertTrue(any(e['kind']=='handoff' for e in result['events']))
 
     def responding(self, replies, names=('a','b','c','d')):
