@@ -1,7 +1,6 @@
 # T91 — Explicit settings scopes and safe chat changes
 
-Status: **designed, not implemented**. This card is ready for an implementation
-agent. Canonical product/behavior contract:
+Status: **implemented; final integration qualification pending**. Canonical product/behavior contract:
 [Settings that make their scope obvious](../design/settings-system.md).
 Screen study: [settings-preview.html](../design/settings-preview.html).
 
@@ -127,3 +126,27 @@ Start from these existing owners; verify names against the implementation checko
 > is a design study, not production JavaScript to paste into the app. Validate
 > each slice with scoped deterministic checks, commit your own changes, and report
 > completed slices, remaining limitations and test timing for review.
+
+## Delivery notes — September 17
+
+The integrated implementation adds a versioned defaults store, project overrides,
+resolved capture for new chats/planning, and an atomic task-settings adapter. The
+frontend replaces the mixed setup form with named scopes and keeps Shared
+connections separate from role selection. Saved drafts carry scope revisions;
+transport failures retain edits and operation IDs. Legacy provenance remains
+explicitly unknown, and migration repair notices remain visible.
+
+Frontend qualification: all 254 selected JavaScript cases passed in approximately
+0.18 seconds. The new pure scoped-save contract fixture takes approximately
+0.04 seconds standalone, with no Git workflow, provider calls, or real waits.
+Browser fixtures verified named chat save, dirty scope switching/Keep editing,
+shared connection controls after role removal, and a 320px viewport with visible
+action footer and scrolling content. No personal profile or live model was used.
+
+Deliberate supported boundary: active chats use **Pause to apply** and retain the
+edit draft; the UI does not claim seamless queued pause/apply/continue. Existing
+chat placement, worker/planner pins, workflow conversion, accepted plan changes,
+command grants, and merge approval stay in their owning flows. Editable reviewer
+changes use eligible independent models on the saved connection. Preferred-model
+fallthrough is not exposed. The backend acceptance results and final Done status
+are recorded by the integrating agent after its focused qualification.
