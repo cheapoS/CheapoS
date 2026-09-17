@@ -1244,7 +1244,7 @@ function appearanceSettings(){
 }
 async function scopedSettings(scope,section='agents',project){
  const capturedTask=state.task,repository=project||state.project?.path||capturedTask?.source;
- const options={api,scope:scope||(capturedTask?'task':'draft'),task:capturedTask?{id:capturedTask.id,title:capturedTask.title||capturedTask.prompt}:null,project:repository,section,
+ const options={api,scope:scope||(capturedTask?'task':'draft'),task:capturedTask?{id:capturedTask.id,title:capturedTask.title||capturedTask.prompt}:null,project:repository,section,models:state.gatewayModels||[],connectionsList:state.gateway.connections||[],
  connections:()=>openConnections(),appearance:appearanceSettings,usage:()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader}),
  permissions:id=>{if(id&&state.task?.id!==id)selectTask(id);else setView('activity');},pause:id=>api('/tasks/'+id+'/stop',{}),onSaved:async()=>{await refreshContext();if(state.task?.id===capturedTask?.id)await refresh();}};
  try{if(options.scope==='draft'){if(!repository){openProject(()=>scopedSettings('draft',section));return;}const draft=await setupDraft(repository);options.draft=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>{setupDrafts.set(repository,next);renderComposer();},()=>api('/projects/settings?project='+encodeURIComponent(repository)));}
