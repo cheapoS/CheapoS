@@ -47,7 +47,7 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
     # 2. Persona Boundary Verification
     # Required recipient roles and modes for internal disambiguation of external rules
     required_internal_roles = ("worker", "planner")
-    applicable_modes = ("unattended", "interactive", "worker", "planning")
+    applicable_modes = ("unattended", "interactive", "worker", "planning", "review")
     catalog_triggers = sorted(list({t for r in rules for t in r.state_triggers}))
     trigger_scenarios: List[Tuple[str, ...]] = [()] + [(t,) for t in catalog_triggers]
 
@@ -82,7 +82,7 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
     roles = sorted(roles_set)
 
     # Include all modes referenced by rules and standard runtime contexts
-    modes_set = {"interactive", "unattended"}
+    modes_set = {"interactive", "unattended", "worker", "planning", "review"}
     for r in rules:
         for m in r.modes:
             if m != "all":
@@ -137,9 +137,10 @@ def probe_context_matrix(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[
     - Nested active-item repair state and dispute ledger triggers.
     - Planner sharing of controller commit rules and setup policy without worker pollution.
     - Persona boundary coverage across all supported runtime modes.
+    - Positive and negative assertions for all varied context flags exercising the runtime adapter.
     """
     import time
-    from .resolver import triggers_for_task
+    from .resolver import rules_for_task
 
     roles = ["worker", "planner", "reviewer", "coordinator"]
     modes = ["unattended", "interactive", "planning", "worker", "review"]
@@ -169,44 +170,112 @@ def probe_context_matrix(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[
                     "action_pending": act_pend,
                     "finish_review": fin_rev,
                     "full_suite_approved": full_st,
-                    "branch_run": {
-                        "current_item_id": "item-1",
-                        "items": [{"id": "item-1", "review_repair": {"candidate_id": "c1"} if has_repair else None}],
-                        "dispute_ledger": {"findings": {"f1": {"status": "open"}} if has_disp else {}},
-                        "authorization_ref": {"id": "auth1"} if mode == "unattended" else None,
-                    },
+                    "full_suite_approval": ["python3 -B scripts/check.py"] if full_st else [],
+                    "review_repair": {"candidate_id": "c1", "defects": ["d1"]} if has_repair else None,
+                    "review_disputes": has_disp,
                 }
-                triggers = triggers_for_task(task)
+                if mode == "review":
+                    task["status"] = "reviewing"
+                elif mode in ("unattended", "planning"):
+                    task["status"] = "in_progress"
+                    task["branch_run"] = {
+                        "current_item_id": "item-1",
+                        "items": [{"id": "item-1", "review_repair": {"candidate_id": "c1", "defects": ["d1"]} if has_repair else None}],
+                        "dispute_ledger": {"findings": {"f1": {"status": "open"}} if has_disp else {}},
+                    }
+                    if mode == "unattended":
+                        task["branch_run"]["authorization_ref"] = {"id": "auth1"}
+                elif mode == "interactive":
+                    task["status"] = "in_progress"
+                    task["conversational"] = True
+                elif mode == "worker":
+                    task["status"] = "in_progress"
+                    task["conversational"] = False
+
                 try:
-                    active = compose(role=role, mode=mode, triggers=triggers, catalog=catalog)
+                    active = rules_for_task(task, role=role, catalog=catalog)
                     active_ids = {r.id for r in active}
 
-                    # Invariant 1: Overlapping recovery precedence
-                    if out_rec and comp_ed:
-                        if "recovery.compact_edits" in active_ids and "recovery.output_cap" in active_ids:
-                            errors.append(f"Overlapping recovery conflict at ({role}, {mode}): both active")
+                    # Positive and negative assertions for worker-specific recovery & steering flags
+                    if role == "worker":
+                        if comp_ed:
+                            if "recovery.compact_edits" not in active_ids:
+                                errors.append(f"Missing compact_edits at ({role}, {mode})")
+                            if "recovery.output_cap" in active_ids:
+                                errors.append(f"Output cap active despite compact_edits at ({role}, {mode})")
+                        else:
+                            if "recovery.compact_edits" in active_ids:
+                                errors.append(f"compact_edits active when comp_ed=False at ({role}, {mode})")
+                            if out_rec:
+                                if "recovery.output_cap" not in active_ids:
+                                    errors.append(f"Missing output_cap when out_rec=True at ({role}, {mode})")
+                            else:
+                                if "recovery.output_cap" in active_ids:
+                                    errors.append(f"output_cap active when out_rec=False at ({role}, {mode})")
 
-                    # Invariant 2: Nested active item repair state
-                    if has_repair and role == "worker":
-                        if "recovery.review_repair" not in active_ids:
-                            errors.append(f"Missing review_repair for worker at mode {mode}")
+                        if act_pend:
+                            if "recovery.action_guidance" not in active_ids:
+                                errors.append(f"Missing action_guidance when act_pend=True at ({role}, {mode})")
+                        else:
+                            if "recovery.action_guidance" in active_ids:
+                                errors.append(f"action_guidance active when act_pend=False at ({role}, {mode})")
 
-                    # Invariant 3: Planner sharing without worker pollution
+                        if fin_rev:
+                            if "recovery.finish_review" not in active_ids:
+                                errors.append(f"Missing finish_review when fin_rev=True at ({role}, {mode})")
+                        else:
+                            if "recovery.finish_review" in active_ids:
+                                errors.append(f"finish_review active when fin_rev=False at ({role}, {mode})")
+
+                        if has_repair:
+                            if "recovery.review_repair" not in active_ids:
+                                errors.append(f"Missing review_repair when has_repair=True at ({role}, {mode})")
+                        else:
+                            if "recovery.review_repair" in active_ids:
+                                errors.append(f"review_repair active when has_repair=False at ({role}, {mode})")
+
+                        if has_disp:
+                            if "recovery.disagreement" not in active_ids:
+                                errors.append(f"Missing review_rejected/disagreement when has_disp=True at ({role}, {mode})")
+                        else:
+                            if "recovery.disagreement" in active_ids:
+                                errors.append(f"disagreement active when has_disp=False at ({role}, {mode})")
+
+                    # Flag 5: Full-suite validation authorization (positive + negative across all roles)
+                    if full_st:
+                        if "validation.full_suite_mandatory" not in active_ids:
+                            errors.append(f"Missing full_suite_mandatory when full_st=True at ({role}, {mode})")
+                        if "validation.change_scoped" in active_ids:
+                            errors.append(f"change_scoped active when full_st=True at ({role}, {mode})")
+                    else:
+                        if "validation.full_suite_mandatory" in active_ids:
+                            errors.append(f"full_suite_mandatory active when full_st=False at ({role}, {mode})")
+                        if "validation.change_scoped" not in active_ids:
+                            errors.append(f"Missing change_scoped when full_st=False at ({role}, {mode})")
+
+                    # Role Invariant 3: Planner sharing without worker pollution
                     if role == "planner":
                         if "git.internal.controller_owns_commits" not in active_ids:
                             errors.append(f"Planner missing controller_owns_commits at mode {mode}")
                         if "workflow.worker_base" in active_ids:
                             errors.append(f"Planner polluted with worker_base at mode {mode}")
 
-                    # Invariant 4: Persona boundary coverage
+                    # Role Invariant 4: Persona boundary coverage
                     if "git.external.commit_on_finish" in active_ids:
                         errors.append(f"External git rule leaked into internal role {role}")
                     if role in ("worker", "planner"):
                         if "git.internal.controller_owns_commits" not in active_ids:
                             errors.append(f"Required internal commit rule missing for role {role} at mode {mode}")
 
+                    # Reviewer role integrity
+                    if role == "reviewer":
+                        if "reviewer.base" not in active_ids:
+                            errors.append(f"Reviewer missing reviewer.base at mode {mode}")
+                        if "workflow.worker_base" in active_ids:
+                            errors.append(f"Reviewer polluted with worker_base at mode {mode}")
+
                 except Exception as e:
-                    errors.append(f"Exception at ({role}, {mode}, {triggers}): {e}")
+                    errors.append(f"Exception at ({role}, {mode}): {e}")
 
     duration = time.perf_counter() - start_time
     return {

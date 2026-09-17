@@ -10,7 +10,9 @@ from cheapos.instructions import (
     audit_catalog,
     compose,
     compose_prompt,
+    probe_context_matrix,
     resolve_rules,
+    rules_for_task,
 )
 
 
@@ -510,6 +512,97 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertTrue(report["valid"], f"Probe failed with errors: {report['errors']}")
         self.assertEqual(report["errors"], [])
         self.assertLess(report["duration_seconds"], 1.0)
+
+    def test_audit_catalog_detects_conflict_in_worker_mode_when_unnamed(self):
+        """audit_catalog seeds worker mode and catches collisions even when rules do not explicitly name worker mode."""
+        r_fallback = InstructionRule(
+            id="rule.base_fallback",
+            audience=AgentAudience.CHEAPOS_WORKER,
+            category=InstructionCategory.WORKFLOW,
+            roles=("worker",),
+            modes=("all",),
+            text="Base fallback",
+        )
+        r_conflict = InstructionRule(
+            id="rule.worker_conflict",
+            audience=AgentAudience.CHEAPOS_WORKER,
+            category=InstructionCategory.WORKFLOW,
+            roles=("worker",),
+            modes=("all",),
+            incompatible_with=("rule.base_fallback",),
+            text="Incompatible in worker mode",
+        )
+        r_interactive = InstructionRule(
+            id="rule.override_interactive",
+            audience=AgentAudience.CHEAPOS_WORKER,
+            category=InstructionCategory.WORKFLOW,
+            roles=("worker",),
+            modes=("interactive",),
+            supersedes=("rule.base_fallback",),
+            text="Override interactive",
+        )
+        r_unattended = InstructionRule(
+            id="rule.override_unattended",
+            audience=AgentAudience.CHEAPOS_WORKER,
+            category=InstructionCategory.WORKFLOW,
+            roles=("worker",),
+            modes=("unattended",),
+            supersedes=("rule.base_fallback",),
+            text="Override unattended",
+        )
+        cat = InstructionCatalog([r_fallback, r_conflict, r_interactive, r_unattended])
+        report = audit_catalog(cat)
+        self.assertFalse(report["valid"], "Expected audit_catalog to catch collision in seeded worker mode")
+        error_blob = " ".join(report["errors"])
+        self.assertIn("mode=worker", error_blob)
+
+    def test_rules_for_task_passes_role_to_mode_selection(self):
+        """rules_for_task must pass role to execution_context.mode so reviewer-specific review rules are included."""
+        r_rev = InstructionRule(
+            id="reviewer.review_mode_only",
+            audience=AgentAudience.CHEAPOS_REVIEWER,
+            category=InstructionCategory.WORKFLOW,
+            roles=("reviewer",),
+            modes=("review",),
+            text="Reviewer review specific guidance",
+        )
+        cat = InstructionCatalog([r_rev])
+        # Task lacks status="reviewing", but role="reviewer" should force mode="review"
+        task = {"conversational": False}
+        resolved = rules_for_task(task, role="reviewer", catalog=cat)
+        resolved_ids = {r.id for r in resolved}
+        self.assertIn("reviewer.review_mode_only", resolved_ids)
+
+    def test_probe_fails_when_flags_are_not_extracted(self):
+        """Probe must fail when context flag extractions like full_suite_requested or review_rejected are omitted."""
+        import cheapos.instructions.resolver as resolver
+        orig_triggers = resolver.triggers_for_task
+
+        # Test omission of full_suite_requested
+        def broken_full_suite(task):
+            return [t for t in orig_triggers(task) if t != "full_suite_requested"]
+
+        resolver.triggers_for_task = broken_full_suite
+        try:
+            report = probe_context_matrix()
+            self.assertFalse(report["valid"])
+            error_blob = " ".join(report["errors"])
+            self.assertIn("full_suite_mandatory", error_blob)
+        finally:
+            resolver.triggers_for_task = orig_triggers
+
+        # Test omission of review_rejected
+        def broken_disputes(task):
+            return [t for t in orig_triggers(task) if t != "review_rejected"]
+
+        resolver.triggers_for_task = broken_disputes
+        try:
+            report = probe_context_matrix()
+            self.assertFalse(report["valid"])
+            error_blob = " ".join(report["errors"])
+            self.assertIn("Missing review_rejected/disagreement", error_blob)
+        finally:
+            resolver.triggers_for_task = orig_triggers
 
 
 class PromptParityTests(unittest.TestCase):

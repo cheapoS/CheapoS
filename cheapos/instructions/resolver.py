@@ -179,6 +179,6 @@ def rules_for_task(
 ) -> List[InstructionRule]:
     """Resolve active instruction rules for a runtime task dictionary."""
     from cheapos import execution_context
-    mode = execution_context.mode(task) if isinstance(task, dict) else "unattended"
+    mode = execution_context.mode(task, role=role) if isinstance(task, dict) else "unattended"
     triggers = list(triggers_for_task(task)) + list(extra_triggers)
     return compose(role=role, mode=mode, triggers=triggers, catalog=catalog)
