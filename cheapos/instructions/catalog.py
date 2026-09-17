@@ -1,5 +1,5 @@
 """Centralized catalog of agent instructions, policies, and behavioral rules in cheapoS."""
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 from .types import AgentAudience, InstructionCategory, InstructionRule
 
 ROLE_TO_AUDIENCE: Dict[str, AgentAudience] = {
@@ -414,16 +414,77 @@ RULES: List[InstructionRule] = [
 ]
 
 
+VALID_ROLES = frozenset(list(ROLE_TO_AUDIENCE.keys()) + ["all"])
+VALID_MODES = frozenset(["all", "interactive", "unattended", "worker", "planning", "review"])
+
+
+def detect_supersession_cycles(rules: Sequence[InstructionRule]) -> Optional[List[str]]:
+    """Detect directed cycles in the supersession graph of candidate rules."""
+    rule_ids = {r.id for r in rules}
+    adj = {r.id: [s for s in r.supersedes if s in rule_ids] for r in rules}
+
+    visited: Set[str] = set()
+    rec_stack: List[str] = []
+    rec_set: Set[str] = set()
+
+    def dfs(node: str) -> Optional[List[str]]:
+        visited.add(node)
+        rec_stack.append(node)
+        rec_set.add(node)
+        for neighbor in adj.get(node, []):
+            if neighbor in rec_set:
+                cycle_start = rec_stack.index(neighbor)
+                return rec_stack[cycle_start:] + [neighbor]
+            if neighbor not in visited:
+                found = dfs(neighbor)
+                if found:
+                    return found
+        rec_stack.pop()
+        rec_set.remove(node)
+        return None
+
+    for node in adj:
+        if node not in visited:
+            cycle = dfs(node)
+            if cycle:
+                return cycle
+    return None
+
+
 class InstructionCatalog:
     """Registry providing indexed lookup and filtering for instruction rules."""
 
-    def __init__(self, rules: Sequence[InstructionRule] = RULES):
-        seen_ids = set()
-        for r in rules:
-            if r.id in seen_ids:
-                raise ValueError(f"Duplicate instruction rule ID detected in catalog: '{r.id}'")
-            seen_ids.add(r.id)
-        self._rules: Dict[str, InstructionRule] = {r.id: r for r in rules}
+    def __init__(self, rules: Sequence[InstructionRule] = RULES, validate: bool = True):
+        rules_list = list(rules)
+        if validate:
+            seen_ids = set()
+            for r in rules_list:
+                if r.id in seen_ids:
+                    raise ValueError(f"Duplicate instruction rule ID detected in catalog: '{r.id}'")
+                seen_ids.add(r.id)
+
+                if r.id in r.supersedes:
+                    raise ValueError(f"Rule '{r.id}' cannot supersede itself.")
+
+                # Validate selectors
+                if not isinstance(r.audience, AgentAudience):
+                    raise ValueError(f"Rule '{r.id}' specifies invalid audience selector: '{r.audience}'")
+                if not isinstance(r.category, InstructionCategory):
+                    raise ValueError(f"Rule '{r.id}' specifies invalid category selector: '{r.category}'")
+                for role in r.roles:
+                    if role not in VALID_ROLES:
+                        raise ValueError(f"Rule '{r.id}' specifies invalid role selector: '{role}'")
+                for mode in r.modes:
+                    if mode not in VALID_MODES:
+                        raise ValueError(f"Rule '{r.id}' specifies invalid mode selector: '{mode}'")
+
+            cycle = detect_supersession_cycles(rules_list)
+            if cycle:
+                raise ValueError(f"Supersession cycle detected in catalog: {' -> '.join(cycle)}")
+
+        # Store rules sorted deterministically for permutation-invariant catalog queries
+        sorted_rules = sorted(rules_list, key=lambda r: (-r.priority, r.id))
+        self._rules: Dict[str, InstructionRule] = {r.id: r for r in sorted_rules}
 
     def get(self, rule_id: str) -> Optional[InstructionRule]:
         return self._rules.get(rule_id)

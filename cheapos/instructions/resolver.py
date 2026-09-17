@@ -1,40 +1,7 @@
 """Resolver for composing instruction rules, eliminating superseded rules, and catching conflicts."""
 from typing import List, Optional, Sequence, Set
-from .catalog import DEFAULT_CATALOG, InstructionCatalog
+from .catalog import DEFAULT_CATALOG, InstructionCatalog, detect_supersession_cycles
 from .types import AgentAudience, InstructionConflictError, InstructionRule
-
-
-def detect_supersession_cycles(rules: Sequence[InstructionRule]) -> Optional[List[str]]:
-    """Detect directed cycles in the supersession graph of candidate rules."""
-    rule_ids = {r.id for r in rules}
-    adj = {r.id: [s for s in r.supersedes if s in rule_ids] for r in rules}
-
-    visited: Set[str] = set()
-    rec_stack: List[str] = []
-    rec_set: Set[str] = set()
-
-    def dfs(node: str) -> Optional[List[str]]:
-        visited.add(node)
-        rec_stack.append(node)
-        rec_set.add(node)
-        for neighbor in adj.get(node, []):
-            if neighbor in rec_set:
-                cycle_start = rec_stack.index(neighbor)
-                return rec_stack[cycle_start:] + [neighbor]
-            if neighbor not in visited:
-                found = dfs(neighbor)
-                if found:
-                    return found
-        rec_stack.pop()
-        rec_set.remove(node)
-        return None
-
-    for node in adj:
-        if node not in visited:
-            cycle = dfs(node)
-            if cycle:
-                return cycle
-    return None
 
 
 def resolve_rules(candidate_rules: Sequence[InstructionRule]) -> List[InstructionRule]:

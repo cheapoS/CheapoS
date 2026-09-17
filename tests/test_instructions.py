@@ -218,13 +218,17 @@ class InstructionCatalogTests(unittest.TestCase):
             resolve_rules([rule])
         self.assertIn("cannot supersede itself", str(ctx.exception))
 
-        custom_catalog = InstructionCatalog([rule])
+        with self.assertRaises(ValueError) as ctx:
+            InstructionCatalog([rule])
+        self.assertIn("cannot supersede itself", str(ctx.exception))
+
+        custom_catalog = InstructionCatalog([rule], validate=False)
         report = audit_catalog(custom_catalog)
         self.assertFalse(report["valid"])
         self.assertTrue(any("cannot supersede itself" in err for err in report["errors"]))
 
     def test_supersession_cycle_rejected(self):
-        """Directed cycles in supersession graph must be rejected in resolution and catalog audit."""
+        """Directed cycles in supersession graph must be rejected in resolution, construction, and catalog audit."""
         rule_a = InstructionRule(
             id="rule.a",
             audience=AgentAudience.CHEAPOS_INTERNAL,
@@ -243,10 +247,91 @@ class InstructionCatalogTests(unittest.TestCase):
             resolve_rules([rule_a, rule_b])
         self.assertIn("Supersession cycle detected", str(ctx.exception))
 
-        custom_catalog = InstructionCatalog([rule_a, rule_b])
+        with self.assertRaises(ValueError) as ctx:
+            InstructionCatalog([rule_a, rule_b])
+        self.assertIn("Supersession cycle detected", str(ctx.exception))
+
+        custom_catalog = InstructionCatalog([rule_a, rule_b], validate=False)
         report = audit_catalog(custom_catalog)
         self.assertFalse(report["valid"])
         self.assertTrue(any("Supersession cycle detected" in err for err in report["errors"]))
+
+    def test_invalid_selectors_rejected_at_construction(self):
+        """Rules declaring invalid roles, modes, audience, or category must be rejected at catalog construction."""
+        # Invalid role
+        bad_role_rule = InstructionRule(
+            id="rule.bad_role",
+            audience=AgentAudience.CHEAPOS_INTERNAL,
+            category=InstructionCategory.WORKFLOW,
+            roles=("nonexistent_role",),
+            text="Bad role",
+        )
+        with self.assertRaises(ValueError) as ctx:
+            InstructionCatalog([bad_role_rule])
+        self.assertIn("invalid role selector", str(ctx.exception))
+
+        # Invalid mode
+        bad_mode_rule = InstructionRule(
+            id="rule.bad_mode",
+            audience=AgentAudience.CHEAPOS_INTERNAL,
+            category=InstructionCategory.WORKFLOW,
+            modes=("quantum_mode",),
+            text="Bad mode",
+        )
+        with self.assertRaises(ValueError) as ctx:
+            InstructionCatalog([bad_mode_rule])
+        self.assertIn("invalid mode selector", str(ctx.exception))
+
+        # Invalid audience
+        bad_audience_rule = InstructionRule(
+            id="rule.bad_audience",
+            audience="not_an_audience",  # type: ignore
+            category=InstructionCategory.WORKFLOW,
+            text="Bad audience",
+        )
+        with self.assertRaises(ValueError) as ctx:
+            InstructionCatalog([bad_audience_rule])
+        self.assertIn("invalid audience selector", str(ctx.exception))
+
+        # Invalid category
+        bad_cat_rule = InstructionRule(
+            id="rule.bad_category",
+            audience=AgentAudience.CHEAPOS_INTERNAL,
+            category="not_a_category",  # type: ignore
+            text="Bad category",
+        )
+        with self.assertRaises(ValueError) as ctx:
+            InstructionCatalog([bad_cat_rule])
+        self.assertIn("invalid category selector", str(ctx.exception))
+
+    def test_permutation_invariant_catalog_and_resolution(self):
+        """Catalog inspection, filtering, and resolution must produce identical results regardless of input order."""
+        import random
+        rules = [
+            InstructionRule(id="rule.p10", audience=AgentAudience.CHEAPOS_INTERNAL, category=InstructionCategory.WORKFLOW, priority=10, text="P10"),
+            InstructionRule(id="rule.p50", audience=AgentAudience.CHEAPOS_INTERNAL, category=InstructionCategory.WORKFLOW, priority=50, text="P50"),
+            InstructionRule(id="rule.p80", audience=AgentAudience.CHEAPOS_INTERNAL, category=InstructionCategory.WORKFLOW, priority=80, text="P80"),
+            InstructionRule(id="rule.p90a", audience=AgentAudience.CHEAPOS_INTERNAL, category=InstructionCategory.WORKFLOW, priority=90, text="P90A"),
+            InstructionRule(id="rule.p90b", audience=AgentAudience.CHEAPOS_INTERNAL, category=InstructionCategory.WORKFLOW, priority=90, text="P90B"),
+        ]
+        canonical_resolution = [r.id for r in resolve_rules(rules)]
+        canonical_catalog = InstructionCatalog(rules)
+        canonical_all = [r.id for r in canonical_catalog.all_rules()]
+        canonical_filtered = [r.id for r in canonical_catalog.filter(role="worker")]
+
+        rng = random.Random(42)
+        for _ in range(25):
+            shuffled = list(rules)
+            rng.shuffle(shuffled)
+
+            # Test resolve_rules permutation-invariance
+            shuffled_resolution = [r.id for r in resolve_rules(shuffled)]
+            self.assertEqual(canonical_resolution, shuffled_resolution)
+
+            # Test catalog permutation-invariance
+            cat = InstructionCatalog(shuffled)
+            self.assertEqual(canonical_all, [r.id for r in cat.all_rules()])
+            self.assertEqual(canonical_filtered, [r.id for r in cat.filter(role="worker")])
 
     def test_duplicate_rule_id_rejected(self):
         """Duplicate rule IDs must be rejected at catalog construction and in candidate set."""
