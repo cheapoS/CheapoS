@@ -802,30 +802,8 @@ class Engine:
             raise ValueError("A verification command is required for this release")
         if not isinstance(values.get("auto_approve_checks", False), bool):
             raise ValueError("Command approval preference must be true or false")
-        safe_attachments = []
-        augmented_prompt = prompt.strip()
-        if attachments:
-            from .uploads import extract_document_text, get_upload_record
-            for att in attachments:
-                if not isinstance(att, dict):
-                    continue
-                upload_id = att.get("id")
-                filename = att.get("filename") or att.get("name", "")
-                record = get_upload_record(self.store.root, upload_id, filename) if upload_id else None
-                if not record and att.get("path"):
-                    cand = Path(att["path"]).resolve()
-                    uploads_root = (self.store.root / "uploads").resolve()
-                    if cand.is_file() and cand.is_relative_to(uploads_root):
-                        record = get_upload_record(self.store.root, cand.parent.name, cand.name)
-                if record:
-                    safe_attachments.append(record)
-                    resolved_path = Path(record["path"])
-                    if record.get("is_text") or record.get("is_pdf") or not record.get("is_image"):
-                        doc_text = extract_document_text(resolved_path)
-                        if doc_text:
-                            augmented_prompt += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
-                    elif record.get("is_image"):
-                        augmented_prompt += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
+        from .uploads import prepare_attachments
+        safe_attachments, augmented_prompt = prepare_attachments(self.store.root, attachments, prompt.strip())
         task_id = task_id or uuid.uuid4().hex
         directory = self.store.root / "tasks" / task_id
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
@@ -951,6 +929,8 @@ class Engine:
             previous = self.runtimes.get(task_id)
             if previous and previous.thread and previous.thread.is_alive():
                 from .continuation_policy import is_continue
+                if is_continue((changes or {}).get('message')) and (changes or {}).get('attachments'):
+                    return self.steer(task_id, changes['message'], attachments=changes['attachments'])["task"]
                 if not changes or finish_review or is_continue((changes or {}).get('message')):
                     return task
                 raise ValueError("This task is already running")
@@ -985,28 +965,16 @@ class Engine:
             from .continuation_policy import is_continue, record
             followup = (changes or {}).get("message")
             new_attachments = (changes or {}).get("attachments") or []
-            new_safe = []
-            if new_attachments:
-                from .uploads import extract_document_text, get_upload_record
-                for att in new_attachments:
-                    if not isinstance(att, dict):
-                        continue
-                    upload_id = att.get("id")
-                    filename = att.get("filename") or att.get("name", "")
-                    record_att = get_upload_record(self.store.root, upload_id, filename) if upload_id else None
-                    if not record_att and att.get("path"):
-                        cand = Path(att["path"]).resolve()
-                        uploads_root = (self.store.root / "uploads").resolve()
-                        if cand.is_file() and cand.is_relative_to(uploads_root):
-                            record_att = get_upload_record(self.store.root, cand.parent.name, cand.name)
-                    if record_att:
-                        new_safe.append(record_att)
-                if new_safe:
-                    existing_ids = {a.get("id") for a in task.get("attachments", []) if isinstance(a, dict) and a.get("id")}
-                    to_add = [a for a in new_safe if a.get("id") not in existing_ids] if existing_ids else new_safe
-                    task.setdefault("attachments", []).extend(to_add)
-                    self.store.save(task)
+            from .uploads import prepare_attachments, append_attachments
+            new_safe, attachment_message = prepare_attachments(self.store.root, new_attachments, "")
+            if new_safe:
+                append_attachments(task, new_safe)
             if is_continue(followup) and task.get('status') not in {'ready', 'awaiting_reply'}:
+                if new_safe:
+                    guidance = followup.strip() + attachment_message
+                    task["requests"] = task.get("requests", [task["prompt"]]) + [guidance]
+                    task["steer_guidance"] = guidance
+                    self.event(task, "steer", "User Guidance", guidance)
                 followup = None
             if followup is None and not finish_review:
                 selected = record(task, 'operator_continue')
@@ -1088,17 +1056,7 @@ class Engine:
                 task.pop("pending_checkpoint", None)
                 task.pop("pending_review", None)
                 task.pop("steer_guidance", None)
-                augmented_followup = followup.strip()
-                if new_safe:
-                    from .uploads import extract_document_text
-                    for record in new_safe:
-                        resolved_path = Path(record["path"])
-                        if record.get("is_text") or record.get("is_pdf") or not record.get("is_image"):
-                            doc_text = extract_document_text(resolved_path)
-                            if doc_text:
-                                augmented_followup += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
-                        elif record.get("is_image"):
-                            augmented_followup += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
+                augmented_followup = followup.strip() + attachment_message
                 task["requests"] = task.get("requests", [task["prompt"]]) + [augmented_followup]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
                 task["turn_start_patch"] = Workspace(task["workspace"]).patch(validate="branch_run" in task)
@@ -1389,38 +1347,12 @@ class Engine:
                 raise ValueError("Use the Unattended run revision controls to change its authorized work.")
             if task.get("demo"):
                 raise ValueError("The demo uses scripted responses. Open a project to steer real tasks.")
-            safe_attachments = []
-            augmented_guidance = cleaned
-            if attachments:
-                from .uploads import extract_document_text, get_upload_record
-                for att in attachments:
-                    if not isinstance(att, dict):
-                        continue
-                    upload_id = att.get("id")
-                    filename = att.get("filename") or att.get("name", "")
-                    record = get_upload_record(self.store.root, upload_id, filename) if upload_id else None
-                    if not record and att.get("path"):
-                        cand = Path(att["path"]).resolve()
-                        uploads_root = (self.store.root / "uploads").resolve()
-                        if cand.is_file() and cand.is_relative_to(uploads_root):
-                            record = get_upload_record(self.store.root, cand.parent.name, cand.name)
-                    if record:
-                        safe_attachments.append(record)
-                        resolved_path = Path(record["path"])
-                        if record.get("is_text") or record.get("is_pdf") or not record.get("is_image"):
-                            doc_text = extract_document_text(resolved_path)
-                            if doc_text:
-                                augmented_guidance += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
-                        elif record.get("is_image"):
-                            augmented_guidance += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
-                if safe_attachments:
-                    existing_ids = {a.get("id") for a in task.get("attachments", []) if isinstance(a, dict) and a.get("id")}
-                    to_add = [a for a in safe_attachments if a.get("id") not in existing_ids] if existing_ids else safe_attachments
-                    task.setdefault("attachments", []).extend(to_add)
-
+            from .uploads import prepare_attachments, append_attachments
+            safe_attachments, augmented_guidance = prepare_attachments(self.store.root, attachments, cleaned)
+            append_attachments(task, safe_attachments)
             from .continuation_policy import is_continue
-            if is_continue(cleaned):
-                self.store.save(task)
+            continuing = is_continue(cleaned)
+            if continuing and not safe_attachments:
                 started = self.start(task_id)
                 return {'steered':False,'running':True,'task':started}
 
@@ -1428,6 +1360,7 @@ class Engine:
                 if runtime and runtime.thread and runtime.thread.is_alive():
                     self.queue_operator_direction(runtime, augmented_guidance)
                     return {"steered": True, "running": True, "task": task, "operator_continue": task["operator_continue"]}
+                self.store.save(task)
                 return self.operator_recovery(task_id, {"action":"retry", "message":augmented_guidance})
             self.event(task, "steer", "User Guidance", cleaned)
             # Worker and reviewer must receive the same ordered requirements.
@@ -1445,6 +1378,9 @@ class Engine:
                     task["error"] = None
                     task["error_code"] = None
                 self.store.save(task)
+                if continuing:
+                    task = self.start(task_id)
+                    return {"steered": True, "running": True, "task": task}
                 return {"steered": True, "running": False, "task": task}
 
     def archive_operator_state(self, task, reason):

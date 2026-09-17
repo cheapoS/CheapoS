@@ -456,6 +456,7 @@ function renderComposerAttachments() {
       e.stopPropagation();
       const idx = Number(btn.dataset.removeIdx);
       state.composerAttachments.splice(idx, 1);
+      saveDraft();
       renderComposerAttachments();
       renderComposer();
     };
@@ -827,7 +828,7 @@ function renderView() {
   $('#compact-session').hidden=true;
   const hasPlan=Boolean(CheapOSBranchUI.savedPlan(state.task));$('[data-view=plan]').hidden=!hasPlan;if(state.view==='plan'&&!hasPlan)state.view='chat';
   const planTab=$('[data-view=plan]');if(planTab){const awaiting=state.task?.branch_run?.status==='awaiting_authorization'&&!state.task?.branch_run?.authorization_ref;planTab.innerHTML=`<svg><use href="#i-branch"/></svg>Plan${awaiting?' <span class="badge-dot" title="Proposal ready for review">●</span>':''}`;}
-  $$('.tab').forEach(b=>{const selected=b.dataset.view===state.view;b.classList.toggle('active',selected);b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;b.id='tab-'+b.dataset.view;b.setAttribute('aria-controls',b.dataset.view+'-view')});
+  $$('.tabs .tab').forEach(b=>{const selected=b.dataset.view===state.view;b.classList.toggle('active',selected);b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;b.id='tab-'+b.dataset.view;b.setAttribute('aria-controls',b.dataset.view+'-view')});
   $$('.view').forEach(v=>{v.classList.toggle('hidden',v.id!==state.view+'-view');v.setAttribute('aria-labelledby','tab-'+v.id.replace(/-view$/,''));if(v.id!==state.view+'-view'&&(!['plan-view','changes-view'].includes(v.id)||v.dataset.task!==state.task?.id)){v.innerHTML='';delete v.dataset.task;}});
   if(!state.task){renderHome();return}
   if(state.view==='logs')renderTechnicalLogs();else if(state.view==='plan')branchUI.renderPlan(state.task);else if(state.view==='chat')renderChat();else if(state.view==='activity')renderActivity();else if(state.view==='changes')renderChanges();else renderTests();
@@ -2091,7 +2092,7 @@ async function bootstrap() {
   catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start cheapoS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh({background:true})}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
-$$('.tab').forEach(b=>{b.onclick=()=>setView(b.dataset.view);b.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=$$('.tab').filter(t=>!t.hidden),i=tabs.indexOf(b),next=e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];setView(next.dataset.view);next.focus();};});
+$$('.tabs .tab').forEach(b=>{b.onclick=()=>setView(b.dataset.view);b.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=$$('.tabs .tab').filter(t=>!t.hidden),i=tabs.indexOf(b),next=e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];setView(next.dataset.view);next.focus();};});
 $('#home-trigger').onclick=()=>openProject();
 $('.brand').onclick=e=>{e.preventDefault();home()};
 $('#new-task').onclick=()=>newTask();

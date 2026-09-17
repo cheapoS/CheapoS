@@ -205,6 +205,47 @@ def get_upload_record(store_root: Path, upload_id: str, filename: Optional[str] 
     }
 
 
+def prepare_attachments(store_root: Path, attachments, message: str):
+    """Resolve unique trusted records and the context delivered with a message."""
+    if attachments is not None and not isinstance(attachments, list):
+        raise ValueError("Attachments must be a list")
+    records = []
+    seen = set()
+    uploads_root = (Path(store_root).resolve() / "uploads").resolve()
+    for attachment in attachments or []:
+        if not isinstance(attachment, dict):
+            continue
+        upload_id = attachment.get("id")
+        filename = attachment.get("filename") or attachment.get("name", "")
+        record = get_upload_record(store_root, upload_id, filename) if upload_id else None
+        if not record and isinstance(attachment.get("path"), str):
+            candidate = Path(attachment["path"]).resolve()
+            if candidate.is_file() and candidate.is_relative_to(uploads_root):
+                record = get_upload_record(store_root, candidate.parent.name, candidate.name)
+        if not record or record["id"] in seen:
+            continue
+        seen.add(record["id"])
+        records.append(record)
+        path = Path(record["path"])
+        if record["is_text"] or record["is_pdf"] or not record["is_image"]:
+            text = extract_document_text(path)
+            if text:
+                message += f"\n\n### Attached Document: {record['filename']}\n```{path.suffix.lstrip('.')}\n{text}\n```"
+        else:
+            message += f"\n\n### Attached Image: {record['filename']}\n[Image file saved at {path}. Use inspect_image tool to analyze visual details.]"
+    return records, message
+
+
+def append_attachments(task, records):
+    """Retain attachment identity once, including repeated IDs in one delivery."""
+    saved = task.setdefault("attachments", [])
+    seen = {record.get("id") for record in saved if isinstance(record, dict)}
+    for record in records:
+        if record["id"] not in seen:
+            saved.append(record)
+            seen.add(record["id"])
+
+
 def extract_document_text(file_path: Path, max_chars: int = MAX_DOC_CHARS) -> str:
     """Extract plain text from uploaded documents (text, markdown, JSON, code, or PDF)."""
     path = Path(file_path)

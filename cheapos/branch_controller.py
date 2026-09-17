@@ -775,40 +775,14 @@ class BranchController:
                 raise ValueError('Provide guidance of up to 8,000 characters')
         elif len(message.strip()) > 8000:
             raise ValueError('Provide guidance of up to 8,000 characters')
-        safe_attachments = []
-        augmented_message = message.strip()
-        if attachments:
-            from pathlib import Path
-            from .uploads import extract_document_text, get_upload_record
-            for att in attachments:
-                if not isinstance(att, dict):
-                    continue
-                upload_id = att.get("id")
-                filename = att.get("filename") or att.get("name", "")
-                record = get_upload_record(self.engine.store.root, upload_id, filename) if upload_id else None
-                if not record and att.get("path"):
-                    cand = Path(att["path"]).resolve()
-                    uploads_root = (self.engine.store.root / "uploads").resolve()
-                    if cand.is_file() and cand.is_relative_to(uploads_root):
-                        record = get_upload_record(self.engine.store.root, cand.parent.name, cand.name)
-                if record:
-                    safe_attachments.append(record)
-                    resolved_path = Path(record["path"])
-                    if record.get("is_text") or record.get("is_pdf") or not record.get("is_image"):
-                        doc_text = extract_document_text(resolved_path)
-                        if doc_text:
-                            augmented_message += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
-                    elif record.get("is_image"):
-                        augmented_message += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
+        from .uploads import prepare_attachments, append_attachments
+        safe_attachments, augmented_message = prepare_attachments(self.engine.store.root, attachments, message.strip()) if attachments else ([], message.strip())
         from .continuation_policy import is_continue
-        if is_continue(message):
+        continuing = is_continue(message)
+        if continuing and not safe_attachments:
             from .branch_operator import continue_saved
             with self.engine.lock:
                 task = self.engine.store.get(task_id)
-                if safe_attachments:
-                    existing_ids = {a.get("id") for a in task.get("attachments", []) if isinstance(a, dict) and a.get("id")}
-                    to_add = [a for a in safe_attachments if a.get("id") not in existing_ids] if existing_ids else safe_attachments
-                    task.setdefault('attachments', []).extend(to_add)
                 self.engine.event(task, 'user', 'You', message.strip())
                 self.engine.store.save(task)
             return continue_saved(self, task_id)
@@ -817,19 +791,16 @@ class BranchController:
             self.engine.require_active_task(task_id)
             runtime=self.engine.runtimes.get(task_id)
             task=runtime.task if runtime and runtime.thread and runtime.thread.is_alive() else self.engine.store.get(task_id)
-            if safe_attachments:
-                existing_ids = {a.get("id") for a in task.get("attachments", []) if isinstance(a, dict) and a.get("id")}
-                to_add = [a for a in safe_attachments if a.get("id") not in existing_ids] if existing_ids else safe_attachments
-                task.setdefault('attachments', []).extend(to_add)
             run=state.require_supported(task['branch_run'])
             if run.get('target_update'): raise ValueError('Finish the saved branch update: open Review changes, then Update branch & recheck.')
             if task.get('planning_request') and not run.get('authorization_ref'):
                 if run.get('status') == 'awaiting_authorization':
-                    if is_continue(message):
+                    if continuing and not safe_attachments:
                         from .branch_operator import continue_saved
                         self.engine.event(task, 'user', 'You', message.strip())
                         self.engine.store.save(task)
                         return continue_saved(self, task_id)
+                append_attachments(task, safe_attachments)
                 return self.planning_message(task,augmented_message)
             if run['status'] not in {'running','paused','blocked'}:
                 raise ValueError('Use Request changes to revise completed work')
@@ -838,6 +809,7 @@ class BranchController:
             guidance=run.setdefault('guidance',[])
             if not enabled(task) and sum(len(g['message']) for g in guidance)+len(augmented_message)>24000:
                 raise ValueError('Guidance is full; prepare an explicit revision')
+            append_attachments(task, safe_attachments)
             guidance.append({'item_id':run['current_item_id'],'message':augmented_message})
             task.pop('recovery_blocked', None)
             task['steer_guidance'] = augmented_message
@@ -862,8 +834,8 @@ class BranchController:
             if development and active:
                 self.engine.queue_operator_direction(runtime,augmented_message,record=False)
                 return runtime.task
-            if not development:return task
-            self.engine.archive_operator_state(task,'Operator corrected paused work')
+            if not development and (not continuing or active):return task
+            if development:self.engine.archive_operator_state(task,'Operator corrected paused work')
             self.engine.store.save(task)
         from .branch_operator import continue_saved
         return continue_saved(self,task_id)

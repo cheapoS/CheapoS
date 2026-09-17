@@ -1,14 +1,18 @@
 """Tests for safe file uploads, document extraction, and attachment handling."""
 
 import base64
+import copy
 import http.client
 import json
 import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from cheapos.engine import Engine
+from cheapos.engine import Engine, Runtime
+from cheapos import branch_runs
 from cheapos.server import LocalServer
 from cheapos.uploads import (
     MAX_FILE_SIZE_BYTES,
@@ -179,33 +183,81 @@ class UploadStorageTests(LocalCase):
 
 
     def test_continue_message_preserves_attachments(self):
-        content = b"Notes content for task continuation"
-        b64_content = base64.b64encode(content).decode("ascii")
-        record = save_upload(self.engine.store.root, "notes.txt", f"data:text/plain;base64,{b64_content}")
+        content = "CONTINUATION_DOCUMENT_CANARY"
+        record = save_upload(self.engine.store.root, "notes.txt", content.encode())
+        baseline = self.fixture(paid=True)
+        baseline.update(status="paused", conversational=True, pending_review={"candidate": "saved-review"})
+        for endpoint in ("steer", "start"):
+            with self.subTest(endpoint=endpoint):
+                task = copy.deepcopy(baseline)
+                self.engine.store.save(task)
+                # Exercise real resume/context construction without inference or worker execution.
+                with patch.object(self.engine, "_run") as run:
+                    if endpoint == "steer":
+                        self.engine.steer(task["id"], "continue", attachments=[record, record])
+                    else:
+                        self.engine.start(task["id"], {"message": "continue", "attachments": [record, record]})
+                    runtime = self.engine.runtimes[task["id"]]
+                    runtime.thread.join(2)
+                self.assertFalse(runtime.thread.is_alive())
+                run.assert_called_once()
+                resumed = self.engine.store.get(task["id"])
+                self.assertEqual([a["id"] for a in resumed["attachments"]], [record["id"]])
+                self.assertIn(content, json.dumps(resumed["messages"]))
+                self.assertIn(content, resumed["requests"][-1])
+                self.assertEqual(resumed["requests"][-1].count(content), 1)
+                for key in ("pending_review", "checks", "checkpoints", "limits", "usage"):
+                    self.assertEqual(resumed[key], baseline[key])
+                self.engine.runtimes.pop(task["id"])
 
-        # 1. engine.steer with "continue" and attachments preserves attachments
-        base_task = self.fixture(paid=True)
-        base_task["demo"] = False
-        base_task["providers"] = {"worker": dict(CONFIG), "reviewer": dict(CONFIG)}
-        self.engine.store.save(base_task)
-        res = self.engine.steer(base_task["id"], "continue", attachments=[record])
-        steered_task = self.engine.store.get(base_task["id"])
-        self.assertEqual(len(steered_task.get("attachments", [])), 1)
-        self.assertEqual(steered_task["attachments"][0]["filename"], "notes.txt")
+    def test_continue_attachments_reach_live_and_paused_branch_guidance(self):
+        content = "LIVE_DOCUMENT_CANARY"
+        record = save_upload(self.engine.store.root, "notes.txt", content.encode())
+        task = self.fixture(paid=True)
+        task.update(status="running", conversational=True)
+        runtime = Runtime(task)
+        runtime.thread = SimpleNamespace(is_alive=lambda: True, join=lambda *_: None)
+        self.engine.runtimes[task["id"]] = runtime
+        self.engine.store.save(task)
+        for endpoint in ("steer", "start"):
+            if endpoint == "steer":
+                self.engine.steer(task["id"], "continue", attachments=[record, record])
+            else:
+                self.engine.start(task["id"], {"message": "continue", "attachments": [record]})
+            self.assertIn(content, runtime.steer_queue[-1])
+            self.assertEqual(len(task["attachments"]), 1)
 
-        # 2. branch_controller.message with "continue" and attachments preserves attachments
-        branch_task = self.fixture(paid=True)
-        branch_task["branch_run"] = {
-            "id": "br-test-1",
-            "status": "paused",
-            "items": [{"id": "item-1", "title": "Work", "instructions": "do work", "acceptance_criteria": [], "required_checks": [], "status": "running"}],
-            "current_item_id": "item-1"
-        }
-        self.engine.store.save(branch_task)
-        self.engine.branch.message(branch_task["id"], {"message": "continue", "attachments": [record]})
-        reloaded_task = self.engine.store.get(branch_task["id"])
-        self.assertEqual(len(reloaded_task.get("attachments", [])), 1)
-        self.assertEqual(reloaded_task["attachments"][0]["filename"], "notes.txt")
+        run = branch_runs.new_run({
+            "items": [{"id": "one", "title": "Work", "instructions": "Implement the change",
+                       "acceptance_criteria": ["Works"], "required_checks": ["python3 test.py"]}],
+            "limits": {"dollars": 0}, "final_checks": ["python3 test.py"],
+        })
+        run.update(status="running", current_item_id="one", authorization_ref="saved-authorization")
+        task["branch_run"] = run
+        task["attachments"] = []
+        self.engine.store.save(task)
+        # Authority implementation has its own integration suite; delivery must still call it.
+        with patch.object(self.engine.branch, "validate_authority") as authority:
+            self.engine.branch.message(task["id"], {"message": "continue", "attachments": [record, record]})
+            authority.assert_called_once()
+        self.assertIn(content, task["messages"][-1]["content"])
+        self.assertIn(content, run["guidance"][-1]["message"])
+        self.engine.event(runtime.task, "state", "Next worker event")
+        self.assertEqual(len(self.engine.store.get(task["id"])["attachments"]), 1)
+
+        self.engine.runtimes.pop(task["id"])
+        task.update(status="paused")
+        run["status"] = "paused"
+        self.engine.store.save(task)
+        consent = {"needs_consent": True, "proposal_id": "existing-consent", "scopes": [["python3", "test.py"]]}
+        with patch.object(self.engine.branch, "validate_authority"), patch.object(self.engine.branch, "resume", return_value=consent) as resume:
+            self.engine.branch.message(task["id"], {"message": "continue", "attachments": [record]})
+        resume.assert_called_once_with(task["id"], {})
+        saved = self.engine.store.get(task["id"])
+        self.assertEqual(saved["operator_continue"]["status"], "needs_consent")
+        self.assertEqual(saved["branch_run"]["authorization_ref"], "saved-authorization")
+        self.assertIn(content, saved["branch_run"]["guidance"][-1]["message"])
+        self.assertEqual(len(saved["attachments"]), 1)
 
 
 class UploadHTTPTests(unittest.TestCase):
