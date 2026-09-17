@@ -1238,14 +1238,14 @@ async function capturedDraftSetup(repository){
  const draft=await setupDraft(repository);
  return {settings:{overrides:draft.overrides,expected_revision:draft.record.revision,expected_parent_revision:draft.record.parent_revision},keep_up_to_date:draft.values.keep_up_to_date===true};
 }
-function appearanceSettings(){
- const d=dialog(`${modalHeader('THIS BROWSER','Appearance')}<p>Layout and display choices affect only this browser.</p><button type="button" data-demo>Show Try a sample task</button><p>Drag panel boundaries to resize or hide panels. Use the top panel buttons to restore them. Diff wrapping and text size are available in Changes.</p>`);
+function appearanceSettings(host){
+ const d=(host?.dialog||dialog)(`${modalHeader('THIS BROWSER','Appearance')}<p>Layout and display choices affect only this browser.</p><button type="button" data-demo>Show Try a sample task</button><p>Drag panel boundaries to resize or hide panels. Use the top panel buttons to restore them. Diff wrapping and text size are available in Changes.</p>`);
  $('[data-demo]',d).onclick=()=>{localStorage.removeItem('cheapos-demo-hidden');$('#demo-row')?.classList.remove('hidden');toast('Sample task restored.');};
 }
 async function scopedSettings(scope,section='agents',project){
  const capturedTask=state.task,repository=project||state.project?.path||capturedTask?.source;
  const options={api,scope:scope||(capturedTask?'task':'draft'),task:capturedTask?{id:capturedTask.id,title:capturedTask.title||capturedTask.prompt}:null,project:repository,section,models:state.gatewayModels||[],connectionsList:state.gateway.connections||[],
- connections:()=>openConnections(),appearance:appearanceSettings,usage:()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader}),
+ connections:host=>openConnections(undefined,null,host),appearance:appearanceSettings,usage:host=>CheapOSLifetimeUsage.open({dialog:host.dialog,api,header:modalHeader}),
  permissions:id=>{if(id&&state.task?.id!==id)selectTask(id);else setView('activity');},pause:id=>api('/tasks/'+id+'/stop',{}),onSaved:async()=>{await refreshContext();if(state.task?.id===capturedTask?.id)await refresh();}};
  try{if(options.scope==='draft'){if(!repository){openProject(()=>scopedSettings('draft',section));return;}const draft=await setupDraft(repository);options.draft=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>{setupDrafts.set(repository,next);renderComposer();},()=>api('/projects/settings?project='+encodeURIComponent(repository)));}
  CheapOSSettings.open(options);}catch(error){toast(error.message);}
@@ -1375,7 +1375,7 @@ function sampleDialog() {
     try{if(button.dataset.sample==='scripted'){d.close();await startDemo();return}const task=await api('/sample',{});d.close();await loadTasks();await selectTask(task.id);await startTask(task.id)}catch(e){$('.form-error',d).textContent=e.message;$$('[data-sample]',d).forEach(b=>b.disabled=false)}
   });
 }
-async function openConnections(afterSave, taskContext=null) {
+async function openConnections(afterSave, taskContext=null, settingsHost=null) {
   const gateway=state.gateway||{}, settings=gateway.settings||{base_url:'http://127.0.0.1:20128/v1',auto_start:true,keep_running:true};
   const gatewayTypesList = () => state.gateway?.gateway_types || [
     {id:"cliproxyapi",label:"CLIProxyAPI",default_url:"http://127.0.0.1:8317/v1",default_name:"CLIProxyAPI"},
@@ -1388,7 +1388,7 @@ async function openConnections(afterSave, taskContext=null) {
     {id:"localai",label:"LocalAI",default_url:"http://127.0.0.1:8080/v1",default_name:"LocalAI"},
     {id:"compatible",label:"OpenAI-compatible",default_url:"http://127.0.0.1:8000/v1",default_name:"OpenAI-compatible"}
   ];
-  const d=dialog(`${modalHeader('SHARED CONNECTIONS','Gateways & local models')}<button class="outline-button" id="models-execution">Choose agents in scoped setup →</button><p class="modal-description">These connections are shared by chats. Changing connection identity or access can affect saved chats using it. Agent choices belong to Chat setup, Project defaults, or New chat defaults.</p>
+  const d=(settingsHost?.dialog||dialog)(`${modalHeader('SHARED CONNECTIONS','Gateways & local models')}<button class="outline-button" id="models-execution">Choose agents in scoped setup →</button><p class="modal-description">These connections are shared by chats. Changing connection identity or access can affect saved chats using it. Agent choices belong to Chat setup, Project defaults, or New chat defaults.</p>
     <div class="button-row"><label>Saved connection<select id="saved-gateway">${(gateway.connections||[]).map(g=>`<option value="${esc(g.id)}" ${g.id===gateway.selected_connection?"selected":""}>${esc(g.name)}${g.enabled?"":" · disabled"}</option>`).join("")}</select></label><button class="outline-button" id="add-gateway">Add connection</button></div><p class="small muted">This dropdown selects settings to edit. Automatic mode can use every enabled connection captured when the task starts. Manual choices stay pinned.</p><form class="gateway-card" id="gateway-form"><div class="gateway-heading"><div><strong id="gateway-name">Gateway</strong><span class="gateway-badge" id="gateway-status" role="status"></span></div><a id="gateway-dashboard" class="subtle-button" href="${esc(gateway.dashboard_url||'http://127.0.0.1:20128')}" target="_blank" rel="noopener noreferrer">Open OmniRoute ↗</a></div>
       <p id="gateway-message" class="small muted"></p><p id="gateway-instance" class="small muted"></p>
       <details class="advanced"><summary id="free-pool-title">Authorized remote model pool</summary><p class="small muted">Refreshes every five minutes, including OpenRouter’s current free models. Failed models cool down for 15–60 minutes. Provider cooldowns follow the gateway’s retry time and do not count as individual model failures. A response or tool check does not prove coding quality.</p><div id="free-model-pool" class="free-model-pool"></div></details>
@@ -1402,7 +1402,8 @@ async function openConnections(afterSave, taskContext=null) {
         <label class="checkbox-field"><input name="keep_running" type="checkbox" ${settings.keep_running?'checked':''}><span>Keep OmniRoute running when cheapoS closes<small>cheapoS only stops an instance it started in this session.</small></span></label>
         <button class="outline-button gateway-save" type="submit">Save gateway settings</button></details><p class="form-error" role="alert"></p></form>
 `,'connections-modal');
-  $('#saved-gateway',d).onchange=async e=>{try{state.gateway=await api('/gateway/select',{connection_id:e.target.value});await loadGateway();d.close();openConnections(afterSave,taskContext)}catch(error){toast(error.message)}};
+  if(!d.open)return; // A late refresh must not remount a section the operator left.
+  $('#saved-gateway',d).onchange=async e=>{try{state.gateway=await api('/gateway/select',{connection_id:e.target.value});await loadGateway();d.close();openConnections(afterSave,taskContext,settingsHost)}catch(error){toast(error.message)}};
   $('#add-gateway',d).onclick=()=>{
     const add=dialog(`<form class="gateway-add-form">${modalHeader('CONNECTION','Add a gateway')}<p class="muted gateway-add-intro">Choose your router, then enter its local API address.</p><label>Gateway type<select name="gateway_type">${gatewayTypesList().map(t=>`<option value="${esc(t.id)}" ${t.id==='cliproxyapi'?'selected':''}>${esc(t.label)}</option>`).join('')}</select></label><label>Connection name<input type="text" name="name" required maxlength="80" value="CLIProxyAPI" autocomplete="off"></label><label>Local API URL<input name="base_url" type="url" required value="http://127.0.0.1:8317/v1" placeholder="http://127.0.0.1:PORT/v1" spellcheck="false" aria-describedby="gateway-url-help"></label><p id="gateway-url-help" class="small muted">Use the address shown by your running router, ending in /v1.</p><p class="small muted">Next, you can add a client key and choose models.</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" class="outline-button" data-close>Cancel</button><button type="submit" class="primary-button">Add connection</button></div></form>`,'gateway-add-modal');
     const type=$('[name="gateway_type"]',add),name=$('[name="name"]',add),url=$('[name="base_url"]',add);
@@ -1417,9 +1418,9 @@ async function openConnections(afterSave, taskContext=null) {
         previousURL=url.value;
       }
     };
-    const form=$('form',add);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form);state.gateway=await api('/gateway/add',{name:String(f.get('name')),gateway_type:String(f.get('gateway_type')),base_url:String(f.get('base_url')),enabled:true});await loadGateway();add.close();d.close();openConnections(afterSave,taskContext)})};
+    const form=$('form',add);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const f=new FormData(form);state.gateway=await api('/gateway/add',{name:String(f.get('name')),gateway_type:String(f.get('gateway_type')),base_url:String(f.get('base_url')),enabled:true});await loadGateway();add.close();d.close();openConnections(afterSave,taskContext,settingsHost)})};
   };
-  $('#models-execution',d).onclick=()=>{d.close();executionPreferences()};
+  $('#models-execution',d).onclick=()=>{d.close();if(settingsHost)settingsHost.navigate('defaults');else executionPreferences()};
   let includedRevision=settings.connection_revision;
   const gatewayForm=$('#gateway-form',d);
   function updateGateway() {
