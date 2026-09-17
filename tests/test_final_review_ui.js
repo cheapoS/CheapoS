@@ -106,15 +106,15 @@ test('renderSidebar does not attach task click handler to plan-view container',(
 
 test('diverged preview offers a separate update action without authorizing target merge',()=>{
  const task={branch_run:{feature_ref:'refs/heads/feature/task',target_ref:'refs/heads/main',readiness:{checks:[]}}};
- const preview={files:[],merge_available:false,blocker:'Target has new commits',update_available:true};
- assert.match(ui.finalReviewMarkup(task,preview),/data-update-branch>Update branch &amp; recheck/);
- assert.doesNotMatch(ui.finalReviewMarkup(task,{...preview,update_available:false}),/data-update-branch/);
+ const preview={files:[],merge_available:false,blocker:'Target has new commits',integration_readiness:{actions:['update_resolve']}};
+ assert.match(ui.finalReviewMarkup(task,preview),/data-integration-prepare>Update &amp; resolve/);
+ assert.doesNotMatch(ui.finalReviewMarkup(task,{...preview,integration_readiness:{actions:[]}}),/data-integration-prepare/);
 });
 
 test('known conflicts offer an agent task instead of repeating the failed update',()=>{
  const task={branch_run:{feature_ref:'feature',target_ref:'main',readiness:{checks:[]}}};
- const html=ui.finalReviewMarkup(task,{files:[],resolve_available:true,update_available:true});
- assert.match(html,/data-resolve-conflicts>Resolve conflicts &amp; recheck/);
+ const html=ui.finalReviewMarkup(task,{files:[],integration_readiness:{code:'conflicts',actions:['update_resolve']}});
+ assert.match(html,/data-integration-prepare>Update &amp; resolve/);
  assert.doesNotMatch(html,/data-update-branch/);
 });
 

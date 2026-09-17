@@ -69,6 +69,19 @@ class HTTPTests(unittest.TestCase):
     def post(self, path, body):
         return self.request('POST', path, body, {'Content-Type':'application/json', 'X-CheapOS-Token': self.server.token})
 
+    def test_integration_preparation_routes_keep_read_and_write_authority_separate(self):
+        with patch('cheapos.integration_preparation.readiness', return_value={'code':'target_advanced'}) as inspect, patch('cheapos.integration_preparation.start', return_value={'id':'saved','status':'paused'}) as start:
+            status, _, body = self.request('GET','/api/tasks/saved/integration-readiness')
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body)['code'], 'target_advanced')
+            self.assertEqual(self.request('POST','/api/tasks/saved/integration-prepare', {'approved':True})[0],403)
+            self.assertFalse(start.called)
+            status, _, body = self.post('/api/tasks/saved/integration-prepare', {'approved':True,'operation_id':'one'})
+            self.assertEqual(status,200)
+            self.assertEqual(json.loads(body)['id'],'saved')
+            start.assert_called_once_with(self.engine,'saved',{'approved':True,'operation_id':'one'})
+            inspect.assert_called_once_with(self.engine,'saved')
+
     def test_carto_settings_require_token_and_registered_project(self):
         source = str(Path(self.temp.name).resolve())
         with patch('cheapos.workspace.Workspace.project_root', return_value=Path(source)), patch.object(self.engine, 'projects', return_value=[{'path':source}]), patch.object(self.engine.carto, 'context', return_value={'status':'indexing'}):

@@ -526,6 +526,8 @@ class Engine:
 
     def restore_route_waits(self):
         """Only resume saved automatic route waits, never arbitrary interrupted work."""
+        from .integration_preparation import restore as restore_integration
+        restore_integration(self)
         def restore():
             while not self.route_restore_stop.is_set():
                 with self.store.lock:
@@ -779,6 +781,9 @@ class Engine:
             raise ValueError("Conversational must be true or false")
         if not isinstance(prompt, str) or not (1 if conversational else 5) <= len(prompt.strip()) <= 8000:
             raise ValueError("Enter a message of up to 8,000 characters")
+        keep_up_to_date = values.get("keep_up_to_date", False)
+        if type(keep_up_to_date) is not bool:
+            raise ValueError("Keep this task up to date must be true or false")
         limits = limits_from(values.get("limits", self.preferences()["limits"] if conversational else None))
         execution = self.preferences()["execution"] if conversational and not demo else dict(DEFAULT_EXECUTION)
         if not demo and execution["mode"] == "manual" and not all(self.config.get(role) for role in ("worker", "reviewer")):
@@ -795,6 +800,12 @@ class Engine:
         directory = self.store.root / "tasks" / task_id
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
         task = {"served_identity_version":1, "id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "planner": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
+        if keep_up_to_date:
+            from . import branch_workspace
+            source = task["source"]
+            target_ref = branch_workspace.source_git(source, "symbolic-ref", "--quiet", "HEAD")
+            task["integration_policy"] = {"keep_up_to_date": True, "target_ref": target_ref,
+                                          "target_tip": branch_workspace._tip(source, target_ref)}
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
         task['synthetic'] = self.provider_factory is not None
@@ -1111,11 +1122,18 @@ class Engine:
             runtime = self.runtimes.get(task_id)
             if not runtime or not runtime.thread.is_alive():
                 task = self.store.get(task_id)
+                if task.get("integration_preparation", {}).get("status") in {"waiting", "running"}:
+                    from .integration_preparation import cancel
+                    cancel(self, task_id)
+                    return {"stopping": True}
                 if task.get('route_resume_on_start'):
                     task['route_resume_on_start'] = False
                     self.store.save(task)
                     return {'stopping': True}
                 raise ValueError("Task is not running")
+            if runtime.task.get("integration_preparation"):
+                runtime.task["integration_preparation"]["status"] = "cancelled"
+                runtime.task["integration_preparation"]["label"] = "Integration update paused"
             runtime.task["route_resume_on_start"] = False
             runtime.stop.set()
             runtime.task["status"] = "stopping"
@@ -3556,6 +3574,10 @@ class Engine:
                     task['continuation_episodes'][-1]['result'] = task.get('status')
             task["pending_approval"] = None
             self.store.save(task)
+            from .integration_preparation import observe, automatic
+            observe(self, task)
+            if task.get("status") in {"approved", "completed"}:
+                automatic(self, task)
 
     def fixture_response(self, task, role):
         if role == "reviewer":

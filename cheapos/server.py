@@ -96,7 +96,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js", "integration.js"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():
@@ -121,6 +121,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply(engine.store.club.get_status(summary))
             elif path == "/api/admission":
                 self.reply(engine.admission.snapshot())
+            elif path.startswith('/api/tasks/') and path.rsplit('/',1)[-1] in {'integration-readiness','integration-local-changes','integration-resolution-changes'}:
+                from . import integration_preparation
+                task_id=path.split('/')[3]
+                action=path.rsplit('/',1)[-1]
+                self.reply(getattr(integration_preparation, {'integration-readiness':'readiness','integration-local-changes':'local_changes','integration-resolution-changes':'resolution_changes'}[action])(engine,task_id))
             elif path.startswith('/api/tasks/') and path.endswith('/operator-recovery'):
                 task_id=path.split('/')[3]
                 task=engine.store.get(task_id)
@@ -376,6 +381,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     result = public_task(engine.trash_task(task_id) if action == "trash" else engine.restore_task(task_id))
                 elif action == "metadata":
                     result = public_task(engine.update_task_metadata(task_id, values))
+                elif action == "integration-defer":
+                    from .integration_preparation import cancel
+                    self.reply(public_task(cancel(engine,task_id)))
+                elif action == "integration-prepare":
+                    from .integration_preparation import start
+                    result = public_task(start(engine,task_id,values))
                 elif action == "branch-start":
                     result = public_task(engine.branch.authorize(task_id, values, background=True))
                 elif action in {"branch-final-preview", "branch-final-diff", "branch-merge", "branch-revise", "branch-final-recheck", "branch-update"}:
