@@ -34,6 +34,34 @@ class SettingsAdapterTests(unittest.TestCase):
         self.engine.gateway = self.gateway
         initialize(self.engine)
 
+    def test_fresh_defaults_are_automatic_remote_without_startup_pins(self):
+        before = self.engine.settings_store.view()
+        self.assertEqual(before['values']['execution']['mode'], 'remote')
+        self.assertEqual(before['values']['limits']['dollars'], 0)
+        provider = {'base_url': 'http://127.0.0.1:11434/v1', 'model': 'greeting', 'input_rate': 0, 'output_rate': 0}
+        self.engine.remember_provider_defaults({'worker': provider, 'reviewer': provider})
+        snapshot = self.engine.settings_capture({})
+        self.assertEqual(snapshot['values']['roles']['worker'], {'strategy': 'automatic'})
+        self.assertEqual(self.engine.settings_policy(snapshot)['execution']['mode'], 'remote')
+        self.assertEqual(self.engine.settings_store.view(), before)
+
+    def test_existing_manual_default_is_not_migrated_to_remote(self):
+        root = self.root / 'legacy-install'
+        root.mkdir()
+        (root / 'preferences.json').write_text(json.dumps({'execution': {'mode': 'manual'}}))
+        engine = SimpleNamespace(store=SimpleNamespace(root=root), lock=threading.RLock(), config={'worker': None, 'reviewer': None})
+        initialize(engine)
+        self.assertEqual(engine.settings_store.view()['values']['execution']['mode'], 'manual')
+        self.assertTrue(engine.settings_store.read()['placement_confirmed'])
+
+    def test_legacy_pair_assignment_only_sets_manual_on_pristine_fresh_defaults(self):
+        provider = {'base_url': 'http://127.0.0.1:11434/v1', 'model': 'local', 'input_rate': 0, 'output_rate': 0}
+        self.engine.config = {'worker': provider, 'reviewer': provider}
+        self.assertEqual(self.engine.preferences()['execution']['mode'], 'manual')
+        self.engine.save_preferences({'execution': {'mode': 'remote'}})
+        self.engine.config = {'worker': provider, 'reviewer': provider}
+        self.assertEqual(self.engine.preferences()['execution']['mode'], 'remote')
+
     def test_preferences_compatibility_uses_only_new_store(self):
         result = self.engine.save_preferences({'execution': {'mode': 'remote'}, 'limits': {'dollars': 0}})
         self.assertEqual(result['execution']['mode'], 'remote')

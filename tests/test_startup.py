@@ -58,6 +58,7 @@ class StartupTests(LocalCase):
         self.assertEqual(len(self.calls),1)
 
     def test_free_cloud_requires_opt_in_on_a_fresh_install(self):
+        self.engine.save_preferences({'limits': {'dollars': 0}})
         self.omni.return_value=[candidate('openrouter/coder:free','omniroute',False)]
         state=self.run_startup()
         self.assertEqual(state['status'],'unavailable')

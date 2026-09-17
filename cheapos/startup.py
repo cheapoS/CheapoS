@@ -168,6 +168,11 @@ class StartupManager:
 
     def _candidates(self, saved):
         execution = self.engine.preferences()["execution"]
+        # A fresh free-only work default is not consent for a cloud greeting.
+        # Keep startup's local-first/allow-cloud rule until placement is chosen.
+        settings = getattr(self.engine, 'settings_store', None)
+        if settings and settings.read().get('placement_confirmed') is False:
+            execution = {**execution, 'mode': 'manual'}
         if execution["mode"] == "remote":
             yield from (c for c in self._omni() if not c["local"])
             return

@@ -23,6 +23,8 @@ def initialize(engine):
             raise ValueError('Saved preferences.json is invalid; repair it before migrating settings') from error
         if not isinstance(preferences, dict):
             raise ValueError('Saved preferences.json must contain an object')
+        fresh_install = (not path.exists() and not (engine.store.root / 'config.json').exists()
+                         and not (engine.store.root / 'role-mappings.json').exists() and not any(engine.config.values()))
         notices = []
         normalized = {}
         for group, validator, initial in (('execution', execution_from, {}), ('limits', limits_from, {'dollars': 0})):
@@ -41,7 +43,9 @@ def initialize(engine):
                 except (ValueError, TypeError):
                     notices.append({'field': f'{group}.{key}', 'message': f'Legacy {group}.{key} needs review; its invalid value was not applied.'})
             normalized[group] = validator(valid)
-        store.initialize(normalized, load(engine.store.root / 'role-mappings.json'), engine.config, notices=notices)
+        if fresh_install:
+            normalized['execution']['mode'] = 'remote'
+        store.initialize(normalized, load(engine.store.root / 'role-mappings.json'), engine.config, notices=notices, fresh_install=fresh_install)
     engine.settings_store = store
 
 

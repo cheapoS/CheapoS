@@ -163,7 +163,7 @@ class SettingsStore:
             if pair != before and pair[0][0] == pair[1][0] == 'only' and pair[0][1] == pair[1][1]:
                 raise ValueError(f'The worker must use a different model from the {other}')
 
-    def initialize(self, preferences, mappings=None, providers=None, *, notices=None):
+    def initialize(self, preferences, mappings=None, providers=None, *, notices=None, fresh_install=False):
         """Migrate once from public legacy data. Invalid values never reset policy.
 
         Keep the public migration input in the same atomic document as a recovery
@@ -190,7 +190,7 @@ class SettingsStore:
                         roles[role].update(provider=public, connection_id=public.get('connection_id'))
             values = {'execution': execution, 'limits': self.limits_validator(preferences.get('limits', {'dollars': 0})), 'roles': roles, 'keep_up_to_date': False}
             document = {'schema_version': 1, 'generation': 1,
-                        'defaults': {'revision': 1, 'values': values}, 'projects': {}, 'operations': {}, 'migration_notices': copy.deepcopy(notices or [])}
+                        'defaults': {'revision': 1, 'values': values}, 'projects': {}, 'operations': {}, 'migration_notices': copy.deepcopy(notices or []), 'placement_confirmed': not fresh_install}
             for project, choices in mappings.get('projects', {}).items():
                 key = canonical_project(project)
                 overrides = {}
@@ -215,7 +215,7 @@ class SettingsStore:
             for role, provider in public_providers.items():
                 self.provider_validator(provider, role)
             document['public_config'] = copy.deepcopy(public_providers)
-            document['migration'] = {'version': 1, 'public_providers': public_providers, 'defaults': copy.deepcopy(document['defaults']),
+            document['migration'] = {'version': 1, 'fresh_install': fresh_install, 'public_providers': public_providers, 'defaults': copy.deepcopy(document['defaults']),
                                      'projects': copy.deepcopy(document['projects'])}
             write_json(self.path, document)
             return copy.deepcopy(document)
@@ -297,6 +297,8 @@ class SettingsStore:
                         self.validate_transition(old, proposed)
                 except ValueError as error:
                     raise ValueError(f'{key or "New chat defaults"}: {error}') from error
+            if not project and 'execution.mode' in patch:
+                updated['placement_confirmed'] = True
             if not project:
                 updated['migration_notices'] = [notice for notice in updated.get('migration_notices', []) if notice['field'] not in patch]
             if public_config is not None:

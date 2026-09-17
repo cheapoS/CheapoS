@@ -645,6 +645,8 @@ class Engine:
         patch = {f'roles.{role}': ({'strategy': 'only', 'model': provider['model'],
             'connection_id': provider.get('connection_id'), 'provider': provider} if provider else {'strategy': 'automatic'})
             for role, provider in value.items() if role in {'planner', 'worker', 'reviewer'}}
+        if legacy and current['revision'] == 1 and any(value.values()) and self.settings_store.read().get('migration', {}).get('fresh_install'):
+            patch['execution.mode'] = 'manual'
         self.settings_store.save(patch, expected_revision=current['revision'], operation_id=uuid.uuid4().hex,
                                  public_config=value, _allow_legacy_collision=legacy)
 
