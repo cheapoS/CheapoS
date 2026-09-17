@@ -22,14 +22,15 @@ class ClubTests(unittest.TestCase):
             return {'status':'accepted','sequence':message['sequence'],'hash':hashlib.sha256(envelope['payload'].encode()).hexdigest()}
         self.accept=accept;self.club._request=accept
 
-    def row(self,id='new',tokens=12):
-        return {'request_id':id,'date':'2026-09-15','reconciled':True,'input_tokens':tokens,'output_tokens':3,'category':'local','club_category':'unknown'}
+    def row(self,id='new',tokens=12,role='worker'):
+        return {'request_id':id,'date':'2026-09-15','reconciled':True,'input_tokens':tokens,'output_tokens':3,'category':'local','club_category':'unknown','role':role}
 
     def test_opt_in_excludes_existing_usage_and_duplicate_ticks(self):
         self.rows.append(self.row('old'));self.club.set_sync(True)
         self.rows.append(self.row());self.club.sync_now(self.ledger)
         event=json.loads(self.sent[-1]['payload'])['events'][0]
         self.assertEqual(event['input_tokens'],12)
+        self.assertEqual(event.get('role'),'worker')
         before=len(self.sent);self.club.sync_now(self.ledger);self.assertEqual(len(self.sent),before)
         self.assertNotIn('request_id',event);self.assertNotIn('model',event)
 

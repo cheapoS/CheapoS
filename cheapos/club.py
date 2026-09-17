@@ -213,6 +213,11 @@ class ClubManager:
                     if any(type(row.get(k)) not in (int,float) or row[k]<0 or row[k]>1000000000 or int(row[k])!=row[k] for k in ('input_tokens','output_tokens')):
                         waiting+=1;continue
                     event=dict(event_id=str(uuid.uuid5(uuid.UUID(self.state['installation_id']),rid)),category='paid' if (row.get('reported_cost') or 0)>0 else resolve_category(row),input_tokens=int(row['input_tokens']),output_tokens=int(row['output_tokens']),accounting_at=row['date']+'T00:00:00Z')
+                    role=row.get('role')
+                    if role in ('worker','reviewer','planner','coordinator'):
+                        event['role']=role
+                    elif role:
+                        event['role']='unknown'
                     if self.state.get('share_models'):
                         model=safe_model(row.get('served_model') or row.get('requested_model'))
                         if model: event['model_name']=model[:160]
