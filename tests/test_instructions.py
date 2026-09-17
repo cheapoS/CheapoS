@@ -123,6 +123,30 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertFalse(report["valid"])
         self.assertTrue(any("nonexistent.override" in err for err in report["errors"]))
 
+    def test_rules_for_task(self):
+        """rules_for_task resolves mode and triggers directly from runtime task dictionaries."""
+        from cheapos.instructions import rules_for_task, triggers_for_task
+
+        task_unattended = {
+            "conversational": True,
+            "branch_run": {"authorization_ref": {"id": "grant_1"}},
+            "output_recovery": True,
+        }
+        triggers = triggers_for_task(task_unattended)
+        self.assertIn("output_cap", triggers)
+
+        rules = rules_for_task(task_unattended, role="worker")
+        rule_ids = {r.id for r in rules}
+        self.assertIn("workflow.unattended_policy", rule_ids)
+        self.assertIn("recovery.output_cap", rule_ids)
+        self.assertIn("git.internal.controller_owns_commits", rule_ids)
+
+        task_interactive = {"conversational": True}
+        rules_interactive = rules_for_task(task_interactive, role="worker")
+        interactive_ids = {r.id for r in rules_interactive}
+        self.assertIn("workflow.chat_base", interactive_ids)
+        self.assertNotIn("workflow.unattended_policy", interactive_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

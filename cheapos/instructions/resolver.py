@@ -63,3 +63,36 @@ def compose_prompt(
     """Compose and render prompt text directly."""
     rules = compose(role=role, mode=mode, audience=audience, triggers=triggers, catalog=catalog)
     return render_instructions(rules)
+
+
+def triggers_for_task(task: dict) -> List[str]:
+    """Extract active instruction triggers from a cheapoS task dict."""
+    triggers: List[str] = []
+    if not isinstance(task, dict):
+        return triggers
+    if task.get("output_recovery"):
+        triggers.append("output_cap")
+    if task.get("compact_edits"):
+        triggers.append("compact_edits")
+    if task.get("action_pending") or task.get("loop_guidance"):
+        triggers.append("loop_detected")
+    if task.get("finish_review"):
+        triggers.append("finish_review")
+    if task.get("review_repair"):
+        triggers.append("review_repair")
+    if task.get("review_disputes"):
+        triggers.append("review_rejected")
+    return triggers
+
+
+def rules_for_task(
+    task: dict,
+    role: str = "worker",
+    catalog: InstructionCatalog = DEFAULT_CATALOG,
+    extra_triggers: Sequence[str] = ()
+) -> List[InstructionRule]:
+    """Resolve active instruction rules for a runtime task dictionary."""
+    from cheapos import execution_context
+    mode = execution_context.mode(task) if isinstance(task, dict) else "unattended"
+    triggers = list(triggers_for_task(task)) + list(extra_triggers)
+    return compose(role=role, mode=mode, triggers=triggers, catalog=catalog)

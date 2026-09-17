@@ -3,11 +3,9 @@ import os
 import shlex
 from pathlib import Path
 from . import environment
+from .instructions import DEFAULT_CATALOG
 
-POLICY = ('Inspect existing project code and conventions before asking questions. '
-          'Make and record reasonable reversible choices within the accepted scope. '
-          'If a genuinely blocked item has no edits, continue independent items; '
-          'pause for essential decisions, changed setup, or additional authority.')
+POLICY = DEFAULT_CATALOG.get("workflow.unattended_setup_policy").text
 
 
 def inspect(task, scopes):
@@ -37,12 +35,7 @@ def require_ready(task, scopes):
         raise ValueError('Unattended setup needs attention before Start: '+'; '.join(c['detail'] for c in result['checks'] if c['status']=='blocked'))
     return result
 
-WORKER_POLICY = ('This is an authorized unattended run. Use the permitted working-copy read/edit tools directly; '
-    'do not ask permission to inspect the project or run checks already in the accepted scope. The controller enforces grants. '
-    'Inspect code, manifests, existing UI and restart mechanisms before asking the operator for facts available there. '
-    'For unspecified reversible details, follow existing conventions and record the assumption in your checkpoint summary. '
-    'Ask only for an essential decision that inspection cannot resolve, describing the evidence inspected and why proceeding is blocked. '
-    'The controller automatically tracks workspace edits and creates feature branch commits upon checkpoint approval; never execute git commands (such as git add, git commit, git push, or git checkout), and never use run_checks to stage or commit code.')
+WORKER_POLICY = DEFAULT_CATALOG.get("workflow.unattended_policy").text
 
 
 def reconsider_question(task, question):

@@ -11,6 +11,8 @@ from .resolver import (
     compose_prompt,
     render_instructions,
     resolve_rules,
+    rules_for_task,
+    triggers_for_task,
 )
 from .linter import audit_catalog
 
@@ -32,6 +34,8 @@ __all__ = [
     "compose_prompt",
     "render_instructions",
     "resolve_rules",
+    "rules_for_task",
+    "triggers_for_task",
     "audit_catalog",
     "ACTION_GUIDANCE",
     "OUTPUT_GUIDANCE",
