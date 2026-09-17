@@ -2241,6 +2241,8 @@ class Engine:
         except Exception as error:
             record['status']='cancelled' if runtime.stop.is_set() or isinstance(error,InterruptedError) else 'failed'
             record['error_code']=getattr(error,'code',None)
+            if isinstance(error, BudgetError) and error.limit_hit:
+                record['limit_hit'] = copy.deepcopy(error.limit_hit)
             from .route_health import classify
             record['failure_category']=classify(InterruptedError() if record['status']=='cancelled' else error)['category']
             raise
@@ -2895,6 +2897,8 @@ class Engine:
             if runtime.stop.is_set():
                 raise InterruptedError("Task stopped")
             runtime.guard()
+            from .context_evidence import review_inventories
+            messages = review_inventories(task, messages)
             save_history(checkpoint, messages)
             self.store.save(task)
             if turns and turns % 4 == 0:
@@ -3532,7 +3536,7 @@ class Engine:
                 used = request_worker_turns(task)
                 task['limit_hit'] = {'key':'worker_turns','used':used,'allowed':task['limits']['worker_turns'],'remaining':max(0,task['limits']['worker_turns']-used)}
             task["status"] = "budget_paused"
-            task["error_code"] = "worker_turn_limit" if isinstance(error, WorkerTurnLimit) else None
+            task["error_code"] = "worker_turn_limit" if isinstance(error, WorkerTurnLimit) else error.code
             task["error"] = str(error)
             self.event(task, "budget", "Task paused at a limit", task["error"])
         except Exception as error:

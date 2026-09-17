@@ -35,6 +35,26 @@ class PauseDetails(unittest.TestCase):
   self.assertIn('next model request',d['explanation']);self.assertIn('170676',d['explanation'])
   self.assertNotIn('PRIVATE',str(d));self.assertNotIn('unknown',d['explanation'])
 
+ def test_wrapped_and_historical_budget_stops_keep_exact_limit(self):
+  import copy
+  t=self.task();t['active_role']='worker';t['branch_run']['items'][0]['status']='reviewing'
+  t['error_code']='budget_exceeded'
+  t['limit_hit']={'key':'reviewer_tokens','used':159110,'allowed':200000,'remaining':40890}
+  pause.apply(t,ValueError('Outer engine wrapper'))
+  self.assertEqual(t['branch_run']['pause_detail']['cause'],'exhausted_work')
+  self.assertIn('159110',t['error'])
+  t['error_code']=None
+  t['request_metrics'][-1].update(status='failed',dispatched=False,error_code='budget_exceeded')
+  t['branch_run']['pause_detail'].update(cause='unknown');t['branch_run']['pause_detail'].pop('diagnostic',None)
+  before=copy.deepcopy(t)
+  d=pause.for_task(t)
+  self.assertEqual(d['cause'],'exhausted_work');self.assertEqual(d['next_action'],'limits')
+  self.assertIn('159110',d['explanation']);self.assertEqual(t,before)
+  t['request_metrics'].append({'id':'new','status':'failed','error_code':'budget_exceeded'})
+  self.assertEqual(pause.for_task(t)['cause'],'unknown')
+  t=before;pause.apply(t,cause='operator')
+  self.assertEqual(pause.for_task(t)['cause'],'operator')
+
  def test_summary_and_full_public_pause_cannot_echo_raw_exception(self):
   from cheapos.server import public_task
   t=self.task();t.update(id='task',usage={},patch='')

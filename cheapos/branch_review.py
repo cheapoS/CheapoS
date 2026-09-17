@@ -308,6 +308,8 @@ def _checkpoint(engine, runtime, args):
                     or needs_decision)
         if deciding:
             _coach(engine, task, messages, 'request_limit' if turns >= max_rounds - 1 else 'missing_decision')
+        from .context_evidence import review_inventories
+        messages = review_inventories(task, messages)
         offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools
         tool_choice = {'type': 'function', 'function': {'name': 'review_decision'}} if deciding else None
         request_messages = messages

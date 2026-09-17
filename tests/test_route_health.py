@@ -12,6 +12,13 @@ MODEL={'id':'provider/model','tool_calling':True,'context_length':10000}
 
 
 class RouteHealthTests(unittest.TestCase):
+    def test_local_budget_is_not_a_bad_model_response_or_retryable_outage(self):
+        from cheapos.providers import BudgetError
+        result = health.classify(BudgetError('Not enough task allowance'))
+        self.assertEqual(result['category'], 'local_budget')
+        self.assertFalse(result['retry'])
+        self.assertFalse(result['quality_impact'])
+
     def test_cooldown_prefers_another_provider_over_a_preferred_cached_sibling(self):
         from types import SimpleNamespace
         from unittest.mock import Mock
