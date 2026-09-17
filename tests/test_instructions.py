@@ -741,6 +741,28 @@ class InstructionCatalogTests(unittest.TestCase):
         finally:
             resolver.triggers_for_task = orig_triggers
 
+        # Test broken active_branch_item extraction (must fail probe in unattended/planning modes)
+        orig_active_item = resolver.active_branch_item
+        resolver.active_branch_item = lambda task: None
+        try:
+            report = probe_context_matrix()
+            self.assertFalse(report["valid"])
+            error_blob = " ".join(report["errors"])
+            self.assertIn("Missing review_repair", error_blob)
+        finally:
+            resolver.active_branch_item = orig_active_item
+
+        # Test authorization ignoring saved approvals (must fail probe in unattended/planning modes)
+        orig_auth = resolver.is_full_suite_authorized
+        resolver.is_full_suite_authorized = lambda task: task.get("full_suite_approved") is True
+        try:
+            report = probe_context_matrix()
+            self.assertFalse(report["valid"])
+            error_blob = " ".join(report["errors"])
+            self.assertIn("Missing full_suite_mandatory", error_blob)
+        finally:
+            resolver.is_full_suite_authorized = orig_auth
+
 
 class PromptParityTests(unittest.TestCase):
     """Verify exact prompt parity, whitespace, ordering, and conditional delivery for migrated constants."""

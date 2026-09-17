@@ -169,28 +169,42 @@ def probe_context_matrix(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[
                     "compact_edits": comp_ed,
                     "action_pending": act_pend,
                     "finish_review": fin_rev,
-                    "full_suite_approved": full_st,
-                    "full_suite_approval": ["python3 -B scripts/check.py"] if full_st else [],
-                    "review_repair": {"candidate_id": "c1", "defects": ["d1"]} if has_repair else None,
-                    "review_disputes": has_disp,
                 }
-                if mode == "review":
-                    task["status"] = "reviewing"
-                elif mode in ("unattended", "planning"):
+                if mode in ("unattended", "planning"):
+                    # Canonical branch_run runtime context:
+                    # Exercises nested item repair, dispute ledger, and saved controller authorization
+                    # without top-level fallback shadows.
                     task["status"] = "in_progress"
+                    chk = ["python3 -B scripts/check.py --full"] if full_st else ["python3 -B scripts/dev_tests.py --pattern test_probe.py"]
+                    task["full_suite_approval"] = ["python3 -B scripts/check.py --full"] if full_st else []
                     task["branch_run"] = {
                         "current_item_id": "item-1",
-                        "items": [{"id": "item-1", "review_repair": {"candidate_id": "c1", "defects": ["d1"]} if has_repair else None}],
+                        "items": [{
+                            "id": "item-1",
+                            "required_checks": chk,
+                            "review_repair": {"candidate_id": "c1", "defects": ["d1"]} if has_repair else None,
+                        }],
                         "dispute_ledger": {"findings": {"f1": {"status": "open"}} if has_disp else {}},
                     }
                     if mode == "unattended":
                         task["branch_run"]["authorization_ref"] = {"id": "auth1"}
+                elif mode == "review":
+                    task["status"] = "reviewing"
+                    task["full_suite_approved"] = full_st
+                    task["review_repair"] = {"candidate_id": "c1", "defects": ["d1"]} if has_repair else None
+                    task["review_disputes"] = has_disp
                 elif mode == "interactive":
                     task["status"] = "in_progress"
                     task["conversational"] = True
+                    task["full_suite_approved"] = full_st
+                    task["review_repair"] = {"candidate_id": "c1", "defects": ["d1"]} if has_repair else None
+                    task["review_disputes"] = has_disp
                 elif mode == "worker":
                     task["status"] = "in_progress"
                     task["conversational"] = False
+                    task["full_suite_approved"] = full_st
+                    task["review_repair"] = {"candidate_id": "c1", "defects": ["d1"]} if has_repair else None
+                    task["review_disputes"] = has_disp
 
                 try:
                     active = rules_for_task(task, role=role, catalog=catalog)
