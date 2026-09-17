@@ -1,6 +1,7 @@
 """Audit and static verification linter for the cheapoS instruction catalog."""
+import itertools
 from typing import Any, Dict, List, Set, Tuple
-from .catalog import DEFAULT_CATALOG, InstructionCatalog
+from .catalog import DEFAULT_CATALOG, InstructionCatalog, ROLE_TO_AUDIENCE
 from .resolver import compose, detect_supersession_cycles, resolve_rules
 from .types import AgentAudience, InstructionConflictError, InstructionRule
 
@@ -19,7 +20,7 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
        counterpart active when composing instructions for cheapoS internal agents.
     """
     rules = catalog.all_rules()
-    rule_ids: Set[str] = {r.id for r in rules}
+    rule_ids = {r.id for r in rules}
     errors: List[str] = []
     warnings: List[str] = []
 
@@ -30,9 +31,9 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
         for s_id in r.supersedes:
             if s_id not in rule_ids:
                 errors.append(f"Rule '{r.id}' supersedes nonexistent rule '{s_id}'.")
-        for i_id in r.incompatible_with:
-            if i_id not in rule_ids:
-                errors.append(f"Rule '{r.id}' declares incompatibility with nonexistent rule '{i_id}'.")
+        for inc_id in r.incompatible_with:
+            if inc_id not in rule_ids:
+                errors.append(f"Rule '{r.id}' declares incompatibility with nonexistent rule '{inc_id}'.")
         if r.internal_disambiguation_required:
             if r.internal_disambiguation_required not in rule_ids:
                 errors.append(
@@ -44,34 +45,61 @@ def audit_catalog(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[str, An
         errors.append(f"Supersession cycle detected in catalog: {' -> '.join(catalog_cycle)}")
 
     # 2. Persona Boundary Verification
-    # For rules with internal_disambiguation_required, ensure internal worker/planner composition includes the disambiguator
+    # For rules with internal_disambiguation_required, ensure internal worker and planner composition includes the disambiguator
     for r in rules:
         if r.internal_disambiguation_required:
             disambiguator = catalog.get(r.internal_disambiguation_required)
             if disambiguator is None:
                 continue
-            # Check worker composition in unattended mode
-            worker_rules = compose(role="worker", mode="unattended", catalog=catalog)
-            worker_rule_ids = {wr.id for wr in worker_rules}
-            if disambiguator.id not in worker_rule_ids:
-                errors.append(
-                    f"Boundary violation: External rule '{r.id}' requires disambiguation '{disambiguator.id}', "
-                    f"but it is absent from worker unattended composition."
-                )
+            if disambiguator.applies_to_role("worker"):
+                try:
+                    worker_rules = compose(role="worker", mode="unattended", catalog=catalog)
+                    worker_rule_ids = {wr.id for wr in worker_rules}
+                    if disambiguator.id not in worker_rule_ids:
+                        errors.append(
+                            f"Boundary violation: External rule '{r.id}' requires disambiguation '{disambiguator.id}', "
+                            f"but it is absent from worker unattended composition."
+                        )
+                except (InstructionConflictError, ValueError) as e:
+                    errors.append(f"Boundary verification worker composition error for rule '{r.id}': {e}")
+            if disambiguator.applies_to_role("planner"):
+                try:
+                    planner_rules = compose(role="planner", mode="unattended", catalog=catalog)
+                    planner_rule_ids = {pr.id for pr in planner_rules}
+                    if disambiguator.id not in planner_rule_ids:
+                        errors.append(
+                            f"Boundary violation: External rule '{r.id}' requires disambiguation '{disambiguator.id}', "
+                            f"but it is absent from planner unattended composition."
+                        )
+                except (InstructionConflictError, ValueError) as e:
+                    errors.append(f"Boundary verification planner composition error for rule '{r.id}': {e}")
 
     # 3. State Matrix Permutations
-    roles = ["worker", "reviewer", "planner", "coordinator"]
-    modes = ["interactive", "unattended"]
-    trigger_sets: List[Tuple[str, ...]] = [
-        (),
-        ("output_cap",),
-        ("compact_edits",),
-        ("loop_detected",),
-        ("review_rejected",),
-        ("review_repair",),
-        ("finish_review",),
-        ("output_cap", "loop_detected"),
-    ]
+    # Include all roles present in ROLE_TO_AUDIENCE plus any explicit roles in catalog rules
+    roles_set = set(ROLE_TO_AUDIENCE.keys())
+    for r in rules:
+        for r_role in r.roles:
+            if r_role != "all":
+                roles_set.add(r_role)
+    roles = sorted(roles_set)
+
+    # Include all modes referenced by rules and standard runtime contexts
+    modes_set = {"interactive", "unattended"}
+    for r in rules:
+        for m in r.modes:
+            if m != "all":
+                modes_set.add(m)
+    modes = sorted(modes_set)
+
+    # Collect all unique state triggers present in catalog rules
+    catalog_triggers = sorted(list({t for r in rules for t in r.state_triggers}))
+    trigger_sets: List[Tuple[str, ...]] = [()]
+    for t in catalog_triggers:
+        trigger_sets.append((t,))
+    for pair in itertools.combinations(catalog_triggers, 2):
+        trigger_sets.append(pair)
+    if len(catalog_triggers) > 2:
+        trigger_sets.append(tuple(catalog_triggers))
 
     tested_states = 0
     for role in roles:

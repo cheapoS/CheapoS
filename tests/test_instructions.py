@@ -272,6 +272,25 @@ class InstructionCatalogTests(unittest.TestCase):
             InstructionCatalog([rule1, rule2])
         self.assertIn("Duplicate instruction rule ID detected in catalog", str(ctx.exception))
 
+    def test_audit_matrix_covers_all_roles_and_compound_triggers(self):
+        """Catalog audit must cover all roles in ROLE_TO_AUDIENCE, reachable modes, and pairwise triggers."""
+        report = audit_catalog()
+        self.assertTrue(report["valid"])
+        # With 5 roles, 2 modes, and 30 trigger sets, at least 300 states are checked
+        self.assertGreaterEqual(report["tested_states"], 300)
+
+        # Compound trigger test: full suite requested combined with output cap and compact edits
+        compound_rules = compose(
+            role="worker",
+            mode="unattended",
+            triggers=["full_suite_requested", "output_cap", "compact_edits"],
+        )
+        compound_ids = {r.id for r in compound_rules}
+        self.assertIn("validation.full_suite_mandatory", compound_ids)
+        self.assertNotIn("validation.change_scoped", compound_ids)
+        self.assertIn("recovery.compact_edits", compound_ids)
+        self.assertNotIn("recovery.output_cap", compound_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
