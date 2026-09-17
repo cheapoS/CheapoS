@@ -6,11 +6,14 @@ from typing import Optional, Sequence, Tuple
 
 class AgentAudience(str, Enum):
     EXTERNAL_HOST = "external_host"        # External IDE/CLI developer (Antigravity, Claude Code, Cursor)
-    CHEAPOS_WORKER = "cheapos_worker"      # Internal cheapoS worker / chat agent
-    CHEAPOS_PLANNER = "cheapos_planner"    # Internal cheapoS planner
-    CHEAPOS_REVIEWER = "cheapos_reviewer"  # Internal cheapoS senior reviewer
-    CHEAPOS_COORDINATOR = "cheapos_coordinator"  # Internal recovery coordinator
+    CHEAPOS_INTERNAL = "cheapos_internal"  # Internal cheapoS runtime agents (worker, planner, reviewer, coordinator)
     ALL = "all"
+
+    # Aliases for backward compatibility
+    CHEAPOS_WORKER = "cheapos_internal"
+    CHEAPOS_PLANNER = "cheapos_internal"
+    CHEAPOS_REVIEWER = "cheapos_internal"
+    CHEAPOS_COORDINATOR = "cheapos_internal"
 
 
 class InstructionCategory(str, Enum):
@@ -45,6 +48,9 @@ class InstructionRule:
     incompatible_with: Tuple[str, ...] = ()
     internal_disambiguation_required: str = ""
     priority: int = 50
+
+    def applies_to_audience(self, audience: AgentAudience) -> bool:
+        return self.audience in (AgentAudience.ALL, audience)
 
     def applies_to_role(self, role: str) -> bool:
         return "all" in self.roles or role in self.roles

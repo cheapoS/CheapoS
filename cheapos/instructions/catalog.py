@@ -3,10 +3,10 @@ from typing import Dict, List, Optional, Sequence
 from .types import AgentAudience, InstructionCategory, InstructionRule
 
 ROLE_TO_AUDIENCE: Dict[str, AgentAudience] = {
-    "worker": AgentAudience.CHEAPOS_WORKER,
-    "reviewer": AgentAudience.CHEAPOS_REVIEWER,
-    "planner": AgentAudience.CHEAPOS_PLANNER,
-    "coordinator": AgentAudience.CHEAPOS_COORDINATOR,
+    "worker": AgentAudience.CHEAPOS_INTERNAL,
+    "reviewer": AgentAudience.CHEAPOS_INTERNAL,
+    "planner": AgentAudience.CHEAPOS_INTERNAL,
+    "coordinator": AgentAudience.CHEAPOS_INTERNAL,
     "external_host": AgentAudience.EXTERNAL_HOST,
 }
 
@@ -438,7 +438,7 @@ class InstructionCatalog:
         target_audience = audience or (ROLE_TO_AUDIENCE.get(role) if role else None)
         matched = []
         for r in self._rules.values():
-            if target_audience and r.audience not in (target_audience, AgentAudience.ALL):
+            if target_audience and not r.applies_to_audience(target_audience):
                 continue
             if role and not r.applies_to_role(role):
                 continue

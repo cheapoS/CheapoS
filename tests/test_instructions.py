@@ -97,6 +97,18 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertIn("reviewer.decisions", rule_ids)
         self.assertNotIn("workflow.worker_base", rule_ids)
 
+    def test_planner_composition_includes_shared_git_and_setup_rules(self):
+        """Planner composition must include internal controller commit rules and unattended setup policy."""
+        rules = compose(role="planner", mode="unattended")
+        rule_ids = {r.id for r in rules}
+        self.assertIn("git.internal.controller_owns_commits", rule_ids)
+        self.assertIn("workflow.unattended_setup_policy", rule_ids)
+        self.assertIn("planner.base", rule_ids)
+        self.assertIn("core.untrusted_evidence", rule_ids)
+        self.assertIn("validation.change_scoped", rule_ids)
+        self.assertNotIn("workflow.worker_base", rule_ids)
+        self.assertNotIn("reviewer.base", rule_ids)
+
     def test_trigger_activates_recovery_guidance(self):
         """Specifying triggers activates conditional recovery rules."""
         # Baseline without trigger
