@@ -1,6 +1,6 @@
 """Agent resolution of frozen merge evidence, followed by reviewed ancestry update."""
 import copy
-from . import branch_workspace as work, branch_update, branch_runs
+from . import branch_workspace as work, branch_update, branch_runs, merge_evidence
 from .branch_authorization import digest, contract_builder
 
 
@@ -15,8 +15,14 @@ def capture(run):
     names=set(conflicts)
     names.update(n.decode() for n in work.source_git(source,'diff','--name-only','--no-renames','-z',base,target,binary=True).split(b'\0') if n)
     if len(names)>100:raise UnsupportedIntegration('context_size', sorted(names), 'Merge evidence exceeds 100 files; preserve these versions for external resolution.')
-    manifests={key:{entry['path']:entry for entry in work._manifest(source,sha)[0]} for key,sha in {'base':base,'task':old,'target':target,'suggested':tree}.items()}
-    files={};modes={};total=0
+    manifests={}
+    for version,sha in {'base':base,'task':old,'target':target,'suggested':tree}.items():
+        entries,skipped=work._manifest(source,sha)
+        unsupported=sorted(names.intersection(skipped))
+        if unsupported:
+            raise UnsupportedIntegration('file',unsupported,'Captured '+version+' files exceed supported text size, mode or path rules: '+', '.join(unsupported))
+        manifests[version]={entry['path']:entry for entry in entries}
+    files={};modes={};retained={}
     from .workspace import allowed_name
     for name in sorted(names):
         if not allowed_name(name):raise UnsupportedIntegration('protected_path', [name], 'The merge includes a protected path: '+name)
@@ -24,15 +30,30 @@ def capture(run):
         for version,manifest in manifests.items():
             entry=manifest.get(name)
             if entry and entry['mode'] not in {'100644','100755'}:raise UnsupportedIntegration('file_mode', [name], 'Unsupported merge file mode: '+name)
-            try:text=work.source_git(source,'cat-file','blob',entry['oid'],binary=True).decode('utf-8') if entry else None
+            if not entry:
+                versions[version]=None
+                continue
+            if entry['oid'] in retained:
+                versions[version]=retained[entry['oid']]
+                continue
+            raw=work.source_git(source,'cat-file','blob',entry['oid'],binary=True)
+            try:text=raw.decode('utf-8')
             except UnicodeError:raise UnsupportedIntegration('binary', [name], 'Non-text merge version requires an explicit file decision: '+name) from None
-            if text is not None and '\0' in text:raise UnsupportedIntegration('binary', [name], 'Binary merge version requires an explicit file decision: '+name)
-            total+=len((text or '').encode())
-            if total>600000:raise UnsupportedIntegration('context_size', sorted(names), 'Merge context exceeds 600,000 bytes; preserve the versions for external resolution.')
-            versions[version]=text
+            if '\0' in text:raise UnsupportedIntegration('binary', [name], 'Binary merge version requires an explicit file decision: '+name)
+            reference=merge_evidence.retain(mapping['workspace'],raw)
+            retained[entry['oid']]=reference
+            versions[version]=reference
         files[name]=versions
         modes[name]={v:m.get(name,{}).get('mode') for v,m in manifests.items()}
     return {'old_tip':old,'target_tip':target,'base_tip':base,'tree':tree,'conflicts':conflicts,'files':files,'modes':modes}
+
+
+def _text(task, context, path, version):
+    value=context['files'][path][version]
+    # Existing saved resolutions keep their original digest and inline text.
+    if value is None or isinstance(value,str):return value
+    workspace=task['branch_run']['workspace_mapping']['workspace']
+    return merge_evidence.read(workspace,value).decode('utf-8')
 
 
 def current(task):
@@ -56,7 +77,7 @@ def read(task, path=None, version='suggested', start_line=1, end_line=120):
         raise ValueError('Choose a captured path and base, task, target, or suggested version')
     if type(start_line)!=int or type(end_line)!=int or start_line<1 or end_line<start_line or end_line-start_line>=300:
         raise ValueError('Read 1–300 numbered lines at a time')
-    text=context['files'][path][version]
+    text=_text(task,context,path,version)
     lines=(text or '').splitlines()
     chosen=lines[start_line-1:end_line]
     while len(chosen)>1 and len('\n'.join(chosen))>16000:chosen.pop()
@@ -167,11 +188,11 @@ def apply_version(task, path, version):
     if path not in files or version not in {'task','target','suggested'}:raise ValueError('Choose a captured path and task, target or suggested version')
     destination=Workspace(task['workspace']).path(path)
     before=destination.read_bytes().decode('utf-8') if destination.exists() else None
-    if before!=files[path]['task']:
+    if before!=_text(task,resolution['context'],path,'task'):
         raise ValueError('This file already has edits. Use the normal edit tools to preserve them instead of replacing the whole file')
     from .branch_disagreement import before_write
     before_write(task,path)
-    text=files[path][version]
+    text=_text(task,resolution['context'],path,version)
     if text is None:
         if destination.exists():destination.unlink()
     else:

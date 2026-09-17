@@ -12,7 +12,17 @@ Regression coverage uses small controller/receipt and UI tests. Real divergent-b
 
 If the update detects conflicts, the saved operation assigns an explicit new item to the existing worker and reviewer. The item retains the original task, usage, model policy, spending allowance and verification commands. Agents can read frozen base/task/target/suggested versions with `read_merge_context`; this does not grant arbitrary access to the source checkout. The suggested versions contain Git’s automatic combination and any unresolved markers. Agents must incorporate incoming nonconflicting changes as well as resolve conflicts.
 
-After the resolution passes item checks and independent review, the controller records the merge ancestry without changing the reviewed tree. Final checks and review run before human merge approval. The controller journals this operation for recovery after interruption. An incompatible product choice uses the existing evidence-backed clarification flow; routine code conflicts remain agent work. Binary or oversized conflict evidence is reported explicitly instead of silently omitted.
+After the resolution passes item checks and independent review, the controller records the merge ancestry without changing the reviewed tree. Final checks and review run before human merge approval. The controller journals this operation for recovery after interruption. An incompatible product choice uses the existing evidence-backed clarification flow; routine code conflicts remain agent work. Binary or unsupported individual files are reported explicitly instead of silently omitted.
+
+Frozen text versions are stored once by content hash in the task's private
+`merge-evidence` directory, outside its editable workspace. The task record binds
+those hashes, sizes, paths and file modes to the authorized resolution item.
+Reads return numbered excerpts; applying a saved version verifies its bytes and
+refuses to overwrite subsequent task edits. Evidence survives restart and source
+branch movement without depending on temporary Git merge objects. Existing
+resolutions with inline evidence remain readable. The former 600 KB aggregate
+context limit no longer blocks ordinary updates containing several large source
+files; snapshot file-size/path restrictions and the 100-file boundary still apply.
 
 ## Unified preparation (T92)
 
