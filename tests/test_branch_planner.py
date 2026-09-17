@@ -199,6 +199,15 @@ class PlannerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             planner.inspect_project_file(self.root, '../outside')
 
+    def test_inspect_project_file_normalizes_drive_letters_and_diff_prefixes(self):
+        (self.root / 'module.py').write_text('def hello(): pass\n')
+        result1 = planner.inspect_project_file(self.root, 'A:/module.py')
+        self.assertEqual(result1['path'], 'module.py')
+        self.assertIn('def hello', result1['contents'])
+        result2 = planner.inspect_project_file(self.root, 'a/module.py')
+        self.assertEqual(result2['path'], 'module.py')
+        self.assertIn('def hello', result2['contents'])
+
     def test_cancellation_never_creates_or_authorizes_work(self):
         captured = planner.capture_inputs(self.root, 'Work')
         self.runtime.stop.set()

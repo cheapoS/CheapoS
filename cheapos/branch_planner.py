@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import stat
 import shlex
 from pathlib import PurePosixPath
@@ -95,6 +96,16 @@ def inspect_project_file(source, path, start_line=1, end_line=None, query=None, 
         raise ValueError('end_line must be an integer at or after start_line')
     if query is not None and (not isinstance(query, str) or not query or len(query) > 200 or '\0' in query):
         raise ValueError('Use a nonempty literal query of at most 200 characters')
+    if isinstance(path, str):
+        root_path = Workspace(source).root
+        normalized = re.sub(r'^[A-Za-z]:[/\\]+', '', path.replace('\\', '/')).strip().strip('/')
+        if normalized and not (root_path / path).exists():
+            if (root_path / normalized).exists():
+                path = normalized
+            elif (normalized.startswith('a/') or normalized.startswith('b/')) and (root_path / normalized[2:]).exists():
+                path = normalized[2:]
+            elif normalized:
+                path = normalized
     document = _read_project_text(Workspace(source).root, path, MAX_FILE_BYTES)
     content = document['contents']
     lines = content.splitlines(keepends=True) or ['']
@@ -348,7 +359,7 @@ def plan(engine, runtime, inputs):
                             raise ValueError('Supply path and optional line/column coordinates or literal query')
                         result = inspect_project_file(captured['source'], **arguments)
                         if hasattr(engine, 'carto'):
-                            carto = engine.carto.context(captured['source'], captured['source'], path=arguments['path'])
+                            carto = engine.carto.context(captured['source'], captured['source'], path=result.get('path', arguments['path']))
                             if carto['status'] != 'disabled': result['carto'] = carto
                     except (ValueError, OSError, TypeError) as error:
                         result = {'error': str(error)[:500], 'path': arguments.get('path') if isinstance(arguments, dict) and isinstance(arguments.get('path'), str) else None}
