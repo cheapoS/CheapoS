@@ -288,6 +288,7 @@ function mount(options){
   const selection=options.openPlanningChat?.();busySelection=selection;const payload={...values,planning_id:values.planning_id||(globalThis.crypto?.randomUUID?.()||String(Date.now()))};startState={request:payload,selection,draftSignature,error:null};renderStart();options.onDraftChange?.();
   try{
    if(!payload.base_ref||!payload.target_ref){const defaults=await api('/branch-runs/project',{repository:payload.repository});Object.assign(payload,planningPayload(payload,defaults));}
+   if(options.preparePlanningSettings&&!payload.settings){Object.assign(payload,await options.preparePlanningSettings(payload.repository));delete payload.limits;delete payload.uncapped_work;}
    const result=await api('/branch-runs/plan-start',payload);
    if(startState?.selection===selection&&getState().selection===selection){startState=null;if(input.value===submittedInput){input.value='';delete drafts[submittedKey];try{localStorage.setItem(storageKey,JSON.stringify(drafts));}catch(_){}}await selectTask(result.task_id);}await refresh();
   }catch(err){if(getState().selection===selection){startState={request:payload,selection,draftSignature,error:err.message||String(err)};renderStart();}}
