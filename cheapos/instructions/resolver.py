@@ -1,7 +1,37 @@
 """Resolver for composing instruction rules, eliminating superseded rules, and catching conflicts."""
-from typing import List, Optional, Sequence, Set
+from typing import Any, List, Optional, Sequence, Set
 from .catalog import DEFAULT_CATALOG, InstructionCatalog, detect_supersession_cycles
 from .types import AgentAudience, InstructionConflictError, InstructionRule
+
+
+def _is_truthy(val: Any) -> bool:
+    if val is True:
+        return True
+    if val is False or val is None:
+        return False
+    if isinstance(val, str):
+        return val.strip().lower() in ("true", "1", "yes")
+    return bool(val)
+
+
+def is_full_suite_authorized(task: dict) -> bool:
+    """Check if task has explicit, saved authorization for full-suite test execution."""
+    if not isinstance(task, dict):
+        return False
+    if _is_truthy(task.get("full_suite_approved")) or _is_truthy(task.get("full_suite")):
+        return True
+    approval = task.get("full_suite_approval")
+    if isinstance(approval, (list, tuple, set)) and len(approval) > 0:
+        return True
+    run = task.get("branch_run")
+    if isinstance(run, dict):
+        if not run.get("test_policy_version") and run.get("authorization_ref"):
+            plan = run.get("plan")
+            if isinstance(plan, dict):
+                from cheapos import test_policy
+                if test_policy.plan_commands(plan):
+                    return True
+    return False
 
 
 def resolve_rules(candidate_rules: Sequence[InstructionRule]) -> List[InstructionRule]:
@@ -99,15 +129,15 @@ def triggers_for_task(task: dict) -> List[str]:
     triggers: List[str] = []
     if not isinstance(task, dict):
         return triggers
-    if task.get("output_recovery"):
+    if _is_truthy(task.get("output_recovery")):
         triggers.append("output_cap")
-    if task.get("compact_edits"):
+    if _is_truthy(task.get("compact_edits")):
         triggers.append("compact_edits")
-    if task.get("action_pending") or task.get("loop_guidance"):
+    if _is_truthy(task.get("action_pending")) or _is_truthy(task.get("loop_guidance")):
         triggers.append("loop_detected")
-    if task.get("finish_review"):
+    if _is_truthy(task.get("finish_review")):
         triggers.append("finish_review")
-    if task.get("full_suite_approved") or task.get("full_suite"):
+    if is_full_suite_authorized(task):
         triggers.append("full_suite_requested")
 
     item = active_branch_item(task)

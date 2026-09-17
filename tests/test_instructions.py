@@ -205,6 +205,47 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertIn("recovery.review_repair", rule_ids)
         self.assertIn("recovery.disagreement", rule_ids)
 
+    def test_full_suite_triggers_from_saved_authorization(self):
+        """Full suite triggers must be derived from controller's persisted full_suite_approval and reject false strings."""
+        from cheapos import test_policy
+        from cheapos.instructions import rules_for_task, triggers_for_task
+
+        # 1. Approved task through test_policy.approve()
+        task_approved = {
+            "conversational": True,
+            "branch_run": {
+                "plan": {
+                    "items": [{"required_checks": ["python3 -B scripts/check.py --full"]}],
+                    "final_checks": [],
+                },
+            },
+        }
+        test_policy.approve(task_approved, True)
+        self.assertIn("python3 -B scripts/check.py --full", task_approved.get("full_suite_approval", []))
+
+        triggers = triggers_for_task(task_approved)
+        self.assertIn("full_suite_requested", triggers)
+
+        rules = rules_for_task(task_approved, role="worker")
+        rule_ids = {r.id for r in rules}
+        self.assertIn("validation.full_suite_mandatory", rule_ids)
+        self.assertNotIn("validation.change_scoped", rule_ids)
+
+        # 2. String "false" must never activate authorization
+        task_string_false = {
+            "conversational": True,
+            "full_suite_approved": "false",
+            "output_recovery": "false",
+        }
+        triggers_false = triggers_for_task(task_string_false)
+        self.assertNotIn("full_suite_requested", triggers_false)
+        self.assertNotIn("output_cap", triggers_false)
+
+        rules_false = rules_for_task(task_string_false, role="worker")
+        rule_ids_false = {r.id for r in rules_false}
+        self.assertIn("validation.change_scoped", rule_ids_false)
+        self.assertNotIn("validation.full_suite_mandatory", rule_ids_false)
+
     def test_self_supersession_rejected(self):
         """A rule cannot supersede itself in resolution or catalog audit."""
         rule = InstructionRule(
