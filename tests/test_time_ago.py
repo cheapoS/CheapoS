@@ -120,5 +120,23 @@ class TestMainJSON(unittest.TestCase):
         self.assertEqual(result, "just now")
 
 
+class TestMainErrors(unittest.TestCase):
+    def test_unparseable_positional_timestamp(self):
+        with patch('sys.argv', ['time_ago.py', 'not-a-time']):
+            with patch('sys.stderr', new_callable=StringIO) as fake_err:
+                with self.assertRaises(SystemExit) as ctx:
+                    main()
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("Error: cannot parse timestamp: not-a-time", fake_err.getvalue())
+
+    def test_unparseable_now_value(self):
+        with patch('sys.argv', ['time_ago.py', '2023-11-14T11:00:00Z', '--now', 'garbage-input']):
+            with patch('sys.stderr', new_callable=StringIO) as fake_err:
+                with self.assertRaises(SystemExit) as ctx:
+                    main()
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertIn("Error: cannot parse timestamp: garbage-input", fake_err.getvalue())
+
+
 if __name__ == '__main__':
     unittest.main()

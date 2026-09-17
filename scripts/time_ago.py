@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 
 
@@ -67,14 +68,26 @@ def main():
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     args = parser.parse_args()
 
-    now = parse_timestamp(args.now) if args.now else None
+    offending = None
+    try:
+        now = None
+        if args.now:
+            offending = args.now
+            now = parse_timestamp(args.now)
+        parsed_timestamps = []
+        for ts in args.timestamps:
+            offending = ts
+            parsed_timestamps.append(parse_timestamp(ts))
+    except ValueError:
+        print(f"Error: cannot parse timestamp: {offending}", file=sys.stderr)
+        sys.exit(1)
 
-    if not args.timestamps:
+    if not parsed_timestamps:
         result = time_ago(datetime.now(tz=timezone.utc), now=now)
-    elif len(args.timestamps) == 1:
-        result = time_ago(args.timestamps[0], now=now)
+    elif len(parsed_timestamps) == 1:
+        result = time_ago(parsed_timestamps[0], now=now)
     else:
-        result = [time_ago(ts, now=now) for ts in args.timestamps]
+        result = [time_ago(ts, now=now) for ts in parsed_timestamps]
 
     if args.json:
         print(json.dumps(result))
