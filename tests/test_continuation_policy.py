@@ -89,3 +89,14 @@ class ContinuationPolicyTests(unittest.TestCase):
         # Development mode must not loop on continue_worker
         task_dev = {'prompt': 'Lets fix these issues', 'patch': '', 'execution': {'development_mode': True}}
         self.assertEqual(decide(task_dev, trigger='repeated_evidence')['action'], 'act')
+
+    def test_conditional_ui_request_remains_implementation_before_first_edit(self):
+        prompt = 'When I restart the app, the project manager window pops up. We need to stop that. Only show that if no project exists.'
+        task = {'prompt': prompt, 'conversational': True, 'patch': ''}
+        self.assertEqual(decide(task, 'repeated_evidence')['action'], 'act')
+        self.assertEqual(work_policy.stage(task), 'implementation')
+        for question in ('Why does it only show if no project exists?',
+                         'Explain how to hide the project manager.',
+                         'Only show it if no project exists, without making changes.'):
+            with self.subTest(question=question):
+                self.assertEqual(decide({**task, 'prompt': question}, 'repeated_evidence')['action'], 'answer')

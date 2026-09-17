@@ -70,6 +70,10 @@ const CheapOSGuide = (() => {
     if(task.status==='paused'&&task.planning_request&&task.branch_run&&!task.branch_run.authorization_ref&&/handoffs were tried/.test(task.error||'')) return {...result,tone:'attention',title:'Planning stopped before a proposal was ready.',description:'Automatic model recovery was exhausted. Resume cannot retry this saved attempt. Start a new planning chat with the same request; this attempt and its usage remain saved.',primary:'new-planning',primaryLabel:'New planning chat'};
     if(task.status==='paused'&&task.recovery_blocked!=null&&task.pause_summary){
       const coordinator=task.coordinator_recovery?.at(-1);
+      const uncapped=task.limits?.uncapped_work===true||(task.execution?.development_mode===true&&task.operator_bounded_work!==true);
+      if(!task.branch_run&&uncapped&&!task.pending_approval&&task.environment_setup?.status!=='missing'&&!task.pause_summary.question){
+        return {...result,tone:'attention',title:'Your work is paused.',description:`${coordinator?.state==='failed'?'Coordinator advice was not usable. ':''}Resume continues the saved task with the worker. Existing work and attempt history are retained; verification and independent review still apply.`,primary:'resume',primaryLabel:'Resume'};
+      }
       if(coordinator?.state==='failed'&&String(task.error||'').startsWith('Coordinator reassessment')){
         if(task.coordinator_reassessment?.reuse_saved)return {...result,tone:'attention',title:'Saved coordinator guidance is ready.',description:'cheapoS previously rejected a file or API reference in the reply. It now passes validation. Continue below to reuse the reply with your saved files and current review feedback; no additional coordinator call is needed.',primary:'clarify',primaryLabel:'Change approach in chat'};
         const malformed=coordinator.error_code==='coordinator_format'||coordinator.diagnostic==='Coordinator must return one JSON object';

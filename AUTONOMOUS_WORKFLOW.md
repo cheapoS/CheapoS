@@ -183,3 +183,25 @@ budget refusal is not recorded as an invalid model response, and cannot grant
 more tokens or spending. A small deterministic case resumes a saved review,
 fits its listing into the remaining allowance, and reaches independent approval
 without repeating implementation or checks.
+
+## Implemented: resume Uncapped Interactive work
+
+Switching an Interactive task to Uncapped removes the old exhausted-recovery
+admission block. Resume and short chat continuations keep the original request,
+conversation, usage, findings and coordinator attempt history. A conditional UI
+change request remains implementation even before the first edit; an old
+answer-only step returns to the worker's ordinary tools. Repeated inspection
+after unavailable coordinator advice changes strategy within the saved authority
+instead of imposing another work cap. Automatic placement can request another
+eligible worker; fixed model choices remain fixed. Command permissions, spending
+limits, independent review and final commit approval are unchanged.
+
+Coordinator packets prioritize paths in saved tool metadata as well as current
+runtime observations, so restart does not drop an inspected file merely because
+it falls beyond the first 100 indexed paths. Paths must still exist in the
+validated workspace index; current excerpts are read again before advice is used.
+Stopped Uncapped Interactive chats show Resume without requiring a new prompt.
+
+Validation includes an in-memory continuation through repeated inspection, edit,
+verification and independent approval, plus permission gates and retained usage.
+These cases use no model calls, Git workflows or real-time waits.

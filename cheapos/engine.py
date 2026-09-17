@@ -987,7 +987,7 @@ class Engine:
             if followup is None and task.get('recovery_blocked') is not None:
                 self.refresh_changes(task)
                 progress.observe(task)
-                if task['recovery_blocked'] == progress.state(task)['revision'] and not reassess:
+                if task['recovery_blocked'] == progress.state(task)['revision'] and not reassess and not measuring(task):
                     raise ValueError("This recovery attempt is exhausted. Send a specific correction or missing information; Resume alone cannot retry the same stalled step.")
             if task["status"] == "takeover_requested" and followup is None:
                 if not changes or changes.get("approve_takeover") is not True:
@@ -1030,12 +1030,12 @@ class Engine:
             elif task.get("conversational"):
                 task["request_worker_turns"] = request_worker_turns(task)
                 self.refresh_changes(task)
+                if (task.get("answer_pending") and needs_patch_review(task)) or (task.get("error_code") == "progress_limit" and task["patch"] == task.get("turn_start_patch", "")):
+                    self.prepare_loop_recovery(task)
                 if task.get("action_pending"):
                     task["loop_guidance"] = ACTION_GUIDANCE
                     if task.get("error_code") == "progress_limit" and automatic(task, task["active_role"]):
                         self.defer_route(task, task["active_role"], "The worker paused without progress; rotating to another eligible model.")
-                if (task.get("answer_pending") and needs_patch_review(task)) or (task.get("error_code") == "progress_limit" and task["patch"] == task.get("turn_start_patch", "")):
-                    self.prepare_loop_recovery(task)
             if finish_review:
                 # Resume the controller's saved evidence, not another planning
                 # conversation. This grants neither command nor commit approval.
@@ -1068,6 +1068,8 @@ class Engine:
             task["status"] = "running"
             task["error"] = None
             task["error_code"] = None
+            if task.get('operator_continue'):
+                task['operator_continue'] = {'status':'running', 'reason':'Continuing from saved files and evidence.'}
             task["pending_approval"] = None
             task["stream"] = None
             task["check_stream"] = None
@@ -1833,6 +1835,19 @@ class Engine:
             task["answer_pending"] = True
             task["action_pending"] = False
 
+    def continue_uncapped_worker(self, runtime, reason):
+        """A failed advisor is evidence, not a new work cap on Interactive work."""
+        task = runtime.task
+        if task.get('branch_run') or not task.get('conversational') or not measuring(task) or work_policy.read_only(task):
+            return False
+        self.prepare_loop_recovery(task)
+        if automatic(task, 'worker'):
+            self.defer_route(task, 'worker', reason + ' Continue the unfinished action using the saved findings.')
+        self.event(task, 'guard', 'Asking for a different approach',
+                   'Continuing from saved evidence within the authorized work limits. Coordinator attempt history and verification requirements are retained.')
+        self.store.save(task)
+        return True
+
     def finish_answer(self, runtime):
         """One accounted response without tools; never a substitute for patch review."""
         task = runtime.task
@@ -1840,7 +1855,8 @@ class Engine:
         if task["patch"] != task.get("turn_start_patch", ""):
             task["answer_pending"] = False
             raise ProgressPause("This request has edits that still need verification and review. Inspect the saved changes before resuming.")
-        if (work_policy.active_implementation(task) or needs_patch_review(task)) and not work_policy.read_only(task):
+        from .continuation_policy import is_implementation
+        if (work_policy.active_implementation(task) or needs_patch_review(task) or is_implementation(task)) and not work_policy.read_only(task):
             self.prepare_loop_recovery(task)
             return
         if not measuring(task) and request_worker_turns(task) >= task["limits"]["worker_turns"]:
@@ -3438,8 +3454,12 @@ class Engine:
                                         blocker = 'Recovery repeated already available file evidence.' if recovering else 'Repeated unchanged file evidence.'
                                         coordinator_applied = coordinator_dispatch.consult(self, runtime, blocker)
                                         if not coordinator_applied:
-                                            raise ProgressPause('Worker could not choose the next step after recovery. ' + blocker + ' Saved edits remain intact.')
-                                        result = {'observation': result, 'guidance': 'Follow the saved coordinator guidance on the next ordinary turn.'}
+                                            if not self.continue_uncapped_worker(runtime, blocker):
+                                                raise ProgressPause('Worker could not choose the next step after recovery. ' + blocker + ' Saved edits remain intact.')
+                                            coordinator_applied = True  # Finish this batch before the changed strategy.
+                                            result = {'observation': result, 'guidance': task.get('loop_guidance')}
+                                        else:
+                                            result = {'observation': result, 'guidance': 'Follow the saved coordinator guidance on the next ordinary turn.'}
                                     else:
                                         self.refresh_changes(task)
                                         if task.get("conversational"):
