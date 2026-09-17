@@ -172,6 +172,24 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply(engine.effective_role_mapping(project))
             elif path == "/api/tasks":
                 self.reply(engine.store.visible(parse_qs(urlsplit(self.path).query).get("view", ["active"])[0]))
+            elif path.startswith("/api/uploads/"):
+                parts = path.strip("/").split("/")
+                if len(parts) >= 3:
+                    upload_id = parts[2]
+                    filename = parts[3] if len(parts) > 3 else None
+                    from .uploads import get_upload_path, detect_mime_type
+                    file_path = get_upload_path(engine.store.root, upload_id, filename)
+                    if file_path and file_path.is_file():
+                        data = file_path.read_bytes()
+                        mime = detect_mime_type(file_path.name, data)
+                        self.send_response(200)
+                        self.send_header("Content-Type", mime)
+                        self.send_header("Content-Length", str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+                        return
+                self.reply({"error": "File not found"}, 404)
+                return
             elif path.startswith("/api/tasks/"):
                 parts = path.strip("/").split("/")
                 task = engine.store.get(parts[2])
@@ -213,17 +231,18 @@ class LocalHandler(SimpleHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= 1_000_000:
-                raise ValueError("Request body must be under 1 MB")
+            path = urlsplit(self.path).path
+            while path.startswith("/api/api/"):
+                path = path[4:]
+            max_bytes = 25_000_000 if path == "/api/upload" else 1_000_000
+            if not 0 < length <= max_bytes:
+                raise ValueError(f"Request body must be under {max_bytes // (1024 * 1024)} MB")
             if self.headers.get_content_type() != "application/json":
                 raise ValueError("Expected JSON")
             values = json.loads(self.rfile.read(length))
             if not isinstance(values, dict):
                 raise ValueError("Expected a JSON object")
             engine = self.server.engine
-            path = urlsplit(self.path).path
-            while path.startswith("/api/api/"):
-                path = path[4:]
             if path == "/api/restart":
                 self.trusted(mutation=True)
                 self.server.engine.shutdown()
@@ -247,6 +266,14 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.startup.start()
             elif path == "/api/startup/stop":
                 result = engine.startup.stop()
+            elif path == "/api/upload":
+                from .uploads import save_upload
+                filename = values.get("filename", "")
+                raw_data = values.get("data") or values.get("data_base64")
+                if not raw_data:
+                    raise ValueError("Provide upload data")
+                mime_type = values.get("mime_type")
+                result = save_upload(engine.store.root, filename, raw_data, mime_type=mime_type)
             elif path == "/api/projects/carto":
                 from .workspace import Workspace
                 source = str(Workspace.project_root(values.get('repository', '')))
@@ -413,7 +440,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 elif action == "message":
                     if not isinstance(values.get("message"), str):
                         raise ValueError("Provide a message")
-                    result = public_task(engine.start(task_id, {"message": values["message"]}))
+                    result = public_task(engine.start(task_id, {"message": values["message"], "attachments": values.get("attachments", [])}))
                 elif action == "limits":
                     result = public_task(engine.update_limits(task_id, values))
                 elif action == "stop":

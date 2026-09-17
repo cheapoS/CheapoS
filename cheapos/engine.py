@@ -69,6 +69,7 @@ READ_TOOLS = [
     tool("search", "Search LOCAL repository files for a literal string. This is not internet search; use read_url for web links.", {"query": TEXT}, ["query"]),
     tool("read_url", "Read a public HTTPS page supplied in chat, or a link returned by this tool. GitHub repository links open the README. Returns numbered lines and links. To continue, set start_line to the previous end_line + 1; omitting end_line reads the next 120 lines. No internet search, sign-in, or JavaScript. If unavailable, explain the limitation rather than repeatedly searching local files.", {"url": TEXT, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 1}}, ["url"]),
     tool("get_diff", "Inspect the current patch relative to the task's starting snapshot."),
+    tool("inspect_image", "Inspect and transcribe visual details from an image file (PNG, JPG, WebP, SVG, GIF) such as screenshots, mockups, or diagrams. Path can be a workspace-relative path or an uploaded attachment path.", {"path": TEXT, "query": {"type": "string", "description": "Specific question or visual element to check (e.g. 'Is the button aligned?' or 'Describe the layout and any error text')."}}, ["path"]),
 ]
 WORKER_TOOLS = READ_TOOLS + [
     tool('undo_edit', 'Undo one mistaken text edit using its saved edit_id. Restores only that file, and only if it has no newer changes and belongs to the current task item/baseline. Never resets the whole task. Verification and independent review remain required.', {'path': TEXT, 'edit_id': TEXT}, ['path', 'edit_id']),
@@ -791,15 +792,42 @@ class Engine:
             raise ValueError("A verification command is required for this release")
         if not isinstance(values.get("auto_approve_checks", False), bool):
             raise ValueError("Command approval preference must be true or false")
+        attachments = values.get("attachments")
+        if attachments is not None and not isinstance(attachments, list):
+            raise ValueError("Attachments must be a list")
+        safe_attachments = []
+        augmented_prompt = prompt.strip()
+        if attachments:
+            from .uploads import get_upload_path, extract_document_text
+            for att in attachments:
+                if not isinstance(att, dict):
+                    continue
+                upload_id = att.get("id")
+                filename = att.get("filename", "")
+                resolved_path = get_upload_path(self.store.root, upload_id, filename) if upload_id else None
+                if not resolved_path and att.get("path"):
+                    cand = Path(att["path"]).resolve()
+                    if cand.is_file() and str(cand).startswith(str((self.store.root / "uploads").resolve())):
+                        resolved_path = cand
+                if resolved_path and resolved_path.is_file():
+                    att_record = dict(att)
+                    att_record["path"] = str(resolved_path)
+                    safe_attachments.append(att_record)
+                    if att_record.get("is_text") or att_record.get("is_pdf") or not att_record.get("is_image"):
+                        doc_text = extract_document_text(resolved_path)
+                        if doc_text:
+                            augmented_prompt += f"\n\n### Attached Document: {att_record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
+                    elif att_record.get("is_image"):
+                        augmented_prompt += f"\n\n### Attached Image: {att_record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
         task_id = task_id or uuid.uuid4().hex
         directory = self.store.root / "tasks" / task_id
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
-        task = {"served_identity_version":1, "id": task_id, "prompt": prompt.strip(), "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "planner": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
+        task = {"served_identity_version":1, "id": task_id, "prompt": augmented_prompt, "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "planner": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
         task['synthetic'] = self.provider_factory is not None
         task['check_output_filter'] = 'unittest' if os.environ.get('CHEAPOS_CHECK_OUTPUT_FILTER')=='unittest' else 'off'
-        task.update({"conversational": conversational, "requests": [prompt.strip()], "turn_start_patch": ""})
+        task.update({"conversational": conversational, "requests": [augmented_prompt], "turn_start_patch": "", "attachments": safe_attachments})
         if conversational:
             task["request_worker_turns"] = 0
         if len(self.connections.managers) > 1 or any(p and p.get("connection_id") for p in task["providers"].values()):
@@ -1023,7 +1051,33 @@ class Engine:
                 task.pop("pending_checkpoint", None)
                 task.pop("pending_review", None)
                 task.pop("steer_guidance", None)
-                task["requests"] = task.get("requests", [task["prompt"]]) + [followup.strip()]
+                new_attachments = (changes or {}).get("attachments") or []
+                augmented_followup = followup.strip()
+                new_safe = []
+                if new_attachments:
+                    from .uploads import get_upload_path, extract_document_text
+                    for att in new_attachments:
+                        if not isinstance(att, dict):
+                            continue
+                        upload_id = att.get("id")
+                        filename = att.get("filename", "")
+                        resolved_path = get_upload_path(self.store.root, upload_id, filename) if upload_id else None
+                        if not resolved_path and att.get("path"):
+                            cand = Path(att["path"]).resolve()
+                            if cand.is_file() and str(cand).startswith(str((self.store.root / "uploads").resolve())):
+                                resolved_path = cand
+                        if resolved_path and resolved_path.is_file():
+                            att_record = dict(att)
+                            att_record["path"] = str(resolved_path)
+                            new_safe.append(att_record)
+                            if att_record.get("is_text") or att_record.get("is_pdf") or not att_record.get("is_image"):
+                                doc_text = extract_document_text(resolved_path)
+                                if doc_text:
+                                    augmented_followup += f"\n\n### Attached Document: {att_record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
+                            elif att_record.get("is_image"):
+                                augmented_followup += f"\n\n### Attached Image: {att_record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
+                    task.setdefault("attachments", []).extend(new_safe)
+                task["requests"] = task.get("requests", [task["prompt"]]) + [augmented_followup]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
                 task["turn_start_patch"] = Workspace(task["workspace"]).patch(validate="branch_run" in task)
                 self.event(task, "user", "You", followup.strip())
@@ -1420,6 +1474,8 @@ class Engine:
         workspace = Workspace(task["workspace"])
         previous = task["checkpoints"][-1].get("feedback", "") if task["checkpoints"] else ""
         summary = {"original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "latest_message": task.get("requests", [task["prompt"]])[-1], "files": workspace.list_files()[:500], "current_diff": workspace.patch(validate="branch_run" in task)[:30000], "last_review_feedback": previous, "check_command": task["check_command"], "web_urls": sorted(allowed_urls(task))[:80]}
+        if task.get("attachments"):
+            summary["attachments"] = [{"id": a.get("id"), "filename": a.get("filename"), "mime_type": a.get("mime_type"), "path": a.get("path"), "is_image": a.get("is_image", False)} for a in task["attachments"]]
         summary.update(project_brief=project_context.brief(task), continuation_record=project_context.continuation(task))
         carto = self.carto.context(task["source"], task["workspace"])
         if carto["status"] != "disabled": summary["carto"] = carto
@@ -2549,6 +2605,12 @@ class Engine:
             result=check_output.read(self.store,task["id"],**args)
             task["tool_actions"]+=1
             self.event(task,"tool","read check output",{"arguments":args,"result":result})
+            return result
+        if name == "inspect_image":
+            from .vision import inspect_image_tool
+            result = inspect_image_tool(self, task, args)
+            task["tool_actions"] += 1
+            self.event(task, "tool", "inspect image", {"arguments": args, "result": result})
             return result
         if name == "update_working_state":
             from .working_state import update
