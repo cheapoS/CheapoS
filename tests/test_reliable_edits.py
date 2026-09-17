@@ -171,6 +171,22 @@ class ReliableEditsTests(unittest.TestCase):
             self.assertFalse(msg.get("reasoning_fallback", False))
             self.assertEqual(msg["content"], "Here is the answer.")
 
+        # Case 3: Outgoing messages strip internal reasoning_fallback flag before sending to provider
+        messages_with_fallback = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "thinking output", "reasoning_fallback": True}
+        ]
+        with patch('cheapos.providers.build_opener') as opener:
+            mock_resp = MagicMock()
+            mock_resp.headers.get_content_type.return_value = 'application/json'
+            mock_resp.read.return_value = json.dumps(mock_data_content).encode()
+            opener.return_value.open.return_value.__enter__.return_value = mock_resp
+            provider._complete(messages_with_fallback, [], 128)
+            sent_req = opener.return_value.open.call_args[0][0]
+            sent_body = json.loads(sent_req.data.decode())
+            self.assertNotIn("reasoning_fallback", sent_body["messages"][1])
+            self.assertEqual(sent_body["messages"][1]["content"], "thinking output")
+
     def test_engine_reasoning_fallback_does_not_halt_to_awaiting_reply(self):
         state_dir = Path(self.temp_dir) / "state"
         engine = Engine(state_dir, fixture_delay=0)

@@ -243,7 +243,8 @@ class ChatProvider:
         return self._complete(messages, tools, max_tokens, emit, stopped, timeout_seconds=30, stream_seconds=60, brief=True)
 
     def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False, timeout_seconds=REQUEST_TIMEOUT_SECONDS, stream_seconds=600, brief=False, tool_choice=None):
-        body = {"model": self.config["model"], "messages": messages, "stream": emit is not None}
+        clean_messages = [{k: v for k, v in m.items() if k != 'reasoning_fallback'} for m in messages]
+        body = {"model": self.config["model"], "messages": clean_messages, "stream": emit is not None}
         if max_tokens is not None:
             if self.config.get("reasoning") and max_tokens < 16384 and (self.config.get("input_rate") or 0) == (self.config.get("output_rate") or 0) == 0:
                 body["max_tokens"] = 16384

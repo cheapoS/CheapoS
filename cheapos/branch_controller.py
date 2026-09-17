@@ -686,6 +686,9 @@ class BranchController:
             if run.get('target_update'):
                 raise ValueError('A branch update is saved. Open Review changes and choose Update branch & recheck to finish it.')
             task.pop('recovery_blocked', None)
+            if task.get('error_code') == 'routing_unavailable':
+                from . import progress
+                progress.state(task)['handoffs'] = 0
             self.engine.store.save(task)
             from .model_pool import observe_completions
             observe_completions(self.engine.gateway.pool,task)
