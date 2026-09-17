@@ -178,6 +178,36 @@ class UploadStorageTests(LocalCase):
         self.assertIn("### Attached Image: photo.png", reloaded["requests"][-1])
 
 
+    def test_continue_message_preserves_attachments(self):
+        content = b"Notes content for task continuation"
+        b64_content = base64.b64encode(content).decode("ascii")
+        record = save_upload(self.engine.store.root, "notes.txt", f"data:text/plain;base64,{b64_content}")
+
+        # 1. engine.steer with "continue" and attachments preserves attachments
+        base_task = self.fixture(paid=True)
+        base_task["demo"] = False
+        base_task["providers"] = {"worker": dict(CONFIG), "reviewer": dict(CONFIG)}
+        self.engine.store.save(base_task)
+        res = self.engine.steer(base_task["id"], "continue", attachments=[record])
+        steered_task = self.engine.store.get(base_task["id"])
+        self.assertEqual(len(steered_task.get("attachments", [])), 1)
+        self.assertEqual(steered_task["attachments"][0]["filename"], "notes.txt")
+
+        # 2. branch_controller.message with "continue" and attachments preserves attachments
+        branch_task = self.fixture(paid=True)
+        branch_task["branch_run"] = {
+            "id": "br-test-1",
+            "status": "paused",
+            "items": [{"id": "item-1", "title": "Work", "instructions": "do work", "acceptance_criteria": [], "required_checks": [], "status": "running"}],
+            "current_item_id": "item-1"
+        }
+        self.engine.store.save(branch_task)
+        self.engine.branch.message(branch_task["id"], {"message": "continue", "attachments": [record]})
+        reloaded_task = self.engine.store.get(branch_task["id"])
+        self.assertEqual(len(reloaded_task.get("attachments", [])), 1)
+        self.assertEqual(reloaded_task["attachments"][0]["filename"], "notes.txt")
+
+
 class UploadHTTPTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

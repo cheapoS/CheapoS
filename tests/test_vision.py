@@ -1,6 +1,7 @@
 """Tests for vision sidecar and inspect_image tool execution."""
 
 import base64
+import copy
 from pathlib import Path
 
 from cheapos.uploads import save_upload
@@ -102,3 +103,54 @@ class VisionToolTests(LocalCase):
         self.assertEqual(res["analysis"], "Visual analysis completed")
         self.assertGreater(len(task.get("request_metrics", [])), 0)
         self.assertEqual(task["request_metrics"][-1]["purpose"], "vision")
+
+    def test_unattended_vision_preserves_multimodal_payload_and_query(self):
+        from cheapos.engine import Runtime
+
+        png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
+        record = save_upload(self.engine.store.root, "dialog.png", base64.b64encode(png_bytes).decode("ascii"))
+
+        captured_calls = []
+
+        class CapturingVisionProvider:
+            def complete_brief(self, messages, tools, maximum, emit=None, stopped=None):
+                captured_calls.append({"messages": copy.deepcopy(messages), "tools": tools})
+                return {"role": "assistant", "content": "Dialog analysis: OK button is green"}, {"prompt_tokens": 120, "completion_tokens": 40, "cost": 0.01}
+            def complete(self, messages, tools, maximum):
+                captured_calls.append({"messages": copy.deepcopy(messages), "tools": tools})
+                return {"role": "assistant", "content": "Dialog analysis: OK button is green"}, {"prompt_tokens": 120, "completion_tokens": 40, "cost": 0.01}
+
+        self.engine.provider_factory = lambda role, config: CapturingVisionProvider()
+
+        task = self.fixture(paid=True)
+        task["attachments"] = [record]
+        task["branch_run"] = {
+            "id": "branch-run-1",
+            "authorization_ref": "auth-unattended-trial-123",
+            "items": [{"id": "item-1", "title": "Check dialog UI", "instructions": "inspect dialog", "acceptance_criteria": [], "required_checks": [], "status": "running"}],
+            "current_item_id": "item-1",
+            "status": "running",
+        }
+        self.engine.store.save(task)
+
+        runtime = Runtime(task)
+        res = inspect_image_tool(self.engine, task, {"path": "dialog.png", "query": "Is the OK button green?"}, runtime=runtime)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["analysis"], "Dialog analysis: OK button is green")
+
+        # Verify the actual provider-bound messages preserved the multimodal payload
+        self.assertEqual(len(captured_calls), 1)
+        sent_messages = captured_calls[0]["messages"]
+        self.assertEqual(len(sent_messages), 1)
+        user_msg = sent_messages[0]
+        self.assertEqual(user_msg["role"], "user")
+        self.assertIsInstance(user_msg["content"], list)
+        self.assertEqual(len(user_msg["content"]), 2)
+        # Content item 0: text prompt with query
+        self.assertEqual(user_msg["content"][0]["type"], "text")
+        self.assertIn("Is the OK button green?", user_msg["content"][0]["text"])
+        # Content item 1: image_url
+        self.assertEqual(user_msg["content"][1]["type"], "image_url")
+        self.assertTrue(user_msg["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
+        # Ensure worker_system unattended policy text did NOT replace the user message
+        self.assertNotIn("Unattended work: implement ONLY", str(user_msg["content"]))

@@ -775,14 +775,6 @@ class BranchController:
                 raise ValueError('Provide guidance of up to 8,000 characters')
         elif len(message.strip()) > 8000:
             raise ValueError('Provide guidance of up to 8,000 characters')
-        from .continuation_policy import is_continue
-        if is_continue(message):
-            from .branch_operator import continue_saved
-            with self.engine.lock:
-                task = self.engine.store.get(task_id)
-                self.engine.event(task, 'user', 'You', message.strip())
-                self.engine.store.save(task)
-            return continue_saved(self, task_id)
         safe_attachments = []
         augmented_message = message.strip()
         if attachments:
@@ -808,13 +800,27 @@ class BranchController:
                             augmented_message += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
                     elif record.get("is_image"):
                         augmented_message += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
+        from .continuation_policy import is_continue
+        if is_continue(message):
+            from .branch_operator import continue_saved
+            with self.engine.lock:
+                task = self.engine.store.get(task_id)
+                if safe_attachments:
+                    existing_ids = {a.get("id") for a in task.get("attachments", []) if isinstance(a, dict) and a.get("id")}
+                    to_add = [a for a in safe_attachments if a.get("id") not in existing_ids] if existing_ids else safe_attachments
+                    task.setdefault('attachments', []).extend(to_add)
+                self.engine.event(task, 'user', 'You', message.strip())
+                self.engine.store.save(task)
+            return continue_saved(self, task_id)
 
         with self.engine.lock:
             self.engine.require_active_task(task_id)
             runtime=self.engine.runtimes.get(task_id)
             task=runtime.task if runtime and runtime.thread and runtime.thread.is_alive() else self.engine.store.get(task_id)
             if safe_attachments:
-                task.setdefault('attachments', []).extend(safe_attachments)
+                existing_ids = {a.get("id") for a in task.get("attachments", []) if isinstance(a, dict) and a.get("id")}
+                to_add = [a for a in safe_attachments if a.get("id") not in existing_ids] if existing_ids else safe_attachments
+                task.setdefault('attachments', []).extend(to_add)
             run=state.require_supported(task['branch_run'])
             if run.get('target_update'): raise ValueError('Finish the saved branch update: open Review changes, then Update branch & recheck.')
             if task.get('planning_request') and not run.get('authorization_ref'):

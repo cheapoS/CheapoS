@@ -984,6 +984,28 @@ class Engine:
                     return task
             from .continuation_policy import is_continue, record
             followup = (changes or {}).get("message")
+            new_attachments = (changes or {}).get("attachments") or []
+            new_safe = []
+            if new_attachments:
+                from .uploads import extract_document_text, get_upload_record
+                for att in new_attachments:
+                    if not isinstance(att, dict):
+                        continue
+                    upload_id = att.get("id")
+                    filename = att.get("filename") or att.get("name", "")
+                    record_att = get_upload_record(self.store.root, upload_id, filename) if upload_id else None
+                    if not record_att and att.get("path"):
+                        cand = Path(att["path"]).resolve()
+                        uploads_root = (self.store.root / "uploads").resolve()
+                        if cand.is_file() and cand.is_relative_to(uploads_root):
+                            record_att = get_upload_record(self.store.root, cand.parent.name, cand.name)
+                    if record_att:
+                        new_safe.append(record_att)
+                if new_safe:
+                    existing_ids = {a.get("id") for a in task.get("attachments", []) if isinstance(a, dict) and a.get("id")}
+                    to_add = [a for a in new_safe if a.get("id") not in existing_ids] if existing_ids else new_safe
+                    task.setdefault("attachments", []).extend(to_add)
+                    self.store.save(task)
             if is_continue(followup) and task.get('status') not in {'ready', 'awaiting_reply'}:
                 followup = None
             if followup is None and not finish_review:
@@ -1066,32 +1088,17 @@ class Engine:
                 task.pop("pending_checkpoint", None)
                 task.pop("pending_review", None)
                 task.pop("steer_guidance", None)
-                new_attachments = (changes or {}).get("attachments") or []
                 augmented_followup = followup.strip()
-                new_safe = []
-                if new_attachments:
-                    from .uploads import extract_document_text, get_upload_record
-                    for att in new_attachments:
-                        if not isinstance(att, dict):
-                            continue
-                        upload_id = att.get("id")
-                        filename = att.get("filename") or att.get("name", "")
-                        record = get_upload_record(self.store.root, upload_id, filename) if upload_id else None
-                        if not record and att.get("path"):
-                            cand = Path(att["path"]).resolve()
-                            uploads_root = (self.store.root / "uploads").resolve()
-                            if cand.is_file() and cand.is_relative_to(uploads_root):
-                                record = get_upload_record(self.store.root, cand.parent.name, cand.name)
-                        if record:
-                            new_safe.append(record)
-                            resolved_path = Path(record["path"])
-                            if record.get("is_text") or record.get("is_pdf") or not record.get("is_image"):
-                                doc_text = extract_document_text(resolved_path)
-                                if doc_text:
-                                    augmented_followup += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
-                            elif record.get("is_image"):
-                                augmented_followup += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
-                    task.setdefault("attachments", []).extend(new_safe)
+                if new_safe:
+                    from .uploads import extract_document_text
+                    for record in new_safe:
+                        resolved_path = Path(record["path"])
+                        if record.get("is_text") or record.get("is_pdf") or not record.get("is_image"):
+                            doc_text = extract_document_text(resolved_path)
+                            if doc_text:
+                                augmented_followup += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
+                        elif record.get("is_image"):
+                            augmented_followup += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
                 task["requests"] = task.get("requests", [task["prompt"]]) + [augmented_followup]
                 task["active_role"] = "coordinator" if task.get("execution", {}).get("mode") == "delegate" else "worker"
                 task["turn_start_patch"] = Workspace(task["workspace"]).patch(validate="branch_run" in task)
@@ -1382,10 +1389,6 @@ class Engine:
                 raise ValueError("Use the Unattended run revision controls to change its authorized work.")
             if task.get("demo"):
                 raise ValueError("The demo uses scripted responses. Open a project to steer real tasks.")
-            from .continuation_policy import is_continue
-            if is_continue(cleaned):
-                started = self.start(task_id)
-                return {'steered':False,'running':True,'task':started}
             safe_attachments = []
             augmented_guidance = cleaned
             if attachments:
@@ -1410,7 +1413,16 @@ class Engine:
                                 augmented_guidance += f"\n\n### Attached Document: {record.get('filename')}\n```{resolved_path.suffix.lstrip('.')}\n{doc_text}\n```"
                         elif record.get("is_image"):
                             augmented_guidance += f"\n\n### Attached Image: {record.get('filename')}\n[Image file saved at {resolved_path}. Use inspect_image tool to analyze visual details.]"
-                task.setdefault("attachments", []).extend(safe_attachments)
+                if safe_attachments:
+                    existing_ids = {a.get("id") for a in task.get("attachments", []) if isinstance(a, dict) and a.get("id")}
+                    to_add = [a for a in safe_attachments if a.get("id") not in existing_ids] if existing_ids else safe_attachments
+                    task.setdefault("attachments", []).extend(to_add)
+
+            from .continuation_policy import is_continue
+            if is_continue(cleaned):
+                self.store.save(task)
+                started = self.start(task_id)
+                return {'steered':False,'running':True,'task':started}
 
             if developing(task):
                 if runtime and runtime.thread and runtime.thread.is_alive():
@@ -2367,11 +2379,12 @@ class Engine:
         if work_policy.read_only(task) and role != 'coordinator' and not purpose:
             messages = copy.deepcopy(messages)
             messages[0]['content'] += '\n' + work_policy.instruction('explanation')
-        if role == "worker" and execution_context.mode(task, role, purpose) == 'unattended':
+        if role == "worker" and not purpose and execution_context.mode(task, role, purpose) == 'unattended':
             messages = copy.deepcopy(messages)
             # Refresh controller policy on resume/handoff without rewriting user
             # requirements, repository text, or earlier evidence packets.
-            messages[0]['content'] = worker_system(task)
+            if messages and messages[0].get('role') == 'system':
+                messages[0]['content'] = worker_system(task)
         if role == "worker" and not purpose and task.get("branch_run",{}).get("current_item_id"):
             run=task['branch_run'];item=next(i for i in run['items'] if i['id']==run['current_item_id'])
             messages=copy.deepcopy(messages)

@@ -464,9 +464,11 @@ function renderComposerAttachments() {
 
 async function uploadFiles(files) {
   if (!files || !files.length) return;
+  const targetKey = draftKey();
+  saveDraft();
+  state.draftAttachments ||= new Map();
   const fileArray = Array.from(files);
   const maxBytes = 20 * 1024 * 1024;
-  if (!state.composerAttachments) state.composerAttachments = [];
   for (const file of fileArray) {
     if (file.size > maxBytes) {
       toast(`File "${file.name}" exceeds the 20 MB size limit.`);
@@ -484,7 +486,7 @@ async function uploadFiles(files) {
         data: dataUrl,
         mime_type: file.type || ''
       });
-      state.composerAttachments.push({
+      const record = {
         id: res.id,
         filename: res.filename || res.name || file.name,
         name: res.name || res.filename || file.name,
@@ -496,14 +498,23 @@ async function uploadFiles(files) {
         is_image: Boolean(res.is_image),
         is_pdf: Boolean(res.is_pdf),
         is_text: Boolean(res.is_text)
-      });
-      saveDraft();
+      };
+      const existing = state.draftAttachments.get(targetKey) || [];
+      const updated = [...existing, record];
+      state.draftAttachments.set(targetKey, updated);
+      if (draftKey() === targetKey) {
+        state.composerAttachments = [...updated];
+        if (typeof renderComposerAttachments === 'function') renderComposerAttachments();
+        renderComposer();
+      }
     } catch (err) {
       toast(err.message || 'Upload failed');
     }
   }
-  renderComposerAttachments();
-  renderComposer();
+  if (draftKey() === targetKey) {
+    if (typeof renderComposerAttachments === 'function') renderComposerAttachments();
+    renderComposer();
+  }
 }
 
 function renderComposer() {
@@ -737,6 +748,13 @@ function bindProjectManagerControls() {
     if(!name){projectManagerError('Provide a project name');return;}
     formAction(form,async()=>{
       const created=await api('/projects/create',{name,parent,init_git:initGit});
+      if(created.git===false){
+        const after=projectManagerAfter;projectManagerAfter=null;
+        closeProjectManager();
+        toast(`Created directory "${created.name||name}". Initialize git to open as a project.`);
+        if(after)after();
+        return;
+      }
       const project=await api('/projects',{repository:created.path});
       const after=projectManagerAfter;projectManagerAfter=null;
       closeProjectManager();
