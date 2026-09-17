@@ -14,19 +14,21 @@ def capture(run):
     base=work.source_git(source,'merge-base',old,target)
     names=set(conflicts)
     names.update(n.decode() for n in work.source_git(source,'diff','--name-only','--no-renames','-z',base,target,binary=True).split(b'\0') if n)
-    if len(names)>100:raise ValueError('This merge affects more than 100 files; split the integration into smaller tasks')
+    if len(names)>100:raise UnsupportedIntegration('context_size', sorted(names), 'Merge evidence exceeds 100 files; preserve these versions for external resolution.')
     manifests={key:{entry['path']:entry for entry in work._manifest(source,sha)[0]} for key,sha in {'base':base,'task':old,'target':target,'suggested':tree}.items()}
     files={};modes={};total=0
     from .workspace import allowed_name
     for name in sorted(names):
-        if not allowed_name(name):raise ValueError('The merge includes a protected path; resolve that file outside this task')
+        if not allowed_name(name):raise UnsupportedIntegration('protected_path', [name], 'The merge includes a protected path: '+name)
         versions={}
         for version,manifest in manifests.items():
             entry=manifest.get(name)
-            text=work.source_git(source,'cat-file','blob',entry['oid'],binary=True).decode('utf-8') if entry else None
-            if text is not None and '\0' in text:raise ValueError('Binary merge conflicts need an explicit file choice')
+            if entry and entry['mode'] not in {'100644','100755'}:raise UnsupportedIntegration('file_mode', [name], 'Unsupported merge file mode: '+name)
+            try:text=work.source_git(source,'cat-file','blob',entry['oid'],binary=True).decode('utf-8') if entry else None
+            except UnicodeError:raise UnsupportedIntegration('binary', [name], 'Non-text merge version requires an explicit file decision: '+name) from None
+            if text is not None and '\0' in text:raise UnsupportedIntegration('binary', [name], 'Binary merge version requires an explicit file decision: '+name)
             total+=len((text or '').encode())
-            if total>600000:raise ValueError('Merge context is too large; split the integration into smaller tasks')
+            if total>600000:raise UnsupportedIntegration('context_size', sorted(names), 'Merge context exceeds 600,000 bytes; preserve the versions for external resolution.')
             versions[version]=text
         files[name]=versions
         modes[name]={v:m.get(name,{}).get('mode') for v,m in manifests.items()}
@@ -100,12 +102,14 @@ def start(controller, task_id, values):
         if run.get('development_authorization'):
             run['development_authorization'].update(authorization_ref=auth['id'],plan_digest=digest(contract['plan']))
         if run.get('conflict_resolution'):run.setdefault('conflict_resolution_history',[]).append(run['conflict_resolution'])
-        run['conflict_resolution']={'context':context,'context_digest':key,'item_id':item_id,'approved':True,'status':'working'}
+        run['conflict_resolution']={'context':context,'context_digest':key,'item_id':item_id,'approved':True,'status':'working','preparation_id':task.get('integration_preparation',{}).get('id')}
         run.setdefault('previous_readiness',[]).append(run.pop('readiness',None))
         run['final_evidence']={};run.pop('merge_preview',None);run.pop('merge_conflict',None)
         run['status']='paused';run['pause_reason']=None;run.pop('waiting_for_user',None)
         task.update(status='paused',error=None,error_code=None)
         for field in ('pending_review','pending_checkpoint'):task.pop(field,None)
+        if task.get('integration_preparation',{}).get('authorized'):
+            task['integration_preparation']['dispatched']=True
         engine.event(task,'conflict_resolution','Assigning merge conflicts to the agents',{'item_id':item_id,'files':context['conflicts']})
         engine.store.save(task)
     return controller.resume(task_id,{})
@@ -180,3 +184,10 @@ def apply_version(task, path, version):
         finally:
             if os.path.exists(temporary):os.unlink(temporary)
     return {'path':path,'version':version,'deleted':text is None,'guidance':'Inspect the result and resolve any suggested conflict markers with the normal edit tools, then run the authorized checks and request review.'}
+
+
+class UnsupportedIntegration(ValueError):
+    def __init__(self, code, paths, message):
+        self.code='unsupported_'+code
+        self.paths=paths
+        super().__init__(message)

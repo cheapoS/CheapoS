@@ -107,6 +107,8 @@ class BranchController:
 
     def prepare(self, values, planning_task=None):
         with self.engine.lock:
+            keep_up_to_date=values.get('keep_up_to_date',False)
+            if type(keep_up_to_date) is not bool:raise ValueError('Keep up to date must be a boolean')
             plan=state.validate_plan(values.get('plan'))
             plan.setdefault('continue_independent',True)
             plan['limits']=run_limits(plan['limits'],len(plan['items']))
@@ -161,6 +163,8 @@ class BranchController:
                                      'worker_turns':200,'iterations':20,'reviewer_tokens':limits['reviewer_tokens'],'check_seconds':limits['check_seconds'],'output_tokens':limits['output_tokens']}},
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id)
             task['branch_run']=run
+            run['integration_policy']={'keep_up_to_date':keep_up_to_date,'target_ref':mapping['target_ref'],'target_tip':work._tip(mapping['source'],mapping['target_ref'])}
+            task['integration_policy']=copy.deepcopy(run['integration_policy'])
             run['test_policy_version']=1
             if planning_task:
                 for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
@@ -192,6 +196,8 @@ class BranchController:
 
     def contract(self, task):
         run=task['branch_run']
+        if run.get('integration_policy')!=task.get('integration_policy'):
+            raise ValueError('Task integration authority changed')
         from .branch_completion import authorization_run
         # Defaults configure new work. Once approved, this run owns a captured
         # model policy; changing global role defaults must not invalidate it.
@@ -841,7 +847,7 @@ class BranchController:
             if old['status']!='awaiting_authorization' or old.get('authorization'):
                 raise ValueError('Only an unstarted proposal can be edited')
             self.engine.admission.require_idle(task_id)
-            allowed={'plan','repository','base_ref','target_ref','feature_ref','prompt','inputs'}
+            allowed={'plan','repository','base_ref','target_ref','feature_ref','prompt','inputs','keep_up_to_date'}
             if not isinstance(values,dict) or set(values)-allowed:
                 raise ValueError('Unknown proposal edit field')
             if values.get('prompt',old['original_request'])!=old['original_request'] or values.get('inputs',old['inputs'])!=old['inputs']:
@@ -886,6 +892,10 @@ class BranchController:
             run.update(plan_revision=old['plan_revision']+1,workspace_mapping=mapping,authorization_workspace=copy.deepcopy(mapping),
                        model_policy=policy,check_scope=scopes)
             state.transition(run,'awaiting_authorization')
+            keep_up_to_date=values.get('keep_up_to_date',old.get('integration_policy',{}).get('keep_up_to_date',False))
+            if type(keep_up_to_date) is not bool:raise ValueError('Keep up to date must be a boolean')
+            run['integration_policy']={'keep_up_to_date':keep_up_to_date,'target_ref':mapping['target_ref'],'target_tip':work._tip(mapping['source'],mapping['target_ref'])}
+            task['integration_policy']=copy.deepcopy(run['integration_policy'])
             task['branch_run']=run;task['check_command']=commands[0]
             limits=run['limits']
             task['limits']=limits_from({'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),

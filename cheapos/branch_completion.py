@@ -167,11 +167,14 @@ def preview(controller, task_id, values=None):
             blocker = str(error)
 
         manifest = readiness['manifest']
+        from .integration_preparation import readiness as integration_readiness
+        typed = integration_readiness(controller.engine, task_id)
         return {**proposal, 'preview_id':proposal['proposal_id'], 'manifest':{k:v for k,v in manifest.items() if k not in {'diff','chunks','requirements'}}, 'diff':manifest['diff'][:20000],
                 'next_cursor':20000 if len(manifest['diff'])>20000 else None, 'merge_available':blocker is None, 'blocker':blocker, 'target_ref':manifest['target_ref'],
                 'files':manifest['files'], 'commits':manifest['commits'], 'diff_length':len(manifest['diff']),
                 'base_sha':manifest['base_sha'], 'feature_tip':manifest['feature_tip'], 'target_tip':manifest['target_tip'],
-                'update_available': bool(blocker) and run['status'] in {'paused','blocked','ready_for_merge'} and not run.get('merge_operation') and all(i['status'] in state.DONE for i in run['items']),
+                'integration_readiness':typed,
+                'update_available': 'update_resolve' in typed['actions'] and not run.get('merge_operation'),
                 'resolve_available':bool(run.get('merge_conflict')) and bool(blocker) and all(i['status'] in state.DONE for i in run['items']) and not run.get('target_update'),
                 'update_token':update_token(run)}
 
@@ -392,6 +395,8 @@ def update_branch(controller, task_id, values):
         task['status']='paused';task['error']=None;task['error_code']=None
         for key in ('pending_review','pending_checkpoint'):
             task.pop(key,None)
+        if task.get('integration_preparation',{}).get('authorized'):
+            task['integration_preparation']['dispatched']=True
         engine.event(task,'branch_updated','Task branch updated. Rechecking the combined changes before merge.',
                      {'target_tip':finished['target_tip'],'feature_tip':finished['new_tip']})
         engine.store.save(task)
