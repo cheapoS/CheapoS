@@ -680,3 +680,30 @@ class ProviderTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_list_directories(self):
+        # Create some directories and files to test listing
+        base_path = Path(self.temp.name)
+        (base_path / 'project1').mkdir()
+        (base_path / 'project2').mkdir()
+        (base_path / 'dir1').mkdir()
+        (base_path / 'dir1/file1.txt').touch()
+        
+        # Test listing base directory
+        # The LocalServer is initialized with self.temp, which includes 'state' directory as well.
+        status, _, body = self.request('GET', '/api/list-directories')
+        self.assertEqual(status, 200)
+        items = json.loads(body)
+        names = [item['name'] for item in items]
+        self.assertIn('project1', names)
+        
+        # Test listing subdirectory
+        status, _, body = self.request('GET', '/api/list-directories?path=' + str(base_path / 'dir1'))
+        self.assertEqual(status, 200)
+        items = json.loads(body)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['name'], 'file1.txt')
+        
+        # Test security: try to access outside base directory
+        status, _, _ = self.request('GET', '/api/list-directories?path=/')
+        self.assertEqual(status, 403)

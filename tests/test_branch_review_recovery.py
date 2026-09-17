@@ -59,6 +59,35 @@ class ItemReviewRecoveryTests(unittest.TestCase):
         engine.checks.assert_not_called();engine.file_tool.assert_not_called()
         branch_review.evidence.ready_receipt.assert_called_once()
 
+    def test_saved_large_inventory_continues_to_review_with_same_budget(self):
+        from cheapos.providers import reserve, reconcile
+        from tests.test_review_inventory import exchange
+        task, engine, runtime = self.fixture()
+        task.update(limits={'output_tokens':8192,'reviewer_tokens':200000,'dollars':0},
+                    usage={'reviewer':{'tokens':159110,'cost':0},'cost':0,
+                           'uncertain_requests':0,'estimated_requests':0},
+                    pending_review={'branch_candidate_id':'candidate','review_requests':5,'messages':exchange()})
+        before = copy.deepcopy(task)
+        def respond(rt, messages, tools, role):
+            self.assertEqual(role,'reviewer')
+            self.assertEqual(json.loads(messages[1]['content'])['diff'],'saved diff')
+            preview = json.loads(messages[3]['content'])
+            self.assertEqual(preview['file_count'],900)
+            self.assertIn(preview['context_reference'],task['context_evidence'])
+            reservation = reserve(task, {'input_rate':0,'output_rate':0}, messages, tools, role)
+            self.assertLessEqual(reservation['tokens'],40890)
+            reconcile(task, {'input_rate':0,'output_rate':0}, reservation,
+                      {'prompt_tokens':1000,'completion_tokens':500})
+            return self.approval()
+        engine.request.side_effect = respond
+        self.assertEqual(branch_review.checkpoint(engine,runtime,{})['decision'],'APPROVE')
+        self.assertEqual(task['status'],'approved')
+        self.assertEqual(task['limits'],before['limits'])
+        self.assertEqual(task['checks'],before['checks'])
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+        engine.request.assert_called_once()
+        branch_review.evidence.ready_receipt.assert_called_once()
+
     def test_resume_old_exhausted_review_switches_and_preserves_valid_rejection(self):
         task, engine, runtime = self.automatic_fixture()
         task['pending_review'] = {'branch_candidate_id': 'candidate', 'review_requests': 7,

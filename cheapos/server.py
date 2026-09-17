@@ -144,6 +144,28 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply(engine.gateway.catalog())
             elif path == "/api/role-mappings":
                 self.reply(engine.role_mappings())
+            elif path == "/api/list-directories":
+                query_params = parse_qs(urlsplit(self.path).query)
+                requested_path = query_params.get("path", [str(self.server.directory)])[0]
+                base_dir = self.server.directory
+                try:
+                    requested_path_obj = Path(unquote(requested_path))
+                    if requested_path_obj.is_absolute():
+                        target_path = requested_path_obj.resolve()
+                    else:
+                        target_path = (base_dir / requested_path_obj).resolve()
+                        
+                    if not str(target_path).startswith(str(base_dir)):
+                        self.reply({"error": "Access denied"}, 403)
+                    elif not target_path.is_dir():
+                        self.reply({"error": "Not a directory"}, 400)
+                    else:
+                        items = []
+                        for item in target_path.iterdir():
+                            items.append({"name": item.name, "is_dir": item.is_dir()})
+                        self.reply(sorted(items, key=lambda x: (not x["is_dir"], x["name"])))
+                except Exception as e:
+                    self.reply({"error": str(e)}, 500)
             elif path == "/api/role-mappings/effective":
                 query_params = parse_qs(urlsplit(self.path).query)
                 project = query_params.get("project", [None])[0]
@@ -232,6 +254,35 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     raise ValueError('Choose a registered project')
                 if 'enabled' in values: engine.carto.configure(source, values['enabled'])
                 result = {**engine.carto.status(source), 'index':engine.carto.context(source,source,rebuild=values.get('rebuild') is True)}
+            elif path == "/api/projects/create":
+                name = values.get("name")
+                parent = values.get("parent", ".")
+                if not name or not isinstance(name, str):
+                    self.reply({"error": "Invalid name"}, 400)
+                    return
+                base_dir = self.server.directory
+                try:
+                    parent_path = Path(unquote(parent))
+                    if parent_path.is_absolute():
+                         target_dir = parent_path.resolve() / name
+                    else:
+                         target_dir = (base_dir / parent_path / name).resolve()
+                    
+                    if not str(target_dir).startswith(str(base_dir)):
+                        self.reply({"error": "Access denied"}, 403)
+                        return
+                    elif target_dir.exists():
+                        self.reply({"error": "Already exists"}, 400)
+                        return
+                    else:
+                        os.makedirs(target_dir)
+                        if values.get("init_git", False):
+                            from cheapos.workspace import git
+                            git(target_dir, "init")
+                        result = {"path": str(target_dir)}
+                except Exception as e:
+                    self.reply({"error": str(e)}, 500)
+                    return
             elif path == "/api/projects/preview":
                 result = engine.previews.settings(values)
             elif path == "/api/projects/hide":

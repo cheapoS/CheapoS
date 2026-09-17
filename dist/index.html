@@ -103,4 +103,29 @@
     </div>
   </div>
 </dialog>
+  <dialog class="modal project-manager-modal" id="project-manager-modal" aria-label="Project Manager">
+    <div class="modal-inner">
+      <div class="modal-header">
+        <span>PROJECT MANAGER</span>
+        <button class="icon-btn" id="project-manager-close" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-tabs">
+        <button class="tab active" data-view="open">Open Existing</button>
+        <button class="tab" data-view="create">Create New</button>
+      </div>
+      <div class="modal-content" id="project-manager-content">
+        <section class="project-view" id="project-open">
+          <div class="directory-list" id="directory-list"></div>
+        </section>
+        <section class="project-view hidden" id="project-create">
+          <form id="create-project-form">
+            <input type="text" id="new-project-name" placeholder="Project name" required>
+            <input type="text" id="new-project-parent" placeholder="Parent path (default: .)" value=".">
+            <label><input type="checkbox" id="init-git"> Initialize Git</label>
+            <button type="submit">Create Project</button>
+          </form>
+        </section>
+      </div>
+    </div>
+  </dialog>
 </body></html>

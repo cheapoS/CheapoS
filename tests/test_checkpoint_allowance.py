@@ -206,3 +206,43 @@ class CheckpointAllowanceTests(unittest.TestCase):
         engine.request.assert_not_called()
         self.assertEqual(task['status'],'paused')
         self.assertEqual(task['error'],'Task stopped')
+
+    def test_budget_error_survives_worker_wrapper_for_branch_pause(self):
+        from cheapos import branch_pause
+        engine, runtime = self.setup_run(False)
+        task = runtime.task
+        task.update(status='running', branch_run={'schema_version':1,'id':'run','event_sequence':0,
+                    'events':[], 'status':'running','current_item_id':'5',
+                    'items':[{'id':'5','status':'reviewing'}]},
+                    request_metrics=[{'id':'blocked','role':'reviewer','model':'fixture/reviewer'}])
+        runtime.guard.side_effect = BudgetError('Request cannot fit', 'reviewer_tokens', 159110, 200000)
+        engine._run_until_pause(runtime)
+        self.assertEqual(task['status'],'budget_paused')
+        self.assertEqual(task['error_code'],'budget_exceeded')
+        engine.request.assert_not_called()
+        detail = branch_pause.apply(task, ValueError(task['error']))
+        self.assertEqual(detail['cause'],'exhausted_work')
+        self.assertEqual(detail['role'],'reviewer')
+        self.assertIn('159110',detail['explanation'])
+
+    def test_interactive_review_also_pages_large_inventories(self):
+        from cheapos.providers import reserve, reconcile
+        from tests.test_review_inventory import inventory
+        engine,runtime=self.setup_run(False)
+        runtime.task['limits'].update(output_tokens=8192, reviewer_tokens=200000, dollars=0)
+        runtime.task['usage']={'reviewer':{'tokens':159110,'cost':0},'cost':0,
+                               'uncertain_requests':0,'estimated_requests':0}
+        engine.file_tool.return_value=inventory()
+        def request(rt,messages,tools,role):
+            if engine.request.call_count==1:
+                return {'role':'assistant','tool_calls':[{'id':'listing','function':{'name':'list_files','arguments':'{}'}}]}
+            self.assertEqual(json.loads(messages[-1]['content'])['file_count'],900)
+            config={'input_rate':0,'output_rate':0}
+            reservation=reserve(runtime.task,config,messages,tools,role)
+            reconcile(runtime.task,config,reservation,{'prompt_tokens':1000,'completion_tokens':500})
+            return {'role':'assistant','tool_calls':[{'id':'decision','function':{'name':'review_decision',
+                    'arguments':json.dumps({'decision':'APPROVE','feedback':'Checked current source and verification.'})}}]}
+        engine.request=Mock(side_effect=request)
+        self.assertEqual(self.run_checkpoint(engine,runtime)['decision'],'APPROVE')
+        self.assertEqual(engine.request.call_count,2)
+        self.assertEqual(runtime.task['limits']['reviewer_tokens'],200000)

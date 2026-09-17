@@ -22,6 +22,8 @@ def classify(error, context=None):
     scope = getattr(error, 'scope', None)
     if isinstance(error, InterruptedError) or code in {'cancelled', 'user_paused'}:
         kind, scope, retry, impact, action = 'cancelled', 'request', False, False, 'Resume only when requested.'
+    elif code in {'budget_exceeded', 'worker_turn_limit'}:
+        kind, scope, retry, impact, action = 'local_budget', 'request', False, False, 'The authorized task allowance cannot fit the request; retain work and inspect limits.'
     elif code in {'review_identity_conflict', 'review_identity_unknown'}:
         kind, scope, retry, impact, action = 'capability_mismatch', 'request', False, False, 'Choose a verified different reviewer before continuing.'
     elif code in {'http_401', 'http_403', 'client_key_rejected', 'http_402'}:

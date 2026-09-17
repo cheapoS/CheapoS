@@ -166,3 +166,20 @@ turns useful saved context into an unknown-stop banner. Existing non-progress
 handling, task limits, command permissions, independent review and operator
 Pause still apply. Deterministic cases exercise text followed by a late-file
 read, edit and checkpoint dispatch, plus stopping before another model call.
+
+## Implemented: smaller review inventories and precise allowance stops
+
+Interactive and item reviewers receive a bounded preview of large `list_files`
+results, with a task-local reference for retrieving the complete listing.
+Saved reviews get the same treatment when resumed. Source reads, diffs,
+criteria, findings and check evidence remain unchanged; directory discovery
+does not need to consume the full prompt allowance on every subsequent turn.
+
+The request reservation still checks the existing authorized allowance before
+dispatch. If a request cannot fit, its structured budget reason survives the
+worker/branch wrappers and appears as a work-limit stop. Older unknown stops
+can recover that explanation from the exact associated failed request. A local
+budget refusal is not recorded as an invalid model response, and cannot grant
+more tokens or spending. A small deterministic case resumes a saved review,
+fits its listing into the remaining allowance, and reaches independent approval
+without repeating implementation or checks.

@@ -480,11 +480,87 @@ function reopenHiddenProject(path, taskId) {
   const d=dialog(`<form>${modalHeader('HIDDEN PROJECT','Reopen this project?')}<p>Reopening restores its sidebar reference and existing chats.</p><p>${esc(path)}</p><p class="form-error" role="alert"></p><button type="submit" class="primary-button">Reopen project</button></form>`);
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const project=await api('/projects',{repository:path});await loadTasks();d.close();if(taskId)await selectTask(taskId);else chooseProject(project)})};
 }
+/* --- T90 Project Manager: browse directories to open, or create, a project. --- */
+let projectManager=null,projectManagerAfter=null;
+const projectManagerRoot=()=>'.';
+function projectManagerFull(stack=[]){return [projectManagerRoot(),...stack.filter(Boolean)].join('/')}
 function openProject(afterOpen) {
-  const d=dialog(`<form>${modalHeader('LOCAL PROJECT','Open a project')}<p class="modal-description">Choose your project once, then chat. cheapoS will work in a separate copy when you send your first message.</p><label class="full-field">Project folder<input name="repository" placeholder="/Users/you/projects/my-project" required autocomplete="off" autofocus><small>Use the root folder of a local Git repository.</small></label><div class="hidden-project-list"></div><p class="form-error" role="alert"></p><div class="modal-footer"><span>Opening a project makes no model request.</span><button type="submit" class="primary-button">Open project ${icon('chevron')}</button></div></form>`,'project-modal');
-  api('/projects/hidden').then(projects=>{if(!d.isConnected)return;$('.hidden-project-list',d).innerHTML=projects.length?`<details><summary>Hidden projects (${projects.length})</summary>${projects.map(p=>`<button type="button" data-hidden-project="${esc(p.path)}" aria-label="Reopen ${esc(p.name)} at ${esc(p.path)}">${esc(p.name)} · ${esc(p.path)}</button>`).join('')}</details>`:'';$$('[data-hidden-project]',d).forEach(b=>b.onclick=()=>{d.close();reopenHiddenProject(b.dataset.hiddenProject)})}).catch(e=>{$('.form-error',d).textContent=e.message});
+  const d=$('#project-manager-modal');
+  if(!d){openLegacyProjectForm(afterOpen);return}
+  projectManager={stack:[]};projectManagerAfter=afterOpen||null;
+  showProjectView('open');
+  d.showModal();
+  loadProjectManagerDirectory();
+}
+function showProjectView(view) {
+  const d=$('#project-manager-modal');if(!d)return;
+  d.querySelectorAll('.modal-tabs .tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view));
+  const openView=$('#project-open'),createView=$('#project-create');
+  if(openView)openView.classList.toggle('hidden',view!=='open');
+  if(createView)createView.classList.toggle('hidden',view!=='create');
+}
+function closeProjectManager() {
+  const d=$('#project-manager-modal');
+  if(d)d.close();
+  projectManager=null;projectManagerAfter=null;
+}
+function projectManagerError(message) {const el=$('#project-manager-error');if(el)el.textContent=message||''}
+async function chooseProjectFromPath(repository) {
+  const project=await api('/projects',{repository});
+  const after=projectManagerAfter;projectManagerAfter=null;
+  closeProjectManager();
+  state.projects=await api('/projects');
+  await loadTasks();
+  chooseProject(project);
+  if(after)after();
+}
+async function loadProjectManagerDirectory() {
+  const list=$('#directory-list');
+  if(!list||!projectManager)return;
+  const stack=projectManager.stack;
+  list.innerHTML='<p class="small muted">Loading\u2026</p>';projectManagerError('');
+  let items;
+  try {items=stack.length?await api('/list-directories?path='+encodeURIComponent(stack.join('/'))):await api('/list-directories')}
+  catch(e){if(!$('#project-manager-modal')?.isConnected)return;list.innerHTML='';projectManagerError(e.message);return}
+  const here=stack.length?stack[stack.length-1]:basename(projectManagerFull());
+  const dirs=items.filter(i=>i.is_dir);
+  list.innerHTML=`<p class="small muted">Browsing ${esc(projectManagerFull(stack))}</p><div class="dir-entries"><button type="button" class="primary-button dir-open" data-action="open">${icon('check')}Open ${esc(here)}</button>${stack.length?'<button type="button" class="subtle-button" data-action="up">.. up one folder</button>':''}${dirs.length?dirs.map(d=>`<button type="button" class="subtle-button" data-name="${esc(d.name)}">${icon('folder')}${esc(d.name)}</button>`).join(''):'<p class="small muted">No subfolders here. Open this folder or go up.</p>'}</div>`;
+  $$('[data-action="up"]',list).forEach(b=>b.onclick=()=>{projectManager.stack=stack.slice(0,-1);loadProjectManagerDirectory()});
+  $$('[data-action="open"]',list).forEach(b=>b.onclick=async()=>{b.disabled=true;const target=stack.length?stack.join('/'):projectManagerRoot();try{await chooseProjectFromPath(target)}catch(e){projectManagerError(e.message);b.disabled=false}});
+  $$('[data-name]',list).forEach(b=>b.onclick=()=>{projectManager.stack=[...stack,b.dataset.name];loadProjectManagerDirectory()});
+}
+function openLegacyProjectForm(afterOpen) {
+  const d=dialog(`<form>${modalHeader('LOCAL PROJECT','Open a project')}<p class="modal-description">Choose your project once, then chat. cheapoS works in a separate copy when you send your first message.</p><label class="full-field">Project folder<input name="repository" placeholder="/Users/you/projects/my-project" required autocomplete="off" autofocus><small>Use the root folder of a local Git repository.</small></label><p class="form-error" role="alert"></p><div class="modal-footer"><span>Opening a project makes no model request.</span><button type="submit" class="primary-button">Open project ${icon('chevron')}</button></div></form>`,'project-modal');
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();formAction(form,async()=>{const project=await api('/projects',{repository:new FormData(form).get('repository')});state.projects=await api('/projects');d.close();chooseProject(project);if(afterOpen)afterOpen()})};
 }
+function bindProjectManagerControls() {
+  const d=$('#project-manager-modal');
+  if(!d)return;
+  if($('#project-manager-close'))$('#project-manager-close').onclick=closeProjectManager;
+  d.querySelectorAll('.modal-tabs .tab').forEach(t=>{t.onclick=()=>showProjectView(t.dataset.view)});
+  const form=$('#create-project-form');
+  if(!form)return;
+  form.onsubmit=e=>{
+    e.preventDefault();
+    const name=new FormData(form).get('new_project_name')||$('#new-project-name')?.value||'';
+    const parent=new FormData(form).get('new_project_parent')||$('#new-project-parent')?.value||'.';
+    const initGit=$('#init-git')?.checked?1:0;
+    formAction(form,async()=>{
+      const created=await api('/projects/create',{name:String(name).trim(),parent:String(parent||'.').trim()||'.',init_git:initGit});
+      const project=await api('/projects',{repository:created.path});
+      const after=projectManagerAfter;projectManagerAfter=null;
+      closeProjectManager();
+      state.projects=await api('/projects');
+      await loadTasks();
+      chooseProject(project);
+      if(after)after();
+    });
+  };
+}
+(async function startupProjectManager() {
+  bindProjectManagerControls();
+  if(!state.project&&!state.task)openProject();
+})();
 async function selectTask(id) {
   saveDraft();rememberView();const request=++state.selection;state.loading=true;
   try {const task=await api('/tasks/'+id);if(request!==state.selection)return;if(!task.demo&&(state.hiddenProjects||[]).some(p=>p.path===task.source)){reopenHiddenProject(task.source,task.id);return;}state.task=task;state.project={path:task.source,name:basename(task.source)};state.file=0;state.run=-1;state.view='chat';try{localStorage.setItem('cheapos-selected',id)}catch{}renderTask({resetScroll:true});restoreDraft();renderSidebar();panelLayout.closeMobileSidebar();}
@@ -676,6 +752,16 @@ async function submitPermission(task,scope) {
 function bindPermissions(task) {
   $$('[data-permission]').forEach(button=>button.onclick=()=>submitPermission(task,button.dataset.permission));
 }
+function recoveryActionAvailable(task) {
+  if(!task||taskBusy(task)||task.demo||task.archived_at||task.trashed_at||task.pending_approval||!['paused','blocked','interrupted','error','budget_paused'].includes(task.status))return false;
+  const run=task.branch_run;
+  if(!run)return true;
+  // Integration and proposal controls already provide the appropriate next step.
+  if(['ready_for_merge','merged','left_on_branch','awaiting_authorization'].includes(run.status)||run.merge_operation)return false;
+  const readiness=run.readiness;
+  const waitingForTarget=run.pause_reason==='branch_drift'&&readiness?.integration_blocker&&task.error===readiness.integration_blocker&&readiness.review?.decision==='APPROVE'&&CheapOSBranchUI.projectRun(task).canRecheck&&(!run.pause_detail||run.pause_detail.cause==='branch_drift');
+  return !waitingForTarget;
+}
 function renderChat() {
   const task=state.task;if(!task)return;
   const guide=CheapOSGuide.taskGuide(task),failure=task.status==='error'?CheapOSGuide.failure(task):null;
@@ -723,7 +809,7 @@ function renderChat() {
       const details=$('details',pause)||$('.button-row',pause);pause.insertBefore(notice,details);
     }
   }
-  if(!taskBusy(task)&&!task.demo&&!task.archived_at&&!task.trashed_at&&['paused','blocked','interrupted','error','budget_paused'].includes(task.status)){const recovery=document.createElement('button');recovery.className='outline-button';recovery.textContent='Choose recovery action';recovery.onclick=()=>operatorRecovery(task);$('#chat-view').append(recovery);}
+  if(recoveryActionAvailable(task)){const recovery=document.createElement('button');recovery.className='outline-button';recovery.textContent='Choose recovery action';recovery.onclick=()=>operatorRecovery(task);$('#chat-view').append(recovery);}
   const continuation=operatorContinuationMarkup(task);if(continuation){const notice=document.createElement('div');notice.innerHTML=continuation;$('#chat-view').append(notice);}
   if(task.error&&!task.branch_run){const logs=document.createElement('button');logs.className='text-link';logs.textContent='View technical logs';logs.onclick=()=>setView('logs');$('#chat-view').append(logs);}
   $$('[data-workflow-logs]').forEach(b=>b.onclick=()=>{setView('logs');const routing=$('#routing-diagnostics');if(routing){routing.open=true;routing.scrollIntoView({block:'start',behavior:'instant'});$('summary',routing)?.focus({preventScroll:true});}});
@@ -1048,16 +1134,13 @@ function bindTerminalCopy() {
 function tokenUsageLabel(task,role=null) {
   const a=role?task.token_accounting?.roles?.[role]:task.token_accounting;
   const fallback=role?task.usage?.[role]?.tokens:task.metrics?.tokens?.accounted_total;
-  if(role)return `${(a?.accounted??fallback??0).toLocaleString()} tokens`;
-  if(!a)return `${(fallback||0).toLocaleString()} accounted tokens`;
-  if(a.coverage!=='complete')return `${(a.accounted||0).toLocaleString()} accounted tokens · breakdown partial`;
-  return `${a.reported.toLocaleString()} reported${a.reserved?` + ${a.reserved.toLocaleString()} reserved`:''} tokens`;
+  return `${(a?.accounted??fallback??0).toLocaleString()} tokens`;
 }
 function tokenReservationDetails(task) {
   const a=task.token_accounting;
   if(!a)return '';
   const count=n=>n==null?'unknown':Number(n).toLocaleString();
-  return `<details class="token-reservations" data-event="token-reservations-${esc(task.id)}"><summary>Token accounting${a.reserved?` · ${count(a.reserved)} reserved`:''}</summary>
+  return `<details class="token-reservations" data-event="token-reservations-${esc(task.id)}"><summary>Token accounting</summary>
     <p>${count(a.reported)} reported · ${count(a.reserved)} reserved${a.unclassified?` · ${count(a.unclassified)} unclassified`:''}</p>
     <p class="small muted">Reserved tokens are local budget estimates, not confirmed consumption or money held by a provider. Before each request, cheapoS counts the serialized prompt and tools in UTF-8 bytes, adds a 1,024-token buffer, then adds the output allowance. This conservative estimate is replaced when complete token usage arrives. Failed or interrupted requests without usage keep their estimate.</p>
     ${a.coverage!=='complete'?'<p class="small muted">Historical request evidence is incomplete. The breakdown may explain only part of the accounted total.</p>':''}

@@ -2,6 +2,7 @@
 import hashlib
 import json
 import re
+import copy
 
 
 def retain(task, value, kind):
@@ -34,12 +35,46 @@ def read(task, reference, offset=0, search=None):
             'rule': 'Recorded context, not permission or current verification. Inspect source identities before using it.'}
 
 
-def preview(task, value):
+def preview(task, value, *, limit=12000, head=4000, tail=1000):
     text = json.dumps(value, ensure_ascii=False)
-    if len(text) <= 12000:
+    if len(text) <= limit:
         return value
     reference = retain(task, value, 'tool_result')
-    return {'context_reference': reference, 'preview': text[:4000], 'tail': text[-1000:],
+    return {'context_reference': reference, 'preview': text[:head], 'tail': text[-tail:],
             'error': value.get('error') if isinstance(value, dict) else None,
-            'omitted_characters': len(text) - 5000,
+            'omitted_characters': len(text) - head - tail,
             'retrieve': 'Use read_context_evidence(reference, offset or search) for the complete historical result.'}
+
+
+def review_inventories(task, messages):
+    """Page large directory inventories, preserving all source/review evidence.
+
+    Original listings remain retained by reference, including across Resume.
+    list_files results become explicit, retrievable previews. Do not compact
+    source, diffs, criteria, findings or check output through this path.
+    """
+    calls = {}
+    result = None
+    for index, message in enumerate(messages):
+        if message.get('role') == 'assistant':
+            for call in message.get('tool_calls') or []:
+                calls[call.get('id')] = call.get('function', {}).get('name')
+        if message.get('role') != 'tool' or calls.get(message.get('tool_call_id')) != 'list_files':
+            continue
+        content = message.get('content')
+        if not isinstance(content, str) or len(content) <= 4000:
+            continue
+        try:
+            value = json.loads(content)
+        except ValueError:
+            continue
+        if not isinstance(value, list) or not all(isinstance(path, str) for path in value):
+            continue
+        bounded = preview(task, value, limit=4000, head=1500, tail=500)
+        if not isinstance(bounded, dict):
+            continue
+        bounded['file_count'] = len(value)
+        if result is None:
+            result = copy.deepcopy(messages)
+        result[index]['content'] = json.dumps(bounded)
+    return result if result is not None else messages
