@@ -75,6 +75,8 @@ def _readiness(engine, task_id):
             return blocked('review_required','Verify the already included work against the current project.',('update_resolve',))
         try:engine.reviewed_patch(task)
         except (ValueError,OSError) as error:return blocked('review_required',str(error))
+        baseline=task.get('reconciliation',{}).get('source_head') or task.get('integration_policy',{}).get('target_tip')
+        if baseline and baseline!=tip:return blocked('target_advanced','The project changed since this task copy was captured.',('update_resolve','keep_saved_work'))
         try:commits.prepare(task)
         except commits.ProjectConflict as error:return blocked('text_conflicts',str(error),('update_resolve','keep_saved_work'),error.files)
         except (ValueError,OSError) as error:return blocked('precondition',str(error))
@@ -165,7 +167,7 @@ def _drive(engine,task_id):
             branch_completion.update_branch(engine.branch,task_id,{'approved':True,'update_token':branch_completion.update_token(run)})
             return
         # A saved assignment/reconciliation is resumed, never created twice.
-        dispatched=op.get('dispatched') or (run and run.get('conflict_resolution',{}).get('preparation_id')==op['id']) or task.get('workspace_generation',0)>op['workspace_generation']
+        dispatched=op.get('dispatched') or (run and run.get('conflict_resolution',{}).get('preparation_id')==op['id'] and run.get('conflict_resolution',{}).get('status')!='integrated') or task.get('workspace_generation',0)>op['workspace_generation']
         if dispatched:
             if _finished(task):
                 current=readiness(engine,task_id)

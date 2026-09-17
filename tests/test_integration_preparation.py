@@ -110,3 +110,16 @@ class IntegrationPreparationTests(unittest.TestCase):
         engine.route_restore_stop.set()
         with patch.object(prep.threading,'Thread') as thread:prep.resume(engine,'task')
         thread.assert_not_called()
+
+    def test_already_included_dispatches_actual_engine_start_with_checkpoint(self):
+        from tests.test_finish_review import FinishReviewTests
+        from cheapos.engine import Engine
+        fixture=FinishReviewTests();fixture.setUp()
+        fixture.task.update(patch='',integration_preparation={'already_included':True})
+        fixture.engine.start=lambda task_id:Engine.start(fixture.engine,task_id)
+        with patch('cheapos.engine.Runtime'),patch('cheapos.engine.threading.Thread'):
+            prep._resume_interactive(fixture.engine,fixture.task)
+        self.assertEqual(fixture.task['status'],'running')
+        self.assertTrue(fixture.task['finish_review'])
+        self.assertIn('pending_checkpoint',fixture.task)
+        self.assertIn('saved',fixture.engine.runtimes)
