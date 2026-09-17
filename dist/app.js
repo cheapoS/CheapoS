@@ -399,7 +399,7 @@ function submissionAvailability(task=state.task,mode=branchUI?.getMode()||'inter
   const active=state.admission.active?.find(t=>t.mode===kind),other=state.tasks.find(t=>t.id===active?.task_id);
   return {...decision,task_id:active?.task_id,reason:decision.allowed?'':`${decision.reason||'Task capacity is full.'}${other?' Running: '+other.title+'.':''} This draft has not been sent.`};
 }
-function sendingHere(){return state.pendingSends.has(draftKey());}
+function sendingHere(){return state.pendingSends.has(draftKey())||Boolean(state.uploadSends?.has(draftKey()));}
 async function loadAdmission({render=true}={}){try{state.admission=await api('/admission');}catch(e){state.admission=e.status===404?{legacy:true}:null;}if(render)renderComposer();}
 function clearOwnedDraft(key,message,submittedAttachments=null){
   if(typeof branchUI!=='undefined')branchUI?.clearSubmittedDraft?.(key,message);
@@ -418,15 +418,19 @@ function clearOwnedDraft(key,message,submittedAttachments=null){
     }
   }
 }
+function pendingAttachmentsMarkup(attachments){
+  if(!attachments?.length)return '';
+  return `<div class="chat-message-attachments">${attachments.map(att=>`<div class="chat-attachment-item">${(att.is_image||att.media_type==='image'||att.mime_type?.startsWith('image/'))&&att.url?`<img class="chat-attachment-thumb" src="${esc(att.url)}" alt="${esc(att.name||att.filename)}">`:''}<span class="attachment-name">${esc(att.name||att.filename)}</span></div>`).join('')}</div>`;
+}
 function pendingMessageMarkup(){
   const pending=state.pendingMessages?.get(draftKey());if(!pending)return '';
   // A poll can observe server acceptance before the POST response arrives.
   if(state.task&&(state.task.requests||[]).length>pending.requests)return '';
-  return `<article class="chat-message from-user pending-message" aria-label="Message being sent"><div class="chat-author"><strong>You</strong><span role="status">Sending…</span></div><div class="chat-message-body">${messageText(pending.text)}</div><p class="small muted">Waiting for cheapoS to accept this message. Your draft is saved.</p></article>`;
+  return `<article class="chat-message from-user pending-message" aria-label="Message being sent"><div class="chat-author"><strong>You</strong><span role="status">Sending…</span></div><div class="chat-message-body">${messageText(pending.text)}</div>${pendingAttachmentsMarkup(pending.attachments)}<p class="small muted">Waiting for cheapoS to accept this message. Your draft is saved.</p></article>`;
 }
 function beginMessageSend(key,message){
   state.pendingMessages ||= new Map();state.sendErrors ||= new Map();
-  state.pendingMessages.set(key,{text:message,requests:(state.task?.requests||[]).length});
+  state.pendingMessages.set(key,{text:message,attachments:[...(state.composerAttachments||[])],requests:(state.task?.requests||[]).length});
   state.sendErrors.delete(key);state.pendingSends.add(key);saveDraft();
   if(state.task)renderChat();else renderHome();renderComposer();
   $('#view-container').scrollTop=$('#view-container').scrollHeight;
@@ -435,13 +439,15 @@ function renderComposerAttachments() {
   const container = $('#composer-attachments');
   if (!container) return;
   const list = state.composerAttachments || [];
-  if (!list.length) {
+  const sendingIds=new Set((state.pendingMessages?.get(draftKey())?.attachments||[]).map(a=>a.id));
+  if (!list.some(att=>!sendingIds.has(att.id))) {
     container.hidden = true;
     container.innerHTML = '';
     return;
   }
   container.hidden = false;
   container.innerHTML = list.map((att, idx) => {
+    if(sendingIds.has(att.id))return '';
     const isImg = att.media_type === 'image' || (att.mime_type && att.mime_type.startsWith('image/'));
     const sizeStr = att.size ? (att.size > 1048576 ? (att.size/1048576).toFixed(1)+' MB' : Math.round(att.size/1024)+' KB') : '';
     return `<div class="attachment-chip" data-idx="${idx}" title="${esc(att.name)}${sizeStr ? ' (' + sizeStr + ')' : ''}">
@@ -463,15 +469,24 @@ function renderComposerAttachments() {
   });
 }
 
-async function uploadFiles(files) {
-  if (!files || !files.length) return;
+function uploadFiles(files) {
+  if (!files || !files.length) return Promise.resolve(true);
   const targetKey = draftKey();
   saveDraft();
+  state.pendingUploads ||= new Map();
+  const pending=state.pendingUploads.get(targetKey)||new Set();
+  const upload=uploadFileBatch(files,targetKey);
+  pending.add(upload);state.pendingUploads.set(targetKey,pending);renderComposer();
+  return upload.finally(()=>{pending.delete(upload);if(!pending.size)state.pendingUploads.delete(targetKey);if(draftKey()===targetKey)renderComposer();});
+}
+async function uploadFileBatch(files,targetKey) {
   state.draftAttachments ||= new Map();
   const fileArray = Array.from(files);
   const maxBytes = 20 * 1024 * 1024;
+  let complete=true;
   for (const file of fileArray) {
     if (file.size > maxBytes) {
+      complete=false;
       toast(`File "${file.name}" exceeds the 20 MB size limit.`);
       continue;
     }
@@ -509,6 +524,7 @@ async function uploadFiles(files) {
         renderComposer();
       }
     } catch (err) {
+      complete=false;
       toast(err.message || 'Upload failed');
     }
   }
@@ -516,6 +532,7 @@ async function uploadFiles(files) {
     if (typeof renderComposerAttachments === 'function') renderComposerAttachments();
     renderComposer();
   }
+  return complete;
 }
 
 function renderComposer() {
@@ -540,7 +557,7 @@ function renderComposer() {
   $('#chat-input').disabled=sendingHere();
   $('#chat-input').placeholder=state.project?'Ask about your project or describe a change…':'Open a project to get started…';
   const availability=submissionAvailability(task);
-  const hasAttachments=Boolean((state.composerAttachments||[]).length);
+  const hasAttachments=Boolean((state.composerAttachments||[]).length||state.pendingUploads?.get(draftKey())?.size);
   if(busy){
     $('#chat-send').hidden=true;
     if($('#chat-steer')){
@@ -572,6 +589,7 @@ function renderComposer() {
   if(state.branchResumeStatus?.get(task?.id)?.status==='pending'){$('#composer-note').textContent='Your guidance is saved. Continuing from the current files…';send.setAttribute('aria-label','Continuing saved work');}
   else if(sending)$('#composer-note').textContent='Sending your message… Waiting for cheapoS to accept it. Your draft is saved.';
   else if(state.sendErrors?.has(draftKey()))$('#composer-note').textContent=state.sendErrors.get(draftKey())+' Your draft remains saved.';
+  if(state.pendingUploads?.get(draftKey())?.size)$('#composer-note').textContent=state.uploadSends?.has(draftKey())?'Uploading attachments… Your message will send when the upload finishes.':'Uploading attachments…';
   const stop=$('#chat-stop');
   stop.hidden=!busy&&!state.startup.busy;
   stop.disabled=pausing||state.stoppingStartup;
@@ -1425,8 +1443,9 @@ function coordinatorSettings(saved,models){
 }
 function canTakeOver(task){return Boolean(task&&!task.demo&&!task.archived_at&&!task.trashed_at&&['paused','error','budget_paused','blocked','interrupted'].includes(task.status)&&!task.pause_summary?.question&&task.branch_run?.pause_detail?.cause!=='essential_clarification'&&(!task.branch_run||task.branch_run.authorization_ref));}
 async function takeOverTask(task,message){
- if(!message||sendingHere())return;const key=draftKey(),selection=state.selection;beginMessageSend(key,message);
- try{const result=await api('/tasks/'+task.id+'/operator-recovery',{action:'takeover',approved:true,message});const saved=result.task||result;clearOwnedDraft(key,message);if(saved?.id&&state.selection===selection&&state.task?.id===task.id){state.task=saved;renderTask();}void refreshContext();}
+ const attachments=[...(state.composerAttachments||[])];
+ if((!message&&!attachments.length)||sendingHere())return;const key=draftKey(),selection=state.selection;beginMessageSend(key,message);
+ try{const result=await api('/tasks/'+task.id+'/operator-recovery',{action:'takeover',approved:true,message,attachments});const saved=result.task||result;clearOwnedDraft(key,message,attachments);if(saved?.id&&state.selection===selection&&state.task?.id===task.id){state.task=saved;renderTask();}void refreshContext();}
  catch(e){state.sendErrors.set(key,e.message);}
  finally{state.pendingMessages.delete(key);state.pendingSends.delete(key);if(state.selection===selection){renderChat();renderComposer();$('#chat-input').focus();}}
 }
@@ -1467,7 +1486,19 @@ function executionPreferences(initialTab='execution'){return scopedSettings(unde
 function chatLimits({defaults=false}={}){return scopedSettings(defaults?'defaults':undefined,'spending');}
 
 const submissionEntries=new Set();
-async function sendChat(){const owner=draftKey();if(submissionEntries.has(owner))return;submissionEntries.add(owner);try{await dispatchChat();}finally{submissionEntries.delete(owner);}}
+async function sendChat(){
+ const owner=draftKey(),selection=state.selection;
+ if(submissionEntries.has(owner))return;submissionEntries.add(owner);
+ try{
+  while(state.pendingUploads?.get(owner)?.size){
+   state.uploadSends ||= new Set();state.uploadSends.add(owner);renderComposer();
+   const results=await Promise.all([...state.pendingUploads.get(owner)]);
+   if(results.some(ok=>!ok)||draftKey()!==owner||state.selection!==selection)return;
+  }
+  state.uploadSends?.delete(owner);
+  await dispatchChat();
+ }finally{state.uploadSends?.delete(owner);submissionEntries.delete(owner);renderComposer();}
+}
 async function dispatchChat() {
   const task=state.task,busy=task&&taskBusy(task);
   if(sendingHere())return;
@@ -1806,7 +1837,7 @@ $('#chat-budget').onclick=chatLimits;
 $('#execution-choice').onclick=executionPreferences;
 $('#chat-input').oninput=()=>{saveDraft();renderComposer()};
 $('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};
-if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();
+if($('#chat-steer'))$('#chat-steer').onclick=()=>sendChat();
 $('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};
 $('#chat-stop').onclick=stopFromComposer;
 const attachBtn=$('#composer-attach');

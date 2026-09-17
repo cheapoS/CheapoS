@@ -34,14 +34,19 @@ def interactive(engine, task_id, values=None):
                     'can_revise':False,'models':model_choices(engine,task) if usable else [],
                     'reason':'Pause active work before changing its configuration.' if busy else ''}
         if not usable:raise ValueError('Pause active work or finish the pending commit before changing recovery settings')
-        if not isinstance(values,dict) or set(values)-{'action','message','model','instructions','approved','revision_token'}:raise ValueError('Invalid recovery action')
+        if not isinstance(values,dict) or set(values)-{'action','message','attachments','model','instructions','approved','revision_token'}:raise ValueError('Invalid recovery action')
         action=values.get('action')
+        if 'attachments' in values and action!='takeover':raise ValueError('Attachments require a takeover message')
         if action not in {'enable','takeover','retry','model'}:raise ValueError('Choose enable, retry or a worker model')
         if action in {'enable','takeover','model'} and values.get('approved') is not True:
             raise ValueError('Approve this recovery configuration change explicitly')
         if action not in {'enable','takeover'} and not enabled(task):raise ValueError('Enable development mode for this task first')
-        message=values.get('message') or 'continue'
+        attachments=values.get('attachments')
+        if attachments is not None and not isinstance(attachments,list):raise ValueError('Attachments must be a list')
+        message=values.get('message') or ('Inspect the attached file(s).' if attachments else 'continue')
         if not isinstance(message,str) or not 1<=len(message.strip())<=8000:raise ValueError('Enter a direction of up to 8,000 characters')
+        from .uploads import prepare_attachments, append_attachments
+        safe_attachments,augmented_message=prepare_attachments(engine.store.root,attachments,message.strip()) if attachments else ([],message.strip())
         if action=='model':
             if values.get('revision_token')!=revision:raise ValueError('The task changed. Refresh recovery choices before changing its worker.')
             selected=values.get('model')
@@ -80,15 +85,16 @@ def interactive(engine, task_id, values=None):
         engine.store.save(task)
         # A real operator request creates a new direction, preserving total usage.
         try:
-            started=engine.start(task_id,{'message':message.strip()})
+            started=engine.start(task_id,{'message':message.strip(),**({'attachments':safe_attachments} if attachments else {})})
             active=engine.runtimes[task_id].task
             active['operator_continue']={'status':'running','reason':'Continuing from saved files with your direction.'}
             engine.store.save(active)
             return {'task':engine.store.get(task_id),'operator_continue':active['operator_continue']}
         except ValueError as error:
             task=engine.store.get(task_id)
-            task['steer_guidance']=message.strip()
-            engine.event(task,'steer','You',message.strip())
+            append_attachments(task,safe_attachments)
+            task['steer_guidance']=augmented_message
+            engine.event(task,'steer','You',augmented_message)
             task['operator_continue']={'status':'blocked','reason':str(error)}
             engine.store.save(task)
             return {'task':task,'operator_continue':task['operator_continue']}

@@ -194,3 +194,79 @@ test('user message text hides attachment metadata notes from the chat body', () 
   const multi = 'look\n\n### Attached Image: a.png\n[Image file saved at /a.png.]\n\n### Attached Document: b.txt\n```\nhi\n```';
   assert.equal(c.stripAttachmentNotes(multi), 'look');
 });
+
+function deliveryFixture(status='awaiting_reply') {
+  const f=fixture([attachment('screenshot')]), nodes={'#chat-input':f.input,'#chat-form':{},'#chat-steer':{}}, calls=[];
+  Object.assign(f.state,{selection:1,project:{path:'/fixture'},preferences:{execution:{mode:'remote'}},
+    pendingMessages:new Map(),pendingSends:new Set(),sendErrors:new Map()});
+  f.state.task.status=status;f.state.task.requests=['original'];f.input.focus=()=>{};
+  Object.assign(f.c,{$:selector=>(nodes[selector]||={}),taskBusy:task=>task.status==='running',
+    branchUI:{interceptSubmit:async()=>false,restoreDraft(){}},submissionAvailability:()=>({allowed:true}),
+    messageText:String,renderChat(){},renderTask(){},renderHome(){},refresh:async()=>{},refreshContext:async()=>{},
+    toast(){},api:(path,body)=>new Promise((resolve,reject)=>calls.push({path,body,resolve,reject}))});
+  vm.runInContext(source.split('\n').find(line=>line.startsWith('function sendingHere()')),f.c);
+  vm.runInContext(source.slice(source.indexOf('function pendingMessageMarkup()'),source.indexOf('function renderComposerAttachments()')),f.c);
+  vm.runInContext(source.slice(source.indexOf('function canTakeOver('),source.indexOf('function checkCommandText(')),f.c);
+  vm.runInContext(source.slice(source.indexOf('const submissionEntries='),source.indexOf('async function boostHeadroom(')),f.c);
+  let delivery;
+  const send=f.c.sendChat;
+  f.c.sendChat=()=>{delivery=send();return delivery;};
+  for(const line of source.split('\n').filter(line=>line.startsWith("$('#chat-form').onsubmit=")||line.startsWith("$('#chat-input').onkeydown=")||line.startsWith("if($('#chat-steer'))$('#chat-steer').onclick=")))vm.runInContext(line,f.c);
+  return {...f,calls,send(method){
+    if(method==='enter')f.input.onkeydown({key:'Enter',preventDefault(){}});
+    else if(method==='update')nodes['#chat-steer'].onclick();
+    else nodes['#chat-form'].onsubmit({preventDefault(){}});
+    return delivery;
+  }};
+}
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+
+test('Send, Enter, takeover and Send update deliver the same image with immediate pending feedback',async()=>{
+  for(const [status,method] of [['awaiting_reply','click'],['awaiting_reply','enter'],['paused','click'],['paused','enter'],['running','update']]){
+    const f=deliveryFixture(status), pending=f.send(method);await tick();
+    assert.equal(f.calls.length,1);assert.equal(f.calls[0].body.message,'A draft');
+    assert.deepEqual(Array.from(f.calls[0].body.attachments,a=>a.id),['screenshot']);
+    assert.equal(f.calls[0].path,'/tasks/A/'+(status==='paused'?'operator-recovery':status==='running'?'steer':'message'));
+    assert.match(f.c.pendingMessageMarkup(),/<img[^>]*screenshot\.png/);
+    assert.match(f.c.pendingMessageMarkup(),/Sending…/);
+    f.c.renderComposerAttachments();assert.equal(f.c.$('#composer-attachments').hidden,true);
+    await f.send(method);assert.equal(f.calls.length,1);
+    f.calls[0].resolve({...f.state.task,status:'running'});await pending;
+    assert.equal(f.input.value,'');assert.equal(f.state.composerAttachments.length,0);
+    assert.equal(f.c.pendingMessageMarkup(),'');
+  }
+});
+
+test('failed takeover keeps the text and image draft, including attachment-only messages',async()=>{
+  const f=deliveryFixture('paused');f.input.value='';
+  const pending=f.send('click');await tick();
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].body.attachments[0].id,'screenshot');
+  f.calls[0].reject(Error('Disconnected'));await pending;
+  assert.equal(f.state.composerAttachments[0].id,'screenshot');
+  assert.equal(f.state.sendErrors.get('A'),'Disconnected');
+  assert.equal(f.c.pendingMessageMarkup(),'');
+  f.c.renderComposerAttachments();assert.equal(f.c.$('#composer-attachments').hidden,false);
+});
+
+test('Send waits for an in-flight upload and includes it without another Enter',async()=>{
+  const f=deliveryFixture();f.state.composerAttachments=[];
+  const upload=f.upload();await tick();
+  const pending=f.send('click');await tick();await f.send('enter');
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].path,'/upload');assert.equal(f.c.sendingHere(),true);
+  f.calls[0].resolve(attachment('uploaded'));await upload;await tick();
+  assert.equal(f.calls.length,2);assert.equal(f.calls[1].body.attachments[0].id,'uploaded');
+  f.calls[1].resolve({...f.state.task,status:'running'});await pending;
+  assert.equal(f.state.composerAttachments.length,0);
+});
+
+test('failed upload or switching chats while uploading never sends a partial or wrong-chat message',async()=>{
+  for(const switchChat of [false,true]){
+    const f=deliveryFixture();f.state.composerAttachments=[];
+    const upload=f.upload();await tick();const pending=f.send('click');await tick();
+    if(switchChat){f.switchTo('B');f.state.selection++;f.input.value='Other draft';f.calls[0].resolve(attachment('uploaded'));}
+    else f.calls[0].reject(Error('Upload failed'));
+    await upload;await pending;
+    assert.equal(f.calls.length,1);assert.equal(f.input.value,switchChat?'Other draft':'A draft');
+    if(switchChat){f.switchTo('A');assert.equal(f.state.composerAttachments[0].id,'uploaded');}
+  }
+});

@@ -1,6 +1,7 @@
 """Pure operator recovery contracts; no repositories, providers or waits."""
 import copy
 import threading
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -137,11 +138,18 @@ class BranchOperatorTests(unittest.TestCase):
         self.saved['branch_run']['check_scope']=[{'command':['python3','test.py']}]
         self.controller.validate_authority=Mock()
         self.controller.scopes=SimpleNamespace(prepare=Mock(return_value={'command':['python3','test.py'],'identity':'current'}),consent=Mock())
-        task=recover(self.controller,'task',{'action':'takeover','approved':True,'message':'Apply my correction now'})
+        from cheapos.uploads import save_upload
+        with tempfile.TemporaryDirectory() as directory:
+            self.engine.store.root=directory
+            record=save_upload(directory,'correction.png',b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR')
+            with self.assertRaisesRegex(ValueError,'Attachments must be a list'):
+                recover(self.controller,'task',{'action':'takeover','approved':True,'message':'Apply my correction now','attachments':'bad'})
+            self.assertFalse(enabled(self.saved))
+            task=recover(self.controller,'task',{'action':'takeover','approved':True,'message':'Apply my correction now','attachments':[record]})
         self.assertTrue(enabled(task))
         self.controller.scopes.consent.assert_called_once()
         self.assertEqual(self.controller.scopes.consent.call_args.args[1]['identity'],'current')
-        self.controller.message.assert_called_once_with('task',{'message':'Apply my correction now'})
+        self.controller.message.assert_called_once_with('task',{'message':'Apply my correction now','attachments':[record]})
 
     def test_final_review_redirect_reenters_same_runtime_without_pausing(self):
         from cheapos.branch_controller import BranchController
