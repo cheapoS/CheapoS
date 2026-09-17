@@ -613,6 +613,8 @@ class BranchController:
                 # Keep a complete plan when verification setup failed in prepare().
                 if not (saved_run.get('workspace_mapping') and saved_run.get('status')=='blocked' and saved_run.get('pause_reason')=='missing_setup'):
                     saved=task;saved['status']='paused';saved['branch_run']['status']='paused'
+                    if type(error).__name__=='ClarificationRequired':
+                        saved['branch_run']['waiting_for_user']=str(error)
                     branch_pause.apply(saved,error,cause='operator' if runtime.stop.is_set() else 'essential_clarification' if type(error).__name__=='ClarificationRequired' else None,stage='planning')
                 saved['stream']=None
                 self.engine.event(saved,'assistant','Planning needs attention',str(error) or saved['error'])
@@ -637,6 +639,7 @@ class BranchController:
         captured={k:v for k,v in run['inputs'].items() if k!='hash'}
         run['inputs']['hash']=_digest(captured)
         task['requests'].append(message)
+        run.pop('waiting_for_user', None)
         self.engine.event(task,'user','You',message)
         if not active:
             self.plan({**task['planning_request'],'planning_id':uuid.uuid4().hex},background=True,planning_task=task)

@@ -148,6 +148,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         saved = next(iter(self.engine.store.tasks.values()))
         self.assertEqual(saved['branch_run']['inputs']['prompt'], 'Keep the original utility')
         self.assertEqual(saved['branch_run']['inputs']['document']['contents'], 'Remove the original utility.')
+        self.assertEqual(saved['branch_run'].get('waiting_for_user'), 'Keep or remove the original utility?')
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
 
     def test_cancellation_after_inference_before_preparation_does_not_publish_proposal(self):
@@ -227,6 +228,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         task = self.engine.store.get(task_id)
         self.assertIn('Keep or remove', task['events'][-1]['detail'])
         self.assertEqual(task['status'], 'paused')
+        self.assertEqual(task['branch_run'].get('waiting_for_user'), 'Keep or remove the original utility?')
         limits = copy.deepcopy(task['branch_run']['limits'])
         (self.source / 'scope.md').write_text('Changed after capture; this must not replace the saved document.')
         self.provider.clarify = False; self.provider.release = threading.Event()
@@ -236,6 +238,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.provider.release.set(); runtime.thread.join(10)
         self.assertFalse(runtime.thread.is_alive())
         task = self.engine.store.get(task_id)
+        self.assertNotIn('waiting_for_user', task['branch_run'])
         self.assertEqual(len(self.engine.store.tasks), 1)
         self.assertEqual(task['branch_run']['status'], 'awaiting_authorization', task.get('error'))
         self.assertEqual(task['branch_run']['inputs']['document']['contents'], 'Remove the original utility.')
