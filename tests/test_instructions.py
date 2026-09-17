@@ -109,6 +109,16 @@ class InstructionCatalogTests(unittest.TestCase):
         recovered_ids = {r.id for r in recovered}
         self.assertIn("recovery.output_cap", recovered_ids)
 
+    def test_compact_edits_supersedes_output_cap(self):
+        """When both output_cap and compact_edits triggers fire, compact_edits takes precedence."""
+        combined = compose(role="worker", mode="unattended", triggers=["output_cap", "compact_edits"])
+        combined_ids = {r.id for r in combined}
+        self.assertIn("recovery.compact_edits", combined_ids)
+        self.assertNotIn("recovery.output_cap", combined_ids)
+        prompt = compose_prompt(role="worker", mode="unattended", triggers=["output_cap", "compact_edits"])
+        self.assertIn("replace_text is unavailable in this recovery", prompt)
+        self.assertNotIn("prefer a short exact replace_text", prompt)
+
     def test_boundary_firewall_audit(self):
         """Linter must detect when an external rule lacks required internal disambiguation."""
         bad_rule = InstructionRule(

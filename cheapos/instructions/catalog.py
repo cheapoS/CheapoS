@@ -283,6 +283,8 @@ RULES: List[InstructionRule] = [
         roles=("worker",),
         priority=85,
         state_triggers=("compact_edits",),
+        supersedes=("recovery.output_cap",),
+        incompatible_with=("recovery.output_cap",),
         text=(
             "An earlier edit response was too large or had malformed arguments; that invalid call was not executed.\n"
             "Continue from the current numbered files. Use replace_lines for an existing file: choose a small inclusive start_line/end_line range and send ONLY new_text. cheapoS tracks file versions automatically; do not supply hashes or ask the user for them. Do not copy old file contents into tool arguments. replace_text is unavailable in this recovery.\n"
