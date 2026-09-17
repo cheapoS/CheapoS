@@ -65,6 +65,20 @@ def compose_prompt(
     return render_instructions(rules)
 
 
+def active_branch_item(task: dict) -> Optional[dict]:
+    """Retrieve the currently active branch run item from task if present."""
+    if not isinstance(task, dict):
+        return None
+    run = task.get("branch_run")
+    if not isinstance(run, dict):
+        return None
+    current_id = run.get("current_item_id")
+    items = run.get("items")
+    if not isinstance(items, list):
+        return None
+    return next((i for i in items if isinstance(i, dict) and i.get("id") == current_id), None)
+
+
 def triggers_for_task(task: dict) -> List[str]:
     """Extract active instruction triggers from a cheapoS task dict."""
     triggers: List[str] = []
@@ -78,10 +92,24 @@ def triggers_for_task(task: dict) -> List[str]:
         triggers.append("loop_detected")
     if task.get("finish_review"):
         triggers.append("finish_review")
-    if task.get("review_repair"):
+    if task.get("full_suite_approved") or task.get("full_suite"):
+        triggers.append("full_suite_requested")
+
+    item = active_branch_item(task)
+    run = task.get("branch_run") if isinstance(task.get("branch_run"), dict) else {}
+    repair = (item.get("review_repair") if isinstance(item, dict) else None) or task.get("review_repair")
+
+    if repair and isinstance(repair, dict) and (repair.get("defects") or repair.get("finding_ids") or repair.get("candidate_id")):
         triggers.append("review_repair")
-    if task.get("review_disputes"):
+
+    ledger_findings = run.get("dispute_ledger", {}).get("findings", {}) if isinstance(run.get("dispute_ledger"), dict) else {}
+    unresolved_findings = any(
+        isinstance(f, dict) and f.get("status") != "independently_resolved"
+        for f in ledger_findings.values()
+    )
+    if task.get("review_disputes") or unresolved_findings or (repair and repair.get("finding_ids")):
         triggers.append("review_rejected")
+
     return triggers
 
 

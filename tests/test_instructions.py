@@ -169,6 +169,42 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertIn("workflow.chat_base", interactive_ids)
         self.assertNotIn("workflow.unattended_policy", interactive_ids)
 
+    def test_triggers_for_task_extracts_nested_review_repair_and_disputes(self):
+        """Review repair and dispute triggers must be derived from active branch item and dispute ledger."""
+        from cheapos.instructions import rules_for_task, triggers_for_task
+
+        task = {
+            "conversational": True,
+            "branch_run": {
+                "current_item_id": "item-2",
+                "items": [
+                    {"id": "item-1", "title": "Done item"},
+                    {
+                        "id": "item-2",
+                        "title": "Repair item",
+                        "review_repair": {
+                            "candidate_id": "cand_1",
+                            "defects": [{"finding_id": "find_1", "criterion": "crit"}],
+                            "finding_ids": ["find_1"],
+                        },
+                    },
+                ],
+                "dispute_ledger": {
+                    "findings": {
+                        "find_1": {"id": "find_1", "status": "requested"},
+                    }
+                },
+            },
+        }
+        triggers = triggers_for_task(task)
+        self.assertIn("review_repair", triggers)
+        self.assertIn("review_rejected", triggers)
+
+        rules = rules_for_task(task, role="worker")
+        rule_ids = {r.id for r in rules}
+        self.assertIn("recovery.review_repair", rule_ids)
+        self.assertIn("recovery.disagreement", rule_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,6 +7,7 @@ from .types import (
 )
 from .catalog import DEFAULT_CATALOG, InstructionCatalog, RULES
 from .resolver import (
+    active_branch_item,
     compose,
     compose_prompt,
     render_instructions,
@@ -30,6 +31,7 @@ __all__ = [
     "InstructionCatalog",
     "DEFAULT_CATALOG",
     "RULES",
+    "active_branch_item",
     "compose",
     "compose_prompt",
     "render_instructions",
