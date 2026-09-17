@@ -155,13 +155,13 @@ function renderSidebar() {
   const focused=document.activeElement, focusKey=focused?.getAttribute('data-task-menu')||focused?.getAttribute('data-task');
   const wasMenu=focused?.hasAttribute('data-task-menu');
   list.innerHTML=html;list.dataset.rendered=html;
-  $$('[data-project-menu]').forEach(b=>b.onclick=()=>projectMenu(b.dataset.projectMenu,b));
-  $$('[data-task]').forEach(b=>b.onclick=()=>selectTask(b.dataset.task));
-  $$('[data-task-menu]').forEach(b=>b.onclick=()=>taskMenu(state.tasks.find(t=>t.id===b.dataset.taskMenu),b));
-  $$('[data-project]').forEach(b=>b.onclick=()=>b.dataset.project==='demo'?selectTask(demos[0].id):chooseProject(state.projects.find(p=>p.path===b.dataset.project),true));
-  for(const [attr,key] of [['collapse','collapsed'],['more','more']])$$('[data-'+attr+']').forEach(b=>b.onclick=()=>{const path=b.dataset[attr];sidebarPrefs[path]||={};sidebarPrefs[path][key]=!sidebarPrefs[path][key];saveSidebarPrefs();renderSidebar();$$("[data-"+attr+"]").find(el=>el.dataset[attr]===path)?.focus()});
+  $$('[data-project-menu]',list).forEach(b=>b.onclick=()=>projectMenu(b.dataset.projectMenu,b));
+  $$('button.task[data-task]',list).forEach(b=>b.onclick=()=>selectTask(b.dataset.task));
+  $$('[data-task-menu]',list).forEach(b=>b.onclick=()=>taskMenu(state.tasks.find(t=>t.id===b.dataset.taskMenu),b));
+  $$('[data-project]',list).forEach(b=>b.onclick=()=>b.dataset.project==='demo'?selectTask(demos[0].id):chooseProject(state.projects.find(p=>p.path===b.dataset.project),true));
+  for(const [attr,key] of [['collapse','collapsed'],['more','more']])$$('[data-'+attr+']',list).forEach(b=>b.onclick=()=>{const path=b.dataset[attr];sidebarPrefs[path]||={};sidebarPrefs[path][key]=!sidebarPrefs[path][key];saveSidebarPrefs();renderSidebar();$$("[data-"+attr+"]",list).find(el=>el.dataset[attr]===path)?.focus()});
   if(sidebarMenu){const anchor=findMenuAnchor(sidebarMenu.key);if(anchor)anchor.setAttribute('aria-expanded','true');else sidebarMenu.close(false)}
-  if(focusKey)$$(wasMenu?'[data-task-menu]':'[data-task]').find(el=>(wasMenu?el.dataset.taskMenu:el.dataset.task)===focusKey)?.focus({preventScroll:true});
+  if(focusKey)$$(wasMenu?'[data-task-menu]':'button.task[data-task]',list).find(el=>(wasMenu?el.dataset.taskMenu:el.dataset.task)===focusKey)?.focus({preventScroll:true});
 }
 async function pauseForLifecycle(task) {
   if(taskBusy(task)){

@@ -325,6 +325,7 @@ function mount(options){
  }
  function renderPlan(task){
   const panel=document.querySelector('#plan-view');if(!panel)return;
+  panel.onclick=null;
   if(panel.dataset.task!==task.id||!panel.querySelector('[data-plan-content]')){panel.dataset.task=task.id;panel.innerHTML='<div class="plan-review-heading"><div><h2>Plan &amp; review</h2><p>Compare the completed work with the plan you approved.</p></div><button type="button" data-jump-changes class="primary-button">Review changes in Changes tab →</button><button type="button" data-jump-review>Jump to results ↓</button></div><details class="plan-contract" data-event="review-plan" open><summary>Plan and acceptance criteria</summary><div data-plan-content></div></details><div data-review-slot></div>';panel.querySelector('[data-jump-review]').onclick=()=>panel.querySelector('[data-review-slot]').scrollIntoView({block:'start',behavior:'instant'});panel.querySelector('[data-jump-changes]').onclick=()=>options.showChanges?options.showChanges():panel.querySelector('[data-jump-review]').click();}
   const plan=panel.querySelector('[data-plan-content]'),markup=planMarkup(task);if(plan._markup!==markup){plan._markup=markup;plan.innerHTML=markup;}
   const slot=panel.querySelector('[data-review-slot]'),run=task.branch_run;

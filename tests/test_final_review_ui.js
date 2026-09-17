@@ -75,6 +75,35 @@ test('app view switching retains this task’s review DOM and discards another t
  state.view='chat';state.task={id:'b'};context.renderView();assert.equal(plan.innerHTML,'');assert.equal(plan.dataset.task,undefined);
 });
 
+test('renderSidebar does not attach task click handler to plan-view container',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
+ const snippet=source.slice(source.indexOf('function renderSidebar()'),source.indexOf('async function pauseForLifecycle'));
+ const list={dataset:{},innerHTML:''};
+ const planView={id:'plan-view',dataset:{task:'task-1'},onclick:null};
+ const sidebarTaskBtn={dataset:{task:'task-1'},onclick:null};
+ const state={preferences:{execution:{}},projects:[],tasks:[{id:'task-1',title:'Test',source:'/repo',status:'running'}],project:null,historyView:'active',task:{id:'task-1'}};
+ const context={
+   state,
+   $:s=>s==='#task-list'?list:s==='#task-total'?{textContent:''}:s==='#connection-indicator'?{textContent:''}:s==='#history-menu'?{innerHTML:'',setAttribute(){},onclick:null}:{},
+   $$:(selector,root=document)=>{
+     if(root===list){
+       if(selector.includes('button.task[data-task]'))return [sidebarTaskBtn];
+       return [];
+     }
+     if(selector.includes('[data-task]'))return [planView,sidebarTaskBtn];
+     return [];
+   },
+   esc:s=>s,date:s=>s,icon:()=>'',taskBusy:()=>false,CheapOSGuide:{connectionNotice:()=>({}),sidebarOrder:t=>t,projectName:()=>'repo'},
+   saveSidebarPrefs(){},projectMenu(){},selectTask(){},taskMenu(){},chooseProject(){},findMenuAnchor:()=>null,
+   document:{activeElement:null},sidebarMenu:null,sidebarPrefs:{}
+ };
+ vm.createContext(context);vm.runInContext(snippet,context);
+ context.renderSidebar();
+ assert.equal(planView.onclick,null);
+ assert.notEqual(sidebarTaskBtn.onclick,null);
+});
+
+
 test('diverged preview offers a separate update action without authorizing target merge',()=>{
  const task={branch_run:{feature_ref:'refs/heads/feature/task',target_ref:'refs/heads/main',readiness:{checks:[]}}};
  const preview={files:[],merge_available:false,blocker:'Target has new commits',update_available:true};
