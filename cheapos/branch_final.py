@@ -276,8 +276,10 @@ def final_check_review(engine, runtime):
                                  'Final synthesis receives all chunk reviews and must verify every criterion before completion.'}
         review = _review(engine, runtime, manifest, packet, [chunk['id']], [])
         if review['decision'] != 'APPROVE':
-            if build_manifest(run) != manifest or evidence.candidate(task, context, specifications, criteria) != current:
-                raise ValueError('Final candidate changed while disagreement was reviewed')
+            chunk_manifest = build_manifest(run)
+            if dict(chunk_manifest, target_tip=manifest['target_tip']) != dict(manifest, target_tip=manifest['target_tip']) or evidence.candidate(task, context, specifications, criteria) != current:
+                from .branch_pause import PauseError
+                raise PauseError('branch_drift', stage='finalizing')
             return disagreement.repair({**review,'source_patch':manifest['diff']}, current['id'], checks)
         reviews.append(review)
     chunks = [c['id'] for c in manifest['chunks']]
@@ -286,16 +288,20 @@ def final_check_review(engine, runtime):
               'requirements': [{'id': r['id'], 'criterion': r['criterion'], 'item_id': r['item_id'], 'outcome': r['outcome']} for r in manifest['requirements']],
               'checks': checks, 'instruction': 'Synthesize all approved chunk reviews against every criterion and final check.'}
     overall = _review(engine, runtime, manifest, packet, chunks, criteria)
+    current_manifest = build_manifest(run)
+    manifest_match = dict(current_manifest, target_tip=manifest['target_tip']) == dict(manifest, target_tip=manifest['target_tip'])
     if overall['decision'] != 'APPROVE':
-        if build_manifest(run) != manifest or evidence.candidate(task, context, specifications, criteria) != current:
-            raise ValueError('Final candidate changed while disagreement was reviewed')
+        if not manifest_match or evidence.candidate(task, context, specifications, criteria) != current:
+            from .branch_pause import PauseError
+            raise PauseError('branch_drift', stage='finalizing')
         return disagreement.repair({**overall,'source_patch':manifest['diff']}, current['id'], checks)
-    if build_manifest(run) != manifest or evidence.candidate(task, context, specifications, criteria) != current:
-        raise ValueError('Final candidate changed while being reviewed')
+    if not manifest_match or evidence.candidate(task, context, specifications, criteria) != current:
+        from .branch_pause import PauseError
+        raise PauseError('branch_drift', stage='finalizing')
     blocker = None
-    try: work.source_git(run['workspace_mapping']['source'], 'merge-base', '--is-ancestor', manifest['target_tip'], manifest['feature_tip'])
+    try: work.source_git(run['workspace_mapping']['source'], 'merge-base', '--is-ancestor', current_manifest['target_tip'], manifest['feature_tip'])
     except ValueError: blocker = 'The target branch has new commits. Choose Update branch & recheck to combine them with the saved task before merging.'
-    readiness = {'version': 1, 'manifest': manifest, 'candidate': current, 'checks': checks, 'reviews': reviews,
+    readiness = {'version': 1, 'manifest': current_manifest, 'candidate': current, 'checks': checks, 'reviews': reviews,
                  'review': overall, 'worker_model': worker, 'reviewer_model': reviewer, 'integration_blocker': blocker}
     readiness['id'] = _hash(readiness)
     return {'decision': 'APPROVE', 'readiness': readiness}
