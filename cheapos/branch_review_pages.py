@@ -62,6 +62,7 @@ def prepare(engine, runtime, current, packet):
                 'Read surrounding candidate source or frozen merge evidence when needed. '
                 'Approval covers only this part. A separate item decision must still verify every criterion.'}
         review = _review(engine, runtime, manifest, part, [chunk['id']], [],
+                         progress={'chunk_index': index, 'chunk_total': len(parts)},
                          context_reader=lambda args: read_candidate(task, current, manifest, args))
         unchanged(task, current)
         if review['decision'] != 'APPROVE':

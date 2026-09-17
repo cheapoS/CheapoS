@@ -365,6 +365,7 @@ svg, svg * {
 .workflow-status { font-size: 13px; line-height: 1.5; color: #a3b0a8; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .outcome-failed > summary .workflow-status, .outcome-revision > summary .workflow-status { white-space: normal; overflow-wrap: anywhere; }
 .workflow-last-action { font-size: 12px; line-height: 1.5; color: #94a29a; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.workflow-review-progress { font-size: 13px; line-height: 1.5; color: var(--mint); }
 .workflow-elapsed { color: #aebeb4; font: 12px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .workflow-toggle { display: flex; align-items: center; gap: 5px; color: #b4c4ba; font-size: 13px; white-space: nowrap; }
 .workflow-toggle svg { width: 12px; height: 12px; transition: transform .15s; }

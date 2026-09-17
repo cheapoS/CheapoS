@@ -70,6 +70,13 @@ class ItemPageTests(unittest.TestCase):
         self.assertEqual(''.join(parts), source)
         self.assertEqual(json.loads(source)['diff'], current['patch'])
         self.assertEqual(len(coverage['chunks']), len(parts))
+        requests = [c.args[3] for c in engine.event.call_args_list if c.args[1] == 'review_request'
+                    and c.args[3].get('stage') == 'chunk']
+        completed = [c.args[3] for c in engine.event.call_args_list if c.args[1] == 'review'
+                     and c.args[3].get('chunk_ids')]
+        for records in (requests, completed):
+            self.assertEqual([(r['chunk_index'], r['chunk_total']) for r in records],
+                             [(i, len(parts)) for i in range(1, len(parts) + 1)])
         self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), coverage['packet_reference'])
         for key, value in before.items(): self.assertEqual(task[key], value)
         engine.checks.assert_not_called()

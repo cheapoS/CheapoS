@@ -122,7 +122,7 @@ def build_manifest(run):
     return result
 
 
-def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None):
+def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None, progress=None):
     from .engine import tool, ToolArgumentsError
     chunk_prop = {'type': 'array', 'items': {'type': 'string'}, 'description': f"Must be exact chunk_ids: {json.dumps(chunk_ids)}"}
     if chunk_ids: chunk_prop['enum'] = [chunk_ids]
@@ -169,13 +169,17 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             return copy.deepcopy(cached)
     messages.extend(copy.deepcopy(state.get('messages',[])))
     packet['context_references']=copy.deepcopy(state.get('context_references',[]))
+    # Display metadata stays outside packet bindings so a label change cannot
+    # invalidate already reviewed evidence during continuation.
+    scope = progress if progress is not None else packet.get('scope', {})
+    display = {k: scope[k] for k in ('chunk_index', 'chunk_total') if k in scope} if not criterion_ids else {}
     engine.store.save(runtime.task)
     while True:
         recovery.guard(runtime)
         if recovery.needed(runtime.task,key,state):
             recovery.recover(engine,runtime,key,state,messages)
         label = 'item' if manifest.get('kind') == 'item' else 'final'
-        engine.event(runtime.task,'review_request',f'Requesting {label} packet review',{'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'stage':'synthesis' if criterion_ids else 'chunk'})
+        engine.event(runtime.task,'review_request',f'Requesting {label} packet review',{'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'stage':'synthesis' if criterion_ids else 'chunk',**display})
         message = engine.request(runtime, messages, tools, 'reviewer', purpose='branch_final')
         state['reviewer_model']=recovery.model(runtime.task)
         calls = message.get('tool_calls', [])
@@ -246,7 +250,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         _independent(runtime.task,result.get('reviewer_model'))
         state['result']=copy.deepcopy(result);state['result_digest']=_hash(result)
         recovery.persist(engine,runtime.task,state,messages)
-        engine.event(runtime.task,'review',f'{label.capitalize()} packet review completed',{'decision':result['decision'],'feedback':result['feedback'],'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'defects':result.get('defects')})
+        engine.event(runtime.task,'review',f'{label.capitalize()} packet review completed',{'decision':result['decision'],'feedback':result['feedback'],'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'defects':result.get('defects'),**display})
         return result
 
 

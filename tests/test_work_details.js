@@ -71,6 +71,17 @@ test('live output opens immediately and has an escaped preview for collapsed ste
  const waiting=render([],{live:true,stream:{phase:'waiting'}});
  assert.doesNotMatch(waiting,/workflow-preview|Waiting for the next chunk|<pre/);assert.match(waiting,/Waiting for the worker’s response/);
 });
+test('review progress is visible in the step summary before opening Details',()=>{
+ const t={status:'reviewing',active_role:'reviewer',prompt:'Review saved work',events:[
+  event('paging','review_paging','Reviewing the large item',{packets:39}),
+  event('review','review_request','Requesting item packet review',{manifest_id:'technical-manifest-id',chunk_ids:['item:8'],stage:'chunk'}),
+  event('model','model','Requesting reviewer: reviewer-model',{})]};
+ const reply=ctx.CheapOSGuide.conversation.build(t).find(e=>e.kind==='assistant');
+ const html=ctx.view.message(reply,t);
+ assert.match(html,/<small[^>]*data-review-progress>Chunk 8 of 39<\/small>/);
+ assert.ok(html.indexOf('Chunk 8 of 39')<html.indexOf('class="workflow-details"'));
+ assert.doesNotMatch(html,/technical-manifest-id/);
+});
 test('current reviewer output follows recorded thinking and actions through consecutive requests',()=>{
  const t={status:'reviewing',active_role:'reviewer',prompt:'Check the restart change',changes:[],events:[
   event('r1','model','Requesting reviewer: reviewer-model'),

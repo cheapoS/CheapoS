@@ -7,7 +7,7 @@ const CheapOSChatView = (() => {
   }
   function operatorEvents(events,task) {
     const history=task.events||events;
-    return events.filter(e=>!['model','checkpoint','permission'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error)&&!(e.kind==='generation'&&isProbe(e.detail,history)));
+    return events.filter(e=>!['model','checkpoint','permission','review_request'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error)&&!(e.kind==='generation'&&isProbe(e.detail,history)));
   }
   function formatWorkflowMessage(roleLabel, text) {
     let cleaned = String(text || '').trim();
@@ -72,7 +72,7 @@ const CheapOSChatView = (() => {
     const title=live&&probe?'Checking model connection':liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
     const status=live&&probe?'Verifying tool support before starting the request':step.detail;
     return `<details class="workflow-step ${live?'is-live':''} ${liveOutput?'has-live-output':''} outcome-${step.outcome}" data-event="workflow-${esc(step.id)}" data-step="${esc(step.id)}" ${live||['failed','revision'].includes(step.outcome)?'open':''}>
-      <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong><span class="workflow-status" ${live?'data-live-status':''}>${esc(status)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
+      <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong>${step.reviewProgress?`<small class="workflow-review-progress" data-review-progress>${esc(step.reviewProgress)}</small>`:''}<span class="workflow-status" ${live?'data-live-status':''}>${esc(status)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
       <div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||(task.demo?'Scripted local model':live?'Model selection pending':'Model identity unavailable'))}</strong></div>
         ${events.length>80?'<p class="small muted">Showing the latest 80 progress events. Earlier events remain in Technical logs.</p>':''}
         <div class="workflow-events">${eventsMarkup(events.slice(-80),entryReply,Boolean(live&&stream))||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div>

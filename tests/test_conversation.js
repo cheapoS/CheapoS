@@ -43,6 +43,36 @@ test('failed verification and requested revisions never look approved',()=>{
  assert.equal(reply.steps[0].outcome,'failed');assert.equal(reply.steps[1].outcome,'revision');
  assert.doesNotMatch(reply.intro,/passed/);
 });
+test('review chunk progress uses controller totals and clears for synthesis',()=>{
+ const t=task({status:'reviewing',active_role:'reviewer',events:[
+  event(1,'review_request','Requesting final packet review',{chunk_ids:['diff:2'],stage:'chunk',chunk_index:8,chunk_total:12}),
+  event(2,'model','Requesting reviewer: reviewer-model',{})]});
+ const step=()=>replies(t).at(-1).steps.at(-1);
+ assert.equal(step().reviewProgress,'Chunk 8 of 12');
+ t.stream={request_id:2,role:'reviewer',phase:'answer',content:'Reviewing the saved change.'};
+ assert.equal(step().reviewProgress,'Chunk 8 of 12');
+ t.events.push(event(3,'review','Final packet review completed',{chunk_ids:['diff:2'],chunk_index:8,chunk_total:12,decision:'REQUEST_CHANGES',feedback:'Fix this defect.'}));
+ t.status='paused';assert.equal(step().reviewProgress,'Chunk 8 of 12');assert.equal(step().outcome,'revision');
+ t.events.push(event(4,'review_request','Requesting final packet review',{chunk_ids:['diff:1','diff:2'],stage:'synthesis'}));
+ assert.equal(step().reviewProgress,'');
+ for(const pair of [[0,12],[13,12],[8,undefined],['8',12]]){
+  t.events.push(event(t.events.length+1,'review_request','Requesting review',{chunk_ids:['diff:2'],stage:'chunk',chunk_index:pair[0],chunk_total:pair[1]}));
+  assert.equal(step().reviewProgress,'');
+ }
+});
+test('saved item chunk progress uses its earlier paging batch',()=>{
+ const t=task({status:'reviewing',events:[
+  event(1,'review_paging','Reviewing the large item',{packets:39}),
+  event(2,'review_request','Requesting item packet review',{chunk_ids:['item:8'],stage:'chunk'}),
+  event(3,'model','Requesting reviewer: reviewer-model',{})]});
+ assert.equal(replies(t)[0].steps.at(-1).reviewProgress,'Chunk 8 of 39');
+ t.events.push(event(4,'review_paging','Reviewing a revised item',{packets:4}));
+ assert.equal(replies(t)[0].steps.at(-1).reviewProgress,'Chunk 8 of 39');
+ t.events.push(event(5,'review_request','Requesting item packet review',{chunk_ids:['item:1'],stage:'chunk'}));
+ assert.equal(replies(t)[0].steps.at(-1).reviewProgress,'Chunk 1 of 4');
+ t.events.push(event(6,'review_request','Requesting item review',{candidate_id:'candidate'}));
+ assert.equal(replies(t)[0].steps.at(-1).reviewProgress,'');
+});
 test('unfinished reviewer and pause retain the worker and passing checks',()=>{
  const [reply]=replies(task({status:'paused',error_code:'checkpoint_turn_limit',error:'Reached checkpoint interval',events:[event(1,'checks','Verification passed',{passed:true}),event(2,'handoff','Sending changes for review',{role:'reviewer'})]}));
  assert.equal(reply.steps[0].outcome,'passed');assert.equal(reply.steps[1].outcome,'pending');
