@@ -509,6 +509,47 @@ class HTTPTests(unittest.TestCase):
         headroom_task = json.loads(body)
         self.assertGreaterEqual(headroom_task['limits']['reviewer_tokens'], 250000)
 
+    def test_list_directories(self):
+        base_path = Path(self.temp.name)
+        (base_path / 'project1').mkdir(exist_ok=True)
+        (base_path / 'project2').mkdir(exist_ok=True)
+        (base_path / 'dir1').mkdir(exist_ok=True)
+        (base_path / 'dir1/file1.txt').touch()
+
+        # Listing base directory
+        status, _, body = self.request('GET', '/api/list-directories?path=' + str(base_path))
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data['current_path'], str(base_path.resolve()))
+        items = data['items']
+        names = [item['name'] for item in items]
+        self.assertIn('project1', names)
+
+        # Listing subdirectory
+        status, _, body = self.request('GET', '/api/list-directories?path=' + str(base_path / 'dir1'))
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data['current_path'], str((base_path / 'dir1').resolve()))
+        items = data['items']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['name'], 'file1.txt')
+
+        # Security: root access rejected
+        status, _, _ = self.request('GET', '/api/list-directories?path=/')
+        self.assertEqual(status, 403)
+
+    def test_create_project_endpoint(self):
+        base_path = Path(self.temp.name)
+        status, _, body = self.post('/api/projects/create', {
+            'name': 'new-sample-proj',
+            'parent': str(base_path),
+            'init_git': True
+        })
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertTrue((base_path / 'new-sample-proj/.git').is_dir())
+        self.assertEqual(data['name'], 'new-sample-proj')
+
 
 class FakeModelHandler(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -680,30 +721,3 @@ class ProviderTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
-    def test_list_directories(self):
-        # Create some directories and files to test listing
-        base_path = Path(self.temp.name)
-        (base_path / 'project1').mkdir()
-        (base_path / 'project2').mkdir()
-        (base_path / 'dir1').mkdir()
-        (base_path / 'dir1/file1.txt').touch()
-        
-        # Test listing base directory
-        # The LocalServer is initialized with self.temp, which includes 'state' directory as well.
-        status, _, body = self.request('GET', '/api/list-directories')
-        self.assertEqual(status, 200)
-        items = json.loads(body)
-        names = [item['name'] for item in items]
-        self.assertIn('project1', names)
-        
-        # Test listing subdirectory
-        status, _, body = self.request('GET', '/api/list-directories?path=' + str(base_path / 'dir1'))
-        self.assertEqual(status, 200)
-        items = json.loads(body)
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]['name'], 'file1.txt')
-        
-        # Test security: try to access outside base directory
-        status, _, _ = self.request('GET', '/api/list-directories?path=/')
-        self.assertEqual(status, 403)

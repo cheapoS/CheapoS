@@ -1,9 +1,15 @@
 """Tests for safe file uploads, document extraction, and attachment handling."""
 
 import base64
+import http.client
 import json
+import tempfile
+import threading
+import unittest
 from pathlib import Path
 
+from cheapos.engine import Engine
+from cheapos.server import LocalServer
 from cheapos.uploads import (
     MAX_FILE_SIZE_BYTES,
     detect_mime_type,
@@ -13,7 +19,6 @@ from cheapos.uploads import (
     save_upload,
 )
 from test_engine import CONFIG, LocalCase
-from test_http import HTTPTests
 
 
 class UploadStorageTests(LocalCase):
@@ -106,7 +111,32 @@ class UploadStorageTests(LocalCase):
         self.assertIn("### Attached Image: screen.png", reloaded["requests"][-1])
 
 
-class UploadHTTPTests(HTTPTests):
+class UploadHTTPTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.engine = Engine(Path(self.temp.name) / "state", fixture_delay=0)
+        self.server = LocalServer(("127.0.0.1", 0), Path(__file__).resolve().parent.parent / "dist", self.engine)
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.engine.shutdown()
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+        self.temp.cleanup()
+
+    def request(self, method, path, body=None, headers=None):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        conn.request(method, path, json.dumps(body) if body is not None else None, headers or {})
+        response = conn.getresponse()
+        result = response.status, dict(response.getheaders()), response.read()
+        conn.close()
+        return result
+
+    def post(self, path, body):
+        return self.request("POST", path, body, {"Content-Type": "application/json", "X-CheapOS-Token": self.server.token})
+
     def test_upload_api_and_download(self):
         content = b"Image or document binary content"
         b64 = base64.b64encode(content).decode("ascii")

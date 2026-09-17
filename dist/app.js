@@ -94,7 +94,14 @@ const CheapOSChatView = (() => {
     return `<details class="working-approach" data-event="working-approach-${esc(entry.id)}"><summary>${esc(phase)} · ${esc(work.next_action||(work.steps||[]).find(s=>s.status==='working')?.text||'Current approach')}</summary><p class="small muted">Worker checklist · checks and independent review remain separate.</p><ol>${(work.steps||[]).map(s=>`<li>${esc(s.status)} · ${esc(s.text)}</li>`).join('')}</ol>${(work.decisions||[]).map(d=>`<p>${esc(d)}</p>`).join('')}${(work.findings||[]).map(d=>`<p>Open finding: ${esc(d)}</p>`).join('')}</details>`;
   }
   function message(entry,task,decision='') {
-    if(entry.kind==='user') return `<article class="chat-message from-user ${entry.steer?'steer-bubble':''}" data-message="${entry.id}"><div class="chat-author"><strong>You</strong>${entry.steer?'<span>Follow-up while working</span>':''}</div><div class="chat-message-body">${messageText(entry.text)}</div></article>`;
+    if(entry.kind==='user') {
+      const atts=(entry.id==='user-0'?task?.attachments:null)||[];
+      const attMarkup=atts.length?`<div class="chat-message-attachments">${atts.map(att=>{
+        const isImg=att.media_type==='image'||(att.mime_type&&att.mime_type.startsWith('image/'));
+        return `<div class="chat-attachment-item">${isImg&&att.url?`<a href="${esc(att.url)}" target="_blank" rel="noopener"><img class="chat-attachment-thumb" src="${esc(att.url)}" alt="${esc(att.name)}"></a>`:`<svg class="attachment-icon"><use href="#i-paperclip"/></svg>`}<span class="attachment-name">${esc(att.name)}</span></div>`;
+      }).join('')}</div>`:'';
+      return `<article class="chat-message from-user ${entry.steer?'steer-bubble':''}" data-message="${entry.id}"><div class="chat-author"><strong>You</strong>${entry.steer?'<span>Follow-up while working</span>':''}</div><div class="chat-message-body">${attMarkup}${messageText(entry.text)}</div></article>`;
+    }
     const steps=entry.steps, older=steps.length>4?steps.slice(0,-3):[], visible=older.length?steps.slice(-3):steps;
     if(!steps.length&&!entry.reply&&!decision&&!entry.live&&!entry.owner)return '';
     const history=older.length?`<details class="workflow-history" data-event="history-${entry.id}"><summary>${icon('clock')}Earlier steps${entry.itemTitle?' · '+esc(entry.itemTitle):''} <span>${older.length}</span>${icon('chevron')}</summary>${older.map(s=>stepMarkup(s,task,null,entry.reply)).join('')}</details>`:'';
@@ -124,7 +131,7 @@ const icon = name => `<svg aria-hidden="true" focusable="false" tabindex="-1"><u
 const taskBusy=task=>CheapOSBranchUI.isBusy(task);
 const activeStatuses = new Set(['running', 'reviewing', 'waiting_approval', 'waiting_retry', 'stopping']);
 const labels = {awaiting_reply:'Ready for your message',ready:'Ready to start',running:'cheapoS is working',reviewing:'Checking your changes',waiting_approval:'Command approval needed',waiting_retry:'Waiting for a free route',paused:'Paused',budget_paused:'Paused at a limit',interrupted:'Interrupted',error:'Needs attention',takeover_requested:'Takeover requested',approved:'Reviewer approved',completed:'Ready for your review'};
-const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},sending:false,pendingSends:new Set(),startErrors:new Map(),admission:null,pausingTask:null,stoppingStartup:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',diffWrap:true,diffContext:false,diffExpanded:false,diffFont:14,run:-1,online:false,loading:false};
+const state = {startup:{},token:'',config:{},projects:[],project:null,preferences:{limits:{dollars:0,reviewer_tokens:50000,iterations:5,worker_turns:40,output_tokens:2048}},composerAttachments:[],sending:false,pendingSends:new Set(),startErrors:new Map(),admission:null,pausingTask:null,stoppingStartup:false,drafts:new Map(),gateway:{},gatewayModels:[],catalogRevision:-1,gatewayListener:null,tasks:[],task:null,selection:0,view:'chat',file:0,diff:'unified',diffWrap:true,diffContext:false,diffExpanded:false,diffFont:14,run:-1,online:false,loading:false};
 const money = value => '$' + Number(value || 0).toFixed(Number(value || 0) > 0 && value < .01 ? 4 : 2);
 const date = value => new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
@@ -398,8 +405,79 @@ function beginMessageSend(key,message){
   if(state.task)renderChat();else renderHome();renderComposer();
   $('#view-container').scrollTop=$('#view-container').scrollHeight;
 }
+function renderComposerAttachments() {
+  const container = $('#composer-attachments');
+  if (!container) return;
+  const list = state.composerAttachments || [];
+  if (!list.length) {
+    container.hidden = true;
+    container.innerHTML = '';
+    return;
+  }
+  container.hidden = false;
+  container.innerHTML = list.map((att, idx) => {
+    const isImg = att.media_type === 'image' || (att.mime_type && att.mime_type.startsWith('image/'));
+    const sizeStr = att.size ? (att.size > 1048576 ? (att.size/1048576).toFixed(1)+' MB' : Math.round(att.size/1024)+' KB') : '';
+    return `<div class="attachment-chip" data-idx="${idx}" title="${esc(att.name)}${sizeStr ? ' (' + sizeStr + ')' : ''}">
+      ${isImg && att.url ? `<img class="attachment-thumb" src="${esc(att.url)}" alt="${esc(att.name)}">` : `<svg class="attachment-icon"><use href="#i-paperclip"/></svg>`}
+      <span class="attachment-name">${esc(att.name)}</span>
+      <button type="button" class="attachment-remove" data-remove-idx="${idx}" aria-label="Remove ${esc(att.name)}">&times;</button>
+    </div>`;
+  }).join('');
+  $$('#composer-attachments .attachment-remove').forEach(btn => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = Number(btn.dataset.removeIdx);
+      state.composerAttachments.splice(idx, 1);
+      renderComposerAttachments();
+      renderComposer();
+    };
+  });
+}
+
+async function uploadFiles(files) {
+  if (!files || !files.length) return;
+  const fileArray = Array.from(files);
+  const maxBytes = 20 * 1024 * 1024;
+  if (!state.composerAttachments) state.composerAttachments = [];
+  for (const file of fileArray) {
+    if (file.size > maxBytes) {
+      toast(`File "${file.name}" exceeds the 20 MB size limit.`);
+      continue;
+    }
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Failed to read file: ' + file.name));
+        reader.readAsDataURL(file);
+      });
+      const res = await api('/upload', {
+        filename: file.name,
+        data: dataUrl,
+        mime_type: file.type || ''
+      });
+      state.composerAttachments.push({
+        id: res.id,
+        name: res.filename || file.name,
+        path: res.path,
+        url: res.url,
+        mime_type: res.mime_type,
+        media_type: res.media_type,
+        size: res.size || file.size
+      });
+    } catch (err) {
+      toast(err.message || 'Upload failed');
+    }
+  }
+  renderComposerAttachments();
+  renderComposer();
+}
+
 function renderComposer() {
   branchUI?.sync();
+  renderComposerAttachments();
   const task=state.task, busy=task&&taskBusy(task);
   const assistance=CheapOSGuide.coordinatorStatus(task||{execution:state.preferences.execution});
   $('#execution-choice').textContent=`Coordinator ${assistance.label} · Work setup`;
@@ -418,11 +496,12 @@ function renderComposer() {
   $('#chat-input').disabled=sendingHere();
   $('#chat-input').placeholder=state.project?'Ask about your project or describe a change…':'Open a project to get started…';
   const availability=submissionAvailability(task);
+  const hasAttachments=Boolean((state.composerAttachments||[]).length);
   if(busy){
     $('#chat-send').hidden=true;
     if($('#chat-steer')){
       $('#chat-steer').hidden=false;
-      $('#chat-steer').disabled=pausing||sendingHere()||!$('#chat-input').value.trim();
+      $('#chat-steer').disabled=pausing||sendingHere()||(!$('#chat-input').value.trim()&&!hasAttachments);
     }
     $('#chat-input').placeholder='Add a detail or change direction…';
     $('#composer-note').textContent=pausing?'Pausing the current step. Your work and draft stay saved.':'Keep talking to cheapoS. Your message will guide the next step.';
@@ -430,7 +509,7 @@ function renderComposer() {
     const next=CheapOSConversation.readyForNext(task);
     $('#chat-send').hidden=false;
     if($('#chat-steer'))$('#chat-steer').hidden=true;
-    $('#chat-send').disabled=sendingHere()||branchUI?.isSubmitting()||!availability.allowed||(!$('#chat-input').value.trim()&&!branchUI?.hasDocument());
+    $('#chat-send').disabled=sendingHere()||branchUI?.isSubmitting()||!availability.allowed||(!$('#chat-input').value.trim()&&!hasAttachments&&!branchUI?.hasDocument());
     $('#chat-input').placeholder=next?'What should we work on next?':state.project?'Ask about your project or describe a change…':'Open a project to get started…';
     $('#composer-note').textContent=state.startup.busy?'Checking your free model. You can draft a message while it connects.':!availability.allowed?availability.reason:next?'Ready when you are. We’ll continue from the committed changes.':task?(task.changes.length?'Continue in the same task copy. See saved edits in Changes.':'Follow up here. This chat keeps its project context.'):'Edits stay in a separate copy. You review the result.';
   }
@@ -482,12 +561,11 @@ function reopenHiddenProject(path, taskId) {
 }
 /* --- T90 Project Manager: browse directories to open, or create, a project. --- */
 let projectManager=null,projectManagerAfter=null;
-const projectManagerRoot=()=>'.';
-function projectManagerFull(stack=[]){return [projectManagerRoot(),...stack.filter(Boolean)].join('/')}
 function openProject(afterOpen) {
   const d=$('#project-manager-modal');
   if(!d){openLegacyProjectForm(afterOpen);return}
-  projectManager={stack:[]};projectManagerAfter=afterOpen||null;
+  projectManager={currentPath:'',afterOpen:afterOpen||null};
+  projectManagerAfter=afterOpen||null;
   showProjectView('open');
   d.showModal();
   loadProjectManagerDirectory();
@@ -497,7 +575,14 @@ function showProjectView(view) {
   d.querySelectorAll('.modal-tabs .tab').forEach(t=>t.classList.toggle('active',t.dataset.view===view));
   const openView=$('#project-open'),createView=$('#project-create');
   if(openView)openView.classList.toggle('hidden',view!=='open');
-  if(createView)createView.classList.toggle('hidden',view!=='create');
+  if(createView){
+    createView.classList.toggle('hidden',view!=='create');
+    if(view==='create'){
+      const parentInput=$('#new-project-parent');
+      if(parentInput&&projectManager?.currentPath)parentInput.value=projectManager.currentPath;
+      $('#new-project-name')?.focus();
+    }
+  }
 }
 function closeProjectManager() {
   const d=$('#project-manager-modal');
@@ -514,20 +599,78 @@ async function chooseProjectFromPath(repository) {
   chooseProject(project);
   if(after)after();
 }
-async function loadProjectManagerDirectory() {
+async function loadProjectManagerDirectory(targetPath) {
   const list=$('#directory-list');
-  if(!list||!projectManager)return;
-  const stack=projectManager.stack;
-  list.innerHTML='<p class="small muted">Loading\u2026</p>';projectManagerError('');
-  let items;
-  try {items=stack.length?await api('/list-directories?path='+encodeURIComponent(stack.join('/'))):await api('/list-directories')}
-  catch(e){if(!$('#project-manager-modal')?.isConnected)return;list.innerHTML='';projectManagerError(e.message);return}
-  const here=stack.length?stack[stack.length-1]:basename(projectManagerFull());
+  if(!list)return;
+  list.innerHTML='<div class="pm-loading"><span class="spinner"></span><p class="muted">Loading directories…</p></div>';
+  projectManagerError('');
+  let data;
+  try {
+    const url='/list-directories'+(targetPath?'?path='+encodeURIComponent(targetPath):'');
+    data=await api(url);
+  } catch(e) {
+    if(!$('#project-manager-modal')?.isConnected)return;
+    list.innerHTML=`<div class="pm-empty"><p class="form-error">${esc(e.message)}</p></div>`;
+    projectManagerError(e.message);
+    return;
+  }
+  const currentPath=data.current_path||targetPath||'';
+  const parentPath=data.parent_path||'';
+  const isGit=Boolean(data.is_git);
+  const items=data.items||[];
+  if(!projectManager)projectManager={};
+  projectManager.currentPath=currentPath;
+  const pathInput=$('#project-path-input');
+  if(pathInput&&document.activeElement!==pathInput)pathInput.value=currentPath;
+  const parentInput=$('#new-project-parent');
+  if(parentInput&&!parentInput.value)parentInput.value=currentPath;
+  const folderName=basename(currentPath);
+
+  const navHtml=`<div class="pm-nav-row">
+    <div class="pm-nav-info">
+      ${parentPath?`<button type="button" class="subtle-button" data-action="up" title="Go up to ${esc(parentPath)}">${icon('chevron')} Up one folder</button>`:'<span></span>'}
+    </div>
+    <div class="pm-nav-actions">
+      <button type="button" class="primary-button pm-open-current" data-action="open-current">${icon('check')} Open ${isGit?'project':'folder'}: <strong>${esc(folderName)}</strong></button>
+    </div>
+  </div>`;
+
   const dirs=items.filter(i=>i.is_dir);
-  list.innerHTML=`<p class="small muted">Browsing ${esc(projectManagerFull(stack))}</p><div class="dir-entries"><button type="button" class="primary-button dir-open" data-action="open">${icon('check')}Open ${esc(here)}</button>${stack.length?'<button type="button" class="subtle-button" data-action="up">.. up one folder</button>':''}${dirs.length?dirs.map(d=>`<button type="button" class="subtle-button" data-name="${esc(d.name)}">${icon('folder')}${esc(d.name)}</button>`).join(''):'<p class="small muted">No subfolders here. Open this folder or go up.</p>'}</div>`;
-  $$('[data-action="up"]',list).forEach(b=>b.onclick=()=>{projectManager.stack=stack.slice(0,-1);loadProjectManagerDirectory()});
-  $$('[data-action="open"]',list).forEach(b=>b.onclick=async()=>{b.disabled=true;const target=stack.length?stack.join('/'):projectManagerRoot();try{await chooseProjectFromPath(target)}catch(e){projectManagerError(e.message);b.disabled=false}});
-  $$('[data-name]',list).forEach(b=>b.onclick=()=>{projectManager.stack=[...stack,b.dataset.name];loadProjectManagerDirectory()});
+  const gridHtml=dirs.length?`<div class="dir-grid">${dirs.map(d=>`
+    <div class="dir-card" data-path="${esc(d.path)}">
+      <div class="dir-card-main">
+        <svg class="dir-card-icon"><use href="#i-folder"/></svg>
+        <span class="dir-card-name" title="${esc(d.name)}">${esc(d.name)}</span>
+        ${d.is_git?'<span class="git-badge">Git</span>':''}
+      </div>
+      <div class="dir-card-actions">
+        <button type="button" class="subtle-button dir-open-btn" data-action="open-item" data-path="${esc(d.path)}" title="Open as project">Open</button>
+        <span class="dir-drill-icon"><svg><use href="#i-chevron"/></svg></span>
+      </div>
+    </div>`).join('')}</div>`:'<div class="pm-empty"><p class="muted">No subdirectories found. Open this folder or go up.</p></div>';
+
+  list.innerHTML=navHtml+gridHtml;
+
+  const upBtn=$('[data-action="up"]',list);
+  if(upBtn)upBtn.onclick=()=>loadProjectManagerDirectory(parentPath);
+  const openCurrentBtn=$('[data-action="open-current"]',list);
+  if(openCurrentBtn)openCurrentBtn.onclick=async()=>{
+    openCurrentBtn.disabled=true;
+    try{await chooseProjectFromPath(currentPath);}catch(e){projectManagerError(e.message);openCurrentBtn.disabled=false;}
+  };
+  $$('[data-action="open-item"]',list).forEach(btn=>{
+    btn.onclick=async(e)=>{
+      e.stopPropagation();
+      btn.disabled=true;
+      try{await chooseProjectFromPath(btn.dataset.path);}catch(err){projectManagerError(err.message);btn.disabled=false;}
+    };
+  });
+  $$('.dir-card',list).forEach(card=>{
+    card.onclick=(e)=>{
+      if(e.target.closest('.dir-open-btn'))return;
+      loadProjectManagerDirectory(card.dataset.path);
+    };
+  });
 }
 function openLegacyProjectForm(afterOpen) {
   const d=dialog(`<form>${modalHeader('LOCAL PROJECT','Open a project')}<p class="modal-description">Choose your project once, then chat. cheapoS works in a separate copy when you send your first message.</p><label class="full-field">Project folder<input name="repository" placeholder="/Users/you/projects/my-project" required autocomplete="off" autofocus><small>Use the root folder of a local Git repository.</small></label><p class="form-error" role="alert"></p><div class="modal-footer"><span>Opening a project makes no model request.</span><button type="submit" class="primary-button">Open project ${icon('chevron')}</button></div></form>`,'project-modal');
@@ -538,15 +681,31 @@ function bindProjectManagerControls() {
   if(!d)return;
   if($('#project-manager-close'))$('#project-manager-close').onclick=closeProjectManager;
   d.querySelectorAll('.modal-tabs .tab').forEach(t=>{t.onclick=()=>showProjectView(t.dataset.view)});
+  const pathInput=$('#project-path-input');
+  const pathGo=$('#project-path-go');
+  if(pathGo&&pathInput){
+    pathGo.onclick=()=>{
+      const val=pathInput.value.trim();
+      if(val)loadProjectManagerDirectory(val);
+    };
+    pathInput.onkeydown=e=>{
+      if(e.key==='Enter'){
+        e.preventDefault();
+        const val=pathInput.value.trim();
+        if(val)loadProjectManagerDirectory(val);
+      }
+    };
+  }
   const form=$('#create-project-form');
   if(!form)return;
   form.onsubmit=e=>{
     e.preventDefault();
-    const name=new FormData(form).get('new_project_name')||$('#new-project-name')?.value||'';
-    const parent=new FormData(form).get('new_project_parent')||$('#new-project-parent')?.value||'.';
+    const name=$('#new-project-name')?.value?.trim()||'';
+    const parent=$('#new-project-parent')?.value?.trim()||projectManager?.currentPath||'';
     const initGit=$('#init-git')?.checked?1:0;
+    if(!name){projectManagerError('Provide a project name');return;}
     formAction(form,async()=>{
-      const created=await api('/projects/create',{name:String(name).trim(),parent:String(parent||'.').trim()||'.',init_git:initGit});
+      const created=await api('/projects/create',{name,parent,init_git:initGit});
       const project=await api('/projects',{repository:created.path});
       const after=projectManagerAfter;projectManagerAfter=null;
       closeProjectManager();
@@ -1484,13 +1643,31 @@ async function dispatchChat() {
   if(state.task!==task)return;
   if(task?.branch_run||busy){await steerTask();return;}
   if(task?.status==='ready'){await startTask(task.id);return;}
-  const message=$('#chat-input').value.trim();if(!message)return;
+  const message=$('#chat-input').value.trim();
+  const attachments=[...(state.composerAttachments||[])];
+  if(!message&&!attachments.length)return;
   if(!state.project){openProject(()=>{$('#chat-input').value=message;saveDraft();renderComposer()});return;}
   if((state.preferences.execution?.mode||'manual')==='manual'&&(!state.config.worker||!state.config.reviewer)){openConnections(()=>{$('#chat-input').focus()});return;}
   const key=draftKey(),selection=state.selection,repository=state.project.path;beginMessageSend(key,message);
   try {
-    if(task){const saved=await api('/tasks/'+task.id+'/message',{message});state.pendingMessages.delete(key);clearOwnedDraft(key,message);if(state.selection===selection&&state.task?.id===task.id){state.task=saved;renderTask();}void refreshContext();}
-    else {const created=await api('/tasks',{repository,prompt:message,conversational:true,limits:state.preferences.limits});await loadTasks();if(state.selection===selection){await selectTask(created.id);}state.pendingSends.add(created.id);try{const started=await startTask(created.id);if(started)clearOwnedDraft(key,message);}finally{state.pendingSends.delete(created.id);}}
+    if(task){
+      const saved=await api('/tasks/'+task.id+'/message',{message,attachments});
+      state.pendingMessages.delete(key);
+      clearOwnedDraft(key,message);
+      state.composerAttachments=[];
+      renderComposerAttachments();
+      if(state.selection===selection&&state.task?.id===task.id){state.task=saved;renderTask();}
+      void refreshContext();
+    }
+    else {
+      const created=await api('/tasks',{repository,prompt:message,attachments,conversational:true,limits:state.preferences.limits});
+      await loadTasks();
+      state.composerAttachments=[];
+      renderComposerAttachments();
+      if(state.selection===selection){await selectTask(created.id);}
+      state.pendingSends.add(created.id);
+      try{const started=await startTask(created.id);if(started)clearOwnedDraft(key,message);}finally{state.pendingSends.delete(created.id);}
+    }
     if(state.selection===selection)$('#view-container').scrollTop=$('#view-container').scrollHeight;
   }catch(e){state.sendErrors.set(key,e.message);toast(e.message);}
   finally{state.pendingMessages.delete(key);state.pendingSends.delete(key);if(draftKey()===key){if(state.task)renderChat();else renderHome();}renderComposer();if(state.selection===selection)$('#chat-input').focus();}
@@ -1860,7 +2037,7 @@ async function resumeBranchRun(task,savedResult,approvalValues={}) {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();d.close();void resumeBranchRun(task,null,{proposal_id:result.proposal_id,approved:true}).catch(error=>toast(error.message));};
 }
 async function bootstrap() {
-  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;await loadAdmission({render:false});try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();void updateLifetimeSavingsBadge(true);let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();if(!state.projects.length)openProject();await loadReadiness(true);}
+  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;await loadAdmission({render:false});try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();void updateLifetimeSavingsBadge(true);let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);}
   catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start cheapoS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh({background:true})}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
@@ -1880,6 +2057,55 @@ $('#chat-form').onsubmit=e=>{e.preventDefault();sendChat()};
 if($('#chat-steer'))$('#chat-steer').onclick=()=>steerTask();
 $('#chat-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendChat()}};
 $('#chat-stop').onclick=stopFromComposer;
+const attachBtn=$('#composer-attach');
+const fileInput=$('#composer-file-input');
+if(attachBtn&&fileInput){
+  attachBtn.onclick=()=>fileInput.click();
+  fileInput.onchange=()=>{
+    if(fileInput.files&&fileInput.files.length){
+      uploadFiles(fileInput.files);
+      fileInput.value='';
+    }
+  };
+}
+$('#chat-input').addEventListener('paste',e=>{
+  const items=e.clipboardData?.items;
+  if(!items)return;
+  const files=[];
+  for(const item of items){
+    if(item.kind==='file'){
+      const file=item.getAsFile();
+      if(file)files.push(file);
+    }
+  }
+  if(files.length){
+    e.preventDefault();
+    uploadFiles(files);
+  }
+});
+const chatForm=$('#chat-form');
+if(chatForm){
+  ['dragenter','dragover'].forEach(name=>{
+    chatForm.addEventListener(name,e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      chatForm.classList.add('dragover');
+    });
+  });
+  ['dragleave','dragend','drop'].forEach(name=>{
+    chatForm.addEventListener(name,e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      chatForm.classList.remove('dragover');
+    });
+  });
+  chatForm.addEventListener('drop',e=>{
+    const files=e.dataTransfer?.files;
+    if(files&&files.length){
+      uploadFiles(files);
+    }
+  });
+}
 const hideDemo=$('#hide-demo');
 if(hideDemo) hideDemo.onclick=()=>{compactMenu(hideDemo,'Demo options',[{label:'Hide',run:()=>{const d=dialog(`<form>${modalHeader('HIDE','Hide Try a sample task?')}<p>This will remove the demo from the sidebar until you re-enable it in settings.</p><div class="modal-footer"><button type="button" class="outline-button" data-close>Cancel</button><button type="submit" class="primary-button">Yes, hide</button></div></form>`);$('form',d).onsubmit=(e)=>{e.preventDefault();d.close();$('#demo-row')?.classList.add('hidden');if(typeof localStorage!=='undefined')localStorage.setItem('cheapos-demo-hidden','true');}}}]);};
 if(typeof localStorage!=='undefined'&&localStorage.getItem('cheapos-demo-hidden')==='true') $('#demo-row')?.classList.add('hidden');

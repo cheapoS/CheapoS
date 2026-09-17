@@ -146,24 +146,43 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply(engine.role_mappings())
             elif path == "/api/list-directories":
                 query_params = parse_qs(urlsplit(self.path).query)
-                requested_path = query_params.get("path", [str(self.server.directory)])[0]
-                base_dir = self.server.directory
+                requested_path = query_params.get("path", [""])[0]
                 try:
-                    requested_path_obj = Path(unquote(requested_path))
-                    if requested_path_obj.is_absolute():
-                        target_path = requested_path_obj.resolve()
+                    if requested_path and requested_path.strip():
+                        target_path = Path(unquote(requested_path.strip())).expanduser().resolve()
                     else:
-                        target_path = (base_dir / requested_path_obj).resolve()
-                        
-                    if not str(target_path).startswith(str(base_dir)):
+                        target_path = self.server.directory if not (self.server.directory / "index.html").is_file() else Path.home()
+                    if target_path == Path("/") or str(target_path) in {"/bin", "/sbin", "/etc", "/var", "/private/etc"}:
                         self.reply({"error": "Access denied"}, 403)
-                    elif not target_path.is_dir():
+                        return
+                    if not target_path.exists():
+                        self.reply({"error": "Directory not found"}, 404)
+                        return
+                    if not target_path.is_dir():
                         self.reply({"error": "Not a directory"}, 400)
-                    else:
-                        items = []
+                        return
+                    items = []
+                    try:
                         for item in target_path.iterdir():
-                            items.append({"name": item.name, "is_dir": item.is_dir()})
-                        self.reply(sorted(items, key=lambda x: (not x["is_dir"], x["name"])))
+                            if item.name.startswith("."):
+                                continue
+                            try:
+                                is_dir = item.is_dir()
+                                is_git = (item / ".git").is_dir() if is_dir else False
+                            except (PermissionError, OSError):
+                                is_dir = False
+                                is_git = False
+                            items.append({"name": item.name, "path": str(item), "is_dir": is_dir, "is_git": is_git})
+                    except (PermissionError, OSError):
+                        pass
+                    items.sort(key=lambda x: (not x["is_dir"], not x.get("is_git", False), x["name"].lower()))
+                    parent_path = "" if target_path.parent in {Path("/"), target_path} else str(target_path.parent)
+                    self.reply({
+                        "current_path": str(target_path),
+                        "parent_path": parent_path,
+                        "is_git": (target_path / ".git").is_dir(),
+                        "items": items,
+                    })
                 except Exception as e:
                     self.reply({"error": str(e)}, 500)
             elif path == "/api/role-mappings/effective":
@@ -282,34 +301,27 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 if 'enabled' in values: engine.carto.configure(source, values['enabled'])
                 result = {**engine.carto.status(source), 'index':engine.carto.context(source,source,rebuild=values.get('rebuild') is True)}
             elif path == "/api/projects/create":
-                name = values.get("name")
-                parent = values.get("parent", ".")
-                if not name or not isinstance(name, str):
-                    self.reply({"error": "Invalid name"}, 400)
-                    return
-                base_dir = self.server.directory
-                try:
-                    parent_path = Path(unquote(parent))
-                    if parent_path.is_absolute():
-                         target_dir = parent_path.resolve() / name
-                    else:
-                         target_dir = (base_dir / parent_path / name).resolve()
-                    
-                    if not str(target_dir).startswith(str(base_dir)):
-                        self.reply({"error": "Access denied"}, 403)
-                        return
-                    elif target_dir.exists():
-                        self.reply({"error": "Already exists"}, 400)
-                        return
-                    else:
-                        os.makedirs(target_dir)
-                        if values.get("init_git", False):
-                            from cheapos.workspace import git
-                            git(target_dir, "init")
-                        result = {"path": str(target_dir)}
-                except Exception as e:
-                    self.reply({"error": str(e)}, 500)
-                    return
+                name = values.get("name") or values.get("new_project_name")
+                parent = values.get("parent") or values.get("new_project_parent", "")
+                if not name or not isinstance(name, str) or not name.strip():
+                    raise ValueError("Provide a project name")
+                from .uploads import sanitize_filename
+                safe_name = sanitize_filename(name.strip())
+                parent_str = str(parent).strip() if parent else ""
+                parent_path = Path(unquote(parent_str)).expanduser().resolve() if parent_str and parent_str != "." else (
+                    self.server.directory if not (self.server.directory / "index.html").is_file() else Path.home()
+                )
+                if not parent_path.is_dir() or parent_path == Path("/"):
+                    raise ValueError(f"Invalid parent directory: {parent_path}")
+                target_dir = (parent_path / safe_name).resolve()
+                if target_dir.exists():
+                    raise ValueError(f"Directory already exists: {target_dir}")
+                target_dir.mkdir(parents=True, exist_ok=True)
+                if values.get("init_git", True):
+                    from .workspace import git
+                    git(target_dir, "init", "-q")
+                    git(target_dir, "-c", "user.name=cheapoS", "-c", "user.email=local@cheapos.invalid", "commit", "--allow-empty", "-qm", "Initial commit")
+                result = engine.open_project({"repository": str(target_dir)})
             elif path == "/api/projects/preview":
                 result = engine.previews.settings(values)
             elif path == "/api/projects/hide":
