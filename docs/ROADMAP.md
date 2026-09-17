@@ -29,6 +29,9 @@
 * **Key capabilities:**
   - Clean automatic transitions from passing checks into review without extra chat turns.
   - Reusable check digests across edits that touch only comments or whitespace.
+  - A shared **Update & resolve** workflow for integration conflicts, preserving
+    both sides and returning checked work to Changes for approval.
+    [T92 design and implementation plan](tasks/T92-unified-integration-recovery.md).
 
 ### 4. Recovery that earns its keep
 * **What we strengthen:** Separate provider failures, tool errors, failing tests, and genuine missing information. Give each a specific recovery path.
