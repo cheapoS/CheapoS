@@ -127,3 +127,9 @@ test('thinking panels and workflow assistant messages attribute roles clearly in
  assert.match(html,/<span class="thinking-role">Planner:<\/span>\s*Thinking/);
  assert.match(html,/<strong class="workflow-role">Planner:<\/strong>\s*I planned the following improvement\./);
 });
+test('live workflow stream is a collapsible details element with summary and chevron',()=>{
+ const html=render([],{live:true,stream:{phase:'thinking',request_id:'live1',thinking:'Stream thinking content'}});
+ assert.match(html,/<details class="workflow-stream"[^>]*data-event="workflow-stream-live1"[^>]*open>/);
+ assert.match(html,/<summary class="stream-label">/);
+ assert.match(html,/Stream thinking content/);
+});
