@@ -2071,12 +2071,15 @@ class Engine:
                     gateway.pool.record(cfg["base_url"],cfg["model"],role,error=error,connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
                     select_remote(self,runtime,role,replace=True)
                     continue
-                if not purpose and error.code == "output_limit" and role == "worker":
+                if error.code == "output_limit":
                     attempted = True
-                    if not task.get("output_recovery", {}).get(cfg["model"]):
-                        self.prepare_output_recovery(task, cfg["model"])
-                    else:
-                        self.defer_route(task, role, "The worker reached its output cap again after a smaller-action retry.")
+                    if not purpose and role == "worker":
+                        if not task.get("output_recovery", {}).get(cfg["model"]):
+                            self.prepare_output_recovery(task, cfg["model"])
+                        else:
+                            self.defer_route(task, role, "The worker reached its output cap again after a smaller-action retry.")
+                        continue
+                    self.defer_route(task, role, error)
                     continue
                 if error.code == "gateway_cooldown" and getattr(error, "scope", None) in {'account', 'connection'}:
                     self.connection_for(cfg).pool.record(cfg["base_url"], cfg["model"], role, error=error, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))

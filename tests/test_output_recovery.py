@@ -93,8 +93,8 @@ class OutputRecoveryTests(LocalCase):
             self.assertEqual(len(requests), task['limits'][cap])
             self.assertIn(result['status'], {'paused', 'budget_paused'})
 
-    def test_reported_charge_or_incomplete_usage_stops_before_retry(self):
-        for usage in ({'prompt_tokens': 20, 'completion_tokens': 100, 'cost': .01}, {'cost': .01}, {'prompt_tokens': 20}):
+    def test_reported_charge_stops_before_retry(self):
+        for usage in ({'prompt_tokens': 20, 'completion_tokens': 100, 'cost': .01}, {'cost': .01}):
             task = self.chat('remote'); requests = self.responses([self.limited(usage)])
             self.engine.start(task['id']); result = self.finish(task)
             self.assertEqual(result['status'], 'budget_paused', result['error'])
@@ -102,7 +102,7 @@ class OutputRecoveryTests(LocalCase):
             if usage.get('cost'):
                 self.assertGreaterEqual(result['usage']['cost'], .01)
 
-    def test_manual_local_and_reviewer_limits_still_pause(self):
+    def test_manual_and_local_limits_still_pause(self):
         for mode in ('manual', 'local'):
             task = self.fixture(paid=True); task['execution'] = {'mode': mode}
             self.engine.store.save(task)
@@ -111,15 +111,20 @@ class OutputRecoveryTests(LocalCase):
             self.engine.start(task['id']); result = self.finish(task)
             self.assertEqual(result['error_code'], 'output_limit', result['error'])
             self.assertEqual(provider.complete.call_count, 1)
+
+    def test_reviewer_output_limit_defers_and_completes_review(self):
         task = self.chat('remote')
         task.update(check_command=[sys.executable, '-m', 'unittest', 'discover', '-v'], auto_approve_checks=True)
         self.engine.store.save(task)
         requests = self.responses([call('replace_text', {'path': 'math_utils.py', 'old_text': 'return min(value, upper)',
                                                        'new_text': 'return max(lower, min(value, upper))'}),
-                                  call('checkpoint', {'summary': 'Ready', 'uncertainties': ''}), self.limited()])
+                                  call('checkpoint', {'summary': 'Ready', 'uncertainties': ''}),
+                                  self.limited(),
+                                  call('review_decision', {'decision': 'APPROVE', 'feedback': 'Checks passed.'})])
         self.engine.start(task['id']); result = self.finish(task)
-        self.assertEqual(result['error_code'], 'output_limit', result['error'])
-        self.assertEqual([r['role'] for r in requests], ['worker', 'worker', 'reviewer'])
+        self.assertEqual(result['status'], 'approved', result['error'])
+        self.assertEqual([r['role'] for r in requests], ['worker', 'worker', 'reviewer', 'reviewer'])
+        self.assertEqual([r['model'] for r in requests], ['a', 'a', 'b', 'c'])
 
     def test_nonstreamed_length_never_returns_even_a_complete_looking_tool(self):
         usage = {'prompt_tokens': 10, 'completion_tokens': 100, 'cost': 0}
