@@ -287,6 +287,51 @@ class FinalCheckParserTests(unittest.TestCase):
         self.assertEqual(result['items'][0]['required_checks'], ['python3 -m unittest test_1'])
         self.assertEqual(result['final_checks'], ['python3 -m unittest test_1'])
 
+    def test_parse_normalizes_flexible_items_and_aliases(self):
+        limits = {'dollars': 0, 'working_seconds': 900, 'requests': 30}
+        raw_items = [
+            {
+                'id': 1,
+                'description': 'Inspect and patch the service configuration',
+                'depends_on': [],
+            },
+            {
+                'id': 'step-2',
+                'title': 'Verify service',
+                'instructions': 'Run validation tests',
+                'depends_on': [1],
+                'acceptance_criteria': ['Tests pass'],
+                'required_checks': ['python3 -m unittest test_1'],
+            }
+        ]
+        message = {'tool_calls': [{'function': {'name': 'propose_branch_plan', 'arguments': json.dumps(
+            {'status': 'plan', 'clarification': '', 'plan': {
+                'items': raw_items,
+                'final_checks': ['python3 -m unittest test_1'],
+            }})}}]}
+        result = planner._parse(message, limits)
+        self.assertEqual(result['items'][0]['id'], '1')
+        self.assertEqual(result['items'][0]['instructions'], 'Inspect and patch the service configuration')
+        self.assertEqual(result['items'][0]['dependencies'], [])
+        self.assertEqual(result['items'][0]['title'], 'Inspect and patch the service configuration')
+        self.assertTrue(len(result['items'][0]['acceptance_criteria']) > 0)
+        self.assertEqual(result['items'][0]['required_checks'], ['python3 -m unittest test_1'])
+        self.assertNotIn('description', result['items'][0])
+        self.assertNotIn('depends_on', result['items'][0])
+        self.assertEqual(result['items'][1]['id'], 'step-2')
+        self.assertEqual(result['items'][1]['dependencies'], ['1'])
+        self.assertEqual(result['items'][1]['required_checks'], ['python3 -m unittest test_1'])
+
+        # Also test plan supplied as a serialized JSON string
+        str_message = {'tool_calls': [{'function': {'name': 'propose_branch_plan', 'arguments': json.dumps(
+            {'status': 'plan', 'clarification': '', 'plan': json.dumps({
+                'items': raw_items,
+                'final_checks': ['python3 -m unittest test_1'],
+            })})}}]}
+        str_result = planner._parse(str_message, limits)
+        self.assertEqual(str_result['items'][0]['id'], '1')
+        self.assertEqual(str_result['items'][1]['id'], 'step-2')
+
 
 class PlannerExcerptTests(unittest.TestCase):
     """Small file/provider fixtures; no Git workflow, server, or live inference."""

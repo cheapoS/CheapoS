@@ -172,11 +172,14 @@ def project_context(source):
 
 
 _CHECKS = {'type': 'array', 'minItems': 1, 'maxItems': 12, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 4000}}
-_ITEM = {'type': 'object', 'additionalProperties': False,
-         'required': ['id', 'title', 'instructions', 'dependencies', 'acceptance_criteria', 'required_checks'],
-         'properties': {'id': {'type': 'string'}, 'title': {'type': 'string', 'maxLength': 120},
+_ITEM = {'type': 'object',
+         'required': ['id'],
+         'properties': {'id': {'type': ['string', 'integer']},
+                        'title': {'type': 'string', 'maxLength': 120},
                         'instructions': {'type': 'string', 'maxLength': 4000},
-                        'dependencies': {'type': 'array', 'items': {'type': 'string'}},
+                        'description': {'type': 'string', 'maxLength': 4000},
+                        'dependencies': {'type': 'array', 'items': {'type': ['string', 'integer']}},
+                        'depends_on': {'type': 'array', 'items': {'type': ['string', 'integer']}},
                         'acceptance_criteria': {'type': 'array', 'minItems': 1, 'maxItems': 12, 'items': {'type': 'string', 'maxLength': 500}},
                         'required_checks': _CHECKS}}
 TOOLS = [{'type': 'function', 'function': {'name': 'propose_branch_plan',
@@ -184,10 +187,10 @@ TOOLS = [{'type': 'function', 'function': {'name': 'propose_branch_plan',
           'parameters': {'type': 'object', 'additionalProperties': False, 'required': ['status', 'plan', 'clarification'],
                          'properties': {'status': {'type': 'string', 'enum': ['plan', 'clarification']},
                                         'clarification': {'type': ['string', 'null'], 'maxLength': 2000},
-                                        'plan': {'type': ['object', 'null'], 'additionalProperties': False,
+                                        'plan': {'type': ['object', 'string', 'null'],
                                                  'required': ['items'],
                                                  'properties': {'items': {'type': 'array', 'minItems': 1, 'maxItems': 50, 'items': _ITEM},
-                                                                'limits': {'type': 'object', 'properties': {key: {'type': 'number'} for key in ('dollars', 'working_seconds', 'worker_turns', 'requests', 'tool_actions', 'reviewer_tokens', 'check_seconds', 'output_tokens')}, 'additionalProperties': False},
+                                                                'limits': {'type': 'object', 'properties': {key: {'type': 'number'} for key in ('dollars', 'working_seconds', 'worker_turns', 'requests', 'tool_actions', 'reviewer_tokens', 'check_seconds', 'output_tokens')}},
                                                                 'final_checks': _CHECKS}}}}}}]
 TOOLS.append({'type': 'function', 'function': {
     'name': 'inspect_project_file', 'description': 'Read a bounded excerpt from project source, including files larger than 64 KB. Use query to find a literal symbol/selector; use returned next_start_line/next_start_column to continue. No execution.',
@@ -235,6 +238,13 @@ def _parse(message, limits, source=None, assumptions=None):
     # null. This field carries no scope when an explicit plan is supplied;
     # normalize only that absence, never a missing status/plan or a question.
     if isinstance(value, dict) and value.get('status') == 'plan':
+        if isinstance(value.get('plan'), str):
+            try:
+                parsed_plan = json.loads(value['plan'])
+                if isinstance(parsed_plan, dict):
+                    value['plan'] = parsed_plan
+            except Exception:
+                pass
         if 'plan' not in value and 'items' in value:
             value['plan'] = {'items': value.pop('items')}
         if isinstance(value.get('plan'), dict) and value.get('clarification') is None:
@@ -260,6 +270,26 @@ def _parse(message, limits, source=None, assumptions=None):
     if isinstance(proposed, dict):
         if not proposed.get('limits'):
             proposed['limits'] = copy.deepcopy(limits)
+        if isinstance(proposed.get('items'), list):
+            for idx, it in enumerate(proposed['items']):
+                if not isinstance(it, dict): continue
+                if 'id' in it and not isinstance(it['id'], str):
+                    it['id'] = str(it['id'])
+                elif not it.get('id'):
+                    it['id'] = str(idx + 1)
+                if not it.get('instructions') and it.get('description'):
+                    it['instructions'] = str(it.get('description') or '')
+                if not it.get('dependencies') and it.get('depends_on'):
+                    it['dependencies'] = it.get('depends_on')
+                if 'dependencies' in it and isinstance(it['dependencies'], list):
+                    it['dependencies'] = [str(d) for d in it['dependencies']]
+                it.pop('description', None)
+                it.pop('depends_on', None)
+                if not it.get('title'):
+                    inst = it.get('instructions') or ''
+                    it['title'] = inst.strip().split('\n')[0][:100] or f"Item {it['id']}"
+                if not it.get('acceptance_criteria'):
+                    it['acceptance_criteria'] = ['Changes are implemented, verified by tests, and ready for controller commit.']
         if not proposed.get('final_checks'):
             item_checks = [c for it in proposed.get('items', []) if isinstance(it, dict) for c in it.get('required_checks', []) if isinstance(c, str) and c.strip()]
             if item_checks:
@@ -267,6 +297,10 @@ def _parse(message, limits, source=None, assumptions=None):
                 if len(unique_checks) > 12:
                     raise ValueError('Missing final_checks: all unique item checks exceed twelve commands. Provide explicit consolidated final integration checks covering the complete job and every supplied verification requirement; do not omit coverage.')
                 proposed['final_checks'] = unique_checks
+        if isinstance(proposed.get('items'), list) and proposed.get('final_checks'):
+            for it in proposed['items']:
+                if isinstance(it, dict) and 'required_checks' not in it:
+                    it['required_checks'] = copy.deepcopy(proposed['final_checks'])
     if choices and isinstance(proposed, dict) and isinstance(proposed.get('items'), list) and proposed['items']:
         first = proposed['items'][0]
         if isinstance(first, dict) and isinstance(first.get('instructions'), str):

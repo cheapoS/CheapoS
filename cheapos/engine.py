@@ -2004,8 +2004,10 @@ class Engine:
                 self.event(task, "handoff", "Switching to another free " + role, {
                     "from": recovery["from"], "to": task["providers"][role]["model"], "role": role,
                     "summary": "Continuing with the same chat, saved files, checks, and limits. " + recovery["reason"]})
-                runtime.observations.clear()
-                runtime.file_observations.clear()
+                if hasattr(runtime, 'observations') and hasattr(runtime.observations, 'clear'):
+                    runtime.observations.clear()
+                if hasattr(runtime, 'file_observations') and hasattr(runtime.file_observations, 'clear'):
+                    runtime.file_observations.clear()
                 if not purpose and (task.get("action_pending") or task.get("compact_edits")) and task["status"] != "reviewing":
                     from .worker_conversation import continue_session
                     snapshot = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
@@ -2432,7 +2434,7 @@ class Engine:
         self.store.save(task)
         guard_automatic_route_cost(task)
         if not known:
-            paid_model = ((config.get("input_rate") or 0) > 0 or (config.get("output_rate") or 0) > 0) and config.get("access") != "included"
+            paid_model = (((config.get("input_rate") or 0) > 0 or (config.get("output_rate") or 0) > 0) and config.get("access") != "included") or (isinstance(cost, (int, float)) and cost > 0)
             if paid_model:
                 raise BudgetError("Provider omitted complete token usage. The conservative reservation is retained; review the budget before resuming.")
 
