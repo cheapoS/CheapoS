@@ -308,12 +308,12 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn('attachment', headers['Content-Disposition'])
         self.engine.gateway.configure({'api_key':'private-test-value'})
-        config = {role: {'base_url': self.engine.gateway.settings['base_url'], 'gateway':'omniroute', 'model':'fixture', 'input_rate':0, 'output_rate':0} for role in ['worker', 'reviewer']}
+        config = {role: {'base_url': self.engine.gateway.settings['base_url'], 'gateway':'omniroute', 'model':'fixture-'+role, 'input_rate':0, 'output_rate':0} for role in ['worker', 'reviewer']}
         status, _, body = self.post('/api/config', config)
         self.assertEqual(status, 200)
         self.assertNotIn(b'private-test-value', body)
         self.assertNotIn(b'private-test-value', self.request('GET', '/api/bootstrap')[2])
-        self.assertNotIn('private-test-value', (self.engine.store.root / 'config.json').read_text())
+        self.assertNotIn('private-test-value', (self.engine.store.root / 'settings.json').read_text())
         for gateway in ('openai','omniroute'):
             direct={**config['worker'],'gateway':gateway,'base_url':'https://openrouter.ai/api/v1'}
             with patch('cheapos.server.gateway_for') as connect:

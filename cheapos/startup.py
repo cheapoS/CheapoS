@@ -287,8 +287,7 @@ class StartupManager:
                         selected["worker"] = config
                         if not selected.get("reviewer"):
                             selected["reviewer"] = validate_provider({**config, "key_env":config["key_env"]}, "reviewer")
-                        write_json(self.engine.store.root / "config.json", selected)
-                        self.engine.config = selected
+                        self.engine.remember_provider_defaults(selected)
                     self._attempt(attempt, status="ready", finished_at=timestamp())
                     self._set(status="ready", message="The model answered. Open a project to start.", content=content.strip()[:2000], thinking="", verified_at=timestamp())
                     return

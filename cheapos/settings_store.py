@@ -245,7 +245,7 @@ class SettingsStore:
                     'source_parent_revision': current['parent_revision']}
 
     def save(self, patch, *, expected_revision, operation_id, project=None,
-             expected_parent_revision=None, remove=(), public_config=None):
+             expected_parent_revision=None, remove=(), public_config=None, _allow_legacy_collision=False):
         project = canonical_project(project) if project else None
         if public_config is not None and project:
             raise ValueError('Public model configuration belongs to new chat defaults')
@@ -291,7 +291,10 @@ class SettingsStore:
                 proposed = resolve(updated, key)['values']
                 old = resolve(document, key)['values']
                 try:
-                    self.validate_transition(old, proposed)
+                    if _allow_legacy_collision:
+                        self.validate(proposed, independence=False)
+                    else:
+                        self.validate_transition(old, proposed)
                 except ValueError as error:
                     raise ValueError(f'{key or "New chat defaults"}: {error}') from error
             if not project:
@@ -320,7 +323,19 @@ class SettingsStore:
         with self.lock:
             document = self.read()
             result = copy.deepcopy(document.get('public_config', document.get('migration', {}).get('public_providers', {})))
-            for role, selection in document['defaults']['values']['roles'].items():
-                if selection.get('provider'):
-                    result[role] = copy.deepcopy(selection['provider'])
-            return {role: result.get(role) for role in ROLES}
+            result.setdefault('worker', None)
+            result.setdefault('reviewer', None)
+            return result
+
+    def remember_provider_defaults(self, providers):
+        """Remember discovery metadata without converting Automatic into pins."""
+        if not isinstance(providers, dict) or set(providers) - set(ROLES):
+            raise ValueError('Invalid public model configuration')
+        public = {}
+        for role, provider in providers.items():
+            public[role] = None if provider is None else self.provider_validator(provider, role)
+        with self.lock:
+            document = self.read()
+            document['public_config'] = public
+            document['generation'] += 1
+            write_json(self.path, document)

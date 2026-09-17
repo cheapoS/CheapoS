@@ -634,12 +634,20 @@ class Engine:
         if not hasattr(self, 'settings_store'):
             self._legacy_config = value
             return
-        # Compatibility for local callers assigning a complete public pair.
+        self._set_config(value, legacy=True)
+
+    def _set_config(self, value, *, legacy=False):
+        # Legacy internal callers may preserve an existing local pair. New
+        # operator choices use strict role independence validation below.
         current = self.settings_store.view()
         patch = {f'roles.{role}': ({'strategy': 'only', 'model': provider['model'],
             'connection_id': provider.get('connection_id'), 'provider': provider} if provider else {'strategy': 'automatic'})
             for role, provider in value.items() if role in {'planner', 'worker', 'reviewer'}}
-        self.settings_store.save(patch, expected_revision=current['revision'], operation_id=uuid.uuid4().hex, public_config=value)
+        self.settings_store.save(patch, expected_revision=current['revision'], operation_id=uuid.uuid4().hex,
+                                 public_config=value, _allow_legacy_collision=legacy)
+
+    def remember_provider_defaults(self, values):
+        self.settings_store.remember_provider_defaults(values)
 
     def preferences(self):
         from .settings_adapter import preferences
@@ -731,7 +739,7 @@ class Engine:
         with self.lock:
             if self.startup.busy():
                 raise ValueError("Stop the startup connection check before changing models")
-            self.config = normalized
+            self._set_config(normalized)
             self.startup.models_changed()
         return self.configuration()
 
