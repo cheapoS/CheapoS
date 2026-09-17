@@ -237,6 +237,59 @@ class InstructionCatalogTests(unittest.TestCase):
         self.assertIn("recovery.review_repair", rule_ids)
         self.assertIn("recovery.disagreement", rule_ids)
 
+    def test_resolved_review_findings_suppress_rejection_guidance(self):
+        """Resolved review findings in dispute ledger must not trigger rejection or repair guidance."""
+        from cheapos import review_disputes
+        from cheapos.instructions import rules_for_task, triggers_for_task
+
+        task = {
+            "conversational": True,
+            "branch_run": {
+                "current_item_id": "item-1",
+                "items": [
+                    {
+                        "id": "item-1",
+                        "title": "Repaired item",
+                        "review_repair": {
+                            "candidate_id": "cand-1",
+                            "finding_ids": ["find-1"],
+                            "defects": [{"finding_id": "find-1", "criterion": "crit"}],
+                        },
+                    },
+                ],
+                "dispute_ledger": {
+                    "findings": {
+                        "find-1": {"id": "find-1", "status": "requested"},
+                    }
+                },
+            },
+        }
+        item = task["branch_run"]["items"][0]
+
+        # Prior to resolution: triggers are active
+        triggers_before = triggers_for_task(task)
+        self.assertIn("review_repair", triggers_before)
+        self.assertIn("review_rejected", triggers_before)
+
+        # Mark finding as independently resolved through real review_disputes.resolved()
+        review_disputes.resolved(task, item, "cand-2")
+        self.assertEqual(
+            task["branch_run"]["dispute_ledger"]["findings"]["find-1"]["status"],
+            "independently_resolved",
+        )
+        # Historical repair evidence is intentionally preserved on item
+        self.assertIsNotNone(item.get("review_repair"))
+
+        # After resolution: triggers are suppressed
+        triggers_after = triggers_for_task(task)
+        self.assertNotIn("review_repair", triggers_after)
+        self.assertNotIn("review_rejected", triggers_after)
+
+        rules_after = rules_for_task(task, role="worker")
+        rule_ids_after = {r.id for r in rules_after}
+        self.assertNotIn("recovery.review_repair", rule_ids_after)
+        self.assertNotIn("recovery.disagreement", rule_ids_after)
+
     def test_full_suite_triggers_from_saved_authorization(self):
         """Full suite triggers must be derived from controller's persisted full_suite_approval and reject false strings."""
         from cheapos import test_policy

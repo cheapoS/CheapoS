@@ -143,16 +143,29 @@ def triggers_for_task(task: dict) -> List[str]:
     item = active_branch_item(task)
     run = task.get("branch_run") if isinstance(task.get("branch_run"), dict) else {}
     repair = (item.get("review_repair") if isinstance(item, dict) else None) or task.get("review_repair")
+    ledger_findings = run.get("dispute_ledger", {}).get("findings", {}) if isinstance(run.get("dispute_ledger"), dict) else {}
 
-    if repair and isinstance(repair, dict) and (repair.get("defects") or repair.get("finding_ids") or repair.get("candidate_id")):
+    # Distinguish historical repair evidence from active unresolved defects
+    repair_finding_ids = repair.get("finding_ids", []) if isinstance(repair, dict) else []
+    if repair_finding_ids and ledger_findings:
+        has_unresolved_repair = any(
+            ledger_findings.get(fid, {}).get("status") != "independently_resolved"
+            for fid in repair_finding_ids
+        )
+    elif repair and isinstance(repair, dict) and (repair.get("defects") or repair.get("candidate_id")):
+        has_unresolved_repair = True
+    else:
+        has_unresolved_repair = False
+
+    if has_unresolved_repair:
         triggers.append("review_repair")
 
-    ledger_findings = run.get("dispute_ledger", {}).get("findings", {}) if isinstance(run.get("dispute_ledger"), dict) else {}
-    unresolved_findings = any(
+    # Rejection guidance activates only for outstanding unresolved findings or active repair defects
+    has_outstanding_disputes = _is_truthy(task.get("review_disputes")) or any(
         isinstance(f, dict) and f.get("status") != "independently_resolved"
         for f in ledger_findings.values()
     )
-    if task.get("review_disputes") or unresolved_findings or (repair and repair.get("finding_ids")):
+    if has_outstanding_disputes or (has_unresolved_repair and repair_finding_ids):
         triggers.append("review_rejected")
 
     return triggers
