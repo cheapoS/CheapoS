@@ -46,8 +46,12 @@ def is_implementation(task):
             return False
         action_keywords = {'fix', 'update', 'change', 'add', 'implement', 'create', 'delete', 'remove',
                            'replace', 'make', 'edit', 'patch', 'build', 'refactor', 'repair', 'resolve',
-                           'write', 'modify', 'adjust', 'correct', 'clean'}
+                           'write', 'modify', 'adjust', 'correct', 'clean', 'hide', 'disable', 'enable'}
         if any(re.search(r'\b' + re.escape(w) + r'\b', prompt_clean) for w in action_keywords):
+            return True
+        # Behavioral requests often describe the desired UI without saying
+        # "edit" or "fix". A conditional display rule still asks for work.
+        if re.search(r'\bonly\s+show\b[^.!?]*\b(?:if|when)\b', prompt_clean):
             return True
     if work_policy.active_implementation(task) or needs_patch_review(task):
         return True

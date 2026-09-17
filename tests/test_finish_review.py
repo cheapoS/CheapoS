@@ -55,7 +55,9 @@ class FinishReviewTests(unittest.TestCase):
                             'verification_identity': 'fixture', 'generation': 0}]
         self.assertEqual(work_policy.stage(result), 'review')
         result.pop('finish_review')
-        self.assertEqual(work_policy.stage(result), 'orientation')
+        # The original "Fix the bug" request still asks for implementation;
+        # removing the explicit review action does not turn it into a question.
+        self.assertEqual(work_policy.stage(result), 'implementation')
 
     def test_saved_review_is_preserved_and_double_click_does_not_dispatch_again(self):
         self.task['pending_review'] = {'messages': ['retained reviewer context']}

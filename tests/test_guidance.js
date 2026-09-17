@@ -500,6 +500,19 @@ test('exhausted recovery asks for a correction and describes saved evidence',()=
  assert.match(guide.description,/Provide the target version/);
 });
 
+test('uncapped Interactive recovery offers Resume even when coordinator advice failed',()=>{
+ const stopped=task({status:'paused',conversational:true,error_code:'progress_limit',error:'Coordinator reassessment did not produce an applicable next step.',
+   recovery_blocked:0,limits:{uncapped_work:true},pause_summary:{saved_files:[],attempted:[],blocker:'Repeated reads',next_action:'Old correction instruction'},
+   coordinator_recovery:[{state:'failed',error_code:'coordinator_path_reference',diagnostic:'Advice references a path outside supplied evidence: dist/app.js'}]});
+ const guide=taskGuide(stopped);
+ assert.equal(guide.primary,'resume');assert.equal(guide.primaryLabel,'Resume');
+ assert.match(guide.description,/saved task with the worker/);
+ assert.doesNotMatch(guide.description,/correction|exhausted|renew attempts/);
+ for(const gate of [{pending_approval:{command:['test']}},{environment_setup:{status:'missing'}},{pause_summary:{...stopped.pause_summary,question:'Which project?'}}]){
+   assert.notEqual(taskGuide({...stopped,...gate}).primary,'resume');
+ }
+});
+
 test('known cooldown waits are explicit and expose the retry action',()=>{
  const CheapOSGuide=require('../dist/guidance.js');
  const waiting=task({status:'waiting_retry',route_wait:{started_at:1000,retry_at:1010}});

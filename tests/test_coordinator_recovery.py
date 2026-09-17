@@ -131,5 +131,25 @@ class RecoveryContractTests(unittest.TestCase):
         self.assertEqual(recovery.excerpt_start(task,'app.py'),210)
         self.assertLessEqual(len(json.dumps(packet)),recovery.MAX_PACKET)
 
+    def test_restarted_packet_keeps_previously_read_file_beyond_index_cutoff(self):
+        task = self.task()
+        task.update(changes=[], patch='', events=[
+            {'kind':'tool', 'detail':{'arguments':{'path':'dist/app.js'},
+                                     'result':{'path':'dist/app.js', 'content':'existing handler'}}},
+            {'kind':'tool', 'detail':{'arguments':{'path':'../secret.py'}}},
+            {'kind':'assistant', 'detail':{'result':{'path':'invented.py'}}}])
+        runtime = SimpleNamespace(task=json.loads(json.dumps(task)), file_observations={})
+        names = [f'cheapos/file_{n:03}.py' for n in range(150)] + ['dist/app.js']
+        with patch.object(recovery.Workspace, 'list_files', return_value=names), patch.object(recovery.Workspace, 'path'), patch.object(recovery.Workspace, 'read_file', return_value={'path':'dist/app.js', 'hash':'current', 'content':'current handler'}):
+            packet = recovery.packet(None, runtime, 'Repeated read')
+        self.assertEqual(packet['permitted_paths'][0], 'dist/app.js')
+        self.assertEqual(len(packet['permitted_paths']), 100)
+        self.assertNotIn('../secret.py', packet['permitted_paths'])
+        self.assertNotIn('invented.py', packet['permitted_paths'])
+        self.assertTrue(any(e.get('path')=='dist/app.js' and e.get('hash')=='current' for e in packet['evidence']))
+        advice = dict(self.advice(), next_step='Correct the startup condition in dist/app.js.')
+        self.assertEqual(recovery.validate(advice, packet), advice)
+        self.assertLessEqual(len(json.dumps(packet)), recovery.MAX_PACKET)
+
 
 if __name__ == '__main__': unittest.main()

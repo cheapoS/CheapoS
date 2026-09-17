@@ -95,15 +95,24 @@ def packet(engine, runtime, reason):
         # Existing bounded tracked/untracked index, with Workspace path checks.
         names = workspace.list_files()
         relevant = [c.get('path') for c in task.get('changes', [])] + [name for name, _ in getattr(runtime, 'file_observations', {})]
+        # Runtime observations disappear on restart/handoff. Recover relevant
+        # paths from saved tool metadata, never from arbitrary model prose.
+        for event in reversed(task.get('events', [])):
+            detail = event.get('detail')
+            if event.get('kind') != 'tool' or not isinstance(detail, dict):
+                continue
+            for field in ('result', 'arguments'):
+                value = detail.get(field)
+                if isinstance(value, dict) and isinstance(value.get('path'), str):
+                    relevant.append(value['path'])
+        relevant = list(dict.fromkeys(name for name in relevant if name in names))
         indexed = list(dict.fromkeys([name for name in relevant if name in names] + names))
         for name in indexed[:100]:
             try: workspace.path(name)
             except ValueError: continue
             if len(name) <= 180: result['permitted_paths'].append(name)
         if len(names) > len(result['permitted_paths']): result['omitted'].append('Some file-index entries omitted')
-        selected = [c.get('path') for c in task.get('changes', [])]
-        selected += [name for name, _ in getattr(runtime, 'file_observations', {})]
-        for name in list(dict.fromkeys(selected))[:3]:
+        for name in relevant[:3]:
             if name not in result['permitted_paths']: continue
             try:
                 start = excerpt_start(task, name)
@@ -174,6 +183,8 @@ def validate(response, supplied):
         paths = re.finditer(r'(?<![\w])(?:\.\./|/)?(?:[\w.-]+/)+[\w.-]+|(?<![\w])[\w.-]+\.(?:py|js|ts|tsx|jsx|json|md|html|css|sh|yaml|yml|toml|txt)\b', text)
         for match in paths:
             path = match.group()
+            if path not in allowed_paths:
+                path = path.rstrip('.')  # Sentence punctuation in prose, not a typed path.
             if path in allowed_paths: continue
             if '/' not in path and sum(PurePosixPath(p).name == path for p in allowed_paths) == 1: continue
             # Only a clearly described API route, with no traversal/file suffix,
