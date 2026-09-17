@@ -2073,7 +2073,8 @@ class Engine:
             if repair_transport and recovery and recovery.get('from') == cfg['model'] and recovery.get('reason') == 'This model is cooling down after a recent failure.':
                 task['route']['recovery'].pop(role)
                 recovery = None
-            if recovery and not unavailable and runtime.handoffs >= MAX_HANDOFFS and not developing(task):
+            branch_worker = role == 'worker' and bool(task.get('branch_run'))
+            if recovery and not unavailable and runtime.handoffs >= MAX_HANDOFFS and not developing(task) and not branch_worker:
                 raise RoutingPause("Two automatic model handoffs were tried for this request. Saved work and usage are kept. Inspect Models and send a specific next instruction; Resume does not replenish handoffs.")
             if attempted:
                 self.count_recovery_turn(runtime)

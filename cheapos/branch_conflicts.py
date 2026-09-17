@@ -241,6 +241,36 @@ def apply_version(task, path, version):
     return {'path':path,'version':version,'deleted':text is None,'guidance':'Inspect the result and resolve any suggested conflict markers with the normal edit tools, then run the authorized checks and request review.'}
 
 
+def prepare_clean_files(engine, runtime):
+    """Apply Git's clean combination to untouched files; never replace edits."""
+    task = runtime.task
+    resolution = task.get('branch_run', {}).get('conflict_resolution')
+    if not resolution or resolution.get('status') != 'working':
+        return
+    if task['branch_run'].get('current_item_id') != resolution['item_id']:
+        return
+    resolution = current(task)
+    from .workspace import Workspace
+    workspace = Workspace(task['workspace'])
+    context = resolution['context']
+    applied = []
+    for name in sorted(set(context['files']) - set(context['conflicts'])):
+        runtime.guard()
+        destination = workspace.path(name)
+        before = destination.read_bytes().decode('utf-8') if destination.exists() else None
+        suggested = _text(task, context, name, 'suggested')
+        if before == suggested or before != _text(task, context, name, 'task'):
+            continue
+        apply_version(task, name, 'suggested')
+        applied.append(name)
+    if applied:
+        engine.refresh_changes(task)
+        engine.event(task, 'conflict_resolution', 'Applied nonconflicting incoming files',
+                     {'files':applied, 'conflicts':context['conflicts'],
+                      'summary':'Existing edits are preserved. Resolve remaining overlaps, then verify and request independent review.'})
+        engine.store.save(task)
+
+
 class UnsupportedIntegration(ValueError):
     def __init__(self, code, paths, message):
         self.code='unsupported_'+code

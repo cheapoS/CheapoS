@@ -20,8 +20,7 @@ def reassessment_config(task):
             or (task.get('environment_setup') or {}).get('status') == 'missing'
             or (task.get('reconciliation') or {}).get('conflicts')):
         raise ValueError('Coordinator reassessment is available only for a paused Interactive worker stall without another pending action.')
-    key = contract.episode_key(task)
-    episode = next((e for e in task.get('coordinator_recovery', []) if e.get('key') == key), None)
+    episode = contract.current_episode(task)
     if episode and not format_repair_available(task, episode) and not reusable_advice(task, episode):
         diagnostic = episode.get('diagnostic') or episode.get('summary')
         raise ValueError('Coordinator assistance was already attempted for this request. '
@@ -50,11 +49,16 @@ def remaining_work_seconds(task):
 
 
 def reassessment_availability(task):
+    if task.get('branch_run'):
+        episode = contract.current_episode(task)
+        return {'available': False, 'automatic': True,
+                'reason': ('The coordinator attempt for the current evidence is saved. Recovery continues within this run’s authorized worker policy.'
+                           if episode else 'Coordinator assistance can assess a new worker stall automatically in this unattended run when enabled and available.')}
     try:
         config = reassessment_config(task)
     except (ValueError, RoutingPause) as error:
         return {'available': False, 'reason': str(error)}
-    episode = next((e for e in task.get('coordinator_recovery', []) if e.get('key') == contract.episode_key(task)), None)
+    episode = contract.current_episode(task)
     result = {'available': True, 'model': config['model']}
     if episode:
         result['reuse_saved' if reusable_advice(task, episode) else 'format_repair'] = True
@@ -141,14 +145,14 @@ def _advice_request(engine, runtime, episode, config, repair=False):
 
 
 def consult(engine, runtime, reason):
-    """One consultation, with at most one JSON-format correction; no new authority."""
+    """Consult once per distinct work evidence, with one format correction."""
     task = runtime.task
     if not _eligible(runtime): return False
     runtime.guard()
     engine.refresh_changes(task)
     key = contract.episode_key(task)
     episodes = task.setdefault('coordinator_recovery', [])
-    episode = next((e for e in episodes if e['key'] == key), None)
+    episode = contract.current_episode(task)
     saved = reusable_advice(task, episode) if episode else None
     if saved:
         # Store the accepted result and prior failure atomically. Resume may use
@@ -177,6 +181,7 @@ def consult(engine, runtime, reason):
     if hasattr(runtime, 'branch_ledger'): runtime.branch_ledger.guard(next_request=True)
     if not episode:
         episode = {'id': uuid.uuid4().hex, 'key': key, 'identity': contract.identity(task),
+                   'work_evidence': contract.recovery_evidence(task),
                    'state': 'prepared', 'reason': reason, 'started_at': datetime.now(timezone.utc).isoformat()}
         episodes.append(episode)
         engine.store.save(task)
@@ -273,7 +278,7 @@ def continuation(task):
 
 def observe(engine, task, action):
     """Record an actual post-guidance result, never advice as progress."""
-    episode = next((e for e in task.get('coordinator_recovery', [])
+    episode = next((e for e in reversed(task.get('coordinator_recovery', []))
                     if e['key'] == contract.episode_key(task) and e['state'] == 'applied'), None)
     if not episode or episode.get('result'): return
     if action in {'write_file', 'replace_text', 'replace_lines', 'undo_edit'} and contract.identity(task) != episode['identity']:
@@ -291,8 +296,6 @@ def observe(engine, task, action):
 def restore(engine, runtime):
     """Only apply a previously received response; never dispatch on Resume."""
     task = runtime.task
-    episode = next((e for e in task.get('coordinator_recovery', [])
-                    if e.get('key') == contract.episode_key(task)
-                    and (e.get('state') == 'completed' or reusable_advice(task, e))), None)
-    if episode:
+    episode = contract.current_episode(task)
+    if episode and (episode.get('state') == 'completed' or reusable_advice(task, episode)):
         consult(engine, runtime, episode.get('reason', 'Saved recovery advice'))

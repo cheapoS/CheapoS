@@ -28,6 +28,40 @@ def episode_key(task):
     return digest([task.get('id'), segment])
 
 
+def recovery_evidence(task):
+    """Stable work evidence; reads, clocks, usage and retries do not renew help."""
+    check = (task.get('checks') or [{}])[-1]
+    review = (task.get('checkpoints') or [{}])[-1]
+    return {'patch': digest(task.get('patch') or ''),
+            'check': {k: check[k] for k in ('command', 'digest', 'passed', 'outcome', 'exit_code') if k in check},
+            'review': {k: review[k] for k in ('candidate_id', 'decision', 'feedback') if k in review}}
+
+
+def current_episode(task):
+    key = episode_key(task)
+    evidence = recovery_evidence(task)
+    for episode in reversed(task.get('coordinator_recovery', [])):
+        if episode.get('key') != key:
+            continue
+        if 'work_evidence' in episode:
+            if episode['work_evidence'] == evidence:
+                return episode
+            continue
+        # Legacy packets can prove that a *different candidate* was checked.
+        # With no reliable baseline, retain the previous attempt conservatively.
+        prior = next((e for e in episode.get('packet', {}).get('evidence', [])
+                      if e.get('kind') == 'last_verification'), None)
+        try:
+            saved = json.loads(prior['text']) if prior else {}
+        except (ValueError, TypeError, KeyError):
+            saved = {}
+        now = evidence['check']
+        if saved.get('digest') and now.get('digest') and saved['digest'] != now['digest']:
+            continue
+        return episode
+    return None
+
+
 def identity(task):
     run = task.get('branch_run') or {}
     return digest({'episode': episode_key(task), 'requests': task.get('requests'), 'prompt': task.get('prompt'),
@@ -81,8 +115,12 @@ def packet(engine, runtime, reason):
     add('saved_changes', [{'path': c.get('path'), 'hash': c.get('hash')} for c in task.get('changes', [])], 1800)
     if task.get('checks'):
         check = task['checks'][-1]
-        add('last_verification', {k: _text(check[k], 700) if k == 'output' else check[k]
-                                 for k in ('passed', 'command', 'outcome', 'output', 'digest') if k in check}, 1500)
+        verification = {k: check[k] for k in ('passed', 'command', 'outcome', 'digest') if k in check}
+        output = str(check.get('output') or '')
+        # Test runners usually print passing cases first and the failure at the
+        # end. Preserve the actionable failure, not just the first passing lines.
+        verification['output'] = output[-2400:] if not check.get('passed') else _text(output, 700)
+        add('last_verification', verification, 3200)
     evidence = progress_evidence(task)
     if evidence['last_review']: add('last_review', evidence['last_review'], 2500)
     if evidence['current_patch']: add('current_patch', {k:v for k,v in evidence.items() if k != 'last_review'}, 4200)

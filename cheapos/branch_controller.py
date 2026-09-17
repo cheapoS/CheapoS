@@ -453,6 +453,10 @@ class BranchController:
             if result['decision'] not in {'REQUEST_CHANGES', 'REQUEST_TESTS'}:
                 return
         task['status'] = 'running'
+        if item['status'] == 'working' and task.get('branch_run', {}).get('conflict_resolution'):
+            from .branch_conflicts import prepare_clean_files
+            task['active_role'] = 'worker'
+            prepare_clean_files(self.engine, runtime)
         from .worker_conversation import continue_session
         continue_session(task, self.engine.initial_messages(task),
                          'review_repair' if result and result.get('decision') == 'REQUEST_CHANGES' else 'test_expansion' if result and result.get('decision') == 'REQUEST_TESTS' else 'item_resume', result)

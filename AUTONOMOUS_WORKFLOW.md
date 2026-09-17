@@ -282,3 +282,21 @@ edit limits remain separate and unchanged.
 Small deterministic cases cover large Python and JavaScript files, paged
 inspection, search, a versioned edit and undo, plus path/binary restrictions.
 They require no models, Git workflows or real-time waits.
+
+## Implemented: reassess new recovery evidence and prepare clean merge files
+
+Optional coordinator help now follows the current patch, check result and review
+evidence within an item. A later failure after code changes can receive fresh
+help. Unchanged reads, repeated checks, Resume, elapsed time and usage do not
+renew the same consultation; previous attempts and accounting remain saved.
+Coordinator packets retain the failure end of test output instead of only the
+initial passing tests. Unattended UI describes automatic assistance accurately.
+
+Automatic branch-worker recovery may try further unused authorized workers after
+the old two-handoff threshold. It retains failed-model exclusions, task limits,
+spending and command authority, check evidence and independent review.
+
+Before a conflict worker continues, the controller applies captured Git-combined
+nonconflicting files that still match their original task version. Existing edits
+and textual conflicts remain untouched. This preparation is restart-safe and
+does not approve or commit the result; verification and review still follow.

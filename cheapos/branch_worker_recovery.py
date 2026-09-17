@@ -1,7 +1,6 @@
 """Durable alternative-worker recovery for observed implementation stalls."""
-from .model_pool import automatic, MAX_HANDOFFS
+from .model_pool import automatic
 from . import branch_workspace
-from .development import enabled as developing
 
 
 def queue(controller, runtime, item):
@@ -21,11 +20,12 @@ def queue(controller, runtime, item):
         return False
     recovery=run.setdefault('implementation_recovery',{'attempts':0,'failed_models':[]})
     per_item=item.setdefault('recovery',{'attempts':0})
-    if not developing(task) and (recovery['attempts']>=MAX_HANDOFFS or per_item['attempts']>=MAX_HANDOFFS or runtime.handoffs>=MAX_HANDOFFS):
-        task['error']='Automatic model recovery allowance is exhausted. Saved files and usage are retained; Resume does not renew attempts.'
-        return False
     worker=(task.get('providers',{}).get('worker') or {}).get('model')
     if not worker:return False
+    # A queued or already failed worker is not a new strategy. The authorized
+    # pool and task budget, not a separate handoff count, bound continuation.
+    if worker in recovery['failed_models']:
+        return False
     recovery['attempts']+=1;per_item['attempts']+=1
     if worker not in recovery['failed_models']:recovery['failed_models'].append(worker)
     reason=task.get('error') or 'Implementation made no further progress.'
@@ -33,6 +33,7 @@ def queue(controller, runtime, item):
     if brief: reason += '\nCoordinator continuation (advisory, same scope and permissions): ' + brief
     task['route'].setdefault('recovery',{})['worker']={'from':worker,'reason':reason}
     task.update(status='running',error=None,error_code=None,answer_pending=False,action_pending=True)
+    task['loop_guidance'] = 'Continue the unfinished item from saved changes and failing check evidence. Inspect the relevant code, repair the concrete failures, then verify and submit checkpoint for independent review.'
     task.pop('recovery_blocked',None)
     runtime.step_turns=0
     runtime.observations.clear();runtime.file_observations.clear();runtime.edit_versions.clear()

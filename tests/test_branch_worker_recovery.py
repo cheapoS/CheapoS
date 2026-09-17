@@ -29,17 +29,19 @@ class RecoveryPolicyTests(unittest.TestCase):
    if reason=='question':r.task['branch_run']['waiting_for_user']='Question'
    if reason=='review':i['status']='reviewing'
    self.assertFalse(queue(c,r,i))
- def test_persisted_attempts_and_no_renewal(self):
+ def test_distinct_workers_continue_past_old_cap_without_reusing_failed_worker(self):
   c,r,i=self.fixture()
   with patch('cheapos.branch_worker_recovery.branch_workspace.validate_owned'):
-   for n in range(2):
+   for n in range(4):
+    r.task['providers']['worker']['model']='worker-'+str(n)
+    r.handoffs=n
     r.task.update(status='paused',error_code='progress_limit',error='Repeated evidence')
     self.assertTrue(queue(c,r,i));r.task=json.loads(json.dumps(r.task))
    r.task.update(status='paused',error_code='progress_limit',error='Repeated evidence')
    self.assertFalse(queue(c,r,i))
-  self.assertEqual(r.task['branch_run']['implementation_recovery']['attempts'],2)
-  self.assertEqual(i['recovery']['attempts'],2);self.assertEqual(r.task['worker_turns'],12);self.assertEqual(r.task['usage']['worker']['tokens'],123)
-  self.assertEqual(c.engine.store.save.call_count,2)
+  self.assertEqual(r.task['branch_run']['implementation_recovery']['attempts'],4)
+  self.assertEqual(i['recovery']['attempts'],4);self.assertEqual(r.task['worker_turns'],12);self.assertEqual(r.task['usage']['worker']['tokens'],123)
+  self.assertEqual(c.engine.store.save.call_count,4)
  def test_drift_budget_and_missing_consent_cannot_queue(self):
   for stage in ('guard','authority','ownership','consent'):
    c,r,i=self.fixture();owned=Mock()
@@ -65,8 +67,8 @@ class RecoveryPolicyTests(unittest.TestCase):
 class RecoveryExecutionTests(unittest.TestCase):
  setUp=fixture.BranchStartTests.setUp
  def test_stalled_author_hands_saved_file_to_distinct_worker_then_real_commit(self):
+  self.engine.config={'worker':None,'reviewer':None,'planner':None}
   self.engine.save_preferences({'execution':{'mode':'remote','coordinator_assistance':True,'coordinator_model':'local-helper'}})
-  self.engine.config['worker']['model']='worker-a';self.engine.config['reviewer']['model']='zzz-reviewer'
   self.engine.gateway.matches=lambda _:True
   self.engine.gateway.catalog=lambda **_: {'status':'ready','models':[model(m) for m in ('worker-a','worker-b','zzz-reviewer')]}
   counters={};seen=[]
@@ -74,6 +76,9 @@ class RecoveryExecutionTests(unittest.TestCase):
    def complete(messages,tools,max_tokens):
     names={t['function']['name'] for t in tools};name=config['model'];counters[name]=counters.get(name,0)+1
     if role=='coordinator':
+     # The existing complete workflow also covers a saved run that already
+     # crossed the old routing handoff cap; it must still reach review/commit.
+     next(iter(self.engine.runtimes.values())).handoffs=3
      packet=json.loads(messages[1]['content']);self.assertTrue(packet['instruction_sources']['accepted_item']['acceptance_criteria'])
      return {'content':json.dumps({'outcome':'continue','action':'edit','next_step':'Add a focused regression for the saved work.py value.','expected_result':'A test demonstrates the accepted item behavior.','evidence':['e1']})},{'prompt_tokens':10,'completion_tokens':10,'cost':0}
     if 'routing_ready' in names:return call('routing_ready', {'marker': PROBE_MARKER}),{'prompt_tokens':2,'completion_tokens':2,'cost':0}
