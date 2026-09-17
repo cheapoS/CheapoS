@@ -373,6 +373,9 @@ def _checkpoint(engine, runtime, args):
         for call in calls:
             if runtime.stop.is_set(): raise InterruptedError('Task stopped')
             name, params = engine.parse_call(call)
+            from .metrics import tool_action
+            if name == 'review_decision':
+                tool_action(task)
             if name == 'review_decision':
                 try:
                     choice = disagreement.decision(params, takeover=True)

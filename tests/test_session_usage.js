@@ -36,3 +36,12 @@ test('untrusted metadata is escaped and pending requests are labeled honestly',(
   assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script>/);assert.match(html,/awaiting usage/);
   assert.doesNotMatch(html,/85,430 bytes/);
 });
+
+test('session action headline is additive, formatted and identifies partial history',()=>{
+  ctx.icon=()=>'';
+  for(const [total,label] of [[0,'0 actions'],[1,'1 action'],[12345,'12,345 actions']]){
+    const html=ctx.sessionJourney({metrics:{actions:{total,counts:{worker:total,reviewer:0,planner:0,coordinator:0,tools:0},coverage:'complete',details:'Counted once.'}},checks:[],checkpoints:[]});
+    assert.ok(html.includes('This session · '+label));assert.ok(html.includes('Coordinator calls'));assert.ok(!html.includes(' · known'));
+  }
+  assert.ok(ctx.sessionJourney({metrics:{actions:{total:2,counts:{tools:2},coverage:'partial',details:'Older history incomplete'}}}).includes('2 actions · known'));
+});

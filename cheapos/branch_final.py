@@ -183,6 +183,9 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             if len(calls) != 1:
                 raise ValueError('Return exactly one final_review_decision tool call.')
             name, result = engine.parse_call(calls[0])
+            if name in {tool['function']['name'] for tool in tools}:
+                from .metrics import tool_action
+                tool_action(runtime.task)
             if name == 'report_review_context_blocker':
                 if result.get('manifest_id')!=manifest['id'] or not any(r.get('path')==result.get('path') and r.get('available') is False for r in packet.get('context_references',[])):
                     raise ValueError('Report a context blocker only after a recorded unavailable read of this exact candidate/path.')

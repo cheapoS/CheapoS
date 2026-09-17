@@ -128,3 +128,39 @@ class TokenAccountingTests(unittest.TestCase):
         accounting = result['token_accounting']
         self.assertEqual((len(accounting['requests']), accounting['omitted_requests'], accounting['reserved']), (50, 10, 60))
         self.assertNotIn('SECRET', json.dumps(accounting))
+
+class SessionActionsTests(unittest.TestCase):
+    def test_dispatch_tools_and_reload_are_additive_and_bounded(self):
+        task={'request_metrics':[], 'tool_actions':0}
+        metrics.initialize_actions(task, fresh=True)
+        for role in ('worker','worker','reviewer','planner','coordinator'):
+            record={'id':str(len(task['request_metrics'])),'role':role,'dispatched':False,'status':'failed','purpose':'probe'}
+            task['request_metrics'].append(record)
+            metrics.dispatched_action(task,record)
+            record['dispatched']=True
+            metrics.dispatched_action(task,record)
+        task['request_metrics'].append({'id':'queued','role':'worker','dispatched':False})
+        metrics.tool_action(task);metrics.tool_action(task)
+        expected=metrics.action_totals(task)
+        self.assertEqual(expected['total'],7)
+        self.assertEqual(expected['counts'],{'worker':2,'reviewer':1,'planner':1,'coordinator':1,'tools':2})
+        task=json.loads(json.dumps(task));task['request_metrics']=[];task['request_metrics_truncated']=True
+        task['checkpoints']=[{},{}];task['checks']=[{'passed':True}]
+        for _ in range(3):
+            metrics.initialize_actions(task)
+            self.assertEqual(metrics.action_totals(task),expected)
+        fresh={};metrics.initialize_actions(fresh,fresh=True)
+        self.assertEqual(metrics.action_totals(fresh)['total'],0)
+        self.assertEqual(expected['coverage'],'complete')
+
+    def test_historical_known_total_remains_partial_after_new_work(self):
+        task={'tool_actions':4,'request_metrics_truncated':True,'request_metrics':[
+            {'id':'retained','dispatched':True,'role':'worker'},
+            {'id':'retained','dispatched':True,'role':'worker'},
+            {'id':'queued','dispatched':False,'role':'planner'}]}
+        before=json.dumps(task)
+        self.assertEqual(metrics.action_totals(task)['total'],5)
+        self.assertEqual(json.dumps(task),before)
+        metrics.initialize_actions(task);metrics.tool_action(task)
+        self.assertEqual(metrics.action_totals(task)['total'],6)
+        self.assertEqual(metrics.action_totals(task)['coverage'],'partial')

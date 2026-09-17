@@ -1,7 +1,6 @@
 # T93 — Show a total action count for this session
 
-Status: **Planned — next UI task**, recorded September 17, 2026.
-Implement after the current merge-conflict work is finished.
+Status: **Completed**, September 17, 2026.
 
 ## Product outcome
 
@@ -72,3 +71,20 @@ permissions, or autonomous continuation policy.
 - Follow [CONTRIBUTING.md](../../CONTRIBUTING.md): use focused frontend and
   lightweight accounting tests. No live inference or new heavy workflow test
   is needed for this counter. Record new-test timing when implemented.
+
+## Implementation and validation
+
+The sidebar uses durable per-chat counters for dispatched model calls by role
+and executed tools. Planning counters carry into the accepted run. Historical
+chats display a known total with partial-coverage details; new chats retain exact
+counters independently of request-log retention. Existing work allowances are
+unchanged.
+
+Focused validation: 17 accounting, transport, planner, review and resume tests
+passed in 2.379 seconds; four session UI tests passed in 71 milliseconds. The
+new pure accounting cases run within the 68-millisecond metrics module, and the
+new UI assertion takes under 1 millisecond. No live inference or full suite.
+
+The additional existing final-review coverage plus metrics/planner checks passed
+24 tests in 39.306 seconds. Browser layout verified at 320 pixels with no
+horizontal overflow.

@@ -825,6 +825,7 @@ class Engine:
                                           "target_tip": branch_workspace._tip(source, target_ref)}
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
+        metrics.initialize_actions(task, fresh=True)
         task['synthetic'] = self.provider_factory is not None
         task['check_output_filter'] = 'unittest' if os.environ.get('CHEAPOS_CHECK_OUTPUT_FILTER')=='unittest' else 'off'
         task.update({"conversational": conversational, "requests": [augmented_prompt], "turn_start_patch": "", "attachments": safe_attachments})
@@ -2306,6 +2307,7 @@ class Engine:
             record['access_class'] = 'included' if config.get('access') == 'included' else 'public_free'
         elif is_local_ollama(config):record['access_class']='local'
         elif config['input_rate'] > 0 or config['output_rate'] > 0:record['access_class']='paid'
+        metrics.initialize_actions(task)
         task.setdefault('request_metrics',[]).append(record)
         if len(task['request_metrics'])>2000:
             task['request_metrics'].pop(0);task['request_metrics_truncated']=True
@@ -2433,6 +2435,7 @@ class Engine:
                        {'attempt_id': record['id'], 'retry_of': record['retry_of'], 'role': role, 'reason': 'streaming_unsupported'})
         from .worker_conversation import receipt
         record['conversation'] = {**receipt(messages), 'transition': task.get('conversation_state', {}).get('last_transition')}
+        metrics.dispatched_action(task, record)
         record['dispatched']=True
         if streaming:
             live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "purpose": purpose, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
@@ -2620,6 +2623,8 @@ class Engine:
         if active_runtime and hasattr(active_runtime, "branch_ledger"):
             active_runtime.guard()
             active_runtime.branch_ledger.guard(next_action=True)
+        if name in {t["function"]["name"] for t in WORKER_TOOLS + UNATTENDED_TOOLS + CHAT_TOOLS}:
+            metrics.tool_action(task)
         if name == "apply_merge_version":
             from .branch_conflicts import apply_version
             result=apply_version(task, **args)
@@ -2693,6 +2698,7 @@ class Engine:
     def read_url(self, runtime, args):
         if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_action=True)
         task = runtime.task
+        metrics.tool_action(task)
         task["web_read"] = {"url": args.get("url", ""), "started_at": now()}
         self.event(task, "web", "Opening web page", task["web_read"])
         try:
@@ -3031,6 +3037,8 @@ class Engine:
                     continue
                 runtime.argument_failures = 0
                 if name == "review_decision":
+                    metrics.tool_action(task)
+                if name == "review_decision":
                     decision = params.get("decision")
                     if decision not in {"APPROVE", "REQUEST_CHANGES", "REQUEST_TESTS", "TAKE_OVER"} or not isinstance(params.get("feedback"), str):
                         result = {"error": "Return a valid decision and feedback"}
@@ -3229,6 +3237,7 @@ class Engine:
                         name, args = self.parse_call(calls[0])
                         if name != "delegate_work" or not isinstance(args.get("summary"), str) or not 1 <= len(args["summary"]) <= 2000:
                             raise RoutingPause("The local assistant returned an invalid delegation. No file tools were executed.")
+                        metrics.tool_action(task)
                         task["delegation"] = args["summary"]
                         task["active_role"] = "worker"
                         self.event(task, "routing", "Local chat finished; finding a free worker", {"summary": args["summary"]})
@@ -3506,6 +3515,8 @@ class Engine:
                     try:
                         if recovering and name not in {t["function"]["name"] for t in offered_tools}:
                             raise ProgressPause("The worker tried to repeat inspection after the read loop stopped. Saved edits are intact. Retry the next action or provide a specific correction.")
+                        if name in {"checkpoint", "run_checks", "report_blocker", "ask_user"} and name in {t["function"]["name"] for t in offered_tools}:
+                            metrics.tool_action(task)
                         if name == "checkpoint":
                             result = self.checkpoint_feedback(runtime, args)
                             coordinator_applied = bool(result.get('handoff_queued'))

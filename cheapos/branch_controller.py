@@ -187,7 +187,9 @@ class BranchController:
             task['integration_policy']=copy.deepcopy(run['integration_policy'])
             run['test_policy_version']=1
             if planning_task:
-                for key in ('usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
+                from .metrics import initialize_actions
+                initialize_actions(planning_task)
+                for key in ('session_actions','usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])

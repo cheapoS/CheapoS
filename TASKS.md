@@ -14,7 +14,7 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 | ID | Task | Status |
 | --- | --- | --- |
-| [T93](docs/tasks/T93-session-action-total.md) | Show “This session · N actions” above the full breakdown | Planned — after current merge-conflict work |
+| [T93](docs/tasks/T93-session-action-total.md) | Show “This session · N actions” above the full breakdown | Completed — durable per-chat total and role/tool breakdown |
 
 ### Settings and integration recovery — September 17
 
