@@ -709,48 +709,124 @@ class PromptParityTests(unittest.TestCase):
         self.assertNotIn("\n", unattended_setup.WORKER_POLICY)
 
     def test_representative_delivered_guidance_selection(self):
-        """Runtime guidance delivery preserves conditional selection and compounding."""
-        from cheapos.instructions import COMPACT_GUIDANCE, OUTPUT_GUIDANCE, ACTION_GUIDANCE
+        """Runtime guidance delivery preserves conditional selection and compounding by capturing actual engine messages."""
+        from unittest.mock import Mock, patch
+        from types import SimpleNamespace
+        from cheapos.engine import Engine, COMPACT_GUIDANCE, OUTPUT_GUIDANCE, ACTION_GUIDANCE
 
-        # Single recovery selection in engine
-        task_compact = {"compact_edits": True}
-        selected_compact = COMPACT_GUIDANCE if task_compact.get("compact_edits") else OUTPUT_GUIDANCE
-        self.assertEqual(selected_compact, COMPACT_GUIDANCE)
+        # 1. Capture actual engine message delivery via action_messages (context rebuilding & compounding)
+        eng = SimpleNamespace(carto=SimpleNamespace(context=Mock(return_value={"status": "disabled"})))
+        base_task = {
+            "source": "unused",
+            "workspace": "/tmp",
+            "changes": [],
+            "events": [],
+            "prompt": "Fix bug",
+            "requests": ["Fix bug"],
+            "checks": [],
+            "checkpoints": [],
+            "check_command": ["python3", "-m", "unittest"],
+        }
 
-        task_output = {"compact_edits": False}
-        selected_output = COMPACT_GUIDANCE if task_output.get("compact_edits") else OUTPUT_GUIDANCE
-        self.assertEqual(selected_output, OUTPUT_GUIDANCE)
+        with patch("cheapos.engine.Workspace") as ws, \
+             patch("cheapos.engine.project_context.brief", return_value={}), \
+             patch("cheapos.engine.project_context.continuation", return_value={}):
+            ws.return_value.list_files.return_value = []
+            ws.return_value.path.return_value.open.side_effect = FileNotFoundError
 
-        # Compound guidance combination
-        compound = COMPACT_GUIDANCE + "\n" + ACTION_GUIDANCE
-        self.assertTrue(compound.startswith(COMPACT_GUIDANCE))
-        self.assertTrue(compound.endswith(ACTION_GUIDANCE))
-        self.assertIn("\nContinue the unfinished action", compound)
+            # Case A: Compound recovery (compact_edits + action_pending)
+            task_compound = {**base_task, "compact_edits": True, "action_pending": True}
+            msgs_compound = Engine.action_messages(eng, task_compound)
+            expected_compound = COMPACT_GUIDANCE + "\n" + ACTION_GUIDANCE
+            self.assertEqual(msgs_compound[2]["content"], expected_compound)
+
+            # Case B: Single compact recovery (compact_edits without action_pending)
+            task_compact = {**base_task, "compact_edits": True, "action_pending": False}
+            msgs_compact = Engine.action_messages(eng, task_compact)
+            self.assertEqual(msgs_compact[2]["content"], COMPACT_GUIDANCE)
+
+            # Case C: Action pending recovery without compact edits
+            task_action = {**base_task, "compact_edits": False, "action_pending": True}
+            msgs_action = Engine.action_messages(eng, task_action)
+            self.assertEqual(msgs_action[2]["content"], ACTION_GUIDANCE)
+
+        # 2. Capture actual engine message delivery via _request_routed (turn execution recovery selection)
+        eng_routed = object.__new__(Engine)
+        eng_routed.connection_for = Mock()
+        gw = Mock()
+        gw.catalog.return_value = {"status": "ready", "models": [{"id": "m1"}]}
+        gw.settings = {}
+        gw.pool.observation.return_value = {"cooling_down": False}
+        eng_routed.connection_for.return_value = gw
+        eng_routed._request = Mock(return_value="response")
+        eng_routed.validate_offered_tools = Mock()
+        eng_routed.event = Mock()
+        eng_routed.store = Mock()
+
+        task_routed = {
+            "execution": {"mode": "remote"},
+            "route": {"worker": {}},
+            "providers": {"worker": {"model": "m1", "base_url": "b1"}},
+            "output_recovery": True,
+            "compact_edits": False,
+        }
+        runtime = SimpleNamespace(task=task_routed, handoffs=0, guard=Mock(), stop=SimpleNamespace(is_set=lambda: False))
+
+        with patch("cheapos.access_policy.validate_current"), \
+             patch("cheapos.access_policy.eligible", return_value=True), \
+             patch("cheapos.access_policy.classify", return_value="included"), \
+             patch("cheapos.access_policy.bind_provider", side_effect=lambda cfg, *args: cfg):
+            # Output recovery delivers OUTPUT_GUIDANCE
+            Engine._request_routed(eng_routed, runtime, [{"role": "system", "content": "sys"}], [], "worker")
+            delivered_output = eng_routed._request.call_args[0][1]
+            self.assertEqual(delivered_output[-1]["content"], OUTPUT_GUIDANCE)
+
+            # Compact edits overrides output recovery and delivers COMPACT_GUIDANCE
+            task_routed["compact_edits"] = True
+            Engine._request_routed(eng_routed, runtime, [{"role": "system", "content": "sys"}], [], "worker")
+            delivered_compact = eng_routed._request.call_args[0][1]
+            self.assertEqual(delivered_compact[-1]["content"], COMPACT_GUIDANCE)
 
     def test_representative_delivered_worker_system_prompts(self):
         """worker_system delivered prompts maintain exact string parity across interactive and unattended modes."""
-        from cheapos import engine
+        from cheapos import engine, unattended_setup
 
         # 1. Interactive mode without finish_review
         task_interactive = {"conversational": True}
         prompt_interactive = engine.worker_system(task_interactive)
-        self.assertEqual(prompt_interactive, engine.CHAT_SYSTEM)
-        self.assertIn(engine.EDIT_RECOVERY_GUIDANCE, prompt_interactive)
+        expected_interactive = engine.CHAT_SYSTEM
+        self.assertEqual(prompt_interactive, expected_interactive)
 
-        # 2. Interactive mode with finish_review
+        # 2. Interactive mode with finish_review: complete string comparison
         task_finish = {"conversational": True, "finish_review": True}
         prompt_finish = engine.worker_system(task_finish)
-        self.assertIn("The operator selected Finish review for the saved patch.", prompt_finish)
-        self.assertTrue(prompt_finish.startswith(engine.CHAT_SYSTEM))
+        expected_finish = (
+            engine.CHAT_SYSTEM
+            + "\nThe operator selected Finish review for the saved patch. Complete verification and independent checkpoint review even if you make no new edits. Keep the implementation unchanged unless checks or review require a fix. Call run_checks to select a missing verification command and present any required permission. A prose description of next steps does not finish this request. Ask only for a genuinely missing requirement. The operator will approve the final commit separately."
+        )
+        self.assertEqual(prompt_finish, expected_finish)
 
-        # 3. Unattended mode with authorization
+        # 3. Unattended mode with authorization: complete string comparison
         task_unattended = {
             "branch_run": {"authorization_ref": {"id": "auth-123"}},
         }
         prompt_unattended = engine.worker_system(task_unattended)
-        self.assertIn("The controller owns branch commits after verified independent approval.", prompt_unattended)
-        self.assertIn(self.CANONICAL_WORKER_POLICY, prompt_unattended)
-        self.assertIn("Use report_blocker for a genuine essential decision", prompt_unattended)
+        expected_unattended = (
+            engine.WORKER_SYSTEM.replace(
+                "Commits are handled by the app after the user clicks Approve & commit on the final reviewed diff. Never use verification commands to apply patches, commit, or push. If asked to commit, explain that approval step.",
+                "The controller owns branch commits after verified independent approval. Never use verification commands or run_checks to commit, push, stage, or apply patches (do not call git add or git commit). Text alone cannot complete an item."
+            )
+            + "\n"
+            + unattended_setup.WORKER_POLICY
+            + " Use report_blocker for a genuine essential decision, including inspected evidence and why it cannot be resolved within scope."
+        )
+        self.assertEqual(prompt_unattended, expected_unattended)
+
+        # 4. In-memory fault injection: verify that appending unexpected text fails exact parity
+        with self.assertRaises(AssertionError):
+            self.assertEqual(prompt_finish + "\nUNEXPECTED_TRAILING_TEXT", expected_finish)
+        with self.assertRaises(AssertionError):
+            self.assertEqual(prompt_unattended + "\nUNEXPECTED_TRAILING_TEXT", expected_unattended)
 
 
 if __name__ == "__main__":
