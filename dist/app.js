@@ -140,10 +140,25 @@ const date = value => new Date(value).toLocaleString([], {month:'short',day:'num
 const basename = value => String(value).split('/').filter(Boolean).pop() || 'Repository';
 let toastTimer;
 function toast(message) { clearTimeout(toastTimer); $('#toast').textContent=message; $('#toast').classList.add('visible'); toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),5000); }
-async function api(path, body, etag) {
-  const response = await fetch('/api' + path, body === undefined ? {cache:'no-store',...(etag?{headers:{'If-None-Match':etag}}:{})} : {method:'POST',headers:{'Content-Type':'application/json','X-CheapOS-Token':state.token},body:JSON.stringify(body)});
+let tokenRefresh=null;
+async function renewLocalToken(rejectedToken) {
+  if(state.token&&state.token!==rejectedToken)return;
+  if(!tokenRefresh)tokenRefresh=(async()=>{
+    const data=await api('/bootstrap');
+    if(data.app!=='CheapOS'||typeof data.token!=='string'||!data.token||data.token.length>512)throw Error('Could not renew the local connection. Try again.');
+    state.token=data.token;
+  })().finally(()=>{tokenRefresh=null;});
+  await tokenRefresh;
+}
+async function api(path, body, etag, tokenRetried=false) {
+  const token=state.token,payload=body===undefined?undefined:JSON.stringify(body);
+  const response = await fetch('/api' + path, body === undefined ? {cache:'no-store',redirect:'error',...(etag?{headers:{'If-None-Match':etag}}:{})} : {method:'POST',redirect:'error',headers:{'Content-Type':'application/json','X-CheapOS-Token':token},body:payload});
   if(body===undefined&&etag&&response.status===304)return null;
   const data = await response.json();
+  if(body!==undefined&&!tokenRetried&&response.status===403&&data.code==='local_token_expired'){
+    await renewLocalToken(token);
+    return api(path,JSON.parse(payload),etag,true);
+  }
   if (!response.ok) throw Object.assign(new Error(data.error || 'The local server could not complete this action'),{status:response.status,code:data.code,files:data.files});
   if(body===undefined&&/^\/tasks\/[^/?]+$/.test(path)&&response.headers?.get('ETag'))data.poll_etag=response.headers.get('ETag');
   return data;

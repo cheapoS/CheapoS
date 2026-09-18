@@ -175,6 +175,16 @@ evidence must be reviewed again. Valid defects still require repair; missing or
 invalid coverage never becomes approval. Readiness records the reviewer that
 actually completed each packet and synthesis.
 
+Final requirements packets contain the accepted task criteria and instructions.
+Completed repair notes and earlier item outcomes remain hash-bound historical
+evidence, retrievable through `read_context_evidence`; they do not create new
+requirements to repair the controller's own history. Unchanged repair notes stay
+historical after conflict resolution reauthorizes a run. Explicitly revised
+operator instructions and integration requirements remain in current coverage.
+Reviewers still inspect the complete current diff and final checks, and genuine
+defects against the accepted criteria still require repair. Previously issued
+readiness receipts retain their original manifest format for validation.
+
 Candidate context reads page large requested ranges at 200 lines and retain
 the existing path, candidate identity and character bounds. There is no separate
 six-read stop. Exact repeated reads reuse their saved excerpt and trigger

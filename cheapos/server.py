@@ -128,7 +128,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
             self.reply({"error": "Cross-site requests are not allowed"}, 403)
             return False
         if mutation and not secrets.compare_digest(self.headers.get("X-CheapOS-Token", ""), self.server.token):
-            self.reply({"error": "Local request token expired. Refresh the app."}, 403)
+            # This rejection happens before dispatch, so the same-origin client
+            # may renew its local token and safely retry the unchanged request.
+            self.reply({"error": "Local request token expired. Refresh the app.", "code": "local_token_expired"}, 403)
             return False
         return True
 

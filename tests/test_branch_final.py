@@ -88,6 +88,11 @@ class BranchFinalTests(unittest.TestCase):
         self.assertEqual(len(packets), len(ready['manifest']['chunks']))
         for packet in packets:
             context = packet['review_context']
+            from cheapos.context_evidence import read
+            history=read(self.task,context['historical_evidence_reference'])
+            self.assertEqual(history['kind'],'final_review_history')
+            self.assertIn('original_item_evidence',history['content'])
+            self.assertIn('check_evidence',history['content'])
             self.assertEqual(context['acceptance_criteria'], [
                 {'id': r['id'], 'criterion': r['criterion']} for r in ready['manifest']['requirements']])
             self.assertEqual(len(context['final_checks']), len(ready['checks']))
@@ -116,7 +121,7 @@ class BranchFinalTests(unittest.TestCase):
             systems.append(messages[0]['content'])
             return original(runtime, messages, tools, role, **kwargs)
         self.engine.request = request
-        with patch.object(final, 'CHUNK_SIZE', 120):
+        with patch.object(final, 'CHUNK_SIZE', 60):
             ready = final.final_check_review(self.engine, self.runtime)['readiness']
         packets = [packet for packet in self.requests if 'chunk' in packet]
         self.assertGreater(len(packets), 3)
@@ -166,6 +171,12 @@ class BranchFinalTests(unittest.TestCase):
         self.assertEqual(len(manifest['commits']), 3)
         self.assertEqual(manifest['commits'][-1]['old_tip'], manifest['commits'][-1]['new_tip'])
         self.assertEqual([r['id'] for r in manifest['requirements']], ['one:1', 'two:1', 'three:1'])
+        # Existing approvals must retain the legacy serialized packet identity.
+        legacy=final.build_manifest(self.run,version=1)
+        self.assertNotIn('repair_evidence',legacy)
+        self.assertEqual(''.join(c['content'] for c in legacy['chunks'] if c['kind']=='requirements'),final._json(legacy['requirements']))
+        fields=dict(legacy);identity=fields.pop('id')
+        self.assertEqual(identity,final._hash(fields))
 
     def test_missing_coverage_or_review_revision_never_ready(self):
         self.omit_coverage = True
@@ -201,10 +212,14 @@ class BranchFinalTests(unittest.TestCase):
     def test_multichunk_exhaustive_content_and_digest(self):
         # A small chunk ceiling exercises the same deterministic splitting path.
         from unittest.mock import patch
-        with patch.object(final,'CHUNK_SIZE',120):
+        with patch.object(final,'CHUNK_SIZE',60):
             manifest=final.build_manifest(self.run)
             self.assertGreater(len(manifest['chunks']),3)
             self.assertEqual(''.join(c['content'] for c in manifest['chunks'] if c['kind']=='diff'),manifest['diff'])
+            current=json.loads(''.join(c['content'] for c in manifest['chunks'] if c['kind']=='requirements'))
+            self.assertEqual([r['id'] for r in current],['one:1'])
+            self.assertNotIn('review',current[0])
+            self.assertIn('review',manifest['requirements'][0])
             result=final.final_check_review(self.engine,self.runtime)
             self.assertEqual(len(result['readiness']['reviews']),len(manifest['chunks']))
             self.assertEqual(result['readiness']['review']['criteria_ids'],['one:1'])
