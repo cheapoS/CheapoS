@@ -200,5 +200,12 @@ class CheckScopeTests(unittest.TestCase):
         other = dict(self.task, workspace=self.task['source'])
         with self.assertRaises(ValueError): self.scopes.prepare(other, argv)
 
+    def test_authorized_branch_run_auto_consents_profile_and_check_scope(self):
+        verify_argv = [sys.executable, 'verify.py']
+        scope = self.scopes.prepare(self.task, verify_argv)
+        branch_task = dict(self.task, branch_run={'authorization_ref': 'auth-123', 'check_scope': [scope]})
+        self.assertTrue(self.scopes.authorize(branch_task, verify_argv))
+        self.assertTrue(self.scopes.authorize(branch_task, self.argv))
+
 
 if __name__ == '__main__': unittest.main()
