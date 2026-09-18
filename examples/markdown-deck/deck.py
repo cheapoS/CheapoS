@@ -195,7 +195,7 @@ def _cli() -> None:
 
     build = sub.add_parser("build", help="Compile markdown to a single‑file HTML deck")
     build.add_argument("src", help="Path to the markdown source file")
-    build.add_argument("dst", help="Path for the generated HTML file")
+    build.add_argument("dst", nargs='?', default='index.html', help="Optional path for the generated HTML file (default: index.html)")
 
     serve = sub.add_parser("serve", help="Serve a directory containing generated decks")
     serve.add_argument("dir", nargs="?", default=".", help="Directory to serve (default: current)")
@@ -203,15 +203,18 @@ def _cli() -> None:
 
     export = sub.add_parser("export", help="Convenient alias for build – writes <src>.html next to source")
     export.add_argument("src", help="Path to the markdown source file")
+    export.add_argument("dst", nargs='?', default=None, help="Optional output path for the generated HTML file")
 
     args = parser.parse_args()
     if args.cmd == "build":
         MarkdownDeck.build(args.src, args.dst)
     elif args.cmd == "serve":
-        MarkdownDeck.serve(args.dir, args.port)
+        path = pathlib.Path(args.dir)
+        dir_path = path.parent if path.is_file() else path
+        MarkdownDeck.serve(str(dir_path), args.port)
     elif args.cmd == "export":
         src_path = pathlib.Path(args.src)
-        dst_path = src_path.with_suffix('.html')
+        dst_path = pathlib.Path(args.dst) if hasattr(args, 'dst') and args.dst else src_path.with_suffix('.html')
         MarkdownDeck.build(str(src_path), str(dst_path))
     else:
         parser.error("Unknown command")
