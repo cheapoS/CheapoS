@@ -171,7 +171,7 @@ test('actual startup renderer covers pending, accepted-stale, running and paused
  const snippet=source.slice(source.indexOf(' function render(task)'),source.indexOf(' function renderPlan(task)'));
  let record={status:'pending',started_at:'2026-09-14T12:00:00Z'};const panel={innerHTML:'',querySelector:()=>null};
  const branchResumeStatus=new Map();
- const context={sync:()=>{},getState:()=>({branchResumeStatus}),document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,mergeProgressMarkup:ui.mergeProgressMarkup,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
+ const context={sync:()=>{},getState:()=>({branchResumeStatus}),document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,pauseMarkup:ui.pauseMarkup,reviewAction:ui.reviewAction,mergeProgressMarkup:ui.mergeProgressMarkup,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
  vm.createContext(context);vm.runInContext(snippet,context);
  const t={id:'a',status:'awaiting_reply',branch_run:{id:'run1',status:'awaiting_authorization',items:[]}};
  context.render(t);assert.match(panel.innerHTML,/Starting your approved plan/);assert.match(panel.innerHTML,/data-start-time/);assert.doesNotMatch(panel.innerHTML,/data-proposal/);
@@ -180,7 +180,7 @@ test('actual startup renderer covers pending, accepted-stale, running and paused
  t.branch_run.status='paused';t.status='paused';context.render(t);assert.doesNotMatch(panel.innerHTML,/data-start-time/);
  t.branch_run.pause_detail={version:1,cause:'unknown',next_action:'inspect',explanation:'Unknown stop',item_id:'one',stage:'working',role:'worker',model:'fixture',diagnostic_id:'request'};
  branchResumeStatus.set('a',{status:'pending'});context.render(t);assert.match(panel.innerHTML,/Continuing saved work/);assert.match(panel.innerHTML,/data-resume disabled/);
- branchResumeStatus.set('a',{status:'error',message:'Exact <failure>'});context.render(t);assert.match(panel.innerHTML,/Exact &lt;failure&gt;/);assert.match(panel.innerHTML,/<button type="button" data-resume >Resume<\/button>/);
+ branchResumeStatus.set('a',{status:'error',message:'Exact <failure>'});context.render(t);assert.match(panel.innerHTML,/Exact &lt;failure&gt;/);assert.match(panel.innerHTML,/<button type="button" class="primary-button" data-resume >Resume saved work<\/button>/);
  assert.match(panel.innerHTML,/<li>Item: one<\/li>/);assert.match(panel.innerHTML,/<li>Model: fixture<\/li>/);
  t.branch_run.status='awaiting_authorization';t.branch_run.startup={status:'failed',error:'Snapshot <changed>'};context.render(t);
  assert.match(panel.innerHTML,/Startup needs attention/);assert.match(panel.innerHTML,/Snapshot &lt;changed&gt;/);assert.match(panel.innerHTML,/data-finish-startup/);assert.doesNotMatch(panel.innerHTML,/data-start-time/);

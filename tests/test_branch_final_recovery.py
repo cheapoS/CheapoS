@@ -57,6 +57,141 @@ class FinalRecoveryTests(unittest.TestCase):
         for key in ('plan','items'):self.assertEqual(task['branch_run'][key],before['branch_run'][key])
         engine.checks.assert_not_called();engine.file_tool.assert_not_called()
 
+    def test_identity_replacement_request_rejection_still_reaches_final_approval(self):
+        from cheapos import reviewer_recovery
+        from cheapos.providers import ProviderError
+        task,engine,runtime=self.fixture();before=copy.deepcopy(task)
+        seen=[]
+        def routed(rt,messages,tools,role,override=None,purpose=None,**kwargs):
+            seen.append(copy.deepcopy(messages))
+            self.assertEqual(purpose,'branch_final')
+            if override is None:raise ProviderError('unknown identity',code='review_identity_unknown')
+            if override['model']=='rejected':raise ProviderError('model rejected request',code='http_400')
+            return self.approval()
+        engine._request_routed=Mock(side_effect=routed)
+        engine.request=lambda *a,**kw:reviewer_recovery.request(engine,*a,**kw)
+        with patch.object(reviewer_recovery,'candidates',return_value=[{'id':'rejected'},{'id':'independent'}]), \
+             patch.object(reviewer_recovery,'config',side_effect=lambda e,t,m:{'model':m}):
+            result=self.review(engine,runtime)
+        self.assertEqual(result['decision'],'APPROVE');self.assertEqual(result['reviewer_model'],'independent')
+        self.assertEqual(engine._request_routed.call_count,3);self.assertEqual(seen,[seen[0]]*3)
+        for key in ('checks','usage','limits'):self.assertEqual(task[key],before[key])
+        self.assertEqual(task['branch_run']['items'],before['branch_run']['items'])
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+
+    def test_provider_handoff_after_six_chunks_keeps_reviews_and_finishes_next_chunk(self):
+        import io
+        import tempfile
+        from urllib.error import HTTPError
+        from cheapos import reviewer_recovery
+        from cheapos.model_pool import FreeModelPool
+        from cheapos.providers import ProviderError, http_failure
+        from cheapos.served_identity import ensure_independent, metadata
+        task,engine,runtime=self.fixture();before=copy.deepcopy(task)
+        endpoint='http://localhost:1/v1';original='openrouter/reviewer:free'
+        task['providers']['reviewer']={'model':original,'provider':'openrouter',
+            'base_url':endpoint,'gateway':'omniroute','input_rate':0,'output_rate':0}
+        task['reviewer_identity_recovery']={'attempted':[original],'selected':original}
+        models=[{'id':name,'provider':provider,'free':True,'tool_calling':True}
+                for name,provider in ((original,'openrouter'),('oc/reviewer','opencode'),
+                                      ('oc/sibling','opencode'),('groq/reviewer','groq'))]
+        calls=[];chunk=[1]
+        def routed(rt,messages,tools,role,override=None,purpose=None,**kwargs):
+            cfg=override;calls.append((chunk[0],cfg['model']))
+            if chunk[0]==7 and cfg['model']==original:
+                raise ProviderError('Timed out',code='model_connection')
+            if cfg['model'].startswith('oc/'):
+                body=json.dumps({'error':{'message':"[403]: Error from provider (Console): OpenCode's free tier can only be used from within OpenCode"}}).encode()
+                raise http_failure(HTTPError(endpoint,403,'denied',{},io.BytesIO(body)),cfg)
+            ensure_independent(rt.task,{'role':'reviewer',**metadata(cfg['model'],cfg['model'])})
+            result=self.approval()['tool_calls'][0]['result']
+            result['chunk_ids']=[f'diff:{chunk[0]}']
+            return self.call('final_review_decision',result)
+        engine._request_routed=Mock(side_effect=routed)
+        engine.request=lambda *a,**kw:reviewer_recovery.request(engine,*a,**kw)
+        def review():
+            return final._review(engine,runtime,{'id':'m','requirements':[{'id':'one:1'}]},
+                {'evidence':f'exact source {chunk[0]}'},[f'diff:{chunk[0]}'],[])
+        with tempfile.TemporaryDirectory() as directory:
+            pool=FreeModelPool(directory)
+            engine.gateway=SimpleNamespace(settings={'base_url':endpoint},pool=pool,
+                catalog=lambda **kw:{'models':models})
+            engine.connection_for=lambda cfg:engine.gateway
+            for n in range(1,7):
+                chunk[0]=n;self.assertEqual(review()['decision'],'APPROVE')
+            saved=copy.deepcopy(task['branch_run']['final_review_packets'])
+            runtime.task=json.loads(json.dumps(task))
+            chunk[0]=7;result=review()
+            self.assertEqual(result['decision'],'APPROVE')
+            self.assertEqual(result['reviewer_model'],'groq/reviewer')
+            for key,value in saved.items():
+                self.assertEqual(runtime.task['branch_run']['final_review_packets'][key],value)
+            for n in range(1,8):
+                chunk[0]=n;self.assertEqual(review()['decision'],'APPROVE')
+            self.assertTrue(pool.observation(endpoint,'oc/sibling')['cooling_down'])
+            self.assertFalse(pool.observation(endpoint,'groq/reviewer')['cooling_down'])
+        self.assertEqual(calls,[(n,original) for n in range(1,8)]+[(7,'oc/reviewer'),(7,'groq/reviewer')])
+        for key in ('checks','usage','limits'):self.assertEqual(runtime.task[key],before[key])
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+
+    def test_format_handoff_dispatches_new_reviewer_before_stale_identity_choices(self):
+        from cheapos import reviewer_recovery
+        from cheapos.providers import ProviderError
+        task,engine,runtime=self.fixture();before=copy.deepcopy(task)
+        task['reviewer_identity_recovery']={'attempted':['reviewer'], 'selected':'reviewer'}
+        dispatched=[]
+        def routed(rt,messages,tools,role,override=None,purpose=None,**kwargs):
+            name=override['model'];dispatched.append(name)
+            if name=='denied':raise ProviderError('access denied',code='http_403')
+            return self.approval(invalid=name=='reviewer')
+        engine._request_routed=Mock(side_effect=routed)
+        engine.request=lambda *a,**kw:reviewer_recovery.request(engine,*a,**kw)
+        with patch.object(reviewer_recovery,'candidates',return_value=[{'id':'denied'},{'id':'reviewer'},{'id':'replacement'}]), \
+             patch.object(reviewer_recovery,'config',side_effect=lambda e,t,m:{'model':m}), \
+             patch.object(routing,'select_remote',side_effect=self.select) as select:
+            result=self.review(engine,runtime)
+            runtime.task=json.loads(json.dumps(task))
+            self.assertEqual(self.review(engine,runtime),result)
+        self.assertEqual(dispatched,['reviewer']*3+['replacement'])
+        self.assertEqual(result['decision'],'APPROVE');self.assertEqual(result['reviewer_model'],'replacement')
+        select.assert_called_once()
+        self.assertEqual(task['reviewer_identity_recovery']['selected'],'replacement')
+        self.assertIn('reviewer',task['reviewer_identity_recovery']['attempted'])
+        self.assertEqual(len(task['branch_run']['final_review_recovery']['m']['history']),1)
+        for key in ('checks','usage','limits'):self.assertEqual(task[key],before[key])
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+
+    def test_exact_function_namespace_decision_uses_normal_coverage_validation(self):
+        from cheapos.engine import Engine
+        from tests.test_branch_disagreement import defect
+        task,engine,runtime=self.fixture();engine.parse_call=Engine.parse_call
+        result=self.approval()['tool_calls'][0]['result']
+        def call(name,args):
+            return {'role':'assistant','tool_calls':[{'id':'call','function':{'name':name,'arguments':json.dumps(args)}}]}
+        wrong_tool=call('other.final_review_decision',result)
+        wrong_coverage=call('functions.final_review_decision',{**result,'manifest_id':'wrong'})
+        valid=call('functions.final_review_decision',{**result,'decision':'REQUEST_CHANGES','defects':[{**defect(),'criterion':'one:1'}]})
+        engine.request.side_effect=[wrong_tool,wrong_coverage,valid]
+        reviewed=self.review(engine,runtime)
+        self.assertEqual(reviewed['decision'],'REQUEST_CHANGES')
+        self.assertEqual(len(reviewed['defects']),1)
+        self.assertEqual(next(iter(task['branch_run']['final_review_corrections'].values())),2)
+        self.assertEqual(valid['tool_calls'][0]['function']['name'],'functions.final_review_decision')
+        self.assertNotIn('readiness',task['branch_run']);engine.file_tool.assert_not_called()
+
+    def test_exact_function_namespace_approval_does_not_need_format_retry(self):
+        from cheapos.engine import Engine
+        task,engine,runtime=self.fixture();engine.parse_call=Engine.parse_call
+        args=self.approval()['tool_calls'][0]['result']
+        engine.request.return_value={'role':'assistant','tool_calls':[{'id':'call','function':{
+            'name':'functions.final_review_decision','arguments':json.dumps(args)}}]}
+        reviewed=final._review(engine,runtime,{'id':'m','requirements':[{'id':'one:1'}]},
+            {'evidence':'exact source','scope':{'chunk_index':3,'chunk_total':10}},['diff:1'],[])
+        self.assertEqual(reviewed['decision'],'APPROVE')
+        self.assertEqual(engine.event.call_args.args[2],'Final review chunk 3 of 10 completed')
+        engine.request.assert_called_once()
+        self.assertEqual(task['branch_run']['final_review_corrections'],{})
+
     def test_large_pages_resume_with_independent_saved_coverage(self):
         task,engine,runtime=self.fixture()
         packet={'evidence':'exact evidence '*6000}

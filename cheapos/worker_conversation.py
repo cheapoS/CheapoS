@@ -2,6 +2,9 @@
 import copy
 import hashlib
 import json
+from .edit_history import MUTATIONS
+
+LEGACY_ARGUMENT_NOTICE = 'Historical call had invalid JSON arguments and was rejected; arguments omitted for transport compatibility.'
 
 
 def append_direction(messages, prefix, text):
@@ -14,7 +17,7 @@ def append_direction(messages, prefix, text):
         messages.append({'role': 'user', 'content': content})
 
 
-def refresh(messages, snapshot):
+def refresh(messages, snapshot, task=None):
     """Keep complete exchanges and explicitly close ambiguous interrupted calls.
 
     Closing an exchange is a transport repair, not evidence of tool execution.
@@ -25,30 +28,84 @@ def refresh(messages, snapshot):
         return list(snapshot)
     result = []
     pending = set()
+    omitted = set()
+    notes = []
     def close():
         for call_id in sorted(pending):
             result.append({'role': 'tool', 'tool_call_id': call_id,
                            'content': 'Interrupted exchange: execution outcome is not established here. Inspect saved changes and verification evidence before deciding whether this action needs retrying.'})
         pending.clear()
-    for message in messages:
+        result.extend(notes)
+        notes.clear()
+        omitted.clear()
+    for index, message in enumerate(messages):
         if message.get('role') != 'tool':
             close()
+        elif message.get('tool_call_id') in omitted:
+            continue
         elif message.get('tool_call_id') not in pending:
             # Old saved histories can contain orphan results. Preserve their
             # content as evidence without sending an invalid tool envelope.
             result.append({'role': 'user', 'content': 'Historical tool result: ' + json.dumps(message)})
             continue
         if message.get('role') == 'assistant' and message.get('tool_calls'):
+            original = message
             message = copy.deepcopy(message)
+            following = []
+            for next_index in range(index + 1, len(messages)):
+                item = messages[next_index]
+                if item.get('role') != 'tool':
+                    break
+                following.append(item)
+            kept = []
             for call in message['tool_calls']:
                 function = call.get('function', {})
+                raw = function.get('arguments', '{}')
                 try:
-                    valid = isinstance(json.loads(function.get('arguments', '{}')), dict)
+                    valid = isinstance(json.loads(raw), dict)
                 except (ValueError, TypeError):
                     valid = False
-                if not valid:
-                    function['arguments'] = '{}'
-                    message['content'] = (message.get('content') or '') + '\nHistorical call had invalid JSON arguments and was rejected; arguments omitted for transport compatibility.'
+                outcomes = [item for item in following if item.get('tool_call_id') == call.get('id')]
+                rejected = False
+                feedback = []
+                for outcome in outcomes:
+                    try:
+                        value = json.loads(outcome.get('content', ''))
+                    except (ValueError, TypeError):
+                        continue
+                    if isinstance(value, dict):
+                        feedback.append({k: value[k] for k in ('code', 'error', 'next_action') if k in value})
+                    if (isinstance(value, dict) and value.get('code') == 'invalid_tool_arguments'
+                            and value.get('executed') is not True and value.get('changed') is not True):
+                        rejected = True
+                legacy = (LEGACY_ARGUMENT_NOTICE in (message.get('content') or '')
+                          and function.get('name') in MUTATIONS
+                          and isinstance(raw, str) and raw.strip() == '{}')
+                if valid and not rejected and not legacy:
+                    kept.append(call)
+                    continue
+                omitted.add(call.get('id'))
+                evidence = {'assistant': original, 'results': following}
+                note = {'tool': function.get('name'), 'call_id': call.get('id'),
+                        'feedback': feedback,
+                        'outcome': 'Rejected before execution.' if rejected else
+                                   'Execution is not established by this invalid historical call; inspect its retained results.',
+                        'rule': 'Historical diagnostic, not a tool-call example or instruction to replay. '
+                                'Continue from current files with the required tool fields.'}
+                if task is not None:
+                    from .context_evidence import retain
+                    note['context_reference'] = retain(task, evidence, 'invalid_tool_exchange')
+                else:
+                    note['historical_evidence'] = evidence
+                notes.append({'role': 'user', 'content': 'Tool argument diagnostic: ' + json.dumps(note)})
+            if omitted:
+                message['content'] = (message.get('content') or '').replace(LEGACY_ARGUMENT_NOTICE, '').strip() or None
+            if kept:
+                message['tool_calls'] = kept
+            else:
+                message.pop('tool_calls', None)
+                if not message.get('content'):
+                    continue
         result.append(message)
         if message.get('role') == 'assistant':
             pending.update(c['id'] for c in message.get('tool_calls', []) if c.get('id'))
@@ -118,7 +175,7 @@ def continue_session(task, snapshot, reason, feedback=None):
         # Initial admission contains the complete initial prompt.
         messages = copy.deepcopy(snapshot)
     else:
-        messages = refresh(previous, snapshot[:1] + delta)
+        messages = refresh(previous, snapshot[:1] + delta, task=task)
         if not delta:
             messages.pop()  # refresh's compatibility notice has no new state.
     if feedback is not None:

@@ -17,7 +17,7 @@ from pathlib import Path
 from .providers import ChatProvider, BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider, guard_inference_route, is_local_ollama
 from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
-from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, FileRangeError, Workspace, git
+from .workspace import MAX_EDIT_BYTES, MAX_CREATE_FILE_BYTES, FileVersionError, FileRangeError, FileEditConstraint, Workspace, edit_size_violation, git
 from . import commits, reconciliation, progress, branch_runs
 from .verification import evidence_identity, matches as evidence_matches, normalize_unittest, reusable_check
 from .web import WebReader, allowed_urls
@@ -50,12 +50,12 @@ def tool(name, description, properties=None, required=None):
 
 
 TEXT = {"type": "string"}
-MAX_CREATE_BYTES = 24_000
-LINE_EDIT = tool("replace_lines", f"Replace a small inclusive line range from the latest numbered file supplied to you. cheapoS tracks its version automatically; do not supply a hash. Send ONLY the replacement text, never the old file. At most {MAX_EDIT_LINES} old/new lines and {MAX_EDIT_BYTES} UTF-8 bytes of new text per call. To insert before start_line, set end_line = start_line - 1. Send one coherent region edit per canonical file per response (including no-op edits and path aliases); inspect returned lines before the next edit.",
+MAX_CREATE_BYTES = MAX_CREATE_FILE_BYTES
+LINE_EDIT = tool("replace_lines", f"Replace a coherent inclusive line range from the latest numbered file supplied to you. cheapoS tracks its version automatically; do not supply a hash. Send ONLY the replacement text, never the old file. No fixed line-count limit; replacement text and resulting file must fit the {MAX_EDIT_BYTES}-byte UTF-8 file ceiling. To insert before start_line, set end_line = start_line - 1. Send one coherent region edit per canonical file per response (including no-op edits and path aliases); inspect returned lines before the next edit.",
                  {"path": TEXT, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 0},
                   "new_text": {"type": "string", "maxLength": MAX_EDIT_BYTES}},
                  ["path", "start_line", "end_line", "new_text"])
-COMPACT_WRITE = tool("write_file", "Create a NEW file. Prefer a small complete file or coherent first chunk; a fully received file up to 24000 UTF-8 bytes is accepted. Existing files cannot be overwritten: use replace_lines. Add further chunks with replace_lines using the returned numbered lines.",
+COMPACT_WRITE = tool("write_file", f"Create a NEW UTF-8 file, up to the {MAX_CREATE_BYTES}-byte resource ceiling. Send a complete coherent file when possible. Existing files cannot be overwritten: use replace_lines or replace_text. If a response actually truncates or has malformed arguments, retry a smaller complete unit.",
                      {"path": TEXT, "content": {"type": "string", "maxLength": MAX_CREATE_BYTES}}, ["path", "content"])
 READ_TOOLS = [
     tool('read_edit_history', 'Inspect recent completed text edits and their undo IDs, current-version status, and Python symbol changes. Optional workspace-relative path. History is evidence, not permission.', {'path': TEXT}),
@@ -72,10 +72,11 @@ READ_TOOLS = [
     tool("inspect_image", "Inspect and transcribe visual details from an image file (PNG, JPG, WebP, SVG, GIF) such as screenshots, mockups, or diagrams. Path can be a workspace-relative path or an uploaded attachment path.", {"path": TEXT, "query": {"type": "string", "description": "Specific question or visual element to check (e.g. 'Is the button aligned?' or 'Describe the layout and any error text')."}}, ["path"]),
 ]
 WORKER_TOOLS = READ_TOOLS + [
+    LINE_EDIT,
     tool('undo_edit', 'Undo one mistaken text edit using its saved edit_id. Restores only that file, and only if it has no newer changes and belongs to the current task item/baseline. Never resets the whole task. Verification and independent review remain required.', {'path': TEXT, 'edit_id': TEXT}, ['path', 'edit_id']),
     tool("update_working_state", "Optionally retain the current approach and next action for nontrivial work. Advisory only: does not change accepted scope, permissions, checks or review. Reuse stable step IDs. References are task event indices.", {"steps":{"type":"array","maxItems":24,"items":{"type":"object","properties":{"id":TEXT,"text":TEXT,"status":{"type":"string","enum":["pending","working","done","blocked"]}},"required":["id","text","status"],"additionalProperties":False}},"decisions":{"type":"array","items":TEXT},"findings":{"type":"array","items":TEXT},"references":{"type":"array","items":{"type":"integer"}},"next_action":TEXT}),
     tool("apply_merge_version", "During a conflict task, copy a frozen target/task/suggested file version over its unchanged original. Handles captured deletions; refuses to overwrite new edits. Review and checks are still required.", {"path":TEXT,"version":{"type":"string","enum":["task","target","suggested"]}}, ["path","version"]),
-    tool("write_file", "Create a new UTF-8 text file. Existing files cannot be overwritten: use replace_text or append_text.", {"path": TEXT, "content": TEXT}, ["path", "content"]),
+    COMPACT_WRITE,
     tool("replace_text", "Replace exactly one occurrence of old_text in an existing file.", {"path": TEXT, "old_text": TEXT, "new_text": TEXT}, ["path", "old_text", "new_text"]),
     tool("append_text", "Append text to the end of an existing file. For modifications inside a file, use replace_text.", {"path": TEXT, "text": TEXT}, ["path", "text"]),
     tool("delete_file", "Delete a file from the workspace. Use to remove obsolete, temporary, or moved files.", {"path": TEXT}, ["path"]),
@@ -85,7 +86,7 @@ WORKER_TOOLS = READ_TOOLS + [
 BLOCKER_TOOL = tool("report_blocker", "Report an essential unresolved decision after inspecting repository evidence. Already authorized work needs no new permission. Saved edits remain pending.",
                     {"question": TEXT, "inspected_evidence": TEXT, "why_blocked": TEXT}, ["question", "inspected_evidence", "why_blocked"])
 UNATTENDED_TOOLS = [t for t in WORKER_TOOLS if t['function']['name'] != 'run_checks'] + [
-    tool('run_checks', 'Run a planned approved check, or request additional authority for a new exact verification command. Omit command to reuse the selected check.', {'command': TEXT}), BLOCKER_TOOL]
+    tool('run_checks', 'Run a planned approved check. Omit command to reuse the selected check. Extra assertions belong in test files covered by an approved runner. An unapproved extra command returns guidance to existing checks; use report_blocker only if an essential check cannot be performed within saved authority.', {'command': TEXT}), BLOCKER_TOOL]
 REVIEW_TOOLS = READ_TOOLS + [tool("review_decision", "Return the checkpoint decision. Read relevant source before deciding.", {"decision": {"type": "string", "enum": ["APPROVE", "REQUEST_CHANGES", "REQUEST_TESTS", "TAKE_OVER"]}, "feedback": TEXT}, ["decision", "feedback"])]
 WORKER_SYSTEM = """You are the cheapoS worker, coding in an isolated snapshot of the user's personal repository.
 When receiving instructions or guidance, acknowledge the user's direction clearly and concisely alongside your tool calls so the operator is informed of your reasoning and progress.
@@ -354,7 +355,9 @@ class ToolArgumentsError(ProviderError):
     def __init__(self, name, call_id, detail):
         self.name = name
         self.call_id = call_id
-        super().__init__(f"Invalid arguments for {name}: {detail}. Send this tool call again with a valid JSON object; escape quotes, backslashes, and newlines inside strings. For large edits, use smaller exact replacements. This call was not executed.", code="invalid_tool_arguments")
+        hint = ('For a new file, supply its workspace-relative path and content; start with a small complete file or coherent first chunk.'
+                if name == 'write_file' else 'For large edits, use smaller exact replacements.')
+        super().__init__(f"Invalid arguments for {name}: {detail}. Send a corrected JSON object with the required fields; escape quotes, backslashes, and newlines inside strings. {hint} This call was not executed.", code="invalid_tool_arguments")
 
 
 def excerpt(text, maximum):
@@ -1126,13 +1129,7 @@ class Engine:
                         'uncertainties': 'Use the actual patch and check evidence to assess completion.'})
                 self.event(task, 'state', 'Finishing review of saved changes',
                            'Verification and independent review will continue. Any required command permission appears here; committing still needs your approval.')
-            if followup is None and automatic(task, "worker"):
-                boundary = max((i for i, e in enumerate(task["events"]) if e["kind"] == "user"), default=-1)
-                if any(e["kind"] == "tool_error" and isinstance(e.get("detail"), dict)
-                       and e["detail"].get("code") == "invalid_tool_arguments"
-                       and e["detail"].get("tool") in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}
-                       for e in task["events"][boundary + 1:]):
-                    self.prepare_compact_edits(task)
+            work_policy.refresh_edit_recovery(task)
             if work_policy.read_only(task):
                 # Old starter chats may contain unsolicited edits or a saved
                 # checkpoint. Preserve those files without executing that work.
@@ -1874,8 +1871,8 @@ class Engine:
 
     def prepare_compact_edits(self, task):
         if not task.get("compact_edits"):
-            task["compact_edits"] = True
-            self.event(task, "guard", "Switching to smaller line edits", "The worker will send short replacement lines using the current file version. Saved edits, verification requirements, and limits are kept across model handoffs.")
+            self.event(task, "guard", "Retrying with a smaller coherent edit", "Malformed edit arguments were not executed. Use current file evidence for the next edit. This guidance clears after a successful edit or worker change; checks and review remain required.")
+        work_policy.begin_edit_recovery(task)
 
     def compact_context(self, runtime):
         messages = self.action_messages(runtime.task)
@@ -2019,6 +2016,7 @@ class Engine:
 
     def prepare_output_recovery(self, task, model):
         task.setdefault("output_recovery", {})[model] = True
+        task['output_retry'] = {'scope': work_policy.edit_recovery_scope(task)}
         self.event(task, "routing", "Continuing with a smaller next action", {
             "model": model, "role": "worker",
             "summary": "The response reached its output cap. Retrying once with smaller actions and reduced reasoning where supported. Saved edits and limits are unchanged."})
@@ -2122,6 +2120,8 @@ class Engine:
 
     def request(self, runtime, messages, tools, role, config_override=None, purpose=None, tool_choice=None):
         from . import reviewer_recovery
+        if role == 'worker':
+            work_policy.refresh_edit_recovery(runtime.task)
         if not runtime.task.get('branch_run',{}).get('conflict_resolution'):
             tools=[t for t in tools if t.get('function',{}).get('name') not in {'read_merge_context','apply_merge_version'}]
         return reviewer_recovery.request(self, runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
@@ -2219,11 +2219,16 @@ class Engine:
                     runtime.observations.clear()
                 if hasattr(runtime, 'file_observations') and hasattr(runtime.file_observations, 'clear'):
                     runtime.file_observations.clear()
-                if not purpose and (task.get("action_pending") or task.get("compact_edits")) and task["status"] != "reviewing":
+                had_edit_recovery = bool(task.get('compact_edits') or task.get('output_retry'))
+                if role == 'worker':
+                    work_policy.refresh_edit_recovery(task)
+                if not purpose and (had_edit_recovery or task.get("action_pending")) and task["status"] != "reviewing":
                     from .worker_conversation import continue_session
                     snapshot = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
                     messages[:] = continue_session(task, snapshot, 'model_handoff')
             cfg = task["providers"][role]
+            if role == 'worker':
+                work_policy.refresh_edit_recovery(task)
             try:
                 gateway = self.connection_for(cfg)
             except ValueError:
@@ -2273,12 +2278,9 @@ class Engine:
                     continue
             started = time.monotonic()
             try:
-                if not purpose and role == "worker" and (task.get("output_recovery") or task.get("compact_edits")):
+                if not purpose and role == "worker" and (task.get("output_retry") or task.get("compact_edits")):
                     config = {**cfg, "_recovery_reasoning": model.get("recovery_reasoning")}
                     guidance = COMPACT_GUIDANCE if task.get("compact_edits") else OUTPUT_GUIDANCE
-                    from .edit_recovery import allow_exact_text
-                    if allow_exact_text(task):
-                        guidance += '\nFor this stalled repair, replace_text is also available. Preserve literal whitespace; do not repeat rejected line replacements.'
                     message = self._request(runtime, messages + [{"role": "user", "content": execution_context.guidance(task, guidance)}], tools, role, config_override=config)
                 else:
                     message = self._request(runtime, messages, tools, role, purpose=purpose,
@@ -2324,6 +2326,8 @@ class Engine:
                 self.defer_route(task, role, error)
                 continue
             self.connection_for(cfg).pool.record(cfg["base_url"], cfg["model"], role, seconds=time.monotonic() - started, connection_revision=(cfg.get("access_binding") or {}).get("connection_revision"))
+            if role == 'worker' and not purpose:
+                task.pop('output_retry', None)  # Complete output; keep retry/usage history.
             return message
 
     @staticmethod
@@ -2733,11 +2737,12 @@ class Engine:
             path = str(workspace.path(args["path"]).relative_to(workspace.root))
             if result.get('changed', result.get('updated', True)):
                 runtime.edit_versions.pop(path, None)
+                work_policy.finish_edit_recovery(task)
             if mutated_paths is not None:
                 mutated_paths.add(path)
-            if task.get("compact_edits"):
+            if name in edit_history.TEXT_EDITS and not result.get('current_file'):
                 result["current_file"] = self.edit_snapshot(runtime, args)
-            elif result.get('current_file'):
+            if result.get('current_file'):
                 self.remember_file_version(runtime, result['current_file'])
         return result
 
@@ -2764,6 +2769,18 @@ class Engine:
             return file
         except (ValueError, OSError, TypeError, UnicodeError) as error:
             return {"path": args.get("path"), "error": str(error)[:500]}
+
+    def recover_edit_constraint(self, runtime, args, error):
+        from .edit_recovery import constraint_feedback
+        result = constraint_feedback(runtime.task, Workspace(runtime.task['workspace']), args, error)
+        current = result.get('reproduction', {}).get('current_test_file')
+        if current:
+            self.remember_file_version(runtime, current)
+        elif error.code != 'repair_evidence_required':
+            result['current_file'] = self.edit_snapshot(runtime, args)
+        runtime.compact_context_ready = False
+        self.event(runtime.task, 'tool_error', 'Changing the next edit step', result)
+        return result
 
     def file_tool(self, task, name, args, runtime=None):
         active_runtime = runtime or self.runtimes.get(task["id"])
@@ -2818,16 +2835,12 @@ class Engine:
         if 'branch_run' in task and name in MUTATIONS:
             from .branch_disagreement import before_write
             before_write(task, args.get('path'))
-        if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text", "append_text"}:
-            from .edit_recovery import allow_exact_text
-            if task.get("compact_edits") and name == "replace_text" and not allow_exact_text(task):
-                raise ValueError("Use replace_lines with the current numbered lines for a small edit. cheapoS tracks the file version. No edit was made.")
-            texts = [args.get(k) for k in ("content", "old_text", "new_text", "text") if k in args]
+        if name in {"write_file", "replace_text", "append_text"}:
+            texts = {k: args[k] for k in ("content", "old_text", "new_text", "text") if k in args}
             byte_limit = MAX_CREATE_BYTES if name == 'write_file' else MAX_EDIT_BYTES
-            if any(isinstance(value, str) and (len(value.encode("utf-8")) > byte_limit or
-                    (name not in ('write_file', 'append_text') and len(value.splitlines()) > MAX_EDIT_LINES)) for value in texts):
-                self.prepare_compact_edits(task)
-                raise ValueError(f"Edit is too large. New files allow at most {MAX_CREATE_BYTES} UTF-8 bytes; existing files use replace_lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes. No edit was made.")
+            oversized = edit_size_violation(texts, max_bytes=byte_limit)
+            if oversized:
+                raise oversized
         result = (edit_history.apply(task, workspace, name, args, methods[name])
                   if name in edit_history.TEXT_EDITS else methods[name](**args))
         task["tool_actions"] += 1
@@ -2841,9 +2854,11 @@ class Engine:
                 result["guidance"] = "File deleted. Run run_checks to verify." if name == "delete_file" else "Edits saved. Run run_checks to verify."
         role = "reviewer" if task["status"] == "reviewing" else task["active_role"]
         model = (task["providers"].get(role) or {}).get("model", "Scripted demo")
-        rejected = result.get('code') == 'syntax_edit_rejected' if isinstance(result, dict) else False
+        rejection_title = {'syntax_edit_rejected': 'Rejected syntax-breaking edit',
+                           'text_edit_rejected': 'Refreshed file after an unmatched text edit'}.get(result.get('code')) if isinstance(result, dict) else None
+        rejected = rejection_title is not None
         self.event(task, "tool_error" if rejected else "tool",
-                   "Rejected syntax-breaking edit" if rejected else name.replace("_", " "),
+                   rejection_title if rejected else name.replace("_", " "),
                    {"arguments": args, "result": result, "role": role, "model": model,
                     **({'tool': name, 'code': result['code']} if rejected else {})})
         return result
@@ -3057,7 +3072,58 @@ class Engine:
             raise ProgressPause(result["next_action"])
         return result
 
+    def unattended_check_feedback(self, runtime, command):
+        """Redirect optional command expansion without granting it or pausing work."""
+        task = runtime.task
+        run = task.get('branch_run') or {}
+        if not run.get('authorization_ref') or developing(task):
+            return None
+        item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
+        from .branch_evidence import commands
+        required = commands(item.get('required_checks', []))
+        if not required:
+            return None
+        requested = self.verification_argv(task, command)
+        captured = [scope['command'] for scope in run.get('check_scope', [])]
+        if requested in required or requested in captured:
+            return None  # Normal dispatch revalidates required/revoked consent.
+        with self.lock:
+            selected = self.branch.scopes.approved_command(task, requested)
+            if selected != requested or self.branch.scopes.authorize(task, selected):
+                return None
+            available = []
+            for argv in required:
+                try:
+                    argv = self.verification_argv(task, shlex.join(argv))
+                except CheckCommandError:
+                    continue
+                if self.branch.scopes.authorize(task, argv):
+                    available.append(argv)
+        if not available:
+            return None
+        scope = [*edit_history.scope(task), item.get('revision'), run.get('authorization_ref'),
+                 (task.get('providers', {}).get('worker') or {}).get('model'), available]
+        previous = task.get('unattended_check_redirect') or {}
+        attempts = previous.get('attempts', 0) + 1 if previous.get('scope') == scope else 1
+        task['unattended_check_redirect'] = {'scope': scope, 'attempts': attempts}
+        result = {'code': 'unapproved_extra_check', 'executed': False,
+                  'requested_command': requested, 'approved_commands': available,
+                  'guidance': 'This extra command was not executed. Continue with the listed approved checks, '
+                              'or submit checkpoint when the item is complete; the controller verifies every required check before independent review. '
+                              'Put extra assertions in test files covered by an approved runner. Do not claim the rejected command passed. '
+                              'If an essential requirement cannot be verified within saved authority, use report_blocker with the missing check and evidence.'}
+        self.event(task, 'check_command', 'Continuing with approved verification', result)
+        if attempts >= 2:
+            result['handoff_queued'] = self.recover_worker_stall(runtime,
+                'The worker repeatedly requested extra commands without authority. Use the current item approved checks '
+                'and independent checkpoint review; preserve requirements, failed checks and command permissions.')
+        return result
+
     def worker_checks(self, runtime, args, last_call=True):
+        if (runtime.task.get('branch_run') or {}).get('authorization_ref'):
+            feedback = self.unattended_check_feedback(runtime, args.get('command'))
+            if feedback is not None:
+                return feedback
         result = self.checks(runtime, args.get('command'))
         run = runtime.task.get('branch_run') or {}
         item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
@@ -3267,6 +3333,21 @@ class Engine:
             raise ToolArgumentsError(name, call_id, f"{error.msg} at line {error.lineno}, column {error.colno}") from None
         if not isinstance(params, dict):
             raise ToolArgumentsError(name, call_id, "arguments must contain an object")
+        if name in MUTATIONS:
+            # JSON syntax alone is not a usable edit. Validate the existing tool
+            # contract before resetting format recovery or entering the workspace.
+            schema = next(t['function']['parameters'] for t in WORKER_TOOLS
+                          if t['function']['name'] == name)
+            missing = [key for key in schema['required'] if key not in params]
+            if missing:
+                raise ToolArgumentsError(name, call_id, 'missing required fields: ' + ', '.join(missing))
+            for key in schema['required']:
+                expected = schema['properties'][key]['type']
+                valid = isinstance(params[key], str) if expected == 'string' else type(params[key]) is int
+                if not valid:
+                    raise ToolArgumentsError(name, call_id, f'{key} must be a {expected}')
+            if not params['path'].strip():
+                raise ToolArgumentsError(name, call_id, 'path must be a nonempty workspace-relative file path')
         if task is not None:
             from .structural_telemetry import arguments
             try:
@@ -3284,7 +3365,8 @@ class Engine:
             trace_request(runtime.task,record)
         recovery = progress.state(runtime.task)
         recovery["malformed_attempts"] += 1
-        result = {"error": str(error), "code": error.code, "tool": error.name}
+        result = {"error": str(error), "code": error.code, "tool": error.name,
+                  "executed": False, "changed": False}
         self.event(runtime.task, "tool_error", "Model needs to correct tool arguments", result)
         if (automatic(runtime.task, runtime.task["active_role"]) and runtime.task["active_role"] == "worker"
                 and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}):
@@ -3493,10 +3575,7 @@ class Engine:
                 if task.get("conversational"):
                     task["request_worker_turns"] += 1
                 offered_tools = CHAT_TOOLS if execution_context.mode(task) == "interactive" else UNATTENDED_TOOLS if execution_context.mode(task) == "unattended" else WORKER_TOOLS
-                reason = work_policy.small_edit_reason(task)
-                if reason:
-                    self.prepare_compact_edits(task)
-                    task['small_edit_reason'] = reason
+                if work_policy.refresh_edit_recovery(task):
                     runtime.compact_context_ready = False
                 recovering = task.get("action_pending", False)
                 if recovering:
@@ -3509,9 +3588,6 @@ class Engine:
                 if task.get("compact_edits"):
                     if not runtime.compact_context_ready:
                         self.refresh_worker_conversation(runtime)
-                    from .edit_recovery import allow_exact_text
-                    excluded = {'write_file'} if allow_exact_text(task) else {'replace_text', 'write_file'}
-                    offered_tools = [t for t in offered_tools if t["function"]["name"] not in excluded] + [LINE_EDIT, COMPACT_WRITE]
                 current_stage = work_policy.stage(task)
                 offered_tools = work_policy.prioritize(work_policy.offered_tools(task, offered_tools), current_stage)
                 if task.get('work_stage') != current_stage:
@@ -3815,6 +3891,8 @@ class Engine:
                     except FileRangeError as error:
                         result = self.recover_edit_range(runtime, args, error)
                         coordinator_applied = result.get('handoff_queued', False)
+                    except FileEditConstraint as error:
+                        result = self.recover_edit_constraint(runtime, args, error)
                     except FileVersionError as error:
                         result = {"error": str(error), "code": "stale_file_version",
                                   "current_file": self.edit_snapshot(runtime, args),
@@ -3829,7 +3907,6 @@ class Engine:
                                 count = task["_edit_failures"].get(path, 0) + 1
                                 task["_edit_failures"][path] = count
                                 if count >= 2 and automatic(task, "worker"):
-                                    self.prepare_compact_edits(task)
                                     snap = self.edit_snapshot(runtime, args)
                                     if snap and not snap.get("error"):
                                         result["current_file"] = snap
@@ -3841,6 +3918,13 @@ class Engine:
                         coordinator_applied = self.recover_worker_stall(runtime,
                             f"Repeated syntax-breaking edits to {result['path']}: {result['syntax_warning']}. "
                             'The file was preserved; the rejected replacements made no progress.')
+                    elif isinstance(result, dict) and result.get('code') == 'text_edit_rejected' and result.get('attempts', 0) >= 2:
+                        runtime.compact_context_ready = False
+                        coordinator_applied = self.recover_worker_stall(runtime,
+                            f"Repeated exact-text replacements did not match {result['path']}. "
+                            'Use the supplied current numbered lines and a different edit; the intended change may already be present.')
+                    elif isinstance(result, dict) and result.get('code') in {'repair_evidence_required','file_already_exists','edit_too_large'} and result.get('attempts', 0) >= 2:
+                        coordinator_applied = self.recover_worker_stall(runtime, result['guidance'])
                     if coordinator_applied:
                         for skipped in calls[call_index + 1:]:
                             task['messages'].append({'role':'tool', 'tool_call_id':skipped['id'],

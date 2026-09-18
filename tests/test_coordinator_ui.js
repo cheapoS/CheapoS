@@ -39,3 +39,14 @@ test('a malformed coordinator reply names the failure and offers its one format 
  t.events.push({id:'failed',kind:'coordinator_recovery',time:stamp,detail:{state:'failed',diagnostic:'Coordinator must return one JSON object'}});
  assert.equal(steps(t).at(-1).title,'Coordinator reply could not be used');assert.equal(steps(t).at(-1).outcome,'failed');
 });
+
+test('unavailable coordinator is distinct from rejected advice while worker continues',()=>{
+ for(const metadata of [{failure_kind:'unavailable'},{error_code:'model_connection'}]){
+  const t=task();
+  t.events.push({id:'failed',kind:'coordinator_recovery',time:stamp,detail:{state:'failed',...metadata,diagnostic:'Connection failed',summary:'The local coordinator was unavailable. Returning to worker recovery.'}},
+   {id:'worker',kind:'model',title:'Requesting worker: remote-worker',time:stamp});
+  const list=steps(t);assert.equal(list[0].title,'Coordinator unavailable');
+  assert.match(list[0].detail,/Returning to worker recovery/);assert.equal(list[0].outcome,'failed');
+  assert.equal(list.at(-1).role,'worker');assert.equal(list.at(-1).outcome,'live');
+ }
+});

@@ -1,6 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {pausePresentation}=require('../dist/branch_ui.js');
+const ui=require('../dist/branch_ui.js');
 const task=(cause,next_action,extra={})=>({branch_run:{status:'paused',pause_detail:{version:1,cause,next_action,explanation:'Controlled explanation',stage:'reviewing',item_id:'one',role:'reviewer',diagnostic_id:'request-1'},...extra}});
 test('quota, restart, clarification and dispute have distinct actions and evidence',()=>{
  const quota=pausePresentation(task('provider_quota','models'));
@@ -18,6 +19,42 @@ test('all supported blockers use explicit existing actions without claiming comm
  for(const [cause,action] of [['missing_setup','environment'],['command_grant','permission'],['exhausted_work','limits'],['branch_drift','inspect'],['authority_changed','authorization'],['malformed_output','correction'],['repeated_work','correction']]){
   const v=pausePresentation(task(cause,action));assert.equal(v.action,action);assert.doesNotMatch(v.saved,/committed|passed/);
  }
+});
+
+test('ordinary saved failures lead with Resume; required decisions remain explicit',()=>{
+ for(const action of ['models','inspect','correction','resume']){
+  const t=task('provider_connection',action,{authorization_ref:'auth'}),html=ui.pauseMarkup(t);
+  assert.match(html.split('<details')[0],/class="primary-button"[^>]+>Resume saved work/);
+  assert.match(html,/<details[^>]*>[\s\S]*View technical logs[\s\S]*<\/details>/);
+  assert.match(ui.pauseMarkup(t,{status:'pending'}),/class="primary-button"[^>]+disabled/);
+ }
+ for(const action of ['permission','limits','environment','reply','authorization','reviewer','review_dispute']){
+  const html=ui.pauseMarkup(task('command_grant',action,{authorization_ref:'auth'}));
+  assert.doesNotMatch(html,/data-resume/);
+  assert.match(html,/class="primary-button" data-pause-action/);
+ }
+ assert.doesNotMatch(ui.pauseMarkup(task('provider_connection','models')),/data-resume/);
+ const pending=task('command_grant','permission',{authorization_ref:'auth'});pending.pending_approval={};
+ assert.doesNotMatch(ui.pauseMarkup(pending),/data-resume/);
+});
+
+test('paused completed items resume without an empty review CTA; ready evidence opens Changes',async()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/branch_ui.js'),'utf8');
+ const t=task('provider_connection','resume',{id:'run',authorization_ref:'auth',items:[{id:'one',status:'committed',commit_receipt:{stage:'completed',run_id:'run',item_id:'one',new_tip:'a'.repeat(40)}}]});t.id='saved';t.status='paused';
+ let resumed=0,reviewed=0;const nodes=new Map();
+ const panel={innerHTML:'',querySelector(selector){if(!this.innerHTML.includes(selector.slice(1,-1)))return null;if(!nodes.has(selector))nodes.set(selector,{});return nodes.get(selector);}};
+ const view={querySelector:s=>s==='#branch-run-summary'?panel:{}};
+ const context={...ui,sync(){},document:{querySelector:()=>view},starts:{get:()=>null},getState:()=>({}),detailStates:new Map(),summaryHTML:'',options:{resume:async saved=>{assert.equal(saved,t);resumed++;}},guarded:async(button,fn)=>fn(),showFinal:saved=>{assert.equal(saved,t);reviewed++;}};
+ vm.createContext(context);vm.runInContext(source.slice(source.indexOf(' function render(task)'),source.indexOf(' function renderPlan(task)')),context);
+ context.render(t);assert.equal(ui.projectRun(t).canRecheck,true);assert.equal(panel.querySelector('[data-preview]'),null);
+ await panel.querySelector('[data-pause-action]').onclick();assert.equal(resumed,1);
+ delete t.branch_run.pause_detail;context.render(t);assert.equal(panel.querySelector('[data-recheck-run]'),null);
+ await panel.querySelector('[data-resume]').onclick();assert.equal(resumed,2);
+ t.branch_run.status='ready_for_merge';t.branch_run.readiness={manifest:{files:[{path:'actual.py'}]}};
+ context.render(t);assert.match(panel.innerHTML,/>Review changes<\/button>/);
+ await panel.querySelector('[data-preview]').onclick();assert.equal(reviewed,1);
+ t.branch_run.readiness.manifest.files=[];context.render(t);
+ assert.match(panel.innerHTML,/>Review results<\/button>/);assert.doesNotMatch(panel.innerHTML,/>Review changes<\/button>/);
 });
 
 test('Activity shows escaped claims and counterevidence with bounded dispute history',()=>{

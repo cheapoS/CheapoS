@@ -44,7 +44,8 @@ def rejection_key(group):
                 result.get('code') == 'syntax_edit_rejected' or
                 (result.get('rolled_back') is True and bool(result.get('syntax_warning'))))
             bad_range = result.get('code') == 'invalid_edit_range' and result.get('executed') is False
-            if not (syntax or bad_range) or result.get('changed') is True:
+            bad_text = result.get('code') == 'text_edit_rejected' and result.get('executed') is False
+            if not (syntax or bad_range or bad_text) or result.get('changed') is True:
                 return None  # Generic errors can conceal partial effects.
             # Attempts are accounting, not different file/error evidence.
             # All other fields, including versions and guidance, must match.

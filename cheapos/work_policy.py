@@ -61,19 +61,44 @@ def attempted_edit(task):
     return False
 
 
+def edit_recovery_scope(task):
+    from .edit_history import scope
+    worker = task.get('providers', {}).get('worker') or {}
+    return [*scope(task), worker.get('base_url'), worker.get('model'),
+            len(task.get('requests') or [task.get('prompt')])]
+
+
+def begin_edit_recovery(task):
+    task['compact_edits'] = True
+    task['compact_edit_recovery'] = {'scope': edit_recovery_scope(task),
+                                    'reason': 'The current worker returned malformed edit arguments.'}
+
+
 def small_edit_reason(task):
-    if read_only(task):return None
-    if task.get('compact_edits'):return None
-    if stage(task)=='review':return None
-    if task['limits']['output_tokens']<=768:return 'The selected output allowance is at most 768 tokens.'
-    events=task.get('events',[])
-    boundary=max((i for i,event in enumerate(events) if event['kind']=='user'),default=-1)
-    for event in reversed(events[boundary+1:]):
-        detail=event.get('detail')
-        if not isinstance(detail,dict):continue
-        if event['kind']=='tool_error' and detail.get('tool') in {'write_file','replace_text','replace_lines','append_text'}:
-            return 'An edit-output failure was observed in this task.'
+    """Only an unresolved observed output failure calls for smaller edits."""
+    state = task.get('compact_edit_recovery') or {}
+    if not read_only(task) and state.get('scope') == edit_recovery_scope(task):
+        return state.get('reason')
     return None
+
+
+def finish_edit_recovery(task):
+    for key in ('compact_edits', 'compact_edit_recovery', 'small_edit_reason', 'output_retry'):
+        task.pop(key, None)
+
+
+def refresh_edit_recovery(task):
+    """Drop stale guidance, never historical attempts, grants or usage."""
+    changed = False
+    if task.get('compact_edits') and not small_edit_reason(task):
+        for key in ('compact_edits', 'compact_edit_recovery', 'small_edit_reason'):
+            task.pop(key, None)
+        changed = True
+    retry = task.get('output_retry') or {}
+    if retry and (read_only(task) or retry.get('scope') != edit_recovery_scope(task)):
+        task.pop('output_retry', None)
+        changed = True
+    return changed
 
 
 def stage(task):

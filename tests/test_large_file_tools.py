@@ -87,9 +87,9 @@ class LargeFileToolsTests(unittest.TestCase):
             self.workspace.write_file('new.txt', 'x' * 256001)
         with self.assertRaisesRegex(ValueError, 'Edit is too large'):
             self.workspace.replace_lines('large.txt', 1, 1, 'x' * (MAX_EDIT_BYTES + 1), digest)
-        with self.assertRaisesRegex(ValueError, 'Edit is too large'):
-            self.workspace.replace_lines('large.txt', 1, 81, 'small', digest)
         self.assertEqual(hashlib.sha256((self.root / 'large.txt').read_bytes()).hexdigest(), digest)
+        self.workspace.replace_lines('large.txt', 1, 81, 'small', digest)
+        self.assertEqual((self.root / 'large.txt').read_text(), 'small\n' + 'unchanged\n' * (30000 - 81))
 
     def test_path_binary_and_snapshot_size_guards_still_apply(self):
         self.write('source.py', 'def ok(): pass\n')

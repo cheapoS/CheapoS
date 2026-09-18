@@ -15,8 +15,8 @@ from pathlib import Path, PurePosixPath
 # Input size is independent of model-visible excerpts and new-file generation.
 MAX_FILE_BYTES = 2_000_000
 MAX_CREATE_FILE_BYTES = 256_000
-MAX_EDIT_BYTES = 3_000
-MAX_EDIT_LINES = 80
+# Resource ceilings, not model-quality heuristics or work allowances.
+MAX_EDIT_BYTES = MAX_FILE_BYTES
 MAX_SNAPSHOT_BYTES = 100_000_000
 MAX_FILES = 5000
 BLOCKED_PARTS = {".git", ".cheapos", ".ssh", ".aws", ".gnupg", "node_modules", "__pycache__", ".venv", "venv", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
@@ -29,6 +29,48 @@ class FileRangeError(ValueError):
 
 class FileVersionError(ValueError):
     """The edit's inspected version does not match the file on disk."""
+
+
+class FileEditConstraint(ValueError):
+    """An unexecuted edit needs a different action, not another identical call."""
+
+    def __init__(self, code, message, details=None):
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
+
+
+def edit_size_violation(texts, *, max_bytes=MAX_EDIT_BYTES, max_lines=None, removed_lines=None):
+    """Measure rejected payloads without retaining their source text in diagnostics."""
+    sizes = {key: {'utf8_bytes': len(value.encode('utf-8')), 'lines': len(value.splitlines())}
+             for key, value in texts.items() if isinstance(value, str)}
+    limits = {'utf8_bytes': max_bytes, 'lines': max_lines}
+    exceeded, descriptions = [], []
+    for key, size in sizes.items():
+        for dimension, actual in size.items():
+            limit = limits[dimension]
+            if limit is not None and actual > limit:
+                exceeded.append(key + '.' + dimension)
+                unit = 'UTF-8 bytes' if dimension == 'utf8_bytes' else 'lines'
+                descriptions.append(f'{key}: {actual:,} {unit} (limit {limit:,})')
+    if removed_lines is not None and max_lines is not None and removed_lines > max_lines:
+        exceeded.append('removed_lines')
+        descriptions.append(f'old range: {removed_lines:,} lines (limit {max_lines:,})')
+    if not exceeded:
+        return None
+    size = {'fields': sizes, 'limits': limits, 'exceeded': exceeded}
+    if removed_lines is not None:
+        size['removed_lines'] = removed_lines
+    return FileEditConstraint('edit_too_large', 'Edit is too large. ' + '; '.join(descriptions) +
+                              '. No edit was made.', {'edit_size': size})
+
+
+class FileTextMatchError(ValueError):
+    """An exact-text replacement was rejected before any file write."""
+
+    def __init__(self, message, matches):
+        super().__init__(message)
+        self.matches = matches
 
 
 def allowed_name(name):
@@ -188,9 +230,11 @@ class Workspace:
         if (type(start_line) is not int or type(end_line) is not int or start_line < 1
                 or start_line > len(lines) + 1 or end_line < start_line - 1 or end_line > len(lines)):
             raise FileRangeError(f"Invalid line range {start_line!r}..{end_line!r}: this file has {len(lines)} lines. Replace within 1..{len(lines)}, or append at {len(lines)+1} with end_line={len(lines)}. No edit was made.")
-        if (not isinstance(new_text, str) or len(new_text.encode("utf-8")) > MAX_EDIT_BYTES
-                or len(new_text.splitlines()) > MAX_EDIT_LINES or end_line - start_line + 1 > MAX_EDIT_LINES):
-            raise ValueError(f"Edit is too large. Replace at most {MAX_EDIT_LINES} lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes per call.")
+        if not isinstance(new_text, str):
+            raise ValueError('new_text must be text')
+        oversized = edit_size_violation({'new_text': new_text}, removed_lines=end_line - start_line + 1)
+        if oversized:
+            raise oversized
         if "\x00" in new_text:
             raise ValueError("Binary content cannot be written by the text tools")
         prefix, suffix = "".join(lines[:start_line - 1]), "".join(lines[end_line:])
@@ -290,7 +334,7 @@ class Workspace:
             raise ValueError("Content must be text under 256 KB")
         target = self.path(path)
         if target.exists():
-            raise ValueError(f"File '{path}' already exists. To modify an existing file, use 'replace_text' for specific edits or 'append_text' to add content to the end; write_file cannot overwrite files.")
+            raise FileEditConstraint('file_already_exists', f"File '{path}' already exists. To modify an existing file, use 'replace_text' for specific edits or 'append_text' to add content to the end; write_file cannot overwrite files.")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         target.chmod(0o600)
@@ -309,14 +353,14 @@ class Workspace:
         text = target.read_text(encoding="utf-8")
         matches = text.count(old_text)
         if matches == 0:
-            raise ValueError(f"old_text was not found in '{path}'. Read the current file before editing.")
+            raise FileTextMatchError(f"old_text was not found in '{path}'. Read the current file before editing.", matches)
         elif matches > 1:
             line_numbers = [i for i, line in enumerate(text.splitlines(), 1) if old_text in line]
             lines_str = ", ".join(f"line {ln}" for ln in line_numbers[:5])
             more = f" and {len(line_numbers) - 5} more" if len(line_numbers) > 5 else ""
-            raise ValueError(
+            raise FileTextMatchError(
                 f"old_text matched {matches} times in '{path}' ({lines_str}{more}). "
-                "Provide a longer unique snippet with surrounding lines, or use append_text to add at the end of the file."
+                "Provide a longer unique snippet with surrounding lines, or use current numbered lines.", matches
             )
         replacement = text.replace(old_text, new_text, 1)
         if len(replacement.encode("utf-8")) > MAX_FILE_BYTES:

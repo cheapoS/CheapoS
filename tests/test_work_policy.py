@@ -1,12 +1,11 @@
 import json
 from pathlib import Path
-from unittest.mock import patch
 from cheapos import work_policy
 from test_engine import LocalCase, call
 
 
 class WorkPolicyTests(LocalCase):
-    def large_case(self, proactive=True):
+    def large_case(self, valid=True):
         task=self.fixture(paid=True);root=Path(task['workspace']);(root/'large.py').write_text('# padding\n'*250+'value = 1\n')
         task['conversational']=True;task['limits']['dollars']=1;task['limits']['worker_turns']=10
         self.engine.store.save(task);requests=[]
@@ -18,25 +17,20 @@ class WorkPolicyTests(LocalCase):
         class Provider:
             def complete(self,messages,tools,maximum):
                 requests.append((messages.copy(),[t['function']['name'] for t in tools],maximum))
-                response = call('replace_text') if not proactive and len(requests)==2 else next(replies)
-                if proactive and response.get('tool_calls') and response['tool_calls'][0]['function']['name']=='replace_lines':
+                response = call('replace_text') if not valid and len(requests)==2 else next(replies)
+                if valid and response.get('tool_calls') and response['tool_calls'][0]['function']['name']=='replace_lines':
                     args=json.loads(response['tool_calls'][0]['function']['arguments'])
                     response=call('replace_text',{'path':'large.py','old_text':'value = '+('1' if args['new_text']=='value = 2' else '2'),'new_text':args['new_text']})
-                if not proactive and len(requests)==2:response['tool_calls'][0]['function']['arguments']='{\"path\":'
+                if not valid and len(requests)==2:response['tool_calls'][0]['function']['arguments']='{\"path\":'
                 return response,{'prompt_tokens':10,'completion_tokens':5,'cost':0}
         self.engine.provider_factory=lambda *args:Provider()
-        original=work_policy.small_edit_reason
-        def policy(value):
-            reason=original(value)
-            return None if not proactive and reason and 'observed file exceeds' in reason else reason
-        with patch('cheapos.work_policy.small_edit_reason',side_effect=policy):
-            self.engine.start(task['id']);result=self.finish(task)
+        self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'awaiting_reply',result['error'])
-        self.assertIn('replace_text',requests[0][1]);(self.assertNotIn if proactive else self.assertIn)('replace_lines',requests[1 if proactive else 2][1]);(self.assertIn if proactive else self.assertNotIn)('replace_text',requests[1 if proactive else 2][1])
+        self.assertIn('replace_text',requests[0][1]);self.assertIn('replace_lines',requests[1 if valid else 2][1]);self.assertIn('replace_text',requests[1 if valid else 2][1])
         self.assertIn('read_file',requests[1][1]);self.assertEqual(requests[0][2],requests[1][2])
         self.assertEqual((root/'large.py').read_text().splitlines()[-1],'value = 3')
         failures=len([e for e in result['events'] if e['kind']=='tool_error'])
-        self.assertEqual(failures,0 if proactive else 1)
+        self.assertEqual(failures,0 if valid else 1)
         self.assertEqual(result['providers'],task['providers'])
         return len(requests),failures
 
@@ -44,11 +38,11 @@ class WorkPolicyTests(LocalCase):
         self.assertEqual(self.large_case(False),(6,1))
         self.assertEqual(self.large_case(True),(5,0))
 
-    def test_small_ordinary_edit_and_supported_output_allowance_signals(self):
+    def test_low_allowance_and_old_errors_do_not_force_small_edit_mode(self):
         task=self.fixture();self.assertIsNone(work_policy.small_edit_reason(task))
-        task['limits']['output_tokens']=768;self.assertIn('768',work_policy.small_edit_reason(task))
+        task['limits']['output_tokens']=768;self.assertIsNone(work_policy.small_edit_reason(task))
         task['limits']['output_tokens']=2048;task['events'].append({'kind':'tool_error','title':'Bad edit','detail':{'tool':'replace_text'}})
-        self.assertIn('observed',work_policy.small_edit_reason(task))
+        self.assertIsNone(work_policy.small_edit_reason(task))
 
     def test_stage_priorities_keep_every_tool_and_complex_review(self):
         from cheapos.engine import CHAT_TOOLS, REVIEW_TOOLS

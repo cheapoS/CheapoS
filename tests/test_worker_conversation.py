@@ -1,9 +1,64 @@
 import copy
+import json
 import unittest
-from cheapos.worker_conversation import append_direction, refresh, receipt
+from cheapos.worker_conversation import append_direction, refresh, receipt, LEGACY_ARGUMENT_NOTICE
 
 
 class WorkerConversationTests(unittest.TestCase):
+    def test_bad_arguments_become_retrievable_diagnostics_without_empty_call_examples(self):
+        from cheapos.context_evidence import read
+        task = {}
+        bad = {'id': 'bad', 'function': {'name': 'write_file', 'arguments': '{broken'}}
+        good = {'id': 'read', 'function': {'name': 'read_file', 'arguments': '{"path":"app.py"}'}}
+        answer = {'role': 'tool', 'tool_call_id': 'read', 'content': '1: working = True'}
+        history = [{'role': 'assistant', 'content': 'Keep the existing behavior.', 'tool_calls': [bad, good]},
+                   {'role': 'tool', 'tool_call_id': 'bad', 'content': json.dumps({
+                       'code': 'invalid_tool_arguments', 'error': 'Bad JSON'})}, answer]
+        original = copy.deepcopy(history)
+        result = refresh(history, [], task)
+        self.assertEqual(history, original)
+        assistant = next(m for m in result if m['role'] == 'assistant')
+        self.assertEqual(assistant['tool_calls'], [good])
+        self.assertEqual(assistant['content'], 'Keep the existing behavior.')
+        self.assertIn(answer, result)
+        diagnostic = next(m for m in result if m.get('content', '').startswith('Tool argument diagnostic: '))
+        self.assertEqual(diagnostic['role'], 'user')
+        info = json.loads(diagnostic['content'].split(': ', 1)[1])
+        self.assertEqual(info['outcome'], 'Rejected before execution.')
+        self.assertEqual(info['feedback'], [{'code': 'invalid_tool_arguments', 'error': 'Bad JSON'}])
+        self.assertNotIn('{broken', str(result))
+        self.assertEqual(json.loads(read(task, info['context_reference'])['content'])['assistant'], original[0])
+        restored = json.loads(json.dumps(task))
+        again = refresh(result, [], restored)
+        self.assertEqual(sum(m.get('content', '').startswith('Tool argument diagnostic: ') for m in again), 1)
+        self.assertEqual(restored['context_evidence'], task['context_evidence'])
+
+    def test_legacy_empty_calls_and_invalid_shapes_do_not_become_assistant_templates(self):
+        for raw in ('{}', None, '[]'):
+            with self.subTest(raw=raw):
+                listing = {'id': 'list', 'function': {'name': 'list_files', 'arguments': '{}'}}
+                history = [{'role': 'assistant', 'content': 'Create the file.\n' + LEGACY_ARGUMENT_NOTICE,
+                            'tool_calls': [{'id': 'bad', 'function': {'name': 'write_file', 'arguments': raw}}, listing]},
+                           {'role': 'tool', 'tool_call_id': 'bad', 'content': '{"error":"Provide a relative file path"}'},
+                           {'role': 'tool', 'tool_call_id': 'list', 'content': '["a.py"]'}]
+                result = refresh(history, [], {})
+                self.assertEqual(result[0]['tool_calls'], [listing])
+                self.assertEqual([m for m in result if m['role'] == 'tool'], [history[-1]])
+                self.assertEqual(result[0]['content'], 'Create the file.')
+                self.assertNotIn(LEGACY_ARGUMENT_NOTICE, str(result))
+                self.assertIn('Execution is not established', str(result))
+
+    def test_known_shape_rejection_is_diagnostic_but_valid_interrupted_call_stays_uncertain(self):
+        history = [{'role': 'assistant', 'tool_calls': [
+            {'id': 'bad', 'function': {'name': 'write_file', 'arguments': '{}'}},
+            {'id': 'pending', 'function': {'name': 'write_file', 'arguments': '{"path":"later.py","content":""}'}}]},
+            {'role': 'tool', 'tool_call_id': 'bad', 'content': '{"code":"invalid_tool_arguments","executed":false}'}]
+        result = refresh(history, [], {})
+        self.assertEqual([c['id'] for m in result for c in m.get('tool_calls', [])], ['pending'])
+        pending = next(m for m in result if m.get('tool_call_id') == 'pending')
+        self.assertIn('outcome is not established', pending['content'])
+        self.assertNotIn('bad', [m.get('tool_call_id') for m in result])
+
     def test_findings_and_exact_tool_results_survive_refresh_and_followup(self):
         history = [{'role': 'system', 'content': 'policy'},
                    {'role': 'user', 'content': 'Fix the button'},
