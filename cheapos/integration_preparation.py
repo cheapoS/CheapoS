@@ -9,7 +9,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from . import branch_workspace as work, branch_runs
+from . import branch_workspace as work, branch_runs, branch_merge
 
 LABELS = {'accepted':'Update request saved', 'checking':'Checking latest project',
           'combining':'Combining changes', 'resolving':'Resolving overlaps',
@@ -40,21 +40,27 @@ def _readiness(engine, task_id):
         other_source=other.get('branch_run',{}).get('workspace_mapping',{}).get('source') or other.get('source')
         if other_source==source:return blocked('integration_busy','Waiting for another task to finish integrating.')
     if not tip:return blocked('target_missing','The captured destination branch no longer exists.')
-    head=work.source_git(source,'symbolic-ref','--quiet','HEAD')
-    if head!=target:return blocked('destination_changed','The destination checkout is on a different branch.')
-    markers=('MERGE_HEAD','CHERRY_PICK_HEAD','REVERT_HEAD','rebase-merge','rebase-apply','sequencer')
-    for raw in work.source_git(source,'rev-parse',*[arg for m in markers for arg in ('--git-path',m)]).splitlines():
-        p=Path(raw)
-        if (p if p.is_absolute() else Path(source)/p).exists():
-            return blocked('git_operation','An external Git operation is in progress. Finish it before integration.')
-    raw=work.source_git(source,'status','--porcelain=v1','-z','--untracked-files=all','--ignore-submodules=none',binary=True)
-    if raw:
-        entries=(raw.decode('utf-8',errors='replace') if isinstance(raw,bytes) else raw).split('\0')
-        files=[];skip=False
-        for entry in entries:
-            if skip:files.append(entry);skip=False;continue
-            if entry:files.append(entry[3:]);skip=entry[:1] in {'R','C'}
-        return blocked('dirty_destination','Waiting for local changes in the destination.',('inspect_local_changes',),files)
+    destination=source
+    if run:
+        destination=branch_merge._destination(run['workspace_mapping'],target)
+        branch_merge.destination_identity(run['workspace_mapping'],destination)
+    result['destination']=destination
+    if destination:
+        head=work.source_git(destination,'symbolic-ref','--quiet','HEAD')
+        if head!=target:return blocked('destination_changed','The destination checkout is on a different branch.')
+        markers=('MERGE_HEAD','CHERRY_PICK_HEAD','REVERT_HEAD','rebase-merge','rebase-apply','sequencer')
+        for raw in work.source_git(destination,'rev-parse',*[arg for m in markers for arg in ('--git-path',m)]).splitlines():
+            p=Path(raw)
+            if (p if p.is_absolute() else Path(destination)/p).exists():
+                return blocked('git_operation','An external Git operation is in progress. Finish it before integration.')
+        raw=work.source_git(destination,'status','--porcelain=v1','-z','--untracked-files=all','--ignore-submodules=none',binary=True)
+        if raw:
+            entries=(raw.decode('utf-8',errors='replace') if isinstance(raw,bytes) else raw).split('\0')
+            files=[];skip=False
+            for entry in entries:
+                if skip:files.append(entry);skip=False;continue
+                if entry:files.append(entry[3:]);skip=entry[:1] in {'R','C'}
+            return blocked('dirty_destination','Waiting for local changes in the destination.',('inspect_local_changes',),files)
     if run:
         try:engine.branch.validate_authority(task,run)
         except (ValueError,OSError) as error:return blocked('authority_changed',str(error))
@@ -328,10 +334,11 @@ def restore(engine):
 
 
 def local_changes(engine,task_id):
-    task=engine.store.get(task_id)
-    source=task.get('branch_run',{}).get('workspace_mapping',{}).get('source') or task['source']
-    return {'diff':work.source_git(source,'diff','HEAD','--no-ext-diff','--no-renames'),
-            'files':readiness(engine,task_id)['files'], 'label':'Uncommitted destination changes; nothing is modified'}
+    state=readiness(engine,task_id)
+    if 'destination' not in state:raise ValueError(state['message'])
+    destination=state['destination']
+    return {'diff':work.source_git(destination,'diff','HEAD','--no-ext-diff','--no-renames') if destination else '',
+            'destination':destination, 'files':state['files'], 'label':'Uncommitted destination changes; nothing is modified'}
 
 
 def resolution_changes(engine,task_id):

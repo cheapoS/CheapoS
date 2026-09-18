@@ -48,9 +48,17 @@ class BranchCompletionTests(unittest.TestCase):
 
     def test_final_preview_is_read_only_and_merge_is_explicit_idempotent(self):
         self.finalize()
+        git(self.source,'switch','-qc','operator')
+        destination=self.root/'main-checkout'
+        git(self.source,'worktree','add',str(destination),'main')
+        (self.source/'operator.txt').write_text('unrelated work')
+        index=git(self.source,'write-tree')
         calls=len(self.requests); checks=len(self.task['checks']); before=git(self.source,'rev-parse','HEAD')
         preview=completion.preview(self.controller,'task')
         self.assertTrue(preview['merge_available'])
+        self.assertEqual(preview['destination'],str(destination))
+        self.assertEqual(preview['integration_readiness']['code'],'ready')
+        self.assertEqual(preview['integration_readiness']['destination'],str(destination))
         self.assertIn('+two',preview['diff'])
         page=completion.diff(self.controller,'task',{'preview_id':preview['preview_id'],'cursor':0})
         self.assertEqual(page['diff'],preview['diff'])
@@ -71,7 +79,11 @@ class BranchCompletionTests(unittest.TestCase):
         result=self.saved_task
         self.assertEqual(result['branch_run']['merge_progress']['stage'],'completed')
         self.assertEqual(result['branch_run']['status'],'merged')
-        self.assertEqual(git(self.source,'rev-parse','HEAD').strip(),self.run['expected_feature_tip'])
+        self.assertEqual(git(destination,'rev-parse','HEAD').strip(),self.run['expected_feature_tip'])
+        self.assertEqual(git(destination,'status','--porcelain'),'')
+        self.assertEqual(git(self.source,'rev-parse','HEAD'),before)
+        self.assertEqual(git(self.source,'write-tree'),index)
+        self.assertEqual((self.source/'operator.txt').read_text(),'unrelated work')
         self.assertEqual(completion.merge(self.controller,'task',decision),result)
 
     def test_left_branch_keeps_read_only_diff_without_restoring_authority(self):

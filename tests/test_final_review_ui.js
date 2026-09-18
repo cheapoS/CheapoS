@@ -45,11 +45,12 @@ test('stale, skipped and truncated pages cannot become a complete review',()=>{
 });
 test('review overview surfaces blockers and saved evidence without inventing passing checks',()=>{
  const task={title:'Build <a thing>',branch_run:{feature_ref:'refs/heads/feature/test',readiness:{checks:[{command:['python3','-m','unittest'],record:{passed:true}},{command:['other'],record:{passed:false}}],review:{decision:'REQUEST_CHANGES',feedback:'Fix <issue>'}},items:[{title:'Implement',status:'committed'}]}};
- const preview={blocker:'Target checkout has uncommitted changes',feature_tip:'a'.repeat(40),target_tip:'b'.repeat(40),target_ref:'refs/heads/main',manifest:{files:[{path:'src/main.py',status:'M',added_lines:2,removed_lines:1}]}};
+ const preview={blocker:'Target checkout has uncommitted changes',destination:'/projects/main <checkout>',feature_tip:'a'.repeat(40),target_tip:'b'.repeat(40),target_ref:'refs/heads/main',manifest:{files:[{path:'src/main.py',status:'M',added_lines:2,removed_lines:1}]}};
  const html=ui.finalReviewMarkup(task,preview);
  assert.match(html,/1\/2 checks passed/);assert.doesNotMatch(html,/Final review approved/);
  assert.match(html,/Target checkout has uncommitted changes/);assert.match(html,/python3 -m unittest/);assert.match(html,/Fix &lt;issue&gt;/);assert.match(html,/Build &lt;a thing&gt;/);
  assert.match(html,/data-file-search/);assert.match(html,/data-viewed/);assert.match(html,/Approve &amp; merge locally/);
+ assert.match(html,/Merge location: <code>\/projects\/main &lt;checkout&gt;<\/code>/);
  assert.deepEqual(ui.reviewFiles({manifest:['file']}),[{path:'file'}]);
 });
 test('actual preview loader displays progress before awaiting the API and ignores detached results',async()=>{

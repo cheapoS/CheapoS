@@ -155,6 +155,7 @@ def preview(controller, task_id, values=None):
         readiness = run.get('readiness')
         if not readiness: raise ValueError('Run final verification before opening the merge preview')
         blocker = None
+        operation = None
         proposal = {'proposal_id':None}
         try:
             controller.validate_authority(task, run)
@@ -173,6 +174,7 @@ def preview(controller, task_id, values=None):
                 'next_cursor':20000 if len(manifest['diff'])>20000 else None, 'merge_available':blocker is None, 'blocker':blocker, 'target_ref':manifest['target_ref'],
                 'files':manifest['files'], 'commits':manifest['commits'], 'diff_length':len(manifest['diff']),
                 'base_sha':manifest['base_sha'], 'feature_tip':manifest['feature_tip'], 'target_tip':manifest['target_tip'],
+                'destination':operation['destination'] if operation else typed.get('destination'),
                 'integration_readiness':typed,
                 'update_available': 'update_resolve' in typed['actions'] and not run.get('merge_operation'),
                 'resolve_available':bool(run.get('merge_conflict')) and bool(blocker) and all(i['status'] in state.DONE for i in run['items']) and not run.get('target_update'),

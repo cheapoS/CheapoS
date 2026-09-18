@@ -208,13 +208,44 @@ class IntegrationPreparationTests(unittest.TestCase):
     def test_readiness_dirty_is_not_branch_update(self):
         engine,task=self.fixture()
         def git(source,*args,**kwargs):
+            self.assertEqual(source,'linked-target')
             if args[0]=='symbolic-ref':return 'refs/heads/main'
             if args[0]=='status':return ' M a.py'
             return ''
-        with patch.object(prep.work,'_tip',return_value='target'),patch.object(prep.work,'source_git',side_effect=git):
+        with patch.object(prep.work,'_tip',return_value='target'),patch.object(prep.work,'source_git',side_effect=git), \
+                patch.object(prep.branch_merge,'_destination',return_value='linked-target'), \
+                patch.object(prep.branch_merge,'destination_identity'):
             state=prep.readiness(engine,'task')
         self.assertEqual(state['code'],'dirty_destination');self.assertEqual(state['actions'],['inspect_local_changes'])
         self.assertEqual(state['files'],['a.py'])
+        self.assertEqual(state['destination'],'linked-target')
+
+    def test_unchecked_out_branch_readiness_ignores_unrelated_checkout(self):
+        engine,task=self.fixture()
+        task['branch_run']['readiness']={'id':'reviewed'}
+        with patch.object(prep.work,'_tip',return_value='target'), \
+                patch.object(prep.work,'source_git') as git,patch.object(prep.work,'validate_owned'), \
+                patch.object(prep.branch_merge,'_destination',return_value=None):
+            state=prep.readiness(engine,'task')
+        self.assertEqual(state['code'],'ready')
+        self.assertIsNone(state['destination'])
+        git.assert_called_once_with('source','merge-base','--is-ancestor','target','feature')
+
+    def test_inspect_local_changes_reads_only_the_actual_destination(self):
+        engine,task=self.fixture()
+        with patch.object(prep,'readiness',return_value={'destination':'linked-target','files':['a.py']}), \
+                patch.object(prep.work,'source_git',return_value='target edits') as git:
+            result=prep.local_changes(engine,'task')
+        git.assert_called_once_with('linked-target','diff','HEAD','--no-ext-diff','--no-renames')
+        self.assertEqual(result['diff'],'target edits')
+        with patch.object(prep,'readiness',return_value={'destination':None,'files':[]}), \
+                patch.object(prep.work,'source_git') as git:
+            self.assertEqual(prep.local_changes(engine,'task')['diff'],'')
+        git.assert_not_called()
+        with patch.object(prep,'readiness',return_value={'message':'Destination changed'}), \
+                patch.object(prep.work,'source_git') as git:
+            with self.assertRaisesRegex(ValueError,'Destination changed'):prep.local_changes(engine,'task')
+        git.assert_not_called()
 
     def test_changed_target_history_requires_specific_decision(self):
         engine,task=self.fixture();self.accepted(engine,task)

@@ -140,6 +140,14 @@ After all items, final integration checks apply to the final contents. A final r
 
 The final approval binds the inspected feature tip, target ref/tip, cumulative diff, and readiness evidence. Recheck all of them at integration. The first merge action supports only fast-forward cases; target divergence must produce a clear saved-branch outcome, never a force update or unreviewed merge. The checked-out-target path must update files/index consistently through Git, not only move its ref. See [git-merge](https://git-scm.com/docs/git-merge).
 
+When the target is checked out in a linked worktree, Changes displays that checkout
+as the merge location. Approval binds its directory and Git identities as well as
+the reviewed revisions. Integration requires that destination to remain clean,
+on the target branch, and in the same repository; it preserves the selected
+project's separate checkout and uncommitted edits. If the target is not checked
+out anywhere, only its branch ref advances. This supersedes T39's initial
+restriction on targets checked out in another worktree.
+
 ## Ordered implementation cards
 
 Card status below reflects implementation and recorded validation. Sizes describe scope, not time. Dependencies mean implemented, validated, and available commits. T01–T27 are baseline prerequisites; do not redo them.
