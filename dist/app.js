@@ -256,7 +256,26 @@ async function copyTaskJson(task) {
   try {
     toast('Fetching task record…');
     const fullTask=(state.task?.id===task.id)?state.task:await api('/tasks/'+task.id);
-    const jsonStr=JSON.stringify(fullTask,null,2);
+    const events=Array.isArray(fullTask.events)?fullTask.events:[];
+    const resumes=events.filter(e=>e&&(e.kind==='resume'||e.kind==='operator_resume')).length;
+    const clubPayload={
+      id:fullTask.id,
+      title:fullTask.title,
+      prompt:fullTask.prompt,
+      created_at:fullTask.created_at,
+      status:fullTask.status,
+      source:fullTask.source,
+      usage:fullTask.usage,
+      run_metrics:fullTask.run_metrics,
+      session_actions:fullTask.session_actions,
+      checkpoints:fullTask.checkpoints,
+      checks:fullTask.checks,
+      request_metrics:fullTask.request_metrics,
+      routing_traces:fullTask.routing_traces,
+      snapshot:fullTask.snapshot,
+      resumes
+    };
+    const jsonStr=JSON.stringify(clubPayload,null,2);
     await navigator.clipboard.writeText(jsonStr);
     toast('Task JSON copied to clipboard! Ready to paste on cheapos.lol/community/new');
   } catch(e) {
