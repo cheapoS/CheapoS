@@ -203,4 +203,3 @@ class ClubTests(unittest.TestCase):
         self.club.check_pairing(force=True)
         self.club._call.assert_called_once_with('status')
         self.assertEqual(self.club.state['identity']['handle'],'bob')
-
