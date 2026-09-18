@@ -14,9 +14,15 @@ class TestPennyPinner(unittest.TestCase):
         self.assertEqual(results[0]["title"], "Example")
 
     def test_digest(self):
+        url = "https://example.com"
         content = "One sentence. Two sentences. Three sentences. Four sentences."
-        digest = self.pinner.generate_digest(content)
-        self.assertEqual(len(digest), 3)
+        self.pinner.add(url, "Title", content)
+        digest = self.pinner.generate_digest(url)
+        lines = digest.split("\n")
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[0].startswith("- One sentence."))
+        self.assertTrue(lines[1].startswith("- Two sentences."))
+        self.assertTrue(lines[2].startswith("- Three sentences."))
 
 if __name__ == '__main__':
     unittest.main()

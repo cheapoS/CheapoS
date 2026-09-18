@@ -18,9 +18,13 @@ class PennyPinner:
         cursor.execute("SELECT *, rank FROM bookmarks WHERE bookmarks MATCH ? ORDER BY rank", (query,))
         return [dict(row) for row in cursor.fetchall()]
 
-    def generate_digest(self, content):
-        # Very simple extractive digest: pick 3 longest sentences (approximation)
-        sentences = re.split(r'(?<=[.!?])\s+', content)
-        # Simple sorting by length
-        sentences.sort(key=len, reverse=True)
-        return sentences[:3]
+    def generate_digest(self, url):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT content FROM bookmarks WHERE url = ?", (url,))
+        row = cursor.fetchone()
+        if not row:
+            return []
+        
+        # Simple extractive digest: first 3 sentences
+        sentences = re.split(r'(?<=[.!?])\s+', row["content"])
+        return "\n".join([f"- {s}" for s in sentences[:3]])
