@@ -176,5 +176,7 @@ def dispatched_action(task, record):
 
 
 def tool_action(task):
+    from .work_budgets import guard
+    guard(task, additions={'work_tools':1})
     initialize_actions(task)
     task['session_actions']['counts']['tools'] += 1

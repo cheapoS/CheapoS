@@ -5,6 +5,9 @@ def is_measurement(task):
 
 
 def enabled(task):
+    from .work_budgets import active
+    if active(task):
+        return True  # Independent budgets are enforced by work_budgets.guard.
     # Unattended authority comes from the approved plan, never task-local flags.
     from .development import enabled as developing
     if developing(task) and task.get('operator_bounded_work') is not True:

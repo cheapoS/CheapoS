@@ -274,13 +274,12 @@ class ChatProvider:
         return self._complete(messages, tools, max_tokens, emit, stopped, timeout_seconds=30, stream_seconds=60, brief=True)
 
     def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False, timeout_seconds=REQUEST_TIMEOUT_SECONDS, stream_seconds=600, brief=False, tool_choice=None):
+        if not brief and self.config.get("_request_seconds"):
+            timeout_seconds = stream_seconds = self.config["_request_seconds"]
         clean_messages = [{k: v for k, v in m.items() if k != 'reasoning_fallback'} for m in messages]
         body = {"model": self.config["model"], "messages": clean_messages, "stream": emit is not None}
         if max_tokens is not None:
-            if self.config.get("reasoning") and max_tokens < 16384 and (self.config.get("input_rate") or 0) == (self.config.get("output_rate") or 0) == 0:
-                body["max_tokens"] = 16384
-            else:
-                body["max_tokens"] = max_tokens
+            body["max_tokens"] = max_tokens
         if self.config.get("_recovery_reasoning") is not None:
             body["reasoning"] = self.config["_recovery_reasoning"]
         if brief and is_local_ollama(self.config):
@@ -365,7 +364,12 @@ def reserve(task, config, messages, tools, role):
     # A deliberately conservative preflight estimate; provider tokenizers/billing can differ.
     prompt_bytes = len(json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False).encode("utf-8"))
     prompt_bound = prompt_bytes + 1024
-    output = int(task["limits"]["output_tokens"])
+    from .request_budget import resolve
+    output = int(config.get("_effective_output_tokens", resolve(task, config)["tokens"]))
+    from .work_budgets import effective, active
+    selected_review = effective(task).get("work_review_tokens") if active(task) else None
+    if role == "reviewer" and selected_review is not None:
+        output = min(output, selected_review - task["usage"]["reviewer"]["tokens"] - prompt_bound)
     if role == "reviewer" and not measuring(task):
         remaining = task["limits"]["reviewer_tokens"] - task["usage"]["reviewer"]["tokens"]
         output = min(output, remaining - prompt_bound)

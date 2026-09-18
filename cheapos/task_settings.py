@@ -70,7 +70,8 @@ def view(engine, task_id):
         eligible = unfinished and not task.get('demo') and not task.get('commit_pending')
         eligible = eligible and (not run or run.get('status') in {'paused', 'blocked'} or active)
         eligible = eligible and not any(run.get(k) for k in ('pending_operations', 'merge_operation', 'target_update'))
-        editable = sorted(EXECUTION_FIELDS | {f'limits.{key}' for key in values['limits']} | {'limits.uncapped_work', 'roles.reviewer'}) if eligible else []
+        from .work_budgets import KEYS
+        editable = sorted({f'limits.{key}' for key in KEYS} | EXECUTION_FIELDS | {f'limits.{key}' for key in values['limits']} | {'limits.uncapped_work', 'roles.reviewer'}) if eligible else []
         return {'task_id': task_id, 'title': task.get('title', task_id), 'project': task.get('source'),
                 'values': values, 'revision': snapshot.get('revision', 0),
                 'active': active, 'paused': bool(eligible and not active and task.get('status') not in {'approved', 'awaiting_reply'}),
@@ -188,6 +189,9 @@ def prepare(engine, task, patch):
             run['model_policy']['execution'] = copy.deepcopy(updated['execution'])
             run['model_policy']['providers'] = copy.deepcopy(updated['providers'])
         contract = run['authorization']['contract']
+        from .work_budgets import KEYS
+        run['limits'].update({k:v for k,v in updated['limits'].items() if k in KEYS})
+        run['plan']['limits']=copy.deepcopy(run['limits'])
         contract['limits'] = copy.deepcopy(run['limits'])
         contract['plan']['limits'] = copy.deepcopy(run['limits'])
         for flag in ('uncapped_work', 'measurement'):

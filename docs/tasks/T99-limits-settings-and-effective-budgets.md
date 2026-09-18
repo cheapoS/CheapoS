@@ -1,6 +1,6 @@
 # T99 — Build Limits & recovery settings and effective request budgets
 
-Status: **Planned**, September 18, 2026. Priority: **P2**.
+Status: **Implemented — integration validation pending**, September 18, 2026. Priority: **P2**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Canonical contract: [Operator-owned limits design](../development/operator-limits-and-recovery.md).
 Build on T91 and integrate T95–T98; backend reliability fixes must not wait for
@@ -81,3 +81,9 @@ Extend `tests/test_settings_store.py`, `tests/test_task_settings.py`,
 
 Follow T94's focused validation and test-cost rules. Use fake capacities and
 providers; no live billing/measurement calls or full suite needed by default.
+
+Independent nullable work fields extend the existing settings owner. Legacy
+policies remain unchanged; fresh installs use no work caps and free-only routes.
+The request budget resolver aligns context/output/reservation; explicit caps
+remain binding. Scoped settings and accounting tests: 28 passed in 0.034s;
+measurement output compatibility passed separately. Browser validation pending.

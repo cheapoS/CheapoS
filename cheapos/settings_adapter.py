@@ -45,6 +45,8 @@ def initialize(engine):
             normalized[group] = validator(valid)
         if fresh_install:
             normalized['execution']['mode'] = 'remote'
+            from .work_budgets import FIELDS
+            normalized['limits'].update(work_policy_version=2, **{key:None for key in FIELDS}, response_tokens='automatic', verification_seconds='automatic', request_seconds='automatic')
         store.initialize(normalized, load(engine.store.root / 'role-mappings.json'), engine.config, notices=notices, fresh_install=fresh_install)
     engine.settings_store = store
 

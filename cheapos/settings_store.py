@@ -85,7 +85,8 @@ class SettingsStore:
         self.execution_validator = execution_validator
         self.provider_validator = provider_validator
         self.execution_keys = set(execution_validator({}))
-        self.limit_keys = set(limits_validator({'dollars': 0})) | {'uncapped_work'}
+        from .work_budgets import KEYS
+        self.limit_keys = set(limits_validator({'dollars': 0})) | {'uncapped_work'} | KEYS
         self.allowed = ({f'execution.{k}' for k in self.execution_keys}
                         | {f'limits.{k}' for k in self.limit_keys}
                         | {f'roles.{k}' for k in ROLES} | {'allowed_connections', 'keep_up_to_date'})

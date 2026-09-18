@@ -307,6 +307,8 @@ def limits_from(value):
         if type(result['uncapped_work']) is not bool:
             raise ValueError('Uncapped work must be explicitly true or false')
         output['uncapped_work'] = result['uncapped_work']
+    from .work_budgets import validate
+    output.update(validate(result))
     return output
 
 
@@ -488,6 +490,11 @@ class Runtime:
         return self.stop.is_set() or self.interrupt_request.is_set()
 
     def guard(self):
+        from .work_budgets import guard
+        if not hasattr(self, 'branch_ledger'):
+            if not hasattr(self, 'work_seconds_base'): self.work_seconds_base=self.task.get('active_work_seconds',0)
+            self.task['active_work_seconds']=self.work_seconds_base+max(0,time.monotonic()-self.started)
+            guard(self.task, seconds=self.task['active_work_seconds'])
         if self.interrupt_request.is_set() and not self.stop.is_set():
             raise OperatorRedirect("Applying the operator’s new direction")
         if hasattr(self, "branch_ledger"):
@@ -2502,6 +2509,15 @@ class Engine:
             runtime.review_requests = checkpoint['review_requests']
         if role == 'planner' and not self.provider_factory and config['base_url'].startswith('https://') and not self.provider_key(role, config):
             raise ValueError('Planner credentials are missing. Open Models and configure the selected planner connection or its reviewer fallback.')
+        from .request_budget import resolve as resolve_budget
+        model = None
+        if getattr(self, 'gateway', None):
+            gateway = self.connection_for(config)
+            model = next((m for m in gateway.catalog(fresh=False).get('models', []) if m['id'] == config['model']), None) if gateway else None
+        budget = resolve_budget(account, config, model)
+        config = {**config, '_effective_output_tokens':budget['tokens']}
+        from .work_budgets import guard as guard_work
+        guard_work(task, additions={'work_requests':1, 'work_turns':int(role == 'worker')})
         reservation = reserve(account, config, messages, tools, role)
         record=task['request_metrics'][-1]
         reservation['metric_id']=record['id']
@@ -2509,6 +2525,7 @@ class Engine:
         record.update(reservation_tokens=reservation['tokens'],reservation_cost=reservation['cost'])
         task["in_flight"] = reservation
         if developing(task): config = {**config, "_operator_interruptible": True}
+        if type(task['limits'].get('request_seconds')) is int: config={**config,'_request_seconds':task['limits']['request_seconds']}
         provider = self.provider_factory(role, config) if self.provider_factory else gateway_for(self.gateway_config(config), self.provider_key(role, config))
         if isinstance(provider, ChatProvider):
             # Keep local queue time separate from gateway/network time, including
@@ -2521,6 +2538,8 @@ class Engine:
         record['transport_contract'] = transport.VERSION
         brief = purpose == "probe" or role == "coordinator"
         maximum = None if is_measurement(task) and not brief and config['input_rate'] == config['output_rate'] == 0 else reservation['completion_tokens']
+        if 'response_tokens' in task['limits']: maximum=reservation['completion_tokens']
+        record['effective_output_budget']={**budget,'tokens':reservation['completion_tokens']}
         record['requested_output_limit'] = maximum
         record['output_limit_basis'] = 'provider_default' if maximum is None else 'task_limit'
         if maximum is None:
@@ -2936,6 +2955,9 @@ class Engine:
         remaining = task['limits'].get('run_minutes', 15) * 60 - (time.monotonic() - runtime.started)
         runtime.guard()
         effective = None if is_measurement(task) else allowed if measuring(task) else min(allowed, remaining)
+        operation_limit=task['limits'].get('verification_seconds')
+        if operation_limit is not None:
+            effective = None if operation_limit == 'automatic' else operation_limit
         live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False, "session_allowed": session_allowed, "timeout_seconds": effective}
         task["check_stream"] = live
         self.event(task, "tool", "Running verification", {"command": argv, "run_id": live["run_id"], "timeout_seconds": effective})
@@ -3659,6 +3681,8 @@ class Engine:
                         if name in {"checkpoint", "run_checks", "report_blocker", "ask_user"} and name in {t["function"]["name"] for t in offered_tools}:
                             metrics.tool_action(task)
                         if name == "checkpoint":
+                            from .work_budgets import guard as guard_work
+                            guard_work(task, additions={"work_iterations":1})
                             result = self.checkpoint_feedback(runtime, args)
                             coordinator_applied = bool(result.get('handoff_queued'))
                         elif name == "run_checks":

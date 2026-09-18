@@ -25,7 +25,8 @@ def decision(task, messages, tools, config, model=None):
     # Approximation only; calibrate against reported usage on this exact route.
     ratio = max(samples[-8:]) * 1.1 if samples else 1 / 3
     estimate = math.ceil(amount * ratio)
-    output = task['limits']['output_tokens']
+    from .request_budget import resolve
+    output = resolve(task, config, model)['tokens']
     margin = math.ceil(capacity * .05) if capacity else None
     available = max(0, capacity - output - margin) if capacity else None
     return {'capacity_tokens': capacity, 'capacity_source': 'gateway_catalog' if capacity else 'unknown',

@@ -95,9 +95,11 @@ def run_limits(values, count):
     defaults = {'dollars':0, 'working_seconds':max(900,count*300), 'worker_turns':count*40,
                 'requests':count*60+16, 'tool_actions':count*200, 'reviewer_tokens':max(20000,count*10000),
                 'check_seconds':360, 'output_tokens':2048}
-    if not isinstance(values,dict) or set(values)-set(defaults):
+    from .work_budgets import KEYS, validate
+    if not isinstance(values,dict) or set(values)-set(defaults)-KEYS:
         raise ValueError('Unknown cumulative run limit')
     defaults.update(values)
+    validate(values)
     for key, maximum in {'dollars':100,'working_seconds':43200,'worker_turns':10**15,'requests':20000,
                          'tool_actions':100000,'reviewer_tokens':1000000,'check_seconds':1800,'output_tokens':16384}.items():
         value=defaults[key]
@@ -115,6 +117,8 @@ def planning_limits_from_settings(snapshot, overrides):
     values={k:copy.deepcopy(saved[k]) for k in ('dollars','worker_turns','reviewer_tokens','check_seconds','output_tokens') if k in saved}
     if 'run_minutes' in saved:values['working_seconds']=saved['run_minutes']*60
     if not isinstance(overrides,dict):raise ValueError('Unknown cumulative run limit')
+    from .work_budgets import KEYS
+    values.update({k:copy.deepcopy(saved[k]) for k in KEYS if k in saved})
     values.update(overrides)
     return values
 
@@ -200,6 +204,8 @@ class BranchController:
                                      'worker_turns':200,'iterations':20,'reviewer_tokens':limits['reviewer_tokens'],'check_seconds':limits['check_seconds'],'output_tokens':limits['output_tokens']}},
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id,
                                     **({'settings_snapshot':settings_snapshot} if settings_snapshot is not None else {}))
+            from .work_budgets import KEYS
+            task['limits'].update({k:v for k,v in limits.items() if k in KEYS})
             task['branch_run']=run
             if settings_snapshot is not None:
                 task['settings_snapshot']=copy.deepcopy(settings_snapshot)
@@ -640,6 +646,9 @@ class BranchController:
                 task['planning_limits']=limits;task['planning_task_limits']=copy.deepcopy(task['limits']);task['planning_policy']=self.model_policy(settings_snapshot)
                 task['branch_run']=state.new_run({'items':[{'id':'planning','title':'Prepare run proposal','instructions':'Prepare a bounded plan','acceptance_criteria':['A complete proposal is ready']}],'limits':limits,**({'measurement':True} if measurement else {})},original_request=inputs['prompt'],inputs=inputs,
                                                 base_ref=values.get('base_ref',''),target_ref=values.get('target_ref',''),feature_ref=values.get('feature_ref',''),run_id=task_id)
+            from .work_budgets import KEYS
+            task['limits'].update({k:v for k,v in limits.items() if k in KEYS})
+            if not planning_task: task['planning_task_limits']=copy.deepcopy(task['limits'])
             policy=planning_work_policy(task, values, settings_snapshot)
             task['planning_work_policy']=policy
             apply_planning_work_policy(task['branch_run']['plan'], policy)
@@ -979,6 +988,8 @@ class BranchController:
             if type(keep_up_to_date) is not bool:raise ValueError('Keep up to date must be a boolean')
             run['integration_policy']={'keep_up_to_date':keep_up_to_date,'target_ref':mapping['target_ref'],'target_tip':work._tip(mapping['source'],mapping['target_ref'])}
             task['integration_policy']=copy.deepcopy(run['integration_policy'])
+            from .work_budgets import KEYS
+            task['limits'].update({k:v for k,v in limits.items() if k in KEYS})
             task['branch_run']=run;task['check_command']=commands[0]
             limits=run['limits']
             task['limits']=limits_from({'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),

@@ -85,6 +85,8 @@ class Ledger:
         return self.last_elapsed
 
     def _check(self, next_request=False, next_action=False, next_worker_turn=False):
+        from .work_budgets import guard
+        guard(self.task, seconds=self.base + self._elapsed() if self.active else self.run['consumption'].get('working_seconds',0))
         limits = self.run['limits']
         additions = {'requests': int(next_request), 'tool_actions': int(next_action), 'worker_turns': int(next_worker_turn)}
         for key in ('dollars', 'requests', 'worker_turns', 'tool_actions', 'reviewer_tokens'):

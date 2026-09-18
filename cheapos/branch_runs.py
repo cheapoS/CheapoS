@@ -74,7 +74,10 @@ def validate_plan(plan):
     limits = plan.get('limits')
     if not isinstance(limits, dict) or not limits:
         raise ValueError('Specify finite cumulative limits')
+    from .work_budgets import KEYS, validate
+    validate(limits)
     for key, value in limits.items():
+        if key in KEYS: continue
         _text(key, 'Limit name', 80)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value > 10 ** 15 or (isinstance(value, float) and not math.isfinite(value)):
             raise ValueError('Limits must be finite nonnegative numbers')

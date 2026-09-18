@@ -215,3 +215,11 @@ Try a small task. Share a reproducible failure. Help measure which model pairs p
   <strong>Take your time. Keep your change.</strong><br>
   <sub>CheapoS · Local-first · Open source · <a href="LICENSE">MIT licensed</a></sub>
 </p>
+
+### Limits & recovery
+
+Settings → **Limits & recovery** separates cumulative work budgets from spending
+and per-request capacity. Choose this chat, optional project overrides, or app
+defaults for future chats. Existing saved limits stay intact. See the
+[limits guide](docs/development/limits-and-recovery-user-guide.md) for No cap,
+Automatic, and applying a budget change without resetting usage.
