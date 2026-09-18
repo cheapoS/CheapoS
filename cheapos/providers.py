@@ -310,7 +310,7 @@ class ChatProvider:
                     else:
                         raw = response.read(4_000_001)
                         if len(raw) > 4_000_000:
-                            raise ProviderError("Provider response exceeded 4 MB")
+                            raise ProviderError("Provider response exceeded 4 MB", code="response_too_large")
                         try:
                             data = json.loads(raw)
                         except (json.JSONDecodeError, UnicodeDecodeError) as error:

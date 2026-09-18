@@ -62,6 +62,24 @@ def config(engine, task, model_id):
 
 
 def request(engine, runtime, messages, tools, role, config_override=None, purpose=None, tool_choice=None):
+    from .routing import RoutingPause
+    while True:
+        try:
+            return _request_once(engine, runtime, messages, tools, role, config_override, purpose, tool_choice)
+        except RoutingPause as error:
+            if not getattr(runtime, 'route_autorecover', False) or not error.retry_at: raise
+            info = engine.route_wait_info(runtime, error)
+            if not info['can_wait']: raise
+            task = runtime.task
+            previous = task['status']
+            task['route_unavailable'] = info
+            task['retry_wait_enabled'] = True
+            engine.wait_for_route(runtime)
+            task['retry_wait_enabled'] = False
+            task['status'] = previous
+
+
+def _request_once(engine, runtime, messages, tools, role, config_override=None, purpose=None, tool_choice=None):
     task = runtime.task
     if role != 'reviewer' or purpose == 'probe' or config_override is not None:
         return engine._request_routed(runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
@@ -92,19 +110,35 @@ def request(engine, runtime, messages, tools, role, config_override=None, purpos
         choices = [chosen] if chosen in {m['id'] for m in available} else []
     elif selected in {m['id'] for m in available}:
         choices.insert(0, selected)
+    last_outage = None
     for model_id in dict.fromkeys(choices):
         runtime.guard()
         if model_id not in recovery['attempted']:
             recovery['attempted'].append(model_id)
         recovery.pop('selected', None)
+        recovery['next_action'] = {'model': model_id, 'status': 'selected'}
         engine.event(task, 'reviewer_recovery', 'I couldn’t verify reviewer independence. I’m trying another reviewer and checking its identity.', {'model': model_id})
         engine.store.save(task)
         try:
             # _request retains accounting, permission and identity gates. The
             # recovery flag also requires actual response identity before tools.
             selected_config = config(engine, task, model_id)
+            recovery['next_action']['status'] = 'dispatching'
+            engine.store.save(task)
             result = engine._request(runtime, messages, tools, role, selected_config, purpose, tool_choice=tool_choice)
         except ProviderError as error:
+            recovery['next_action'].update(status='failed', error_code=error.code)
+            from .provider_recovery import OUTAGES
+            if error.code in OUTAGES:
+                last_outage = error
+                # Availability is not an identity/quality failure. Its cooldown
+                # owns the next eligible attempt; keep accounting and candidate.
+                recovery['attempted'].remove(model_id)
+                if hasattr(engine, 'connection_for'):
+                    gateway = engine.connection_for(selected_config)
+                    gateway.pool.record(selected_config['base_url'], model_id, role, error=error, connection_revision=(selected_config.get('access_binding') or {}).get('connection_revision'))
+                engine.store.save(task)
+                continue
             if error.code not in IDENTITY_ERRORS and error.code != 'output_limit':
                 raise
             engine.store.save(task)
@@ -115,4 +149,8 @@ def request(engine, runtime, messages, tools, role, config_override=None, purpos
         recovery['selected'] = model_id
         engine.store.save(task)
         return result
+    if last_outage is not None:
+        from .routing import RoutingPause
+        import time
+        raise RoutingPause('Waiting for an authorized independent reviewer; saved checks and review context are retained.', retry_at=time.time() + (last_outage.retry_after or 60), scope=last_outage.scope or 'model')
     raise ProviderError('No unused eligible reviewer could establish independence. Choose reviewer to inspect available models or update the connection. Saved work and passing checks are preserved.', code='reviewer_recovery_required')

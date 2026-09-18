@@ -198,3 +198,14 @@ class RouteHealthTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+class ProxyStatusTests(__import__('unittest').TestCase):
+    def test_proxy_statuses_share_transient_classification(self):
+        from cheapos.provider_recovery import TRANSIENT, OUTAGES
+        from cheapos.route_health import classify
+        from cheapos.providers import ProviderError
+        for code in TRANSIENT:
+            result=classify(ProviderError('unavailable',code=code))
+            self.assertEqual(result['category'],'transient_provider')
+            self.assertFalse(result['quality_impact'])
+            self.assertIn(code,OUTAGES)

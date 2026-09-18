@@ -13,7 +13,7 @@ from . import route_health, route_schedule
 
 RECOVERABLE_CODES = {"stream_error", "stream_interrupted", "stream_timeout", "model_timeout",
                      "model_connection", "connection_error", "invalid_response_json", "invalid_stream_json",
-                     "invalid_response_shape", "invalid_tool_envelope", "empty_response", "unsupported_tool",
+                     "response_too_large", "invalid_response_shape", "invalid_tool_envelope", "empty_response", "unsupported_tool",
                      "transport_retry_exhausted", "streaming_unsupported", "malformed_tool_call",
                      "output_limit", "invalid_tool_arguments", "rate_limit", "rate_limit_quota",
                      "context_length_exceeded", "payload_too_large", "upstream_access_denied",

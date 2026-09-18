@@ -73,7 +73,7 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
             for fragment in delta.get('tool_calls') or []:
                 index = fragment.get('index', 0)
                 if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < 8:
-                    raise error_type('The model streamed an invalid tool call.')
+                    raise error_type('The model streamed an invalid tool call.', code='invalid_tool_envelope')
                 call = calls.setdefault(index, {'id':'', 'type':'function', 'function':{'name':'', 'arguments':''}})
                 if fragment.get('id'):
                     call['id'] = fragment['id']
@@ -81,7 +81,7 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
                 for key in ['name', 'arguments']:
                     if key in function:
                         if not isinstance(function[key], str):
-                            raise error_type('The model streamed an invalid tool call.')
+                            raise error_type('The model streamed an invalid tool call.', code='invalid_tool_envelope')
                         call['function'][key] += function[key]
                 emit('tool', call['function']['name'])
 
@@ -97,7 +97,7 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
             break
         size += len(line)
         if size > MAX_RESPONSE_BYTES:
-            raise error_type('Provider response exceeded 4 MB')
+            raise error_type('Provider response exceeded 4 MB', code='response_too_large')
         line = line.decode('utf-8').rstrip('\r\n')
         if not line:
             if frame:

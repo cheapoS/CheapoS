@@ -51,7 +51,7 @@ class ReviewerRecoveryTests(unittest.TestCase):
             engine._request.assert_not_called()
 
     def test_access_and_outage_errors_are_not_mislabeled_as_identity_failures(self):
-        for code in ('http_401', 'http_402', 'gateway_cooldown', 'http_503'):
+        for code in ('http_401', 'http_402'):
             engine, runtime = self.fixture()
             error = ProviderError('Original diagnosis', code=code)
             engine._request.side_effect = error
@@ -69,3 +69,14 @@ class ReviewerRecoveryTests(unittest.TestCase):
             with self.assertRaises(ProviderError):
                 ensure_independent(task, {'role': 'reviewer', **metadata('next', served)})
         ensure_independent(task, {'role': 'reviewer', **metadata('next', 'actual/reviewer')})
+
+    def test_unavailable_identity_replacement_continues_to_independent_reviewer(self):
+        engine,runtime=self.fixture()
+        engine._request.side_effect=[ProviderError('outage',code='http_503'),{'content':'approved'}]
+        with patch.object(recovery,'candidates',return_value=[{'id':'next'},{'id':'another'}]), patch.object(recovery,'config',side_effect=lambda e,t,m:{'model':m}):
+            result=recovery.request(engine,runtime,[],[],'reviewer')
+        self.assertEqual(result['content'],'approved')
+        self.assertEqual(engine._request.call_count,2)
+        self.assertEqual(runtime.task['providers']['reviewer']['model'],'another')
+        self.assertEqual(runtime.task['checks'],[{'passed':True}])
+        self.assertNotIn('next',runtime.task['reviewer_identity_recovery']['attempted'])

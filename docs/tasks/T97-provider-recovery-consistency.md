@@ -1,6 +1,6 @@
 # T97 — Continue through provider failures in every request path
 
-Status: **Planned**, September 18, 2026. Priority: **P1**.
+Status: **Implemented — integration validation pending**, September 18, 2026. Priority: **P1**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Can start independently; coordinate the HTTP error contract with T96. T98 builds
 on the availability behavior here.
@@ -73,3 +73,6 @@ should preserve correct classification while new coverage proves continuation.
 
 Use scripted responses, fake clocks and existing fixtures. No real cooldown
 sleeps or live model calls. Follow T94's scoped validation and cost rules.
+
+Focused provider, streaming and reviewer-replacement tests: 30 passed in 0.674s.
+New cases are pure scripted responses; no cooldown sleeps or inference.

@@ -3,8 +3,11 @@
 All dispatches retain their usage/request reservations. These helpers only stop
 outages consuming the allowance intended for substantive review exchanges.
 """
-OUTAGES = {'upstream_access_denied', 'gateway_cooldown', 'http_429', 'http_408', 'http_500', 'http_502',
-           'http_503', 'http_504', 'model_connection', 'model_timeout', 'stream_timeout', 'stream_error', 'stream_interrupted'}
+TRANSIENT = {'http_408', 'http_500', 'http_502', 'http_503', 'http_504',
+             'http_520', 'http_521', 'http_522', 'http_523', 'http_524', 'http_525', 'http_526', 'http_530',
+             'model_connection', 'model_timeout', 'stream_timeout', 'stream_error', 'stream_interrupted'}
+OUTAGES = TRANSIENT | {'upstream_access_denied', 'gateway_cooldown', 'http_429'}
+
 
 
 def provider(model):

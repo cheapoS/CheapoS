@@ -1,6 +1,7 @@
 """Small, nonsecret capability/failure contracts; no network or response parser."""
 import hashlib
 import json
+from .provider_recovery import TRANSIENT
 
 PROBE_VERSION = 2
 PROBE_MARKER = 'cheapos-tool-check-v2'
@@ -45,7 +46,7 @@ def classify(error, context=None):
         kind, scope, retry, impact, action = 'unavailable_route', 'model', True, False, 'Refresh the catalog or select another authorized route.'
     elif code in {'unsupported_tool', 'probe_failed', 'model_capability'}:
         kind, scope, retry, impact, action = 'capability_mismatch', 'model', True, True, 'Select another eligible tool-capable model.'
-    elif code in {'http_408', 'http_500', 'http_502', 'http_503', 'http_504', 'model_connection', 'model_timeout', 'stream_timeout', 'stream_error', 'stream_interrupted'}:
+    elif code in TRANSIENT:
         kind, scope, retry, impact, action = 'transient_provider', 'model', True, False, 'Retry after backoff or use another authorized route.'
     else:
         kind, scope, retry, impact, action = 'invalid_response', 'model', True, True, 'Inspect the incomplete or invalid response; no partial tools were executed.'
