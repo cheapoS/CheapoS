@@ -1,10 +1,22 @@
-[
-  {
-    "url": "https://google.com",
-    "name": "Google"
-  },
-  {
-    "url": "https://github.com",
-    "name": "GitHub"
-  }
-]
+{
+  "endpoints": [
+    {
+      "name": "Google",
+      "url": "https://google.com",
+      "enabled": true,
+      "weight": 1
+    },
+    {
+      "name": "Localhost",
+      "url": "http://localhost:8080",
+      "enabled": true,
+      "weight": 1
+    },
+    {
+      "name": "Example",
+      "url": "https://example.com",
+      "enabled": true,
+      "weight": 1
+    }
+  ]
+}
