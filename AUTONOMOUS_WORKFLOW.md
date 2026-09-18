@@ -403,6 +403,15 @@ and select version-bound line edits, including when earlier syntax recovery had
 enabled the exact-text escape hatch. An accepted edit clears that file's mismatch
 state; verification and independent review still determine completion.
 
+File mutations validate their declared required fields before clearing argument
+recovery. Valid JSON with a missing/empty path or missing/wrong-type content is
+still a format failure, not a successful correction. These failures use the
+existing focused repair and authorized handoff path; empty file content remains
+valid. Rejected historical calls become controller diagnostic notes with exact
+task-local evidence references, rather than synthetic empty assistant calls.
+Successful sibling calls and uncertain interrupted outcomes retain their evidence.
+Legacy sanitized calls are also removed from tool-call examples on continuation.
+
 Uncapped and measurement runs still inspect progress at checkpoint intervals;
 stalls change strategy rather than enforcing a work ceiling. The legacy two-model
 handoff ceiling no longer stops uncapped Interactive work. Spending, command

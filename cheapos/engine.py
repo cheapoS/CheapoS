@@ -354,7 +354,9 @@ class ToolArgumentsError(ProviderError):
     def __init__(self, name, call_id, detail):
         self.name = name
         self.call_id = call_id
-        super().__init__(f"Invalid arguments for {name}: {detail}. Send this tool call again with a valid JSON object; escape quotes, backslashes, and newlines inside strings. For large edits, use smaller exact replacements. This call was not executed.", code="invalid_tool_arguments")
+        hint = ('For a new file, supply its workspace-relative path and content; start with a small complete file or coherent first chunk.'
+                if name == 'write_file' else 'For large edits, use smaller exact replacements.')
+        super().__init__(f"Invalid arguments for {name}: {detail}. Send a corrected JSON object with the required fields; escape quotes, backslashes, and newlines inside strings. {hint} This call was not executed.", code="invalid_tool_arguments")
 
 
 def excerpt(text, maximum):
@@ -3269,6 +3271,21 @@ class Engine:
             raise ToolArgumentsError(name, call_id, f"{error.msg} at line {error.lineno}, column {error.colno}") from None
         if not isinstance(params, dict):
             raise ToolArgumentsError(name, call_id, "arguments must contain an object")
+        if name in MUTATIONS:
+            # JSON syntax alone is not a usable edit. Validate the existing tool
+            # contract before resetting format recovery or entering the workspace.
+            schema = next(t['function']['parameters'] for t in WORKER_TOOLS + [LINE_EDIT]
+                          if t['function']['name'] == name)
+            missing = [key for key in schema['required'] if key not in params]
+            if missing:
+                raise ToolArgumentsError(name, call_id, 'missing required fields: ' + ', '.join(missing))
+            for key in schema['required']:
+                expected = schema['properties'][key]['type']
+                valid = isinstance(params[key], str) if expected == 'string' else type(params[key]) is int
+                if not valid:
+                    raise ToolArgumentsError(name, call_id, f'{key} must be a {expected}')
+            if not params['path'].strip():
+                raise ToolArgumentsError(name, call_id, 'path must be a nonempty workspace-relative file path')
         if task is not None:
             from .structural_telemetry import arguments
             try:
@@ -3286,7 +3303,8 @@ class Engine:
             trace_request(runtime.task,record)
         recovery = progress.state(runtime.task)
         recovery["malformed_attempts"] += 1
-        result = {"error": str(error), "code": error.code, "tool": error.name}
+        result = {"error": str(error), "code": error.code, "tool": error.name,
+                  "executed": False, "changed": False}
         self.event(runtime.task, "tool_error", "Model needs to correct tool arguments", result)
         if (automatic(runtime.task, runtime.task["active_role"]) and runtime.task["active_role"] == "worker"
                 and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}):

@@ -163,6 +163,68 @@ class EditHistoryTests(unittest.TestCase):
         self.assertEqual(fourth['attempts'], 1)
         self.assertEqual(operation.call_count, 3)
 
+    def test_malformed_then_empty_creation_hands_off_and_finishes_without_operator_rescue(self):
+        from cheapos.engine import Runtime, limits_from
+        from cheapos.worker_conversation import continue_session
+        task = self.task
+        task.update(limits=limits_from({'uncapped_work': True}), messages=[], worker_turns=0,
+                    providers={'worker': {'model': 'first'}})
+        runtime = Runtime(task)
+        engine = self.engine
+        engine.fit_worker_context = Mock()
+        engine.deliver_loop_guidance = Mock()
+        def refresh(rt):
+            continue_session(task, [{'role': 'system', 'content': 'Create greeting.py and verify it.'}], 'repair')
+            rt.compact_context_ready = True
+        engine.refresh_worker_conversation = refresh
+        def handoff(*args):
+            task['providers']['worker']['model'] = 'replacement'
+        engine.defer_route = Mock(side_effect=handoff)
+        target = self.root / 'greeting.py'
+        engine.refresh_changes = lambda t: t.update(
+            patch=target.read_text() if target.exists() else '',
+            changes=[{'path': 'greeting.py'}] if target.exists() else [])
+        def call(name, arguments, identity):
+            return {'role': 'assistant', 'tool_calls': [{'id': identity, 'function': {
+                'name': name, 'arguments': arguments}}]}
+        replies = iter([call('write_file', '{broken', str(n)) for n in range(3)] +
+                       [call('write_file', '{}', str(n)) for n in range(3, 6)] + [
+                           call('write_file', json.dumps({'path': 'greeting.py', 'content': 'greeting = "hello"\n'}), 'fixed'),
+                           call('checkpoint', '{"summary":"Greeting implemented","uncertainties":""}', 'done')])
+        def request(rt, messages, tools, role):
+            if role == 'reviewer':
+                self.assertTrue(task['checks'][-1]['passed'])
+                self.assertEqual(task['checkpoints'][-1]['diff'], target.read_text())
+                return call('review_decision', '{"decision":"APPROVE","feedback":"Greeting verified."}', 'review')
+            if task['worker_turns'] <= 6:
+                self.assertFalse(target.exists())
+            else:
+                self.assertEqual(task['providers']['worker']['model'], 'replacement')
+                engine.defer_route.assert_called_once()
+            return next(replies)
+        engine.request = Mock(side_effect=request)
+        def check(*args):
+            namespace = {}
+            exec(target.read_text(), namespace)
+            self.assertEqual(namespace['greeting'], 'hello')
+            result = {'passed': True, 'command': task['check_command'],
+                      'digest': hashlib.sha256(task['patch'].encode()).hexdigest()}
+            task['checks'].append(result)
+            return result
+        engine.checks = Mock(side_effect=check)
+        with patch('cheapos.engine.automatic', return_value=True), \
+                patch('cheapos.engine.reconciliation.ensure_resolved'), \
+                patch('cheapos.integration_preparation.observe'), \
+                patch('cheapos.integration_preparation.automatic'):
+            engine._run_until_pause(runtime)
+        self.assertEqual(task['status'], 'approved', task.get('error'))
+        errors = [e['detail'] for e in task['events'] if e['kind'] == 'tool_error']
+        self.assertEqual(len(errors), 6)
+        self.assertTrue(all(e['code'] == 'invalid_tool_arguments' and not e['executed'] for e in errors))
+        self.assertEqual(task['worker_turns'], 8)
+        self.assertEqual(task['review_count'], 1)
+        engine.checks.assert_called_once()
+
     def test_ambiguous_text_rejection_keeps_content_and_supplies_current_evidence(self):
         (self.root / 'app.py').write_text('value = "hello hello"\n')
         result = self.edit('hello', 'hi')
