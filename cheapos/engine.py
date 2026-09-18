@@ -3193,6 +3193,9 @@ class Engine:
 
     def _run_with_wait(self, runtime):
         task = runtime.task
+        if task.get('branch_run'):
+            from .branch_worker_recovery import restore_local_repair_routes
+            restore_local_repair_routes(self,runtime)
         while True:
             if task.get('retry_wait_enabled'):
                 try:

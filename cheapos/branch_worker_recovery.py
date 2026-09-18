@@ -82,6 +82,13 @@ def restore_local_repair_routes(engine, runtime):
             metric.update(failure_category='local_controller',error_code='controller_error')
         restored.append(model)
     if restored:
+        # A saved wait was chosen with these models excluded. Recompute route
+        # eligibility before sleeping; each provider's actual cooldown remains
+        # in the health pool and is still enforced by ordinary selection.
+        if task.get('retry_wait_enabled'):
+            task.update(retry_wait_enabled=False,route_wait=None,route_resume_on_start=False)
+            task.pop('route_unavailable',None)
+            runtime.route_wait_started_at=None
         queued=task.get('route',{}).get('recovery',{}).get('worker',{})
         if queued.get('from') in restored and queued.get('reason','').startswith(prefix):
             task['route']['recovery'].pop('worker')

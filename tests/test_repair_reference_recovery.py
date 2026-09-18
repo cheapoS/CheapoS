@@ -158,3 +158,43 @@ class RepairReferenceTests(unittest.TestCase):
         restore_local_repair_routes(engine, runtime)
         self.assertEqual(task['branch_run']['implementation_recovery']['failed_models'], ['worker'])
         engine.store.save.assert_not_called()
+
+
+    def test_resume_restores_eligible_routes_before_replaying_saved_wait(self):
+        task, engine, runtime = self.legacy_failure()
+        task.update(status='running', retry_wait_enabled=True, route_resume_on_start=True,
+                    route_wait={'retry_at': 5000},
+                    route_unavailable={'retry_at': 5000, 'can_wait': True, 'scope': 'provider'})
+        runtime.interrupt_request = SimpleNamespace(is_set=lambda: False)
+        runtime.route_wait_started_at = 1000
+        engine.wait_for_route = Mock(side_effect=AssertionError('Replayed stale route wait'))
+        def continue_work(rt):
+            self.assertEqual(rt.task['branch_run']['implementation_recovery']['failed_models'], [])
+            self.assertFalse(rt.task['retry_wait_enabled'])
+            self.assertNotIn('route_unavailable', rt.task)
+            rt.task['status'] = 'awaiting_reply'
+        engine._run_until_pause = Mock(side_effect=continue_work)
+        Engine._run_with_wait(engine, runtime)
+        engine.wait_for_route.assert_not_called()
+        engine._run_until_pause.assert_called_once_with(runtime)
+        self.assertIsNone(task['route_wait'])
+        self.assertIsNone(runtime.route_wait_started_at)
+
+    def test_resume_keeps_provider_wait_without_proven_local_exclusion(self):
+        task, engine, runtime = self.legacy_failure()
+        task['request_metrics'][0]['dispatched'] = True
+        wait = {'retry_at': 5000, 'can_wait': True, 'scope': 'provider'}
+        task.update(status='running', retry_wait_enabled=True, route_unavailable=wait)
+        runtime.interrupt_request = SimpleNamespace(is_set=lambda: False)
+        order = []
+        def waiting(rt):
+            self.assertEqual(rt.task['route_unavailable'], wait)
+            order.append('wait')
+        def proceed(rt):
+            self.assertEqual(order, ['wait'])
+            rt.task['status'] = 'awaiting_reply'
+        engine.wait_for_route = Mock(side_effect=waiting)
+        engine._run_until_pause = Mock(side_effect=proceed)
+        Engine._run_with_wait(engine, runtime)
+        engine.wait_for_route.assert_called_once_with(runtime)
+        self.assertEqual(task['branch_run']['implementation_recovery']['failed_models'], ['worker'])
