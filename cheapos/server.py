@@ -242,8 +242,12 @@ class LocalHandler(SimpleHTTPRequestHandler):
                                 is_dir = False
                                 is_git = False
                             items.append({"name": item.name, "path": str(item), "is_dir": is_dir, "is_git": is_git})
-                    except (PermissionError, OSError):
-                        pass
+                    except PermissionError:
+                        self.reply({"error": "Permission denied accessing directory"}, 403)
+                        return
+                    except OSError:
+                        self.reply({"error": "Could not read directory"}, 400)
+                        return
                     items.sort(key=lambda x: (not x["is_dir"], not x.get("is_git", False), x["name"].lower()))
                     parent_path = "" if target_path.parent in {Path("/"), target_path} else str(target_path.parent)
                     self.reply({
@@ -393,8 +397,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 parent = values.get("parent") or values.get("new_project_parent", "")
                 if not name or not isinstance(name, str) or not name.strip():
                     raise ValueError("Provide a project name")
-                from .uploads import sanitize_filename
-                safe_name = sanitize_filename(name.strip())
+                safe_name = name.strip()
+                if safe_name in {".", ".."} or any(char in safe_name for char in ("/", "\\", "\0")):
+                    raise ValueError("Use a project name without path separators")
                 parent_str = str(parent).strip() if parent else ""
                 parent_path = Path(unquote(parent_str)).expanduser().resolve() if parent_str and parent_str != "." else (
                     self.server.directory if not (self.server.directory / "index.html").is_file() else Path.home()

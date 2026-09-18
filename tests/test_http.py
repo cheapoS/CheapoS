@@ -579,6 +579,14 @@ class HTTPTests(unittest.TestCase):
         status, _, _ = self.request('GET', '/api/list-directories?path=/bin')
         self.assertEqual(status, 403)
 
+        # An unreadable directory must not look like a successfully empty folder.
+        with patch.object(Path, 'iterdir', side_effect=PermissionError):
+            status, _, body = self.request('GET', '/api/list-directories?path=' + str(base_path))
+        self.assertEqual(status, 403)
+        self.assertIn('Permission denied', json.loads(body)['error'])
+        status, _, _ = self.request('GET', '/api/list-directories?path=' + str(base_path / 'missing'))
+        self.assertEqual(status, 404)
+
     def test_create_project_endpoint(self):
         base_path = Path(self.temp.name)
         status, _, body = self.post('/api/projects/create', {
@@ -603,6 +611,15 @@ class HTTPTests(unittest.TestCase):
         self.assertFalse(data_nogit['git'])
         self.assertTrue((base_path / 'folder-only-proj').is_dir())
         self.assertFalse((base_path / 'folder-only-proj/.git').exists())
+
+        # Reject traversal names rather than silently sanitizing them into another name.
+        for name in ('.', '..', ' .. ', 'subdir/name', 'subdir\\name', 'bad\0name'):
+            with self.subTest(name=name):
+                status, _, _ = self.post('/api/projects/create', {
+                    'name': name, 'parent': str(base_path), 'init_git': False})
+                self.assertEqual(status, 400)
+        self.assertEqual(sorted(p.name for p in base_path.iterdir()),
+                         ['folder-only-proj', 'new-sample-proj', 'state'])
 
         # System parent directory rejected (finding 10)
         status_blocked, _, _ = self.post('/api/projects/create', {

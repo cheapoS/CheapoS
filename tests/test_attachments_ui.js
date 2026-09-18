@@ -81,7 +81,7 @@ test('folder-only creation completes without attempting to open a Git project', 
     '#new-project-name': {value: 'folder-only'}, '#new-project-parent': {value: '/fixture'}, '#init-git': {checked: false}};
   const c = {$: selector => nodes[selector], projectManager: {currentPath: '/fixture'},
     projectManagerAfter: () => callback++, closeProjectManager: () => closed++,
-    projectManagerError: assert.fail, toast: text => notices.push(text),
+    projectManagerError: text => {if(text)assert.fail(text);}, toast: text => notices.push(text),
     formAction: (_, action) => {pending = action();},
     api: async (path, body) => { calls.push({path, body}); return {git: false, name: 'folder-only', path: '/fixture/folder-only'}; }};
   vm.createContext(c);
@@ -269,4 +269,37 @@ test('failed upload or switching chats while uploading never sends a partial or 
     assert.equal(f.calls.length,1);assert.equal(f.input.value,switchChat?'Other draft':'A draft');
     if(switchChat){f.switchTo('A');assert.equal(f.state.composerAttachments[0].id,'uploaded');}
   }
+});
+
+
+test('project manager opens on an empty first launch, not an existing or hidden project', () => {
+  let opened = 0;
+  const state = {projects: [], hiddenProjects: []};
+  const c = {state, openProject: () => opened++};
+  vm.createContext(c);
+  vm.runInContext(source.slice(source.indexOf('function openInitialProjectManager()'), source.indexOf('function closeProjectManager()')), c);
+  c.openInitialProjectManager();
+  assert.equal(opened, 1);
+  for (const patch of [{projects: [{}]}, {hiddenProjects: [{}]}, {project: {}}, {task: {}}]) {
+    Object.assign(state, {projects: [], hiddenProjects: [], project: null, task: null}, patch);
+    c.openInitialProjectManager();
+    assert.equal(opened, 1);
+  }
+});
+
+test('project creation failures stay visible in the open manager', async () => {
+  const form = {}, errors = [];
+  let pending, closed = 0;
+  const nodes = {'#project-manager-modal': {querySelectorAll: () => []}, '#create-project-form': form,
+    '#new-project-name': {value: 'bad/name'}, '#new-project-parent': {value: '/fixture'}, '#init-git': {checked: true}};
+  const c = {$: selector => nodes[selector], projectManager: {currentPath: '/fixture'},
+    closeProjectManager: () => closed++, projectManagerError: text => errors.push(text),
+    formAction: (_, action) => {pending = action();}, api: async () => {throw Error('Invalid project name');}};
+  vm.createContext(c);
+  vm.runInContext(source.slice(source.indexOf('function bindProjectManagerControls()'), source.indexOf('bindProjectManagerControls();')), c);
+  c.bindProjectManagerControls();
+  form.onsubmit({preventDefault() {}});
+  await pending;
+  assert.equal(closed, 0);
+  assert.equal(errors.at(-1), 'Invalid project name');
 });

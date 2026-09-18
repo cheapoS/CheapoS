@@ -1328,9 +1328,9 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 .project-manager-modal {
   width: 680px;
   max-width: 94vw;
-  border: 1px solid #333a38;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #181c1a;
+  background: var(--panel);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
   padding: 0;
   overflow: hidden;
@@ -1388,9 +1388,9 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
   color: var(--text);
 }
 .project-manager-modal .tab.active {
-  background: #233129;
+  background: var(--mint-dark);
   color: var(--mint);
-  border-color: #384d40;
+  border-color: var(--border);
 }
 .project-manager-modal .tab.active:after {
   display: none;
@@ -1399,7 +1399,7 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #141716;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 7px;
   padding: 6px 10px;
@@ -1412,6 +1412,7 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 }
 .project-path-input {
   flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
   color: var(--text);
@@ -1446,15 +1447,15 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: #1e2421;
-  border: 1px solid #2e3833;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   transition: background .15s, border-color .15s;
 }
 .dir-card:hover {
-  background: #26332b;
-  border-color: #3e5246;
+  background: var(--hover);
+  border-color: var(--mint);
 }
 .dir-card-main {
   display: flex;
@@ -1483,9 +1484,9 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 .git-badge {
   font-size: 0.6875rem;
   font-weight: 600;
-  background: #1b3828;
-  color: #6ee7b7;
-  border: 1px solid #28543b;
+  background: var(--mint-dark);
+  color: var(--mint);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 2px 6px;
   text-transform: uppercase;
@@ -1505,7 +1506,7 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 }
 .dir-open-btn:hover {
   background: var(--mint);
-  color: #11241a;
+  color: var(--bg);
 }
 .dir-drill-icon svg {
   width: 14px;
@@ -1521,7 +1522,7 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 .create-project-form input[type="text"] {
   width: 100%;
   padding: 10px 12px;
-  background: #131615;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
@@ -1536,4 +1537,12 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
   text-align: center;
   padding: 30px 16px;
   color: var(--muted);
+}
+
+.pm-browse-hint { margin: 0; font-size: .8125rem; }
+@media (max-width: 520px) {
+  .project-manager-modal .modal-inner { padding: 16px; }
+  .pm-nav-row { flex-wrap: wrap; }
+  .pm-open-current { overflow-wrap: anywhere; }
+  .dir-card { padding: 10px; gap: 8px; }
 }

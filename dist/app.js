@@ -649,6 +649,9 @@ function showProjectView(view) {
     }
   }
 }
+function openInitialProjectManager() {
+  if(!state.project&&!state.task&&!state.projects.length&&!state.hiddenProjects?.length)openProject();
+}
 function closeProjectManager() {
   const d=$('#project-manager-modal');
   if(d)d.close();
@@ -690,13 +693,14 @@ async function loadProjectManagerDirectory(targetPath) {
   const parentInput=$('#new-project-parent');
   if(parentInput&&!parentInput.value)parentInput.value=currentPath;
   const folderName=basename(currentPath);
+  const canOpenCurrent=Boolean(targetPath||isGit);
 
   const navHtml=`<div class="pm-nav-row">
     <div class="pm-nav-info">
       ${parentPath?`<button type="button" class="subtle-button" data-action="up" title="Go up to ${esc(parentPath)}">${icon('chevron')} Up one folder</button>`:'<span></span>'}
     </div>
     <div class="pm-nav-actions">
-      <button type="button" class="primary-button pm-open-current" data-action="open-current">${icon('check')} Open ${isGit?'project':'folder'}: <strong>${esc(folderName)}</strong></button>
+      ${canOpenCurrent?`<button type="button" class="primary-button pm-open-current" data-action="open-current">${icon('check')} Open ${isGit?'project':'folder'}: <strong>${esc(folderName)}</strong></button>`:'<p class="muted pm-browse-hint">Choose a folder below, or enter its path above.</p>'}
     </div>
   </div>`;
 
@@ -770,21 +774,24 @@ function bindProjectManagerControls() {
     const initGit=$('#init-git')?.checked?1:0;
     if(!name){projectManagerError('Provide a project name');return;}
     formAction(form,async()=>{
-      const created=await api('/projects/create',{name,parent,init_git:initGit});
-      if(created.git===false){
+      projectManagerError('');
+      try{
+        const created=await api('/projects/create',{name,parent,init_git:initGit});
+        if(created.git===false){
+          const after=projectManagerAfter;projectManagerAfter=null;
+          closeProjectManager();
+          toast(`Created directory "${created.name||name}". Initialize git to open as a project.`);
+          if(after)after();
+          return;
+        }
+        const project=await api('/projects',{repository:created.path});
         const after=projectManagerAfter;projectManagerAfter=null;
         closeProjectManager();
-        toast(`Created directory "${created.name||name}". Initialize git to open as a project.`);
+        state.projects=await api('/projects');
+        await loadTasks();
+        chooseProject(project);
         if(after)after();
-        return;
-      }
-      const project=await api('/projects',{repository:created.path});
-      const after=projectManagerAfter;projectManagerAfter=null;
-      closeProjectManager();
-      state.projects=await api('/projects');
-      await loadTasks();
-      chooseProject(project);
-      if(after)after();
+      }catch(error){projectManagerError(error.message);}
     });
   };
 }
@@ -1835,7 +1842,7 @@ async function resumeBranchRun(task,savedResult,approvalValues={}) {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();d.close();void resumeBranchRun(task,null,{proposal_id:result.proposal_id,approved:true}).catch(error=>toast(error.message));};
 }
 async function bootstrap() {
-  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;await loadAdmission({render:false});try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();void updateLifetimeSavingsBadge(true);let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);}
+  try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;await loadAdmission({render:false});try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();void updateLifetimeSavingsBadge(true);let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);openInitialProjectManager();}
   catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start cheapoS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
 }
 async function poll() {try{if(state.online)await refresh({background:true})}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
