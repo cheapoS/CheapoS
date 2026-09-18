@@ -49,6 +49,16 @@ as “The reviewer couldn't complete its decision; continuing review with …”
 “Waiting for an available authorized provider.” These updates describe actual
 engine actions, not optimistic status text.
 
+## Planned: operator-owned limits
+
+The next limits iteration follows [Operator-owned limits and automatic
+recovery](docs/development/operator-limits-and-recovery.md). Cumulative work
+budgets should be explicit user settings with visible scope and provenance.
+Internal thresholds should choose another useful strategy within that authority.
+Existing saved budgets remain intact; spending, permissions, model pins and
+independent review still apply. This is the implementation design, not a claim
+that every existing hardcoded limit has already been removed.
+
 ## One continuation decision, existing executors
 
 Extend `cheapos/continuation_policy.py` into the common next-action decision for
