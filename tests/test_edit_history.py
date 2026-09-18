@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 from cheapos import edit_history, work_policy
 from cheapos.edit_recovery import check_state, check_feedback, repair_packet
 from cheapos.engine import Engine, WORKER_TOOLS, CHAT_TOOLS, UNATTENDED_TOOLS, REVIEW_TOOLS
-from cheapos.workspace import FileEditConstraint, Workspace
+from cheapos.workspace import FileEditConstraint, Workspace, edit_size_violation
 
 
 class EditHistoryTests(unittest.TestCase):
@@ -178,9 +178,41 @@ class EditHistoryTests(unittest.TestCase):
         self.assertEqual(failure.exception.code, 'edit_too_large')
         result = self.engine.recover_edit_constraint(self.runtime, args, failure.exception)
         self.assertFalse(result['changed'])
+        self.assertEqual(result['edit_size']['fields']['new_text'], {'utf8_bytes': 3001, 'lines': 1})
+        self.assertEqual(result['edit_size']['exceeded'], ['new_text.utf8_bytes'])
         self.assertIn('3:         return', result['current_file']['content'])
         self.assertEqual((self.root / 'app.py').read_text(), self.original)
         self.assertTrue(self.task['compact_edits'])
+
+    def test_edit_size_feedback_distinguishes_bytes_lines_and_removed_range(self):
+        for content, removed, expected in [
+                ('é' * 1501, 1, ['new_text.utf8_bytes']),
+                ('x\n' * 81, 1, ['new_text.lines']),
+                ('', 81, ['removed_lines']),
+                ('x\n' * 80 + 'z' * 3114, 34, ['new_text.utf8_bytes', 'new_text.lines'])]:
+            with self.subTest(expected=expected):
+                error = edit_size_violation({'new_text': content}, removed_lines=removed)
+                self.assertEqual(error.code, 'edit_too_large')
+                self.assertEqual(error.details['edit_size']['exceeded'], expected)
+                self.assertEqual(error.details['edit_size']['fields']['new_text']['utf8_bytes'], len(content.encode()))
+                self.assertEqual(error.details['edit_size']['removed_lines'], removed)
+                self.assertNotIn('é', str(error))
+                self.assertEqual(set(error.details['edit_size']['fields']['new_text']), {'utf8_bytes', 'lines'})
+        self.assertIsNone(edit_size_violation({'new_text': 'x\n' * 79 + 'z' * 2842}, removed_lines=80))
+        with patch('cheapos.engine.automatic', return_value=True):
+            for name, args, dimension, maximum in [
+                    ('write_file', {'path': 'new.py', 'content': '#' * 24001}, 'content', 24000),
+                    ('append_text', {'path': 'app.py', 'text': '#' * 3001}, 'text', 3000),
+                    ('replace_text', {'path': 'app.py', 'old_text': 'not present' * 300, 'new_text': ''}, 'old_text', 3000)]:
+                with self.subTest(tool=name):
+                    self.task.pop('compact_edits', None)
+                    with self.assertRaises(FileEditConstraint) as failure:
+                        self.engine.file_tool(self.task, name, args)
+                    size = failure.exception.details['edit_size']
+                    self.assertEqual(size['limits']['utf8_bytes'], maximum)
+                    self.assertIn(dimension + '.utf8_bytes', size['exceeded'])
+        self.assertFalse((self.root / 'new.py').exists())
+        self.assertEqual((self.root / 'app.py').read_text(), self.original)
 
     def test_syntax_failure_is_restored_then_valid_repair_finishes_independent_review(self):
         # The failed edit from the incident: only the first line inherits indentation.

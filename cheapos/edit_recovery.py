@@ -43,7 +43,7 @@ def constraint_feedback(task, workspace, args, error):
     attempts = previous.get('attempts', 0) + 1 if previous.get('scope') == identity else 1
     records[key] = {'scope': identity, 'attempts': attempts}
     result = {'code': error.code, 'error': str(error), 'path': path, 'attempts': attempts,
-              'executed': False, 'changed': False, 'updated': False}
+              'executed': False, 'changed': False, 'updated': False, **error.details}
     if error.code == 'repair_evidence_required':
         from .branch_disagreement import reproduction_context
         result['reproduction'] = reproduction_context(task, workspace)
@@ -58,7 +58,8 @@ def constraint_feedback(task, workspace, args, error):
         result['guidance'] = ('This file already exists and was preserved. Use the current numbered lines for a small replace_lines edit, '
             'or read the relevant later range first. Do not retry write_file or delete the file to replace it. Preserve existing tests and unaffected functions.')
     else:
-        result['guidance'] = ('The oversized edit was not executed. Use one smaller coherent change against current lines, preserving indentation and literal newlines. '
+        result['guidance'] = ('The oversized edit was not executed. The supplied edit_size identifies each exceeded limit; a chunk can fit the line limit and still exceed the UTF-8 byte limit. '
+            'Use one complete method or a few adjacent assertions against current lines, preserving indentation and literal newlines. '
             'Do not repeat the whole-file replacement or truncate the intended code. Add remaining changes in later turns, then verify and submit for independent review.')
     return result
 

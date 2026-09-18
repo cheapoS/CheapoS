@@ -497,3 +497,7 @@ candidate and worker. Trying another implementation path cannot reset a missing
 reproduction. Existing files, edit bounds, command grants and review findings
 remain intact. Small file/in-memory cases cover reproduction, retained tests,
 repair and independent approval without operator rescue or live inference.
+Oversized-edit feedback includes measured old/new line counts, UTF-8 byte counts
+and the particular limits exceeded, so workers can choose coherent smaller edits
+without guessing which bound rejected a payload. These diagnostics contain sizes,
+not an extra copy of the rejected source text.

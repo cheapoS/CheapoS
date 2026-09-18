@@ -17,7 +17,7 @@ from pathlib import Path
 from .providers import ChatProvider, BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider, guard_inference_route, is_local_ollama
 from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
-from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, FileRangeError, FileEditConstraint, Workspace, git
+from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, FileRangeError, FileEditConstraint, Workspace, edit_size_violation, git
 from . import commits, reconciliation, progress, branch_runs
 from .verification import evidence_identity, matches as evidence_matches, normalize_unittest, reusable_check
 from .web import WebReader, allowed_urls
@@ -2837,12 +2837,13 @@ class Engine:
             from .edit_recovery import allow_exact_text
             if task.get("compact_edits") and name == "replace_text" and not allow_exact_text(task):
                 raise ValueError("Use replace_lines with the current numbered lines for a small edit. cheapoS tracks the file version. No edit was made.")
-            texts = [args.get(k) for k in ("content", "old_text", "new_text", "text") if k in args]
+            texts = {k: args[k] for k in ("content", "old_text", "new_text", "text") if k in args}
             byte_limit = MAX_CREATE_BYTES if name == 'write_file' else MAX_EDIT_BYTES
-            if any(isinstance(value, str) and (len(value.encode("utf-8")) > byte_limit or
-                    (name not in ('write_file', 'append_text') and len(value.splitlines()) > MAX_EDIT_LINES)) for value in texts):
+            oversized = edit_size_violation(texts, max_bytes=byte_limit,
+                max_lines=MAX_EDIT_LINES if name not in ('write_file', 'append_text') else None)
+            if oversized:
                 self.prepare_compact_edits(task)
-                raise FileEditConstraint('edit_too_large', f"Edit is too large. New files allow at most {MAX_CREATE_BYTES} UTF-8 bytes; existing files use replace_lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes. No edit was made.")
+                raise oversized
         result = (edit_history.apply(task, workspace, name, args, methods[name])
                   if name in edit_history.TEXT_EDITS else methods[name](**args))
         task["tool_actions"] += 1
