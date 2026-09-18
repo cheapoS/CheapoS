@@ -8,6 +8,10 @@ replaces hidden cumulative work ceilings with explicit operator policy. It does
 not remove usage accounting, spending authority, command permissions, workspace
 boundaries or independent review.
 
+Implementation tracking: [T94 — Operator-controlled limits and autonomous
+completion](../tasks/T94-operator-limits-and-autonomous-completion.md) links the
+six audit implementation cards, their order, boundaries and acceptance checks.
+
 ## Product contract
 
 A new installation should let authorized work continue without a default
