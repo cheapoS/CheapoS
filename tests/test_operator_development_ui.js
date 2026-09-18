@@ -26,6 +26,16 @@ test('recovery remains available for actual stops but not active or permission-w
  for(const status of ['paused','blocked','interrupted','error','budget_paused'])assert.equal(c.recoveryActionAvailable({status}),true,status);
  for(const task of [{status:'running'},{status:'approved'},{status:'paused',pending_approval:{}},{status:'paused',demo:true},{status:'error',archived_at:'now'},{status:'error',trashed_at:'now'}])assert.equal(c.recoveryActionAvailable(task),false);
 });
+test('manual recovery is collapsed advanced UI for both task modes',()=>{
+ for(const task of [{status:'paused'},{status:'paused',branch_run:{status:'paused',authorization_ref:'auth'}}]){
+  const html=c.recoveryOptionsMarkup(task);
+  assert.match(html,/<details[^>]+data-event="manual-recovery"><summary>Advanced options<\/summary>/);
+  assert.doesNotMatch(html,/<details[^>]+\bopen\b|Choose recovery action/);
+  assert.match(html,/data-manual-recovery>Open recovery settings<\/button>/);
+ }
+ assert.equal(c.recoveryOptionsMarkup({status:'running'}),'');
+ assert.equal(c.recoveryOptionsMarkup({status:'paused',pending_approval:{}}),'');
+});
 vm.runInContext(source.slice(source.indexOf('function canTakeOver'),source.indexOf('async function takeOverTask')),c);
 test('failed saved tasks offer takeover but routine replies and genuine questions do not',()=>{for(const status of ['paused','error','blocked','budget_paused'])assert.equal(c.canTakeOver({status}),true);assert.equal(c.canTakeOver({status:'awaiting_reply'}),false);assert.equal(c.canTakeOver({status:'paused',pause_summary:{question:'Choose format'}}),false);assert.equal(c.canTakeOver({status:'paused',branch_run:{authorization_ref:null}}),false);assert.equal(c.canTakeOver({status:'paused',branch_run:{authorization_ref:'approved'}}),true);});
 
