@@ -104,8 +104,6 @@ def build_manifest(run):
         file['item_ids'] = [c['item_id'] for c in commits if file['path'] in c['files']]
     # Both streams are exhaustively chunked; receipt/check detail is never dropped.
     streams = [('requirements', _json(requirements)), ('diff', diff)]
-    if sum(len(content) for _, content in streams) > MAX_CONTENT:
-        raise ValueError('Final review exceeds 1,000,000 characters; split the accepted scope explicitly')
     chunks = []
     for kind, content in streams:
         for index,text in enumerate(review_context.chunks(content,CHUNK_SIZE),1):
@@ -120,6 +118,27 @@ def build_manifest(run):
               'diff': diff, 'diff_bytes': len(diff.encode()), 'diff_lines': len(diff.splitlines())}
     result['id'] = _hash(result)
     return result
+
+
+def review_paged(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
+    encoded = _json(packet)
+    if len(encoded) <= 60000:
+        return _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids)
+    pages = review_context.chunks(encoded, CHUNK_SIZE)
+    coverage = []
+    packet_digest = _hash(packet)
+    for index, content in enumerate(pages):
+        page = {'packet_digest': packet_digest, 'page_index': index, 'page_total': len(pages),
+                'content': content, 'instruction': 'Review this ordered evidence page. It may begin or end mid-record. This is partial evidence, not task completion. Report concrete defects; synthesis follows only after every page is independently approved.'}
+        result = _review(engine, runtime, manifest, page, [], [])
+        if result['decision'] != 'APPROVE': return result
+        coverage.append({'page':index,'digest':_hash(content),'decision':result['decision']})
+    from .context_evidence import retain
+    reference = retain(runtime.task, packet, 'final_review_packet')
+    summary = {'packet_digest':packet_digest, 'complete_packet_reference':reference,'page_coverage':coverage,
+               'chunk_ids':chunk_ids,'criteria_ids':criterion_ids,
+               'instruction':'Every ordered evidence page above has an independent approval saved against this candidate. Synthesize their complete coverage; never treat missing or rejected pages as approval.'}
+    return _review(engine, runtime, manifest, summary, chunk_ids, criterion_ids)
 
 
 def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None, progress=None):
@@ -143,9 +162,8 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     if runtime.task['branch_run'].get('conflict_resolution'):
         from .engine import READ_TOOLS
         tools.extend(t for t in READ_TOOLS if t['function']['name']=='read_merge_context')
-    if manifest.get('kind') == 'item':
-        from .engine import READ_TOOLS
-        tools.extend(t for t in READ_TOOLS if t['function']['name'] == 'read_context_evidence')
+    from .engine import READ_TOOLS
+    tools.extend(t for t in READ_TOOLS if t['function']['name'] == 'read_context_evidence')
     encoded = _json(packet)
     if len(encoded) > 60000:
         raise ValueError('Final review packet exceeds 60,000 characters; nothing was omitted')
@@ -209,7 +227,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                 messages.append(message);messages.append({'role':'tool','tool_call_id':calls[0]['id'],'content':_json(excerpt)})
                 recovery.persist(engine,runtime.task,state,messages)
                 continue
-            if name == 'read_context_evidence' and manifest.get('kind') == 'item':
+            if name == 'read_context_evidence':
                 from .context_evidence import read
                 excerpt = recovery.context_read(engine, runtime, key, state,
                     {'tool': name, 'arguments': result}, lambda: read(runtime.task, **result))
@@ -310,7 +328,7 @@ def final_check_review(engine, runtime):
                                  'Do not reject solely because a criterion, receipt, or related evidence is absent here or continues in another chunk. '
                                  'Report concrete defects supported by this chunk; do not assume missing context proves a defect. '
                                  'Final synthesis receives all chunk reviews and must verify every criterion before completion.'}
-        review = _review(engine, runtime, manifest, packet, [chunk['id']], [])
+        review = review_paged(engine, runtime, manifest, packet, [chunk['id']], [])
         if review['decision'] != 'APPROVE':
             chunk_manifest = build_manifest(run)
             if dict(chunk_manifest, target_tip=manifest['target_tip']) != dict(manifest, target_tip=manifest['target_tip']) or evidence.candidate(task, context, specifications, criteria) != current:
@@ -323,7 +341,7 @@ def final_check_review(engine, runtime):
               'coverage': [{'chunk_id': c['id'], 'digest': c['digest'], 'review': r} for c, r in zip(manifest['chunks'], reviews)],
               'requirements': [{'id': r['id'], 'criterion': r['criterion'], 'item_id': r['item_id'], 'outcome': r['outcome']} for r in manifest['requirements']],
               'checks': checks, 'instruction': 'Synthesize all approved chunk reviews against every criterion and final check.'}
-    overall = _review(engine, runtime, manifest, packet, chunks, criteria)
+    overall = review_paged(engine, runtime, manifest, packet, chunks, criteria)
     current_manifest = build_manifest(run)
     manifest_match = dict(current_manifest, target_tip=manifest['target_tip']) == dict(manifest, target_tip=manifest['target_tip'])
     if overall['decision'] != 'APPROVE':

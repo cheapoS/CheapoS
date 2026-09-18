@@ -15,13 +15,13 @@ from .titles import automatic_title
 from . import branch_runs
 
 
-def write_json(path, value):
+def write_json(path, value, *, compact=False):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = path.with_suffix(".tmp")
     fd = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, allow_nan=False)
+        json.dump(value, stream, ensure_ascii=False, indent=None if compact else 2, allow_nan=False)
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(str(temporary), str(path))
@@ -74,7 +74,7 @@ class Store:
 
     def save(self, task):
         with self.lock:
-            write_json(self.root / "tasks" / task["id"] / "task.json", task)
+            write_json(self.root / "tasks" / task["id"] / "task.json", task, compact=True)
             self.tasks[task["id"]] = copy.deepcopy(task)
             self._view_versions[task["id"]] = uuid.uuid4().hex
             self.lifetime.ingest_task(task)
@@ -88,7 +88,15 @@ class Store:
     def publish(self, task):
         """Publish live output without fsyncing the entire task for each token."""
         with self.lock:
-            self.tasks[task["id"]] = copy.deepcopy(task)
+            # All four publisher call sites update live fields only, following
+            # a durable event/save. Preserve the immutable saved history snapshot.
+            saved = self.tasks.get(task['id'])
+            if saved is None:
+                self.tasks[task['id']] = copy.deepcopy(task)
+            else:
+                for key in ('stream','check_stream','web_read','updated_at','status'):
+                    if key in task: saved[key] = copy.deepcopy(task[key])
+                    else: saved.pop(key,None)
             self._view_versions[task["id"]] = uuid.uuid4().hex
 
     def poll(self, task_id, previous=None):

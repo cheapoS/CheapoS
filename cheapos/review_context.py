@@ -9,14 +9,15 @@ def chunks(content, limit):
     """Prefer line/file/hunk boundaries, preserving every character in order."""
     if not content:return ['']
     output=[]
-    while content:
-        stop=min(limit,len(content))
+    start=0
+    while start<len(content):
+        stop=min(start+limit,len(content))
         if stop<len(content):
-            preferred=max(content.rfind('\ndiff --git ',0,stop),content.rfind('\n@@ ',0,stop))
-            line=content.rfind('\n',0,stop)
-            if preferred>limit//3:stop=preferred+1
-            elif line>0:stop=line+1
-        output.append(content[:stop]);content=content[stop:]
+            preferred=max(content.rfind('\ndiff --git ',start,stop),content.rfind('\n@@ ',start,stop))
+            line=content.rfind('\n',start,stop)
+            if preferred>start+limit//3:stop=preferred+1
+            elif line>=start:stop=line+1
+        output.append(content[start:stop]);start=stop
     return output
 
 

@@ -48,3 +48,21 @@ class ContextTests(unittest.TestCase):
             result=branch_final._review(engine,runtime,manifest,{},['diff:1'],[])
         self.assertEqual(result['chunk_ids'],['diff:1']);self.assertEqual(engine.request.call_count,2)
         self.assertEqual(result['context_references'][0]['candidate'],'tip')
+
+    def test_large_packet_pages_cover_every_byte_before_synthesis(self):
+        packet={'evidence':'complete evidence\n'*70000}
+        runtime=SimpleNamespace(task={})
+        calls=[]
+        def reviewer(engine, runtime, manifest, page, chunks, criteria):
+            calls.append((page,chunks,criteria))
+            return {'decision':'APPROVE'}
+        with patch.object(branch_final,'_review',side_effect=reviewer):
+            result=branch_final.review_paged(None,runtime,{'id':'candidate'},packet,['diff:1'],['one:1'])
+        self.assertEqual(result['decision'],'APPROVE')
+        self.assertEqual(''.join(c[0]['content'] for c in calls[:-1]),branch_final._json(packet))
+        self.assertTrue(all(len(branch_final._json(c[0]))<60000 for c in calls))
+        self.assertEqual(calls[-1][1:],(['diff:1'],['one:1']))
+        self.assertIn(calls[-1][0]['complete_packet_reference'],runtime.task['context_evidence'])
+        with patch.object(branch_final,'_review',return_value={'decision':'REQUEST_CHANGES'}) as failed:
+            self.assertEqual(branch_final.review_paged(None,runtime,{'id':'candidate'},packet,[],[])['decision'],'REQUEST_CHANGES')
+            self.assertEqual(failed.call_count,1)

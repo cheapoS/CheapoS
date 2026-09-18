@@ -38,15 +38,17 @@ class CheckOutputTests(LocalCase):
         self.assertEqual(results[0]['output'], 'hello\n✓\n')
         self.assertTrue(all('�' not in text for text in previews))
 
-    def test_noisy_command_keeps_preview_bounded_and_enforces_output_limit(self):
+    def test_noisy_command_completes_with_bounded_preview_and_full_tail(self):
         workspace = Workspace(self.fixture()['workspace'])
         previews = [];raw=[]
-        result = workspace.run_checks([sys.executable, '-c', "import os,time;os.write(1,b'x'*2100000);time.sleep(10)"], threading.Event(), on_output=lambda text, cut: previews.append((text, cut)), on_raw=lambda data,cut:raw.append((data,cut)))
-        self.assertFalse(result['passed'])
-        self.assertEqual(result['reason'], 'output limit exceeded')
+        def captured(path,cut): raw.append((path.stat().st_size,path.read_bytes()[-4:],cut))
+        result = workspace.run_checks([sys.executable, '-c', "import os;os.write(1,b'x'*2100000+b'TAIL')"], threading.Event(), on_output=lambda text, cut: previews.append((text, cut)), on_raw_file=captured)
+        self.assertTrue(result['passed'])
+        self.assertIsNone(result['reason'])
         self.assertTrue(result['truncated'])
-        self.assertEqual(len(result['output']), 32000)
-        self.assertEqual(len(raw[0][0]),2_000_000);self.assertTrue(raw[0][1])
+        self.assertLessEqual(len(result['output']),32000)
+        self.assertTrue(result['output'].endswith('TAIL'))
+        self.assertEqual(raw,[(2100004,b'TAIL',False)])
         self.assertTrue(all(len(text) <= 32000 for text, _ in previews))
         self.assertEqual(previews[-1], (result['output'], True))
 

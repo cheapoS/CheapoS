@@ -1,6 +1,6 @@
 # T100 — Keep large evidence and long-running tasks usable
 
-Status: **Planned**, September 18, 2026. Priority: **P2**.
+Status: **Implemented — integration validation pending**, September 18, 2026. Priority: **P2**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Deliver the three slices below separately. Use T97's error categories and T98's
 continuation contract; align per-operation controls with T99. Storage measurement
@@ -93,3 +93,26 @@ not generate an entire agent/Git project to prove page coverage. Measure the
 smallest representative storage benchmark before proposing a larger one. Disclose
 runtime, frequency and why cheaper coverage is insufficient before adding heavy
 regression tests under AGENTS.md. Follow T94's scoped validation and commit rules.
+
+## Slice measurements
+
+A: checks retain up to 64 MB per run / latest eight runs (512 MB per task),
+with bounded preview and paged reads. The existing noisy-process test now exceeds
+2 MB, finishes successfully and verifies its tail; its previous ten-second sleep
+was removed. Cancellation and engine publishing remain covered. Nine output/poll
+checks passed in 1.979 seconds. Storage failures fail the check rather than
+manufacturing passing evidence; spool files are removed with the temporary dir.
+
+B: ordered pages remove the 1M aggregate barrier. Large packets are reviewed by
+page before synthesis, with the complete original retained by reference. A pure
+synthetic >1M-character case verifies exact reassembly and rejection propagation.
+
+C: generated histories only; ten / 2,000 events with 4 KB content each. At 2,000
+events (8,249,006 serialized bytes), before/after wall times in milliseconds:
+serialization 7.888 / 7.653; save+fsync+snapshot 23.360 / 22.244;
+publish 2.023 / 0.009; changed poll 2.074 / 2.000; unchanged poll 0.081 / 0.044.
+Live publish copies only five volatile fields, not history. Save still writes a
+complete atomic snapshot, with compact JSON. Changed polls still copy the full
+snapshot; unchanged polls remain history-independent. These measurements do not
+justify a new history-journal migration yet. Durable schema and restart behavior
+remain compatible. Single-run measurements are indicative, not latency guarantees.

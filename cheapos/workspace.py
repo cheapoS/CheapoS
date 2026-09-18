@@ -428,9 +428,9 @@ class Workspace:
                 Path(temp_path).unlink(missing_ok=True)
         return self.changes()
 
-    def run_checks(self, argv, stop_event, timeout=90, on_output=None, on_raw=None):
-        if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 1800):
-            raise ValueError("Verification timeout must be positive and at most 1800 seconds")
+    def run_checks(self, argv, stop_event, timeout=90, on_output=None, on_raw=None, on_raw_file=None):
+        if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 2**53-1):
+            raise ValueError("Verification timeout must be a finite positive duration")
         if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a and "\x00" not in a for a in argv):
             raise ValueError("Check command must be an argument list")
         started = time.monotonic()
@@ -472,7 +472,7 @@ class Workspace:
                             reason = "cancelled"
                         elif timeout is not None and time.monotonic() - started > timeout:
                             reason = "timed out"
-                        elif os.fstat(output.fileno()).st_size > 2_000_000:
+                        elif os.fstat(output.fileno()).st_size > 64_000_000:
                             reason = "output limit exceeded"
                         if reason:
                             break
@@ -487,9 +487,15 @@ class Workspace:
                         except ProcessLookupError:
                             pass
                     process.wait()
-                if os.fstat(output.fileno()).st_size > 2_000_000 and not reason:
+                if os.fstat(output.fileno()).st_size > 64_000_000 and not reason:
                     reason = "output limit exceeded"
                 truncated = preview(final=True)
+                if truncated:
+                    reader.seek(max(0, os.fstat(output.fileno()).st_size - 16000))
+                    text = text[:15900] + '\n[Middle output retained in paged check log]\n' + reader.read(16000).decode('utf-8','replace')
+                    if on_output: on_output(text, True)
+                if on_raw_file:
+                    on_raw_file(path, os.fstat(output.fileno()).st_size > 64_000_000)
                 if on_raw:
                     with path.open("rb") as raw:
                         captured=raw.read(2_000_001)

@@ -2968,12 +2968,12 @@ class Engine:
             self.store.publish(task)
 
         raw_info={}
-        def retain_raw(data,truncated):
-            raw_info.update(check_output.retain(self.store.root,task["id"],live["run_id"],data,truncated))
+        def retain_raw(path,truncated):
+            raw_info.update(check_output.retain_file(self.store.root,task["id"],live["run_id"],path,truncated))
         try:
             with self.admission.resource("checks", runtime):
                 runtime.guard()
-                result = workspace.run_checks(argv, runtime if developing(task) else runtime.stop, timeout=effective, on_output=emit, on_raw=retain_raw)
+                result = workspace.run_checks(argv, runtime if developing(task) else runtime.stop, timeout=effective, on_output=emit, on_raw_file=retain_raw)
         finally:
             task["check_stream"] = None
             task["updated_at"] = now()

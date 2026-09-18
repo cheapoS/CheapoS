@@ -5,7 +5,7 @@ import os
 import re
 from pathlib import Path
 
-RAW_LIMIT = 2_000_000
+RAW_LIMIT = 64_000_000
 KEEP_RUNS = 8
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 PASS_LINE = re.compile(r'^test\S* \([^\n]+\) \.\.\. ok\s*$')
@@ -24,7 +24,25 @@ def retain(root, task_id, run_id, data, truncated):
     for old in sorted(directory.glob('*.log'), key=lambda p: p.stat().st_mtime_ns, reverse=True)[KEEP_RUNS:]:
         old.unlink()
     return {'bytes': min(len(data), RAW_LIMIT), 'truncated': truncated or len(data)>RAW_LIMIT,
-            'retention': 'Latest 8 runs; at most 2 MB per run'}
+            'retention': 'Latest 8 runs; at most 64 MB per run'}
+
+
+def retain_file(root, task_id, run_id, source, truncated):
+    """Copy the disk spool in bounded blocks; do not materialize it in RAM."""
+    if not re.fullmatch(r'[a-f0-9]{32}', run_id): raise ValueError('Invalid check run ID')
+    directory = Path(root) / 'tasks' / task_id / 'check-output'
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = directory / (run_id + '.log')
+    copied = 0
+    with Path(source).open('rb') as reader, os.fdopen(os.open(path,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600),'wb') as writer:
+        while copied < RAW_LIMIT:
+            block = reader.read(min(65536, RAW_LIMIT-copied))
+            if not block: break
+            writer.write(block); copied += len(block)
+        truncated = truncated or bool(reader.read(1))
+        writer.flush(); os.fsync(writer.fileno())
+    for old in sorted(directory.glob('*.log'),key=lambda p:p.stat().st_mtime_ns,reverse=True)[KEEP_RUNS:]: old.unlink()
+    return {'bytes':copied,'truncated':truncated,'retention':'Latest 8 runs; at most 64 MB per run'}
 
 
 def raw(store, task_id, run_id):
@@ -42,13 +60,18 @@ def raw(store, task_id, run_id):
 def read(store, task_id, run_id, offset=0):
     if type(offset) is not int or offset<0 or offset>RAW_LIMIT:
         raise ValueError('Offset must be a byte position within retained output')
-    data=raw(store,task_id,run_id)
-    # Byte pagination: UTF-8 boundaries may display replacement characters; the
-    # operator download preserves original bytes exactly.
-    chunk=data[offset:offset+8000]
+    task=store.get(task_id)
+    if not re.fullmatch(r'[a-f0-9]{32}',run_id) or not any(c.get('run_id')==run_id and c.get('raw_output') for c in task.get('checks',[])):
+        raise ValueError('Unknown retained check run')
+    path=store.root/'tasks'/task_id/'check-output'/(run_id+'.log')
+    try:
+        with path.open('rb') as stream:
+            total=min(path.stat().st_size,RAW_LIMIT)
+            stream.seek(offset);chunk=stream.read(min(8000,max(0,total-offset)))
+    except FileNotFoundError: raise ValueError('Raw output expired; only the latest 8 runs are retained') from None
     return {'run_id':run_id,'offset':offset,'next_offset':offset+len(chunk),
-            'has_more':offset+len(chunk)<len(data),'output':chunk.decode('utf-8','replace'),
-            'retained_bytes':len(data),'note':'Unfiltered retained output; see check result for truncation and authoritative status.'}
+            'has_more':offset+len(chunk)<total,'output':chunk.decode('utf-8','replace'),
+            'retained_bytes':total,'note':'Unfiltered retained output; see check result for truncation and authoritative status.'}
 
 
 def summarize(text):
