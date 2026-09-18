@@ -2254,7 +2254,7 @@ class Engine:
                 task['providers'][role] = cfg
             if gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))["cooling_down"]:
                 health = gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
-                if health.get('cooldown_scope') == 'provider' and (health.get('failure') or {}).get('category') == 'credential_access':
+                if (health.get('failure') or {}).get('scope') in {'model', 'provider'} and (health.get('failure') or {}).get('category') == 'credential_access':
                     task['route'].setdefault('recovery', {})[role] = {'from': cfg['model'],
                         'reason': health['last_error'], 'error_code': 'upstream_access_denied'}
                     self.store.save(task)

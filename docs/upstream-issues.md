@@ -129,6 +129,31 @@ must not run again merely because their continuation failed.
   after validating that replacement against both upstream and gateway auth
   failures. No upstream issue or released fix has been established for this case.
 
+### UP-004 — Key-required OpenCode model mistaken for gateway credit failure
+
+- **Evidence:** live local observation on September 18, 2026, OmniRoute 3.8.50,
+  `oc/union-alpha`, final reviewer, streaming request. The installed OpenCode
+  executor rejects a premium model on a keyless connection with HTTP 402 and
+  `premium_model_requires_key`. Its credential-exhaustion handler can preserve
+  only the message, wrapped with `[402]:`, in the response to cheapoS.
+- **Local defect:** the route was offered as a free candidate, but its access
+  rejection stopped final review as a generic gateway connection error after
+  other reviewers returned HTTP 502 and a provider cooldown.
+- **Scoped handling:** recognize the exact OpenCode code/message contract only
+  for that provider and HTTP status. Exclude the affected model; keep other
+  authorized free routes eligible. An ambiguous 402 still requires attention.
+  Do not supply credentials, enable paid routing, or bypass the access gate.
+- **Validation:** `tests/test_upstream_access.py` covers parser boundaries,
+  restart-persistent model scope, cached failures, accounting and ordinary
+  reviewer failover. `tests/test_branch_final_recovery.py` replays 502,
+  cooldown and key-required failures through independent approval, preserving
+  earlier packet decisions and checks. All requests are simulated.
+- **Recheck / retirement:** inspect the installed executor and final error
+  wrapper on gateway upgrades. Prefer a preserved structured error contract
+  once available; retire message matching after local validation. Catalog
+  metadata alone must not override an observed access refusal. No upstream
+  issue or released fix was established during this local investigation.
+
 ## Entry template
 
 ```text
@@ -149,6 +174,7 @@ Recheck trigger and retirement condition:
 | --- | --- | --- |
 | 2026-09-14 | OmniRoute 3.8.50 | Initial triage of both issue lists and UP-001/UP-002 bodies. Retained two relevant reports as unverified leads. No inference calls, routing changes, or new tests. |
 | 2026-09-17 | OmniRoute 3.8.50 | UP-003: local 403 evidence and installed gateway error handling inspected. Added scoped access-failure handling and synthetic regression coverage; no live inference requests. |
+| 2026-09-18 | OmniRoute 3.8.50 | UP-004: local 402 evidence and installed keyless executor/fallback wrapper inspected. Added model-scoped access handling and deterministic final-review continuation coverage; no live inference requests. |
 
 Validation follows [CONTRIBUTING](../CONTRIBUTING.md). Prefer recorded-response or
 synthetic in-memory fixtures for implementation fixes. A live check needs the

@@ -16,6 +16,7 @@ from cheapos import route_health
 
 URL = 'http://localhost:1/v1'
 DENIED = "[403]: Error from provider (Console): OpenCode's free tier can only be used from within OpenCode"
+KEY_REQUIRED = 'This model requires an opencode API key — add one in Settings → Providers.'
 
 
 def rejection(message=DENIED, model='oc/ling', status=403, gateway='omniroute'):
@@ -29,6 +30,36 @@ def model(name, **extra):
 
 
 class UpstreamAccessTests(unittest.TestCase):
+    def test_opencode_premium_refusal_excludes_only_model_and_keeps_ambiguous_auth_fatal(self):
+        for prefix in ('', '[402]: ', '[402]: [402]: '):
+            error = rejection(prefix + KEY_REQUIRED, 'oc/union-alpha', 402)
+            self.assertEqual((error.code, error.scope), ('upstream_access_denied', 'model'))
+            self.assertNotIn(KEY_REQUIRED, str(error))
+        raw = HTTPError(URL, 402, 'denied', {}, io.BytesIO(json.dumps(
+            {'error': {'code': 'premium_model_requires_key', 'message': 'private upstream details'}}).encode()))
+        error = http_failure(raw, {'gateway': 'omniroute', 'model': 'oc/union-alpha'})
+        self.assertEqual((error.code, error.scope), ('upstream_access_denied', 'model'))
+        self.assertNotIn('private', str(error))
+        with tempfile.TemporaryDirectory() as directory:
+            pool = FreeModelPool(directory)
+            pool.record(URL, 'oc/union-alpha', 'reviewer', error=error, connection_revision='one')
+            pool = FreeModelPool(directory)
+            denied = pool.observation(URL, 'oc/union-alpha', 'one')
+            self.assertTrue(denied['cooling_down'])
+            self.assertEqual(denied['failure']['scope'], 'model')
+            self.assertFalse(denied['failure']['quality_impact'])
+            for name, revision in (('oc/free', 'one'), ('groq/qwen', 'one'), ('oc/union-alpha', 'two')):
+                self.assertFalse(pool.observation(URL, name, revision)['cooling_down'])
+        for message, name, status, gateway in (
+                (KEY_REQUIRED, 'groq/qwen', 402, 'omniroute'),
+                (KEY_REQUIRED, 'oc/union-alpha', 401, 'omniroute'),
+                (KEY_REQUIRED, 'oc/union-alpha', 402, 'openai'),
+                ('Payment required', 'oc/union-alpha', 402, 'omniroute'),
+                (KEY_REQUIRED + ' private suffix', 'oc/union-alpha', 402, 'omniroute')):
+            error = rejection(message, name, status, gateway)
+            self.assertEqual(error.code, f'http_{status}')
+            self.assertEqual(route_health.classify(error)['scope'], 'connection')
+
     def test_known_upstream_denial_is_scoped_without_leaking_error_body(self):
         for message, name, status in ((DENIED, 'oc/ling', 403),
                 ('No active credentials for provider: groq. private details', 'groq/qwen', 401)):
@@ -100,8 +131,8 @@ class UpstreamAccessTests(unittest.TestCase):
 
     def test_review_request_automatically_moves_provider_with_saved_evidence(self):
         from tests.test_transport import TransportTests
-        for cached in (False, True):
-            with self.subTest(cached=cached), tempfile.TemporaryDirectory() as directory:
+        for cached, premium in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(cached=cached, premium=premium), tempfile.TemporaryDirectory() as directory:
                 engine, runtime, _ = TransportTests().harness()
                 task = runtime.task
                 cfg = dict(task['providers']['worker'], gateway='omniroute', input_rate=0, output_rate=0)
@@ -115,11 +146,13 @@ class UpstreamAccessTests(unittest.TestCase):
                 engine.count_recovery_turn = Mock()
                 engine.event = lambda t, kind, title, detail: t['events'].append({'id': str(len(t['events'])), 'kind': kind, 'title': title, 'detail': detail})
                 pool = FreeModelPool(directory)
-                catalog = [model(name) for name in ('oc/ling', 'oc/other', 'groq/qwen', 'author/code')]
+                catalog = [model(name) for name in ('oc/ling', 'groq/qwen', 'author/code')]
+                if not premium: catalog.append(model('oc/other'))
                 catalog += [model('paid/coder', free=False), model('local/coder', local=True)]
                 engine.gateway = SimpleNamespace(settings={'base_url': URL}, pool=pool, matches=lambda url: True,
                     catalog=lambda **kw: {'status': 'ready', 'models': catalog})
-                if cached: pool.record(URL, 'oc/ling', 'reviewer', error=rejection())
+                def denied(): return rejection(KEY_REQUIRED, 'oc/ling', 402) if premium else rejection()
+                if cached: pool.record(URL, 'oc/ling', 'reviewer', error=denied())
                 calls = []
                 decision = {'tool_calls': [{'id': 'review', 'function': {'name': 'review_decision',
                     'arguments': json.dumps({'decision': 'APPROVE', 'feedback': 'Verified saved evidence'})}}]}
@@ -128,7 +161,7 @@ class UpstreamAccessTests(unittest.TestCase):
                     def __init__(self, config): self.config = config
                     def complete(self, messages, tools, maximum):
                         calls.append((self.config['model'], copy.deepcopy(messages)))
-                        if self.config['model'] == 'oc/ling': raise rejection()
+                        if self.config['model'] == 'oc/ling': raise denied()
                         return decision, {'prompt_tokens': 3, 'completion_tokens': 2, 'cost': 0}
                     def complete_brief(self, messages, tools, maximum, emit, stopped):
                         return {'tool_calls': [{'id': 'probe', 'function': {'name': 'routing_ready',

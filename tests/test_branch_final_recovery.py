@@ -161,6 +161,54 @@ class FinalRecoveryTests(unittest.TestCase):
         for key in ('checks','usage','limits'):self.assertEqual(task[key],before[key])
         engine.checks.assert_not_called();engine.file_tool.assert_not_called()
 
+    def test_final_review_continues_after_bad_gateway_cooldown_and_premium_model_refusal(self):
+        import tempfile
+        from cheapos import reviewer_recovery
+        from cheapos.model_pool import FreeModelPool
+        from cheapos.providers import ProviderError
+        from cheapos.served_identity import ensure_independent, metadata
+        from tests.test_upstream_access import rejection, KEY_REQUIRED
+        task,engine,runtime=self.fixture();before=copy.deepcopy(task)
+        endpoint='http://localhost:1/v1';original='openrouter/reviewer:free'
+        task['providers']['reviewer']={'model':original,'provider':'openrouter',
+            'base_url':endpoint,'gateway':'omniroute','input_rate':0,'output_rate':0}
+        task['reviewer_identity_recovery']={'attempted':[original],'selected':original}
+        models=[{'id':name,'provider':provider,'free':True,'tool_calling':True}
+                for name,provider in ((original,'openrouter'),('antigravity/reviewer','antigravity'),
+                    ('antigravity/sibling','antigravity'),('oc/union-alpha','opencode'),('oc/free','opencode'))]
+        calls=[];chunk=[1]
+        def routed(rt,messages,tools,role,override=None,purpose=None,**kwargs):
+            name=override['model'];calls.append((chunk[0],name))
+            if chunk[0]==2:
+                if name==original:raise ProviderError('Bad gateway',code='http_502')
+                if name.startswith('antigravity/'):
+                    raise ProviderError('Cooldown',code='gateway_cooldown',scope='provider',retry_after=300)
+                if name=='oc/union-alpha':raise rejection('[402]: '+KEY_REQUIRED,name,402)
+            ensure_independent(rt.task,{'role':'reviewer',**metadata(name,name)})
+            result=self.approval()['tool_calls'][0]['result'];result['chunk_ids']=[f'diff:{chunk[0]}']
+            return self.call('final_review_decision',result)
+        engine._request_routed=Mock(side_effect=routed)
+        engine.request=lambda *a,**kw:reviewer_recovery.request(engine,*a,**kw)
+        def review():
+            return final._review(engine,runtime,{'id':'m','requirements':[{'id':'one:1'}]},
+                {'evidence':f'exact source {chunk[0]}'},[f'diff:{chunk[0]}'],[])
+        with tempfile.TemporaryDirectory() as directory:
+            pool=FreeModelPool(directory)
+            engine.gateway=SimpleNamespace(settings={'base_url':endpoint},pool=pool,
+                catalog=lambda **kw:{'models':models})
+            engine.connection_for=lambda cfg:engine.gateway
+            self.assertEqual(review()['decision'],'APPROVE')
+            runtime.task=json.loads(json.dumps(task))
+            chunk[0]=2;self.assertEqual(review()['decision'],'APPROVE')
+            chunk[0]=1;self.assertEqual(review()['decision'],'APPROVE')
+            self.assertTrue(pool.observation(endpoint,'oc/union-alpha')['cooling_down'])
+            self.assertFalse(pool.observation(endpoint,'oc/free')['cooling_down'])
+        self.assertEqual(calls,[(1,original),(2,original),(2,'antigravity/reviewer'),
+                                (2,'oc/union-alpha'),(2,'oc/free')])
+        for key in ('checks','usage','limits'):self.assertEqual(runtime.task[key],before[key])
+        self.assertEqual(runtime.task['branch_run']['items'],before['branch_run']['items'])
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+
     def test_exact_function_namespace_decision_uses_normal_coverage_validation(self):
         from cheapos.engine import Engine
         from tests.test_branch_disagreement import defect

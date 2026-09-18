@@ -100,6 +100,18 @@ def http_failure(error, config):
             restricted_opencode = (error.code == 403 and provider == 'opencode' and isinstance(detail, str)
                                    and detail.removeprefix('[403]: Error from provider (Console): ').rstrip('.')
                                    == "OpenCode's free tier can only be used from within OpenCode")
+            # OmniRoute's keyless OpenCode executor rejects premium models
+            # before dispatch. Its fallback wrapper may preserve only the
+            # exact message, losing premium_model_requires_key. This says
+            # nothing about access to other models or the gateway client key.
+            key_required = 'This model requires an opencode API key — add one in Settings → Providers.'
+            premium_opencode = (error.code == 402 and provider == 'opencode'
+                                and (code == 'premium_model_requires_key' or
+                                     detail in (key_required, '[402]: ' + key_required,
+                                                '[402]: [402]: ' + key_required)))
+            if premium_opencode:
+                return ProviderError('This model requires provider access that is not configured.',
+                                     code='upstream_access_denied', scope='model')
             if missing_credentials or restricted_opencode:
                 return ProviderError('This upstream provider does not permit this connection.',
                                      code='upstream_access_denied', scope='provider')
