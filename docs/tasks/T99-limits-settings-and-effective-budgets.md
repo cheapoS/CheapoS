@@ -1,6 +1,6 @@
 # T99 — Build Limits & recovery settings and effective request budgets
 
-Status: **Implemented — integration validation pending**, September 18, 2026. Priority: **P2**.
+Status: **Completed**, September 18, 2026. Priority: **P2**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Canonical contract: [Operator-owned limits design](../development/operator-limits-and-recovery.md).
 Build on T91 and integrate T95–T98; backend reliability fixes must not wait for
@@ -62,21 +62,21 @@ Extend `tests/test_settings_store.py`, `tests/test_task_settings.py`,
 
 ## Acceptance
 
-- [ ] Two saved chats remain isolated when project/global defaults change.
+- [x] Two saved chats remain isolated when project/global defaults change.
   A form stays bound to its captured chat even if navigation changes selection.
-- [ ] No cap, inherit, explicit zero, finite values and Automatic round-trip
+- [x] No cap, inherit, explicit zero, finite values and Automatic round-trip
   through UI/API/storage. Unsafe numbers and stale revisions reject atomically.
-- [ ] Existing bounded/Uncapped choices migrate without authority expansion or
+- [x] Existing bounded/Uncapped choices migrate without authority expansion or
   counter resets. New default policy applies only where intended.
-- [ ] Planning through final review use one effective policy. Exhausted selected
+- [x] Planning through final review use one effective policy. Exhausted selected
   budgets name the actual field/source and retain the next continuation.
-- [ ] Effective output/wire/reservation metadata agree for known, unknown and
+- [x] Effective output/wire/reservation metadata agree for known, unknown and
   stale route capacities, reasoning-heavy output and low remaining paid budget.
-- [ ] A truncated response produces a materially different authorized output
+- [x] A truncated response produces a materially different authorized output
   strategy or capacity adjustment; partial tools never execute.
-- [ ] Changing only a budget resumes the pending review/check/work operation,
+- [x] Changing only a budget resumes the pending review/check/work operation,
   retaining valid receipts and cumulative consumption.
-- [ ] Browser checks cover narrow layout, source labels, disabled fields, errors
+- [x] Browser checks cover narrow layout, source labels, disabled fields, errors
   and correct save destination. README reflects actual implemented behavior.
 
 Follow T94's focused validation and test-cost rules. Use fake capacities and
@@ -87,3 +87,5 @@ policies remain unchanged; fresh installs use no work caps and free-only routes.
 The request budget resolver aligns context/output/reservation; explicit caps
 remain binding. Scoped settings and accounting tests: 28 passed in 0.034s;
 measurement output compatibility passed separately. Browser validation pending.
+
+Validation: [T94–T100 completion report](../development/operator-limits-validation.md).

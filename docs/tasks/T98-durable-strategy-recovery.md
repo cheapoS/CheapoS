@@ -1,6 +1,6 @@
 # T98 — Replace fixed repair stops with durable strategy recovery
 
-Status: **Implemented — integration validation pending**, September 18, 2026. Priority: **P1**.
+Status: **Completed**, September 18, 2026. Priority: **P1**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Integrate after T95 and T97; use T96's context diagnosis when available.
 
@@ -60,19 +60,19 @@ Retain the syntax-loop and progress fixes already described in T94.
 
 ## Acceptance
 
-- [ ] Malformed planner output recovers through a changed approach/handoff and
+- [x] Malformed planner output recovers through a changed approach/handoff and
   yields an approvable proposal without operator rescue in Uncapped work.
-- [ ] Malformed worker output leads to a valid edit, check and independent review
+- [x] Malformed worker output leads to a valid edit, check and independent review
   in interactive and unattended mode. A new strategy has its own baseline while
   cumulative usage and failure history remain visible.
-- [ ] Successful unrelated/cosmetic edits do not erase an unresolved failing
+- [x] Successful unrelated/cosmetic edits do not erase an unresolved failing
   check; legitimate documentation changes still count as progress.
-- [ ] A valid reviewer rejection returns to focused repair; an invalid reviewer
+- [x] A valid reviewer rejection returns to focused repair; an invalid reviewer
   response continues review without rerunning completed implementation/checks.
-- [ ] Selected finite budgets, pins and command/spending authority still enforce.
-- [ ] Reload at a continuation boundary preserves decisions and avoids duplicate
+- [x] Selected finite budgets, pins and command/spending authority still enforce.
+- [x] Reload at a continuation boundary preserves decisions and avoids duplicate
   side effects. Resume chooses a useful action instead of replaying exhaustion.
-- [ ] Temporarily unavailable routes wait; a true missing prerequisite is stated
+- [x] Temporarily unavailable routes wait; a true missing prerequisite is stated
   accurately without inventing new authorization or another arbitrary stop cap.
 
 Use small deterministic continuation cases and existing executor fixtures.
@@ -82,3 +82,5 @@ Planner discovery and schema exchanges now persist; repeated reads use saved
 evidence, and authorized planner handoffs have no fixed two-model ceiling.
 Worker malformed-call recovery selects saved techniques without resetting usage.
 Focused continuation and planner tests: 18 passed (in-memory fixtures).
+
+Validation: [T94–T100 completion report](../development/operator-limits-validation.md).

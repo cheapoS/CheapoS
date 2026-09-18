@@ -374,7 +374,8 @@ def reserve(task, config, messages, tools, role):
         remaining = task["limits"]["reviewer_tokens"] - task["usage"]["reviewer"]["tokens"]
         output = min(output, remaining - prompt_bound)
     minimum_output = 1 if 'response_tokens' in task['limits'] else 128
-    token_blocked = output < minimum_output
+    review_allowance = selected_review if selected_review is not None else task['limits'].get('reviewer_tokens') if not measuring(task) else None
+    token_blocked = role == 'reviewer' and review_allowance is not None and review_allowance - task['usage']['reviewer']['tokens'] - prompt_bound < minimum_output
     remaining_cost = task["limits"]["dollars"] - task["usage"]["cost"]
     input_cost = prompt_bound * config["input_rate"] / 1_000_000
     if config["output_rate"]:

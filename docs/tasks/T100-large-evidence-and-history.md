@@ -1,6 +1,6 @@
 # T100 — Keep large evidence and long-running tasks usable
 
-Status: **Implemented — integration validation pending**, September 18, 2026. Priority: **P2**.
+Status: **Completed**, September 18, 2026. Priority: **P2**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Deliver the three slices below separately. Use T97's error categories and T98's
 continuation contract; align per-operation controls with T99. Storage measurement
@@ -84,9 +84,9 @@ an arbitrary maximum history size that stops an otherwise useful task.
 
 Keep each slice independently reviewable and record its status here:
 
-- [ ] A — bounded verification capture with useful continuation.
-- [ ] B — complete final-review paging beyond the old aggregate ceiling.
-- [ ] C — measured history/storage improvement with durable migration.
+- [x] A — bounded verification capture with useful continuation.
+- [x] B — complete final-review paging beyond the old aggregate ceiling.
+- [x] C — measured history/storage improvement with durable migration.
 
 Use in-memory streams, small fixtures and fake interruptions first. A test need
 not generate an entire agent/Git project to prove page coverage. Measure the
@@ -116,3 +116,5 @@ complete atomic snapshot, with compact JSON. Changed polls still copy the full
 snapshot; unchanged polls remain history-independent. These measurements do not
 justify a new history-journal migration yet. Durable schema and restart behavior
 remain compatible. Single-run measurements are indicative, not latency guarantees.
+
+Validation: [T94–T100 completion report](../development/operator-limits-validation.md).

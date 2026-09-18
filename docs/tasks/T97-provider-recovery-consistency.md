@@ -1,6 +1,6 @@
 # T97 — Continue through provider failures in every request path
 
-Status: **Implemented — integration validation pending**, September 18, 2026. Priority: **P1**.
+Status: **Completed**, September 18, 2026. Priority: **P1**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Can start independently; coordinate the HTTP error contract with T96. T98 builds
 on the availability behavior here.
@@ -56,19 +56,19 @@ should preserve correct classification while new coverage proves continuation.
 
 ## Acceptance
 
-- [ ] Identity recovery's first replacement returns 503; a second authorized
+- [x] Identity recovery's first replacement returns 503; a second authorized
   independent reviewer completes review without operator input or repeated checks.
-- [ ] Proxy 524 is transient, does not damage model-quality ratings, and causes
+- [x] Proxy 524 is transient, does not damage model-quality ratings, and causes
   a useful authorized handoff/wait rather than an arbitrary task stop.
-- [ ] Uncoded malformed/oversized cases receive specific repair/handoff behavior;
+- [x] Uncoded malformed/oversized cases receive specific repair/handoff behavior;
   complete-envelope validation still prevents partial tool execution.
-- [ ] Temporarily unavailable pools wait with a scheduled check and cancellation.
+- [x] Temporarily unavailable pools wait with a scheduled check and cancellation.
   Permanently missing access is not disguised as endless quota waiting.
-- [ ] Auth ambiguity, upstream-only refusal, pins, independent identity and
+- [x] Auth ambiguity, upstream-only refusal, pins, independent identity and
   spending boundaries retain distinct, enforced behavior.
-- [ ] Restart between saved selection and dispatch continues once; uncertain
+- [x] Restart between saved selection and dispatch continues once; uncertain
   dispatch remains accounted and is not blindly duplicated.
-- [ ] Representative planner, worker, item-review and final-review call paths
+- [x] Representative planner, worker, item-review and final-review call paths
   use the same classifications and retain their saved context.
 
 Use scripted responses, fake clocks and existing fixtures. No real cooldown
@@ -76,3 +76,5 @@ sleeps or live model calls. Follow T94's scoped validation and cost rules.
 
 Focused provider, streaming and reviewer-replacement tests: 30 passed in 0.674s.
 New cases are pure scripted responses; no cooldown sleeps or inference.
+
+Validation: [T94–T100 completion report](../development/operator-limits-validation.md).

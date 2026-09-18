@@ -9,7 +9,7 @@ work caps and use free/included remote routes.
 Use **No work caps**, or enter individual cumulative budgets. Blank work fields
 mean **No cap**; zero is an explicit zero allowance. Requests include failed and
 retried dispatches across roles; tool attempts are separate. Checkpoints count
-completed worker/reviewer iterations, not individual inspection turns. Raising a
+recorded checkpoint reviews, including pending reviews; inspection turns do not count. Raising a
 100-request cap to 150 after 100 requests gives 50 additional requests.
 
 Per-operation controls are separate. Blank means **Automatic**. Output uses

@@ -1,6 +1,10 @@
 # Operator-owned limits and automatic recovery
 
-Status: **implementation design; not shipped behavior**. September 18, 2026.
+Status: **Implemented baseline**, September 18, 2026.
+
+The design contract below is implemented by T95–T100. See the
+[user guide](limits-and-recovery-user-guide.md) and
+[validation report](operator-limits-validation.md) for shipped behavior and coverage.
 
 Extend the existing [scoped settings design](../design/settings-system.md) and
 [autonomous completion contract](../../AUTONOMOUS_WORKFLOW.md). This design

@@ -62,3 +62,5 @@ Follow T94's validation and commit rules and report added test runtime.
 
 Validation: 17 focused planning-policy, Uncapped and measurement tests passed in
 18.845 seconds. Added coverage uses in-memory policy/ledger fixtures; no live calls.
+
+Validation: [T94–T100 completion report](../development/operator-limits-validation.md).

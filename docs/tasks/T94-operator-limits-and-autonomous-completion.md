@@ -1,6 +1,6 @@
 # T94 — Operator-controlled limits and autonomous completion
 
-Status: **Planned — umbrella task**, September 18, 2026.
+Status: **Completed**, September 18, 2026.
 
 Canonical design: [Operator-owned limits and automatic recovery](../development/operator-limits-and-recovery.md).
 Build on [T91 scoped settings](T91-settings-system.md) and
@@ -22,12 +22,12 @@ an operator's Desktop report or private task records.
 
 | Order | Task | Scope | Status |
 |---|---|---|---|
-| 1 | [T95 — Planning work policy](T95-planning-work-policy.md) | Capture and restore the selected policy before planning starts. | Planned |
-| 2 | [T96 — Context-error recovery](T96-context-error-recovery.md) | Repair the oversized request before blaming or replacing the model. | Planned |
-| 3 | [T97 — Provider recovery](T97-provider-recovery-consistency.md) | Consistent error classification and replacement-reviewer handoff. | Planned |
-| 4 | [T98 — Durable strategy recovery](T98-durable-strategy-recovery.md) | Replace fixed repair stops with saved next-action decisions. | Planned |
-| 5 | [T99 — Limits & recovery settings](T99-limits-settings-and-effective-budgets.md) | Scoped controls, migration, effective output budgets and user documentation. | Planned |
-| 6 | [T100 — Large evidence and history](T100-large-evidence-and-history.md) | Verification capture, final-review paging and measured storage improvements. | Planned |
+| 1 | [T95 — Planning work policy](T95-planning-work-policy.md) | Capture and restore the selected policy before planning starts. | Completed |
+| 2 | [T96 — Context-error recovery](T96-context-error-recovery.md) | Repair the oversized request before blaming or replacing the model. | Completed |
+| 3 | [T97 — Provider recovery](T97-provider-recovery-consistency.md) | Consistent error classification and replacement-reviewer handoff. | Completed |
+| 4 | [T98 — Durable strategy recovery](T98-durable-strategy-recovery.md) | Replace fixed repair stops with saved next-action decisions. | Completed |
+| 5 | [T99 — Limits & recovery settings](T99-limits-settings-and-effective-budgets.md) | Scoped controls, migration, effective output budgets and user documentation. | Completed |
+| 6 | [T100 — Large evidence and history](T100-large-evidence-and-history.md) | Verification capture, final-review paging and measured storage improvements. | Completed |
 
 T95–T97 can be developed independently against their stated contracts. Land
 those foundations before T98 integration; T99 builds on that behavior. T100 is
@@ -79,17 +79,17 @@ or a genuine missing prerequisite is distinct from an engine failure.
 
 ## Parent acceptance
 
-- [ ] T95–T100 complete, with per-slice implementation and validation recorded.
-- [ ] Interactive and unattended work use the same saved limits and recovery
+- [x] T95–T100 complete, with per-slice implementation and validation recorded.
+- [x] Interactive and unattended work use the same saved limits and recovery
   meanings; planning, review and restart do not introduce hidden work ceilings.
-- [ ] A deterministic failure-to-completion case reaches checked, independently
+- [x] A deterministic failure-to-completion case reaches checked, independently
   reviewed work without an operator rescue message, setting change or Resume.
-- [ ] A bounded case stops at the chosen budget, keeps its next action, and
+- [x] A bounded case stops at the chosen budget, keeps its next action, and
   continues when the operator explicitly increases that budget without resetting
   counts. Spending, pins, grants and final merge approval still apply.
-- [ ] Settings show scope, effective values and provenance. Existing chats do
+- [x] Settings show scope, effective values and provenance. Existing chats do
   not change when defaults for future chats change.
-- [ ] README/user documentation describes shipped behavior accurately.
+- [x] README/user documentation describes shipped behavior accurately.
 
 Start validation with `python3 -B scripts/check.py --plan`. Reuse small scripted
 providers, fake clocks and existing persistence/authorization fixtures. New
@@ -104,3 +104,5 @@ Use the next child card as the implementation prompt, one task at a time. Update
 its status and this checklist only after the behavior and relevant checks pass.
 External development agents commit their own validated changes and tell the
 operator; internal cheapoS workers leave Git operations to the controller.
+
+Validation: [T94–T100 completion report](../development/operator-limits-validation.md).

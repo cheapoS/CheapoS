@@ -10,6 +10,10 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ## Start here
 
+### Operator limits and autonomous completion — September 18
+
+**T94–T100 completed.** The [task index](docs/tasks/T94-operator-limits-and-autonomous-completion.md) records all six implementation cards: planning policy, context repair, provider recovery, durable strategies, scoped limits, and large evidence/history. See the [validation report](docs/development/operator-limits-validation.md) and [user guide](docs/development/limits-and-recovery-user-guide.md). T101 remains a separate follow-up.
+
 ### Next UI task
 
 | ID | Task | Status |

@@ -1,6 +1,6 @@
 # T96 — Repair oversized context before changing routes
 
-Status: **Implemented — validation in progress**, September 18, 2026. Priority: **P1**.
+Status: **Completed**, September 18, 2026. Priority: **P1**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Can start independently. T99 later centralizes output/context budget resolution.
 
@@ -50,17 +50,17 @@ whole HTTP → routing → compaction path.
 
 ## Acceptance
 
-- [ ] A synthetic explicit context rejection passes through HTTP parsing and
+- [x] A synthetic explicit context rejection passes through HTTP parsing and
   routing to repair; the next smaller request succeeds with no route-quality
   penalty, manual Resume or repeated implementation.
-- [ ] Irreducible context selects a known larger authorized route when available;
+- [x] Irreducible context selects a known larger authorized route when available;
   a pinned route or unavailable authority is not silently bypassed.
-- [ ] Exact instructions, complete tool pairs, current checks and reviewer
+- [x] Exact instructions, complete tool pairs, current checks and reviewer
   coverage survive compaction, handoff and reload.
-- [ ] Generic 400/auth/tool-validation errors retain their own classifications.
-- [ ] Repeated rejection of an unchanged payload changes strategy instead of
+- [x] Generic 400/auth/tool-validation errors retain their own classifications.
+- [x] Repeated rejection of an unchanged payload changes strategy instead of
   emitting the same request indefinitely; partial tools never execute.
-- [ ] Each dispatched attempt is counted once, including failed/uncertain usage.
+- [x] Each dispatched attempt is counted once, including failed/uncertain usage.
 
 Use small synthetic messages, fake responses and saved-state round trips.
 No production tasks or provider calls. Follow T94 validation and cost rules.
@@ -68,3 +68,5 @@ No production tasks or provider calls. Follow T94 validation and cost rules.
 HTTP context codes now bypass route-quality recovery, project retained evidence
 for all request roles and require known larger capacity if projection is exhausted.
 Focused context tests: 11 passed in 0.084 seconds.
+
+Validation: [T94–T100 completion report](../development/operator-limits-validation.md).
