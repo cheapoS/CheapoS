@@ -145,6 +145,57 @@ class DisagreementTests(unittest.TestCase):
 
 
 class ReviewCoachingTests(unittest.TestCase):
+    def test_fourth_final_finding_continues_to_counterevidence_and_independent_approval(self):
+        from cheapos import branch_completion as completion
+        task,engine,runtime=self.fixture();run=task['branch_run']
+        run['plan']['final_checks']=['python tests.py']
+        original=copy.deepcopy(run['plan']);run['items'][0]['status']='committed'
+        run['authorization']={'contract':{'plan':original,'plan_revision':run['plan_revision']}}
+        engine.branch=SimpleNamespace(validate_authority=lambda task,run:completion.authorization_run(run))
+        result={'decision':'REQUEST_CHANGES','feedback':'Verify the exact formatting claim',
+                'candidate_id':'claim','manifest_id':'manifest','defects':[dict(defect(),criterion='one:1')]}
+        for index in range(3):
+            item=completion._repair_item(run,'Earlier correction',['one:1'])
+            completion._append_repair(engine,task,item,'operator','confirmed',{},['one:1'])
+            item=run['items'][-1];item['status']='committed'
+        # Resume the retained stop without resetting amendments or allowances.
+        task.update(status='paused',usage={'cost':0,'reviewer':{'tokens':123}})
+        run.update(status='paused',pause_reason='recovery_exhausted')
+        runtime.task=task=json.loads(json.dumps(task));run=task['branch_run']
+        with patch.object(completion.final,'final_check_review',return_value=result):
+            self.assertFalse(completion.finalize(engine,runtime))
+        item=run['items'][-1];self.assertEqual(item['id'],'revision-4')
+        self.assertEqual(item['review_repair']['defects'][0]['expected'],defect()['expected'])
+        self.assertEqual(len(run['amendments']),4)
+        self.assertEqual(run['limits'],original['limits'])
+        self.assertEqual(task['usage']['reviewer']['tokens'],123)
+        run['current_item_id']=item['id'];item['status']='working'
+        finding=item['review_repair']['finding_ids'][0]
+        counterevidence='Decimal formatting preserves exact digits; source and regression match.'
+        def approve(rt,messages,tools,role):
+            self.assertEqual(role,'reviewer')
+            self.assertIn(counterevidence,json.dumps(messages))
+            self.assertIn('disproved',json.dumps(messages))
+            self.assertEqual(run['dispute_ledger']['findings'][finding]['status'],'requested')
+            return {'tool_calls':[{'id':'decision','name':'review_decision','result':{
+                'decision':'APPROVE','candidate_id':'candidate','defects':[],
+                'feedback':'Counterevidence disproves the claim.',
+                'criteria_outcomes':{'exact values':{'passed':True,'evidence':counterevidence}}}}]}
+        engine.request.side_effect=approve
+        decision=branch_review.checkpoint(engine,runtime,{'summary':counterevidence,'repair_dispositions':[
+            {'finding_id':finding,'candidate_id':'claim','disposition':'disproved','evidence':counterevidence}]})
+        self.assertEqual(decision['decision'],'APPROVE')
+        self.assertEqual(run['dispute_ledger']['findings'][finding]['status'],'independently_resolved')
+        self.assertEqual(item['ready_receipt'],'receipt')
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+        item['status']='satisfied_without_change'  # Controller persists the approved no-change receipt.
+        readiness={'id':'final','worker_model':'worker','reviewer_model':'reviewer','integration_blocker':None}
+        with patch.object(completion.final,'final_check_review',return_value={'decision':'APPROVE','readiness':readiness}):
+            run['status']='finalizing'
+            self.assertTrue(completion.finalize(engine,runtime))
+        self.assertEqual(run['status'],'ready_for_merge')
+        self.assertEqual(completion.authorization_run(run)['plan'],original)
+
     def test_approval_confirmation_is_corrected_without_dropping_a_defect_or_rerunning_checks(self):
         task,engine,runtime=self.fixture()
         approval={'decision':'APPROVE','candidate_id':'candidate','feedback':'Exact values are preserved.',

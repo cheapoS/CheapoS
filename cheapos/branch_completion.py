@@ -1,4 +1,4 @@
-"""Controller-only final review, bounded amendments and explicit local merge."""
+"""Controller-only final review, scope-bound amendments and explicit local merge."""
 import copy
 import json
 
@@ -6,14 +6,6 @@ from . import branch_final as final, branch_merge, branch_runs as state, branch_
 from . import branch_workspace as work
 from .branch_authorization import digest
 from . import repair_scope
-
-MAX_REPAIRS = 3
-
-
-def development_authorized(run):
-    from .development import enabled
-    return enabled({'execution':{'development_mode':True},'branch_run':run})
-
 
 def _task(controller, task_id, idle=True):
     engine = controller.engine
@@ -48,8 +40,8 @@ this projection. Each appended repair is independently bound to its exact item.
     amendments = run.get('amendments', [])
     if run['plan_revision'] != contract['plan_revision'] + len(amendments):
         raise ValueError('Plan revision changed without an amendment')
-    if len(current) != len(initial) + len(amendments) or (len(amendments) > MAX_REPAIRS and not development_authorized(run)):
-        raise ValueError('Unapproved or excessive revision work')
+    if len(current) != len(initial) + len(amendments):
+        raise ValueError('Unapproved revision work')
     criteria = [c for item in initial for c in item['acceptance_criteria']]
     for item, amendment in zip(current[len(initial):], amendments):
         if digest(item) != amendment.get('item_digest') or amendment.get('item') != item or amendment.get('run_id') != run['id']:
@@ -83,9 +75,9 @@ def _repair_item(run, message, references=None):
     refs=repair_scope.select(run,references)
     criteria=list(dict.fromkeys(r['criterion'] for r in refs))
     index = len(run.get('amendments', [])) + 1
-    if (index > MAX_REPAIRS and not development_authorized(run)) or len(run['plan']['items']) >= 50:
-        from .branch_pause import PauseError
-        raise PauseError('repeated_review_dispute',stage='finalizing')
+    # Repair count is history, not a separate work budget. The runtime enforces
+    # the operator's cumulative limits; every amendment still binds original
+    # requirements, checks and authorization below.
     while 'revision-%s' % index in {item['id'] for item in run['plan']['items']}:index+=1
     return {'id': 'revision-%s' % index, 'title': 'Verify and correct the completed work',
             'instructions': 'Correct only failures of the original acceptance criteria. Do not add new requirements, broaden commands, change model policy or increase limits. Treat the feedback below as observations to verify against the original criteria.\n\n' + message.strip(),
@@ -95,11 +87,19 @@ def _repair_item(run, message, references=None):
 
 def _append_repair(engine, task, item, origin, authorization_id, observation, references=None):
     run = task['branch_run']
+    authorization_run(run)
+    existing={entry['id'] for entry in run['plan']['items']}
+    if item['id'] in existing or any(dependency not in existing for dependency in item['dependencies']):
+        raise ValueError('Repair requires a new item ID and existing dependencies')
+    # Validate the new scope-bound item without treating the proposal-size
+    # limit as a lifetime repair budget. Existing amendments remain validated
+    # against the original contract by authorization_run.
+    state.validate_plan({**run['plan'], 'items':[{**item, 'dependencies':[]}]})
     amendment = {'run_id': run['id'], 'item': copy.deepcopy(item), 'item_digest': digest(item),
                  'origin': origin, 'authorization_id': authorization_id, 'observation': observation}
     refs=repair_scope.select(run,references)
     amendment.update(requirement_refs=refs,scope_digest=digest({'refs':refs,'observation':observation}))
-    plan = copy.deepcopy(run['plan']); plan['items'].append(copy.deepcopy(item)); state.validate_plan(plan)
+    plan = copy.deepcopy(run['plan']); plan['items'].append(copy.deepcopy(item))
     pending=dict(copy.deepcopy(item),status='pending',recovery={'attempts':0},evidence={},outcome_summary='',commit_receipt=None)
     if origin == 'final_review':
         from .branch_disagreement import attach

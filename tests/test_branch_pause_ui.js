@@ -8,7 +8,7 @@ test('quota, restart, clarification and dispute have distinct actions and eviden
  assert.equal(quota.action,'models');assert.match(quota.headline,/quota/);assert.equal(quota.saved,'The saved task record is retained.');assert.ok(quota.details.includes('Reset time unavailable'));
  const restart=pausePresentation(task('restart','resume'));assert.equal(restart.action,'resume');
  const clarification=pausePresentation(task('essential_clarification','reply',{waiting_for_user:'Which format?'}));assert.equal(clarification.question,'Which format?');assert.equal(clarification.action,'reply');
- assert.equal(pausePresentation(task('repeated_review_dispute','review_dispute')).action,'review_dispute');
+ assert.equal(pausePresentation(task('repeated_review_dispute','review_dispute')).action,'resume');
 });
 test('active or completed work hides stale pauses and legacy has no invented cause',()=>{
  assert.equal(pausePresentation({branch_run:{status:'paused'}}),null);
@@ -28,7 +28,7 @@ test('ordinary saved failures lead with Resume; required decisions remain explic
   assert.match(html,/<details[^>]*>[\s\S]*View technical logs[\s\S]*<\/details>/);
   assert.match(ui.pauseMarkup(t,{status:'pending'}),/class="primary-button"[^>]+disabled/);
  }
- for(const action of ['permission','limits','environment','reply','authorization','reviewer','review_dispute']){
+ for(const action of ['permission','limits','environment','reply','authorization','reviewer']){
   const html=ui.pauseMarkup(task('command_grant',action,{authorization_ref:'auth'}));
   assert.doesNotMatch(html,/data-resume/);
   assert.match(html,/class="primary-button" data-pause-action/);
@@ -48,8 +48,11 @@ test('paused completed items resume without an empty review CTA; ready evidence 
  vm.createContext(context);vm.runInContext(source.slice(source.indexOf(' function render(task)'),source.indexOf(' function renderPlan(task)')),context);
  context.render(t);assert.equal(ui.projectRun(t).canRecheck,true);assert.equal(panel.querySelector('[data-preview]'),null);
  await panel.querySelector('[data-pause-action]').onclick();assert.equal(resumed,1);
+ t.branch_run.pause_detail.cause='repeated_review_dispute';t.branch_run.pause_detail.next_action='review_dispute';
+ context.render(t);assert.doesNotMatch(panel.innerHTML,/Inspect review disagreement|needs a decision/);
+ await panel.querySelector('[data-pause-action]').onclick();assert.equal(resumed,2);
  delete t.branch_run.pause_detail;context.render(t);assert.equal(panel.querySelector('[data-recheck-run]'),null);
- await panel.querySelector('[data-resume]').onclick();assert.equal(resumed,2);
+ await panel.querySelector('[data-resume]').onclick();assert.equal(resumed,3);
  t.branch_run.status='ready_for_merge';t.branch_run.readiness={manifest:{files:[{path:'actual.py'}]}};
  context.render(t);assert.match(panel.innerHTML,/>Review changes<\/button>/);
  await panel.querySelector('[data-preview]').onclick();assert.equal(reviewed,1);

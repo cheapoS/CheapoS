@@ -556,3 +556,17 @@ that provider and continues authorized independent review; ambiguous gateway
 credential failures still require attention. A deterministic six-chunk replay
 covers timeout, upstream refusal, replacement approval and reuse of saved reviews
 without repeating worker edits or checks.
+
+## Implemented: final repairs follow the authorized work budget
+
+Final-review corrections no longer stop after three lifetime amendments. Each
+new correction stays bound to the original requirements, verification commands
+and saved authorization. Initial proposal-size bounds do not cap the accumulated
+repair history. The runtime continues enforcing the operator's work and spending
+limits; this does not renew counters, alter model placement or approve a claim.
+
+The worker verifies a finding, preserves counterevidence when it is disproved,
+and submits it through independent review. Existing disagreement stops use the
+ordinary Resume action instead of sending the operator to Activity to adjudicate
+model claims. Focused in-memory cases cover a fourth repair through independent
+approval, saved history, unchanged authority and proposal bounds.
