@@ -29,5 +29,28 @@ class TestPennyPinner(unittest.TestCase):
         bookmark = self.pinner.get_bookmark(rowid)
         self.assertEqual(bookmark["title"], "Title")
 
+    def test_reader_endpoint(self):
+        try:
+            from .reader import create_app, generate_html
+        except ImportError:
+            self.skipTest("flask not installed")
+        
+        app = create_app(":memory:")
+        rowid = app.pinner.add("https://test.com", "Title", "Content")
+        
+        # Test helper
+        bookmark = app.pinner.get_bookmark(rowid)
+        html = generate_html(bookmark)
+        self.assertIn("background-color: #333", html)
+        
+        # Test flask route integration (can be skipped if flask doesn't exist)
+        try:
+            client = app.test_client()
+            response = client.get(f"/read/{rowid}")
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("background-color: #333", response.data.decode())
+        except ImportError:
+            self.skipTest("flask not available for client test")
+
 if __name__ == '__main__':
     unittest.main()

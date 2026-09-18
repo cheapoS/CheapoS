@@ -1,8 +1,5 @@
-import flask
-from .pinner import PennyPinner
-
-app = flask.Flask(__name__)
-pinner = PennyPinner("pinner.db")
+from .reader import create_app
+app = create_app()
 
 @app.route("/")
 def index():
