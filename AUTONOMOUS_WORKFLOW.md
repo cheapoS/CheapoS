@@ -446,3 +446,37 @@ Small in-memory cases cover more than 1,000 states and file versions, legacy
 state migration, restart, exact evidence retrieval, authority preservation and
 the worker/reviewer request boundary. Existing deterministic recovery cases
 still cover repair through verification and independent approval.
+
+## Implemented: coordinator advice for required new files
+
+Recovery packets distinguish existing file evidence from paths explicitly named
+in the active approved item (or operator instructions for Interactive work).
+The optional coordinator can recommend creating a required new file through
+normal worker tools; it cannot request a context read from a missing file or
+expand execution authority. Workspace path restrictions, read-only requests,
+checks and independent review still apply. Matching saved advice rejected only
+by the old existing-file rule can be revalidated without another model request.
+
+A local coordinator connection failure is shown as unavailable, separately from
+a rejected reply. Worker recovery continues within the saved authority. Local
+assistance remains on demand, with no background inference. Small contract and
+dispatch cases plus the existing unattended recovery workflow verify these
+paths without live model calls or a new heavy test fixture.
+
+## Implemented: keep optional checks from interrupting unattended work
+
+When a worker invents an extra command outside its saved grants and the current
+item has authorized checks available, the controller returns those checks to
+the worker without executing the extra command or opening a permission prompt.
+The worker can add assertions to test files covered by an approved runner and
+submit the item for independent review. Repeated extra-command requests trigger
+the existing worker recovery path; changing the extra arguments does not reset
+that signal. Attempt history survives task reloads.
+
+The rejected command is never reported as passed or silently replaced with a
+different test. Required checks still run before review. Revoked or stale consent
+for a required command still needs operator authority, and an essential check
+that cannot be performed within saved scope can be reported as a specific
+blocker. Explicitly granted extra commands and Interactive checks retain their
+existing behavior. Deterministic dispatch tests cover these distinctions without
+starting commands, models, Git workflows or real-time waits.

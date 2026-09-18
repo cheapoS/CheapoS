@@ -115,6 +115,17 @@ class CoordinatorDispatchTests(LocalCase):
             self.assertFalse(recovery.consult(self.engine,runtime,'Repeated evidence'))
             self.assertEqual(request.call_count,1)
         self.assertEqual(task['coordinator_recovery'][0]['state'],'failed')
+        self.assertEqual(task['coordinator_recovery'][0]['failure_kind'],'unavailable')
+        self.assertIn('Returning to worker recovery',task['coordinator_recovery'][0]['summary'])
+        before = copy.deepcopy(task)
+        with patch.object(self.engine,'request') as request:
+            self.assertTrue(self.engine.recover_worker_stall(runtime,'Repeated evidence'))
+            request.assert_not_called()  # Unavailable assistance is not a retry loop.
+        self.assertEqual(task['status'],'running')
+        self.assertNotIn('coordinator_guidance',task)
+        for key in ('limits','worker_turns','usage','checks','checkpoints','providers'):
+            self.assertEqual(task.get(key),before.get(key))
+        self.assertIn('verify and submit for independent review',task['loop_guidance'])
         task.pop('coordinator_recovery')
         with patch.object(self.engine,'request',return_value={'content':json.dumps(self.answer(action='approve'))}) as request:
             self.assertFalse(recovery.consult(self.engine,runtime,'Repeated evidence'))
@@ -211,6 +222,24 @@ class CoordinatorDispatchTests(LocalCase):
         self.assertIn('current_evidence',recovery.continuation(task))
         episode['state']='failed'
         self.assertIsNone(recovery.reusable_advice(task,episode))
+
+        # A saved rejection of an explicitly requested new file can also be
+        # recovered once without another coordinator call or a user correction.
+        task['requests'] = ['Create examples/new/helper.py with the requested helper.']
+        episode.pop('revalidation',None)
+        episode.update(identity=contract.identity(task),
+                       packet=contract.packet(self.engine,runtime,'Missing accepted file'),
+                       error_code='coordinator_path_reference',
+                       responses=[{'text':json.dumps(self.answer(next_step='Create examples/new/helper.py with the requested helper.')),'truncated':False}])
+        episode['packet'].pop('scope_paths')  # Retained packet from before this patch.
+        before = copy.deepcopy(task)
+        with patch.object(self.engine,'request') as request:
+            recovery.restore(self.engine,runtime)
+            request.assert_not_called()
+        self.assertEqual(episode['state'],'applied')
+        for key in ('limits','worker_turns','usage','request_metrics','patch'):
+            self.assertEqual(task.get(key),before.get(key))
+        self.assertIn('examples/new/helper.py',recovery.continuation(task))
 
     def test_real_worker_loop_uses_guidance_then_normal_edit(self):
         task,runtime=self.prepare()

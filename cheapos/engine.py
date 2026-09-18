@@ -85,7 +85,7 @@ WORKER_TOOLS = READ_TOOLS + [
 BLOCKER_TOOL = tool("report_blocker", "Report an essential unresolved decision after inspecting repository evidence. Already authorized work needs no new permission. Saved edits remain pending.",
                     {"question": TEXT, "inspected_evidence": TEXT, "why_blocked": TEXT}, ["question", "inspected_evidence", "why_blocked"])
 UNATTENDED_TOOLS = [t for t in WORKER_TOOLS if t['function']['name'] != 'run_checks'] + [
-    tool('run_checks', 'Run a planned approved check, or request additional authority for a new exact verification command. Omit command to reuse the selected check.', {'command': TEXT}), BLOCKER_TOOL]
+    tool('run_checks', 'Run a planned approved check. Omit command to reuse the selected check. Extra assertions belong in test files covered by an approved runner. An unapproved extra command returns guidance to existing checks; use report_blocker only if an essential check cannot be performed within saved authority.', {'command': TEXT}), BLOCKER_TOOL]
 REVIEW_TOOLS = READ_TOOLS + [tool("review_decision", "Return the checkpoint decision. Read relevant source before deciding.", {"decision": {"type": "string", "enum": ["APPROVE", "REQUEST_CHANGES", "REQUEST_TESTS", "TAKE_OVER"]}, "feedback": TEXT}, ["decision", "feedback"])]
 WORKER_SYSTEM = """You are the cheapoS worker, coding in an isolated snapshot of the user's personal repository.
 When receiving instructions or guidance, acknowledge the user's direction clearly and concisely alongside your tool calls so the operator is informed of your reasoning and progress.
@@ -3061,7 +3061,58 @@ class Engine:
             raise ProgressPause(result["next_action"])
         return result
 
+    def unattended_check_feedback(self, runtime, command):
+        """Redirect optional command expansion without granting it or pausing work."""
+        task = runtime.task
+        run = task.get('branch_run') or {}
+        if not run.get('authorization_ref') or developing(task):
+            return None
+        item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
+        from .branch_evidence import commands
+        required = commands(item.get('required_checks', []))
+        if not required:
+            return None
+        requested = self.verification_argv(task, command)
+        captured = [scope['command'] for scope in run.get('check_scope', [])]
+        if requested in required or requested in captured:
+            return None  # Normal dispatch revalidates required/revoked consent.
+        with self.lock:
+            selected = self.branch.scopes.approved_command(task, requested)
+            if selected != requested or self.branch.scopes.authorize(task, selected):
+                return None
+            available = []
+            for argv in required:
+                try:
+                    argv = self.verification_argv(task, shlex.join(argv))
+                except CheckCommandError:
+                    continue
+                if self.branch.scopes.authorize(task, argv):
+                    available.append(argv)
+        if not available:
+            return None
+        scope = [*edit_history.scope(task), item.get('revision'), run.get('authorization_ref'),
+                 (task.get('providers', {}).get('worker') or {}).get('model'), available]
+        previous = task.get('unattended_check_redirect') or {}
+        attempts = previous.get('attempts', 0) + 1 if previous.get('scope') == scope else 1
+        task['unattended_check_redirect'] = {'scope': scope, 'attempts': attempts}
+        result = {'code': 'unapproved_extra_check', 'executed': False,
+                  'requested_command': requested, 'approved_commands': available,
+                  'guidance': 'This extra command was not executed. Continue with the listed approved checks, '
+                              'or submit checkpoint when the item is complete; the controller verifies every required check before independent review. '
+                              'Put extra assertions in test files covered by an approved runner. Do not claim the rejected command passed. '
+                              'If an essential requirement cannot be verified within saved authority, use report_blocker with the missing check and evidence.'}
+        self.event(task, 'check_command', 'Continuing with approved verification', result)
+        if attempts >= 2:
+            result['handoff_queued'] = self.recover_worker_stall(runtime,
+                'The worker repeatedly requested extra commands without authority. Use the current item approved checks '
+                'and independent checkpoint review; preserve requirements, failed checks and command permissions.')
+        return result
+
     def worker_checks(self, runtime, args, last_call=True):
+        if (runtime.task.get('branch_run') or {}).get('authorization_ref'):
+            feedback = self.unattended_check_feedback(runtime, args.get('command'))
+            if feedback is not None:
+                return feedback
         result = self.checks(runtime, args.get('command'))
         run = runtime.task.get('branch_run') or {}
         item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
