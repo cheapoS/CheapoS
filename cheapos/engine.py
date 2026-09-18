@@ -1882,6 +1882,7 @@ class Engine:
     def fit_worker_context(self, runtime, tools, rejected=False):
         from .context_budget import decision
         from .context_compaction import compact
+        from .failure_context import project as project_failures
         task = runtime.task
         config = self._resolve_provider_config(task, task['active_role'])
         model = None
@@ -1891,7 +1892,8 @@ class Engine:
             catalog = gateway.catalog(fresh=False)
             model = next((m for m in catalog.get('models', []) if m.get('id') == config.get('model')
                           and not m.get('metadata_evidence', {}).get('stale')), None)
-        info = decision(task, task['messages'], tools, config, model)
+        projected, _ = project_failures(task, task['messages'])
+        info = decision(task, projected, tools, config, model)
         previous_policy = task.get('context_budget', {})
         task['context_budget'] = info
         if previous_policy.get('capacity_source') != info['capacity_source'] or previous_policy.get('capacity_tokens') != info['capacity_tokens']:
@@ -2378,6 +2380,9 @@ class Engine:
         if len(task['request_metrics'])>2000:
             task['request_metrics'].pop(0);task['request_metrics_truncated']=True
         started=time.monotonic()
+        if role == 'worker' and not purpose:
+            from .failure_context import project as project_failures
+            messages, record['failure_history'] = project_failures(task, messages)
         from .context_budget import payload_bytes
         record['context_payload_bytes'] = payload_bytes(messages, tools)
         record['context_base_url'] = config.get('base_url')

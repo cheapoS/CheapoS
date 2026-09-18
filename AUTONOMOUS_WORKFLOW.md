@@ -397,3 +397,25 @@ pinned choices and pending permission gates. See the
 [read-only limits and recovery audit brief](docs/development/limits-recovery-audit.md)
 for the remaining cross-phase audit; these patches are not a claim that every
 hidden limit or stalled operation has been addressed.
+
+## Implemented: retain progress and shorten repeated failure context
+
+Progress tracking no longer stops accepting new patch/check/review states or
+inspected file versions after 1,000 entries. Its exact saved index continues to
+recognize old states after restart, so cycling back to earlier work does not
+earn progress. Documentation and comment edits remain valid changes; this is
+not a global semantic filter or a new work allowance.
+
+Worker requests fold adjacent duplicate rejected-edit exchanges into the first
+and latest exchange plus a summary with retrievable task-local references.
+The saved conversation, attempts and usage remain intact. Every distinct result,
+file version, assistant finding, intervening instruction and incomplete tool
+exchange stays in the request. Only known syntax rollbacks and unexecuted invalid
+ranges qualify; ambiguous tool errors and successful edits do not. Reviewer
+evidence is unchanged. Request metrics record omitted exchanges and payload
+bytes before/after this projection; token reservations use the resulting request.
+
+Small in-memory cases cover more than 1,000 states and file versions, legacy
+state migration, restart, exact evidence retrieval, authority preservation and
+the worker/reviewer request boundary. Existing deterministic recovery cases
+still cover repair through verification and independent approval.
