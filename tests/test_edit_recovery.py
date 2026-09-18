@@ -12,6 +12,26 @@ from cheapos.edit_recovery import rejected, check_feedback
 
 
 class EditRecoveryTests(unittest.TestCase):
+    def test_mutation_argument_shapes_are_rejected_before_format_recovery_can_reset(self):
+        from cheapos.engine import ToolArgumentsError
+        for name, args in [
+                ('write_file', {}), ('write_file', {'path': 'a.py'}),
+                ('write_file', {'path': ' ', 'content': ''}),
+                ('write_file', {'path': None, 'content': ''}),
+                ('write_file', {'path': 'a.py', 'content': []}),
+                ('replace_text', {'path': 'a.py', 'old_text': 'x'}),
+                ('replace_lines', {'path': 'a.py', 'start_line': True, 'end_line': 1, 'new_text': ''}),
+                ('append_text', {'path': 'a.py'}), ('delete_file', {}),
+                ('undo_edit', {'path': 'a.py'}), ('apply_merge_version', {'path': 'a.py'})]:
+            with self.subTest(name=name, args=args), self.assertRaises(ToolArgumentsError) as caught:
+                Engine.parse_call({'id': 'bad', 'function': {'name': name, 'arguments': json.dumps(args)}})
+            self.assertEqual(caught.exception.code, 'invalid_tool_arguments')
+        for name, args in [('write_file', {'path': 'a.py', 'content': ''}),
+                           ('replace_text', {'path': 'a.py', 'old_text': 'x', 'new_text': ''}),
+                           ('run_checks', {}), ('list_files', {})]:
+            self.assertEqual(Engine.parse_call({'id': 'good', 'function': {
+                'name': name, 'arguments': json.dumps(args)}}), (name, args))
+
     def test_fallback_source_text_preserves_whitespace_and_string_types(self):
         for field in ('content', 'text', 'old_text', 'new_text'):
             for raw, expected in [('    @patch("receipt.get_commits")\n', '    @patch("receipt.get_commits")\n'),

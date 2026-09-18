@@ -395,6 +395,23 @@ handoff when help is unavailable or already exhausted. Pinned workers keep their
 selection and can use exact-text edits to escape a failed line-edit strategy.
 Whitespace/comment-only Python changes do not renew the same repair attempt.
 
+Missing or ambiguous exact-text replacements also retain structured rejection
+evidence across restart. Replaying an identical replacement on the same file
+version returns current numbered lines without executing the failed edit again.
+Repeated mismatches change strategy through the same coordinator/handoff path
+and supply current evidence for version-bound line edits. Exact-text and line
+editing remain available. An accepted edit clears that file's mismatch
+state; verification and independent review still determine completion.
+
+File mutations validate their declared required fields before clearing argument
+recovery. Valid JSON with a missing/empty path or missing/wrong-type content is
+still a format failure, not a successful correction. These failures use the
+existing focused repair and authorized handoff path; empty file content remains
+valid. Rejected historical calls become controller diagnostic notes with exact
+task-local evidence references, rather than synthetic empty assistant calls.
+Successful sibling calls and uncertain interrupted outcomes retain their evidence.
+Legacy sanitized calls are also removed from tool-call examples on continuation.
+
 Uncapped and measurement runs still inspect progress at checkpoint intervals;
 stalls change strategy rather than enforcing a work ceiling. The legacy two-model
 handoff ceiling no longer stops uncapped Interactive work. Spending, command
@@ -421,7 +438,7 @@ and latest exchange plus a summary with retrievable task-local references.
 The saved conversation, attempts and usage remain intact. Every distinct result,
 file version, assistant finding, intervening instruction and incomplete tool
 exchange stays in the request. Only known syntax rollbacks and unexecuted invalid
-ranges qualify; ambiguous tool errors and successful edits do not. Reviewer
+ranges or text matches qualify; ambiguous tool errors and successful edits do not. Reviewer
 evidence is unchanged. Request metrics record omitted exchanges and payload
 bytes before/after this projection; token reservations use the resulting request.
 
@@ -429,3 +446,75 @@ Small in-memory cases cover more than 1,000 states and file versions, legacy
 state migration, restart, exact evidence retrieval, authority preservation and
 the worker/reviewer request boundary. Existing deterministic recovery cases
 still cover repair through verification and independent approval.
+
+## Implemented: coordinator advice for required new files
+
+Recovery packets distinguish existing file evidence from paths explicitly named
+in the active approved item (or operator instructions for Interactive work).
+The optional coordinator can recommend creating a required new file through
+normal worker tools; it cannot request a context read from a missing file or
+expand execution authority. Workspace path restrictions, read-only requests,
+checks and independent review still apply. Matching saved advice rejected only
+by the old existing-file rule can be revalidated without another model request.
+
+A local coordinator connection failure is shown as unavailable, separately from
+a rejected reply. Worker recovery continues within the saved authority. Local
+assistance remains on demand, with no background inference. Small contract and
+dispatch cases plus the existing unattended recovery workflow verify these
+paths without live model calls or a new heavy test fixture.
+
+## Implemented: keep optional checks from interrupting unattended work
+
+When a worker invents an extra command outside its saved grants and the current
+item has authorized checks available, the controller returns those checks to
+the worker without executing the extra command or opening a permission prompt.
+The worker can add assertions to test files covered by an approved runner and
+submit the item for independent review. Repeated extra-command requests trigger
+the existing worker recovery path; changing the extra arguments does not reset
+that signal. Attempt history survives task reloads.
+
+The rejected command is never reported as passed or silently replaced with a
+different test. Required checks still run before review. Revoked or stale consent
+for a required command still needs operator authority, and an essential check
+that cannot be performed within saved scope can be reported as a specific
+blocker. Explicitly granted extra commands and Interactive checks retain their
+existing behavior. Deterministic dispatch tests cover these distinctions without
+starting commands, models, Git workflows or real-time waits.
+
+## Implemented: recover from unmet edit prerequisites
+
+An edit blocked by a missing defect reproduction now returns the saved finding,
+the current item's planned checks, and current lines from an existing test file
+when its selector can be resolved. The worker can add a discoverable regression
+to that file and run the normal check tool. Reviewer snippets remain evidence,
+not command consent. Passing or stale checks do not unlock implementation edits;
+a disproved finding still needs counterevidence and independent review.
+
+Repeated blocked implementation edits, attempts to create an existing file, and
+oversized edits trigger the existing coordinator/authorized worker recovery path.
+Attempts persist across task reloads and are scoped to the work item, disputed
+candidate and worker. Trying another implementation path cannot reset a missing
+reproduction. Existing files, edit bounds, command grants and review findings
+remain intact. Small file/in-memory cases cover reproduction, retained tests,
+repair and independent approval without operator rescue or live inference.
+Oversized-edit feedback includes measured old/new line counts, UTF-8 byte counts
+and the particular limits exceeded, so workers can choose coherent smaller edits
+without guessing which bound rejected a payload. These diagnostics contain sizes,
+not an extra copy of the rejected source text.
+
+## Implemented: coherent edits without artificial chunk limits
+
+Accept a complete valid replacement within file resource ceilings. Do not reject
+it because it exceeds a model-quality heuristic such as 80 lines or 3,000 bytes.
+All normal edit tools stay available. Smaller edits are temporary recovery advice
+after actual malformed arguments or truncated output, rather than a permanent
+mode inherited by subsequent workers. Successful edits end malformed-argument
+guidance; complete responses end truncation guidance. Worker, connection, item,
+baseline and user-request changes expire stale guidance while preserving attempt
+history and usage. Resume alone does not erase an unresolved attempt.
+
+The existing 256,000-byte new-file and 2,000,000-byte edited-file resource ceilings
+remain. Version checks, workspace boundaries, existing-file protection, syntax
+rollback, defect reproduction, command authority, verification and independent
+review are unchanged. Small deterministic cases demonstrate a complete rewrite
+through verification and independent approval without artificial chunk retries.

@@ -9,6 +9,7 @@ from . import work_policy
 from .measurement import enabled as measuring
 from .providers import BudgetError, ProviderError
 from .routing import coordinator_assistance_config, RoutingPause
+from .workspace import Workspace
 
 
 def reassessment_config(task):
@@ -102,7 +103,7 @@ def reusable_advice(task, episode):
     response = (episode.get('responses') or [{}])[-1]
     if not response.get('text') or response.get('truncated'): return None
     try:
-        return contract.validate(response['text'], episode['packet'])
+        return contract.validate(response['text'], episode['packet'], Workspace(task['workspace']))
     except ValueError:
         return None
 
@@ -141,7 +142,7 @@ def _advice_request(engine, runtime, episode, config, repair=False):
     if repair: episode['format_repair']['state'] = 'responded'
     engine.store.save(task)
     if message.get('tool_calls'): raise ValueError('Coordinator returned unapproved tool calls')
-    return contract.validate(content, episode['packet'])
+    return contract.validate(content, episode['packet'], Workspace(task['workspace']))
 
 
 def consult(engine, runtime, reason):
@@ -218,9 +219,12 @@ def consult(engine, runtime, reason):
     except (ProviderError, RoutingPause, ValueError, OSError, TimeoutError) as error:
         diagnostic = str(error)[:500]
         code = getattr(error, 'code', None) or 'coordinator_advice_rejected'
-        summary = ('The local coordinator reply was not valid JSON. No guidance was sent to the worker.'
+        unavailable = isinstance(error, (ProviderError, RoutingPause, OSError, TimeoutError))
+        summary = ('The local coordinator was unavailable. Returning to worker recovery.' if unavailable else
+                   'The local coordinator reply was not valid JSON. No guidance was sent to the worker.'
                    if isinstance(error, contract.FormatError) else 'Coordinator reply could not be used: ' + diagnostic)
-        episode.update(state='failed', summary=summary, diagnostic=diagnostic, error_code=code)
+        episode.update(state='failed', summary=summary, diagnostic=diagnostic, error_code=code,
+                       failure_kind='unavailable' if unavailable else 'advice')
         return False
     finally:
         new_ids = [r['id'] for r in task.get('request_metrics', []) if r['id'] not in prior_requests and r.get('purpose') == 'coordinator_recovery']
@@ -229,6 +233,7 @@ def consult(engine, runtime, reason):
         engine.event(task, 'coordinator_recovery', 'Coordinator guidance' if episode['state'] == 'applied' else 'Coordinator returned to idle',
                      {'episode_id': episode['id'], 'state': episode['state'], 'summary': episode.get('summary', ''),
                       'diagnostic':episode.get('diagnostic'), 'error_code':episode.get('error_code'),
+                      'failure_kind':episode.get('failure_kind'),
                       'response':(episode.get('responses') or [None])[-1],
                       'seconds': episode['seconds']})
         engine.store.save(task)
@@ -241,9 +246,8 @@ def _apply(engine, runtime, episode):
         episode.update(state='skipped', summary='Saved context changed or work stopped; late coordinator advice was not applied.')
         engine.store.save(task)
         return False
-    advice = contract.validate(episode['advice'], episode['packet'])
+    advice = contract.validate(episode['advice'], episode['packet'], Workspace(task['workspace']))
     if advice['outcome'] == 'need_context':
-        from .workspace import Workspace
         Workspace(task['workspace']).path(advice['path'])
     outcome = advice['outcome']
     if outcome in {'unresolved', 'suggest_handoff'}:

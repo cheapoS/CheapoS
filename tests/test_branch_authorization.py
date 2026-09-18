@@ -315,6 +315,87 @@ class CheckScopeTests(unittest.TestCase):
         workspace.assert_not_called()
         self.assertEqual(self.task['status'], 'waiting_approval')
         self.assertEqual(self.task['pending_approval']['command'], variant)
+
+    def inline_check_engine(self):
+        engine, runtime, _ = self.check_engine()
+        command = [sys.executable, '-c', "content=open('README.md').read(); assert 'analyze' in content"]
+        scope = self.scopes.prepare(self.task, command)
+        self.scopes.exact_grants.clear()
+        self.scopes.consent(self.task, scope, exact=True)
+        self.task['check_command'] = command
+        self.task['branch_run'].update(check_scope=[scope], current_item_id='docs',
+            items=[{'id':'docs', 'revision':1, 'required_checks':[shlex.join(command)]}])
+        self.task.update(providers={'worker':{'model':'worker-a'}}, usage={'worker':{'tokens':123}},
+                         checkpoints=[], worker_turns=12)
+        return engine, runtime, command, command[:-1] + [command[-1] + "; assert 'Testing' in content"]
+
+    def test_extra_inline_check_redirects_to_approved_check_and_review_without_permission(self):
+        engine, runtime, command, extra = self.inline_check_engine()
+        before = copy.deepcopy(self.task)
+        grants = copy.deepcopy(self.scopes.exact_grants)
+        with patch('cheapos.engine.reconciliation.ensure_resolved'), \
+             patch('cheapos.engine.environment.inspect', return_value={'status':'ready'}), \
+             patch('cheapos.engine.evidence_identity', return_value='same-inputs'), \
+             patch('cheapos.verification.evidence_identity', return_value='same-inputs'), \
+             patch('cheapos.engine.Workspace') as workspace:
+            result = engine.worker_checks(runtime, {'command':shlex.join(extra)})
+            self.assertEqual(result['code'], 'unapproved_extra_check')
+            self.assertFalse(result['executed'])
+            self.assertNotIn('passed', result)
+            self.assertEqual(result['requested_command'], extra)
+            self.assertEqual(result['approved_commands'], [command])
+            workspace.assert_not_called()
+            self.assertEqual(self.task['status'], 'running')
+            for key in ('branch_run','check_command','checks','usage','limits','worker_turns','patch','checkpoints'):
+                self.assertEqual(self.task[key], before[key], key)
+            workspace.return_value.patch.return_value = self.task['patch']
+            workspace.return_value.run_checks.side_effect = lambda argv, *a, **kw: {
+                'command':list(argv), 'passed':True, 'exit_code':0, 'output':'OK'}
+            self.assertTrue(engine.worker_checks(runtime, {'command':shlex.join(command)})['passed'])
+            self.assertEqual(engine.worker_checks(runtime, {'command':shlex.join(command)}), {'decision':'APPROVE'})
+            workspace.return_value.run_checks.assert_called_once()
+            self.assertEqual(workspace.return_value.run_checks.call_args.args[0], command)
+        engine.checkpoint_feedback.assert_called_once()
+        runtime.approval.wait.assert_not_called()
+        self.assertNotIn('pending_approval', self.task)
+        self.assertEqual(self.scopes.exact_grants, grants)
+        self.assertEqual([c['command'] for c in self.task['checks']], [command])
+
+    def test_repeated_extra_commands_change_strategy_across_saved_task_reload(self):
+        engine, runtime, command, extra = self.inline_check_engine()
+        engine.checks = Mock(side_effect=AssertionError('No extra command may execute'))
+        engine.recover_worker_stall = Mock(return_value=True)
+        engine.worker_checks(runtime, {'command':shlex.join(extra)})
+        runtime.task = json.loads(json.dumps(runtime.task))
+        extra[-1] += "; print('OK')"  # Changing optional arguments cannot reset recovery.
+        result = engine.worker_checks(runtime, {'command':shlex.join(extra)})
+        self.assertTrue(result['handoff_queued'])
+        engine.recover_worker_stall.assert_called_once()
+        engine.checks.assert_not_called()
+        self.assertEqual(runtime.task['unattended_check_redirect']['attempts'], 2)
+        self.assertEqual(runtime.task['status'], 'running')
+        self.assertEqual(runtime.task['worker_turns'], 12)
+        self.assertEqual(runtime.task['usage'], {'worker':{'tokens':123}})
+        self.assertNotIn('pending_approval', runtime.task)
+
+    def test_required_revoked_check_keeps_permission_gate(self):
+        engine, runtime, command, _ = self.inline_check_engine()
+        self.scopes.exact_grants.clear()
+        with patch('cheapos.engine.reconciliation.ensure_resolved'), \
+             patch('cheapos.engine.environment.inspect', return_value={'status':'ready'}), \
+             patch('cheapos.engine.Workspace') as workspace:
+            with self.assertRaisesRegex(AssertionError, 'Operator permission requested'):
+                engine.worker_checks(runtime, {'command':shlex.join(command)})
+        workspace.assert_not_called()
+        self.assertEqual(self.task['pending_approval']['command'], command)
+        self.assertNotIn('unattended_check_redirect', self.task)
+
+    def test_extra_command_with_explicit_consent_is_not_redirected(self):
+        engine, runtime, _, extra = self.inline_check_engine()
+        self.scopes.consent(self.task, self.scopes.prepare(self.task, extra), exact=True)
+        self.assertIsNone(engine.unattended_check_feedback(runtime, shlex.join(extra)))
+        self.assertNotIn('unattended_check_redirect', self.task)
+
     def test_saved_branch_reference_does_not_grant_new_check_consent(self):
         verify_argv = [sys.executable, 'verify.py']
         scope = self.scopes.prepare(self.task, verify_argv)

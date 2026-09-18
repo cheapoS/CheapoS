@@ -13,7 +13,8 @@ from test_engine import LocalCase, call, wait_for
 class ChatTests(LocalCase):
     def chat(self, prompt='Explain clamp.'):
         source = self.fixture()['source']
-        self.engine.configure({role: {'base_url':'http://127.0.0.1:11434/v1','model':'fixture','input_rate':0,'output_rate':0} for role in ['worker','reviewer']})
+        self.engine.save_preferences({'execution': {'mode': 'manual'}})
+        self.engine.configure({role: {'base_url':'http://127.0.0.1:11434/v1','model':'fixture-' + role,'input_rate':0,'output_rate':0} for role in ['worker','reviewer']})
         return self.engine.create({'repository':source, 'prompt':prompt, 'conversational':True})
 
     def provider(self, responses):
@@ -167,7 +168,9 @@ class ChatTests(LocalCase):
         factory.assert_not_called()
 
     def test_followup_gets_own_worker_turns_but_resume_and_restart_do_not_reset_them(self):
-        task=self.chat();task['limits']['worker_turns']=1;self.engine.store.save(task)
+        task=self.chat();task['limits']['worker_turns']=1
+        task['limits'].pop('work_policy_version', None)  # Exercise the saved legacy allowance.
+        self.engine.store.save(task)
         self.provider([call('read_file',{'path':'math_utils.py'})])
         self.engine.start(task['id']);first=self.finish(task)
         self.assertEqual(first['error_code'],'worker_turn_limit')
@@ -200,6 +203,7 @@ class ChatTests(LocalCase):
 
     def test_followup_does_not_reset_reviewer_token_budget(self):
         task=self.chat();task['usage']['reviewer']['tokens']=task['limits']['reviewer_tokens']+1
+        task['limits'].pop('work_policy_version', None)  # Exercise the saved legacy allowance.
         self.engine.store.save(task);factory=Mock();self.engine.provider_factory=factory
         self.engine.start(task['id'],{'message':'A new request.'});result=self.finish(task)
         self.assertEqual(result['status'],'budget_paused');factory.assert_not_called()

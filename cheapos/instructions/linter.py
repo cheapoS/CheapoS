@@ -146,7 +146,7 @@ def probe_context_matrix(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[
     modes = ["unattended", "interactive", "planning", "worker", "review"]
 
     flags = [
-        ("output_recovery", [False, True]),
+        ("output_retry", [False, True]),
         ("compact_edits", [False, True]),
         ("action_pending", [False, True]),
         ("finish_review", [False, True]),
@@ -165,7 +165,7 @@ def probe_context_matrix(catalog: InstructionCatalog = DEFAULT_CATALOG) -> Dict[
             for out_rec, comp_ed, act_pend, fin_rev, full_st, has_repair, has_disp in flag_combinations:
                 tested += 1
                 task = {
-                    "output_recovery": out_rec,
+                    "output_retry": out_rec,
                     "compact_edits": comp_ed,
                     "action_pending": act_pend,
                     "finish_review": fin_rev,

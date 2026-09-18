@@ -1,5 +1,5 @@
 from cheapos.routing import PROBE_MARKER
-"""Small edits stay bounded, versioned, and recoverable across free workers."""
+"""Coherent edits stay versioned; smaller-edit guidance is temporary recovery."""
 import copy
 import hashlib
 import json
@@ -49,8 +49,8 @@ class LineEditTests(LocalCase):
         ws = self.workspace(b'line\n' * 100)
         before = ws.path('lines.txt').read_bytes()
         digest = ws.read_file('lines.txt')['hash']
-        for start, end, new in [(1, 81, ''), (1, 1, 'x' * (MAX_EDIT_BYTES + 1)),
-                                (1, 1, '\u00e9' * 1501), (1, 1, 'x\n' * 81),
+        for start, end, new in [(1, 1, 'x' * (MAX_EDIT_BYTES + 1)),
+                                (1, 1, '\u00e9' * (MAX_EDIT_BYTES // 2 + 1)),
                                 (0, 1, 'x'), (True, 1, 'x'), (2, 0, 'x'),
                                 (1, 101, 'x'), (102, 101, 'x'), (1, 1, '\x00')]:
             with self.subTest(start=start, end=end, length=len(new)), self.assertRaises(ValueError):
@@ -113,7 +113,7 @@ class CompactRecoveryTests(LocalCase):
                                           'new_text': content})
         return response
 
-    def test_malformed_edit_then_success_then_handoff_retains_compact_context_through_review(self):
+    def test_malformed_edit_then_success_then_handoff_clears_guidance_and_keeps_evidence(self):
         task = self.chat('remote')
         task.update(check_command=[sys.executable, '-m', 'unittest', 'discover', '-v'], auto_approve_checks=True)
         self.engine.store.save(task)
@@ -128,41 +128,43 @@ class CompactRecoveryTests(LocalCase):
         ])
         self.engine.start(task['id']); result = self.finish(task)
         self.assertEqual(result['status'], 'approved', result['error'])
-        self.assertTrue(result['compact_edits'])
+        self.assertFalse(result.get('compact_edits'))
         self.assertEqual([r['config']['model'] for r in requests], ['a', 'a', 'a', 'a', 'b', 'b', 'c'])
         for request in requests[2:-1]:
             names = {t['function']['name'] for t in request['tools']}
-            self.assertIn('replace_lines', names); self.assertNotIn('replace_text', names)
+            self.assertIn('replace_lines', names); self.assertIn('replace_text', names)
             self.assertIn('read_file', names)
-            self.assertEqual(request['config']['_recovery_reasoning'], {'enabled': False})
+            if request is requests[2]:
+                self.assertEqual(request['config']['_recovery_reasoning'], {'enabled': False})
+            else:
+                self.assertNotIn('_recovery_reasoning', request['config'])
             self.assertNotIn('MALFORMED_SENTINEL', json.dumps(request['messages']))
             self.assertEqual(request['maximum'], task['limits']['output_tokens'])
         original_read = next(m for m in requests[1]['messages'] if m.get('role') == 'tool')
         self.assertIn(original_read, requests[4]['messages'])
         self.assertTrue(any(m.get('role') == 'assistant' and any(c.get('function', {}).get('name') == 'replace_lines' for c in m.get('tool_calls', [])) for m in requests[4]['messages']))
-        after_handoff = self.latest_snapshot(requests[4]['messages'])
-        self.assertIn('1: def clamp(value, lower, upper):  # bounds', after_handoff['current_files'][0]['content'])
+        self.assertIn('1: def clamp(value, lower, upper):  # bounds', json.dumps(requests[4]['messages']))
         self.assertNotIn('replace_lines', {t['function']['name'] for t in requests[-1]['tools']})
         self.assertEqual(result['limits'], task['limits'])
         self.assertEqual(len(result['checks']), 1)
         self.assertFalse(result.get('commits'))
         self.assertEqual((Path(task['source']) / 'math_utils.py').read_text(), 'def clamp(value, lower, upper):\n    return min(value, upper)\n')
 
-    def test_large_valid_edits_are_rejected_before_writing(self):
+    def test_resource_ceilings_reject_edits_before_writing(self):
         task = self.chat('remote')
         before = (Path(task['workspace']) / 'math_utils.py').read_bytes()
-        for name, args in [('replace_text', {'path': 'math_utils.py', 'old_text': before.decode(), 'new_text': 'x' * 10000}),
+        for name, args in [('replace_text', {'path': 'math_utils.py', 'old_text': before.decode(), 'new_text': 'x' * (MAX_FILE_BYTES + 1)}),
                            ('write_file', {'path': 'large.py', 'content': 'x' * (MAX_CREATE_BYTES + 1)})]:
             with self.subTest(name=name), self.assertRaises(ValueError):
                 self.engine.file_tool(task, name, args)
-        self.assertTrue(task['compact_edits'])
+        self.assertFalse(task.get('compact_edits'))
         self.assertEqual((Path(task['workspace']) / 'math_utils.py').read_bytes(), before)
         self.assertFalse((Path(task['workspace']) / 'large.py').exists())
 
     def test_complete_new_file_over_chunk_size_is_saved_once(self):
         task=self.chat('remote');task['compact_edits']=True
-        content=''.join(f'# Item {i}: a complete generated line\n' for i in range(117))
-        self.assertGreater(len(content.encode()),MAX_EDIT_BYTES)
+        content=''.join(f'# Item {i}: a complete generated line\n' for i in range(850))
+        self.assertGreater(len(content.encode()),24000)
         requests=self.responses([call('write_file',{'path':'report.py','content':content}),
                                  call('ask_user',{'question':'Ready for the next step?'})])
         self.engine.store.save(task);self.engine.start(task['id']);result=self.finish(task)
@@ -183,6 +185,7 @@ class CompactRecoveryTests(LocalCase):
         self.responses([{'content': 'Ready.'}]); self.engine.start(task['id']); task = self.finish(task)
         self.engine.file_tool(task, 'read_file', {'path': 'math_utils.py'})
         self.engine.event(task, 'tool_error', 'Bad edit', {'code': 'invalid_tool_arguments', 'tool': 'replace_text'})
+        self.engine.prepare_compact_edits(task)
         task.update(status='paused', error_code='routing_unavailable', error='Two handoffs tried')
         self.engine.store.save(task)
         requests = self.responses([call('ask_user', {'question': 'Which change next?'})])
@@ -210,10 +213,14 @@ class CompactRecoveryTests(LocalCase):
 
     def test_compact_malformed_calls_remain_bounded_by_worker_limit(self):
         task = self.chat('remote'); task['limits']['worker_turns'] = 1
+        # This saved legacy allowance is not the new nullable work_turns policy.
+        task['limits'].pop('work_policy_version', None)
         self.engine.store.save(task)
         requests = self.responses([malformed('replace_text')])
         self.engine.start(task['id']); result = self.finish(task)
         self.assertEqual(result['error_code'], 'worker_turn_limit')
+        self.assertEqual(result['limit_hit']['key'], 'worker_turns')
+        self.assertEqual(result['limit_hit']['allowed'], 1)
         self.assertEqual(len(requests), 1)
         self.assertFalse(result['changes'])
 

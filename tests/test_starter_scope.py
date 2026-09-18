@@ -50,6 +50,12 @@ class StarterScopeTests(LocalCase):
         for mode in ('manual', 'local', 'remote', 'delegate'):
             with self.subTest(mode=mode):
                 prompt = work_policy.READ_ONLY_STARTERS[0]
+                if mode != 'manual':
+                    # Previous subcases deliberately pinned local fixtures.
+                    settings = self.engine.settings_store
+                    settings.save({'roles.worker': {'strategy': 'automatic'},
+                                   'roles.reviewer': {'strategy': 'automatic'}},
+                                  expected_revision=settings.view()['revision'], operation_id='starter-' + mode)
                 task = self.chat(prompt) if mode == 'manual' else routing_fixture.RoutingTests.chat(self, mode, prompt)
                 original = (Path(task['workspace']) / 'math_utils.py').read_text()
                 task['check_command'] = ['fixture-python-does-not-exist', '-m', 'unittest']

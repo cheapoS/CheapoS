@@ -190,7 +190,7 @@ def triggers_for_task(task: dict) -> List[str]:
     triggers: List[str] = []
     if not isinstance(task, dict):
         return triggers
-    if _is_truthy(task.get("output_recovery")):
+    if _is_truthy(task.get("output_retry")):
         triggers.append("output_cap")
     if _is_truthy(task.get("compact_edits")):
         triggers.append("compact_edits")

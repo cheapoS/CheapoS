@@ -80,7 +80,9 @@ class RecoveryExecutionTests(unittest.TestCase):
      # crossed the old routing handoff cap; it must still reach review/commit.
      next(iter(self.engine.runtimes.values())).handoffs=3
      packet=json.loads(messages[1]['content']);self.assertTrue(packet['instruction_sources']['accepted_item']['acceptance_criteria'])
-     return {'content':json.dumps({'outcome':'continue','action':'edit','next_step':'Add a focused regression for the saved work.py value.','expected_result':'A test demonstrates the accepted item behavior.','evidence':['e1']})},{'prompt_tokens':10,'completion_tokens':10,'cost':0}
+     self.assertNotIn('test_work.py',packet['permitted_paths'])
+     self.assertIn('test_work.py',packet['scope_paths'])
+     return {'content':json.dumps({'outcome':'continue','action':'edit','next_step':'Create test_work.py to verify the saved work.py value.','expected_result':'A test demonstrates the accepted item behavior.','evidence':['e1']})},{'prompt_tokens':10,'completion_tokens':10,'cost':0}
     if 'routing_ready' in names:return call('routing_ready', {'marker': PROBE_MARKER}),{'prompt_tokens':2,'completion_tokens':2,'cost':0}
     if 'final_review_decision' in names:
      p=json.loads(messages[1]['content']);result={k:p[k] for k in ('manifest_id','chunk_ids','criteria_ids')};result.update(decision='APPROVE',feedback='Actual tests and complete file evidence satisfy the criteria.');return call('final_review_decision',result),{'prompt_tokens':10,'completion_tokens':10,'cost':0}
@@ -101,6 +103,7 @@ class RecoveryExecutionTests(unittest.TestCase):
     return result,{'prompt_tokens':10,'completion_tokens':10,'cost':0}
    return SimpleNamespace(complete=complete)
   self.engine.provider_factory=factory
+  self.values['plan']['items'][0]['instructions']='Implement work.py and create test_work.py to verify the requested value.'
   self.values['plan']['measurement']=True
   proposal=self.engine.branch.prepare(self.values);task=self.engine.branch.authorize(proposal['task_id'],{'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True});self.launch(task['id'])
   rt=self.engine.runtimes[task['id']];rt.thread.join(60);self.assertFalse(rt.thread.is_alive())

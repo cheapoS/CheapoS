@@ -4,6 +4,7 @@ import hashlib
 import json
 import stat
 import uuid
+from .workspace import FileTextMatchError
 
 KEEP_EDITS = 16
 TEXT_EDITS = frozenset({'write_file', 'replace_text', 'replace_lines', 'append_text'})
@@ -94,11 +95,19 @@ def apply(task, workspace, name, args, operation):
     """Capture only completed text edits; receipts persist with the tool event."""
     path = workspace.path(args['path']).relative_to(workspace.root).as_posix()
     before = snapshot(workspace, path)
-    from .edit_recovery import repeated_syntax_edit, syntax_records, syntax_rejection
+    from .edit_recovery import repeated_syntax_edit, syntax_records, syntax_rejection, syntax_fingerprint, text_rejection
     if repeated_syntax_edit(task, name, args, path, before):
         return syntax_rejection(task, workspace, name, args, path, before,
                                 syntax_records(task)[path]['warning'], replayed=True)
-    result = operation(**args)
+    if name == 'replace_text' and before is not None:
+        prior = syntax_records(task, 'text_edit_recovery').get(path, {})
+        if (prior.get('hash') == before['hash'] and
+                prior.get('fingerprint') == syntax_fingerprint(name, args, path)):
+            return text_rejection(task, workspace, args, path, before, prior['matches'])
+    try:
+        result = operation(**args)
+    except FileTextMatchError as error:
+        return text_rejection(task, workspace, args, path, before, error.matches)
     after = snapshot(workspace, path)
     if identity(before) == identity(after):
         return {**result, 'changed': False}
@@ -114,6 +123,8 @@ def apply(task, workspace, name, args, operation):
     if before is not None and warning and not syntax_error(path, before['text']):
         restore(workspace, path, before)
         return syntax_rejection(task, workspace, name, args, path, before, warning)
+    if task.get('text_edit_recovery'):
+        syntax_records(task, 'text_edit_recovery').pop(path, None)
     receipt = {'id': uuid.uuid4().hex, 'path': path, 'tool': name, 'scope': scope(task),
                'before': before, 'after': {'hash': after['hash'], 'mode': after['mode']},
                'structure': structure(before['text'] if before else '', after['text'], path)}

@@ -196,7 +196,6 @@ def before_write(task, path):
     Test-file staging is permitted to create the regression. This does not prove
     its assertion describes the claim; independent review still judges that.
     """
-    from pathlib import PurePosixPath
     from .verification import evidence_identity
     run = task.get('branch_run', {})
     item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
@@ -217,10 +216,50 @@ def before_write(task, path):
             repair['probe_observed'] = {'run_id': record.get('run_id'), 'input_identity': record['input_identity'],
                                         'command': copy.deepcopy(record['command'])}
             return
+    if test_path(path):
+        return
+    from .workspace import FileEditConstraint
+    raise FileEditConstraint('repair_evidence_required', f"Demonstrate the executable defect with a failing check before editing '{path}'. Add a narrow regression to a test file covered by a planned check, then run that check. Preserve existing assertions. If the claim is disproved, submit concrete counterevidence at checkpoint instead of changing correct behavior.")
+
+
+def test_path(path):
+    from pathlib import PurePosixPath
     name = PurePosixPath(str(path).replace('\\', '/'))
     if ('..' not in name.parts and not name.is_absolute() and
             (any(part in {'test', 'tests', '__tests__'} for part in name.parts[:-1])
              or name.name.startswith('test_') or '.test.' in name.name or '.spec.' in name.name
              or name.stem.endswith('_test'))):
-        return
-    raise ValueError(f"Demonstrate the executable defect with a failing check before editing '{path}'. You MUST first run an approved check (via run_checks) that fails, or add a test to a test file (e.g. test_acceptance.py) demonstrating the failure. Implementation files like '{path}' can only be edited after a failing check is recorded.")
+        return True
+    return False
+
+
+def reproduction_context(task, workspace):
+    """Point at the current check's tests; never execute reviewer snippets."""
+    from .branch_evidence import commands
+    run = task.get('branch_run') or {}
+    item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
+    repair = pending(task, item)
+    checks = commands(item.get('required_checks', []))
+    paths = []
+    for argv in checks:
+        for arg in argv[1:]:
+            candidates = [arg] if arg.endswith('.py') else []
+            if 'unittest' in argv and re.fullmatch(r'[\w]+(?:\.[\w]+)*', arg):
+                parts = arg.split('.')
+                candidates += ['/'.join(parts[:n])+'.py' for n in range(len(parts), 0, -1)]
+            for path in candidates:
+                try:
+                    if test_path(path) and workspace.path(path).is_file() and path not in paths:
+                        paths.append(path)
+                        break
+                except (ValueError, OSError):
+                    continue
+    result = {'candidate_id': repair.get('candidate_id'), 'planned_checks': checks,
+              'test_files': paths, 'findings': [{k:d.get(k) for k in
+                  ('finding_id','location','expected','observed','kind','support','reproduction')} for d in repair.get('defects', [])]}
+    if paths:
+        try:
+            result['current_test_file'] = workspace.read_file(paths[0], 1, 80)
+        except (ValueError, OSError, UnicodeError) as error:
+            result['test_file_read_error'] = str(error)[:500]
+    return result
