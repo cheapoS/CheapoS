@@ -166,5 +166,24 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("Added snippet", result.stdout)
 
+    def test_cli_tag_command(self):
+        self._run("add", "--title", "T1", "--code", "x=1", "--language", "python")
+        result = self._run("tag", "1", "--tags", "newtag,othertag")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Tagged snippet 1", result.stdout)
+
+    def test_cli_export_command(self):
+        self._run("add", "--title", "T1", "--code", "x=1", "--language", "python")
+        result = self._run("export")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("T1", result.stdout)
+
+    def test_cli_copy_command(self):
+        self._run("add", "--title", "T1", "--code", "x=1", "--language", "python")
+        result = self._run("copy", "1")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("# T1", result.stdout)
+        self.assertIn("x=1", result.stdout)
+
 if __name__ == "__main__":
     unittest.main()

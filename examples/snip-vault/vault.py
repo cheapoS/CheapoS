@@ -172,6 +172,19 @@ def main():
     # Search
     parser_search = subparsers.add_parser("search")
     parser_search.add_argument("query")
+
+    # Tag
+    parser_tag = subparsers.add_parser("tag")
+    parser_tag.add_argument("id", type=int)
+    parser_tag.add_argument("--tags", required=True)
+
+    # Export
+    parser_export = subparsers.add_parser("export")
+    parser_export.add_argument("--output", help="Output JSON file path")
+
+    # Copy
+    parser_copy = subparsers.add_parser("copy")
+    parser_copy.add_argument("id", type=int)
     
     args = parser.parse_args()
     vault = SnipVault(args.db)
@@ -183,6 +196,20 @@ def main():
         results = vault.search(args.query)
         for r in results:
             print(f"{r['id']}: {r['title']} [{r['language']}]")
+    elif args.subcommand == "tag":
+        vault.tag(args.id, args.tags)
+        print(f"Tagged snippet {args.id}")
+    elif args.subcommand == "export":
+        rows = vault.export()
+        data = [dict(r) for r in rows]
+        if args.output:
+            with open(args.output, "w") as f:
+                json.dump(data, f, indent=2)
+            print(f"Exported {len(data)} snippets to {args.output}")
+        else:
+            print(json.dumps(data, indent=2))
+    elif args.subcommand == "copy":
+        print(vault.copy(args.id))
 
 if __name__ == "__main__":
     main()
