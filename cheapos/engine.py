@@ -2053,6 +2053,9 @@ class Engine:
         if config_override is None and purpose is None and transport.restore_malformed_retry(task, role):
             self.event(task, 'transport', 'Retrying the interrupted tool response on the same route', {'role': role})
             self.store.save(task)
+        if role == 'worker' and not purpose and task.get('branch_run'):
+            from .branch_worker_recovery import restore_local_repair_routes
+            restore_local_repair_routes(self,runtime)
         routed_purpose = purpose in {None, 'branch_planning', 'branch_final'}
         if config_override is not None or not routed_purpose or not automatic(task, role):
             return self._request(runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)

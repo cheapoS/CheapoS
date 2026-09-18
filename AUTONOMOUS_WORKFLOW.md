@@ -358,3 +358,19 @@ because its target advanced returns to the update path instead of repeating fina
 review against the old branch. Unfinished resolutions keep their existing worker
 assignment. In-memory cases cover both new updates and restored stale dispatches;
 checks, spending authority and independent review remain unchanged.
+
+
+## Implemented: retain requirement identity across repair rounds
+
+Final-review findings may name an earlier repair item's criterion. Worker and
+reviewer preparation resolve that reference to the saved original requirements
+without discarding the finding ID, counterevidence or independent review. The
+entire mapped scope must belong to the current authorized repair, including
+duplicate requirement text.
+
+A malformed saved repair is a local controller error, not evidence against the
+selected model. Existing runs can reclassify the specific earlier reference
+failure only when their saved recovery event matches an undispatched request.
+Attempts and usage remain recorded; actual provider failures, access restrictions
+and probe rejections remain in force. In-memory continuation cases cover worker
+preparation through independent approval and a preserved reviewer rejection.

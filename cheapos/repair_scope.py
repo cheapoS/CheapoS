@@ -28,9 +28,33 @@ def findings_refs(run, findings):
             item_id,_,position=ref.rpartition(':')
             amendment=next((a for a in run.get('amendments',[]) if a['item']['id']==item_id),None)
             if not amendment or not position.isdigit():raise ValueError('Finding has no original requirement mapping.')
+            saved_refs=amendment.get('requirement_refs',[])
+            if select(run,[r['id'] for r in saved_refs])!=saved_refs:
+                raise ValueError('Saved amendment requirement references changed.')
             text=amendment['item']['acceptance_criteria'][int(position)-1] if 0<int(position)<=len(amendment['item']['acceptance_criteria']) else None
             mapped=[r['id'] for r in amendment.get('requirement_refs',[]) if r['criterion']==text]
             if not mapped:raise ValueError('Legacy repair needs an inspected original requirement selection.')
             refs.extend(mapped)
         else:refs.append(ref)
     return list(dict.fromkeys(refs))
+
+
+def review_criteria(run, refs, findings=()):
+    """Retain earlier repair IDs only when all their original scope is supplied.
+
+    Do not rewrite findings: their IDs, history and counterevidence still refer
+    to the criterion recorded by the independent reviewer.
+    """
+    verified=select(run,[r['id'] for r in refs])
+    if verified!=refs:raise ValueError('Saved repair requirement references changed.')
+    ids={r['id'] for r in verified}
+    criteria=[r['id'] for r in verified]+[r['criterion'] for r in verified]
+    for finding in findings:
+        ref=finding.get('criterion')
+        if ref in criteria:continue
+        if not isinstance(ref,str):raise ValueError('Invalid saved finding criterion.')
+        mapped=findings_refs(run,[finding])
+        if not mapped or not set(mapped)<=ids:
+            raise ValueError('Saved finding is outside the current repair scope.')
+        criteria.append(ref)
+    return list(dict.fromkeys(criteria))

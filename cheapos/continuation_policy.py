@@ -74,6 +74,8 @@ def decide(task, trigger=None):
         return {'kind':'authorization','action':'answer_question','reason':run['waiting_for_user']}
     if task.get('limit_hit') or task.get('status')=='budget_paused':
         return {'kind':'allowance','action':'review_limits','reason':'Review the exhausted allowance; Continue does not replenish usage.'}
+    if code=='controller_error':
+        return {'kind':'controller','action':'repair_controller','reason':'The request failed inside cheapoS; retain evidence and do not replace healthy models.'}
     if trigger=='final_review_stall':
         from .model_pool import automatic
         config=task.get('providers',{}).get('reviewer') or {}
@@ -115,7 +117,7 @@ def record(task, trigger):
 def implementation_handoff(task, item, stopped=False):
     """Only stalled implementation reaches the branch's existing route executor."""
     return (not stopped and task.get('status') in {'paused', 'error'}
-            and task.get('error_code') not in {'environment_setup', 'worker_turn_limit', 'working_time_limit'}
+            and task.get('error_code') not in {'environment_setup', 'worker_turn_limit', 'working_time_limit', 'controller_error'}
             and not task.get('limit_hit') and task.get('status') != 'budget_paused'
             and item.get('status')=='working' and task.get('active_role')=='worker'
             and decide(task)['action'] in {'continue_worker','repair','expand_tests','route_recovery'})
