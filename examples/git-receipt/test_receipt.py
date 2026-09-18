@@ -5,10 +5,10 @@ import os
 import sys
 import hashlib
 
-# Allow importing receipt.py
+# Allow importing receipt modules
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import receipt
-from receipt import compute_receipt_hash, verify_receipt, generate_receipt, get_commits
+from receipt_gen import compute_receipt_hash, generate_receipt, get_commits
+from verify_receipt import verify_receipt
 
 class TestGitReceipt(unittest.TestCase):
     def setUp(self):
@@ -43,9 +43,11 @@ class TestGitReceipt(unittest.TestCase):
         commits = get_commits(self.author)
         self.assertEqual(commits, ["hash1", "hash2", "hash3"])
 
-    @patch("receipt.get_commits")
-    def test_generate_and_verify_success(self, mock_get_commits):
-        mock_get_commits.return_value = self.commits
+    @patch("receipt_gen.get_commits")
+    @patch("verify_receipt.get_commits")
+    def test_generate_and_verify_success(self, mock_get_commits_verify, mock_get_commits_gen):
+        mock_get_commits_gen.return_value = self.commits
+        mock_get_commits_verify.return_value = self.commits
         generate_receipt(self.author)
         self.assertTrue(os.path.exists("receipt.json"))
         # Verify using generated file
