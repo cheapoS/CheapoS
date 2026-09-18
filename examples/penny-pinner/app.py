@@ -1,4 +1,4 @@
-from .reader import create_app
+from reader import create_app
 app = create_app()
 
 @app.route("/")
