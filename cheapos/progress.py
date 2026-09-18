@@ -11,9 +11,13 @@ def state(task):
     segment = len(task.get('requests', [task.get('prompt', '')]))
     value = task.get('progress_state')
     if not value or value.get('segment') != segment:
-        value = {'segment': segment, 'revision': 0, 'seen': [digest(item) for item in candidates(task)],
+        value = {'segment': segment, 'revision': 0, 'seen': {digest(item): True for item in candidates(task)},
                  'handoffs': 0, 'malformed_attempts': 0, 'answer_attempts': 0}
         task['progress_state'] = value
+    elif isinstance(value.get('seen'), list):
+        # Migrate saved histories without renewing progress or losing cycles.
+        # An exact index grows with real work; saturation is not a work limit.
+        value['seen'] = dict.fromkeys(value['seen'], True)
     return value
 
 
@@ -42,10 +46,7 @@ def observe(task):
     for candidate in candidates(task):
         key = digest(candidate)
         if key not in value['seen']:
-            # Bounded task histories; don't evict old states and admit cycles.
-            if len(value['seen']) >= 1000:
-                continue
-            value['seen'].append(key)
+            value['seen'][key] = True
             value['revision'] += 1
             advanced = True
     return advanced
@@ -80,7 +81,6 @@ def inspection(task, path, version, lines):
     value=state(task)
     inspected=value.setdefault('inspected', {})
     key=digest([path,version])
-    if key not in inspected and len(inspected)>=1000:return False
     old=set(inspected.get(key,[]))
     new=set(lines)-old
     if not new:return False
