@@ -2104,6 +2104,34 @@ class Engine:
         return reviewer_recovery.request(self, runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
 
     def _request_routed(self, runtime, messages, tools, role, config_override=None, purpose=None, tool_choice=None):
+        from .context_budget import context_rejection, payload_bytes
+        from .context_recovery import project
+        current = messages
+        while True:
+            try:
+                return self._request_route_once(runtime, current, tools, role, config_override, purpose, tool_choice)
+            except ProviderError as error:
+                if not context_rejection(error): raise
+                projected = project(runtime.task, current, tools, role)
+                if projected is not None:
+                    current = projected
+                    self.event(runtime.task, 'context_recovery', 'Using a smaller request with retained evidence',
+                               runtime.task['context_recovery'][role]['attempts'][-1])
+                    self.store.save(runtime.task)
+                    continue
+                if config_override is not None or not automatic(runtime.task, role): raise
+                cfg = runtime.task['providers'][role]
+                gateway = self.connection_for(cfg)
+                catalog = gateway.catalog(fresh=False)
+                model = next((m for m in catalog.get('models', []) if m['id'] == cfg['model']), {})
+                from . import context_budget
+                info = context_budget.decision(runtime.task, current, tools, cfg, model)
+                required = max(info['estimated_input_tokens'] + info['output_reserve_tokens'], model.get('context_length') or 0) + 1
+                runtime.task.setdefault('context_route_minimum', {})[role] = required
+                self.store.save(runtime.task)
+                select_remote(self, runtime, role, replace=True)
+
+    def _request_route_once(self, runtime, messages, tools, role, config_override=None, purpose=None, tool_choice=None):
         task = runtime.task
         from . import transport
         if config_override is None and purpose is None and transport.restore_malformed_retry(task, role):
@@ -2233,6 +2261,8 @@ class Engine:
                 if (purpose or role != 'worker') and not (role == 'planner' and purpose == 'branch_planning'):
                     self.validate_offered_tools(message, tools)
             except ProviderError as error:
+                from .context_budget import context_rejection
+                if context_rejection(error): raise
                 from .providers import ToolCallValidationError
                 if role == 'planner' and purpose == 'branch_planning' and isinstance(error, ToolCallValidationError):
                     # The planner owns bounded schema repair, including calls

@@ -86,6 +86,8 @@ def http_failure(error, config):
         except (ValueError, OSError):
             metadata = {}
             code = None
+        if error.code in {400, 413, 422} and code in {'context_length_exceeded', 'context_window_exceeded'}:
+            return ProviderError('The request exceeds this route context capacity.', code=code, scope='request')
         detail = metadata.get('message', '') if isinstance(metadata, dict) else ''
         if error.code in {401, 402, 403}:
             # OmniRoute can relay an upstream access refusal using the same

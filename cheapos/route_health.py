@@ -22,6 +22,8 @@ def classify(error, context=None):
     scope = getattr(error, 'scope', None)
     if isinstance(error, InterruptedError) or code in {'cancelled', 'user_paused'}:
         kind, scope, retry, impact, action = 'cancelled', 'request', False, False, 'Resume only when requested.'
+    elif code in {'context_length_exceeded', 'context_window_exceeded'}:
+        kind, scope, retry, impact, action = 'context_capacity', 'request', True, False, 'Project retained context or use a larger authorized route.'
     elif code == 'controller_error':
         kind, scope, retry, impact, action = 'local_controller', 'request', False, False, 'Saved controller state needs repair; changing models cannot fix it.'
     elif code in {'budget_exceeded', 'worker_turn_limit'}:

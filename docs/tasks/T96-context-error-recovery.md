@@ -1,6 +1,6 @@
 # T96 — Repair oversized context before changing routes
 
-Status: **Planned**, September 18, 2026. Priority: **P1**.
+Status: **Implemented — validation in progress**, September 18, 2026. Priority: **P1**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Can start independently. T99 later centralizes output/context budget resolution.
 
@@ -64,3 +64,7 @@ whole HTTP → routing → compaction path.
 
 Use small synthetic messages, fake responses and saved-state round trips.
 No production tasks or provider calls. Follow T94 validation and cost rules.
+
+HTTP context codes now bypass route-quality recovery, project retained evidence
+for all request roles and require known larger capacity if projection is exhausted.
+Focused context tests: 11 passed in 0.084 seconds.

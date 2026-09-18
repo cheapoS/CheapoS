@@ -34,3 +34,23 @@ class ContextBudgetTests(unittest.TestCase):
         self.assertTrue(context_rejection(Exception('maximum context length exceeded')))
         self.assertFalse(context_rejection(Exception('rate limit exceeded')))
         self.assertFalse(context_rejection(Exception('invalid tool arguments')))
+
+    def test_http_rejection_repairs_each_role_before_routing(self):
+        import io, json
+        from urllib.error import HTTPError
+        from unittest.mock import Mock
+        from cheapos.providers import http_failure
+        from cheapos.engine import Engine
+        for role in ('worker','planner','reviewer'):
+            error=http_failure(HTTPError('http://gateway',400,'bad',{},io.BytesIO(json.dumps({'error':{'code':'context_length_exceeded','message':'PRIVATE'}}).encode())), {'gateway':'omniroute'})
+            self.assertEqual(error.code,'context_length_exceeded');self.assertNotIn('PRIVATE',str(error))
+            task={'limits':{'output_tokens':2048}}
+            engine=SimpleNamespace(_request_route_once=Mock(side_effect=[error,{'content':'done'}]),event=Mock(),store=Mock())
+            messages=[{'role':'system','content':'Exact constraints'}, {'role':'user','content':'Exact criteria'}, {'role':'assistant','content':'old reasoning '*2000}]
+            result=Engine._request_routed(engine,SimpleNamespace(task=task),messages,[],role)
+            self.assertEqual(result,{'content':'done'})
+            repaired=engine._request_route_once.call_args.args[1]
+            self.assertLess(payload_bytes(repaired,[]),payload_bytes(messages,[]))
+            self.assertEqual(repaired[:2],messages[:2])
+            self.assertEqual(len(task['context_evidence']),1)
+            self.assertGreater(len(messages[-1]['content']),2000)
