@@ -78,7 +78,7 @@ class ProjectTestGrants:
                     root = str(Path(root).resolve().relative_to(Path(task['workspace']).resolve()))
             elif args and 'discover' not in args:
                 selectors = [a for a in args if not a.startswith('-')]
-                if selectors and all(a.startswith('tests.') for a in selectors):
+                if selectors and all(a.startswith(('tests.', 'tests/')) for a in selectors):
                     root = 'tests'
             profile = {'schema_version':1,'runner':'unittest','project':task['source'],'executable':executable,'roots':[root],'revision':self.revisions.get(task['source'],0)}
             if not match_unittest(argv, task['workspace'], profile)['matched']:

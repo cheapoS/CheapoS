@@ -2053,6 +2053,9 @@ class Engine:
         if config_override is None and purpose is None and transport.restore_malformed_retry(task, role):
             self.event(task, 'transport', 'Retrying the interrupted tool response on the same route', {'role': role})
             self.store.save(task)
+        if role == 'worker' and not purpose and task.get('branch_run'):
+            from .branch_worker_recovery import restore_local_repair_routes
+            restore_local_repair_routes(self,runtime)
         routed_purpose = purpose in {None, 'branch_planning', 'branch_final'}
         if config_override is not None or not routed_purpose or not automatic(task, role):
             return self._request(runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
@@ -2762,6 +2765,15 @@ class Engine:
         task = runtime.task
         reconciliation.ensure_resolved(task)
         argv = self.verification_argv(task, command)
+        if task.get('branch_run', {}).get('check_scope'):
+            with self.lock:
+                approved = self.branch.scopes.approved_command(task, argv)
+            if approved != argv:
+                from .test_policy import guard
+                guard(task, approved)
+                self.event(task, 'check_command', 'Using the approved verification command',
+                           {'requested_command': argv, 'command': approved})
+                argv = approved
         readiness = environment.inspect(task, argv)
         if readiness['status'] == 'missing':
             task['environment_setup'] = readiness
@@ -3181,6 +3193,9 @@ class Engine:
 
     def _run_with_wait(self, runtime):
         task = runtime.task
+        if task.get('branch_run'):
+            from .branch_worker_recovery import restore_local_repair_routes
+            restore_local_repair_routes(self,runtime)
         while True:
             if task.get('retry_wait_enabled'):
                 try:

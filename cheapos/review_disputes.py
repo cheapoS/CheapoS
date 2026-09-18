@@ -24,6 +24,17 @@ def register(task, item, repair):
             elif len(mapped)==1:criterion=mapped[0]
             else:raise ValueError('Use an existing finding_id to distinguish identical original requirement text.')
         elif criterion in item.get('acceptance_criteria',[]):criterion=f"{item['id']}:{item['acceptance_criteria'].index(criterion)+1}"
+        if prior and repair.get('requirement_refs'):
+            # A subsequent review may use the original ID for a finding saved
+            # against an earlier repair item. Preserve its ledger identity.
+            from .repair_scope import findings_refs
+            previous=prior.get('structural',{}).get('criterion')
+            try:
+                old_refs=set(findings_refs(run,[{'criterion':previous}]))
+                new_refs=set(findings_refs(run,[{'criterion':criterion}]))
+                if old_refs==new_refs and old_refs <= {r['id'] for r in repair['requirement_refs']}:
+                    criterion=previous
+            except (ValueError, KeyError, TypeError):pass
         structural={'criterion':criterion,'path':location(finding)}
         signature=digest({**structural,'expected':normalized(finding['expected']),'observed':normalized(finding['observed']),'reproduction':normalized(finding['reproduction']),'kind':finding['kind']})[:24]
         supplied=finding.get('finding_id')

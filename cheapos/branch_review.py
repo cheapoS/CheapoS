@@ -252,7 +252,8 @@ def _checkpoint(engine, runtime, args):
     outcome = {'type':'object','properties':{'passed':{'type':'boolean'},'evidence':{'type':'string'}},'required':['passed','evidence'],'additionalProperties':False}
     decision['properties'].update(candidate_id={'type':'string','enum':[current['id']]}, criteria_outcomes={'type':'object', 'description':'Use every exact criterion key. passed is a JSON boolean, evidence is a nonempty string.', 'properties':{c:copy.deepcopy(outcome) for c in criteria},'required':list(criteria),'additionalProperties':False})
     decision['properties']['suggestions']={'type':'array','maxItems':8,'items':{'type':'string'}}
-    decision['properties']['defects'] = disagreement.schema(criteria)
+    defect_criteria = disagreement.allowed_criteria(task,item)
+    decision['properties']['defects'] = disagreement.schema(defect_criteria)
     decision['required'] += ['candidate_id','criteria_outcomes']
     diff_notice = ' If packet diff is empty, the change may already be present in the repository from earlier commits; if files and passing checks satisfy the criteria, call review_decision with APPROVE.' if not current.get('patch') else ''
     direct_call = ' Do not output conversational text or preamble. Call review_decision directly as your tool call.'
@@ -412,7 +413,7 @@ def _checkpoint(engine, runtime, args):
                         if params.get('candidate_id') != current['id']:
                             raise ValueError('Review disagreement belongs to a stale candidate.')
                         if choice == 'REQUEST_CHANGES':
-                            params['defects'] = disagreement.validate(params, criteria)
+                            params['defects'] = disagreement.validate(params, defect_criteria)
                             # A reviewer read tool cannot silently change the reviewed inputs.
                             if evidence.candidate(task, ctx, specs, criteria) != current:
                                 raise ValueError('Candidate changed during review disagreement.')

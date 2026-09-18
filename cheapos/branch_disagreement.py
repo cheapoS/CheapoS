@@ -155,21 +155,38 @@ def attach(task, item, result):
     item['review_repair']['check_start'] = len(task.get('checks', []))
 
 
-def pending(task,item):
+class SavedRepairError(ValueError):
+    """Invalid controller-owned evidence, not a failed model response."""
+    code='controller_error'
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.safe_diagnostic={'kind':'safe_message','message':message}
+
+
+def allowed_criteria(task,item):
     repair=item.get('review_repair',{})
-    if not repair.get('defects'):return repair
+    if not repair.get('defects') and not repair.get('requirement_refs'):
+        return item.get('acceptance_criteria',[])
     run=task.get('branch_run',{});refs=repair.get('requirement_refs')
     if refs:
-        from .repair_scope import select
-        verified=select(run,[r['id'] for r in refs])
-        if verified!=refs:raise ValueError('Saved repair requirement references changed.')
-        criteria=[r['id'] for r in verified]+[r['criterion'] for r in verified]
+        from .repair_scope import review_criteria
+        criteria=review_criteria(run,refs,repair.get('defects',[]))
     else:
         plan=run.get('authorization',{}).get('contract',{}).get('plan',run.get('plan'))
         original=next((i for i in plan.get('items',[]) if i['id']==item.get('id')),None) if plan else item
         if not original:raise ValueError('Saved repair has no authorized requirement mapping.')
         criteria=original.get('acceptance_criteria',[])
-    repair['defects']=validate(repair,criteria)
+    return criteria
+
+
+def pending(task,item):
+    repair=item.get('review_repair',{})
+    if not repair.get('defects'):return repair
+    try:
+        repair['defects']=validate(repair,allowed_criteria(task,item))
+    except (ValueError, KeyError, TypeError, IndexError) as error:
+        raise SavedRepairError('Saved review findings could not be validated: '+str(error)) from error
     return repair
 
 
@@ -188,7 +205,7 @@ def before_write(task, path):
         try:
             pending(task,item)
         except ValueError as error:
-            raise ValueError('Saved review findings need validation before editing: '+str(error)) from error
+            raise SavedRepairError('Saved review findings need validation before editing: '+str(error)) from error
     if not any(d.get('kind') == 'executable' for d in repair.get('defects', [])) or repair.get('probe_observed'):
         return
     for record in task.get('checks', [])[repair.get('check_start', len(task.get('checks', []))) :]:

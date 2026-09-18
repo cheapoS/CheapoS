@@ -94,7 +94,8 @@ class CooldownWaitTests(LocalCase):
         self.assertEqual(task['progress_state']['route_probes']['worker'],5)
         self.assertEqual(task['providers']['worker']['model'],'4')
         self.assertEqual(clock.now(),1030)
-        self.assertEqual(task['route_schedule']['worker']['round'],2)
+        connection_id=task['providers']['worker']['connection_id']
+        self.assertEqual(task['route_schedule']['worker:'+connection_id]['round'],2)
 
     def test_exactly_one_probe_after_known_provider_expiry(self):
         from cheapos.providers import ProviderError

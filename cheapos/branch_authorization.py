@@ -15,7 +15,7 @@ import time
 
 from . import branch_runs
 from .project_permissions import config_identity, identity
-from .test_profiles import executable_identity
+from .test_profiles import executable_identity, unittest_selection
 
 
 def digest(value):
@@ -169,7 +169,24 @@ not mutated. A projected scope must equal the materialized prepare() result.
         except (ValueError, OSError):
             return None
         key = digest(scope)
-        return key if key in self.exact_grants else None
+        if key in self.exact_grants:
+            return key
+        return None
+
+    def approved_command(self, task, argv):
+        """Reuse a captured check without expanding the operator's command grant."""
+        selection = unittest_selection(argv)
+        if selection is None:
+            return list(argv)
+        commands = [scope['command'] for scope in task.get('branch_run', {}).get('check_scope', [])]
+        if argv in commands:
+            return list(argv)
+        for command in commands:
+            if unittest_selection(command) == selection and self.authorize(task, command):
+                # Revalidate live grants, including workspace, runner, configuration
+                # and revocation. A saved plan alone never grants execution.
+                return list(command)
+        return list(argv)
 
     def revoke(self, grant_id):
         self.exact_grants.pop(grant_id, None)

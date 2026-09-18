@@ -1,10 +1,13 @@
 import copy
 import json
+import shlex
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
+from contextlib import nullcontext
 from types import SimpleNamespace, MethodType
 from unittest.mock import Mock, patch
 
@@ -199,6 +202,125 @@ class CheckScopeTests(unittest.TestCase):
         self.assertIsNone(self.scopes.authorize(self.task, argv))
         other = dict(self.task, workspace=self.task['source'])
         with self.assertRaises(ValueError): self.scopes.prepare(other, argv)
+
+    def approved_file_check(self):
+        command = [sys.executable, '-B', '-m', 'unittest', 'examples/penny-pinner/test_pinner.py', '-v']
+        scope = self.scopes.prepare(self.task, command)
+        self.task['branch_run'] = {'status': 'running', 'check_scope': [scope], 'authorization_ref': 'saved-approval'}
+        grant = self.scopes.consent(self.task, scope, exact=True)
+        return command, grant
+
+    def test_file_check_variants_use_original_argv_without_new_grants(self):
+        command, _ = self.approved_file_check()
+        before = copy.deepcopy(self.task)
+        for args in (['examples/penny-pinner/test_pinner.py'], ['-q', 'examples/penny-pinner/test_pinner.py'],
+                     ['examples/penny-pinner/test_pinner.py', '--verbose']):
+            variant = [sys.executable, '-m', 'unittest', *args]
+            with self.subTest(args=args):
+                self.assertEqual(self.scopes.approved_command(self.task, variant), command)
+                self.assertIsNone(self.scopes.authorize(self.task, variant))
+        self.assertEqual(self.task, before)
+        self.assertEqual(len(self.scopes.exact_grants), 1)
+        self.assertEqual(self.grants.grants, {})
+
+    def test_file_check_variants_preserve_selection_interpreter_and_execution_flags(self):
+        command, _ = self.approved_file_check()
+        selector = command[-2]
+        variants = [[sys.executable, '-m', 'unittest', *args] for args in (
+            ['examples/penny-pinner/test_other.py'], [selector, 'other.test'],
+            [selector, '-f'], [selector, '-b'], [selector, '-k', 'one'],
+            [selector, '--unknown'], ['discover'], [], ['-v'])]
+        variants.extend(([sys.executable, '-I', *command[2:]],
+                         ['/another/python', *command[2:]],
+                         [sys.executable, '-m', 'pytest', selector]))
+        for variant in variants:
+            with self.subTest(variant=variant):
+                self.assertEqual(self.scopes.approved_command(self.task, variant), variant)
+
+    def test_file_check_variants_require_current_unrevoked_authority(self):
+        command, grant = self.approved_file_check()
+        variant = [sys.executable, '-m', 'unittest', command[-2]]
+        fresh = CheckScopes(ProjectTestGrants(self.store))
+        self.assertEqual(fresh.approved_command(self.task, variant), variant)
+        other = dict(self.task, workspace=self.task['source'])
+        self.assertEqual(self.scopes.approved_command(other, variant), variant)
+        config = Path(self.task['workspace']) / 'setup.cfg'
+        config.write_text('[test]')
+        self.assertEqual(self.scopes.approved_command(self.task, variant), variant)
+        config.unlink()
+        self.scopes.revoke(grant)
+        self.assertEqual(self.scopes.approved_command(self.task, variant), variant)
+
+    def check_engine(self):
+        """Actual dispatch/permissions with tiny directories; no Git or subprocess."""
+        from cheapos.engine import Engine
+        command, _ = self.approved_file_check()
+        self.task.update(conversational=True, check_command=command, checks=[],
+                         patch='saved patch', tool_actions=0, status='running',
+                         limits={'check_seconds': 90, 'run_minutes': 15})
+        engine = Engine.__new__(Engine)
+        engine.lock = threading.RLock()
+        engine.branch = SimpleNamespace(scopes=self.scopes)
+        engine.project_test_grants = self.grants
+        engine.command_permissions = {}
+        engine.store = SimpleNamespace(root=self.store.root, publish=Mock())
+        engine.admission = SimpleNamespace(resource=lambda *args: nullcontext())
+        engine.event = Mock()
+        engine.refresh_changes = Mock()
+        engine.worker_check_feedback = lambda runtime, result: result
+        engine.checkpoint_feedback = Mock(return_value={'decision': 'APPROVE'})
+        runtime = SimpleNamespace(task=self.task, started=time.monotonic(),
+                                  stop=threading.Event(), guard=Mock(),
+                                  approval=Mock())
+        runtime.approval.wait.side_effect = AssertionError('Operator permission requested')
+        return engine, runtime, command
+
+    def test_approved_variant_runs_once_and_reaches_independent_review_without_operator(self):
+        engine, runtime, command = self.check_engine()
+        variant = [sys.executable, '-m', 'unittest', command[-2]]
+        with patch('cheapos.engine.reconciliation.ensure_resolved'), \
+             patch('cheapos.engine.environment.inspect', return_value={'status': 'ready'}), \
+             patch('cheapos.engine.evidence_identity', return_value='same-inputs'), \
+             patch('cheapos.verification.evidence_identity', return_value='same-inputs'), \
+             patch('cheapos.engine.Workspace') as workspace:
+            workspace.return_value.patch.return_value = self.task['patch']
+            workspace.return_value.run_checks.side_effect = lambda argv, *a, **kw: {
+                'command': list(argv), 'passed': True, 'exit_code': 0, 'output': 'OK'}
+            result = engine.worker_checks(runtime, {'command': shlex.join(variant)})
+            self.assertTrue(result['passed'])
+            self.assertEqual(result['command'], command)
+            self.assertEqual(self.task['checks'][0]['command'], command)
+            self.assertEqual(workspace.return_value.run_checks.call_args.args[0], command)
+            engine.checkpoint_feedback.assert_not_called()
+            # Another request for the variant reuses the exact approved receipt
+            # and goes to the independent reviewer instead of a retest loop.
+            self.assertEqual(engine.worker_checks(runtime, {'command': shlex.join(variant)}), {'decision': 'APPROVE'})
+            workspace.return_value.run_checks.assert_called_once()
+        engine.checkpoint_feedback.assert_called_once()
+        runtime.approval.wait.assert_not_called()
+        self.assertNotIn('pending_approval', self.task)
+        self.assertEqual(len(self.task['checks']), 1)
+        rewrites = [call.args[3] for call in engine.event.call_args_list if call.args[1] == 'check_command']
+        self.assertEqual(rewrites[0], {'requested_command': variant, 'command': command})
+
+    def test_stale_check_grant_still_requests_permission_without_running(self):
+        engine, runtime, command = self.check_engine()
+        (Path(self.task['workspace']) / 'setup.cfg').write_text('[changed]')
+        variant = [sys.executable, '-m', 'unittest', command[-2]]
+        with patch('cheapos.engine.reconciliation.ensure_resolved'), \
+             patch('cheapos.engine.environment.inspect', return_value={'status': 'ready'}), \
+             patch('cheapos.engine.Workspace') as workspace:
+            with self.assertRaisesRegex(AssertionError, 'Operator permission requested'):
+                engine.checks(runtime, shlex.join(variant))
+        workspace.assert_not_called()
+        self.assertEqual(self.task['status'], 'waiting_approval')
+        self.assertEqual(self.task['pending_approval']['command'], variant)
+    def test_saved_branch_reference_does_not_grant_new_check_consent(self):
+        verify_argv = [sys.executable, 'verify.py']
+        scope = self.scopes.prepare(self.task, verify_argv)
+        branch_task = dict(self.task, branch_run={'authorization_ref': 'auth-123', 'check_scope': [scope]})
+        self.assertIsNone(self.scopes.authorize(branch_task, verify_argv))
+        self.assertIsNone(self.scopes.authorize(branch_task, self.argv))
 
 
 if __name__ == '__main__': unittest.main()
