@@ -75,14 +75,6 @@ def syntax_records(task, key='syntax_edit_recovery'):
     return state['files']
 
 
-def allow_exact_text(task):
-    if (task.get('text_edit_recovery') and any(r.get('attempts', 0) >= 2
-            for r in syntax_records(task, 'text_edit_recovery').values())):
-        return False  # The syntax escape hatch must not keep offering a failed strategy.
-    return bool(task.get('syntax_edit_recovery') and
-                any(r.get('attempts', 0) >= 2 for r in syntax_records(task).values()))
-
-
 def text_rejection(task, workspace, args, path, before, matches):
     records = syntax_records(task, 'text_edit_recovery')
     prior = records.get(path, {})

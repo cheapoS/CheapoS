@@ -399,8 +399,8 @@ Missing or ambiguous exact-text replacements also retain structured rejection
 evidence across restart. Replaying an identical replacement on the same file
 version returns current numbered lines without executing the failed edit again.
 Repeated mismatches change strategy through the same coordinator/handoff path
-and select version-bound line edits, including when earlier syntax recovery had
-enabled the exact-text escape hatch. An accepted edit clears that file's mismatch
+and supply current evidence for version-bound line edits. Exact-text and line
+editing remain available. An accepted edit clears that file's mismatch
 state; verification and independent review still determine completion.
 
 File mutations validate their declared required fields before clearing argument
@@ -501,3 +501,20 @@ Oversized-edit feedback includes measured old/new line counts, UTF-8 byte counts
 and the particular limits exceeded, so workers can choose coherent smaller edits
 without guessing which bound rejected a payload. These diagnostics contain sizes,
 not an extra copy of the rejected source text.
+
+## Implemented: coherent edits without artificial chunk limits
+
+Accept a complete valid replacement within file resource ceilings. Do not reject
+it because it exceeds a model-quality heuristic such as 80 lines or 3,000 bytes.
+All normal edit tools stay available. Smaller edits are temporary recovery advice
+after actual malformed arguments or truncated output, rather than a permanent
+mode inherited by subsequent workers. Successful edits end malformed-argument
+guidance; complete responses end truncation guidance. Worker, connection, item,
+baseline and user-request changes expire stale guidance while preserving attempt
+history and usage. Resume alone does not erase an unresolved attempt.
+
+The existing 256,000-byte new-file and 2,000,000-byte edited-file resource ceilings
+remain. Version checks, workspace boundaries, existing-file protection, syntax
+rollback, defect reproduction, command authority, verification and independent
+review are unchanged. Small deterministic cases demonstrate a complete rewrite
+through verification and independent approval without artificial chunk retries.

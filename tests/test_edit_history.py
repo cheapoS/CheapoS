@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 from cheapos import edit_history, work_policy
 from cheapos.edit_recovery import check_state, check_feedback, repair_packet
 from cheapos.engine import Engine, WORKER_TOOLS, CHAT_TOOLS, UNATTENDED_TOOLS, REVIEW_TOOLS
-from cheapos.workspace import FileEditConstraint, Workspace, edit_size_violation
+from cheapos.workspace import MAX_EDIT_BYTES, MAX_CREATE_FILE_BYTES, FileEditConstraint, Workspace, edit_size_violation
 
 
 class EditHistoryTests(unittest.TestCase):
@@ -41,6 +41,91 @@ class EditHistoryTests(unittest.TestCase):
 
     def edit(self, old, new, path='app.py'):
         return self.engine.file_tool(self.task, 'replace_text', {'path': path, 'old_text': old, 'new_text': new})
+
+    def test_coherent_rewrite_is_atomic_and_finishes_verification_and_review(self):
+        # A complete rewrite used to require several artificial chunks, each
+        # individually syntactically valid. Exercise real files without Git.
+        old = self.original + '# Existing description\n' * 100
+        (self.root / 'app.py').write_text(old)
+        replacement = self.original.replace('"  hello  "', '"hello"') + (
+            '# Documenting the greeting behavior for operators.\n' * 200)
+        args = {'path': 'app.py', 'start_line': 1, 'end_line': len(old.splitlines()),
+                'new_text': replacement}
+        self.engine.remember_file_version(self.runtime, self.ws.read_file('app.py'))
+        # Even recovery guidance must not reject a coherent, complete payload.
+        self.engine.prepare_compact_edits(self.task)
+        result = self.engine.worker_file_tool(self.runtime, 'replace_lines', args,
+                                               dict(self.runtime.edit_versions), set())
+        self.assertTrue(result['changed'])
+        self.assertEqual((self.root / 'app.py').read_text(), replacement)
+        self.assertFalse(self.task.get('compact_edits'))
+        self.assertEqual(self.task['tool_actions'], 1)
+        self.assertEqual(self.runtime.edit_versions['app.py'], result['current_file']['hash'])
+        def check(*args):
+            namespace = {}
+            exec((self.root / 'app.py').read_text(), namespace)
+            self.assertEqual(namespace['Manager']().run(), 'hello')
+            record = {'passed': True, 'command': self.task['check_command'],
+                      'digest': hashlib.sha256(self.task['patch'].encode()).hexdigest()}
+            self.task['checks'].append(record)
+            return record
+        self.engine.checks = Mock(side_effect=check)
+        self.engine.worker_checks(self.runtime, {})
+        self.engine.request = Mock(return_value={'tool_calls': [{'id': 'review', 'function': {
+            'name': 'review_decision', 'arguments': json.dumps({'decision': 'APPROVE',
+                'feedback': 'Complete rewrite preserves the method and normalizes the greeting.'})}}]})
+        with patch('cheapos.engine.current_evidence', return_value=True), patch('cheapos.engine.reconciliation.ensure_resolved'):
+            decision = self.engine.checkpoint(self.runtime, {'summary': 'Normalize greeting'})
+        self.assertEqual(decision['decision'], 'APPROVE')
+        self.assertEqual(self.engine.request.call_args.args[-1], 'reviewer')
+        self.engine.checks.assert_called_once()
+
+    def test_edit_recovery_survives_rejection_but_ends_after_real_edit(self):
+        self.task.update(output_recovery={'worker': True}, checks=[{'passed': False}],
+                         session_permissions={'tests': 'granted'}, usage={'cost': 0.01})
+        retained = {key: json.loads(json.dumps(self.task[key]))
+                    for key in ('limits', 'checks', 'session_permissions', 'usage', 'output_recovery')}
+        self.engine.prepare_compact_edits(self.task)
+        self.engine.remember_file_version(self.runtime, self.ws.read_file('app.py'))
+        args = {'path': 'app.py', 'start_line': 2, 'end_line': 3, 'new_text': '    def run(self):'}
+        rejected = self.engine.worker_file_tool(self.runtime, 'replace_lines', args,
+                                                 dict(self.runtime.edit_versions), set())
+        self.assertTrue(rejected['rolled_back'])
+        self.assertTrue(self.task['compact_edits'])
+        restored = json.loads(json.dumps(self.task))
+        self.assertFalse(work_policy.refresh_edit_recovery(restored))
+        self.assertTrue(restored['compact_edits'])
+        result = self.engine.worker_file_tool(self.runtime, 'replace_text', {
+            'path': 'app.py', 'old_text': '"  hello  "', 'new_text': '"hello"'},
+            dict(self.runtime.edit_versions), set())
+        self.assertTrue(result['changed'])
+        self.assertFalse(self.task.get('compact_edits'))
+        for key, value in retained.items():
+            self.assertEqual(self.task[key], value)
+
+    def test_edit_guidance_expires_on_worker_item_or_request_change(self):
+        self.task.update(providers={'worker': {'model': 'worker', 'base_url': 'local'}},
+                         branch_run={'current_item_id': 'item1'}, requests=['Fix greeting'],
+                         output_recovery={'worker': True})
+        work_policy.begin_edit_recovery(self.task)
+        self.task['output_retry'] = {'scope': work_policy.edit_recovery_scope(self.task)}
+        for change in ('model', 'base_url', 'item', 'request', 'legacy'):
+            with self.subTest(change=change):
+                restored = json.loads(json.dumps(self.task))
+                if change in ('model', 'base_url'):
+                    restored['providers']['worker'][change] = 'new'
+                elif change == 'item':
+                    restored['branch_run']['current_item_id'] = 'item2'
+                elif change == 'request':
+                    restored['requests'].append('Next task')
+                else:
+                    restored.pop('compact_edit_recovery')
+                    restored.pop('output_retry')
+                self.assertTrue(work_policy.refresh_edit_recovery(restored))
+                self.assertFalse(restored.get('compact_edits'))
+                self.assertFalse(restored.get('output_retry'))
+                self.assertEqual(restored['output_recovery'], {'worker': True})
+                self.assertEqual(restored['limits'], self.task['limits'])
 
     def test_reproduction_and_existing_file_recovery_finish_independent_branch_review(self):
         from contextlib import ExitStack
@@ -172,17 +257,17 @@ class EditHistoryTests(unittest.TestCase):
 
     def test_oversized_replacement_retains_file_and_returns_small_edit_context(self):
         self.engine.remember_file_version(self.runtime, self.ws.read_file('app.py'))
-        args = {'path': 'app.py', 'start_line': 3, 'end_line': 3, 'new_text': 'x' * 3001}
+        args = {'path': 'app.py', 'start_line': 3, 'end_line': 3, 'new_text': 'x' * (MAX_EDIT_BYTES + 1)}
         with self.assertRaises(FileEditConstraint) as failure:
             self.ws.replace_lines(**args, expected_hash=self.ws.read_file('app.py')['hash'])
         self.assertEqual(failure.exception.code, 'edit_too_large')
         result = self.engine.recover_edit_constraint(self.runtime, args, failure.exception)
         self.assertFalse(result['changed'])
-        self.assertEqual(result['edit_size']['fields']['new_text'], {'utf8_bytes': 3001, 'lines': 1})
+        self.assertEqual(result['edit_size']['fields']['new_text'], {'utf8_bytes': MAX_EDIT_BYTES + 1, 'lines': 1})
         self.assertEqual(result['edit_size']['exceeded'], ['new_text.utf8_bytes'])
         self.assertIn('3:         return', result['current_file']['content'])
         self.assertEqual((self.root / 'app.py').read_text(), self.original)
-        self.assertTrue(self.task['compact_edits'])
+        self.assertFalse(self.task.get('compact_edits'))
 
     def test_edit_size_feedback_distinguishes_bytes_lines_and_removed_range(self):
         for content, removed, expected in [
@@ -191,7 +276,7 @@ class EditHistoryTests(unittest.TestCase):
                 ('', 81, ['removed_lines']),
                 ('x\n' * 80 + 'z' * 3114, 34, ['new_text.utf8_bytes', 'new_text.lines'])]:
             with self.subTest(expected=expected):
-                error = edit_size_violation({'new_text': content}, removed_lines=removed)
+                error = edit_size_violation({'new_text': content}, max_bytes=3000, max_lines=80, removed_lines=removed)
                 self.assertEqual(error.code, 'edit_too_large')
                 self.assertEqual(error.details['edit_size']['exceeded'], expected)
                 self.assertEqual(error.details['edit_size']['fields']['new_text']['utf8_bytes'], len(content.encode()))
@@ -201,9 +286,9 @@ class EditHistoryTests(unittest.TestCase):
         self.assertIsNone(edit_size_violation({'new_text': 'x\n' * 79 + 'z' * 2842}, removed_lines=80))
         with patch('cheapos.engine.automatic', return_value=True):
             for name, args, dimension, maximum in [
-                    ('write_file', {'path': 'new.py', 'content': '#' * 24001}, 'content', 24000),
-                    ('append_text', {'path': 'app.py', 'text': '#' * 3001}, 'text', 3000),
-                    ('replace_text', {'path': 'app.py', 'old_text': 'not present' * 300, 'new_text': ''}, 'old_text', 3000)]:
+                    ('write_file', {'path': 'new.py', 'content': '#' * (MAX_CREATE_FILE_BYTES + 1)}, 'content', MAX_CREATE_FILE_BYTES),
+                    ('append_text', {'path': 'app.py', 'text': '#' * (MAX_EDIT_BYTES + 1)}, 'text', MAX_EDIT_BYTES),
+                    ('replace_text', {'path': 'app.py', 'old_text': '#' * (MAX_EDIT_BYTES + 1), 'new_text': ''}, 'old_text', MAX_EDIT_BYTES)]:
                 with self.subTest(tool=name):
                     self.task.pop('compact_edits', None)
                     with self.assertRaises(FileEditConstraint) as failure:
@@ -278,7 +363,7 @@ class EditHistoryTests(unittest.TestCase):
             if task['worker_turns'] == 3:
                 offered = {tool['function']['name'] for tool in tools}
                 self.assertIn('replace_lines', offered)
-                self.assertNotIn('replace_text', offered)
+                self.assertIn('replace_text', offered)
             return next(responses)
         engine.request = Mock(side_effect=request)
         def check(*args):
@@ -307,7 +392,7 @@ class EditHistoryTests(unittest.TestCase):
         self.assertEqual(errors[1]['code'], 'text_edit_rejected')
         self.assertEqual(errors[1]['attempts'], 2)
         engine.defer_route.assert_called_once()
-        self.assertTrue(task['compact_edits'])
+        self.assertFalse(task.get('compact_edits'))
         self.assertEqual(task['worker_turns'], 4)
         self.assertEqual(task['review_count'], 1)
         self.assertEqual(task['checkpoints'][0]['decision'], 'APPROVE')
@@ -409,20 +494,19 @@ class EditHistoryTests(unittest.TestCase):
         self.assertEqual(self.task['events'][-1]['kind'], 'tool_error')
         self.assertNotIn('edit_history', self.task)
 
-    def test_text_failure_changes_syntax_escape_hatch_to_lines_until_an_edit_succeeds(self):
-        from cheapos.edit_recovery import allow_exact_text
+    def test_text_failure_after_syntax_rejections_recovers_with_lines(self):
         self.edit('    def run(self):', 'def run(self):')
         self.edit('    def run(self):', 'def run(self):')
-        self.assertTrue(allow_exact_text(self.task))
         self.edit('missing', 'fixed')
-        self.edit('missing', 'fixed')
-        self.assertFalse(allow_exact_text(self.task))
+        rejected = self.edit('missing', 'fixed')
+        self.assertEqual(rejected['code'], 'text_edit_rejected')
+        self.assertEqual(rejected['attempts'], 2)
         self.task['compact_edits'] = True
         current = self.ws.read_file('app.py')
         self.engine.file_tool(self.task, 'replace_lines', {
             'path': 'app.py', 'start_line': 3, 'end_line': 3,
             'new_text': '        return "hello"\n', 'expected_hash': current['hash']})
-        self.assertTrue(allow_exact_text(self.task))
+        self.assertIn('return "hello"', (self.root / 'app.py').read_text())
         self.assertEqual(self.task['text_edit_recovery']['files'], {})
 
     def test_rejected_edit_is_not_reapplied_after_restart_or_credited_as_progress(self):

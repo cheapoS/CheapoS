@@ -15,8 +15,8 @@ from pathlib import Path, PurePosixPath
 # Input size is independent of model-visible excerpts and new-file generation.
 MAX_FILE_BYTES = 2_000_000
 MAX_CREATE_FILE_BYTES = 256_000
-MAX_EDIT_BYTES = 3_000
-MAX_EDIT_LINES = 80
+# Resource ceilings, not model-quality heuristics or work allowances.
+MAX_EDIT_BYTES = MAX_FILE_BYTES
 MAX_SNAPSHOT_BYTES = 100_000_000
 MAX_FILES = 5000
 BLOCKED_PARTS = {".git", ".cheapos", ".ssh", ".aws", ".gnupg", "node_modules", "__pycache__", ".venv", "venv", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
@@ -40,7 +40,7 @@ class FileEditConstraint(ValueError):
         self.details = details or {}
 
 
-def edit_size_violation(texts, *, max_bytes=MAX_EDIT_BYTES, max_lines=MAX_EDIT_LINES, removed_lines=None):
+def edit_size_violation(texts, *, max_bytes=MAX_EDIT_BYTES, max_lines=None, removed_lines=None):
     """Measure rejected payloads without retaining their source text in diagnostics."""
     sizes = {key: {'utf8_bytes': len(value.encode('utf-8')), 'lines': len(value.splitlines())}
              for key, value in texts.items() if isinstance(value, str)}
