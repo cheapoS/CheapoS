@@ -151,6 +151,11 @@ class SnipVault:
         cursor.execute('SELECT * FROM snippets')
         return cursor.fetchall()
 
+    def close(self):
+        """Close the database connection."""
+        self.conn.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="SnipVault CLI")
     parser.add_argument("--db", default="snipvault.db", help="Path to database")
