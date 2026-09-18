@@ -34,6 +34,13 @@ those foundations before T98 integration; T99 builds on that behavior. T100 is
 three ordered slices, not a single large rewrite. Its storage slice starts with
 measurement, while verification/review improvements can proceed independently.
 
+## Follow-up
+
+[T101 — Idempotent branch updates and redacted structural telemetry](T101-idempotent-updates-and-structural-telemetry.md)
+captures the two additional audit follow-ups. It has separate implementation and
+acceptance slices; it does not replace or duplicate T95–T100. Keep the six core
+reliability tasks prioritized. Track T101 completion in its own checklist.
+
 ## Already covered; do not redo
 
 Audit baseline: `49cbecbe6b1d42e9d3e488a81c504c2cccf273de`. Recheck current code

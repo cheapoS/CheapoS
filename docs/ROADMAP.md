@@ -19,6 +19,10 @@ that the runtime fixes have shipped:
 5. [T99 — Limits & recovery settings and effective budgets](tasks/T99-limits-settings-and-effective-budgets.md).
 6. [T100 — Large evidence and long-running task history](tasks/T100-large-evidence-and-history.md).
 
+Follow-up: [T101 — Idempotent branch updates and redacted structural
+telemetry](tasks/T101-idempotent-updates-and-structural-telemetry.md) adds successful
+already-current updates and bounded local diagnostics in two independent slices.
+
 Each card retains operator spending/model/command authority and requires an
 automatic path to useful work. Internal thresholds select another strategy;
 explicit user budgets decide when authorized work must stop. Preserve existing
