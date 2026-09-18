@@ -26,6 +26,8 @@ def classify(error, context=None):
         kind, scope, retry, impact, action = 'local_budget', 'request', False, False, 'The authorized task allowance cannot fit the request; retain work and inspect limits.'
     elif code in {'review_identity_conflict', 'review_identity_unknown'}:
         kind, scope, retry, impact, action = 'capability_mismatch', 'request', False, False, 'Choose a verified different reviewer before continuing.'
+    elif code == 'upstream_access_denied':
+        kind, scope, retry, impact, action = 'credential_access', 'provider', True, False, 'This upstream provider denied access. Use another authorized provider, or inspect its access in Models.'
     elif code in {'http_401', 'http_403', 'client_key_rejected', 'http_402'}:
         kind, scope, retry, impact, action = 'credential_access', 'connection', False, False, 'Inspect access for this connection in Models.'
     elif context.get('candidate_rejected'):

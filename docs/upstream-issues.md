@@ -108,6 +108,27 @@ must not run again merely because their continuation failed.
   post-tool contract, including preserved call IDs and no duplicate execution.
   Keep any future workaround versioned and remove it after local verification.
 
+### UP-003 — Provider access refusal mistaken for gateway-wide auth failure
+
+- **Evidence:** live local observation on September 17, 2026, OmniRoute 3.8.50,
+  `oc/ling-3.0-flash-fin-free`, worker. HTTP 403 reported that OpenCode's free
+  tier is restricted to OpenCode. This is an access restriction to respect.
+- **Local defect:** cheapoS cached this as an authentication failure for the
+  entire gateway, then waited on that local cache while other providers were
+  available. The cache expiry was not a provider-reported quota reset.
+- **Scoped handling:** recognize that exact provider/message contract and
+  OmniRoute's provider-named missing-credentials message. Generic 401/402/403
+  responses remain connection-scoped. Skip denied upstreams using existing
+  automatic routing authority; never change credentials or bypass restrictions.
+- **Validation:** `tests/test_upstream_access.py` covers sanitized parsing,
+  provider cache scope, automatic independent reviewer failover with retained
+  evidence/accounting, and explicit access prerequisites. Synthetic validation
+  does not establish current live availability.
+- **Recheck / retirement:** after gateway upgrades, prefer an explicit upstream
+  error scope if one is added. Remove the message-specific recognition only
+  after validating that replacement against both upstream and gateway auth
+  failures. No upstream issue or released fix has been established for this case.
+
 ## Entry template
 
 ```text
@@ -127,6 +148,7 @@ Recheck trigger and retirement condition:
 | Date | Local gateway | Review and outcome |
 | --- | --- | --- |
 | 2026-09-14 | OmniRoute 3.8.50 | Initial triage of both issue lists and UP-001/UP-002 bodies. Retained two relevant reports as unverified leads. No inference calls, routing changes, or new tests. |
+| 2026-09-17 | OmniRoute 3.8.50 | UP-003: local 403 evidence and installed gateway error handling inspected. Added scoped access-failure handling and synthetic regression coverage; no live inference requests. |
 
 Validation follows [CONTRIBUTING](../CONTRIBUTING.md). Prefer recorded-response or
 synthetic in-memory fixtures for implementation fixes. A live check needs the

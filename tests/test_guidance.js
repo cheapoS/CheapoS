@@ -515,9 +515,12 @@ test('uncapped Interactive recovery offers Resume even when coordinator advice f
 
 test('known cooldown waits are explicit and expose the retry action',()=>{
  const CheapOSGuide=require('../dist/guidance.js');
- const waiting=task({status:'waiting_retry',route_wait:{started_at:1000,retry_at:1010}});
+ const waiting=task({status:'waiting_retry',route_wait:{started_at:1000,retry_at:1010,message:'Gateway is temporarily unavailable.'}});
  assert.equal(CheapOSGuide.progress(waiting,1005000).title,'Waiting for an available route');
  assert.match(CheapOSGuide.progress(waiting,1005000).detail,/5s/);
+ assert.match(CheapOSGuide.progress(waiting,1005000).detail,/No model request is running/);
+ assert.match(CheapOSGuide.progress(waiting,1005000).hint,/Gateway is temporarily unavailable/);
+ assert.doesNotMatch(CheapOSGuide.progress(waiting,1005000).detail,/reset|eligibility/);
  assert.equal(CheapOSGuide.taskGuide(task({status:'paused',route_unavailable:{can_wait:true,message:'Provider cooling',retry_at:1010}})).primary,'retry-wait');
  assert.notEqual(CheapOSGuide.taskGuide(task({status:'paused',route_unavailable:{can_wait:false}})).primary,'retry-wait');
 });

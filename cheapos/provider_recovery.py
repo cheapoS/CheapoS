@@ -3,7 +3,7 @@
 All dispatches retain their usage/request reservations. These helpers only stop
 outages consuming the allowance intended for substantive review exchanges.
 """
-OUTAGES = {'gateway_cooldown', 'http_429', 'http_408', 'http_500', 'http_502',
+OUTAGES = {'upstream_access_denied', 'gateway_cooldown', 'http_429', 'http_408', 'http_500', 'http_502',
            'http_503', 'http_504', 'model_connection', 'model_timeout', 'stream_timeout', 'stream_error', 'stream_interrupted'}
 
 

@@ -6,6 +6,24 @@ const event=(id,kind,title,detail)=>({id,kind,title,detail,time:stamp});
 const task=overrides=>({prompt:'Fix the script.',status:'awaiting_reply',active_role:'worker',changes:[],checks:[],checkpoints:[],events:[],providers:{worker:{model:'worker-model'},reviewer:{model:'reviewer-model'}},...overrides});
 const replies=t=>build(t).filter(e=>e.kind==='assistant');
 
+test('branch planning and work label route waits without stale model activity',()=>{
+ for(const planning of [true,false]){
+  const t=task({status:'waiting_retry',active_role:planning?'planner':'worker',
+   route_wait:{started_at:1000,retry_at:1060,message:'Checking other authorized routes.'},
+   planning_request:planning?{}:null,
+   branch_run:{status:'running',authorization_ref:planning?null:'saved',current_item_id:planning?null:'one',
+    items:planning?[]:[{id:'one',title:'Fix',status:'working'}]},
+   events:[event(1,'model',`Requesting ${planning?'planner':'worker'}: old-model`,{role:planning?'planner':'worker'}),
+    event(2,'routing','Waiting for an authorized route; retrying automatically',{})]});
+  const reply=build(t,1005000).find(e=>e.kind==='assistant'&&e.owner);
+  assert.equal(reply.label,'Waiting');
+  assert.equal(reply.stream,null);
+  assert.match(reply.steps.at(-1).title,/Waiting.*route/);
+  assert.match(reply.steps.at(-1).detail,/No model request is running.*55s/);
+  assert.doesNotMatch(reply.intro,/preparing a plan|cooldown/);
+ }
+});
+
 test('ordinary conversation retains the answer without an execution card',()=>{
  const [reply]=replies(task({events:[event(1,'model','Requesting worker: worker-model',{}),event(2,'assistant','Worker','Hello!')]}));
  assert.equal(reply.reply,'Hello!');assert.deepEqual(reply.steps,[]);

@@ -16,6 +16,13 @@ function render(events,{live=false,stream=null,task={},phase='work'}={}){
  return ctx.view.message({kind:'assistant',id:'reply',steps:[step(events,{live,phase})],live,stream,reply:''},task);
 }
 
+test('route waiting shows a clock rather than an active-work spinner',()=>{
+ const t={status:'waiting_retry'};
+ const html=ctx.view.message({kind:'assistant',id:'waiting',steps:[step([],{live:true,outcome:'live'})],live:true,reply:''},t);
+ assert.match(html,/#i-clock/);
+ assert.doesNotMatch(html,/class="spinner"/);
+});
+
 test('large routing history never displaces thinking or edits from chat',()=>{
  const routing=Array.from({length:120},(_,i)=>event('route-'+i,'routing','Checking candidates',{model:'candidate-noise'}));
  const thinking=event('think','generation','Model output',{request_id:'r',model:'worker',thinking:'I will make the focused change.'});

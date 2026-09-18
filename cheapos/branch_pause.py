@@ -25,7 +25,7 @@ TEMPLATES = {
  'reviewer_recovery_required': ('Automatic reviewer recovery could not finish. Choose reviewer to select an eligible model; saved work and passing checks are kept.', 'reviewer'),
 }
 CODES = {'reviewer_recovery_required':'reviewer_recovery_required','review_identity_unknown':'review_identity_unknown','review_identity_conflict':'review_identity_conflict','controller_error':'controller_error','gateway_cooldown':'provider_quota','http_429':'provider_quota',
- 'endpoint_unavailable':'provider_connection','http_401':'provider_connection','http_403':'provider_connection','http_402':'provider_connection',
+ 'endpoint_unavailable':'provider_connection','http_401':'provider_connection','http_403':'provider_connection','http_402':'provider_connection','upstream_access_denied':'provider_connection',
  'invalid_tool_arguments':'malformed_output','invalid_tool_envelope':'malformed_output','invalid_response_json':'malformed_output','invalid_stream_json':'malformed_output','stream_error':'malformed_output','output_limit':'malformed_output',
  'progress_limit':'repeated_work','worker_recovery_exhausted':'repeated_work','recovery_exhausted':'repeated_work',
  'http_500':'provider_connection','http_502':'provider_connection','http_503':'provider_connection','http_504':'provider_connection','request_timeout':'provider_connection','routing_unavailable':'provider_connection',

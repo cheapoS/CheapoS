@@ -117,6 +117,21 @@ Does this change let the task continue and finish without the operator doing the
 engine's work? If it only adds error wording, another button or instructions to
 type into Chat, the underlying recovery work is still incomplete.
 
+## Implemented: scope upstream access failures and explain route waits
+
+A recognized upstream access refusal blocks that provider, while automatic
+placement continues with other authorized providers through the same gateway.
+An ambiguous authentication failure still blocks the gateway connection. Cached
+access failures are not treated as quota resets: if every otherwise eligible
+route requires access repair, the task names that prerequisite instead of
+cycling through local availability checks indefinitely. Provider failures do
+not spend model-quality handoffs or discard checks, context or usage.
+
+Waiting views say that no model request is running, show the next availability
+check, and retain elapsed waiting time across consecutive discovery rounds.
+Planning uses the same waiting state. Checks use synthetic responses and clocks;
+there are no added live requests, real sleeps or Git workflow fixtures.
+
 ## Implemented: continue final packet review
 
 Final review now uses the same continuation policy as item review. Repeated

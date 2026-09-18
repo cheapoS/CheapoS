@@ -77,7 +77,7 @@ class ToolCallValidationError(ProviderError):
 def http_failure(error, config):
     """Read bounded machine metadata only; do not expose upstream bodies/secrets."""
     reason = {401: "API key was rejected", 402: "Provider credit limit reached", 403: "Provider denied access", 429: "Provider rate limit reached"}.get(error.code, f"Provider returned HTTP {error.code}")
-    if config.get("gateway") == "omniroute" and error.code not in {401, 402, 403}:
+    if config.get("gateway") == "omniroute":
         try:
             raw = error.read(16385)
             data = json.loads(raw) if len(raw) <= 16384 else {}
@@ -87,6 +87,21 @@ def http_failure(error, config):
             metadata = {}
             code = None
         detail = metadata.get('message', '') if isinstance(metadata, dict) else ''
+        if error.code in {401, 402, 403}:
+            # OmniRoute can relay an upstream access refusal using the same
+            # status as its own client-key rejection. Only recognize a known
+            # upstream contract for the requested provider; ambiguous auth
+            # errors still block this connection. Never retain the raw body.
+            provider = provider_identity(config)
+            missing_credentials = (isinstance(detail, str) and provider != 'unknown'
+                                   and detail.startswith(f'No active credentials for provider: {provider}.'))
+            restricted_opencode = (error.code == 403 and provider == 'opencode' and isinstance(detail, str)
+                                   and detail.removeprefix('[403]: Error from provider (Console): ').rstrip('.')
+                                   == "OpenCode's free tier can only be used from within OpenCode")
+            if missing_credentials or restricted_opencode:
+                return ProviderError('This upstream provider does not permit this connection.',
+                                     code='upstream_access_denied', scope='provider')
+            return ProviderError(reason + '. This request did not complete.', code=f'http_{error.code}')
         # Groq can reject a generated call at the gateway before CheapOS sees
         # its arguments. Keep this distinct from a bad HTTP request/connection,
         # without retaining failed_generation or arbitrary upstream error text.
