@@ -187,9 +187,11 @@ class ClubTests(unittest.TestCase):
         self.club.sync_now(self.ledger)
         payload=json.loads(self.sent[-1]['payload'])
         self.assertIn('work_outcomes', payload)
+        self.assertEqual(payload['work_outcomes']['completed_tasks'], 72)
         self.assertEqual(payload['work_outcomes']['human_accepted_jobs'], 12)
         self.assertEqual(payload['work_outcomes']['merged_runs'], 60)
         self.assertEqual(payload['work_outcomes']['review_approved_jobs'], 79)
+        self.assertEqual(payload['work_outcomes']['acceptance_rate'], 91.1)
 
     def test_check_pairing_force_refreshes_handle(self):
         self.club.state['identity']={'handle':'alice','name':'Alice','account_id':'acc1'}

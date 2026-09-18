@@ -308,10 +308,17 @@ class ClubManager:
                         try:
                             summ = lifetime.summary('all')
                             comp = summ.get('completion') or {}
+                            h_jobs = int(comp.get('human_accepted_jobs', 0))
+                            m_runs = int(comp.get('merged_runs', 0))
+                            r_jobs = int(comp.get('independent_review_approved_jobs', 0))
+                            completed = h_jobs + m_runs
+                            rate = round((completed / r_jobs * 100), 1) if r_jobs > 0 else None
                             queue_kwargs['work_outcomes'] = dict(
-                                human_accepted_jobs=int(comp.get('human_accepted_jobs', 0)),
-                                merged_runs=int(comp.get('merged_runs', 0)),
-                                review_approved_jobs=int(comp.get('independent_review_approved_jobs', 0))
+                                completed_tasks=completed,
+                                human_accepted_jobs=h_jobs,
+                                merged_runs=m_runs,
+                                review_approved_jobs=r_jobs,
+                                acceptance_rate=rate
                             )
                         except Exception:
                             pass
