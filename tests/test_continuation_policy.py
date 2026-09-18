@@ -111,3 +111,15 @@ class ContinuationPolicyTests(unittest.TestCase):
                          'Only show it if no project exists, without making changes.'):
             with self.subTest(question=question):
                 self.assertEqual(decide({**task, 'prompt': question}, 'repeated_evidence')['action'], 'answer')
+
+class DurableStrategyTests(__import__('unittest').TestCase):
+    def test_episode_survives_reload_without_renewing_attempts_or_usage(self):
+        import json
+        from cheapos.continuation_policy import strategy_episode
+        task={'usage':{'cost':1},'worker_turns':9}
+        first=strategy_episode(task,'worker','invalid_json','candidate',['format','handoff'])
+        self.assertEqual(first['next_action'],'format')
+        task=json.loads(json.dumps(task))
+        self.assertEqual(strategy_episode(task,'worker','invalid_json','candidate',['format','handoff'])['next_action'],'handoff')
+        self.assertEqual(strategy_episode(task,'worker','invalid_json','candidate',['format','handoff'])['next_action'],'prerequisite')
+        self.assertEqual(task['usage'],{'cost':1});self.assertEqual(task['worker_turns'],9)

@@ -121,3 +121,19 @@ def implementation_handoff(task, item, stopped=False):
             and not task.get('limit_hit') and task.get('status') != 'budget_paused'
             and item.get('status')=='working' and task.get('active_role')=='worker'
             and decide(task)['action'] in {'continue_worker','repair','expand_tests','route_recovery'})
+
+
+def strategy_episode(task, role, failure, identity, strategies):
+    """Select an unused technique for this exact failure, without renewing usage."""
+    key = digest([role, identity, failure])
+    episodes = task.setdefault('strategy_episodes', {})
+    episode = episodes.setdefault(key, {'role': role, 'identity': identity,
+                                        'failure': failure, 'attempts': [], 'observations': 0})
+    episode['observations'] += 1
+    attempted = {a['strategy'] for a in episode['attempts']}
+    selected = next((s for s in strategies if s not in attempted), None)
+    if selected:
+        episode['attempts'].append({'strategy': selected, 'status': 'selected'})
+    episode['next_action'] = selected or 'prerequisite'
+    task['strategy_continuation'] = {'episode': key, 'action': episode['next_action']}
+    return episode

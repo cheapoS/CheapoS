@@ -429,16 +429,22 @@ def plan(engine, runtime, inputs):
         carto = engine.carto.context(captured['source'], captured['source'])
         if carto['status'] != 'disabled': context['carto'] = carto
     messages = [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': json.dumps({'captured_inputs': captured, 'displayed_limits': limits, 'project_context': context}, ensure_ascii=False)}]
-    attempt = 0
-    discovery = 0
-    handoffs = 0
-    evidence = {}
-    failed_reads = {}
+    saved = runtime.task.setdefault('planning_strategy', {})
+    if saved.get('input_hash') != digest:
+        saved.update(input_hash=digest, messages=messages, attempt=0, discovery=0, handoffs=0, evidence={}, failed_reads={})
+    messages = saved['messages']
+    attempt = saved['attempt']
+    discovery = saved['discovery']
+    handoffs = saved['handoffs']
+    evidence = saved['evidence']
+    failed_reads = saved['failed_reads']
     from .model_pool import automatic
     if automatic(runtime.task, 'planner') and not runtime.task.get('planning_override') and runtime.task.get('failed_planners'):
         runtime.failed_models.update(runtime.task['failed_planners'])
         runtime.task['providers']['planner'] = None
-    while attempt < 3:
+    while True:
+        saved.update(attempt=attempt, discovery=discovery, handoffs=handoffs)
+        if hasattr(engine, 'store'): engine.store.save(runtime.task)
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
         runtime.guard()
         # Keep both tools recognized so gateways like OmniRoute (which strictly
@@ -446,7 +452,7 @@ def plan(engine, runtime, inputs):
         # inspection calls with HTTP 400. CheapoS's proposal parser owns repair.
         available = TOOLS
         options = {'config_override':runtime.task['planning_override']} if runtime.task.get('planning_override') else {}
-        if discovery >= MAX_DISCOVERY_REQUESTS:
+        if saved.get('proposal_requested'):
             options['tool_choice'] = {'type': 'function', 'function': {'name': 'propose_branch_plan'}}
         response = {}
         rejected_call = None
@@ -464,11 +470,9 @@ def plan(engine, runtime, inputs):
             calls = response.get('tool_calls') or []
             if (response.get('finish_reason') not in ('length', 'max_tokens') and calls
                     and all(isinstance(c, dict) and c.get('function', {}).get('name') == 'inspect_project_file' for c in calls)
-                    and discovery < MAX_DISCOVERY_REQUESTS):
+):
                 assistant_calls = []
                 for call_item in calls:
-                    if discovery >= MAX_DISCOVERY_REQUESTS:
-                        break
                     discovery += 1
                     call = copy.deepcopy(call_item)
                     call['id'] = call.get('id') or 'discovery-%s' % discovery
@@ -506,16 +510,11 @@ def plan(engine, runtime, inputs):
                         engine.event(runtime.task, 'planning_inspection', 'Project inspection failed' if result.get('error') else 'Inspected project context for the plan',
                                      {'inspection': discovery, 'limit': MAX_DISCOVERY_REQUESTS,
                                       **{k: result[k] for k in ('path', 'start_line', 'end_line', 'truncated', 'error', 'available_paths', 'already_read', 'repeated_failed_read') if k in result}})
-                    if discovery >= MAX_DISCOVERY_REQUESTS:
-                        result['next_step'] = 'Discovery is complete. Do not inspect more files. Use the collected evidence to call propose_branch_plan now; report a specific essential blocker there only if needed.'
+                    if result.get('repeated_failed_read'):
+                        saved['proposal_requested'] = True
+                        result['next_step'] = 'This exact inspection already failed. Use the saved evidence or identify the essential missing prerequisite in propose_branch_plan.'
                     messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result)})
-                if discovery >= MAX_DISCOVERY_REQUESTS:
-                    messages[0]['content'] += '\nDiscovery is now complete: no further file reads are permitted. Call propose_branch_plan using collected evidence.'
                 continue
-            if discovery >= MAX_DISCOVERY_REQUESTS and any(
-                    isinstance(c, dict) and isinstance(c.get('function'), dict)
-                    and c['function'].get('name') == 'inspect_project_file' for c in calls):
-                raise PlanningResponseError('The planning inspection allowance is complete. Use the saved file evidence to call propose_branch_plan, or request clarification there if essential information is still missing. No further file inspection was executed.')
             assumptions = []
             result = _parse(response, limits, captured['source'], assumptions)
             if calls:
@@ -539,7 +538,7 @@ def plan(engine, runtime, inputs):
             detail = {'attempt': attempt + 1, 'error': str(error)[:1000]}
             if hasattr(engine, 'event'):
                 engine.event(runtime.task, 'planning_repair', 'Correcting the run proposal' if attempt < 2 else 'Run proposal needs attention', detail)
-            if attempt == 2:
+            if attempt >= 2:
                 if isinstance(error, PlanningSetupRequired):
                     # Keep a complete blocked draft when repair cannot resolve
                     # an unavailable environment. prepare() still blocks Start.
@@ -554,21 +553,29 @@ def plan(engine, runtime, inputs):
                     except Exception:
                         pass
                 from .model_pool import automatic
-                from .routing import _select_connections, RoutingPause
-                if automatic(runtime.task, 'planner') and not runtime.task.get('planning_override') and handoffs < 2:
+                from .routing import select_remote, RoutingPause
+                if automatic(runtime.task, 'planner') and not runtime.task.get('planning_override'):
                     if failed:
                         runtime.failed_models.add(failed)
                         if failed not in runtime.task.setdefault('failed_planners', []): runtime.task['failed_planners'].append(failed)
                         try:
                             engine.event(runtime.task, 'planning_recovery', 'The planner could not produce a valid proposal. Trying another eligible planner.', {'model':failed})
-                            _select_connections(engine, runtime, 'planner', True)
+                            saved.update(attempt=0, discovery=discovery, handoffs=handoffs+1)
+                            engine.store.save(runtime.task)
+                            select_remote(engine, runtime, 'planner', True)
                         except RoutingPause:
-                            pass
+                            raise
                         else:
                             handoffs += 1
                             attempt = 0
                             messages.append({'role':'user','content':'The previous planner could not format a complete proposal. Use the captured request and inspection evidence above to call propose_branch_plan with one valid proposal. No implementation is authorized.'})
                             continue
+                from .continuation_policy import strategy_episode
+                episode = strategy_episode(runtime.task, 'planner', str(error)[:500], [digest, failed], ['minimal_proposal'])
+                if episode['next_action'] == 'minimal_proposal':
+                    messages.append({'role':'user','content':'Use one minimal complete proposal with the existing exact limits and required checks. Correct only the diagnosed schema error: '+str(error)[:1000]})
+                    attempt = 0
+                    continue
                 from .branch_pause import PauseError
                 diagnostic = 'Planning remains unfinished because the planner could not produce a complete valid proposal after two repairs.'
                 if isinstance(error, PlanningResponseError):

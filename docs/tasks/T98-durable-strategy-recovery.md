@@ -1,6 +1,6 @@
 # T98 — Replace fixed repair stops with durable strategy recovery
 
-Status: **Planned**, September 18, 2026. Priority: **P1**.
+Status: **Implemented — integration validation pending**, September 18, 2026. Priority: **P1**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Integrate after T95 and T97; use T96's context diagnosis when available.
 
@@ -77,3 +77,8 @@ Retain the syntax-loop and progress fixes already described in T94.
 
 Use small deterministic continuation cases and existing executor fixtures.
 Follow T94's validation/cost policy; no new heavy end-to-end workflow by default.
+
+Planner discovery and schema exchanges now persist; repeated reads use saved
+evidence, and authorized planner handoffs have no fixed two-model ceiling.
+Worker malformed-call recovery selects saved techniques without resetting usage.
+Focused continuation and planner tests: 18 passed (in-memory fixtures).

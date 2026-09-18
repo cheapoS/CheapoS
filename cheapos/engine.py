@@ -3222,8 +3222,22 @@ class Engine:
                 and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}):
             self.prepare_compact_edits(runtime.task)
             runtime.compact_context_ready = False
-        if recovery["malformed_attempts"] >= 3 and not developing(runtime.task):
-            raise ProgressPause("The model returned malformed tool arguments three times for this request. These calls were not executed. Saved work is intact; send a specific correction or check the model before starting a new request.")
+        if runtime.argument_failures >= 3:
+            from .continuation_policy import strategy_episode
+            task = runtime.task
+            role = task['active_role']
+            episode = strategy_episode(task, role, error.name,
+                [(task.get('providers', {}).get(role) or {}).get('model'), task.get('workspace_generation', 0)],
+                ['small_exact_arguments', 'authorized_handoff'] if automatic(task, role) else ['small_exact_arguments'])
+            self.store.save(task)
+            if episode['next_action'] == 'small_exact_arguments':
+                result['next_action'] = 'Use one small tool call with a JSON object. For edits, change one exact fragment and preserve literal whitespace.'
+                runtime.argument_failures = 0
+            elif episode['next_action'] == 'authorized_handoff':
+                self.defer_route(task, role, 'Malformed arguments persist after a focused format repair; continue the saved operation on another authorized model.')
+                runtime.argument_failures = 0
+            else:
+                raise ProgressPause('The pinned model could not produce valid tool arguments after format repair. Choose another model to continue this saved operation.')
         return result
 
     def route_wait_info(self, runtime, error):
