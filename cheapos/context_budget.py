@@ -7,10 +7,10 @@ def payload_bytes(messages, tools):
     return len(json.dumps({'messages': messages, 'tools': tools}, ensure_ascii=False).encode())
 
 
-def decision(task, messages, tools, config, model=None):
+def decision(task, messages, tools, config, model=None, role=None):
     model = model or {}
     capacity = model.get('context_length')
-    if type(capacity) is not int or capacity <= 0:
+    if type(capacity) is not int or capacity <= 0 or model.get('metadata_evidence', {}).get('stale'):
         capacity = None
     amount = payload_bytes(messages, tools)
     samples = []
@@ -26,7 +26,7 @@ def decision(task, messages, tools, config, model=None):
     ratio = max(samples[-8:]) * 1.1 if samples else 1 / 3
     estimate = math.ceil(amount * ratio)
     from .request_budget import resolve
-    output = resolve(task, config, model)['tokens']
+    output = resolve(task, config, model, messages=messages, tools=tools, role=role or task.get('active_role'))['tokens']
     margin = math.ceil(capacity * .05) if capacity else None
     available = max(0, capacity - output - margin) if capacity else None
     return {'capacity_tokens': capacity, 'capacity_source': 'gateway_catalog' if capacity else 'unknown',

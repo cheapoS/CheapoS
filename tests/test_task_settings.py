@@ -87,6 +87,47 @@ class TaskSettingsTests(unittest.TestCase):
             self.assertEqual(saved[key], self.task[key])
         self.assertEqual(saved['settings_snapshot']['sources']['limits.uncapped_work']['scope'], 'task')
 
+    def test_selected_budget_increase_continues_exact_saved_review_without_reset(self):
+        from cheapos.work_budgets import guard
+        from cheapos.providers import BudgetError
+        self.make_branch()
+        task = self.engine.store.get('a')
+        task['limits'].update(work_policy_version=2, work_requests=2)
+        task['branch_run']['plan']['limits'].update(work_policy_version=2,work_requests=2)
+        task['session_actions']={'coverage':'complete','counts':{'worker':2,'tools':4}}
+        with self.assertRaises(BudgetError): guard(task,additions={'work_requests':1})
+        self.engine.store.save(task)
+        original=copy.deepcopy(task)
+        request=self.request({'limits.work_requests':3},intent='apply-and-continue')
+        result=task_settings.save(self.engine,'a',request)
+        self.assertTrue(result['continuing'])
+        task_settings.save(self.engine,'a',request)
+        self.engine.branch.resume.assert_called_once_with('a',{})
+        saved=self.engine.store.get('a');guard(saved,additions={'work_requests':1})
+        for key in ('session_actions','checks','usage','command_grants','findings'):
+            self.assertEqual(saved[key],original[key])
+        self.assertEqual(saved['branch_run']['final_review_packets'],original['branch_run']['final_review_packets'])
+        self.assertEqual(saved['branch_run']['authorization']['contract']['limits']['work_requests'],3)
+
+    def test_explicit_planning_budget_change_survives_restore_without_authorizing_work(self):
+        from cheapos.branch_controller import run_limits, restore_planning_allowance
+        task=copy.deepcopy(self.task)
+        task['planning_request']={'prompt':'Keep the captured work'}
+        task['planning_limits']=run_limits({},3)
+        task['limits'].update({key:task['planning_limits'][key] for key in ('dollars','reviewer_tokens','output_tokens')})
+        task['planning_task_limits']=copy.deepcopy(task['limits'])
+        task['branch_run']={'status':'paused','stage':'planning','limits':copy.deepcopy(task['planning_limits']),
+                           'plan':{'limits':copy.deepcopy(task['planning_limits'])},'consumption':{'requests':2}}
+        self.engine.store=MemoryStore(task)
+        result=task_settings.save(self.engine,'a',self.request({'limits.work_policy_version':2,'limits.work_requests':3},intent='apply-and-continue'))
+        self.assertTrue(result['continuing'])
+        saved=self.engine.store.get('a');restore_planning_allowance(saved)
+        self.assertEqual(saved['planning_limits']['work_requests'],3)
+        self.assertEqual(saved['limits']['work_requests'],3)
+        self.assertEqual(saved['branch_run']['consumption'],{'requests':2})
+        self.assertNotIn('authorization',saved['branch_run'])
+        self.assertEqual(saved['planning_request'],task['planning_request'])
+
     def test_replay_does_not_redispatch(self):
         request = self.request(intent='apply-and-continue')
         first = task_settings.save(self.engine, 'a', request)

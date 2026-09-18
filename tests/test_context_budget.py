@@ -54,3 +54,28 @@ class ContextBudgetTests(unittest.TestCase):
             self.assertEqual(repaired[:2],messages[:2])
             self.assertEqual(len(task['context_evidence']),1)
             self.assertGreater(len(messages[-1]['content']),2000)
+
+    def test_irreducible_request_uses_capacity_selection_and_respects_pin(self):
+        from unittest.mock import Mock, patch
+        from cheapos.engine import Engine
+        from cheapos.providers import ProviderError
+        config={'model':'small','base_url':'gateway'}
+        task={'limits':{'output_tokens':2048},'providers':{'planner':config}}
+        error=ProviderError('Context capacity exceeded',code='context_length_exceeded')
+        gateway=SimpleNamespace(catalog=Mock(return_value={'models':[{'id':'small','context_length':4096}]}))
+        engine=SimpleNamespace(_request_route_once=Mock(side_effect=[error,{'content':'proposal'}]),connection_for=lambda _:gateway,event=Mock(),store=Mock())
+        runtime=SimpleNamespace(task=task)
+        messages=[{'role':'user','content':'Exact retained scope '*1000}]
+        def select(e,rt,role,replace):
+            self.assertGreater(rt.task['context_route_minimum'][role],4096)
+            self.assertTrue(replace)
+            rt.task['providers'][role]={'model':'larger','base_url':'gateway'}
+        with patch('cheapos.engine.automatic',return_value=True),patch('cheapos.engine.select_remote',side_effect=select) as choose:
+            self.assertEqual(Engine._request_routed(engine,runtime,messages,[],'planner'),{'content':'proposal'})
+            choose.assert_called_once()
+        self.assertNotIn('planner',task['context_route_minimum'])
+        engine._request_route_once=Mock(side_effect=error)
+        with patch('cheapos.engine.select_remote') as choose,self.assertRaises(ProviderError):
+            Engine._request_routed(engine,runtime,messages,[],'planner',config_override=config)
+        choose.assert_not_called()
+        self.assertEqual(engine._request_route_once.call_count,1)

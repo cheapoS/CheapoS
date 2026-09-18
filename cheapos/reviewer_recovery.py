@@ -106,6 +106,9 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
     selected = recovery.get('selected')
     chosen = task.get('operator_reviewer_model')
     choices = [m['id'] for m in available if m['id'] not in recovery['attempted']]
+    pending = recovery.get('next_action', {})
+    if pending.get('status') == 'selected' and pending.get('model') in {m['id'] for m in available}:
+        choices.insert(0, pending['model'])
     if chosen:
         choices = [chosen] if chosen in {m['id'] for m in available} else []
     elif selected in {m['id'] for m in available}:
@@ -125,12 +128,14 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
             selected_config = config(engine, task, model_id)
             recovery['next_action']['status'] = 'dispatching'
             engine.store.save(task)
-            result = engine._request(runtime, messages, tools, role, selected_config, purpose, tool_choice=tool_choice)
+            result = engine._request_routed(runtime, messages, tools, role, selected_config, purpose, tool_choice=tool_choice)
         except ProviderError as error:
             recovery['next_action'].update(status='failed', error_code=error.code)
             from .provider_recovery import OUTAGES
             if error.code in OUTAGES:
                 last_outage = error
+                import time
+                recovery['outage'] = {'retry_at':time.time() + (error.retry_after or 60), 'scope':error.scope or 'model'}
                 # Availability is not an identity/quality failure. Its cooldown
                 # owns the next eligible attempt; keep accounting and candidate.
                 recovery['attempted'].remove(model_id)
@@ -146,11 +151,13 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
         task['providers']['reviewer'] = selected_config
         if task.get('route'):
             task['route'].setdefault('preferred', {})['reviewer'] = model_id
+        recovery.pop('outage', None)
+        recovery['next_action']['status'] = 'completed'
         recovery['selected'] = model_id
         engine.store.save(task)
         return result
-    if last_outage is not None:
+    if last_outage is not None or recovery.get('outage'):
         from .routing import RoutingPause
         import time
-        raise RoutingPause('Waiting for an authorized independent reviewer; saved checks and review context are retained.', retry_at=time.time() + (last_outage.retry_after or 60), scope=last_outage.scope or 'model')
+        raise RoutingPause('Waiting for an authorized independent reviewer; saved checks and review context are retained.', retry_at=max(time.time()+1, recovery['outage']['retry_at']), scope=recovery['outage']['scope'])
     raise ProviderError('No unused eligible reviewer could establish independence. Choose reviewer to inspect available models or update the connection. Saved work and passing checks are preserved.', code='reviewer_recovery_required')

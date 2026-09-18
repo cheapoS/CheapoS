@@ -37,7 +37,7 @@ class ToolArgumentTests(LocalCase):
         task.update(conversational=True,action_pending=True,loop_guidance='Finish the requested edit.')
         self.engine.store.save(task)
         replies=iter([
-            malformed(),
+            malformed(), malformed(), malformed(),
             call('read_file',{'path':'math_utils.py'}),
             call('replace_lines',{'path':'math_utils.py','start_line':2,'end_line':2,'new_text':'    return max(lower, min(value, upper))'}),
             call('checkpoint',{'summary':'Fixed both bounds','uncertainties':''}),
@@ -56,35 +56,35 @@ class ToolArgumentTests(LocalCase):
             opener.return_value.open.side_effect=respond
             self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'approved',result['error'])
-        self.assertEqual(len(requests),6)
+        self.assertEqual(len(requests),8)
         self.assertFalse((Path(task['workspace'])/'unsafe.txt').exists())
         self.assertEqual(result['usage']['uncertain_requests'],0)
-        self.assertEqual(result['usage']['worker']['tokens'],60)
+        self.assertEqual(result['usage']['worker']['tokens'],90)
         self.assertEqual(result['usage']['reviewer']['tokens'],30)
         errors=[e for e in result['events'] if e['kind']=='tool_error']
-        self.assertEqual([e['detail']['tool'] for e in errors],['write_file','review_decision'])
+        self.assertEqual([e['detail']['tool'] for e in errors],['write_file','write_file','write_file','review_decision'])
         self.assertIn('invalid_tool_arguments',json.dumps(requests[1]['messages']))
         self.assertIn('replace_lines',{t['function']['name'] for t in requests[1]['tools']})
-        for index in (5,):
+        for index in (7,):
             feedback=requests[index]['messages'][-1]
             if index==1:  # Action recovery adds controller guidance after feedback.
                 feedback=next(m for m in reversed(requests[index]['messages']) if m['role']=='tool')
             self.assertEqual(feedback['tool_call_id'],'malformed-1')
             self.assertEqual(json.loads(feedback['content'])['code'],'invalid_tool_arguments')
 
-    def test_three_malformed_calls_pause_without_executing_or_unbounded_requests(self):
+    def test_pinned_malformed_calls_try_distinct_format_strategy_before_prerequisite(self):
         task=self.fixture(paid=True);task['conversational']=True;self.engine.store.save(task)
         self.engine.provider_factory=lambda *args:self.provider()
         with patch('cheapos.providers.build_opener') as opener:
             opener.return_value.open.side_effect=lambda *args,**kwargs:Response(self.stream(malformed()))
             self.engine.start(task['id']);result=self.finish(task)
-            self.assertEqual(opener.return_value.open.call_count,3)
+            self.assertEqual(opener.return_value.open.call_count,6)
         self.assertEqual(result['status'],'paused')
         self.assertEqual(result['error_code'],'progress_limit')
-        self.assertIn('three times',result['error'])
+        self.assertIn('pinned model',result['error'])
         self.assertEqual(result['changes'],[])
-        self.assertEqual(result['request_worker_turns'],3)
-        self.assertEqual(result['usage']['worker']['tokens'],45)
+        self.assertEqual(result['request_worker_turns'],6)
+        self.assertEqual(result['usage']['worker']['tokens'],90)
 
     def test_argument_repair_cannot_extend_worker_allowance(self):
         task=self.fixture(paid=True);task.update(conversational=True)

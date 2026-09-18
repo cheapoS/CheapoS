@@ -125,6 +125,7 @@ class RepairReferenceTests(unittest.TestCase):
         task, engine, runtime = self.legacy_failure()
         before = copy.deepcopy(task)
         engine._request = Mock(return_value={'content': 'continue saved repair'})
+        engine._request_route_once = lambda *args, **kwargs: Engine._request_route_once(engine, *args, **kwargs)
         response = Engine._request_routed(engine, runtime, [], [], 'worker', config_override={})
         self.assertEqual(response, {'content': 'continue saved repair'})
         engine._request.assert_called_once()

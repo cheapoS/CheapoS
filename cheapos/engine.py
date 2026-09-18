@@ -493,7 +493,7 @@ class Runtime:
         from .work_budgets import guard
         if not hasattr(self, 'branch_ledger'):
             if not hasattr(self, 'work_seconds_base'): self.work_seconds_base=self.task.get('active_work_seconds',0)
-            self.task['active_work_seconds']=self.work_seconds_base+max(0,time.monotonic()-self.started)
+            self.task['active_work_seconds']=self.work_seconds_base+max(0,(getattr(self, 'work_wait_started', None) or time.monotonic())-self.started)
             guard(self.task, seconds=self.task['active_work_seconds'])
         if self.interrupt_request.is_set() and not self.stop.is_set():
             raise OperatorRedirect("Applying the operator’s new direction")
@@ -1208,7 +1208,9 @@ class Engine:
             if runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError("Pause this chat before changing its limits")
             task = self.store.get(task_id)
-            new_limits = limits_from({**task['limits'], **values['limits']})
+            if 'branch_run' in task and task['branch_run'].get('status') != 'paused':
+                raise ValueError('Use the Unattended run proposal/revision controls to change its authorized work.')
+            new_limits = limits_from({**task.get('limits', {}), **values['limits']})
             if developing(task) and 'uncapped_work' in values['limits']:
                 task['operator_bounded_work'] = not new_limits['uncapped_work']
             if "branch_run" in task:
@@ -1226,6 +1228,9 @@ class Engine:
                     if key in values['limits']:
                         run_lims[target] = new_limits[key] * scale
                         plan_lims[target] = run_lims[target]
+                from .work_budgets import KEYS
+                for key in KEYS & values['limits'].keys():
+                    run_lims[key] = plan_lims[key] = new_limits[key]
                 if 'uncapped_work' in values['limits']:
                     run['plan']['uncapped_work'] = new_limits['uncapped_work']
                     # Switching back to bounded work also ends a measurement exemption.
@@ -2114,9 +2119,13 @@ class Engine:
         from .context_budget import context_rejection, payload_bytes
         from .context_recovery import project
         current = messages
+        # Capacity requirements belong to this operation, not every future request.
+        runtime.task.get('context_route_minimum', {}).pop(role, None)
         while True:
             try:
-                return self._request_route_once(runtime, current, tools, role, config_override, purpose, tool_choice)
+                result = self._request_route_once(runtime, current, tools, role, config_override, purpose, tool_choice)
+                runtime.task.get('context_route_minimum', {}).pop(role, None)
+                return result
             except ProviderError as error:
                 if not context_rejection(error): raise
                 projected = project(runtime.task, current, tools, role)
@@ -2132,7 +2141,7 @@ class Engine:
                 catalog = gateway.catalog(fresh=False)
                 model = next((m for m in catalog.get('models', []) if m['id'] == cfg['model']), {})
                 from . import context_budget
-                info = context_budget.decision(runtime.task, current, tools, cfg, model)
+                info = context_budget.decision(runtime.task, current, tools, cfg, model, role)
                 required = max(info['estimated_input_tokens'] + info['output_reserve_tokens'], model.get('context_length') or 0) + 1
                 runtime.task.setdefault('context_route_minimum', {})[role] = required
                 self.store.save(runtime.task)
@@ -2511,10 +2520,14 @@ class Engine:
             raise ValueError('Planner credentials are missing. Open Models and configure the selected planner connection or its reviewer fallback.')
         from .request_budget import resolve as resolve_budget
         model = None
-        if getattr(self, 'gateway', None):
+        if account['limits'].get('response_tokens') == 'automatic' and getattr(self, 'gateway', None):
             gateway = self.connection_for(config)
-            model = next((m for m in gateway.catalog(fresh=False).get('models', []) if m['id'] == config['model']), None) if gateway else None
-        budget = resolve_budget(account, config, model)
+            if gateway and hasattr(gateway, 'catalog'):
+                model = next((m for m in gateway.catalog(fresh=False).get('models', []) if m['id'] == config['model']), None)
+        budget = resolve_budget(account, config, model, messages=messages, tools=tools, role=role)
+        if purpose == 'probe' or role == 'coordinator':
+            budget['tokens'] = min(budget['tokens'], account['limits']['output_tokens'])
+            budget['source'] = 'brief_operation'
         config = {**config, '_effective_output_tokens':budget['tokens']}
         from .work_budgets import guard as guard_work
         guard_work(task, additions={'work_requests':1, 'work_turns':int(role == 'worker')})
@@ -2555,6 +2568,8 @@ class Engine:
                        {'attempt_id': record['id'], 'retry_of': record['retry_of'], 'role': role, 'reason': 'streaming_unsupported'})
         from .worker_conversation import receipt
         record['conversation'] = {**receipt(messages), 'transition': task.get('conversation_state', {}).get('last_transition')}
+        from .continuation_policy import dispatched_strategy
+        dispatched_strategy(task, record)
         metrics.dispatched_action(task, record)
         record['dispatched']=True
         if streaming:
@@ -2957,7 +2972,16 @@ class Engine:
         effective = None if is_measurement(task) else allowed if measuring(task) else min(allowed, remaining)
         operation_limit=task['limits'].get('verification_seconds')
         if operation_limit is not None:
-            effective = None if operation_limit == 'automatic' else operation_limit
+            from .request_budget import verification
+            effective = verification(task, argv)
+        from .work_budgets import active as explicit_budgets, effective as work_budget
+        work_deadline = False
+        if explicit_budgets(task) and work_budget(task)['work_seconds'] is not None:
+            ledger = getattr(runtime, 'branch_ledger', None)
+            used = ledger.base + ledger._elapsed() if ledger and ledger.active else task.get('active_work_seconds',0)
+            work_remaining = max(.001, work_budget(task)['work_seconds'] - used)
+            work_deadline = effective is None or work_remaining <= effective
+            effective = work_remaining if effective is None else min(effective, work_remaining)
         live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False, "session_allowed": session_allowed, "timeout_seconds": effective}
         task["check_stream"] = live
         self.event(task, "tool", "Running verification", {"command": argv, "run_id": live["run_id"], "timeout_seconds": effective})
@@ -2981,8 +3005,10 @@ class Engine:
         result["run_id"] = live["run_id"]
         result["raw_output"] = raw_info
         result['allowed_seconds'] = effective
-        result['outcome'] = {'cancelled': 'user_paused', 'timed out': 'task_deadline' if not measuring(task) and remaining <= allowed else 'process_timeout', 'output limit exceeded': 'output_limit'}.get(result.get('reason'), 'passed' if result['passed'] else 'test_failure')
+        result['outcome'] = {'cancelled': 'user_paused', 'timed out': 'task_deadline' if work_deadline or (not measuring(task) and remaining <= allowed) else 'process_timeout', 'output limit exceeded': 'output_limit'}.get(result.get('reason'), 'passed' if result['passed'] else 'test_failure')
         result['next_action'] = {'user_paused': 'Resume when ready.', 'task_deadline': 'Review saved work or increase the task time limit before resuming.', 'process_timeout': 'Inspect output; choose a focused check or increase the verification timeout.', 'output_limit': 'Reduce test verbosity or select a focused command.', 'test_failure': 'Inspect the failing assertion or process error before changing code.', 'passed': 'Only this command was verified.'}[result['outcome']]
+        if result['outcome'] == 'process_timeout' and operation_limit == 'automatic':
+            result['next_action'] = 'The adaptive deadline will increase for this exact authorized command on the next attempt. Inspect retained output first; cumulative work and spending budgets still apply.'
         if result['outcome'] == 'test_failure':
             consecutive_failures = 0
             for prev in reversed(task.get('checks', [])):
@@ -3098,6 +3124,9 @@ class Engine:
             task.pop("pending_review", None)
         if not measuring(task) and not saved_review and task["iterations"] >= task["limits"]["iterations"]:
             raise BudgetError("Worker iteration limit reached", "iterations", task["iterations"], task["limits"]["iterations"])
+        if not saved_review:
+            from .work_budgets import guard as guard_work
+            guard_work(task, additions={'work_iterations':1})
         if task.get("route") and not task["providers"].get("reviewer"):
             task["pending_checkpoint"] = {"summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000]}
             self.store.save(task)
@@ -3116,7 +3145,7 @@ class Engine:
         runtime.observations.clear()
         task["loop_guidance"] = None
         if not checks["passed"]:
-            if checks.get('outcome') in {'task_deadline', 'process_timeout', 'output_limit'}:
+            if checks.get('outcome') in {'task_deadline', 'process_timeout', 'output_limit'} and not (checks.get('outcome') == 'process_timeout' and task['limits'].get('verification_seconds') == 'automatic'):
                 raise ProgressPause(checks['next_action'])
             feedback = self.worker_check_feedback(runtime, checks)
             return {"decision": "REQUEST_CHANGES", "feedback": feedback.get('guidance', feedback['next_action']),
@@ -3285,6 +3314,11 @@ class Engine:
         task['route_wait'] = {'retry_at': info['retry_at'], 'started_at': runtime.route_wait_started_at,
                               'scope': info.get('scope'), 'message': info.get('message', '')}
         waiting_started=time.monotonic()
+        from .work_budgets import active
+        exclude_wait = active(task)
+        if exclude_wait:
+            runtime.work_wait_started = waiting_started
+            if hasattr(runtime, 'branch_ledger'): runtime.branch_ledger.suspend()
         self.event(task, 'routing', 'Waiting for an authorized route; retrying automatically', task['route_wait'])
         try:
             while True:
@@ -3301,7 +3335,12 @@ class Engine:
             task['error_code'] = None
             self.event(task, 'routing', 'Checking route availability again', {'role': info.get('role')})
         finally:
-            runtime.metric_cooldown_wait=getattr(runtime,'metric_cooldown_wait',0)+time.monotonic()-waiting_started
+            waited = time.monotonic()-waiting_started
+            runtime.metric_cooldown_wait=getattr(runtime,'metric_cooldown_wait',0)+waited
+            if exclude_wait:
+                runtime.started += waited
+                runtime.work_wait_started = None
+                if hasattr(runtime, 'branch_ledger') and not runtime.stop.is_set(): runtime.branch_ledger.resume()
             info['remaining_seconds'] = None if measuring(task) else max(0, task['limits'].get('run_minutes', 15) * 60 - (time.monotonic()-runtime.started))
             info['can_wait'] = bool((info['remaining_seconds'] is None or info['remaining_seconds'] > max(0, info['retry_at']-time.time())))
             task['route_wait'] = None
@@ -3681,8 +3720,6 @@ class Engine:
                         if name in {"checkpoint", "run_checks", "report_blocker", "ask_user"} and name in {t["function"]["name"] for t in offered_tools}:
                             metrics.tool_action(task)
                         if name == "checkpoint":
-                            from .work_budgets import guard as guard_work
-                            guard_work(task, additions={"work_iterations":1})
                             result = self.checkpoint_feedback(runtime, args)
                             coordinator_applied = bool(result.get('handoff_queued'))
                         elif name == "run_checks":

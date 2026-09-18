@@ -216,7 +216,7 @@ class BranchController:
             if planning_task:
                 from .metrics import initialize_actions
                 initialize_actions(planning_task)
-                for key in ('planning_work_policy','session_actions','usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
+                for key in ('planning_work_policy','planning_strategy','strategy_episodes','strategy_continuation','context_evidence','context_recovery','session_actions','usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
@@ -988,13 +988,13 @@ class BranchController:
             if type(keep_up_to_date) is not bool:raise ValueError('Keep up to date must be a boolean')
             run['integration_policy']={'keep_up_to_date':keep_up_to_date,'target_ref':mapping['target_ref'],'target_tip':work._tip(mapping['source'],mapping['target_ref'])}
             task['integration_policy']=copy.deepcopy(run['integration_policy'])
-            from .work_budgets import KEYS
-            task['limits'].update({k:v for k,v in limits.items() if k in KEYS})
             task['branch_run']=run;task['check_command']=commands[0]
             limits=run['limits']
             task['limits']=limits_from({'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),
                                        'worker_turns':200,'iterations':20,'reviewer_tokens':limits['reviewer_tokens'],
                                        'check_seconds':limits['check_seconds'],'output_tokens':limits['output_tokens']})
+            from .work_budgets import KEYS
+            task['limits'].update({k:v for k,v in limits.items() if k in KEYS})
             task['status']='ready';task['error']=None;task['updated_at']=now()
             # Save the new revision before invalidating old ephemeral tokens. A
             # crash expires every token anyway; no partial edit starts work.

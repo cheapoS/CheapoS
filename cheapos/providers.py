@@ -373,16 +373,18 @@ def reserve(task, config, messages, tools, role):
     if role == "reviewer" and not measuring(task):
         remaining = task["limits"]["reviewer_tokens"] - task["usage"]["reviewer"]["tokens"]
         output = min(output, remaining - prompt_bound)
-    token_blocked = output < 128
+    minimum_output = 1 if 'response_tokens' in task['limits'] else 128
+    token_blocked = output < minimum_output
     remaining_cost = task["limits"]["dollars"] - task["usage"]["cost"]
     input_cost = prompt_bound * config["input_rate"] / 1_000_000
     if config["output_rate"]:
         output = min(output, math.floor((remaining_cost - input_cost) * 1_000_000 / config["output_rate"]))
     projected = input_cost + max(0, output) * config["output_rate"] / 1_000_000
-    if output < 128 or projected > remaining_cost + 1e-10:
+    if output < minimum_output or projected > remaining_cost + 1e-10:
         key = 'reviewer_tokens' if role == 'reviewer' and token_blocked else 'dollars'
-        used = task['usage']['reviewer']['tokens'] if key == 'reviewer_tokens' else task['usage']['cost']
-        raise BudgetError("The next model request does not fit the remaining budget. Increase the task limit or use a smaller checkpoint/model.", key, used, task['limits'][key])
+        if key == 'reviewer_tokens' and selected_review is not None: key = 'work_review_tokens'
+        used = task['usage']['reviewer']['tokens'] if key in {'reviewer_tokens','work_review_tokens'} else task['usage']['cost']
+        raise BudgetError("The next model request does not fit the remaining budget. Increase the task limit or use a smaller checkpoint/model.", key, used, selected_review if key == 'work_review_tokens' else task['limits'][key])
     reservation = {"role": role, "prompt_tokens": prompt_bound, "completion_tokens": output, "tokens": prompt_bound + output, "cost": projected}
     reservation.update(basis='serialized_utf8_bytes_plus_buffer_v1', prompt_bytes=prompt_bytes, buffer_tokens=1024)
     bucket = task["usage"][role]

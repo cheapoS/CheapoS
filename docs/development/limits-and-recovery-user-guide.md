@@ -16,7 +16,8 @@ Per-operation controls are separate. Blank means **Automatic**. Output uses
 current catalog capacity where available, otherwise a conservative estimate.
 Unknown or stale capacity is never described as unlimited. Explicit output caps
 remain binding. The request deadline defaults to the transport's normal deadline;
-verification Automatic permits the process to finish while cancellation, work
+verification Automatic starts from the saved check deadline and increases it
+using that exact command’s observed durations and timeouts. Cancellation, work
 budgets and bounded output storage remain enforced.
 
 Pause active work before applying settings. For paused work, **Apply & continue**

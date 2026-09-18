@@ -1,5 +1,4 @@
 """Operator policy v2: independent nullable work budgets, separate from money."""
-import math
 FIELDS = {'work_requests':'requests', 'work_turns':'worker_turns', 'work_tools':'tool_actions',
           'work_seconds':'working_seconds', 'work_review_tokens':'reviewer_tokens', 'work_iterations':'iterations'}
 OPERATIONS = {'response_tokens', 'verification_seconds', 'request_seconds'}
@@ -40,17 +39,22 @@ def effective(task):
     return result
 
 
-def guard(task, *, additions=None, seconds=None):
-    if not active(task): return
+def usage(task, *, seconds=None):
     from .metrics import action_totals
-    from .providers import BudgetError
     counts = action_totals(task)['counts']
     consumed = task.get('branch_run', {}).get('consumption', {})
     used = {'work_requests': sum(v for k,v in counts.items() if k != 'tools'),
             'work_turns': counts.get('worker',0), 'work_tools':counts.get('tools',0),
             'work_review_tokens':task.get('usage', {}).get('reviewer', {}).get('tokens',0),
             'work_iterations':len(task.get('checkpoints',[])),
-            'work_seconds':seconds if seconds is not None else consumed.get('working_seconds',0)}
+            'work_seconds':seconds if seconds is not None else consumed.get('working_seconds',task.get('active_work_seconds',0))}
+    return used
+
+
+def guard(task, *, additions=None, seconds=None):
+    if not active(task): return
+    from .providers import BudgetError
+    used = usage(task, seconds=seconds)
     for key, limit in effective(task).items():
         value = used[key] + (additions or {}).get(key,0)
         if limit is not None and value > limit:

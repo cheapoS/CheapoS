@@ -35,13 +35,16 @@ class CooldownWaitTests(LocalCase):
             self.engine._run(runtime)
         run.assert_called_once()
         self.assertEqual(task['progress_state']['wait_cycles'],1)
-        self.assertEqual(runtime.started,1000)
+        self.assertEqual(runtime.started,1002)
+        self.assertEqual(task['active_work_seconds'],0)
         self.assertEqual(task['status'],'awaiting_reply')
 
     def test_pause_and_deadline_end_wait_without_a_probe(self):
         for stop_at in (1000.5,None):
             clock=FakeClock(stop_at);task,runtime=self.waiting(clock,retry=3)
-            if stop_at is None: runtime.started-=task['limits']['run_minutes']*60-1
+            if stop_at is None:
+                task['limits'].pop('work_policy_version', None)  # Saved legacy finite deadline.
+                runtime.started-=task['limits']['run_minutes']*60-1
             with patch('cheapos.engine.time.monotonic',clock.now),patch('cheapos.engine.time.time',clock.now),patch.object(self.engine,'_run_until_pause') as run:
                 self.engine._run(runtime)
             run.assert_not_called()
@@ -50,7 +53,7 @@ class CooldownWaitTests(LocalCase):
             self.assertLessEqual(clock.now(),1001.25)
 
     def test_unknown_or_over_budget_retry_is_not_offered(self):
-        task=self.chat('remote');runtime=Runtime(task)
+        task=self.chat('remote');task['limits'].pop('work_policy_version',None);runtime=Runtime(task)
         self.assertFalse(self.engine.route_wait_info(runtime,RoutingPause('Unknown'))['can_wait'])
         self.assertFalse(self.engine.route_wait_info(runtime,RoutingPause('Too late',time.time()+99999,'provider'))['can_wait'])
         task['progress_state']['wait_cycles']=3

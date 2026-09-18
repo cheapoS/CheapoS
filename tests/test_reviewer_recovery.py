@@ -14,6 +14,10 @@ class ReviewerRecoveryTests(unittest.TestCase):
                 'patch': 'saved', 'checks': [{'passed': True}], 'pending_review': {'messages': ['saved']}}
         engine = SimpleNamespace(_request_routed=Mock(side_effect=ProviderError('identity', code='review_identity_unknown')),
                                  _request=Mock(return_value={'content': 'review'}), store=Mock(), event=Mock())
+        def routed(runtime, messages, tools, role, override=None, purpose=None, **kwargs):
+            if override is not None: return engine._request(runtime,messages,tools,role,override,purpose,**kwargs)
+            raise ProviderError('identity', code='review_identity_unknown')
+        engine._request_routed.side_effect = routed
         task['route'] = {'base_url': 'gateway'}
         return engine, SimpleNamespace(task=task, guard=Mock())
 
@@ -23,7 +27,7 @@ class ReviewerRecoveryTests(unittest.TestCase):
         with patch.object(recovery, 'candidates', return_value=[{'id': 'next'}]), patch.object(recovery, 'config', return_value={'model': 'next'}):
             recovery.request(engine, runtime, ['review context'], [], 'reviewer')
             recovery.request(engine, runtime, ['review context'], [], 'reviewer')
-        self.assertEqual(engine._request_routed.call_count, 1)
+        self.assertEqual(engine._request_routed.call_count, 3)
         self.assertEqual(engine._request.call_count, 2)
         for key in ('patch', 'checks', 'pending_review'):
             self.assertEqual(runtime.task[key], before[key])
@@ -38,7 +42,7 @@ class ReviewerRecoveryTests(unittest.TestCase):
                     recovery.request(engine, runtime, [], [], 'reviewer')
                 self.assertEqual(caught.exception.code, 'reviewer_recovery_required')
         self.assertEqual(engine._request.call_count, 1)
-        self.assertEqual(engine._request_routed.call_count, 1)
+        self.assertEqual(engine._request_routed.call_count, 2)
 
     def test_manual_and_unknown_history_do_not_spend_on_alternatives(self):
         for unknown in (False, True):
@@ -61,6 +65,14 @@ class ReviewerRecoveryTests(unittest.TestCase):
             self.assertIs(caught.exception, error)
             engine._request.assert_called_once()
             self.assertEqual(runtime.task['checks'], [{'passed': True}])
+
+    def test_saved_selection_dispatches_once_without_repeating_identity_failure(self):
+        engine,runtime=self.fixture()
+        runtime.task['reviewer_identity_recovery']={'attempted':['old','next'], 'next_action':{'model':'next','status':'selected'}}
+        with patch.object(recovery,'candidates',return_value=[{'id':'next'}]), patch.object(recovery,'config',return_value={'model':'next'}):
+            recovery.request(engine,runtime,[],[],'reviewer')
+        engine._request.assert_called_once()
+        self.assertEqual(runtime.task['reviewer_identity_recovery']['next_action']['status'],'completed')
 
     def test_recovery_requires_reported_identity_and_rejects_same_author(self):
         task = {'served_identity_version': 1, 'reviewer_identity_recovery': {'attempted': ['old']},

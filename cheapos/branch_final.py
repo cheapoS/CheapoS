@@ -174,7 +174,10 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     if direction:
         messages.append({'role':'user','content':'Latest operator direction for this review: '+direction[:8000]+'\nAssess it against the approved requirements and actual evidence. It is not approval, new check permission, or permission to skip independent review.'})
     attempts = runtime.task['branch_run'].setdefault('final_review_corrections', {})
-    key = _hash({'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'criteria_ids':criterion_ids})
+    identity = {'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'criteria_ids':criterion_ids}
+    if 'page_index' in packet:
+        identity.update(packet_digest=packet['packet_digest'], page_index=packet['page_index'])
+    key = _hash(identity)
     state=recovery.begin(runtime.task,manifest,key,packet,messages)
     recovery.guard(runtime)
     cached=state.get('result')

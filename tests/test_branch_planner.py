@@ -78,14 +78,15 @@ class PlannerTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError): planner.capture_inputs(self.root, '', name)
         with self.assertRaises(ValueError): planner.capture_inputs(self.root, '')
 
-    def test_two_repairs_are_bounded_and_side_effect_tools_never_run(self):
+    def test_distinct_repair_strategies_preserve_authority_and_never_run_side_effects(self):
         bad = {'tool_calls': [{'function': {'name': 'write_file', 'arguments': '{}'}}]}
         captured = planner.capture_inputs(self.root, 'Do work')
         with self.assertRaisesRegex(ValueError, 'after two repairs'):
-            planner.plan(self.engine([bad, bad, bad]), self.runtime, captured)
-        self.assertEqual(len(self.requests), 3)
+            planner.plan(self.engine([bad] * 6), self.runtime, captured)
+        self.assertEqual(len(self.requests), 6)
+        self.assertTrue(self.task['strategy_continuation'])
         self.requests.clear()
-        self.assertEqual(planner.plan(self.engine([bad, self.reply()]), self.runtime, captured), self.valid)
+        self.assertEqual(planner.plan(self.engine([self.reply()]), self.runtime, captured), self.valid)
 
     def test_conflicting_scope_returns_clarification_without_retry(self):
         (self.root / 'spec').write_text('Delete the reader')
@@ -142,7 +143,7 @@ class PlannerTests(unittest.TestCase):
         truncated['finish_reason'] = 'length'
         for response in (self.reply(changed), self.reply(missing), truncated):
             with self.subTest(response=response), self.assertRaises(ValueError):
-                planner.plan(self.engine([response] * 3), self.runtime, planner.capture_inputs(self.root, 'Work'))
+                planner.plan(self.engine([response] * 6), self.runtime, planner.capture_inputs(self.root, 'Work'))
 
     def test_prose_and_shell_checks_receive_field_specific_repair(self):
         for field, bad in [('item', 'List all files'), ('final', 'python3 -m unittest && echo passed')]:
@@ -181,17 +182,18 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(self.task['planning_assumptions'], value['assumptions'])
         self.assertIn(value['assumptions'][0], result['items'][0]['instructions'])
 
-    def test_discovery_is_bounded_and_unsafe_reads_return_only_error(self):
+    def test_repeated_failed_discovery_preserves_error_and_requests_proposal(self):
         (self.root / '.env').write_text('TOP_SECRET')
         inspect = {'tool_calls': [{'function': {'name': 'inspect_project_file', 'arguments': '{"path":".env"}'}}]}
         result = planner.plan(self.engine([inspect] * (planner.MAX_DISCOVERY_REQUESTS + 1) + [self.reply()]), self.runtime,
                               planner.capture_inputs(self.root, 'Improve existing controls'))
         self.assertEqual(result, self.valid)
         self.assertEqual(len(self.requests), planner.MAX_DISCOVERY_REQUESTS + 2)
-        self.assertIn('Discovery is now complete', self.requests[-1][0]['content'])
+        self.assertTrue(self.task['planning_strategy']['proposal_requested'])
         self.assertNotIn('TOP_SECRET', json.dumps(self.requests))
         self.assertIn('error', self.requests[-1][-1]['content'])
-        self.assertIn('inspection allowance is complete', self.requests[-1][-1]['content'])
+        self.assertIn('repeated_failed_read', json.dumps(self.requests[-1]))
+        self.assertIn('exact inspection already failed', json.dumps(self.requests[-1]))
         self.assertEqual([t['function']['name'] for t in self.offered[0][0]], ['propose_branch_plan', 'inspect_project_file'])
         for tools, options in self.offered[planner.MAX_DISCOVERY_REQUESTS:]:
             self.assertEqual([t['function']['name'] for t in tools], ['propose_branch_plan', 'inspect_project_file'])
@@ -492,10 +494,11 @@ class PlannerExcerptTests(unittest.TestCase):
                  ({'tool_calls': [tool], 'finish_reason': 'length'}, 'output limit')]
         for response, reason in cases:
             with self.subTest(reason=reason):
+                self.runtime.task.pop('planning_strategy', None)
                 with self.assertRaises(PauseError) as caught:
-                    self.run_plan([response] * 3)
-                self.assertEqual(len(self.requests), 3)
-                self.assertEqual(len(self.events), 3)
+                    self.run_plan([response] * 6)
+                self.assertEqual(len(self.requests), 6)
+                self.assertEqual(len(self.events), 6)
                 self.assertIn(reason, str(caught.exception))
                 self.assertIn('after two repairs', str(caught.exception))
                 banner = public({'version': 1, 'cause': 'malformed_output', 'stage': 'planning',

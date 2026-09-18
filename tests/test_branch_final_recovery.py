@@ -57,6 +57,25 @@ class FinalRecoveryTests(unittest.TestCase):
         for key in ('plan','items'):self.assertEqual(task['branch_run'][key],before['branch_run'][key])
         engine.checks.assert_not_called();engine.file_tool.assert_not_called()
 
+    def test_large_pages_resume_with_independent_saved_coverage(self):
+        task,engine,runtime=self.fixture()
+        packet={'evidence':'exact evidence '*6000}
+        def respond(rt,messages,tools,role,**kwargs):
+            sent=json.loads(messages[1]['content'])
+            result=self.approval()['tool_calls'][0]['result']
+            if 'page_index' in sent: result['chunk_ids']=[]
+            return self.call('final_review_decision',result)
+        engine.request.side_effect=respond
+        manifest={'id':'m','requirements':[{'id':'one:1'}]}
+        result=final.review_paged(engine,runtime,manifest,packet,['diff:1'],[])
+        count=engine.request.call_count
+        self.assertGreater(count,2)
+        self.assertEqual(len(task['branch_run']['final_review_packets']),count)
+        runtime.task=json.loads(json.dumps(task))
+        self.assertEqual(final.review_paged(engine,runtime,manifest,packet,['diff:1'],[]),result)
+        self.assertEqual(engine.request.call_count,count)
+        engine.checks.assert_not_called()
+
     def test_legacy_exhaustion_selects_before_dispatch_and_keeps_real_defect(self):
         task,engine,runtime=self.fixture()
         key=final._hash({'manifest_id':'m','chunk_ids':['diff:1'],'criteria_ids':[]})

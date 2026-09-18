@@ -137,3 +137,14 @@ def strategy_episode(task, role, failure, identity, strategies):
     episode['next_action'] = selected or 'prerequisite'
     task['strategy_continuation'] = {'episode': key, 'action': episode['next_action']}
     return episode
+
+
+def dispatched_strategy(task, record):
+    """Link the selected strategy to the existing durable request outcome."""
+    selected = task.get('strategy_continuation') or {}
+    episode = task.get('strategy_episodes', {}).get(selected.get('episode'))
+    if not episode or episode['role'] != record['role']: return
+    attempt = next((a for a in episode['attempts'] if a['status'] == 'selected'), None)
+    if attempt:
+        attempt.update(status='dispatched', request_id=record['id'])
+        record['strategy_episode'] = selected['episode']

@@ -131,6 +131,9 @@ def checkpoint(engine, runtime, args):
 def _checkpoint(engine, runtime, args):
     from .engine import REVIEW_TOOLS, REVIEW_SYSTEM, ProgressPause
     task = runtime.task
+    if not task.get('pending_review'):
+        from .work_budgets import guard
+        guard(task, additions={'work_iterations':1})
     run = branch_runs.require_supported(task['branch_run'])
     item = next(i for i in run['items'] if i['id'] == run['current_item_id'])
     if not item['required_checks']:

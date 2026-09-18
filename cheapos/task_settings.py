@@ -70,8 +70,10 @@ def view(engine, task_id):
         eligible = unfinished and not task.get('demo') and not task.get('commit_pending')
         eligible = eligible and (not run or run.get('status') in {'paused', 'blocked'} or active)
         eligible = eligible and not any(run.get(k) for k in ('pending_operations', 'merge_operation', 'target_update'))
-        from .work_budgets import KEYS
+        from .work_budgets import KEYS, usage, effective
         editable = sorted({f'limits.{key}' for key in KEYS} | EXECUTION_FIELDS | {f'limits.{key}' for key in values['limits']} | {'limits.uncapped_work', 'roles.reviewer'}) if eligible else []
+        if task.get('planning_request') and not run.get('authorization') and not run.get('authorization_workspace'):
+            editable = [key for key in editable if key.startswith('limits.')]
         return {'task_id': task_id, 'title': task.get('title', task_id), 'project': task.get('source'),
                 'values': values, 'revision': snapshot.get('revision', 0),
                 'active': active, 'paused': bool(eligible and not active and task.get('status') not in {'approved', 'awaiting_reply'}),
@@ -83,7 +85,8 @@ def view(engine, task_id):
                     'pause_to_apply': bool(eligible and active)},
                 'reason': 'Pause to apply; your settings draft will be retained.' if active else
                     ('This task needs its existing proposal or integration controls.' if not eligible else ''),
-                'accounted_cost': task.get('usage', {}).get('cost', 0)}
+                'accounted_cost': task.get('usage', {}).get('cost', 0),
+                'work_usage': usage(task), 'work_budgets': effective(task)}
 
 
 def reviewer_config(engine, task, selection):
@@ -143,6 +146,30 @@ def prepare(engine, task, patch):
             from .development import enabled
             if enabled(task):
                 updated['operator_bounded_work'] = not updated['limits']['uncapped_work']
+    run = updated.get('branch_run') or {}
+    if updated.get('planning_request') and not run.get('authorization') and not run.get('authorization_workspace'):
+        if any(not key.startswith('limits.') for key in patch):
+            raise ValueError('Planning settings can amend work budgets; model selection uses the planning controls')
+        from .branch_controller import run_limits, planning_work_policy, apply_planning_work_policy
+        from .work_budgets import KEYS
+        updated.setdefault('planning_policy_history', []).append({
+            'limits':copy.deepcopy(updated['planning_limits']), 'work_policy':planning_work_policy(updated)})
+        revised = copy.deepcopy(updated['planning_limits'])
+        for key,target,scale in [('dollars','dollars',1),('worker_turns','worker_turns',1),
+                ('run_minutes','working_seconds',60),('reviewer_tokens','reviewer_tokens',1),
+                ('check_seconds','check_seconds',1),('output_tokens','output_tokens',1)]:
+            if key in limit_patch: revised[target]=updated['limits'][key]*scale
+        revised.update({key:value for key,value in updated['limits'].items() if key in KEYS})
+        revised=run_limits(revised,3)
+        updated['planning_limits']=revised
+        updated['planning_task_limits']=copy.deepcopy(updated['limits'])
+        policy=planning_work_policy(updated)
+        if 'uncapped_work' in limit_patch: policy['uncapped_work']=limit_patch['uncapped_work']
+        updated['planning_work_policy']=policy
+        run['limits']=copy.deepcopy(revised);run['plan']['limits']=copy.deepcopy(revised)
+        apply_planning_work_policy(run['plan'],policy)
+        values=overlay(values,patch);values['limits']=copy.deepcopy(updated['limits'])
+        return updated,values
     if 'roles.reviewer' in patch:
         selection = patch['roles.reviewer']
         if not isinstance(selection, dict):

@@ -57,17 +57,16 @@ class OutputRecoveryTests(LocalCase):
         self.assertEqual(result['request_worker_turns'], 3)
         self.assertEqual(result['usage']['uncertain_requests'], 0)
         self.assertEqual(result['limits'], task['limits'])
-        self.assertTrue(all(r['maximum'] == task['limits']['output_tokens'] for r in requests if r['role'] == 'worker'))
+        self.assertEqual([r['maximum'] for r in requests if r['role']=='worker'], [2048,4096,4096])
         self.assertEqual(len(result['checks']), 1)
         self.assertFalse(result.get('commit_result'))
 
-    def test_repeated_cap_switches_model_but_handoffs_are_bounded(self):
-        task = self.chat('remote'); requests = self.responses([self.limited() for _ in range(6)])
+    def test_repeated_cap_changes_route_and_completes_without_hidden_handoff_stop(self):
+        task = self.chat('remote'); requests = self.responses([self.limited() for _ in range(6)]+[{'content':'Recovered on the next eligible route.'}])
         self.engine.start(task['id']); result = self.finish(task)
-        self.assertEqual(result['status'], 'paused', result['error'])
-        self.assertEqual(result['error_code'], 'routing_unavailable')
-        self.assertEqual([r['model'] for r in requests], ['a', 'a', 'b', 'b', 'c', 'c'])
-        self.assertEqual(result['request_worker_turns'], 6)
+        self.assertEqual(result['status'], 'awaiting_reply', result['error'])
+        self.assertEqual([r['model'] for r in requests], ['a','a','b','b','c','c','d'])
+        self.assertEqual(result['request_worker_turns'], 7)
         self.assertEqual(result['usage']['uncertain_requests'], 6)
         self.assertEqual(result['limits'], task['limits'])
         self.assertFalse(result['changes'])
@@ -86,7 +85,7 @@ class OutputRecoveryTests(LocalCase):
 
     def test_worker_and_checkpoint_limits_stop_before_extra_request(self):
         for cap in ('worker_turns', 'checkpoint_turns'):
-            task = self.chat('remote'); task['limits'][cap] = 1 if cap == 'worker_turns' else 2
+            task = self.chat('remote'); task['limits'].pop('work_policy_version',None); task['limits'][cap] = 1 if cap == 'worker_turns' else 2
             self.engine.store.save(task)
             requests = self.responses([self.limited(), self.limited()])
             self.engine.start(task['id']); result = self.finish(task)

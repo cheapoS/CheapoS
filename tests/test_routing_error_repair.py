@@ -91,9 +91,9 @@ class RoutingErrorRepairTests(unittest.TestCase):
         engine, runtime, inputs, requests = self.planner_fixture([ToolCallValidationError() for _ in range(3)])
         from cheapos.branch_pause import PauseError
         with self.planning_patches(), patch('cheapos.routing._select_connections', side_effect=routing.RoutingPause('No alternate')):
-            with self.assertRaises(PauseError) as caught:
+            with self.assertRaises(routing.RoutingPause) as caught:
                 branch_planner.plan(engine, runtime, inputs)
-        self.assertIn('two repairs', str(caught.exception))
+        self.assertIn('No alternate', str(caught.exception))
         self.assertEqual(len(requests), 3)
         self.assertEqual(runtime.task['usage']['cost'], 3)
 

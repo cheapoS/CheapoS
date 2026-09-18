@@ -421,10 +421,17 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
             if classification['scope'] in {'request','connection','account'}:
                 retry = time.time() + (getattr(error, 'retry_after', None) or route_schedule.ROUND_SECONDS) if cooldown else None
                 raise RoutingPause(classification['action'], retry_at=retry, scope=classification['scope']) from None
+    minimum = task.get('context_route_minimum', {}).get(role)
+    if minimum and not any(access_policy.eligible(m, policy) and not m.get('local')
+            and not m.get('metadata_evidence', {}).get('stale')
+            and type(m.get('context_length')) is int and m['context_length'] >= minimum
+            for m in catalog['models']):
+        raise RoutingPause('This request needs an authorized model with a verified larger context window. Saved context and evidence are retained.', scope='context_capacity')
     provider_waits = [gateway.pool.observation(base_url, m["id"], connection_revision) for m in catalog["models"]
                       if access_policy.eligible(m, policy) and not m.get("local") and m["id"] not in used
                       and not m['id'].startswith('auto/') and m.get('tool_calling') is True
-                      and routing_trace.context_fit(task, m) in {'eligible', 'fit_unknown'}]
+                      and routing_trace.context_fit(task, m) in {'eligible', 'fit_unknown'}
+                      and (not minimum or (not m.get('metadata_evidence', {}).get('stale') and type(m.get('context_length')) is int and m['context_length'] >= minimum))]
     access_blocked = [h for h in provider_waits if h['cooling_down'] and (h.get('failure') or {}).get('category') == 'credential_access']
     if access_blocked and len(access_blocked) == len(provider_waits):
         # A local auth-failure cache expiry is not a provider quota reset.
