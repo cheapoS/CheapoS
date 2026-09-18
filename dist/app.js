@@ -252,15 +252,50 @@ function historyMenu(anchor) {
   if(state.historyView==='trash') actions.push({label:'Empty Trash',danger:true,run:async()=>{await api('/trash/empty',{});state.historyView='active';await loadTasks();renderSidebar();toast('Trash emptied.');}});
   compactMenu(anchor,'Show chats',actions);
 }
+async function copyTaskJson(task) {
+  try {
+    toast('Fetching task record…');
+    const fullTask=(state.task?.id===task.id)?state.task:await api('/tasks/'+task.id);
+    const jsonStr=JSON.stringify(fullTask,null,2);
+    await navigator.clipboard.writeText(jsonStr);
+    toast('Task JSON copied to clipboard! Ready to paste on cheapos.lol/community/new');
+  } catch(e) {
+    toast('Failed to copy task JSON: '+e.message);
+  }
+}
+async function exportTaskJson(task) {
+  try {
+    toast('Preparing task export…');
+    const fullTask=(state.task?.id===task.id)?state.task:await api('/tasks/'+task.id);
+    const jsonStr=JSON.stringify(fullTask,null,2);
+    const blob=new Blob([jsonStr],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const safeTitle=(fullTask.title||'task').toLowerCase().replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,32);
+    a.href=url;
+    a.download=`${safeTitle||'task'}-${task.id.slice(0,8)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Task JSON exported.');
+  } catch(e) {
+    toast('Failed to export task JSON: '+e.message);
+  }
+}
 function taskMenu(task,anchor) {
   if(!task)return;
   const actions=task.trashed_at?[
     {label:'Inspect saved chat',run:()=>selectTask(task.id)},
-    {label:'Restore chat',run:()=>restoreTrash(task)}
+    {label:'Restore chat',run:()=>restoreTrash(task)},
+    {label:'Copy task JSON',run:()=>copyTaskJson(task)},
+    {label:'Export task JSON…',run:()=>exportTaskJson(task)}
   ]:[
     {label:'Rename…',run:()=>renameTask(task)},
     {label:task.pinned?'Unpin':'Pin',run:async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()}},
     {label:task.archived_at?'Restore to active chats':taskBusy(task)?'Pause & archive':'Archive',run:()=>archiveTask(task,!task.archived_at)},
+    {label:'Copy task JSON',run:()=>copyTaskJson(task)},
+    {label:'Export task JSON…',run:()=>exportTaskJson(task)},
     {label:taskBusy(task)?'Pause & move to trash':'Move to trash',danger:true,run:()=>moveToTrash(task)}
   ];
   compactMenu(anchor,'Chat options',actions);
@@ -1449,7 +1484,8 @@ function renderInspector() {
   const usage=t?`<section class="usage"><div class="section-title">Compute, thoughtfully spent</div><div class="cost-total"><strong>${money(t.usage.cost)}</strong><span>${t.demo?'no model charges':'accounted session cost'}</span></div><div class="usage-table">${['coordinator','planner','worker','reviewer'].filter(role=>t.usage[role]).map(role=>`<div><span>${role==='worker'?'Worker':role==='coordinator'?'Local chat / coordinator':role==='planner'?'Planner':'Reviewer'}</span><span>${tokenUsageLabel(t,role)}</span><strong>${money(t.usage[role].cost)}</strong></div>`).join('')}</div>${tokenReservationDetails(t)}<div class="budget-meter"><span style="width:${Math.min(100,t.limits.dollars>0?t.usage.cost/t.limits.dollars*100:0)}%"></span></div><p class="small muted">${money(t.limits.dollars)} estimated cap · ${workLimits(t).uncapped_work?'Uncapped work ∞':`${t.limits.reviewer_tokens.toLocaleString()} reviewer tokens`}</p><p class="small muted">${t.usage.uncertain_requests?`${t.usage.uncertain_requests} uncertain request(s): reservations remain counted.`:t.usage.estimated_requests?'Some costs use your configured token prices.':t.demo?'Demo usage is zero. No savings are claimed.':'Reported cost when available; configured prices otherwise.'}</p>${!taskBusy(t)&&!['approved','completed'].includes(t.status)?'<button class="text-link" id="edit-limits">Review limits →</button>':''}</section>`:'';
   const journey=t?sessionJourney(t):'';
   const workspace=t?`<details class="workspace-info"><summary>Workspace details</summary><p>Task copy</p><code>${esc(t.workspace)}</code><p>Snapshot: ${t.snapshot.files} files · ${t.snapshot.skipped.length} excluded</p><p class="small">Snapshot excludes common secret files and dependency folders. Review your repository before sending its contents to a provider.</p></details>`:`<section class="usage"><div class="section-title">Yours, from the start</div><p class="small muted">Open source. Local task history. Your providers, your keys, your limits.</p><button class="subtle-button" id="inspector-connect">Set up connections →</button></section>`;
-  $('#session-details').innerHTML=intro+models+usage+journey+workspace+(t?'<button class="subtle-button" id="session-permissions">Session permissions</button><button class="subtle-button" id="open-activity">See activity →</button>':'');if($('#open-activity'))$('#open-activity').onclick=()=>setView('activity');
+  $('#session-details').innerHTML=intro+models+usage+journey+workspace+(t?'<button class="subtle-button" id="copy-task-json">Copy task JSON</button><button class="subtle-button" id="session-permissions">Session permissions</button><button class="subtle-button" id="open-activity">See activity →</button>':'');if($('#open-activity'))$('#open-activity').onclick=()=>setView('activity');
+  if($('#copy-task-json'))$('#copy-task-json').onclick=()=>copyTaskJson(t);
   if($('#session-permissions'))$('#session-permissions').onclick=sessionPermissions;
   if($('#edit-limits'))$('#edit-limits').onclick=chatLimits;if($('#inspector-connect'))$('#inspector-connect').onclick=openConnections;
 }
