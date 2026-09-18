@@ -1,6 +1,7 @@
 import argparse
 import sys
 import json
+import time
 import urllib.request
 import urllib.parse
 import socket
@@ -11,10 +12,39 @@ import html
 
 __version__ = "0.1.0"
 
+
+def compute_uptime(results, now=time.monotonic):
+    """Return overall uptime percentage as a float 0-100.
+
+    A result counts as 'up' when its ok flag is True.
+    An empty list yields 100.0.
+    """
+    if not results:
+        return 100.0
+    up = sum(1 for r in results if r.get("ok"))
+    return round((up / len(results)) * 100.0, 2)
+
+
+def check_cert_expiry(expiry_str, now=None):
+    """Return (is_valid, days_remaining) for a notAfter cert timestamp.
+
+    expiry_str: OpenSSL 'notAfter' string, e.g. 'Jan  5 12:00:00 2030 GMT'
+    now: optional datetime for deterministic testing.
+    """
+    fmt = "%b %d %H:%M:%S %Y %Z"
+    if now is None:
+        now = datetime.datetime.utcnow()
+    dt = datetime.datetime.strptime(expiry_str, fmt)
+    delta = (dt - now).total_seconds()
+    days = delta / 86400.0
+    is_valid = delta >= 0
+    return is_valid, round(days, 1)
+
+
 def get_ssl_expiry(url):
     parsed = urllib.parse.urlparse(url)
     hostname = parsed.hostname
-    port = parsed.port or 443
+    port = parsed.port or (443 if parsed.scheme == 'https' else 80)
     context = ssl.create_default_context()
     try:
         with socket.create_connection((hostname, port), timeout=5) as sock:
