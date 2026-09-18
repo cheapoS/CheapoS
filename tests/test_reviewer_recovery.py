@@ -92,3 +92,44 @@ class ReviewerRecoveryTests(unittest.TestCase):
         self.assertEqual(runtime.task['providers']['reviewer']['model'],'another')
         self.assertEqual(runtime.task['checks'],[{'passed':True}])
         self.assertNotIn('next',runtime.task['reviewer_identity_recovery']['attempted'])
+
+    def test_rejected_replacement_continues_with_same_final_review_evidence(self):
+        for code in ('http_400','http_422','invalid_response_json','transport_retry_exhausted'):
+            with self.subTest(code=code):
+                engine,runtime=self.fixture();before=copy.deepcopy(runtime.task)
+                messages=[{'role':'user','content':'Saved candidate, checks and counterevidence'}]
+                engine._request.side_effect=[ProviderError('rejected',code=code),{'content':'approved'}]
+                with patch.object(recovery,'candidates',return_value=[{'id':'next'},{'id':'another'}]), patch.object(
+                        recovery,'config',side_effect=lambda e,t,m:{'model':m}):
+                    result=recovery.request(engine,runtime,messages,[], 'reviewer',purpose='branch_final')
+                self.assertEqual(result['content'],'approved')
+                self.assertEqual(runtime.task['providers']['reviewer']['model'],'another')
+                self.assertIn('next',runtime.task['reviewer_identity_recovery']['attempted'])
+                for request in engine._request.call_args_list:
+                    self.assertIs(request.args[1],messages);self.assertEqual(request.args[5],'branch_final')
+                for key in ('patch','checks','pending_review'):
+                    self.assertEqual(runtime.task[key],before[key])
+
+    def test_shared_request_rejection_cannot_sweep_reviewer_pool(self):
+        for scope in ('request','connection','account'):
+            engine,runtime=self.fixture();error=ProviderError('private',code='http_400',scope=scope)
+            engine._request.side_effect=error
+            with patch.object(recovery,'candidates',return_value=[{'id':'next'},{'id':'another'}]), patch.object(
+                    recovery,'config',return_value={'model':'next'}),self.assertRaises(ProviderError) as caught:
+                recovery.request(engine,runtime,[],[],'reviewer')
+            self.assertIs(caught.exception,error);engine._request.assert_called_once()
+
+    def test_provider_cooldown_skips_remaining_sibling_reviewer(self):
+        engine,runtime=self.fixture();cooling=set();pool=Mock()
+        pool.observation.side_effect=lambda endpoint,model,revision: (
+            {'cooling_down':True,'retry_at':12345678900,'cooldown_scope':'provider'}
+            if model.split('/')[0] in cooling else {})
+        pool.record.side_effect=lambda endpoint,model,role,**kwargs:cooling.add(model.split('/')[0])
+        engine.connection_for=lambda cfg:SimpleNamespace(pool=pool)
+        engine._request.side_effect=[ProviderError('backoff',code='gateway_cooldown',scope='provider',retry_after=60),{'content':'approved'}]
+        with patch.object(recovery,'candidates',return_value=[{'id':'first/a'},{'id':'first/b'},{'id':'second/c'}]), patch.object(
+                recovery,'config',side_effect=lambda e,t,m:{'model':m,'base_url':'gateway'}):
+            result=recovery.request(engine,runtime,[],[],'reviewer')
+        self.assertEqual(result['content'],'approved')
+        self.assertEqual([call.args[4]['model'] for call in engine._request.call_args_list],['first/a','second/c'])
+        self.assertNotIn('first/b',runtime.task['reviewer_identity_recovery']['attempted'])

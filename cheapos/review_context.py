@@ -4,6 +4,25 @@ from pathlib import PurePosixPath
 from . import branch_workspace as work
 from .workspace import allowed_name
 
+PATH_GUIDANCE = (
+    'All candidate paths, including location_index paths, are relative to the repository root. '
+    'Copy the exact path from location_index; do not prepend the project or example directory. '
+    'A missing file at a guessed path does not establish that a listed file is absent. '
+    'added_lines is diff metadata, not an additional acceptance requirement. '
+    'Check the exact candidate path and approved criterion before reporting a missing-file defect.'
+)
+
+
+def missing_path(manifest, path):
+    """Offer exact manifest locations without silently redirecting a source read."""
+    matches = sorted({f['path'] for f in manifest.get('files', [])
+                      if f.get('status') != 'D' and isinstance(f.get('path'), str)
+                      and allowed_name(f['path'])
+                      and PurePosixPath(f['path']).name == PurePosixPath(path).name})
+    return {'available': False, 'reason': 'File absent at this exact repository-relative path.',
+            'matching_manifest_paths': matches[:20], 'more_matching_paths': len(matches) > 20,
+            'guidance': PATH_GUIDANCE}
+
 
 def chunks(content, limit):
     """Prefer line/file/hunk boundaries, preserving every character in order."""
@@ -38,7 +57,7 @@ def read(run, manifest, args):
     end=min(end,start+199)
     entry=work.source_git(source,'ls-tree','-z',tip,'--',path,binary=True)
     provenance={'manifest_id':manifest['id'],'candidate':tip,'tree':manifest['feature_tree'],'path':path}
-    if not entry:return {**provenance,'available':False,'reason':'File absent from this candidate.'}
+    if not entry:return {**provenance, **missing_path(manifest, path)}
     entries=[e for e in entry.split(b'\0') if e]
     if len(entries)!=1 or entries[0].partition(b'\t')[2].decode()!=path:raise ValueError('Context requires one exact literal file path.')
     mode,kind,rest=entries[0].partition(b'\t')[0].split(b' ',2)

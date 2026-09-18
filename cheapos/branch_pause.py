@@ -26,6 +26,7 @@ TEMPLATES = {
 }
 CODES = {'reviewer_recovery_required':'reviewer_recovery_required','review_identity_unknown':'review_identity_unknown','review_identity_conflict':'review_identity_conflict','controller_error':'controller_error','gateway_cooldown':'provider_quota','http_429':'provider_quota',
  'endpoint_unavailable':'provider_connection','http_401':'provider_connection','http_403':'provider_connection','http_402':'provider_connection','upstream_access_denied':'provider_connection',
+ 'http_400':'provider_connection','http_422':'provider_connection',
  'invalid_tool_arguments':'malformed_output','invalid_tool_envelope':'malformed_output','invalid_response_json':'malformed_output','invalid_stream_json':'malformed_output','stream_error':'malformed_output','output_limit':'malformed_output',
  'progress_limit':'repeated_work','worker_recovery_exhausted':'repeated_work','recovery_exhausted':'repeated_work',
  'http_500':'provider_connection','http_502':'provider_connection','http_503':'provider_connection','http_504':'provider_connection','request_timeout':'provider_connection','routing_unavailable':'provider_connection',
@@ -35,6 +36,8 @@ CODES = {'reviewer_recovery_required':'reviewer_recovery_required','review_ident
  'authority_changed':'authority_changed','branch_drift':'branch_drift','review_dispute':'repeated_review_dispute','essential_clarification':'essential_clarification'}
 STAGES={'startup','planning','working','checking','reviewing','committing','finalizing','merging','unknown'}
 TRANSPORT_ERRORS = {
+ 'http_400': 'The selected model rejected the request (HTTP 400). No model response was accepted. Saved work and verification evidence are retained.',
+ 'http_422': 'The selected model rejected the request (HTTP 422). No model response was accepted. Saved work and verification evidence are retained.',
  'transport_retry_exhausted': 'The streamed model reply failed again after its transport retry was used. Saved edits and guidance are intact. Retry continues from them using proven transport compatibility or an eligible model within the saved routing policy.',
  'streaming_unsupported': 'The model connection did not support streaming. Saved work is intact. Retry continues within the saved routing policy.',
 }
@@ -217,6 +220,12 @@ def for_task(task):
     saved=run.get('pause_detail')
     detail = public({**saved,'diagnostic':review_diagnostic(task,saved.get('diagnostic'))} if isinstance(saved,dict) else saved)
     request = (task.get('request_metrics') or [{}])[-1]
+    if (detail and detail['cause'] == 'unknown' and request.get('id')
+            and detail.get('diagnostic_id') == request['id'] and request.get('status') == 'failed'
+            and request.get('error_code') in {'http_400', 'http_422'}):
+        # Recover only the matching recorded rejection, never a different stop.
+        from .providers import ProviderError
+        return classify(ProviderError('', code=request['error_code']), task, stage=detail.get('stage'))
     if (detail and detail['cause'] == 'unknown' and request.get('id')
             and detail.get('diagnostic_id') == request['id']
             and request.get('error_code') == 'budget_exceeded' and request.get('status') == 'failed'):

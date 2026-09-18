@@ -61,6 +61,14 @@ def config(engine, task, model_id):
     return cfg
 
 
+def replacement_failure(error):
+    """Use ordinary route recovery without retrying shared invalid requests."""
+    from .model_pool import RECOVERABLE_CODES
+    if error.code in {'http_400', 'http_422'} and error.scope not in (None, 'model'):
+        return False
+    return error.code in RECOVERABLE_CODES or error.code in IDENTITY_ERRORS
+
+
 def request(engine, runtime, messages, tools, role, config_override=None, purpose=None, tool_choice=None):
     from .routing import RoutingPause
     while True:
@@ -116,6 +124,17 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
     last_outage = None
     for model_id in dict.fromkeys(choices):
         runtime.guard()
+        selected_config = config(engine, task, model_id)
+        # The choices were captured before the previous dispatch. A provider
+        # cooldown learned during recovery also covers its remaining models.
+        if hasattr(engine, 'connection_for'):
+            gateway = engine.connection_for(selected_config)
+            health = gateway.pool.observation(selected_config['base_url'], model_id,
+                (selected_config.get('access_binding') or {}).get('connection_revision'))
+            if health.get('cooling_down'):
+                recovery['outage'] = {'retry_at': health['retry_at'], 'scope': health.get('cooldown_scope') or 'model'}
+                engine.store.save(task)
+                continue
         if model_id not in recovery['attempted']:
             recovery['attempted'].append(model_id)
         recovery.pop('selected', None)
@@ -125,7 +144,6 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
         try:
             # _request retains accounting, permission and identity gates. The
             # recovery flag also requires actual response identity before tools.
-            selected_config = config(engine, task, model_id)
             recovery['next_action']['status'] = 'dispatching'
             engine.store.save(task)
             result = engine._request_routed(runtime, messages, tools, role, selected_config, purpose, tool_choice=tool_choice)
@@ -144,8 +162,10 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
                     gateway.pool.record(selected_config['base_url'], model_id, role, error=error, connection_revision=(selected_config.get('access_binding') or {}).get('connection_revision'))
                 engine.store.save(task)
                 continue
-            if error.code not in IDENTITY_ERRORS and error.code != 'output_limit':
+            if not replacement_failure(error):
                 raise
+            engine.event(task, 'reviewer_recovery', 'The replacement reviewer could not complete this request. Trying another authorized reviewer.',
+                         {'model': model_id, 'error_code': error.code})
             engine.store.save(task)
             continue
         task['providers']['reviewer'] = selected_config

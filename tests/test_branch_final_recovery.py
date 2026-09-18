@@ -57,6 +57,28 @@ class FinalRecoveryTests(unittest.TestCase):
         for key in ('plan','items'):self.assertEqual(task['branch_run'][key],before['branch_run'][key])
         engine.checks.assert_not_called();engine.file_tool.assert_not_called()
 
+    def test_identity_replacement_request_rejection_still_reaches_final_approval(self):
+        from cheapos import reviewer_recovery
+        from cheapos.providers import ProviderError
+        task,engine,runtime=self.fixture();before=copy.deepcopy(task)
+        seen=[]
+        def routed(rt,messages,tools,role,override=None,purpose=None,**kwargs):
+            seen.append(copy.deepcopy(messages))
+            self.assertEqual(purpose,'branch_final')
+            if override is None:raise ProviderError('unknown identity',code='review_identity_unknown')
+            if override['model']=='rejected':raise ProviderError('model rejected request',code='http_400')
+            return self.approval()
+        engine._request_routed=Mock(side_effect=routed)
+        engine.request=lambda *a,**kw:reviewer_recovery.request(engine,*a,**kw)
+        with patch.object(reviewer_recovery,'candidates',return_value=[{'id':'rejected'},{'id':'independent'}]), \
+             patch.object(reviewer_recovery,'config',side_effect=lambda e,t,m:{'model':m}):
+            result=self.review(engine,runtime)
+        self.assertEqual(result['decision'],'APPROVE');self.assertEqual(result['reviewer_model'],'independent')
+        self.assertEqual(engine._request_routed.call_count,3);self.assertEqual(seen,[seen[0]]*3)
+        for key in ('checks','usage','limits'):self.assertEqual(task[key],before[key])
+        self.assertEqual(task['branch_run']['items'],before['branch_run']['items'])
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+
     def test_large_pages_resume_with_independent_saved_coverage(self):
         task,engine,runtime=self.fixture()
         packet={'evidence':'exact evidence '*6000}

@@ -518,3 +518,20 @@ remain. Version checks, workspace boundaries, existing-file protection, syntax
 rollback, defect reproduction, command authority, verification and independent
 review are unchanged. Small deterministic cases demonstrate a complete rewrite
 through verification and independent approval without artificial chunk retries.
+
+## Implemented: final-review path guidance and replacement-route recovery
+
+Final reviewers use exact repository-relative paths from the change manifest.
+An unavailable read retains its exact requested path and offers matching manifest
+paths as hints; it never silently redirects the read or establishes approval.
+Diff line counts do not create new requirements. Previously disproved findings
+need current candidate evidence before being reopened.
+
+Reviewer identity recovery keeps trying authorized replacements after ordinary
+recoverable route failures, including model request rejections. It rechecks
+provider cooldowns between replacements so one provider's remaining models are
+not dispatched from a stale candidate list. Shared request errors, access,
+operator-selected models, spending limits and reviewer independence still apply.
+Known HTTP 400/422 stops retain a safe typed explanation without exposing provider
+bodies. Small simulated cases cover corrected paths and final approval after a
+replacement request fails, without worker edits, repeated checks or operator rescue.

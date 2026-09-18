@@ -13,6 +13,20 @@ class PauseDetails(unittest.TestCase):
   self.assertEqual(pause.classify(ProviderError('stream',code='transport_retry_exhausted'),t)['cause'],'provider_connection')
   q=pause.classify(ProviderError('SECRET https://key@example.com',code='gateway_cooldown'),t)
   self.assertEqual(q['cause'],'provider_quota');self.assertEqual(q['stage'],'reviewing');self.assertNotIn('SECRET',str(q));self.assertNotIn('retry_at',q)
+ def test_rejected_request_has_safe_diagnostic_including_saved_unknown_stop(self):
+  import copy
+  for code in ('http_400','http_422'):
+   t=self.task();t['branch_run']['status']='finalizing'
+   pause.apply(t,ProviderError('PRIVATE upstream body',code=code))
+   detail=t['branch_run']['pause_detail']
+   self.assertEqual(detail['cause'],'provider_connection');self.assertIn(code[5:],detail['explanation'])
+   self.assertNotIn('PRIVATE',str(detail))
+   t['request_metrics'][-1].update(status='failed',error_code=code)
+   detail.update(cause='unknown');detail.pop('diagnostic',None)
+   before=copy.deepcopy(t)
+   self.assertIn(code[5:],pause.for_task(t)['explanation']);self.assertEqual(t,before)
+   t['request_metrics'].append({'id':'other','status':'failed','error_code':code})
+   self.assertEqual(pause.for_task(t)['cause'],'unknown')
  def test_public_retemplates_and_bounds(self):
   d=pause.public({'version':1,'cause':'provider_quota','explanation':'SECRET','next_action':'merge','model':'https://secret@host','diagnostic_id':'r1','retry_at':float('inf')})
   self.assertEqual(d['next_action'],'models');self.assertNotIn('SECRET',str(d));self.assertNotIn('model',d);self.assertNotIn('retry_at',d)
