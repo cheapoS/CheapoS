@@ -28,20 +28,39 @@ def rejected(task, args, current, error):
             'guidance': 'Use the supplied current numbered lines to correct the edit. Do not repeat the rejected range or ask the operator for file contents. File versions are tracked automatically.'}
 
 
-def syntax_records(task):
+def syntax_records(task, key='syntax_edit_recovery'):
     """Saved within the current work item; Resume does not renew attempts."""
     run = task.get('branch_run') or {}
     scope = [task.get('workspace'), task.get('workspace_generation', 0),
              run.get('current_item_id'), len(task.get('requests') or [task.get('prompt')])]
-    state = task.setdefault('syntax_edit_recovery', {'scope': scope, 'files': {}})
+    state = task.setdefault(key, {'scope': scope, 'files': {}})
     if state['scope'] != scope:
         state.update(scope=scope, files={})
     return state['files']
 
 
 def allow_exact_text(task):
+    if (task.get('text_edit_recovery') and any(r.get('attempts', 0) >= 2
+            for r in syntax_records(task, 'text_edit_recovery').values())):
+        return False  # The syntax escape hatch must not keep offering a failed strategy.
     return bool(task.get('syntax_edit_recovery') and
                 any(r.get('attempts', 0) >= 2 for r in syntax_records(task).values()))
+
+
+def text_rejection(task, workspace, args, path, before, matches):
+    records = syntax_records(task, 'text_edit_recovery')
+    prior = records.get(path, {})
+    attempts = prior.get('attempts', 0) + 1 if prior.get('hash') == before['hash'] else 1
+    records[path] = {'hash': before['hash'], 'attempts': attempts, 'matches': matches,
+                     'fingerprint': syntax_fingerprint('replace_text', args, path)}
+    description = 'was not found' if matches == 0 else f'matched {matches} times'
+    return {'path': path, 'code': 'text_edit_rejected', 'updated': False, 'changed': False,
+            'rejected': True, 'executed': False, 'matches': matches, 'attempts': attempts,
+            'hash': before['hash'], 'error': f"old_text {description} in '{path}'. No edit was made.",
+            'current_file': workspace.read_file(path, 1, 100),
+            'guidance': 'The exact replacement is invalid for this file version. Do not repeat it or append a claimed fix. '
+                        'Use the current numbered lines for replace_lines, or inspect a relevant later range. '
+                        'The intended change may already exist; check the remaining requirements before editing.'}
 
 
 def syntax_fingerprint(name, args, path):

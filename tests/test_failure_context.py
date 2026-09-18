@@ -23,6 +23,17 @@ def failed(identity, **changes):
 
 
 class FailureContextTests(unittest.TestCase):
+    def test_known_no_write_text_failures_fold_but_unknown_write_outcomes_do_not(self):
+        history = sum((failed(n, code='text_edit_rejected', rolled_back=False,
+                              executed=False, matches=0) for n in range(8)), [])
+        self.assertEqual(project({}, history)[1]['omitted_exchanges'], 6)
+        for message in history:
+            if message.get('role') == 'tool':
+                result = json.loads(message['content'])
+                result.pop('executed')
+                message['content'] = json.dumps(result)
+        self.assertEqual(project({}, history)[0], history)
+
     def test_duplicate_history_folds_without_losing_exact_evidence_or_authority(self):
         history = [{'role': 'system', 'content': 'Respect permissions'},
                    {'role': 'user', 'content': 'Fix the handler; preserve accessibility'}]

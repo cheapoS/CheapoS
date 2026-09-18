@@ -31,6 +31,14 @@ class FileVersionError(ValueError):
     """The edit's inspected version does not match the file on disk."""
 
 
+class FileTextMatchError(ValueError):
+    """An exact-text replacement was rejected before any file write."""
+
+    def __init__(self, message, matches):
+        super().__init__(message)
+        self.matches = matches
+
+
 def allowed_name(name):
     parts = PurePosixPath(name).parts
     if not parts:
@@ -309,14 +317,14 @@ class Workspace:
         text = target.read_text(encoding="utf-8")
         matches = text.count(old_text)
         if matches == 0:
-            raise ValueError(f"old_text was not found in '{path}'. Read the current file before editing.")
+            raise FileTextMatchError(f"old_text was not found in '{path}'. Read the current file before editing.", matches)
         elif matches > 1:
             line_numbers = [i for i, line in enumerate(text.splitlines(), 1) if old_text in line]
             lines_str = ", ".join(f"line {ln}" for ln in line_numbers[:5])
             more = f" and {len(line_numbers) - 5} more" if len(line_numbers) > 5 else ""
-            raise ValueError(
+            raise FileTextMatchError(
                 f"old_text matched {matches} times in '{path}' ({lines_str}{more}). "
-                "Provide a longer unique snippet with surrounding lines, or use append_text to add at the end of the file."
+                "Provide a longer unique snippet with surrounding lines, or use current numbered lines.", matches
             )
         replacement = text.replace(old_text, new_text, 1)
         if len(replacement.encode("utf-8")) > MAX_FILE_BYTES:

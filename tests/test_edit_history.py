@@ -73,6 +73,10 @@ class EditHistoryTests(unittest.TestCase):
 
     def test_repeated_text_mismatch_recovers_with_line_edit_and_independent_review(self):
         from cheapos.engine import Runtime, limits_from
+        # Reproduce the live path: prior syntax recovery allowed exact text
+        # even after compact line-edit mode had already been selected.
+        self.edit('    def run(self):', 'def run(self):')
+        self.edit('    def run(self):', 'def run(self):')
         task = self.task
         task.update(limits=limits_from({'uncapped_work': True}), messages=[], worker_turns=0)
         runtime = Runtime(task)
@@ -80,6 +84,7 @@ class EditHistoryTests(unittest.TestCase):
         engine.fit_worker_context = Mock()
         engine.deliver_loop_guidance = Mock()
         engine.refresh_worker_conversation = Mock()
+        engine.defer_route = Mock()
 
         def call(name, args, identity):
             return {'role': 'assistant', 'tool_calls': [{'id': identity, 'function': {
@@ -97,6 +102,10 @@ class EditHistoryTests(unittest.TestCase):
                 self.assertIn('return "hello"', task['checkpoints'][-1]['diff'])
                 return call('review_decision', {'decision': 'APPROVE',
                             'feedback': 'Greeting normalized; Manager.run preserved.'}, 'review')
+            if task['worker_turns'] == 3:
+                offered = {tool['function']['name'] for tool in tools}
+                self.assertIn('replace_lines', offered)
+                self.assertNotIn('replace_text', offered)
             return next(responses)
         engine.request = Mock(side_effect=request)
         def check(*args):
@@ -109,6 +118,7 @@ class EditHistoryTests(unittest.TestCase):
             return result
         engine.checks = Mock(side_effect=check)
         with patch('cheapos.engine.automatic', return_value=True) as placement, \
+                patch('cheapos.coordinator_dispatch.consult', return_value=False), \
                 patch('cheapos.engine.reconciliation.ensure_resolved'), \
                 patch('cheapos.integration_preparation.observe'), \
                 patch('cheapos.integration_preparation.automatic') as integrate:
@@ -121,11 +131,64 @@ class EditHistoryTests(unittest.TestCase):
         self.assertEqual(len(errors), 2)
         self.assertIn('old_text was not found', errors[0]['error'])
         self.assertIn('current_file', errors[1])
+        self.assertEqual(errors[1]['code'], 'text_edit_rejected')
+        self.assertEqual(errors[1]['attempts'], 2)
+        engine.defer_route.assert_called_once()
         self.assertTrue(task['compact_edits'])
         self.assertEqual(task['worker_turns'], 4)
         self.assertEqual(task['review_count'], 1)
         self.assertEqual(task['checkpoints'][0]['decision'], 'APPROVE')
         engine.checks.assert_called_once()
+
+    def test_text_mismatch_is_not_reexecuted_after_reload_and_new_version_can_retry(self):
+        args = {'path': 'app.py', 'old_text': 'absent', 'new_text': 'replacement'}
+        operation = Mock(side_effect=self.ws.replace_text)
+        first = edit_history.apply(self.task, self.ws, 'replace_text', args, operation)
+        restored = json.loads(json.dumps(self.task))
+        second = edit_history.apply(restored, self.ws, 'replace_text', {**args, 'path': './app.py'}, operation)
+        self.assertEqual(operation.call_count, 1)
+        self.assertEqual(second['attempts'], 2)
+        self.assertEqual(first['hash'], second['hash'])
+        self.assertEqual(second['matches'], 0)
+        self.assertFalse(second['executed'])
+        self.assertFalse(second['changed'])
+        self.assertEqual((self.root / 'app.py').read_text(), self.original)
+        self.assertNotIn('edit_history', restored)
+        (self.root / 'app.py').write_text(self.original + '# new file evidence\n')
+        third = edit_history.apply(restored, self.ws, 'replace_text', args, operation)
+        self.assertEqual(third['attempts'], 1)
+        self.assertEqual(operation.call_count, 2)
+        restored['branch_run'] = {'current_item_id': 'new-item'}
+        fourth = edit_history.apply(restored, self.ws, 'replace_text', args, operation)
+        self.assertEqual(fourth['attempts'], 1)
+        self.assertEqual(operation.call_count, 3)
+
+    def test_ambiguous_text_rejection_keeps_content_and_supplies_current_evidence(self):
+        (self.root / 'app.py').write_text('value = "hello hello"\n')
+        result = self.edit('hello', 'hi')
+        self.assertEqual(result['code'], 'text_edit_rejected')
+        self.assertEqual(result['matches'], 2)
+        self.assertFalse(result['executed'])
+        self.assertEqual((self.root / 'app.py').read_text(), 'value = "hello hello"\n')
+        self.assertIn('1: value =', result['current_file']['content'])
+        self.assertEqual(self.task['events'][-1]['kind'], 'tool_error')
+        self.assertNotIn('edit_history', self.task)
+
+    def test_text_failure_changes_syntax_escape_hatch_to_lines_until_an_edit_succeeds(self):
+        from cheapos.edit_recovery import allow_exact_text
+        self.edit('    def run(self):', 'def run(self):')
+        self.edit('    def run(self):', 'def run(self):')
+        self.assertTrue(allow_exact_text(self.task))
+        self.edit('missing', 'fixed')
+        self.edit('missing', 'fixed')
+        self.assertFalse(allow_exact_text(self.task))
+        self.task['compact_edits'] = True
+        current = self.ws.read_file('app.py')
+        self.engine.file_tool(self.task, 'replace_lines', {
+            'path': 'app.py', 'start_line': 3, 'end_line': 3,
+            'new_text': '        return "hello"\n', 'expected_hash': current['hash']})
+        self.assertTrue(allow_exact_text(self.task))
+        self.assertEqual(self.task['text_edit_recovery']['files'], {})
 
     def test_rejected_edit_is_not_reapplied_after_restart_or_credited_as_progress(self):
         args = {'path': 'app.py', 'start_line': 2, 'end_line': 2, 'new_text': 'def run(self):',

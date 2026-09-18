@@ -395,6 +395,14 @@ handoff when help is unavailable or already exhausted. Pinned workers keep their
 selection and can use exact-text edits to escape a failed line-edit strategy.
 Whitespace/comment-only Python changes do not renew the same repair attempt.
 
+Missing or ambiguous exact-text replacements also retain structured rejection
+evidence across restart. Replaying an identical replacement on the same file
+version returns current numbered lines without executing the failed edit again.
+Repeated mismatches change strategy through the same coordinator/handoff path
+and select version-bound line edits, including when earlier syntax recovery had
+enabled the exact-text escape hatch. An accepted edit clears that file's mismatch
+state; verification and independent review still determine completion.
+
 Uncapped and measurement runs still inspect progress at checkpoint intervals;
 stalls change strategy rather than enforcing a work ceiling. The legacy two-model
 handoff ceiling no longer stops uncapped Interactive work. Spending, command
@@ -421,7 +429,7 @@ and latest exchange plus a summary with retrievable task-local references.
 The saved conversation, attempts and usage remain intact. Every distinct result,
 file version, assistant finding, intervening instruction and incomplete tool
 exchange stays in the request. Only known syntax rollbacks and unexecuted invalid
-ranges qualify; ambiguous tool errors and successful edits do not. Reviewer
+ranges or text matches qualify; ambiguous tool errors and successful edits do not. Reviewer
 evidence is unchanged. Request metrics record omitted exchanges and payload
 bytes before/after this projection; token reservations use the resulting request.
 

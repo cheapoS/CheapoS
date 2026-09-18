@@ -2841,9 +2841,11 @@ class Engine:
                 result["guidance"] = "File deleted. Run run_checks to verify." if name == "delete_file" else "Edits saved. Run run_checks to verify."
         role = "reviewer" if task["status"] == "reviewing" else task["active_role"]
         model = (task["providers"].get(role) or {}).get("model", "Scripted demo")
-        rejected = result.get('code') == 'syntax_edit_rejected' if isinstance(result, dict) else False
+        rejection_title = {'syntax_edit_rejected': 'Rejected syntax-breaking edit',
+                           'text_edit_rejected': 'Refreshed file after an unmatched text edit'}.get(result.get('code')) if isinstance(result, dict) else None
+        rejected = rejection_title is not None
         self.event(task, "tool_error" if rejected else "tool",
-                   "Rejected syntax-breaking edit" if rejected else name.replace("_", " "),
+                   rejection_title if rejected else name.replace("_", " "),
                    {"arguments": args, "result": result, "role": role, "model": model,
                     **({'tool': name, 'code': result['code']} if rejected else {})})
         return result
@@ -3841,6 +3843,12 @@ class Engine:
                         coordinator_applied = self.recover_worker_stall(runtime,
                             f"Repeated syntax-breaking edits to {result['path']}: {result['syntax_warning']}. "
                             'The file was preserved; the rejected replacements made no progress.')
+                    elif isinstance(result, dict) and result.get('code') == 'text_edit_rejected' and result.get('attempts', 0) >= 2:
+                        self.prepare_compact_edits(task)
+                        runtime.compact_context_ready = False
+                        coordinator_applied = self.recover_worker_stall(runtime,
+                            f"Repeated exact-text replacements did not match {result['path']}. "
+                            'Use the supplied current numbered lines and a different edit; the intended change may already be present.')
                     if coordinator_applied:
                         for skipped in calls[call_index + 1:]:
                             task['messages'].append({'role':'tool', 'tool_call_id':skipped['id'],
