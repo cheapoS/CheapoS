@@ -58,7 +58,7 @@ const CheapOSChatView = (() => {
   }
   function stepMarkup(step,task,stream,entryReply='') {
     const live=step.live;
-    const symbol=step.outcome==='live'?'<span class="spinner"></span>':icon(['failed','revision','pending'].includes(step.outcome)?'clock':'check');
+    const symbol=live&&task.status==='waiting_retry'?icon('clock'):step.outcome==='live'?'<span class="spinner"></span>':icon(['failed','revision','pending'].includes(step.outcome)?'clock':'check');
     const role={worker:'Worker',reviewer:'Reviewer',coordinator:step.phase==='coordinator'?'Coordinator':'Chat model',planner:'Planner',controller:'cheapoS'}[step.role]||'cheapoS';
     const events=operatorEvents(step.events,task);
     const probe=isProbe(stream,task.events||step.events);
@@ -909,7 +909,7 @@ function messageText(value) {
 }
 function progressMarkup(task) {
   const p=CheapOSGuide.progress(task);if(!p)return '';
-  return `<section class="request-progress ${task.stream&&task.stream.phase!=='waiting'?'is-streaming':''}" aria-label="Current activity"><div class="request-progress-heading"><span class="spinner"></span><strong id="request-stage">${esc(p.title)}</strong><span id="request-elapsed" aria-label="Time in current step">${p.elapsed}</span></div><div class="request-model" id="request-detail">${esc(p.detail)}</div><p class="request-hint" id="request-hint">${esc(p.hint)}</p><div class="request-evidence"><span>${icon('code')}${esc(p.action)}</span><span>${icon('file')}${esc(p.evidence)}</span></div><div class="request-actions"><button class="text-link" data-chat-action="activity">${state.view==='activity'?'View live chat':'View activity'}</button><button class="subtle-button" data-chat-action="stop" ${p.stage==='stopping'?'disabled':''}>${p.stage==='stopping'?'Stopping…':'Pause'}</button>${p.stage==='waiting_retry'?'<button class="text-link" data-chat-action="connections">Inspect Models</button>':''}</div></section>`;
+  return `<section class="request-progress ${task.stream&&task.stream.phase!=='waiting'?'is-streaming':''}" aria-label="Current activity"><div class="request-progress-heading">${p.stage==='waiting_retry'?icon('clock'):'<span class="spinner"></span>'}<strong id="request-stage">${esc(p.title)}</strong><span id="request-elapsed" aria-label="Time in current step">${p.elapsed}</span></div><div class="request-model" id="request-detail">${esc(p.detail)}</div><p class="request-hint" id="request-hint">${esc(p.hint)}</p><div class="request-evidence"><span>${icon('code')}${esc(p.action)}</span><span>${icon('file')}${esc(p.evidence)}</span></div><div class="request-actions"><button class="text-link" data-chat-action="activity">${state.view==='activity'?'View live chat':'View activity'}</button><button class="subtle-button" data-chat-action="stop" ${p.stage==='stopping'?'disabled':''}>${p.stage==='stopping'?'Stopping…':'Pause'}</button>${p.stage==='waiting_retry'?'<button class="text-link" data-chat-action="connections">Inspect Models</button>':''}</div></section>`;
 }
 function updateProgressClock() {
   for(const el of $$('[data-start-time]'))el.textContent=CheapOSGuide.progress({status:'running',updated_at:el.dataset.startTime})?.elapsed||'0s';

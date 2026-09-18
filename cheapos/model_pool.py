@@ -16,7 +16,7 @@ RECOVERABLE_CODES = {"stream_error", "stream_interrupted", "stream_timeout", "mo
                      "invalid_response_shape", "invalid_tool_envelope", "empty_response", "unsupported_tool",
                      "transport_retry_exhausted", "streaming_unsupported", "malformed_tool_call",
                      "output_limit", "invalid_tool_arguments", "rate_limit", "rate_limit_quota",
-                     "context_length_exceeded", "payload_too_large",
+                     "context_length_exceeded", "payload_too_large", "upstream_access_denied",
                      "http_400", "http_404", "http_408", "http_422", "http_429", "http_500", "http_502", "http_503", "http_504",
                      "http_520", "http_521", "http_522", "http_523", "http_524", "http_525", "http_526", "http_530"}
 MAX_HANDOFFS = 2
@@ -132,7 +132,7 @@ class FreeModelPool:
             if failure and (failure['category'] == 'cancelled' or (failure['scope'] == 'request' and not candidate_rejected)): return
             cooldown = failure is not None and failure['category'] == 'rate_limit_quota'
             scope = failure['scope'] if failure else None
-            target = '\0connection' if scope in {'connection', 'account'} else self.provider_key(model) if cooldown and scope == 'provider' else model
+            target = '\0connection' if scope in {'connection', 'account'} else self.provider_key(model) if scope == 'provider' else model
             key = self.key(endpoint, target, connection_revision)
             record = self.records.setdefault(key, {})
             record["updated_at"] = time.time()
@@ -160,7 +160,7 @@ class FreeModelPool:
                              min(120, 30 * 2 ** min(failures - 1, 2)) if failure['category'] == 'transient_provider' else
                              min(3600, 900 * 2 ** min(failures - 1, 2)))
                 record.update(retry_at=time.time() + delay, last_error=failure['action'], retry_known=False)
-                if scope in {'connection', 'account'}: record['cooldown_scope'] = scope
+                if scope in {'connection', 'account', 'provider'}: record['cooldown_scope'] = scope
             else:
                 if not probe or not record.get('cooldown_scope') or record.get('retry_at', 0) <= time.time():
                     record.update(retry_at=0, last_error="")

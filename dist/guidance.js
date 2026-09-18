@@ -139,7 +139,7 @@ const CheapOSGuide = (() => {
     const action=completed?.detail?.result?.rolled_back?`Restored ${args.path||'file'} after a syntax-breaking edit`:completed?({'read file':`Read ${args.path||'a file'}`,'outline file':`Outlined ${args.path||'a file'}`,'read url':`Read ${args.url||'web page'}`,'write file':`Created ${args.path||'a file'}`,'replace text':`Edited ${args.path||'a file'}`,'replace lines':`Edited ${args.path||'a file'}`,'append text':`Appended to ${args.path||'a file'}`,'delete file':`Deleted ${args.path||'a file'}`,'undo edit':`Undid edit to ${args.path||'a file'}`,'list files':'Listed project files','search':`Searched project for ${args.query||'text'}`}[completed.title]||completed.title):'No tool actions completed yet';
     const files=(task.changes||[]).length,evidence=files?`${files} changed file${files===1?'':'s'} saved`:'No files changed yet';
     let stage='working',title='Preparing the next step',detail='',since=latest?.time||task.updated_at;
-    if(task.status==='waiting_retry'){const wait=task.route_wait||{};return {stage:'waiting_retry',title:'Waiting for an available route',detail:`Retry eligibility in ${duration(Math.ceil(Math.max(0,(wait.retry_at||at/1000)-at/1000)))}`,elapsed:duration(Math.max(0,at/1000-(wait.started_at||at/1000))),action:'No model request is running',evidence:'Saved work and checks are retained',hint:'Your task will continue automatically when an authorized route is available. Pause cancels waiting.',slow:false}}
+    if(task.status==='waiting_retry'){const wait=task.route_wait||{};return {stage:'waiting_retry',title:'Waiting for an available route',detail:`No model request is running · Next availability check in ${duration(Math.ceil(Math.max(0,(wait.retry_at||at/1000)-at/1000)))}`,elapsed:duration(Math.max(0,at/1000-(wait.started_at||at/1000))),action:'No model request is running',evidence:'Saved work and checks are retained',hint:[wait.message,'Your task will continue automatically when an authorized route is available. Pause cancels waiting.'].filter(Boolean).join(' '),slow:false}}
     if(task.status==='waiting_approval'){stage='approval';title='Waiting for your approval';detail=(task.pending_approval?.command||[]).join(' ')}
     else if(task.status==='stopping'){stage='stopping';title='Stop requested';detail='Waiting for the current operation to finish. No new tools will start.'}
     else if(task.branch_run?.startup?.status==='running'){stage='startup';title=task.branch_run.startup.label||'Starting your approved plan';detail='Your approval is saved.';since=task.branch_run.startup.started_at}
@@ -744,7 +744,7 @@ const CheapOSConversation = (() => {
     if (steps.length) {
       intro = live ? {coordinator:"The worker got stuck. I'm checking the saved work to help it choose the next step.",work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';
       if (live && phase === 'work' && last(events, 'review')?.detail?.decision === 'REQUEST_CHANGES') intro = 'The review found something to improve. I’m addressing that feedback.';
-      if (latest && task.status==='waiting_retry') intro='I’m waiting for the free route’s cooldown before checking availability again.';
+      if (latest && task.status==='waiting_retry') intro='No model request is running. I’m waiting to check authorized routes again; your saved work is retained.';
       else if (latest && task.pending_approval) intro = 'I need your permission to run this check.';
       else if (latest && ['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)) intro = 'I’ve saved the work so far. I need your attention before continuing.';
       else if (latest && guide.canCommit(task)) intro = task.status === 'completed' ? 'Checks have passed. The changes are ready for your review.' : 'The changes have passed checks and review. They’re ready for your decision.';
@@ -778,7 +778,7 @@ const CheapOSConversation = (() => {
         status:active?(commitPending&&run.status==='running'?'running':branchRunning&&task.status==='approved'?'running':task.status):'awaiting_reply'};
       let reply=response(events,key,view,active,at);
       reply.operation=id;reply.itemTitle=item?`Item ${items.indexOf(item)+1} of ${items.length} · ${item.title}`:id==='final'?'Final integration':'';
-      reply.owner=active;reply.label=active?(id==='planning'?'Planning':commitPending?'Committing':task.status==='reviewing'?'Reviewing':task.check_stream?'Checking':guide.isActive(task.status)?'Working':''):'';
+      reply.owner=active;reply.label=active?(task.status==='waiting_retry'?'Waiting':id==='planning'?'Planning':commitPending?'Committing':task.status==='reviewing'?'Reviewing':task.check_stream?'Checking':guide.isActive(task.status)?'Working':''):'';
       const question=active&&run.pause_detail?.cause!=='essential_clarification'&&(run.waiting_for_user||task.clarification?.question);
       reply.reply=question||''; // Narration is retained inside its step; explicit questions remain visible.
       if(id==='planning') {
@@ -792,6 +792,11 @@ const CheapOSConversation = (() => {
         reply.steps=[step];reply.live=busy;reply.stream=busy?task.stream:null;
         reply.intro=busy?'I’m preparing a plan for your request.':ready?'Your plan is ready to review.':active?'Planning has stopped. The saved details are below.':'I prepared the plan for this work.';
         reply.label=busy?'Planning':'';
+        if(active&&task.status==='waiting_retry'){
+          const waiting=guide.progress(view,at);
+          step.title=waiting.title;step.detail=waiting.detail;
+          reply.intro=waiting.hint;reply.label='Waiting';reply.stream=null;
+        }
       } else {
         if(!reply.steps.length&&(active||events.some(e=>['assistant','generation'].includes(e.kind)))){const live=active&&guide.isActive(view.status);reply.steps=[stepView({id:key+'-work',phase:currentPhase(view,'work'),events,live},view,at)];reply.live=live;reply.stream=live?view.stream:null;}
         if(commitPending) {

@@ -2135,6 +2135,11 @@ class Engine:
                 task['providers'][role] = cfg
             if gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))["cooling_down"]:
                 health = gateway.pool.observation(cfg["base_url"], cfg["model"], (cfg.get("access_binding") or {}).get("connection_revision"))
+                if health.get('cooldown_scope') == 'provider' and (health.get('failure') or {}).get('category') == 'credential_access':
+                    task['route'].setdefault('recovery', {})[role] = {'from': cfg['model'],
+                        'reason': health['last_error'], 'error_code': 'upstream_access_denied'}
+                    self.store.save(task)
+                    continue
                 if health.get("cooldown_scope") in {'account', 'connection'} or (health.get('cooldown_scope') == 'provider' and (health.get('failure') or {}).get('category') != 'rate_limit_quota'):
                     if task.get("gateway_connections"):
                         select_remote(self, runtime, role, replace=True)
@@ -3128,7 +3133,10 @@ class Engine:
         recovery['wait_cycles'] = recovery.get('wait_cycles', 0) + 1
         task['status'] = 'waiting_retry'
         task['stream'] = None
-        task['route_wait'] = {'retry_at': info['retry_at'], 'started_at': time.time(), 'scope': info.get('scope')}
+        if not getattr(runtime, 'route_wait_started_at', None):
+            runtime.route_wait_started_at = (task.get('route_wait') or {}).get('started_at') or time.time()
+        task['route_wait'] = {'retry_at': info['retry_at'], 'started_at': runtime.route_wait_started_at,
+                              'scope': info.get('scope'), 'message': info.get('message', '')}
         waiting_started=time.monotonic()
         self.event(task, 'routing', 'Waiting for an authorized route; retrying automatically', task['route_wait'])
         try:

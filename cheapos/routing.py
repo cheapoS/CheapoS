@@ -281,7 +281,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
     for model in catalog['models']:
         probe_key = role + ':' + route_health.probe_identity(base_url, model, connection_revision)
         obs = gateway.pool.observation(base_url, model['id'], connection_revision)
-        if obs['cooling_down'] and (obs.get('failure') or {}).get('category') in {'rate_limit_quota', 'transient_provider'}:
+        if obs['cooling_down'] and (obs.get('failure') or {}).get('category') in {'rate_limit_quota', 'transient_provider', 'credential_access'}:
             deferred_providers.add(provider(model['id']))
         if route_schedule.rejected(rejected_probes.get(probe_key)) or obs.get('probe_rejected'):
             used.add(model['id'])
@@ -379,6 +379,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
                          {'model':model['id'],'role':role,'completed':observed.get('completed',0),
                           'independently_disproved':observed.get('independently_disproved',0)})
             task["providers"][role] = cfg
+            runtime.route_wait_started_at = None
             route["ready"] = bool(task["providers"].get("worker"))
             route.pop("waiting_for", None)
             engine.event(task, "routing", label.capitalize() + " " + role + " is ready", {"model": model["id"], "role": role, "tool_check": "recent cached observation" if cached else "new probe"})
@@ -399,7 +400,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
                     rejected_probes.pop(next(iter(rejected_probes)))
                 used.add(model['id'])
             cooldown = classification['category'] == 'rate_limit_quota'
-            if cooldown or classification['category'] in {'transient_provider', 'unavailable_route', 'candidate_rejected', 'malformed_request'}:
+            if cooldown or classification['category'] in {'transient_provider', 'unavailable_route', 'candidate_rejected', 'malformed_request', 'credential_access'}:
                 deferred_providers.add(provider(model['id']))
             if classification['quality_impact']: runtime.failed_models.add(model['id'])
             gateway.pool.record(base_url, model['id'], role, error=error, connection_revision=connection_revision,
@@ -412,13 +413,22 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
             if metric is not None:
                 metric.update(status='failed', failure_category=classification['category'])
                 routing_trace.request(task, metric)
-            engine.event(task, 'routing', 'Provider is cooling down' if cooldown else 'Model check failed', failure)
+            engine.event(task, 'routing', 'Provider is cooling down' if cooldown else 'Provider access denied' if classification['category'] == 'credential_access' else 'Model check failed', failure)
             engine.store.save(task)
             if classification['scope'] in {'request','connection','account'}:
                 retry = time.time() + (getattr(error, 'retry_after', None) or route_schedule.ROUND_SECONDS) if cooldown else None
                 raise RoutingPause(classification['action'], retry_at=retry, scope=classification['scope']) from None
     provider_waits = [gateway.pool.observation(base_url, m["id"], connection_revision) for m in catalog["models"]
-                      if access_policy.eligible(m, policy) and not m.get("local") and m["id"] not in used]
+                      if access_policy.eligible(m, policy) and not m.get("local") and m["id"] not in used
+                      and not m['id'].startswith('auto/') and m.get('tool_calling') is True
+                      and routing_trace.context_fit(task, m) in {'eligible', 'fit_unknown'}]
+    access_blocked = [h for h in provider_waits if h['cooling_down'] and (h.get('failure') or {}).get('category') == 'credential_access']
+    if access_blocked and len(access_blocked) == len(provider_waits):
+        # A local auth-failure cache expiry is not a provider quota reset.
+        # All usable candidates were considered; another gateway may still
+        # work, but repeating selection here cannot repair credentials/access.
+        scope = 'connection' if any(h.get('cooldown_scope') in {'connection', 'account'} for h in access_blocked) else 'provider'
+        raise RoutingPause('No authorized route can proceed because access was denied. Inspect access in Models; saved files, checks and usage are retained.', scope=scope)
     waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") in {"provider", "model", "account", "connection"} and h.get("retry_known") and h["cooling_down"]]
     if round_state['probes'] >= route_schedule.BATCH_SIZE and candidates:
         raise RoutingPause('Checking more authorized routes automatically after a short backoff.', retry_at=route_schedule.retry_at(round_state), scope='probe_capacity')
@@ -427,8 +437,8 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         scope = "provider" if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits) else "model"
         message = f"The provider connection is cooling down. Retry in about {seconds} seconds. Other models on that connection were not tested or marked broken. Your chat, files, checks, and usage are saved." if scope == "provider" else f"Eligible models are cooling down. Earliest retry eligibility is in about {seconds} seconds. Saved work is kept."
         raise RoutingPause(message, retry_at=min(waits), scope=scope)
-    if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] for h in provider_waits):
-        reason = next((h.get('last_error') for h in provider_waits if h.get('cooldown_scope') == 'provider' and h['cooling_down'] and h.get('last_error')), 'The provider is cooling down without a known retry time.')
+    if any(h.get("cooldown_scope") == "provider" and h["cooling_down"] and h not in access_blocked for h in provider_waits):
+        reason = next((h.get('last_error') for h in provider_waits if h.get('cooldown_scope') == 'provider' and h['cooling_down'] and h not in access_blocked and h.get('last_error')), 'The provider is cooling down without a known retry time.')
         raise RoutingPause(reason + " Checking availability again automatically.", retry_at=time.time()+route_schedule.ROUND_SECONDS, scope="provider")
     allowed = [m for m in catalog['models'] if access_policy.eligible(m, policy) and not m.get('local')]
     if allowed and all(m['id'] in runtime.failed_models or (role == 'reviewer' and m['id'] in used) for m in allowed) and not any(route_schedule.rejected(v) for v in rejected_probes.values()):
