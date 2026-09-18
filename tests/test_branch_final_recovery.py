@@ -79,6 +79,61 @@ class FinalRecoveryTests(unittest.TestCase):
         self.assertEqual(task['branch_run']['items'],before['branch_run']['items'])
         engine.checks.assert_not_called();engine.file_tool.assert_not_called()
 
+    def test_provider_handoff_after_six_chunks_keeps_reviews_and_finishes_next_chunk(self):
+        import io
+        import tempfile
+        from urllib.error import HTTPError
+        from cheapos import reviewer_recovery
+        from cheapos.model_pool import FreeModelPool
+        from cheapos.providers import ProviderError, http_failure
+        from cheapos.served_identity import ensure_independent, metadata
+        task,engine,runtime=self.fixture();before=copy.deepcopy(task)
+        endpoint='http://localhost:1/v1';original='openrouter/reviewer:free'
+        task['providers']['reviewer']={'model':original,'provider':'openrouter',
+            'base_url':endpoint,'gateway':'omniroute','input_rate':0,'output_rate':0}
+        task['reviewer_identity_recovery']={'attempted':[original],'selected':original}
+        models=[{'id':name,'provider':provider,'free':True,'tool_calling':True}
+                for name,provider in ((original,'openrouter'),('oc/reviewer','opencode'),
+                                      ('oc/sibling','opencode'),('groq/reviewer','groq'))]
+        calls=[];chunk=[1]
+        def routed(rt,messages,tools,role,override=None,purpose=None,**kwargs):
+            cfg=override;calls.append((chunk[0],cfg['model']))
+            if chunk[0]==7 and cfg['model']==original:
+                raise ProviderError('Timed out',code='model_connection')
+            if cfg['model'].startswith('oc/'):
+                body=json.dumps({'error':{'message':"[403]: Error from provider (Console): OpenCode's free tier can only be used from within OpenCode"}}).encode()
+                raise http_failure(HTTPError(endpoint,403,'denied',{},io.BytesIO(body)),cfg)
+            ensure_independent(rt.task,{'role':'reviewer',**metadata(cfg['model'],cfg['model'])})
+            result=self.approval()['tool_calls'][0]['result']
+            result['chunk_ids']=[f'diff:{chunk[0]}']
+            return self.call('final_review_decision',result)
+        engine._request_routed=Mock(side_effect=routed)
+        engine.request=lambda *a,**kw:reviewer_recovery.request(engine,*a,**kw)
+        def review():
+            return final._review(engine,runtime,{'id':'m','requirements':[{'id':'one:1'}]},
+                {'evidence':f'exact source {chunk[0]}'},[f'diff:{chunk[0]}'],[])
+        with tempfile.TemporaryDirectory() as directory:
+            pool=FreeModelPool(directory)
+            engine.gateway=SimpleNamespace(settings={'base_url':endpoint},pool=pool,
+                catalog=lambda **kw:{'models':models})
+            engine.connection_for=lambda cfg:engine.gateway
+            for n in range(1,7):
+                chunk[0]=n;self.assertEqual(review()['decision'],'APPROVE')
+            saved=copy.deepcopy(task['branch_run']['final_review_packets'])
+            runtime.task=json.loads(json.dumps(task))
+            chunk[0]=7;result=review()
+            self.assertEqual(result['decision'],'APPROVE')
+            self.assertEqual(result['reviewer_model'],'groq/reviewer')
+            for key,value in saved.items():
+                self.assertEqual(runtime.task['branch_run']['final_review_packets'][key],value)
+            for n in range(1,8):
+                chunk[0]=n;self.assertEqual(review()['decision'],'APPROVE')
+            self.assertTrue(pool.observation(endpoint,'oc/sibling')['cooling_down'])
+            self.assertFalse(pool.observation(endpoint,'groq/reviewer')['cooling_down'])
+        self.assertEqual(calls,[(n,original) for n in range(1,8)]+[(7,'oc/reviewer'),(7,'groq/reviewer')])
+        for key in ('checks','usage','limits'):self.assertEqual(runtime.task[key],before[key])
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+
     def test_format_handoff_dispatches_new_reviewer_before_stale_identity_choices(self):
         from cheapos import reviewer_recovery
         from cheapos.providers import ProviderError

@@ -548,3 +548,11 @@ and reviewer independence. Other tool names and malformed coverage are rejected.
 Chunk-completion events identify their position and total instead of appearing
 to announce completion of the entire final review. Small in-memory cases cover
 handoff through approval, restart reuse, retained rejection findings and aliases.
+
+Replacement reviewers also use their own catalog provider metadata. A stale
+provider label must not apply another provider's pacing or misclassify a known
+upstream access refusal as a shared connection failure. The known refusal skips
+that provider and continues authorized independent review; ambiguous gateway
+credential failures still require attention. A deterministic six-chunk replay
+covers timeout, upstream refusal, replacement approval and reuse of saved reviews
+without repeating worker edits or checks.

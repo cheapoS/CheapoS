@@ -33,6 +33,24 @@ class ReviewerRecoveryTests(unittest.TestCase):
             self.assertEqual(runtime.task[key], before[key])
         self.assertEqual(runtime.task['reviewer_identity_recovery']['selected'], 'next')
 
+    def test_replacement_config_uses_its_own_provider_and_preserves_connection(self):
+        from cheapos.request_pacer import provider_identity
+        engine,runtime=self.fixture()
+        current={'model':'openrouter/old:free','provider':'openrouter',
+                 'base_url':'http://localhost:1/v1','gateway':'omniroute',
+                 'connection_id':'default','input_rate':0,'output_rate':0}
+        runtime.task['providers']['reviewer']=current
+        for extra in ({'provider':'opencode'}, {}):
+            with self.subTest(metadata=extra):
+                engine.gateway=SimpleNamespace(settings={},catalog=lambda **kw:{'models':[
+                    {'id':'oc/reviewer',**extra}]})
+                cfg=recovery.config(engine,runtime.task,'oc/reviewer')
+                self.assertEqual(provider_identity(cfg),'opencode')
+                self.assertEqual(cfg.get('provider'),extra.get('provider'))
+                for key in ('base_url','gateway','connection_id'):
+                    self.assertEqual(cfg[key],current[key])
+                self.assertEqual(current['provider'],'openrouter')
+
     def test_exhausted_continue_does_not_replay_failed_routes(self):
         engine, runtime = self.fixture()
         engine._request.side_effect = ProviderError('same', code='review_identity_conflict')

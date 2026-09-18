@@ -53,6 +53,12 @@ def config(engine, task, model_id):
     if model is None:
         catalog = gateway.catalog(fresh=True)
         model = next(m for m in catalog['models'] if m['id'] == model_id)
+    # Provider metadata belongs to the selected route, not the prior reviewer.
+    # Without catalog metadata, let pacing/error classification infer it from
+    # the new model ID instead of inheriting an unrelated provider label.
+    cfg.pop('provider', None)
+    if model.get('provider'):
+        cfg['provider'] = model['provider']
     cfg = validate_provider(cfg, 'reviewer')
     if policy is not None:
         cfg['access_binding'] = copy.deepcopy(policy)
