@@ -24,5 +24,10 @@ class TestPennyPinner(unittest.TestCase):
         self.assertTrue(lines[1].startswith("- Two sentences."))
         self.assertTrue(lines[2].startswith("- Three sentences."))
 
+    def test_get_bookmark(self):
+        rowid = self.pinner.add("https://test.com", "Title", "Content")
+        bookmark = self.pinner.get_bookmark(rowid)
+        self.assertEqual(bookmark["title"], "Title")
+
 if __name__ == '__main__':
     unittest.main()

@@ -28,3 +28,9 @@ class PennyPinner:
         # Simple extractive digest: first 3 sentences
         sentences = re.split(r'(?<=[.!?])\s+', row["content"])
         return "\n".join([f"- {s}" for s in sentences[:3]])
+
+    def get_bookmark(self, id):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT *, rowid FROM bookmarks WHERE rowid = ?", (id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
