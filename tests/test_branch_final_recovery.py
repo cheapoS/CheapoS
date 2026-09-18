@@ -79,6 +79,64 @@ class FinalRecoveryTests(unittest.TestCase):
         self.assertEqual(task['branch_run']['items'],before['branch_run']['items'])
         engine.checks.assert_not_called();engine.file_tool.assert_not_called()
 
+    def test_format_handoff_dispatches_new_reviewer_before_stale_identity_choices(self):
+        from cheapos import reviewer_recovery
+        from cheapos.providers import ProviderError
+        task,engine,runtime=self.fixture();before=copy.deepcopy(task)
+        task['reviewer_identity_recovery']={'attempted':['reviewer'], 'selected':'reviewer'}
+        dispatched=[]
+        def routed(rt,messages,tools,role,override=None,purpose=None,**kwargs):
+            name=override['model'];dispatched.append(name)
+            if name=='denied':raise ProviderError('access denied',code='http_403')
+            return self.approval(invalid=name=='reviewer')
+        engine._request_routed=Mock(side_effect=routed)
+        engine.request=lambda *a,**kw:reviewer_recovery.request(engine,*a,**kw)
+        with patch.object(reviewer_recovery,'candidates',return_value=[{'id':'denied'},{'id':'reviewer'},{'id':'replacement'}]), \
+             patch.object(reviewer_recovery,'config',side_effect=lambda e,t,m:{'model':m}), \
+             patch.object(routing,'select_remote',side_effect=self.select) as select:
+            result=self.review(engine,runtime)
+            runtime.task=json.loads(json.dumps(task))
+            self.assertEqual(self.review(engine,runtime),result)
+        self.assertEqual(dispatched,['reviewer']*3+['replacement'])
+        self.assertEqual(result['decision'],'APPROVE');self.assertEqual(result['reviewer_model'],'replacement')
+        select.assert_called_once()
+        self.assertEqual(task['reviewer_identity_recovery']['selected'],'replacement')
+        self.assertIn('reviewer',task['reviewer_identity_recovery']['attempted'])
+        self.assertEqual(len(task['branch_run']['final_review_recovery']['m']['history']),1)
+        for key in ('checks','usage','limits'):self.assertEqual(task[key],before[key])
+        engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+
+    def test_exact_function_namespace_decision_uses_normal_coverage_validation(self):
+        from cheapos.engine import Engine
+        from tests.test_branch_disagreement import defect
+        task,engine,runtime=self.fixture();engine.parse_call=Engine.parse_call
+        result=self.approval()['tool_calls'][0]['result']
+        def call(name,args):
+            return {'role':'assistant','tool_calls':[{'id':'call','function':{'name':name,'arguments':json.dumps(args)}}]}
+        wrong_tool=call('other.final_review_decision',result)
+        wrong_coverage=call('functions.final_review_decision',{**result,'manifest_id':'wrong'})
+        valid=call('functions.final_review_decision',{**result,'decision':'REQUEST_CHANGES','defects':[{**defect(),'criterion':'one:1'}]})
+        engine.request.side_effect=[wrong_tool,wrong_coverage,valid]
+        reviewed=self.review(engine,runtime)
+        self.assertEqual(reviewed['decision'],'REQUEST_CHANGES')
+        self.assertEqual(len(reviewed['defects']),1)
+        self.assertEqual(next(iter(task['branch_run']['final_review_corrections'].values())),2)
+        self.assertEqual(valid['tool_calls'][0]['function']['name'],'functions.final_review_decision')
+        self.assertNotIn('readiness',task['branch_run']);engine.file_tool.assert_not_called()
+
+    def test_exact_function_namespace_approval_does_not_need_format_retry(self):
+        from cheapos.engine import Engine
+        task,engine,runtime=self.fixture();engine.parse_call=Engine.parse_call
+        args=self.approval()['tool_calls'][0]['result']
+        engine.request.return_value={'role':'assistant','tool_calls':[{'id':'call','function':{
+            'name':'functions.final_review_decision','arguments':json.dumps(args)}}]}
+        reviewed=final._review(engine,runtime,{'id':'m','requirements':[{'id':'one:1'}]},
+            {'evidence':'exact source','scope':{'chunk_index':3,'chunk_total':10}},['diff:1'],[])
+        self.assertEqual(reviewed['decision'],'APPROVE')
+        self.assertEqual(engine.event.call_args.args[2],'Final review chunk 3 of 10 completed')
+        engine.request.assert_called_once()
+        self.assertEqual(task['branch_run']['final_review_corrections'],{})
+
     def test_large_pages_resume_with_independent_saved_coverage(self):
         task,engine,runtime=self.fixture()
         packet={'evidence':'exact evidence '*6000}

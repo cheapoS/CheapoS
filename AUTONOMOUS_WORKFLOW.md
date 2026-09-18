@@ -535,3 +535,16 @@ operator-selected models, spending limits and reviewer independence still apply.
 Known HTTP 400/422 stops retain a safe typed explanation without exposing provider
 bodies. Small simulated cases cover corrected paths and final approval after a
 replacement request fails, without worker edits, repeated checks or operator rescue.
+
+An authorized reviewer handoff now takes precedence over an older identity
+recovery selection. The replacement still passes current eligibility and response
+identity checks; failed attempts, provider cooldowns, explicit model choices and
+access failures remain enforced. Saved handoffs continue after restart without
+first dispatching unrelated recovery candidates.
+
+Final review accepts the exact `functions.` namespace alias of an offered tool.
+It still validates the decision, exact candidate and coverage, concrete defects
+and reviewer independence. Other tool names and malformed coverage are rejected.
+Chunk-completion events identify their position and total instead of appearing
+to announce completion of the entire final review. Small in-memory cases cover
+handoff through approval, restart reuse, retained rejection findings and aliases.

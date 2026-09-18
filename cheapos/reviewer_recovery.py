@@ -119,8 +119,14 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
         choices.insert(0, pending['model'])
     if chosen:
         choices = [chosen] if chosen in {m['id'] for m in available} else []
-    elif selected in {m['id'] for m in available}:
-        choices.insert(0, selected)
+    elif current_model := (task.get('providers', {}).get('reviewer') or {}).get('model'):
+        # A review-format handoff or operator selection may have replaced the
+        # reviewer since identity recovery began. Dispatch that authorized route
+        # before the old recovery list; do not let stale selection override it.
+        if current_model in {m['id'] for m in available} and current_model not in recovery['attempted']:
+            choices.insert(0, current_model)
+        elif selected == current_model and selected in {m['id'] for m in available}:
+            choices.insert(0, selected)
     last_outage = None
     for model_id in dict.fromkeys(choices):
         runtime.guard()

@@ -211,6 +211,15 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             if len(calls) != 1:
                 raise ValueError('Return exactly one final_review_decision tool call.')
             name, result = engine.parse_call(calls[0])
+            # Some tool-capable models emit the conventional functions.
+            # namespace. Accept only an exact alias of a tool offered here;
+            # coverage, defect validation and independent identity still apply.
+            offered = {t['function']['name'] for t in tools}
+            if name.startswith('functions.') and name[len('functions.'):] in offered:
+                name = name[len('functions.'):]
+                message = copy.deepcopy(message)
+                calls = message['tool_calls']
+                calls[0]['function']['name'] = name
             if name in {tool['function']['name'] for tool in tools}:
                 from .metrics import tool_action
                 tool_action(runtime.task)
@@ -274,7 +283,10 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         _independent(runtime.task,result.get('reviewer_model'))
         state['result']=copy.deepcopy(result);state['result_digest']=_hash(result)
         recovery.persist(engine,runtime.task,state,messages)
-        engine.event(runtime.task,'review',f'{label.capitalize()} packet review completed',{'decision':result['decision'],'feedback':result['feedback'],'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'defects':result.get('defects'),**display})
+        title = (f"{label.capitalize()} review chunk {display['chunk_index']} of {display['chunk_total']} completed"
+                 if 'chunk_index' in display and 'chunk_total' in display
+                 else f'{label.capitalize()} packet review completed')
+        engine.event(runtime.task,'review',title,{'decision':result['decision'],'feedback':result['feedback'],'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'defects':result.get('defects'),**display})
         return result
 
 

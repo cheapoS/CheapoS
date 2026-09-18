@@ -74,6 +74,22 @@ class ReviewerRecoveryTests(unittest.TestCase):
         engine._request.assert_called_once()
         self.assertEqual(runtime.task['reviewer_identity_recovery']['next_action']['status'],'completed')
 
+    def test_restored_handoff_keeps_selected_route_but_still_checks_identity(self):
+        for selected in ('old',None):
+            with self.subTest(selected=selected):
+                engine,runtime=self.fixture()
+                runtime.task['providers']['reviewer']={'model':'handoff'}
+                runtime.task['reviewer_identity_recovery']={'attempted':['old','denied'],
+                    'next_action':{'model':'denied','status':'failed','error_code':'http_403'}}
+                if selected:runtime.task['reviewer_identity_recovery']['selected']=selected
+                runtime.task=copy.deepcopy(runtime.task)
+                engine._request.side_effect=[ProviderError('unknown identity',code='review_identity_unknown'),{'content':'approved'}]
+                with patch.object(recovery,'candidates',return_value=[{'id':'other'},{'id':'old'},{'id':'handoff'}]), \
+                     patch.object(recovery,'config',side_effect=lambda e,t,m:{'model':m}):
+                    self.assertEqual(recovery.request(engine,runtime,[],[],'reviewer')['content'],'approved')
+                self.assertEqual([c.args[4]['model'] for c in engine._request.call_args_list],['handoff','other'])
+                self.assertEqual(runtime.task['reviewer_identity_recovery']['attempted'],['old','denied','handoff','other'])
+
     def test_recovery_requires_reported_identity_and_rejects_same_author(self):
         task = {'served_identity_version': 1, 'reviewer_identity_recovery': {'attempted': ['old']},
                 'request_metrics': [{'role': 'worker', 'dispatched': True, **metadata('worker', 'actual/worker')}]}
