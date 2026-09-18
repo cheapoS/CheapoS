@@ -3,21 +3,15 @@
 A fast, keyboard-friendly code snippet bank with local SQLite storage, automatic language detection, and tag indexing.
 
 ## Features
-## Installation
-
-The SnipVault example ships with no external dependencies. Just run:
-
-```bash
-python3 -m pip install -r requirements-club.txt
-```
-
 
 - **SQLite Backend**: Efficient, local storage using SQLite with FTS5 for fast full-text search.
 - **Language Detection**: Automatic language detection based on simple heuristics.
 - **Tag Indexing**: Easy categorization of snippets.
 - **CLI-based**: Manage snippets directly from the terminal.
 
+## Installation
 
+SnipVault requires Python 3.9+ and uses only the Python standard library. No additional dependencies are required.
 ## Usage
 
 ```bash
