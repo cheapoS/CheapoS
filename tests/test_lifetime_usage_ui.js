@@ -96,9 +96,14 @@ test('reconciliation switches between local installation and remote club scorebo
       categories:{local:232499,included:1601645,public_free:78357583},
       share_models:true,
       models:[{name:'gemini-3.1-flash-lite',tokens:26295820}],
-      roles:[{name:'worker',tokens:32486200},{name:'reviewer',tokens:1671606}]
+      roles:[{name:'worker',tokens:32486200},{name:'reviewer',tokens:1671606}],
+      work_outcomes:{completed_tasks:72,human_accepted_jobs:12,merged_runs:60,review_approved_jobs:79,acceptance_rate:91.1}
     }
   };
+  const s=ui.safeSummary(data);
+  assert.equal(s.club.remote_profile.work_outcomes.completed_tasks,72);
+  assert.equal(s.club.remote_profile.work_outcomes.acceptance_rate,91.1);
+
   const localHtml=ui.render(data,'local');
   assert.match(localHtml,/154,800,000/);
   assert.doesNotMatch(localHtml,/Club Scoreboard/);
@@ -110,4 +115,7 @@ test('reconciliation switches between local installation and remote club scorebo
   assert.match(remoteHtml,/worker/);
   assert.match(remoteHtml,/cheaposnumero1/);
   assert.match(remoteHtml,/cheapskate-club.vercel.app/);
+  assert.match(remoteHtml,/Completed tasks/);
+  assert.match(remoteHtml,/72/);
+  assert.match(remoteHtml,/91\.1%/);
 });

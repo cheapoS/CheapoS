@@ -49,7 +49,14 @@ const CheapOSLifetimeUsage = (() => {
           categories:typeof data.club.remote_profile.categories==='object'&&data.club.remote_profile.categories!==null?data.club.remote_profile.categories:{},
           share_models:Boolean(data.club.remote_profile.share_models),
           models:Array.isArray(data.club.remote_profile.models)?data.club.remote_profile.models:[],
-          roles:Array.isArray(data.club.remote_profile.roles)?data.club.remote_profile.roles:[]
+          roles:Array.isArray(data.club.remote_profile.roles)?data.club.remote_profile.roles:[],
+          work_outcomes:data.club.remote_profile.work_outcomes&&typeof data.club.remote_profile.work_outcomes==='object'?{
+            completed_tasks:Number.isFinite(data.club.remote_profile.work_outcomes.completed_tasks)?data.club.remote_profile.work_outcomes.completed_tasks:null,
+            human_accepted_jobs:Number.isFinite(data.club.remote_profile.work_outcomes.human_accepted_jobs)?data.club.remote_profile.work_outcomes.human_accepted_jobs:null,
+            merged_runs:Number.isFinite(data.club.remote_profile.work_outcomes.merged_runs)?data.club.remote_profile.work_outcomes.merged_runs:null,
+            review_approved_jobs:Number.isFinite(data.club.remote_profile.work_outcomes.review_approved_jobs)?data.club.remote_profile.work_outcomes.review_approved_jobs:null,
+            acceptance_rate:Number.isFinite(data.club.remote_profile.work_outcomes.acceptance_rate)?data.club.remote_profile.work_outcomes.acceptance_rate:null
+          }:null
         }:null
       }:null
     };
@@ -216,20 +223,20 @@ const CheapOSLifetimeUsage = (() => {
       </div>
 
       <div class="completed-work-card">
-        <h4>${isRemote ? 'Club Workshop activity' : 'Completed work outcomes'}</h4>
+        <h4>${isRemote ? 'Club Work Outcomes' : 'Completed work outcomes'}</h4>
         ${isRemote ? `
         <div class="completed-work-grid">
           <div class="work-stat">
-            <span>🤖 Models tracked</span>
-            <strong>${rp.models.length}</strong>
+            <span>🧑‍💻 Completed tasks</span>
+            <strong>${rp.work_outcomes?.completed_tasks != null ? number(rp.work_outcomes.completed_tasks) : number((s.completion.human_accepted_jobs||0)+(s.completion.merged_runs||0))}</strong>
           </div>
           <div class="work-stat">
-            <span>🎭 Active roles</span>
-            <strong>${rp.roles.length}</strong>
+            <span>🛡️ Review-approved</span>
+            <strong>${rp.work_outcomes?.review_approved_jobs != null ? number(rp.work_outcomes.review_approved_jobs) : number(s.completion.independent_review_approved_jobs)}</strong>
           </div>
           <div class="work-stat">
-            <span>🔒 Sharing mode</span>
-            <strong>${rp.share_models ? 'Public Models' : 'Private'}</strong>
+            <span>🎯 Acceptance rate</span>
+            <strong>${rp.work_outcomes?.acceptance_rate != null ? rp.work_outcomes.acceptance_rate + '%' : (s.completion.independent_review_approved_jobs ? Math.round(((s.completion.human_accepted_jobs||0)+(s.completion.merged_runs||0))/s.completion.independent_review_approved_jobs*1000)/10 + '%' : '—')}</strong>
           </div>
         </div>
         <p class="small muted">Scoreboard data is signed with your local Ed25519 installation key and verified by the Club leaderboard.</p>` : `
@@ -430,6 +437,9 @@ const CheapOSLifetimeUsage = (() => {
         bindClubActions();
         bindReconcileActions();
       }
+      if(typeof renderLifetimeSavingsBadge==='function'&&current){
+        renderLifetimeSavingsBadge(current);
+      }
     }
 
     function bindReconcileActions(){
@@ -535,6 +545,9 @@ const CheapOSLifetimeUsage = (() => {
           if(switchEl.style)switchEl.style.display=(hasRemote?'':'none');
           switchEl.hidden=!hasRemote;
         }
+        if(!storage?.getItem?.('cheapos_usage_view')&&hasRemote&&current?.club?.is_linked){
+          viewMode='remote';
+        }
         const effectiveView=(viewMode==='remote'&&hasRemote)?'remote':'local';
         const periodWrapper=q('.lifetime-period-wrapper');
         if(periodWrapper){
@@ -550,6 +563,9 @@ const CheapOSLifetimeUsage = (() => {
         switchTab(activeTab);
         bindClubActions();
         bindReconcileActions();
+        if(typeof renderLifetimeSavingsBadge==='function'&&current){
+          renderLifetimeSavingsBadge(current);
+        }
         schedulePairCheck();
         if(expBtn)expBtn.disabled=false;
       }catch(e){

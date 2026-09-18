@@ -1989,12 +1989,22 @@ let lifetimeUsageData=null, lifetimeUsageLoadedAt=0;
 function renderLifetimeSavingsBadge(data){
   if(!data)return;
   const s=(typeof CheapOSLifetimeUsage!=='undefined'&&CheapOSLifetimeUsage.safeSummary)?CheapOSLifetimeUsage.safeSummary(data):data;
-  const zeroCostTokens=Number.isFinite(s.total_free_tokens)?s.total_free_tokens:((s.categories?.public_free?.tokens||0)+(s.categories?.included?.tokens||0)+(s.categories?.local?.tokens||0));
-  const reported=s.tokens?.reported||0;
+  let savedView=null;
+  try{savedView=window.localStorage?.getItem('cheapos_usage_view');}catch{}
+  const hasRemote=Boolean(s.club?.is_linked&&s.club?.remote_profile&&Number.isFinite(s.club.remote_profile.tokens));
+  const isRemote=hasRemote&&(savedView==='remote'||(!savedView&&s.club?.is_linked));
+  const zeroCostTokens=isRemote?s.club.remote_profile.tokens:(Number.isFinite(s.total_free_tokens)?s.total_free_tokens:((s.categories?.public_free?.tokens||0)+(s.categories?.included?.tokens||0)+(s.categories?.local?.tokens||0)));
+  const reported=isRemote?s.club.remote_profile.tokens:(s.tokens?.reported||0);
   const zeroCostShare=reported>0?Math.round((zeroCostTokens/reported)*100):100;
   const pctEl=$('#sidebar-zero-tokens-pct'), valEl=$('#sidebar-zero-tokens-val');
   if(pctEl)pctEl.textContent=`${zeroCostShare}% Free`;
   if(valEl)valEl.textContent=zeroCostTokens.toLocaleString('en-US');
+  const badge=$('#sidebar-zero-tokens');
+  if(badge){
+    badge.title=isRemote
+      ?`Cheapskate Club verified score for @${s.club.remote_profile.handle}: ${zeroCostTokens.toLocaleString('en-US')} tokens. Click to view Usage & savings`
+      :'Lifetime zero-cost compute. Click to view Usage & savings';
+  }
 }
 async function updateLifetimeSavingsBadge(force=false){
   const badge=$('#sidebar-zero-tokens');
