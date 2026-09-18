@@ -1,0 +1,19 @@
+{
+  "prompts": [
+    {
+      "name": "chatty_summary",
+      "description": "A verbose summarization prompt with filler phrases and markdown.",
+      "prompt": "I hope you are doing well! **Please** summarize the following document. Just to let you know, this is a really important task. Please let me know if you need anything else. Thank you for your time.\n\n---\n\n*The document content goes here.*"
+    },
+    {
+      "name": "polite_code_review",
+      "description": "A code-review system instruction padded with pleasantries.",
+      "prompt": "Just a quick note: I would really, really appreciate it if you could review the attached code changes. Just to let you know, there is no rush at all! Please let me know your thoughts whenever you have a moment. Thank you so much for your time and help.\n\nReview the function `process(data)` for bugs and style issues."
+    },
+    {
+      "name": "bare_minimum",
+      "description": "An already-minified prompt; expected to yield zero savings.",
+      "prompt": "Summarize the attached document in three bullet points."
+    }
+  ]
+}
