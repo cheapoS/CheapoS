@@ -18,7 +18,7 @@ class TestProfilesTests(unittest.TestCase):
     def test_expected_variants_match(self):
         for args in [['discover','-s','tests'],['discover','-s','tests','-p','test_two*.py','-v'],
                      ['-q','discover','-s','tests','-t','.'],['tests.test_one.TestCase.test_it','-v'],['tests.test_two','-f','-b'],
-                     ['tests/test_one.py'],['tests/test_one.py:TestCase.test_it','-v'],['tests/test_projected.py']]:
+                     ['tests/test_one.py'],['tests/test_projected.py']]:
             with self.subTest(args=args):self.assertTrue(match_unittest(self.base+args,self.root,self.profile)['matched'])
 
     def test_unrelated_commands_and_invalid_options_do_not_match(self):
@@ -28,6 +28,8 @@ class TestProfilesTests(unittest.TestCase):
                   self.base+['discover','-s'],self.base+['discover','--unknown'],
                   self.base+['discover','-s','tests','-s','tests'],self.base+['outside'],
                   self.base+['outside.py'],self.base+['../outside.py'],self.base+['tests/test_one.py;echo'],
+                  self.base+['tests/test_one.py:TestCase.test_it'],self.base+['tests/test_one.py:'],
+                  self.base+['--unknown=tests/test_one.py'],self.base+['tests.missing'],
                   self.base+['tests.test_one',';','echo'],self.base+['tests..test_one'],
                   self.base+['tests.test_one','--locals'],self.base+['discover','-s','tests','-p','../*.py'],
                   self.base+['discover'],self.base+['tests.test_one\x00'],None,[False]]
@@ -48,4 +50,4 @@ class TestProfilesTests(unittest.TestCase):
         (self.root / 'examples/penny-pinner/test_pinner.py').write_text('')
         self.assertTrue(match_unittest(self.base + ['examples/penny-pinner/test_pinner.py', '-v'], self.root, profile)['matched'])
         self.assertTrue(match_unittest(self.base + ['examples/penny-pinner/test_pinner.py'], self.root, profile)['matched'])
-        self.assertTrue(match_unittest(self.base + ['examples/penny-pinner/test_pinner.py:TestPinner.test_digest'], self.root, profile)['matched'])
+        self.assertFalse(match_unittest(self.base + ['examples/penny-pinner/test_pinner.py:TestPinner.test_digest'], self.root, profile)['matched'])

@@ -206,9 +206,8 @@ class CheckScopeTests(unittest.TestCase):
     def approved_file_check(self):
         command = [sys.executable, '-B', '-m', 'unittest', 'examples/penny-pinner/test_pinner.py', '-v']
         scope = self.scopes.prepare(self.task, command)
-        self.assertIsNone(scope['profile'])
-        self.task['branch_run'] = {'status': 'running', 'check_scope': [scope]}
-        grant = self.scopes.consent(self.task, scope)
+        self.task['branch_run'] = {'status': 'running', 'check_scope': [scope], 'authorization_ref': 'saved-approval'}
+        grant = self.scopes.consent(self.task, scope, exact=True)
         return command, grant
 
     def test_file_check_variants_use_original_argv_without_new_grants(self):
@@ -316,12 +315,12 @@ class CheckScopeTests(unittest.TestCase):
         workspace.assert_not_called()
         self.assertEqual(self.task['status'], 'waiting_approval')
         self.assertEqual(self.task['pending_approval']['command'], variant)
-    def test_authorized_branch_run_auto_consents_profile_and_check_scope(self):
+    def test_saved_branch_reference_does_not_grant_new_check_consent(self):
         verify_argv = [sys.executable, 'verify.py']
         scope = self.scopes.prepare(self.task, verify_argv)
         branch_task = dict(self.task, branch_run={'authorization_ref': 'auth-123', 'check_scope': [scope]})
-        self.assertTrue(self.scopes.authorize(branch_task, verify_argv))
-        self.assertTrue(self.scopes.authorize(branch_task, self.argv))
+        self.assertIsNone(self.scopes.authorize(branch_task, verify_argv))
+        self.assertIsNone(self.scopes.authorize(branch_task, self.argv))
 
 
 if __name__ == '__main__': unittest.main()

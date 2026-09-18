@@ -3,7 +3,7 @@
 Profile schema: {schema_version: 1, runner: 'unittest', project: <identity>,
 executable: <resolved Python path>, roots: ['tests', ...]}.
 Only optional Python -B, -m unittest, -v/-q/-f/-b, explicit discovery with
--s/-p/-t, and dotted module/class/method selectors are supported. A match is
+-s/-p/-t, dotted module/class/method selectors, and Python file paths are supported. A match is
 not authorization: the controller must separately obtain a session grant.
 Tests execute repository code, including edited code; this is not a sandbox.
 """
@@ -127,7 +127,11 @@ def match_unittest(argv, workspace, profile):
             if not selectors:
                 return no('No supported test selector')
             for selector in selectors:
-                file_part, sep, method_part = selector.partition(':')
+                # unittest accepts file paths, but not pytest-style path:method
+                # selectors. Unknown flags must never become projected paths.
+                if ':' in selector or selector.startswith('-'):
+                    return no('Unsupported test selector or runner flag')
+                file_part = selector
                 if file_part.endswith('.py') or '/' in file_part or '\\' in file_part:
                     if any(c in file_part for c in '\x00') or '..' in Path(file_part).parts:
                         return no('Path leaves the task workspace')
@@ -139,10 +143,6 @@ def match_unittest(argv, workspace, profile):
                         return no('Selector does not resolve inside approved test roots')
                     if target.suffix != '.py':
                         return no('Test selector must be a Python test file (.py)')
-                    if method_part:
-                        method_parts = method_part.split('.')
-                        if not all(IDENTIFIER.fullmatch(part) for part in method_parts):
-                            return no('Unsupported test selector or runner flag')
                 else:
                     parts = selector.split('.')
                     if not all(IDENTIFIER.fullmatch(part) for part in parts):
@@ -157,10 +157,6 @@ def match_unittest(argv, workspace, profile):
                         if package.exists():
                             found = package.resolve(strict=True)
                             break
-                    if found is None:
-                        projected = root.joinpath(*parts).with_suffix('.py').resolve()
-                        if inside(projected, root) and any(inside(projected, allowed) for allowed in approved):
-                            found = projected
                     if found is None or not inside(found, root) or not any(inside(found, allowed) for allowed in approved):
                         return no('Selector does not resolve inside approved test roots')
         return {'matched': True, 'reason': 'Supported unittest command within approved roots'}
