@@ -1,5 +1,6 @@
 # PromptDiet
 
+## Overview
 PromptDiet is a zero-cost CLI and library for prompt token minimization and
 fluff reduction. It analyzes prompts and system instructions, detects
 redundant qualifiers, verbose filler phrases, redundant markdown formatting,
@@ -45,30 +46,35 @@ The `diet.py` script provides three subcommands:
 
 ```bash
 # Analyze a prompt file: prints JSON with tokens, fluff items, and savings
-python3 diet.py analyze prompt.txt
+python3 diet.py analyze --file prompt.txt
 
 # Minify a prompt file: prints the cleaned prompt
-python3 diet.py minify prompt.txt
+python3 diet.py minify --file prompt.txt
 
 # Show a diff: prints the unified diff between original and minified
-python3 diet.py diff prompt.txt
+python3 diet.py diff --file prompt.txt
+
+# All commands also read from stdin when --file is omitted
+cat prompt.txt | python3 diet.py analyze
 ```
 
-Each command takes a single argument: the path to a text file containing the
-prompt to process. Output is written to stdout.
+Each subcommand accepts a `--file PATH` option pointing at a text file
+containing the prompt; when omitted, the prompt is read from stdin. Output is
+written to stdout.
 
 ### Library
 
 ```python
 from prompt_diet import analyze, minify, diff, detect_fluff, estimate_tokens
 
-analysis = analyze("I hope you are doing well. Please summarize this.")
+original = "I hope you are doing well. Please summarize this."
+analysis = analyze(original)
 print(analysis["tokens"])     # estimated token count
 print(analysis["fluff"])      # list of detected filler phrases
 print(analysis["savings"])    # estimated tokens saved
 
-minified = minify("I hope you are doing well. Please summarize this.")
-print(diff(original=minified, minified=minified))
+minified = minify(original)
+print(diff(original, minified))  # unified diff of what was removed
 ```
 
 ### Sample benchmarks
@@ -79,6 +85,22 @@ already-minified baseline (`bare_minimum`). You can run the CLI on any of them
 after extracting the `prompt` field to a text file, or use them as fixtures
 for custom benchmarks.
 
+## Token Estimation
+
+`estimate_tokens(text)` approximates the BPE token count of a prompt using a
+simple 4-character-per-token heuristic:
+
+```python
+estimate_tokens("")          # 0
+estimate_tokens("abcdefgh")  # 8 // 4 = 2
+estimate_tokens("hello world!")  # 12 // 4 = 3
+```
+
+For typical English prose this ratio (≈ 4 chars/token) closely matches the
+token count produced by standard BPE tokenisers such as those used by
+OpenAI's GPT-3/GPT-4 family, so savings figures are a reliable proxy for real
+API cost reduction. The ratio is intentionally simple so it is fully
+deterministic and requires no third-party libraries.
 ## Testing
 
 Run the deterministic unit tests with:
