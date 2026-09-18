@@ -127,21 +127,42 @@ def match_unittest(argv, workspace, profile):
             if not selectors:
                 return no('No supported test selector')
             for selector in selectors:
-                parts = selector.split('.')
-                if not all(IDENTIFIER.fullmatch(part) for part in parts):
-                    return no('Unsupported test selector or runner flag')
-                found = None
-                for count in range(len(parts), 0, -1):
-                    module = root.joinpath(*parts[:count]).with_suffix('.py')
-                    if module.exists():
-                        found = module.resolve(strict=True)
-                        break
-                    package = root.joinpath(*parts[:count]) / '__init__.py'
-                    if package.exists():
-                        found = package.resolve(strict=True)
-                        break
-                if found is None or not inside(found, root) or not any(inside(found, allowed) for allowed in approved):
-                    return no('Selector does not resolve inside approved test roots')
+                file_part, sep, method_part = selector.partition(':')
+                if file_part.endswith('.py') or '/' in file_part or '\\' in file_part:
+                    if any(c in file_part for c in '\x00') or '..' in Path(file_part).parts:
+                        return no('Path leaves the task workspace')
+                    try:
+                        target = (root / file_part).resolve()
+                    except (ValueError, OSError):
+                        return no('Invalid path selector')
+                    if not inside(target, root) or not any(inside(target, allowed) for allowed in approved):
+                        return no('Selector does not resolve inside approved test roots')
+                    if target.suffix != '.py':
+                        return no('Test selector must be a Python test file (.py)')
+                    if method_part:
+                        method_parts = method_part.split('.')
+                        if not all(IDENTIFIER.fullmatch(part) for part in method_parts):
+                            return no('Unsupported test selector or runner flag')
+                else:
+                    parts = selector.split('.')
+                    if not all(IDENTIFIER.fullmatch(part) for part in parts):
+                        return no('Unsupported test selector or runner flag')
+                    found = None
+                    for count in range(len(parts), 0, -1):
+                        module = root.joinpath(*parts[:count]).with_suffix('.py')
+                        if module.exists():
+                            found = module.resolve(strict=True)
+                            break
+                        package = root.joinpath(*parts[:count]) / '__init__.py'
+                        if package.exists():
+                            found = package.resolve(strict=True)
+                            break
+                    if found is None:
+                        projected = root.joinpath(*parts).with_suffix('.py').resolve()
+                        if inside(projected, root) and any(inside(projected, allowed) for allowed in approved):
+                            found = projected
+                    if found is None or not inside(found, root) or not any(inside(found, allowed) for allowed in approved):
+                        return no('Selector does not resolve inside approved test roots')
         return {'matched': True, 'reason': 'Supported unittest command within approved roots'}
     except (OSError, ValueError, TypeError):
         return no('Test root is missing, invalid, or outside the workspace')

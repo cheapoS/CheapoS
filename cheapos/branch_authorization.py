@@ -169,7 +169,16 @@ not mutated. A projected scope must equal the materialized prepare() result.
         except (ValueError, OSError):
             return None
         key = digest(scope)
-        return key if key in self.exact_grants else None
+        if key in self.exact_grants:
+            return key
+        if "branch_run" in task and task["branch_run"].get("authorization_ref"):
+            if scope.get("profile"):
+                return self.consent(task, scope)
+            for approved_scope in task["branch_run"].get("check_scope", []):
+                if approved_scope.get("command") == list(argv) and approved_scope.get("directory") == task.get("workspace"):
+                    if approved_scope == scope:
+                        return self.consent(task, approved_scope)
+        return None
 
     def approved_command(self, task, argv):
         """Reuse a captured check without expanding the operator's command grant."""

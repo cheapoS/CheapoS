@@ -316,6 +316,12 @@ class CheckScopeTests(unittest.TestCase):
         workspace.assert_not_called()
         self.assertEqual(self.task['status'], 'waiting_approval')
         self.assertEqual(self.task['pending_approval']['command'], variant)
+    def test_authorized_branch_run_auto_consents_profile_and_check_scope(self):
+        verify_argv = [sys.executable, 'verify.py']
+        scope = self.scopes.prepare(self.task, verify_argv)
+        branch_task = dict(self.task, branch_run={'authorization_ref': 'auth-123', 'check_scope': [scope]})
+        self.assertTrue(self.scopes.authorize(branch_task, verify_argv))
+        self.assertTrue(self.scopes.authorize(branch_task, self.argv))
 
 
 if __name__ == '__main__': unittest.main()

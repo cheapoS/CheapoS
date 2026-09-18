@@ -412,7 +412,14 @@ def _checkpoint(engine, runtime, args):
                         if params.get('candidate_id') != current['id']:
                             raise ValueError('Review disagreement belongs to a stale candidate.')
                         if choice == 'REQUEST_CHANGES':
-                            params['defects'] = disagreement.validate(params, criteria)
+                            allowed_criteria = list(criteria)
+                            refs = item.get('review_repair', {}).get('requirement_refs') or []
+                            ref_map = {r['id']: r.get('criterion', r['id']) for r in refs if r.get('id')}
+                            allowed_criteria.extend(ref_map.keys())
+                            params['defects'] = disagreement.validate(params, allowed_criteria)
+                            for d in params['defects']:
+                                if d.get('criterion') in ref_map:
+                                    d['criterion'] = ref_map[d['criterion']]
                             # A reviewer read tool cannot silently change the reviewed inputs.
                             if evidence.candidate(task, ctx, specs, criteria) != current:
                                 raise ValueError('Candidate changed during review disagreement.')
