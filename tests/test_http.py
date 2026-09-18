@@ -81,6 +81,19 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(json.loads(body)['id'],'saved')
             start.assert_called_once_with(self.engine,'saved',{'approved':True,'operation_id':'one'})
             inspect.assert_called_once_with(self.engine,'saved')
+        response={'updated':False,'state':'already_current','operation_id':'one',
+                  'task':{'id':'saved','messages':[{'content':'private source'}]}}
+        self.engine.store.save(response['task'])
+        with patch('cheapos.branch_completion.update_branch',return_value=response) as update:
+            self.assertEqual(self.request('POST','/api/tasks/saved/branch-update',{'approved':True,'update_token':'one'})[0],403)
+            update.assert_not_called()
+            status,_,body=self.post('/api/tasks/saved/branch-update',{'approved':True,'update_token':'one'})
+            self.assertEqual(status,200,body)
+            result=json.loads(body)
+            self.assertFalse(result['updated']);self.assertEqual(result['state'],'already_current')
+            self.assertNotIn('messages',result['task'])
+            self.assertNotIn('private source',body.decode())
+
 
     def test_scoped_settings_http_revisions_and_idempotency(self):
         status, _, body = self.request('GET', '/api/settings/defaults')

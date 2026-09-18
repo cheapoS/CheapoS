@@ -418,9 +418,13 @@ def _update_branch(controller, task_id, values):
         controller.validate_authority(task,run)
         if run['status'] not in {'ready_for_merge','paused','blocked'} or run.get('merge_operation') or run.get('pending_operations') or any(i['status'] not in state.DONE for i in run['items']):
             raise ValueError('Finish current work before updating the branch')
-        if values['update_token']!=update_token(run):
-            raise ValueError('Branches changed. Refresh the review before updating')
         operation=run.get('target_update')
+        replay = (operation and operation.get('approval_token') == values['update_token']
+                  and operation.get('approved') is True
+                  and operation.get('digest') == branch_update.receipt_digest(operation)
+                  and operation.get('target_tip') == work._tip(source, run['target_ref']))
+        if values['update_token']!=update_token(run) and not replay:
+            raise ValueError('Branches changed. Refresh the review before updating')
         if not operation:
             try:
                 operation=branch_update.prepare(run)

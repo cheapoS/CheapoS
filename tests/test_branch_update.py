@@ -79,3 +79,15 @@ class UpdateControllerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Branches changed'):
                 completion.update_branch(controller,'task',{'approved':True,'update_token':'token'})
         self.assertEqual(task['branch_run']['update_result']['phase'],'rechecking')
+
+    def test_saved_update_receipt_accepts_original_token_after_restart(self):
+        from cheapos.branch_update import receipt_digest
+        controller,task=self.fixture()
+        op={'new_tip':'new','private_new':'private','target_tip':'target',
+            'approved':True,'approval_token':'original','stage':'intent'}
+        op['digest']=receipt_digest(op)
+        task['branch_run']['target_update']=op
+        with patch.object(completion,'_task',return_value=task), patch.object(completion,'update_token',return_value='pending-token'), patch.object(completion.work,'_tip',return_value='target'), patch('cheapos.branch_update.prepare') as prepare, patch('cheapos.branch_update.finish',return_value=op) as finish:
+            result=completion.update_branch(controller,'task',{'approved':True,'update_token':'original'})
+        prepare.assert_not_called();finish.assert_called_once()
+        self.assertTrue(result['updated']);controller.resume.assert_called_once()
