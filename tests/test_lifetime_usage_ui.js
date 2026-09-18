@@ -118,4 +118,5 @@ test('reconciliation switches between local installation and remote club scorebo
   assert.match(remoteHtml,/Completed tasks/);
   assert.match(remoteHtml,/72/);
   assert.match(remoteHtml,/91\.1%/);
+  assert.match(remoteHtml,/Apply view to sidebar/);
 });

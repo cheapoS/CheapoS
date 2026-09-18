@@ -822,6 +822,29 @@
   cursor: pointer;
 }
 
+.club-reconcile-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.club-apply-btn {
+  background: var(--mint);
+  color: #132219;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.club-apply-btn:hover {
+  opacity: 0.9;
+}
+
 /* Responsive Breakpoints */
 @media (max-width: 820px) {
   .lifetime-figures {

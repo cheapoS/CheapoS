@@ -100,7 +100,7 @@ const CheapOSLifetimeUsage = (() => {
     const isLinked=Boolean(club.is_linked),isSyncing=Boolean(club.sync_enabled),op=club.x_identity||{},rp=club.remote_profile;
     return `<section class="club-panel"><div class="club-card-content"><h3>The Cheapskate Club</h3>
       ${isLinked?`<p>Connected to <strong>@${escape(op.handle)}</strong>. One installation connects to one Club account at a time.</p><p>Sharing ${isSyncing?'enabled':'paused'} · Last confirmed upload: ${club.last_synced_at?escape(date(club.last_synced_at)):'None yet'}</p><p>Only new settled request counts, usage category, accounting date, and anonymous event/installation IDs are sent. No prompts, code, paths or provider keys. Existing usage stays with its original account when you disconnect.</p><div class="club-pref-row"><label><input type="checkbox" data-club-models ${club.share_models?'checked':''}/> Share model names for my Club profile</label><button type="button" data-club-preferences>Save model preference</button><span class="club-pref-feedback" data-club-pref-feedback aria-live="polite"></span></div><div class="club-actions-row">${isSyncing?'<button type="button" data-club-sync>Sync now</button><button type="button" data-club-pause>Pause sharing</button>':'<button type="button" data-club-share>Enable sharing for new usage</button>'}<button type="button" data-club-disconnect>Disconnect</button></div>
-      ${rp?`<div class="club-reconcile-settings-box"><h4>Usage View Reconciliation</h4><p>Choose whether cheapoS displays machine-local activity or reconciles with your official Cheapskate Club scoreboard.</p><div class="club-view-options"><label><input type="radio" name="club_usage_view_pref" value="local" ${viewMode==='local'?'checked':''}/> <strong>Local installation</strong> (Machine-local activity)</label><label><input type="radio" name="club_usage_view_pref" value="remote" ${viewMode==='remote'?'checked':''}/> <strong>Club scoreboard</strong> (Reconciled with @${escape(rp.handle)}: ${number(rp.tokens)} zero-cost tokens)</label></div></div>`:''}`:`<p>Connect your Club account, then choose whether to share new usage. Your local work never depends on the Club.</p>${club.pairing_pending?'':'<button class="primary-button" type="button" data-club-connect>Connect to Club →</button>'}${club.pairing_pending?`<p><a href="${escape(club.connect_url)}" target="_blank" rel="noopener noreferrer">Approve connection in the Club ↗</a></p><button type="button" data-club-check>Check connection</button><p>Waiting for browser approval. This updates automatically.</p><button type="button" data-club-connect>Refresh approval link</button>`:''}`}
+      ${rp?`<div class="club-reconcile-settings-box"><h4>Usage View Reconciliation</h4><p>Choose whether cheapoS displays machine-local activity or reconciles with your official Cheapskate Club scoreboard.</p><div class="club-view-options"><label><input type="radio" name="club_usage_view_pref" value="local" ${viewMode==='local'?'checked':''}/> <strong>Local installation</strong> (Machine-local activity)</label><label><input type="radio" name="club_usage_view_pref" value="remote" ${viewMode==='remote'?'checked':''}/> <strong>Club scoreboard</strong> (Reconciled with @${escape(rp.handle)}: ${number(rp.tokens)} zero-cost tokens)</label></div><div class="club-reconcile-actions"><button type="button" class="club-apply-btn primary-button" data-apply-view>Apply view to sidebar</button><span class="small" data-apply-status style="color:var(--mint);font-size:0.8125rem;display:none;">✓ Applied to sidebar</span></div></div>`:''}`:`<p>Connect your Club account, then choose whether to share new usage. Your local work never depends on the Club.</p>${club.pairing_pending?'':'<button class="primary-button" type="button" data-club-connect>Connect to Club →</button>'}${club.pairing_pending?`<p><a href="${escape(club.connect_url)}" target="_blank" rel="noopener noreferrer">Approve connection in the Club ↗</a></p><button type="button" data-club-check>Check connection</button><p>Waiting for browser approval. This updates automatically.</p><button type="button" data-club-connect>Refresh approval link</button>`:''}`}
       ${club.sync_message?`<p role="status">${escape(club.sync_message)}</p>`:''}${club.error?`<p role="status">${escape(club.error)}</p>`:''}<p><a href="${escape(club.leaderboard_url||'https://cheapskate-club.vercel.app')}/account" target="_blank" rel="noopener noreferrer">My Club account ↗</a></p><p data-club-error role="alert"></p></div></section>`;
   }
   function render(data, viewMode='local'){
@@ -390,7 +390,11 @@ const CheapOSLifetimeUsage = (() => {
         </div>
         <pre tabindex="0" data-export-text></pre>
       </section>
-    </section>`,'lifetime-modal');
+    </section>
+    <div class="modal-footer" data-usage-footer>
+      <span data-usage-footer-status>Active view: 💻 <strong>Local installation</strong></span>
+      <button type="button" class="primary-button" data-close>Done</button>
+    </div>`,'lifetime-modal');
 
     const q=s=>d.querySelector(s),body=q('[data-usage-body]');let request=0,current=null,pairTimer=null,pairChecking=false,closed=false,activeTab='overview';
     const storage=(typeof localStorage!=='undefined'?localStorage:null);
@@ -431,6 +435,7 @@ const CheapOSLifetimeUsage = (() => {
         if(periodWrapper.style)periodWrapper.style.display=(mode==='remote'?'none':'');
         periodWrapper.hidden=(mode==='remote');
       }
+      updateFooterStatus(mode);
       if(current){
         body.innerHTML=render(current,viewMode);
         switchTab(activeTab);
@@ -442,6 +447,14 @@ const CheapOSLifetimeUsage = (() => {
       }
     }
 
+    function updateFooterStatus(mode){
+      const footerStatus=q('[data-usage-footer-status]');
+      if(footerStatus){
+        const rp=current?.club?.remote_profile;
+        footerStatus.innerHTML=mode==='remote'&&rp?`Active view: 🌐 <strong>Club scoreboard</strong> (@${escape(rp.handle)} · ${number(rp.tokens)} tokens)`:`Active view: 💻 <strong>Local installation</strong> (${number(current?.total_free_tokens||0)} tokens)`;
+      }
+    }
+
     function bindReconcileActions(){
       $$('.usage-view-btn',d).forEach(btn=>{
         btn.onclick=()=>switchView(btn.dataset.view);
@@ -449,6 +462,19 @@ const CheapOSLifetimeUsage = (() => {
       $$('input[name="club_usage_view_pref"]',d).forEach(radio=>{
         radio.onchange=()=>{if(radio.checked)switchView(radio.value);};
       });
+      const applyBtn=q('[data-apply-view]');
+      if(applyBtn){
+        applyBtn.onclick=()=>{
+          const checked=q('input[name="club_usage_view_pref"]:checked');
+          if(checked)switchView(checked.value);
+          const status=q('[data-apply-status]');
+          if(status){
+            status.style.display='inline';
+            status.textContent='✓ Applied to sidebar';
+            setTimeout(()=>{if(status)status.style.display='none';},2500);
+          }
+        };
+      }
     }
 
     $$('.usage-tabs .settings-tab-btn',d).forEach(btn=>{
@@ -563,6 +589,8 @@ const CheapOSLifetimeUsage = (() => {
         switchTab(activeTab);
         bindClubActions();
         bindReconcileActions();
+        updateFooterStatus(effectiveView);
+        $$('[data-close]',d).forEach(b=>b.onclick=()=>d.close());
         if(typeof renderLifetimeSavingsBadge==='function'&&current){
           renderLifetimeSavingsBadge(current);
         }
