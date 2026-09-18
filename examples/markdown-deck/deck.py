@@ -26,7 +26,7 @@ import socketserver
 from typing import List, Tuple
 
 SLIDE_SEPARATOR = re.compile(r"^---\s*$", re.MULTILINE)
-NOTE_PATTERN = re.compile(r"<!--\s*note:(.*?)-->", re.IGNORECASE | re.DOTALL)
+NOTE_PATTERN = re.compile(r"<!--\s*note:(.*?)-->", re.IGNORECASE)
 
 # Very small markdown → HTML subset – sufficient for the tests.
 def _markdown_to_html(md: str) -> str:
@@ -84,6 +84,8 @@ class MarkdownDeck:
         # Split on lines that consist solely of three dashes.
         raw_slides = SLIDE_SEPARATOR.split(self.raw)
         for raw_slide in raw_slides:
+            if not raw_slide.strip():
+                continue
             # Extract note – keep only the first occurrence per slide.
             note_match = NOTE_PATTERN.search(raw_slide)
             note = note_match.group(1).strip() if note_match else ""

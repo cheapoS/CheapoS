@@ -39,5 +39,50 @@ class TestMarkdownDeck(unittest.TestCase):
             self.assertIn('<!DOCTYPE html>', content)
             self.assertIn('<h1>Hello</h1>', content)
 
+class TestMarkdownDeckExtended(unittest.TestCase):
+    def test_empty_file(self):
+        md = ""
+        deck = MarkdownDeck(md)
+        # An empty deck should result in zero slides
+        self.assertEqual(len(deck.slides), 0)
+        self.assertEqual(deck.notes, [])
+
+    def test_no_separator(self):
+        md = "# Only one slide\nContent\n<!-- note: single note -->"
+        deck = MarkdownDeck(md)
+        self.assertEqual(len(deck.slides), 1)
+        self.assertEqual(deck.notes[0], "single note")
+
+    def test_malformed_note(self):
+        # Note comment without closing tags
+        md = "# Slide\nSome content\n<!-- note: broken note\n---\n# Next\nMore\n<!-- note: next note -->"
+        deck = MarkdownDeck(md)
+        # First slide note should be empty because pattern not matched
+        self.assertEqual(deck.notes[0], "")
+        # Second slide note extracted correctly
+        self.assertEqual(deck.notes[1], "next note")
+
+    def test_deterministic_output(self):
+        md = "# Title\n---\n# Second"
+        deck1 = MarkdownDeck(md)
+        deck2 = MarkdownDeck(md)
+        self.assertEqual(deck1.render(), deck2.render())
+        # Bytes comparison
+        self.assertEqual(deck1.render().encode('utf-8'), deck2.render().encode('utf-8'))
+
+    def test_note_extraction_multiple_notes(self):
+        # Only the first note per slide should be captured
+        md = "# Slide\nContent\n<!-- note: first note -->\n<!-- note: second note -->\n---\n# Next\n<!-- note: next note -->"
+        deck = MarkdownDeck(md)
+        self.assertEqual(deck.notes[0], "first note")
+        self.assertEqual(deck.notes[1], "next note")
+
+    def test_note_removed_from_render(self):
+        md = "# Slide\nNote content\n<!-- note: this note should not appear in slide -->"
+        deck = MarkdownDeck(md)
+        html = deck.render()
+        # The note comment should not be present in rendered HTML
+        self.assertNotIn("note:", html)
+
 if __name__ == '__main__':
     unittest.main()
