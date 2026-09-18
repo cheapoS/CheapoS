@@ -1,0 +1,58 @@
+[
+  {
+    "title": "Hello World Python",
+    "description": "Simple hello world",
+    "code": "print('Hello, World!')",
+    "language": "python",
+    "tags": ["hello", "python"]
+  },
+  {
+    "title": "Hello World JS",
+    "description": "Simple JS log",
+    "code": "console.log('Hello, World!');",
+    "language": "javascript",
+    "tags": ["hello", "js"]
+  },
+  {
+    "title": "SQL Select",
+    "description": "Select all from users",
+    "code": "SELECT * FROM users;",
+    "language": "sql",
+    "tags": ["sql", "db"]
+  },
+  {
+    "title": "Bash echo",
+    "description": "Echo string",
+    "code": "echo 'Hello'",
+    "language": "bash",
+    "tags": ["bash", "script"]
+  },
+  {
+    "title": "Simple Text",
+    "description": "Just text",
+    "code": "This is just a simple text note.",
+    "language": "text",
+    "tags": ["note", "text"]
+  },
+  {
+    "title": "Python Dictionary",
+    "description": "Creating a dict",
+    "code": "d = {'a': 1}",
+    "language": "python",
+    "tags": ["python", "dict"]
+  },
+  {
+    "title": "JS Array",
+    "description": "Array of numbers",
+    "code": "const arr = [1, 2, 3];",
+    "language": "javascript",
+    "tags": ["js", "array"]
+  },
+  {
+    "title": "SQL Insert",
+    "description": "Insert into table",
+    "code": "INSERT INTO users (name) VALUES ('Alice');",
+    "language": "sql",
+    "tags": ["sql", "insert"]
+  }
+]
