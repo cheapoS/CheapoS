@@ -38,7 +38,7 @@ class PauseDetails(unittest.TestCase):
   pause.clear(t['branch_run']);self.assertNotIn('pause_detail',t['branch_run']);self.assertTrue(t['branch_run']['events'])
  def test_context_and_explicit_dispute(self):
   d=pause.classify(pause.PauseError('repeated_review_dispute',stage='reviewing',diagnostic_id='review-2'),self.task())
-  self.assertEqual(d['item_id'],'one');self.assertEqual(d['diagnostic_id'],'review-2');self.assertEqual(d['next_action'],'review_dispute')
+  self.assertEqual(d['item_id'],'one');self.assertEqual(d['diagnostic_id'],'review-2');self.assertEqual(d['next_action'],'resume')
 
  def test_preflight_budget_stop_explains_remaining_allowance_without_raw_error(self):
   t=self.task();t['branch_run']['status']='finalizing'

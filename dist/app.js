@@ -808,10 +808,25 @@ const viewMemory=new Map();
 function rememberView(){if(!state.task)return;viewMemory.set(state.task.id+':'+state.view,{scroll:$('#view-container').scrollTop,details:new Map($$('details[data-event]').map(d=>[d.dataset.event,d.open]))});}
 function setView(view) {
   rememberView();
-  state.view=view;renderView();renderComposer();
+  state.view=view;if(view==='changes')void refreshChanges();renderView();renderComposer();
   const scroller=$('#view-container');
   const saved=viewMemory.get(state.task?.id+':'+view);for(const d of $$('details[data-event]'))if(saved?.details.has(d.dataset.event))d.open=saved.details.get(d.dataset.event);scroller.scrollTo({top:view==='chat'?scroller.scrollHeight:saved?.scroll||0,behavior:'instant'});
   for(const output of $$('[data-command-output]'))output.scrollTop=output.scrollHeight;
+}
+async function refreshChanges() {
+  const previous=state.task,selection=state.selection;if(!previous)return;
+  if(state.changesRefresh?.pending&&state.changesRefresh.id===previous.id&&state.changesRefresh.selection===selection)return;
+  const request={id:previous.id,selection,pending:true,error:null};state.changesRefresh=request;
+  try {
+    const saved=await api('/tasks/'+previous.id);
+    if(state.selection!==selection||state.task?.id!==previous.id)return;
+    // A late read cannot undo a newer action response or another poll.
+    if(state.task===previous||Date.parse(saved.updated_at)>Date.parse(state.task.updated_at))state.task=saved;
+  } catch(error) {request.error=error.message||'Could not refresh saved changes.';}
+  finally {
+    request.pending=false;
+    if(state.changesRefresh===request&&state.selection===selection&&state.task?.id===previous.id&&state.view==='changes')renderTask();
+  }
 }
 function renderTask({resetScroll=false}={}) {
   const task=state.task;if(!task)return;$('.main-pane').classList.remove('new-conversation');
@@ -1211,6 +1226,13 @@ function patchRows(text) {
 }
 function renderChanges() {
   const task=state.task;if(!task)return;
+  const loading=state.changesRefresh,hasChanges=task.branch_run?Boolean(task.branch_run.readiness):Boolean(task.changes?.length||task.commits?.length);
+  if(loading?.id===task.id&&loading.selection===state.selection&&!hasChanges&&(loading.pending||loading.error)){
+    const panel=$('#changes-view');panel.dataset.task=task.id;delete panel.dataset.signature;
+    panel.innerHTML=loading.pending?'<div class="empty-state" role="status"><span class="spinner" aria-hidden="true"></span><h2>Loading latest changes…</h2><p>Checking the saved task for reviewable work.</p></div>':`<div class="empty-state" role="alert"><h2>Could not load saved changes.</h2><p>${esc(loading.error)}</p><button type="button" data-retry-changes>Try again</button></div>`;
+    const retry=panel.querySelector('[data-retry-changes]');if(retry)retry.onclick=()=>{void refreshChanges();renderChanges();};
+    return;
+  }
   if(task.branch_run){branchUI.renderChanges(task);return;}
   const files=task.changes;
   $('#changes-view').dataset.task=task.id;
@@ -1309,7 +1331,14 @@ function requestChanges() {
 function bindCommitDecision(task) {
   if(task.archived_at||task.trashed_at)return;
   const integrationState=commitPreviews.get(task.id)?.integration_readiness;
-  CheapOSIntegration.bind($('#changes-view'),task,integrationState,api,async()=>{commitPreviews.delete(task.id);await refresh();},()=>setView('chat'));
+  CheapOSIntegration.bind($('#changes-view'),task,integrationState,api,async saved=>{
+    commitPreviews.delete(task.id);
+    if(state.task?.id===task.id){
+      if(state.task===task||Date.parse(saved.updated_at)>Date.parse(state.task.updated_at))state.task=saved;
+      setView('chat');
+    }
+    await refresh();
+  },()=>setView('chat'));
   $$('[data-commit-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.commitAction;
     if(action==='change'){requestChanges();return}

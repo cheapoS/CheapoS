@@ -15,7 +15,7 @@ TEMPLATES = {
  'malformed_output': ('The model returned an invalid response or tool arguments.', 'correction'),
  'repeated_work': ('Repeated work stopped making progress.', 'correction'),
  'essential_clarification': ('An essential decision is needed before work can continue.', 'reply'),
- 'repeated_review_dispute': ('Review disagreement needs a decision before more repair work.', 'review_dispute'),
+ 'repeated_review_dispute': ('Review is unfinished. The findings and saved evidence are retained.', 'resume'),
  'review_context_unavailable': ('Final review needs candidate context that could not be obtained. Inspect the saved context-read diagnostic before retrying.', 'inspect'),
  'failed_checks': ('Verification checks failed. Inspect the recorded test results before changing or retrying the work.', 'inspect'),
  'review_identity_unknown': ('Reviewer independence could not be established. Open Choose reviewer to see available routes and any missing historical identity.', 'reviewer'),
