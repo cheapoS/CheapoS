@@ -67,5 +67,49 @@ class TestPromptDiet(unittest.TestCase):
         # Ensure savings positive if fluff removed
         self.assertGreater(analysis["savings"], 0)
 
+
+class TestCLI(unittest.TestCase):
+    """Tests for the diet.py CLI subcommands."""
+
+    def _run_cli(self, subcommand, prompt_text):
+        """Run diet.py <subcommand> with prompt_text via stdin, return (exit_code, stdout)."""
+        import subprocess
+        import os
+        diet_path = os.path.join(os.path.dirname(__file__), "diet.py")
+        result = subprocess.run(
+            ["python3", diet_path, subcommand],
+            input=prompt_text,
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode, result.stdout
+
+    def test_cli_analyze(self):
+        prompt = "I hope you are doing well. Summarize this document."
+        code, out = self._run_cli("analyze", prompt)
+        self.assertEqual(code, 0)
+        import json
+        data = json.loads(out)
+        self.assertIn("tokens", data)
+        self.assertIn("fluff", data)
+        self.assertIn("savings", data)
+
+    def test_cli_minify(self):
+        prompt = "**Hello**, I hope you are doing well. Please minify this."
+        code, out = self._run_cli("minify", prompt)
+        self.assertEqual(code, 0)
+        self.assertIn("Hello,", out)
+        self.assertNotIn("**", out)
+        self.assertNotIn("I hope you are doing well", out)
+
+    def test_cli_diff(self):
+        prompt = "Line 1\nI hope you are doing well.\nLine 3\n"
+        code, out = self._run_cli("diff", prompt)
+        self.assertEqual(code, 0)
+        # Unified diff header must be present
+        self.assertIn("--- original", out)
+        self.assertIn("+++ minified", out)
+
+
 if __name__ == "__main__":
     unittest.main()
