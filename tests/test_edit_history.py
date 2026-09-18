@@ -1,5 +1,6 @@
 """Tiny real-file recovery cases; no Git fixtures, subprocesses, network or waits."""
 import hashlib
+import io
 import json
 import tempfile
 import threading
@@ -11,7 +12,7 @@ from unittest.mock import Mock, patch
 from cheapos import edit_history, work_policy
 from cheapos.edit_recovery import check_state, check_feedback, repair_packet
 from cheapos.engine import Engine, WORKER_TOOLS, CHAT_TOOLS, UNATTENDED_TOOLS, REVIEW_TOOLS
-from cheapos.workspace import Workspace
+from cheapos.workspace import FileEditConstraint, Workspace
 
 
 class EditHistoryTests(unittest.TestCase):
@@ -40,6 +41,146 @@ class EditHistoryTests(unittest.TestCase):
 
     def edit(self, old, new, path='app.py'):
         return self.engine.file_tool(self.task, 'replace_text', {'path': path, 'old_text': old, 'new_text': new})
+
+    def test_reproduction_and_existing_file_recovery_finish_independent_branch_review(self):
+        from contextlib import ExitStack
+        from cheapos import branch_disagreement, branch_review, branch_runs
+        from cheapos.engine import Runtime, limits_from
+        test_text = ('import unittest\nclass GreetingTests(unittest.TestCase):\n'
+                     '    def test_existing(self):\n        self.assertIsInstance(Manager().run(), str)\n')
+        (self.root / 'test_app.py').write_text(test_text)
+        command = ['python3', '-m', 'unittest', 'test_app', '-v']
+        run = branch_runs.new_run({'items': [{'id': 'greeting', 'title': 'Normalize greeting',
+            'instructions': 'Strip surrounding whitespace in app.py', 'acceptance_criteria': ['Normalized greeting'],
+            'required_checks': [' '.join(command)]}], 'limits': {'working_seconds': 600}, 'uncapped_work': True})
+        run.update(status='running', current_item_id='greeting', expected_feature_tip='tip', authorization_ref='grant')
+        item = run['items'][0]
+        item['status'] = 'working'
+        task, engine = self.task, self.engine
+        task.update(branch_run=run, limits=limits_from({'uncapped_work': True}), messages=[], worker_turns=0, compact_edits=True,
+                    providers={'worker': {'model': 'worker'}, 'reviewer': {'model': 'reviewer'}})
+        branch_disagreement.attach(task, item, branch_disagreement.repair({'defects': [{
+            'criterion': 'Normalized greeting', 'location': 'app.py:3', 'expected': 'hello',
+            'observed': 'Leading and trailing spaces', 'kind': 'executable',
+            'support': 'The return literal contains spaces', 'reproduction': 'Assert Manager().run() == "hello"'
+        }]}, 'disputed', []))
+        runtime = Runtime(task)
+        engine.remember_file_version(runtime, self.ws.read_file('app.py'))
+        engine.fit_worker_context = Mock()
+        engine.deliver_loop_guidance = Mock()
+        engine.refresh_worker_conversation = Mock()
+        engine.defer_route = Mock()
+        engine.verification_argv.return_value = command
+        def call(name, args, identity):
+            return {'role': 'assistant', 'tool_calls': [{'id': identity, 'function': {
+                'name': name, 'arguments': json.dumps(args)}}]}
+        fixed = {'path': 'app.py', 'start_line': 3, 'end_line': 3, 'new_text': '        return "hello"\n'}
+        responses = iter([
+            call('replace_lines', fixed, 'blocked1'), call('replace_lines', fixed, 'blocked2'),
+            call('write_file', {'path': 'test_app.py', 'content': 'replacement'}, 'exists1'),
+            call('write_file', {'path': 'test_app.py', 'content': 'replacement'}, 'exists2'),
+            call('append_text', {'path': 'test_app.py', 'text':
+                '    def test_regression(self):\n        self.assertEqual(Manager().run(), "hello")\n'}, 'regression'),
+            call('run_checks', {'command': ' '.join(command)}, 'failing'),
+            call('replace_lines', fixed, 'repair'),
+            call('run_checks', {'command': ' '.join(command)}, 'passing'),
+            call('checkpoint', {'summary': 'Regression reproduced and fixed', 'uncertainties': ''}, 'done'),
+        ])
+        def request(rt, messages, tools, role):
+            if role == 'reviewer':
+                self.assertEqual([c['passed'] for c in task['checks']], [False, True])
+                packet = json.loads(messages[1]['content'])
+                self.assertEqual(packet['repair_review']['defects'][0]['reproduction'], 'Assert Manager().run() == "hello"')
+                return call('review_decision', {'decision': 'APPROVE', 'candidate_id': 'fixed', 'defects': [],
+                    'feedback': 'Both tests ran; greeting is normalized and original behavior preserved.',
+                    'criteria_outcomes': {'Normalized greeting': {'passed': True, 'evidence': 'Source and regression'}}}, 'review')
+            return next(responses)
+        engine.request = Mock(side_effect=request)
+        def identity(*args):
+            return hashlib.sha256(((self.root / 'app.py').read_text() +
+                                   (self.root / 'test_app.py').read_text()).encode()).hexdigest()
+        def check(rt, requested):
+            self.assertEqual(requested, ' '.join(command))
+            namespace = {}
+            exec((self.root / 'app.py').read_text(), namespace)
+            exec((self.root / 'test_app.py').read_text(), namespace)
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(namespace['GreetingTests'])
+            output = io.StringIO()
+            result = unittest.TextTestRunner(stream=output, verbosity=2).run(suite)
+            self.assertEqual(result.testsRun, 2)
+            record = {'passed': result.wasSuccessful(), 'exit_code': 0 if result.wasSuccessful() else 1,
+                'outcome': 'passed' if result.wasSuccessful() else 'test_failure', 'command': command,
+                'input_identity': identity(), 'run_id': str(len(task['checks'])), 'output': output.getvalue(),
+                'digest': hashlib.sha256(task['patch'].encode()).hexdigest()}
+            task['checks'].append(record)
+            return record
+        engine.checks = Mock(side_effect=check)
+        # Reuse the existing in-memory review boundary; no Git workflow or model calls.
+        with ExitStack() as stack:
+            for target, value in [('cheapos.engine.automatic', True),
+                    ('cheapos.coordinator_dispatch.consult', False),
+                    ('cheapos.integration_preparation.observe', None),
+                    ('cheapos.integration_preparation.automatic', None)]:
+                stack.enter_context(patch(target, return_value=value))
+            stack.enter_context(patch('cheapos.verification.evidence_identity', side_effect=identity))
+            for name, value in [('candidate', {'id': 'fixed', 'checks': [], 'patch': 'greeting diff'}),
+                    ('current_checks', task['checks']), ('review_packet', {'candidate_id': 'fixed', 'diff': 'greeting diff'}),
+                    ('ready_receipt', 'receipt'), ('revalidate', None)]:
+                stack.enter_context(patch.object(branch_review.evidence, name, return_value=value))
+            engine._run_until_pause(runtime)
+        self.assertEqual(task['status'], 'approved', task.get('error'))
+        results = {m['tool_call_id']: json.loads(m['content']) for m in task['messages'] if m.get('role') == 'tool'}
+        self.assertEqual(results['blocked2']['code'], 'repair_evidence_required')
+        self.assertEqual(results['blocked2']['attempts'], 2)
+        self.assertEqual(results['blocked2']['reproduction']['test_files'], ['test_app.py'])
+        self.assertEqual(results['exists2']['code'], 'file_already_exists')
+        self.assertEqual(results['exists2']['attempts'], 2)
+        self.assertEqual(item['review_repair']['probe_observed']['run_id'], '0')
+        self.assertTrue((self.root / 'test_app.py').read_text().startswith(test_text))
+        self.assertEqual(engine.defer_route.call_count, 2)
+        self.assertEqual(task['worker_turns'], 9)
+        self.assertEqual(sum(c.args[-1] == 'reviewer' for c in engine.request.call_args_list), 1)
+        self.assertEqual(item['ready_receipt'], 'receipt')
+        self.assertEqual(task['checkpoints'][0]['decision'], 'APPROVE')
+
+    def test_constraint_recovery_survives_reload_and_uses_current_test_evidence(self):
+        from cheapos import branch_disagreement
+        from cheapos.edit_recovery import constraint_feedback
+        from test_branch_disagreement import defect
+        tests = self.root / 'tests'
+        tests.mkdir()
+        (tests / 'test_precision.py').write_text('class Checks:\n    pass\n')
+        item = {'id': 'one', 'acceptance_criteria': ['exact values'],
+                'required_checks': ['python3 -m unittest tests.test_precision.Checks -v']}
+        self.task['branch_run'] = {'current_item_id': 'one', 'items': [item]}
+        branch_disagreement.attach(self.task, item, branch_disagreement.repair({'defects': [defect('executable')]}, 'candidate', []))
+        error = FileEditConstraint('repair_evidence_required', 'Reproduce first')
+        result = constraint_feedback(self.task, self.ws, {'path': 'app.py'}, error)
+        self.assertEqual(result['reproduction']['test_files'], ['tests/test_precision.py'])
+        self.assertIn('1: class Checks:', result['reproduction']['current_test_file']['content'])
+        restored = json.loads(json.dumps(self.task))
+        result = constraint_feedback(restored, self.ws, {'path': './other.py'}, error)
+        self.assertEqual(result['attempts'], 2)
+        self.assertFalse(result['executed'])
+        self.assertEqual(restored['checks'], [])
+        with patch.object(self.ws, 'read_file', side_effect=ValueError('File too large')):
+            result = constraint_feedback(restored, self.ws, {'path': 'app.py'}, error)
+        self.assertEqual(result['reproduction']['test_file_read_error'], 'File too large')
+        self.assertEqual(result['reproduction']['planned_checks'], [['python3', '-m', 'unittest', 'tests.test_precision.Checks', '-v']])
+        restored['providers']['worker'] = {'model': 'different-worker'}
+        self.assertEqual(constraint_feedback(restored, self.ws, {'path': 'app.py'}, error)['attempts'], 1)
+
+    def test_oversized_replacement_retains_file_and_returns_small_edit_context(self):
+        self.engine.remember_file_version(self.runtime, self.ws.read_file('app.py'))
+        args = {'path': 'app.py', 'start_line': 3, 'end_line': 3, 'new_text': 'x' * 3001}
+        with self.assertRaises(FileEditConstraint) as failure:
+            self.ws.replace_lines(**args, expected_hash=self.ws.read_file('app.py')['hash'])
+        self.assertEqual(failure.exception.code, 'edit_too_large')
+        result = self.engine.recover_edit_constraint(self.runtime, args, failure.exception)
+        self.assertFalse(result['changed'])
+        self.assertIn('3:         return', result['current_file']['content'])
+        self.assertEqual((self.root / 'app.py').read_text(), self.original)
+        self.assertTrue(self.task['compact_edits'])
 
     def test_syntax_failure_is_restored_then_valid_repair_finishes_independent_review(self):
         # The failed edit from the incident: only the first line inherits indentation.

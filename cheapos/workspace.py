@@ -31,6 +31,14 @@ class FileVersionError(ValueError):
     """The edit's inspected version does not match the file on disk."""
 
 
+class FileEditConstraint(ValueError):
+    """An unexecuted edit needs a different action, not another identical call."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
 class FileTextMatchError(ValueError):
     """An exact-text replacement was rejected before any file write."""
 
@@ -198,7 +206,7 @@ class Workspace:
             raise FileRangeError(f"Invalid line range {start_line!r}..{end_line!r}: this file has {len(lines)} lines. Replace within 1..{len(lines)}, or append at {len(lines)+1} with end_line={len(lines)}. No edit was made.")
         if (not isinstance(new_text, str) or len(new_text.encode("utf-8")) > MAX_EDIT_BYTES
                 or len(new_text.splitlines()) > MAX_EDIT_LINES or end_line - start_line + 1 > MAX_EDIT_LINES):
-            raise ValueError(f"Edit is too large. Replace at most {MAX_EDIT_LINES} lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes per call.")
+            raise FileEditConstraint('edit_too_large', f"Edit is too large. Replace at most {MAX_EDIT_LINES} lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes per call.")
         if "\x00" in new_text:
             raise ValueError("Binary content cannot be written by the text tools")
         prefix, suffix = "".join(lines[:start_line - 1]), "".join(lines[end_line:])
@@ -298,7 +306,7 @@ class Workspace:
             raise ValueError("Content must be text under 256 KB")
         target = self.path(path)
         if target.exists():
-            raise ValueError(f"File '{path}' already exists. To modify an existing file, use 'replace_text' for specific edits or 'append_text' to add content to the end; write_file cannot overwrite files.")
+            raise FileEditConstraint('file_already_exists', f"File '{path}' already exists. To modify an existing file, use 'replace_text' for specific edits or 'append_text' to add content to the end; write_file cannot overwrite files.")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         target.chmod(0o600)

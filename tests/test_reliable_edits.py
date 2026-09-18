@@ -49,7 +49,7 @@ class ReliableEditsTests(unittest.TestCase):
             self.workspace.replace_text("README.md", "Nonexistent text", "replacement")
 
         # Multiple matches
-        with self.assertRaisesRegex(ValueError, r"matched 2 times in 'README.md' \(line 2, line 4\).*append_text"):
+        with self.assertRaisesRegex(ValueError, r"matched 2 times in 'README.md' \(line 2, line 4\).*unique snippet.*numbered lines"):
             self.workspace.replace_text("README.md", "</p>", "<p>custom</p>\n</p>")
 
     def test_write_file_existing_file_actionable_error(self):

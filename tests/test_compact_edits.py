@@ -210,10 +210,14 @@ class CompactRecoveryTests(LocalCase):
 
     def test_compact_malformed_calls_remain_bounded_by_worker_limit(self):
         task = self.chat('remote'); task['limits']['worker_turns'] = 1
+        # This saved legacy allowance is not the new nullable work_turns policy.
+        task['limits'].pop('work_policy_version', None)
         self.engine.store.save(task)
         requests = self.responses([malformed('replace_text')])
         self.engine.start(task['id']); result = self.finish(task)
         self.assertEqual(result['error_code'], 'worker_turn_limit')
+        self.assertEqual(result['limit_hit']['key'], 'worker_turns')
+        self.assertEqual(result['limit_hit']['allowed'], 1)
         self.assertEqual(len(requests), 1)
         self.assertFalse(result['changes'])
 

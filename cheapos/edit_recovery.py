@@ -28,6 +28,41 @@ def rejected(task, args, current, error):
             'guidance': 'Use the supplied current numbered lines to correct the edit. Do not repeat the rejected range or ask the operator for file contents. File versions are tracked automatically.'}
 
 
+def constraint_feedback(task, workspace, args, error):
+    from .edit_history import scope
+    path = workspace.path(args['path']).relative_to(workspace.root).as_posix()
+    run = task.get('branch_run') or {}
+    item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
+    repair = item.get('review_repair') or {}
+    identity = [*scope(task), repair.get('candidate_id'),
+                (task.get('providers', {}).get('worker') or {}).get('model')]
+    records = task.setdefault('edit_constraint_recovery', {})
+    # Another implementation path cannot hide the same missing reproduction.
+    key = error.code if error.code == 'repair_evidence_required' else error.code + ':' + path
+    previous = records.get(key, {})
+    attempts = previous.get('attempts', 0) + 1 if previous.get('scope') == identity else 1
+    records[key] = {'scope': identity, 'attempts': attempts}
+    result = {'code': error.code, 'error': str(error), 'path': path, 'attempts': attempts,
+              'executed': False, 'changed': False, 'updated': False}
+    if error.code == 'repair_evidence_required':
+        from .branch_disagreement import reproduction_context
+        result['reproduction'] = reproduction_context(task, workspace)
+        result['guidance'] = ('Implementation editing is waiting for reproduction evidence. Use the supplied planned checks and test-file evidence; '
+            'if no test file was identified, locate those checks\' test definitions with the normal read tools. '
+            'Add one small regression for the specific reviewer claim, preserve existing assertions, and run the planned check through run_checks. '
+            'An existing test file needs a small edit, not write_file. Place tests in a discoverable test class/function, not below or inside an entry-point block. '
+            'A passing check may mean the new test did not run: inspect its discovered test names. '
+            'Do not repeat implementation edits until a current failing test is recorded. '
+            'If a focused test disproves the claim, submit that counterevidence at checkpoint. Independent review remains required.')
+    elif error.code == 'file_already_exists':
+        result['guidance'] = ('This file already exists and was preserved. Use the current numbered lines for a small replace_lines edit, '
+            'or read the relevant later range first. Do not retry write_file or delete the file to replace it. Preserve existing tests and unaffected functions.')
+    else:
+        result['guidance'] = ('The oversized edit was not executed. Use one smaller coherent change against current lines, preserving indentation and literal newlines. '
+            'Do not repeat the whole-file replacement or truncate the intended code. Add remaining changes in later turns, then verify and submit for independent review.')
+    return result
+
+
 def syntax_records(task, key='syntax_edit_recovery'):
     """Saved within the current work item; Resume does not renew attempts."""
     run = task.get('branch_run') or {}

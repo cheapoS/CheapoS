@@ -17,7 +17,7 @@ from pathlib import Path
 from .providers import ChatProvider, BudgetError, ProviderError, REQUEST_TIMEOUT_SECONDS, reconcile, reserve, validate_provider, guard_inference_route, is_local_ollama
 from .storage import Store, write_json
 from .project_permissions import ProjectTestGrants
-from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, FileRangeError, Workspace, git
+from .workspace import MAX_EDIT_BYTES, MAX_EDIT_LINES, FileVersionError, FileRangeError, FileEditConstraint, Workspace, git
 from . import commits, reconciliation, progress, branch_runs
 from .verification import evidence_identity, matches as evidence_matches, normalize_unittest, reusable_check
 from .web import WebReader, allowed_urls
@@ -2767,6 +2767,19 @@ class Engine:
         except (ValueError, OSError, TypeError, UnicodeError) as error:
             return {"path": args.get("path"), "error": str(error)[:500]}
 
+    def recover_edit_constraint(self, runtime, args, error):
+        from .edit_recovery import constraint_feedback
+        result = constraint_feedback(runtime.task, Workspace(runtime.task['workspace']), args, error)
+        current = result.get('reproduction', {}).get('current_test_file')
+        if current:
+            self.remember_file_version(runtime, current)
+        elif error.code != 'repair_evidence_required':
+            result['current_file'] = self.edit_snapshot(runtime, args)
+        self.prepare_compact_edits(runtime.task)
+        runtime.compact_context_ready = False
+        self.event(runtime.task, 'tool_error', 'Changing the next edit step', result)
+        return result
+
     def file_tool(self, task, name, args, runtime=None):
         active_runtime = runtime or self.runtimes.get(task["id"])
         if active_runtime and hasattr(active_runtime, "branch_ledger"):
@@ -2829,7 +2842,7 @@ class Engine:
             if any(isinstance(value, str) and (len(value.encode("utf-8")) > byte_limit or
                     (name not in ('write_file', 'append_text') and len(value.splitlines()) > MAX_EDIT_LINES)) for value in texts):
                 self.prepare_compact_edits(task)
-                raise ValueError(f"Edit is too large. New files allow at most {MAX_CREATE_BYTES} UTF-8 bytes; existing files use replace_lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes. No edit was made.")
+                raise FileEditConstraint('edit_too_large', f"Edit is too large. New files allow at most {MAX_CREATE_BYTES} UTF-8 bytes; existing files use replace_lines with at most {MAX_EDIT_LINES} lines / {MAX_EDIT_BYTES} UTF-8 bytes. No edit was made.")
         result = (edit_history.apply(task, workspace, name, args, methods[name])
                   if name in edit_history.TEXT_EDITS else methods[name](**args))
         task["tool_actions"] += 1
@@ -3886,6 +3899,8 @@ class Engine:
                     except FileRangeError as error:
                         result = self.recover_edit_range(runtime, args, error)
                         coordinator_applied = result.get('handoff_queued', False)
+                    except FileEditConstraint as error:
+                        result = self.recover_edit_constraint(runtime, args, error)
                     except FileVersionError as error:
                         result = {"error": str(error), "code": "stale_file_version",
                                   "current_file": self.edit_snapshot(runtime, args),
@@ -3918,6 +3933,8 @@ class Engine:
                         coordinator_applied = self.recover_worker_stall(runtime,
                             f"Repeated exact-text replacements did not match {result['path']}. "
                             'Use the supplied current numbered lines and a different edit; the intended change may already be present.')
+                    elif isinstance(result, dict) and result.get('code') in {'repair_evidence_required','file_already_exists','edit_too_large'} and result.get('attempts', 0) >= 2:
+                        coordinator_applied = self.recover_worker_stall(runtime, result['guidance'])
                     if coordinator_applied:
                         for skipped in calls[call_index + 1:]:
                             task['messages'].append({'role':'tool', 'tool_call_id':skipped['id'],

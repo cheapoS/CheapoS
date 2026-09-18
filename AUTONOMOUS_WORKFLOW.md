@@ -480,3 +480,20 @@ that cannot be performed within saved scope can be reported as a specific
 blocker. Explicitly granted extra commands and Interactive checks retain their
 existing behavior. Deterministic dispatch tests cover these distinctions without
 starting commands, models, Git workflows or real-time waits.
+
+## Implemented: recover from unmet edit prerequisites
+
+An edit blocked by a missing defect reproduction now returns the saved finding,
+the current item's planned checks, and current lines from an existing test file
+when its selector can be resolved. The worker can add a discoverable regression
+to that file and run the normal check tool. Reviewer snippets remain evidence,
+not command consent. Passing or stale checks do not unlock implementation edits;
+a disproved finding still needs counterevidence and independent review.
+
+Repeated blocked implementation edits, attempts to create an existing file, and
+oversized edits trigger the existing coordinator/authorized worker recovery path.
+Attempts persist across task reloads and are scoped to the work item, disputed
+candidate and worker. Trying another implementation path cannot reset a missing
+reproduction. Existing files, edit bounds, command grants and review findings
+remain intact. Small file/in-memory cases cover reproduction, retained tests,
+repair and independent approval without operator rescue or live inference.
