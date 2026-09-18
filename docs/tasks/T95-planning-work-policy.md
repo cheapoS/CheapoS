@@ -1,6 +1,6 @@
 # T95 — Apply the selected work policy during planning
 
-Status: **Planned**, September 18, 2026. Priority: **P1**.
+Status: **Completed**, September 18, 2026. Priority: **P1**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 No prerequisite among the new audit tasks. T98 and T99 build on this contract.
 
@@ -46,16 +46,19 @@ Verify symbols against the implementation checkout before editing.
 
 ## Acceptance
 
-- [ ] An explicitly uncapped draft exceeds a tiny fixture's nominal planning
+- [x] An explicitly uncapped draft exceeds a tiny fixture's nominal planning
   allowance, repairs its proposal and produces an approvable plan without Resume.
-- [ ] A bounded draft still enforces its selected budget and saves a continuation.
-- [ ] Planner output cannot grant Uncapped or broader spending/model authority.
-- [ ] Changing defaults or another chat does not alter a saved planning policy.
-- [ ] Serialization/reload and planning retry preserve the choice and all usage;
+- [x] A bounded draft still enforces its selected budget and saves a continuation.
+- [x] Planner output cannot grant Uncapped or broader spending/model authority.
+- [x] Changing defaults or another chat does not alter a saved planning policy.
+- [x] Serialization/reload and planning retry preserve the choice and all usage;
   model requests are not duplicated by restoration.
-- [ ] Ordinary Uncapped and explicit measurement retain their distinct existing
+- [x] Ordinary Uncapped and explicit measurement retain their distinct existing
   output/check semantics until T99 deliberately migrates those controls.
 
 Use a mocked planner/ledger and in-memory policy fixtures, extending existing
 coverage. No live provider, new multi-item Git run or real wait is necessary.
 Follow T94's validation and commit rules and report added test runtime.
+
+Validation: 17 focused planning-policy, Uncapped and measurement tests passed in
+18.845 seconds. Added coverage uses in-memory policy/ledger fixtures; no live calls.

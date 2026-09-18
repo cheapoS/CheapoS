@@ -27,8 +27,9 @@ exemptions.
 For unattended work the choice is part of the approved plan. A trusted operator
 update on a paused run updates the durable authorization contract and records an
 event. Neither planner output nor a task-local flag can expand approved branch
-authority. Planning remains subject to its original allowance; new-chat uncapped
-defaults are applied to the proposed execution plan for inspection before Start.
+authority. The selected work policy is captured before planning starts and restored on
+continuation. Uncapped applies during planning as well as execution; the
+original spending and model authority remain binding.
 
 ## Validation, 2026-09-14
 

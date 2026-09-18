@@ -49,13 +49,34 @@ def policy_for_saved(current, saved):
     return result
 
 
+def planning_work_policy(task, values=None, snapshot=None):
+    """Trusted capture; continuations never accept replacement authority."""
+    if 'planning_work_policy' in task:
+        return copy.deepcopy(task['planning_work_policy'])
+    source = task.get('planning_request', values or {})
+    defaults = (snapshot or {}).get('values', {}).get('limits', {})
+    policy = {'revision': (snapshot or {}).get('revision'),
+              'measurement': source.get('measurement', False),
+              'uncapped_work': source.get('uncapped_work', defaults.get('uncapped_work', False))}
+    if any(type(policy[key]) is not bool for key in ('measurement', 'uncapped_work')):
+        raise ValueError('Saved planning work policy is invalid')
+    return policy
+
+
+def apply_planning_work_policy(plan, policy):
+    for key in ('measurement', 'uncapped_work'):
+        plan.pop(key, None)
+        if policy[key]: plan[key] = True
+
+
 def restore_planning_allowance(task):
     """Execution edits cannot retroactively authorize more planning work."""
     from .engine import limits_from
     limits=copy.deepcopy(task['planning_limits'])
     if run_limits(limits,3)!=limits:
         raise ValueError('Saved planning allowance is incomplete')
-    measurement=task.get('planning_request',{}).get('measurement',False)
+    policy=planning_work_policy(task)
+    measurement=policy['measurement']
     if type(measurement) is not bool:raise ValueError('Saved planning measurement choice is invalid')
     original=task.get('planning_task_limits')
     if original is None:
@@ -66,8 +87,8 @@ def restore_planning_allowance(task):
         raise ValueError('Saved planning provider allowance is invalid')
     task['limits']=copy.deepcopy(original)
     run=task['branch_run'];run['limits']=limits;run['plan']['limits']=copy.deepcopy(limits)
-    if task.get('planning_request',{}).get('measurement') is True:run['plan']['measurement']=True
-    else:run['plan'].pop('measurement',None)
+    task['planning_work_policy']=policy
+    apply_planning_work_policy(run['plan'], policy)
 
 
 def run_limits(values, count):
@@ -189,7 +210,7 @@ class BranchController:
             if planning_task:
                 from .metrics import initialize_actions
                 initialize_actions(planning_task)
-                for key in ('session_actions','usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
+                for key in ('planning_work_policy','session_actions','usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
@@ -619,6 +640,9 @@ class BranchController:
                 task['planning_limits']=limits;task['planning_task_limits']=copy.deepcopy(task['limits']);task['planning_policy']=self.model_policy(settings_snapshot)
                 task['branch_run']=state.new_run({'items':[{'id':'planning','title':'Prepare run proposal','instructions':'Prepare a bounded plan','acceptance_criteria':['A complete proposal is ready']}],'limits':limits,**({'measurement':True} if measurement else {})},original_request=inputs['prompt'],inputs=inputs,
                                                 base_ref=values.get('base_ref',''),target_ref=values.get('target_ref',''),feature_ref=values.get('feature_ref',''),run_id=task_id)
+            policy=planning_work_policy(task, values, settings_snapshot)
+            task['planning_work_policy']=policy
+            apply_planning_work_policy(task['branch_run']['plan'], policy)
             task['planning_request']=copy.deepcopy(values)
             runtime=Runtime(task)
             runtime.branch_ledger=Ledger(runtime,lambda:self.engine.store.save(task),lock=self.engine.lock)
@@ -673,8 +697,7 @@ class BranchController:
                     if runtime.stop.is_set():raise InterruptedError('Planning paused. Reply here when you are ready to continue.')
                     # A reply received during inference supersedes its old scope.
                     if inputs!=task['branch_run']['inputs']:continue
-                    if values.get('measurement'):proposed['measurement']=True
-                    if values.get('uncapped_work'):proposed['uncapped_work']=True
+                    apply_planning_work_policy(proposed, planning_work_policy(task))
                     runtime.branch_ledger.end()
                 result=self.prepare({**values,'prompt':inputs['prompt'],'inputs':inputs,'plan':proposed},planning_task=task)
                 with self.engine.lock:

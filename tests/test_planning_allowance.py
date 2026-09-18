@@ -59,3 +59,20 @@ class PlanningAllowanceTests(unittest.TestCase):
         task=self.task();task['planning_task_limits']['dollars']=10;before=copy.deepcopy(task)
         with self.assertRaises(ValueError):restore_planning_allowance(task)
         self.assertEqual(task,before)
+
+    def test_uncapped_policy_is_durable_and_model_cannot_expand_it(self):
+        from cheapos.branch_controller import planning_work_policy, apply_planning_work_policy
+        task=self.task(); task['planning_request']['uncapped_work']=True
+        restore_planning_allowance(task)
+        task['branch_run']['consumption']['requests']=1000
+        Ledger(SimpleNamespace(task=task,stop=threading.Event()),lambda:None).guard(next_request=True)
+        saved=copy.deepcopy(task)
+        task['planning_request']['uncapped_work']=False
+        restore_planning_allowance(task)
+        self.assertTrue(task['branch_run']['plan']['uncapped_work'])
+        self.assertEqual(task['usage'],saved['usage'])
+        policy=planning_work_policy({}, {'uncapped_work':False})
+        proposed={'uncapped_work':True,'measurement':True}
+        apply_planning_work_policy(proposed,policy)
+        self.assertEqual(proposed,{})
+        self.assertTrue(planning_work_policy({}, {}, {'values':{'limits':{'uncapped_work':True}}})['uncapped_work'])
