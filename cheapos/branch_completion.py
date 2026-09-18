@@ -354,7 +354,59 @@ def update_token(run):
                    'pending':run.get('target_update',{}).get('new_tip')})
 
 
+def _update_result(controller, task_id, operation):
+    """Saved recheck identity; Resume itself serializes live dispatch admission."""
+    engine = controller.engine
+    task = engine.store.get(task_id)
+    run = task['branch_run']
+    try:
+        final.validate(run.get('readiness') or {}, task)
+        ready = not run['readiness'].get('integration_blocker')
+    except (ValueError, KeyError):
+        ready = False
+    if ready:
+        operation['phase'] = 'completed'
+        run['status'] = 'ready_for_merge'
+        task['status'] = 'approved'
+        task['error'] = None
+        run['pause_reason'] = None
+        engine.store.save(task)
+        result = {'task': task, 'needs_consent': False}
+    else:
+        operation['phase'] = 'rechecking'
+        engine.store.save(task)
+        result = controller.resume(task_id, {})
+    return {**result, 'updated': operation['updated'], 'state': operation['state'],
+            'operation_id': operation['token']}
+
+
 def update_branch(controller, task_id, values):
+    if set(values) != {'approved', 'update_token'} or values.get('approved') is not True:
+        raise ValueError('Approve the inspected branch update')
+    engine = controller.engine
+    source = engine.store.get(task_id)['branch_run']['workspace_mapping']['source']
+    # Match normal integration lock order. Keep dispatch and receipt publication
+    # serialized, including a duplicate arriving before the first HTTP response.
+    with engine.admission.repository(source), engine.lock:
+        task = _task(controller, task_id, idle=False)
+        run = task['branch_run']
+        controller.validate_authority(task, run)
+        operation = run.get('update_result')
+        if operation and operation['token'] == values['update_token']:
+            mapping = run['workspace_mapping']
+            work.validate_owned(mapping, run['expected_feature_tip'])
+            if (operation['feature_tip'] != run['expected_feature_tip'] or
+                    operation['target_tip'] != work._tip(source, run['target_ref']) or
+                    operation['private_head'] != mapping['workspace_head']):
+                raise ValueError('Branches changed. Refresh the review before updating')
+            return _update_result(controller, task_id, operation)
+        result = _update_branch(controller, task_id, values)
+        if result.pop('_continue_update', False):
+            return _update_result(controller, task_id, run['update_result'])
+        return result
+
+
+def _update_branch(controller, task_id, values):
     """Explicitly update the task, then recheck; never implicitly merge the target."""
     from . import branch_update
     if set(values)!={'approved','update_token'} or values.get('approved') is not True:
@@ -379,6 +431,16 @@ def update_branch(controller, task_id, values):
                 return {'needs_conflict_resolution':True}
             if values['update_token']!=update_token(run):
                 raise ValueError('Target changed while preparing the update. Refresh review and try again')
+            if operation.get('state') == 'already_current':
+                result = {'token':values['update_token'], 'updated':False,
+                          'state':'already_current', 'feature_tip':run['expected_feature_tip'],
+                          'target_tip':operation['target_tip'], 'private_head':operation['private_old'],
+                          'phase':'selected'}
+                run['update_result'] = result
+                engine.event(task, 'branch_updated', 'Already up to date. Continuing any unfinished verification.',
+                             {'updated':False, 'target_tip':operation['target_tip']})
+                engine.store.save(task)
+                return {'_continue_update':True}
             operation['approved']=True
             operation['approval_token']=values['update_token']
             operation['digest']=branch_update.receipt_digest(operation)
@@ -401,7 +463,10 @@ def update_branch(controller, task_id, values):
             task['integration_preparation']['dispatched']=True
         engine.event(task,'branch_updated','Task branch updated. Rechecking the combined changes before merge.',
                      {'target_tip':finished['target_tip'],'feature_tip':finished['new_tip']})
+        run['update_result'] = {'token':values['update_token'], 'updated':True, 'state':'updated',
+                                'feature_tip':finished['new_tip'], 'target_tip':finished['target_tip'],
+                                'private_head':finished['private_new'], 'phase':'selected'}
         engine.store.save(task)
     current=engine.store.get(task_id)
     if current.get('integration_preparation',{}).get('status')=='cancelled':return current
-    return controller.resume(task_id,{})
+    return _update_result(controller, task_id, current['branch_run']['update_result'])

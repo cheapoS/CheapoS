@@ -24,7 +24,9 @@ def prepare(run):
             current=True
         except ValueError:
             current=False
-        if current: raise ValueError('Task branch already contains the target. Choose Recheck changes instead')
+        if current:
+            return {'state':'already_current', 'updated':False, 'old_tip':old,
+                    'target_tip':target, 'private_old':mapping['workspace_head']}
         tree, conflicts = merge_candidate(source, old, target)
         if conflicts:
             raise MergeConflict({'old_tip':old,'target_tip':target,'tree':tree,'files':conflicts})

@@ -57,6 +57,21 @@ class BranchWorkspaceTests(unittest.TestCase):
         self.assertEqual(git(self.source, 'show', 'feature/test:.env').strip(), 'secret-not-copied')
         self.assertTrue(bw.validate_owned(result))
         self.assertEqual(bw.create(result, self.save), result)
+        # Reuse this repository fixture: a current update must preserve even the
+        # source's dirty index, while rejecting dirty task copies/ownership drift.
+        from cheapos.branch_update import prepare as update
+        run={'workspace_mapping':result,'expected_feature_tip':result['feature_tip'],
+             'target_ref':'refs/heads/main'}
+        current=update(run)
+        self.assertEqual(current['state'],'already_current');self.assertFalse(current['updated'])
+        self.assertEqual(before, (git(self.source, 'rev-parse', 'HEAD'), git(self.source, 'write-tree'), git(self.source, 'status', '--porcelain')))
+        (self.destination/'temporary').write_text('saved edit')
+        with self.assertRaisesRegex(ValueError,'uncommitted'):update(run)
+        self.assertEqual((self.destination/'temporary').read_text(),'saved edit')
+        (self.destination/'temporary').unlink()
+        git(self.source,'update-ref','-d',result['ownership_ref'])
+        with self.assertRaisesRegex(ValueError,'ownership'):update(run)
+
 
     def test_branch_create_save_failure_recovers_with_git_ownership(self):
         def fail(plan):
