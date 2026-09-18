@@ -63,7 +63,8 @@ class SessionPermissionTests(LocalCase):
         self.engine.approve_check(task['id'], False, approval_id=request_id)
         self.assertEqual(len(self.finish(task)['checks']), 1)
         # A different chat of the same source repository cannot inherit the grant.
-        self.engine.configure({role: {'base_url': 'http://127.0.0.1:11434/v1', 'model': 'fixture', 'input_rate': 0, 'output_rate': 0} for role in ['worker', 'reviewer']})
+        self.engine.save_preferences({'execution': {'mode': 'manual'}})
+        self.engine.configure({role: {'base_url': 'http://127.0.0.1:11434/v1', 'model': 'fixture-'+role, 'input_rate': 0, 'output_rate': 0} for role in ['worker', 'reviewer']})
         other = self.engine.create({'repository': task['source'], 'prompt': 'Check again', 'conversational': True})
         self.replies([call('run_checks', {'command': COMMAND})])
         self.engine.start(other['id']); self.waiting(other)

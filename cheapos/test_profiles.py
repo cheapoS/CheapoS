@@ -15,6 +15,33 @@ FLAGS = {'-v', '-q', '-f', '-b'}
 IDENTIFIER = re.compile(r'^[A-Za-z_]\w*$', re.ASCII)
 
 
+def unittest_selection(argv):
+    """Match explicit checks differing only in -B or verbosity, not grant them.
+
+    Keep the interpreter, selectors (including file paths), their order and
+    execution flags exact. Discovery, filters and unfamiliar options deliberately
+    have no key. A caller must execute an already-authorized original command,
+    never use this key to authorize the requested variant.
+    """
+    if not isinstance(argv, (list, tuple)) or not argv or any(not isinstance(a, str) or not a or '\0' in a for a in argv):
+        return None
+    args = list(argv[1:])
+    if args[:1] == ['-B']:
+        args.pop(0)
+    if args[:2] != ['-m', 'unittest']:
+        return None
+    selected = []
+    for arg in args[2:]:
+        if arg in {'-v', '-q', '--verbose', '--quiet'}:
+            continue
+        if arg == 'discover' or (arg.startswith('-') and arg not in {'-f', '-b'}):
+            return None
+        selected.append(arg)
+    if not any(not arg.startswith('-') for arg in selected):
+        return None
+    return (argv[0], *selected)
+
+
 def executable_identity(value, workspace):
     if not isinstance(value, str) or not value or '\x00' in value:
         return None

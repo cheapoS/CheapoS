@@ -2762,6 +2762,15 @@ class Engine:
         task = runtime.task
         reconciliation.ensure_resolved(task)
         argv = self.verification_argv(task, command)
+        if task.get('branch_run', {}).get('check_scope'):
+            with self.lock:
+                approved = self.branch.scopes.approved_command(task, argv)
+            if approved != argv:
+                from .test_policy import guard
+                guard(task, approved)
+                self.event(task, 'check_command', 'Using the approved verification command',
+                           {'requested_command': argv, 'command': approved})
+                argv = approved
         readiness = environment.inspect(task, argv)
         if readiness['status'] == 'missing':
             task['environment_setup'] = readiness

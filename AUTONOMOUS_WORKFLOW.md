@@ -117,6 +117,23 @@ Does this change let the task continue and finish without the operator doing the
 engine's work? If it only adds error wording, another button or instructions to
 type into Chat, the underlying recovery work is still incomplete.
 
+## Implemented: reuse approved unittest commands
+
+When an unattended worker requests an explicit unittest check with the same
+interpreter and selectors but different verbosity or an omitted Python `-B`,
+the controller uses the original approved argument list. This also works for
+an exact-approved file path such as `examples/penny-pinner/test_pinner.py`,
+without granting a broader project test profile. The requested and executed
+commands remain visible in the event record. Passing evidence is bound to the
+executed command and can be reused before independent review.
+
+Selection changes, discovery, filters, unfamiliar options and other interpreters
+do not receive this substitution. The original command must still have a current
+grant with matching workspace, runner and configuration. Revocation and restart
+do not gain new authority from a saved plan. Small deterministic cases cover
+execution, evidence reuse, independent review and stale-grant rejection without
+model calls, Git workflows or real-time waits.
+
 ## Implemented: scope upstream access failures and explain route waits
 
 A recognized upstream access refusal blocks that provider, while automatic
