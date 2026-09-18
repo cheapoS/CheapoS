@@ -178,7 +178,12 @@ def start(engine,task_id,values,*,renew_checks=True):
             'target_ref':values.get('target_ref') or task.get('branch_run',{}).get('target_ref') or task.get('integration_target_ref'),
             'status':'running','stage':'accepted','label':LABELS['accepted'],'authorized':True,
             'workspace_generation':task.get('workspace_generation',0),'workspace':task.get('workspace')}
-        if retry_failed and saved.get('dispatched'):
+        same_assignment=bool(saved and saved.get('candidate')==values['candidate']
+            and saved.get('requested_target_tip',saved.get('target_tip'))==values['target_tip']
+            and saved.get('target_ref')==task['integration_preparation']['target_ref']
+            and saved.get('workspace')==task.get('workspace')
+            and saved.get('workspace_generation',0)==task.get('workspace_generation',0))
+        if retry_failed and same_assignment and saved.get('dispatched'):
             task['integration_preparation']['dispatched']=True
         engine.store.save(task)
         receipt=copy.deepcopy(task)
@@ -287,7 +292,13 @@ def _drive(engine,task_id):
 
 def _finished(task):
     run=task.get('branch_run')
-    if run:return run.get('status')=='merged' or (run.get('status')=='ready_for_merge' and bool(run.get('readiness')))
+    if run:
+        # A completed review can pause solely because the target advanced. It
+        # needs a fresh update, not another Resume of the old final review.
+        reviewed=run.get('status')=='ready_for_merge' or (
+            run.get('status')=='paused' and run.get('pause_reason')=='branch_drift')
+        return run.get('status')=='merged' or (reviewed and bool(run.get('readiness'))
+            and bool(run.get('items')) and all(i.get('status') in branch_runs.DONE for i in run['items']))
     return task.get('status') in {'approved','completed'} and not task.get('error')
 
 

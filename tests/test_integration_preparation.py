@@ -283,6 +283,52 @@ class IntegrationPreparationTests(unittest.TestCase):
         self.assertEqual(task['integration_preparation']['id'],'new-consent')
         self.assertEqual(task['integration_preparation_history'][0]['status'],'cancelled')
 
+    def test_retry_does_not_inherit_dispatch_from_a_different_assignment(self):
+        for changed in ('candidate','target_tip','target_ref','workspace','workspace_generation'):
+            with self.subTest(changed=changed):
+                engine,task=self.fixture();values=self.accepted(engine,task)
+                task['integration_preparation'].update(status='cancelled',dispatched=True)
+                values={**values,'operation_id':'new-update'}
+                if changed=='candidate':
+                    task['branch_run']['expected_feature_tip']='new-feature';values[changed]='new-feature'
+                elif changed=='target_tip':values[changed]='new-target'
+                elif changed=='target_ref':
+                    task['branch_run']['target_ref']='refs/heads/release';values[changed]='refs/heads/release'
+                elif changed=='workspace':task[changed]='new-private'
+                else:task[changed]=1
+                with patch.object(prep,'_launch'):prep.start(engine,'task',values)
+                self.assertFalse(task['integration_preparation'].get('dispatched'))
+                self.assertTrue(task['integration_preparation_history'][-1]['dispatched'])
+
+    def test_saved_stale_dispatch_assigns_new_conflicts_instead_of_repeating_review(self):
+        engine,task=self.fixture();self.accepted(engine,task)
+        task['integration_preparation']['dispatched']=True
+        task['branch_run'].update(status='paused',pause_reason='branch_drift',readiness={'id':'old-review'},
+            conflict_resolution={'status':'integrated','preparation_id':'previous-update','item_id':'resolve-1'})
+        before=copy.deepcopy({key:task[key] for key in ('checks','usage')})
+        state={'code':'target_advanced','target_tip':'target'}
+        with patch.object(prep,'readiness',return_value=state), \
+             patch('cheapos.branch_completion.update_token',return_value='token'), \
+             patch('cheapos.branch_completion.update_branch',return_value={'needs_conflict_resolution':True}) as update, \
+             patch('cheapos.branch_conflicts.start',return_value={}) as resolve:
+            prep._drive(engine,'task')
+        update.assert_called_once_with(engine.branch,'task',{'approved':True,'update_token':'token'})
+        resolve.assert_called_once_with(engine.branch,'task',{'approved':True,'update_token':'token'})
+        engine.branch.resume.assert_not_called()
+        self.assertEqual(task['integration_preparation']['stage'],'resolving')
+        for key,value in before.items():self.assertEqual(task[key],value)
+
+    def test_target_drift_never_replaces_an_unfinished_resolution(self):
+        engine,task=self.fixture();self.accepted(engine,task)
+        task['integration_preparation']['dispatched']=True
+        task['branch_run'].update(status='paused',pause_reason='branch_drift',readiness={'id':'old-review'},
+            conflict_resolution={'status':'working','preparation_id':'op','item_id':'resolve'})
+        task['branch_run']['items'].append({'id':'resolve','status':'working'})
+        with patch.object(prep,'readiness') as inspect,patch('cheapos.branch_conflicts.start') as assign:
+            prep._drive(engine,'task')
+        inspect.assert_not_called();assign.assert_not_called()
+        engine.branch.resume.assert_called_once_with('task',{})
+
     def test_interactive_resolution_comparison_reads_only_captured_paths(self):
         import tempfile
         from pathlib import Path
