@@ -127,6 +127,129 @@ class EditHistoryTests(unittest.TestCase):
         self.assertEqual(task['checkpoints'][0]['decision'], 'APPROVE')
         engine.checks.assert_called_once()
 
+    def test_rejected_edit_is_not_reapplied_after_restart_or_credited_as_progress(self):
+        args = {'path': 'app.py', 'start_line': 2, 'end_line': 2, 'new_text': 'def run(self):',
+                'expected_hash': self.ws.read_file('app.py')['hash']}
+        operation = Mock(side_effect=self.ws.replace_lines)
+        first = edit_history.apply(self.task, self.ws, 'replace_lines', args, operation)
+        self.assertTrue(first['rolled_back'])
+        restored = json.loads(json.dumps(self.task))
+        second = edit_history.apply(restored, self.ws, 'replace_lines', {**args, 'path': './app.py'}, operation)
+        self.assertEqual(operation.call_count, 1)
+        self.assertFalse(second['executed'])
+        self.assertEqual(second['attempts'], 2)
+        self.assertEqual((self.root / 'app.py').read_text(), self.original)
+        self.assertNotIn('edit_history', restored)
+        self.task['_edit_failures'] = {'app.py': 3}
+        no_op = self.edit('hello', 'hello')
+        self.assertFalse(no_op['changed'])
+        self.assertEqual(self.task['_edit_failures']['app.py'], 3)
+        self.engine.file_tool(self.task, 'replace_lines', args)
+        self.assertEqual(self.task['_edit_failures']['app.py'], 3)
+
+    def test_cosmetic_edits_do_not_renew_failed_repair_but_code_changes_do(self):
+        self.edit('    def run(self):', 'def run(self):')
+        self.engine.file_tool(self.task, 'append_text', {'path': 'app.py', 'text': '\n# Fixed now!\n'})
+        second = self.edit('    def run(self):', 'def run(self):')
+        self.assertEqual(second['attempts'], 2)
+        self.edit('hello', 'hi')
+        third = self.edit('    def run(self):', 'def run(self):')
+        self.assertEqual(third['attempts'], 1)
+
+    def test_uncapped_syntax_loop_consults_coordinator_and_finishes_review(self):
+        from cheapos.engine import Runtime, limits_from
+        task = self.task
+        task.update(limits=limits_from({'uncapped_work': True}), messages=[], worker_turns=0,
+                    compact_edits=True,
+                    execution={'coordinator_assistance': True, 'coordinator_model': 'fixture'},
+                    usage={'cost': 0, 'worker': {'tokens': 100}}, request_metrics=[])
+        engine = self.engine
+        runtime = Runtime(task)
+        runtime.observations['unchanged'] = 2
+        runtime.edit_versions['app.py'] = self.ws.read_file('app.py')['hash']
+        engine.fit_worker_context = Mock()
+        engine.deliver_loop_guidance = Mock()
+        engine.refresh_worker_conversation = Mock()
+        engine.defer_route = Mock()
+        def call(name, args, identity):
+            return {'role': 'assistant', 'tool_calls': [{'id': identity, 'function': {
+                'name': name, 'arguments': json.dumps(args)}}]}
+        bad = {'path': 'app.py', 'start_line': 2, 'end_line': 2, 'new_text': 'def run(self):'}
+        responses = iter([call('replace_lines', bad, 'bad1'), call('replace_lines', bad, 'bad2'),
+                          call('replace_text', {'path': 'app.py', 'old_text': '  hello  ', 'new_text': 'hello'}, 'fixed'),
+                          call('checkpoint', {'summary': 'Normalize greeting', 'uncertainties': ''}, 'done')])
+        def request(rt, messages, tools, role, **kwargs):
+            if role == 'coordinator':
+                self.assertEqual(runtime.observations['unchanged'], 2)
+                self.assertEqual((self.root / 'app.py').read_text(), self.original)
+                packet = json.loads(messages[1]['content'])
+                evidence = next(e for e in packet['evidence'] if e['kind'] == 'rejected_edits')
+                self.assertIn('app.py', packet['permitted_paths'])
+                self.assertIn('"attempts": 2', evidence['text'])
+                return {'content': json.dumps({'outcome': 'continue', 'action': 'edit',
+                        'next_step': 'Replace only the greeting text in app.py using replace_text.',
+                        'expected_result': 'The greeting is normalized and indentation stays intact.',
+                        'evidence': [evidence['id']]})}
+            if role == 'reviewer':
+                self.assertTrue(task['checks'][-1]['passed'])
+                return call('review_decision', {'decision': 'APPROVE', 'feedback': 'Greeting fixed; method preserved.'}, 'review')
+            response = next(responses)
+            if response['tool_calls'][0]['id'] == 'fixed':
+                self.assertIn('replace_text', {t['function']['name'] for t in tools})
+                self.assertTrue(any('Internal coordinator recovery guidance' in (m.get('content') or '') for m in messages))
+            return response
+        engine.request = Mock(side_effect=request)
+        def check(*args):
+            namespace = {}
+            exec((self.root / 'app.py').read_text(), namespace)
+            self.assertEqual(namespace['Manager']().run(), 'hello')
+            result = {'passed': True, 'command': task['check_command'],
+                      'digest': hashlib.sha256(task['patch'].encode()).hexdigest()}
+            task['checks'].append(result)
+            return result
+        engine.checks = Mock(side_effect=check)
+        with patch('cheapos.engine.automatic', return_value=True), \
+                patch('cheapos.coordinator_recovery.Workspace.list_files', return_value=['app.py']), \
+                patch('cheapos.engine.reconciliation.ensure_resolved'), \
+                patch('cheapos.integration_preparation.observe'), \
+                patch('cheapos.integration_preparation.automatic'):
+            engine._run_until_pause(runtime)
+        self.assertEqual(task['status'], 'approved', task.get('error'))
+        self.assertEqual(task['worker_turns'], 4)
+        self.assertEqual(task['review_count'], 1)
+        self.assertEqual(len(task['coordinator_recovery']), 1)
+        self.assertEqual(task['coordinator_recovery'][0]['state'], 'applied')
+        engine.defer_route.assert_not_called()
+        self.assertEqual(task['usage']['worker']['tokens'], 100)
+        engine.checks.assert_called_once()
+
+    def test_unattended_stall_hands_off_when_help_unavailable_but_preserves_pins_and_gates(self):
+        from cheapos.engine import Runtime, limits_from
+        task = self.task
+        task.update(limits=limits_from({'uncapped_work': True}),
+                    branch_run={'id': 'branch', 'current_item_id': '1', 'items': [{'id': '1', 'status': 'working'}],
+                                'plan': {'measurement': True}},
+                    providers={'worker': {'model': 'first', 'base_url': 'http://gateway.invalid'}},
+                    route={'ready': True}, execution={'mode': 'remote'})
+        runtime = Runtime(task)
+        self.engine.connection_for = Mock(return_value=SimpleNamespace(pool=Mock()))
+        with patch('cheapos.coordinator_dispatch.consult', return_value=False) as consult:
+            self.assertTrue(self.engine.recover_worker_stall(runtime, 'Repeated rejected edit'))
+            self.assertEqual(task['route']['recovery']['worker']['from'], 'first')
+            # A queued handoff survives Resume rather than consulting again.
+            self.assertTrue(self.engine.recover_worker_stall(runtime, 'Same failure'))
+            consult.assert_called_once()
+            task['route'].pop('recovery')
+            task['operator_worker_model'] = 'first'
+            self.assertTrue(self.engine.recover_worker_stall(runtime, 'Repeated rejected edit'))
+            self.assertNotIn('recovery', task['route'])
+            task['pending_approval'] = {'id': 'permission'}
+            self.assertFalse(self.engine.recover_worker_stall(runtime, 'Repeated rejected edit'))
+            self.assertEqual(consult.call_count, 2)
+        self.assertEqual(task['status'], 'running')
+        self.assertEqual(task['checkpoints'], [])
+        self.assertEqual(task['limits']['dollars'], 1)
+
     def test_scope_loss_undo_survives_restart_and_keeps_other_files(self):
         moved = 'def clean(text):\n    return text.strip()\n\n    def run(self):\n        return "  hello  "\n'
         result = self.edit(self.original, moved)

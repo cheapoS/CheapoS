@@ -92,7 +92,11 @@ class UncappedWorkTests(unittest.TestCase):
         task=self.task();task.pop('branch_run');task['limits']['uncapped_work']=True
         runtime=Runtime(task);runtime.started-=100000
         runtime.guard();runtime.step_turns=999
-        Engine.checkpoint_boundary(SimpleNamespace(),runtime)
+        engine = Engine.__new__(Engine)
+        engine.refresh_changes = Mock(side_effect=lambda t: t.setdefault('patch', ''))
+        engine.recover_worker_stall = Mock()
+        engine.checkpoint_boundary(runtime)
+        self.assertEqual(runtime.step_turns, 0)
         reservation=reserve(task,{'input_rate':0,'output_rate':0},[],[],'reviewer')
         self.assertEqual(reservation['completion_tokens'],task['limits']['output_tokens'])
         with self.assertRaises(BudgetError):reserve(task,{'input_rate':1,'output_rate':1},[],[],'worker')

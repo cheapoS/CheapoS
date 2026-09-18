@@ -374,3 +374,26 @@ failure only when their saved recovery event matches an undispatched request.
 Attempts and usage remain recorded; actual provider failures, access restrictions
 and probe rejections remain in force. In-memory continuation cases cover worker
 preparation through independent approval and a preserved reviewer rejection.
+
+## Implemented: recover from rejected edits without replaying them
+
+Syntax rollbacks retain the valid file and now count as rejected work. They do
+not clear failed-edit or repeated-read evidence. An identical rejected edit on
+the same file version is not executed again, including after restart. Repeated
+syntax failures consult the optional coordinator, then use an authorized worker
+handoff when help is unavailable or already exhausted. Pinned workers keep their
+selection and can use exact-text edits to escape a failed line-edit strategy.
+Whitespace/comment-only Python changes do not renew the same repair attempt.
+
+Uncapped and measurement runs still inspect progress at checkpoint intervals;
+stalls change strategy rather than enforcing a work ceiling. The legacy two-model
+handoff ceiling no longer stops uncapped Interactive work. Spending, command
+grants, file versions and independent review remain enforced. Source-text
+arguments in XML fallback calls preserve literal whitespace and string values.
+
+Small file/in-memory cases cover duplicate rejection after restart, coordinator
+guidance through verification and independent approval, automatic handoff,
+pinned choices and pending permission gates. See the
+[read-only limits and recovery audit brief](docs/development/limits-recovery-audit.md)
+for the remaining cross-phase audit; these patches are not a claim that every
+hidden limit or stalled operation has been addressed.

@@ -1,5 +1,6 @@
 """Actionable repair feedback; original checks and file authority stay intact."""
 import hashlib
+import ast
 import json
 import re
 from pathlib import PurePosixPath
@@ -25,6 +26,59 @@ def rejected(task, args, current, error):
             'attempted_range': {k: args.get(k) for k in ('start_line', 'end_line')},
             'current_file': current, 'attempts': attempts,
             'guidance': 'Use the supplied current numbered lines to correct the edit. Do not repeat the rejected range or ask the operator for file contents. File versions are tracked automatically.'}
+
+
+def syntax_records(task):
+    """Saved within the current work item; Resume does not renew attempts."""
+    run = task.get('branch_run') or {}
+    scope = [task.get('workspace'), task.get('workspace_generation', 0),
+             run.get('current_item_id'), len(task.get('requests') or [task.get('prompt')])]
+    state = task.setdefault('syntax_edit_recovery', {'scope': scope, 'files': {}})
+    if state['scope'] != scope:
+        state.update(scope=scope, files={})
+    return state['files']
+
+
+def allow_exact_text(task):
+    return bool(task.get('syntax_edit_recovery') and
+                any(r.get('attempts', 0) >= 2 for r in syntax_records(task).values()))
+
+
+def syntax_fingerprint(name, args, path):
+    return hashlib.sha256(json.dumps([name, {**args, 'path': path, 'expected_hash': None}],
+                                     sort_keys=True).encode()).hexdigest()
+
+
+def repeated_syntax_edit(task, name, args, path, before):
+    prior = syntax_records(task).get(path, {})
+    return bool(before and prior.get('hash') == before['hash'] and
+                prior.get('fingerprint') == syntax_fingerprint(name, args, path))
+
+
+def syntax_rejection(task, workspace, name, args, path, before, warning, replayed=False):
+    records = syntax_records(task)
+    prior = records.get(path, {})
+    # Appending comments or changing whitespace cannot renew the same failed
+    # Python repair. An actual code change starts a new repair evidence state.
+    text = before['text']
+    semantic = ast.dump(ast.parse(text), include_attributes=False) if path.endswith('.py') else text
+    version = hashlib.sha256(semantic.encode()).hexdigest()
+    attempts = prior.get('attempts', 0) + 1 if prior.get('version') == version else 1
+    records[path] = {'hash': before['hash'], 'version': version, 'attempts': attempts,
+                     'fingerprint': syntax_fingerprint(name, args, path), 'warning': warning}
+    line = args.get('start_line')
+    if line is None:
+        offset = text.find(args.get('old_text', '')) if name == 'replace_text' else len(text)
+        line = text.count('\n', 0, max(0, offset)) + 1
+    start = max(1, line - 5)
+    return {'path': path, 'updated': False, 'changed': False, 'rejected': True,
+            'code': 'syntax_edit_rejected', 'rolled_back': not replayed, 'executed': not replayed,
+            'syntax_warning': warning, 'hash': before['hash'], 'attempts': attempts,
+            'guidance': ('This exact edit already broke syntax on this file version; it was not executed again. '
+                         if replayed else 'This edit broke syntax, so cheapoS restored the exact pre-edit file. ')
+                        + 'Other edits remain saved. Preserve indentation and literal newlines in replacement text. '
+                          'Use the current file, not the rejected version; choose a different repair.',
+            'current_file': workspace.read_file(path, start, start + 79)}
 
 
 PASS = re.compile(r'^(?:[✔✓] .+|test\S* \([^\n]+\) \.\.\. ok)\s*$')

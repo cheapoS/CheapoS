@@ -48,7 +48,13 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual(reservation['completion_tokens'],2048)
         task.update(requests=['Work'],prompt='Work',patch='',request_worker_turns=500)
         rt=Runtime(task);rt.step_turns=999;rt.guard=lambda:None
-        Engine.checkpoint_boundary(SimpleNamespace(),rt)
+        engine = Engine.__new__(Engine)
+        engine.refresh_changes = Mock()
+        engine.recover_worker_stall = Mock(return_value=True)
+        engine.checkpoint_boundary(rt)
+        engine.recover_worker_stall.assert_called_once()
+        self.assertEqual(rt.step_turns, 0)
+        self.assertEqual(task['request_worker_turns'], 500)
         task['branch_run']['plan']['measurement']=False
         with self.assertRaises(BudgetError): reserve(task,cfg,[],[],'reviewer')
 

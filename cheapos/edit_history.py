@@ -88,31 +88,27 @@ def apply(task, workspace, name, args, operation):
     """Capture only completed text edits; receipts persist with the tool event."""
     path = workspace.path(args['path']).relative_to(workspace.root).as_posix()
     before = snapshot(workspace, path)
+    from .edit_recovery import repeated_syntax_edit, syntax_records, syntax_rejection
+    if repeated_syntax_edit(task, name, args, path, before):
+        return syntax_rejection(task, workspace, name, args, path, before,
+                                syntax_records(task)[path]['warning'], replayed=True)
     result = operation(**args)
     after = snapshot(workspace, path)
     if identity(before) == identity(after):
-        return result
+        return {**result, 'changed': False}
     # A valid existing file need not become the starting point for a syntax
     # repair loop. New/chunked files and already-invalid files remain editable.
     warning = syntax_error(path, after['text'])
     if before is not None and warning and not syntax_error(path, before['text']):
         restore(workspace, path, before)
-        line = args.get('start_line')
-        if line is None:
-            offset = before['text'].find(args.get('old_text', '')) if name == 'replace_text' else len(before['text'])
-            line = before['text'].count('\n', 0, max(0, offset)) + 1
-        start = max(1, line - 5)
-        return {'path': path, 'updated': False, 'rolled_back': True,
-                'syntax_warning': warning, 'hash': before['hash'],
-                'guidance': 'This edit broke syntax, so cheapoS restored this file to its exact pre-edit version. Other edits remain saved. Correct the replacement indentation or delimiters using the current file; do not repair the rejected version or run tests on it.',
-                'current_file': workspace.read_file(path, start, start + 79)}
+        return syntax_rejection(task, workspace, name, args, path, before, warning)
     receipt = {'id': uuid.uuid4().hex, 'path': path, 'tool': name, 'scope': scope(task),
                'before': before, 'after': {'hash': after['hash'], 'mode': after['mode']},
                'structure': structure(before['text'] if before else '', after['text'], path)}
     history = task.setdefault('edit_history', [])
     history.append(receipt)
     del history[:-KEEP_EDITS]
-    return {**result, 'edit_id': receipt['id'], 'structure_changes': receipt['structure'],
+    return {**result, 'changed': True, 'edit_id': receipt['id'], 'structure_changes': receipt['structure'],
             'guidance': 'Edit saved. Check structural changes before continuing. If this edit was a mistake, undo_edit(path, edit_id) restores only this file when its version still matches. Use current lines for further edits; verify and submit checkpoint when complete.'}
 
 

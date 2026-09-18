@@ -1,16 +1,31 @@
 """Small file/state cases: no Git, subprocess, model requests or real waits."""
 import tempfile
+import json
 import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
-from cheapos.engine import Engine
+from cheapos.engine import Engine, extract_fallback_tool_calls
 from cheapos.workspace import Workspace, FileRangeError
 from cheapos.edit_recovery import rejected, check_feedback
 
 
 class EditRecoveryTests(unittest.TestCase):
+    def test_fallback_source_text_preserves_whitespace_and_string_types(self):
+        for field in ('content', 'text', 'old_text', 'new_text'):
+            for raw, expected in [('    @patch("receipt.get_commits")\n', '    @patch("receipt.get_commits")\n'),
+                                  ('\treturn 1\n\n', '\treturn 1\n\n'), ('  null\n', '  null\n'),
+                                  ('123', '123'), (json.dumps('    return 1\n'), '    return 1\n')]:
+                with self.subTest(field=field, raw=raw):
+                    xml = ('<invoke name="replace_lines"><parameter name="start_line"> 42 </parameter>'
+                           '<parameter name="' + field + '">' + raw + '</parameter></invoke>')
+                    calls, _ = extract_fallback_tool_calls(xml, {'replace_lines'})
+                    args = json.loads(calls[0]['function']['arguments'])
+                    self.assertEqual(args[field], expected)
+                    self.assertEqual(args['start_line'], 42)
+                    self.assertEqual(extract_fallback_tool_calls(xml, {'read_file'})[0], [])
+
     def test_bad_range_refresh_blocks_repeat_and_allows_corrected_edit(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'x.txt';path.write_text('one\ntwo\n')

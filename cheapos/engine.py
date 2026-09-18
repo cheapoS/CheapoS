@@ -175,11 +175,17 @@ def extract_fallback_tool_calls(content, offered_tool_names):
             param_pattern = re.compile(r"<parameter\s+name=[\"\']([^\s\"\'>]+)[\"\']\s*>(.*?)</parameter>", re.DOTALL | re.IGNORECASE)
             for pm in param_pattern.finditer(body):
                 pname = pm.group(1).strip()
-                pval = pm.group(2).strip()
+                raw = pm.group(2)
+                pval = raw.strip()
                 try:
-                    params[pname] = json.loads(pval)
-                except Exception:
-                    params[pname] = pval
+                    value = json.loads(pval)
+                except (ValueError, TypeError):
+                    value = raw if pname in {'content', 'old_text', 'new_text', 'text'} else pval
+                # Source text is not a JSON scalar merely because it says
+                # "123" or "null". Quoted JSON strings still decode normally.
+                if pname in {'content', 'old_text', 'new_text', 'text'} and not isinstance(value, str):
+                    value = raw
+                params[pname] = value
             calls.append({
                 "id": f"call_{uuid.uuid4().hex[:8]}",
                 "type": "function",
@@ -2000,9 +2006,18 @@ class Engine:
             raise InterruptedError("Task stopped")
         if not measuring(task) and request_worker_turns(task) >= task['limits']['worker_turns']:
             raise WorkerTurnLimit("Worker model-turn limit reached; saved work is kept.")
-        if measuring(task):
-            return
         if runtime.step_turns < task['limits'].get('checkpoint_turns', 12):
+            return
+        if measuring(task):
+            # Uncapped removes work ceilings, not the opportunity to notice a
+            # stalled implementation. This interval only changes strategy.
+            self.refresh_changes(task)
+            progress.observe(task)
+            if progress.state(task)['revision'] <= runtime.interval_revision:
+                self.recover_worker_stall(runtime, 'No new patch, inspection, check or review evidence during the work interval.')
+            runtime.interval_patch = task['patch']
+            runtime.interval_revision = progress.state(task)['revision']
+            runtime.step_turns = 0
             return
         if task.get('checkpoint_policy') != 'soft':
             raise CheckpointTurnLimit(task)
@@ -2028,6 +2043,45 @@ class Engine:
         self.event(task, 'guard', 'Saved progress; continuing the remaining step', {
             'worker_turns': request_worker_turns(task), 'worker_turn_limit': task['limits']['worker_turns'],
             'summary': 'The patch is still unfinished. Continue the user requirements; verification and review are required before approval.'})
+
+    def recover_worker_stall(self, runtime, reason):
+        """Change strategy within saved authority; never renew work or spending."""
+        from . import coordinator_dispatch
+        from .continuation_policy import is_implementation
+        task = runtime.task
+        runtime.guard()
+        if (runtime.stop.is_set() or task.get('status') != 'running'
+                or task.get('active_role') != 'worker' or task.get('pending_approval')
+                or task.get('pending_review') or task.get('limit_hit')
+                or (task.get('branch_run') or {}).get('waiting_for_user')
+                or work_policy.read_only(task)):
+            return False
+        if not (work_policy.active_implementation(task) or needs_patch_review(task) or is_implementation(task)):
+            return False
+        # A recovery selected before restart must reach dispatch first.
+        if task.get('route', {}).get('recovery', {}).get('worker'):
+            return True
+        if coordinator_dispatch.consult(self, runtime, reason):
+            return True
+        guidance = (reason + ' Continue from current files and saved findings; do not replay rejected edits. '
+                    'Use a different edit or tool, preserve indentation and literal newlines, then verify and submit for independent review.')
+        brief = task.pop('coordinator_handoff_brief', None)
+        if brief:
+            guidance += '\nCoordinator advice (same scope and permissions): ' + brief
+        task['loop_guidance'] = execution_context.guidance(task, guidance)
+        if automatic(task, 'worker'):
+            self.defer_route(task, 'worker', guidance)
+            strategy = 'authorized_worker_handoff'
+        else:
+            # A pinned worker cannot silently become an automatic selection.
+            # Offer the exact-text alternative without removing syntax/version
+            # checks or overwriting entire existing files.
+            strategy = 'different_edit_with_selected_worker'
+        self.event(task, 'guard', 'Changing the repair approach',
+                   {'reason': reason, 'strategy': strategy,
+                    'model': (task.get('providers', {}).get('worker') or {}).get('model')})
+        self.store.save(task)
+        return True
 
     def count_recovery_turn(self, runtime):
         task = runtime.task
@@ -2077,7 +2131,7 @@ class Engine:
                 task['route']['recovery'].pop(role)
                 recovery = None
             branch_worker = role == 'worker' and bool(task.get('branch_run'))
-            if recovery and not unavailable and runtime.handoffs >= MAX_HANDOFFS and not developing(task) and not branch_worker:
+            if recovery and not unavailable and runtime.handoffs >= MAX_HANDOFFS and not measuring(task) and not branch_worker:
                 raise RoutingPause("Two automatic model handoffs were tried for this request. Saved work and usage are kept. Inspect Models and send a specific next instruction; Resume does not replenish handoffs.")
             if attempted:
                 self.count_recovery_turn(runtime)
@@ -2165,6 +2219,9 @@ class Engine:
                 if not purpose and role == "worker" and (task.get("output_recovery") or task.get("compact_edits")):
                     config = {**cfg, "_recovery_reasoning": model.get("recovery_reasoning")}
                     guidance = COMPACT_GUIDANCE if task.get("compact_edits") else OUTPUT_GUIDANCE
+                    from .edit_recovery import allow_exact_text
+                    if allow_exact_text(task):
+                        guidance += '\nFor this stalled repair, replace_text is also available. Preserve literal whitespace; do not repeat rejected line replacements.'
                     message = self._request(runtime, messages + [{"role": "user", "content": execution_context.guidance(task, guidance)}], tools, role, config_override=config)
                 else:
                     message = self._request(runtime, messages, tools, role, purpose=purpose,
@@ -2594,7 +2651,8 @@ class Engine:
             self.remember_file_version(runtime, result)
         elif name in MUTATIONS:
             path = str(workspace.path(args["path"]).relative_to(workspace.root))
-            runtime.edit_versions.pop(path, None)
+            if result.get('changed', result.get('updated', True)):
+                runtime.edit_versions.pop(path, None)
             if mutated_paths is not None:
                 mutated_paths.add(path)
             if task.get("compact_edits"):
@@ -2681,7 +2739,8 @@ class Engine:
             from .branch_disagreement import before_write
             before_write(task, args.get('path'))
         if automatic(task, task["active_role"]) and task["active_role"] == "worker" and name in {"write_file", "replace_text", "append_text"}:
-            if task.get("compact_edits") and name == "replace_text":
+            from .edit_recovery import allow_exact_text
+            if task.get("compact_edits") and name == "replace_text" and not allow_exact_text(task):
                 raise ValueError("Use replace_lines with the current numbered lines for a small edit. cheapoS tracks the file version. No edit was made.")
             texts = [args.get(k) for k in ("content", "old_text", "new_text", "text") if k in args]
             byte_limit = MAX_CREATE_BYTES if name == 'write_file' else MAX_EDIT_BYTES
@@ -2693,7 +2752,8 @@ class Engine:
                   if name in edit_history.TEXT_EDITS else methods[name](**args))
         task["tool_actions"] += 1
         if name in MUTATIONS:
-            task.get("_edit_failures", {}).pop(args.get("path"), None)
+            if result.get('changed', result.get('updated', True)):
+                task.get("_edit_failures", {}).pop(args.get("path"), None)
             self.refresh_changes(task)
             from .edit_recovery import check_state
             result['latest_check'] = check_state(task)
@@ -2701,7 +2761,11 @@ class Engine:
                 result["guidance"] = "File deleted. Run run_checks to verify." if name == "delete_file" else "Edits saved. Run run_checks to verify."
         role = "reviewer" if task["status"] == "reviewing" else task["active_role"]
         model = (task["providers"].get(role) or {}).get("model", "Scripted demo")
-        self.event(task, "tool", name.replace("_", " "), {"arguments": args, "result": result, "role": role, "model": model})
+        rejected = result.get('code') == 'syntax_edit_rejected' if isinstance(result, dict) else False
+        self.event(task, "tool_error" if rejected else "tool",
+                   "Rejected syntax-breaking edit" if rejected else name.replace("_", " "),
+                   {"arguments": args, "result": result, "role": role, "model": model,
+                    **({'tool': name, 'code': result['code']} if rejected else {})})
         return result
 
     def read_url(self, runtime, args):
@@ -3289,6 +3353,8 @@ class Engine:
                     from .worker_conversation import continue_session
                     continue_session(task, self.initial_messages(task), 'coordinator_handoff')
                 self.checkpoint_boundary(runtime)
+                if task['status'] not in ACTIVE:
+                    break
                 runtime.step_turns += 1
                 if not measuring(task) and not task.get("action_pending") and runtime.step_turns == max(2, task["limits"].get("checkpoint_turns", 12) - 2):
                     task["loop_guidance"] = "Save your concrete next action with update_working_state if useful. Continue the coherent unfinished unit within the authorized allowance. Submit checkpoint only when the requested change is complete. For a question, answer when the evidence is sufficient; no cosmetic edit is needed."
@@ -3316,7 +3382,9 @@ class Engine:
                 if task.get("compact_edits"):
                     if not runtime.compact_context_ready:
                         self.refresh_worker_conversation(runtime)
-                    offered_tools = [t for t in offered_tools if t["function"]["name"] not in {"replace_text", "write_file"}] + [LINE_EDIT, COMPACT_WRITE]
+                    from .edit_recovery import allow_exact_text
+                    excluded = {'write_file'} if allow_exact_text(task) else {'replace_text', 'write_file'}
+                    offered_tools = [t for t in offered_tools if t["function"]["name"] not in excluded] + [LINE_EDIT, COMPACT_WRITE]
                 current_stage = work_policy.stage(task)
                 offered_tools = work_policy.prioritize(work_policy.offered_tools(task, offered_tools), current_stage)
                 if task.get('work_stage') != current_stage:
@@ -3575,10 +3643,10 @@ class Engine:
                             result = self.read_url(runtime, args) if name == "read_url" else self.worker_file_tool(runtime, name, args, request_versions, mutated_paths)
                             if isinstance(result, dict) and result.get('code') == 'same_response_file_mutation':
                                 self.event(task, 'tool_error', 'Kept the earlier edit; rejected a second same-file mutation', result)
-                            if name in MUTATIONS:
+                            if name in MUTATIONS and result.get('changed', result.get('updated', True)) and not result.get('error'):
                                 runtime.observations.clear()
                                 runtime.file_observations.clear()
-                            else:
+                            elif name not in MUTATIONS:
                                 observations = record_observation(runtime, name, args, result)
                                 if observations == 2:
                                     task["loop_guidance"] = "This read returned the same information twice. Answer the user's question from the evidence, use read_url for a supplied web link, or ask_user to explain what is missing. Do not edit just to reset the loop guard. Another identical read ends research for this run."
@@ -3642,6 +3710,10 @@ class Engine:
                         self.event(task, "tool_error", "Tool could not complete: " + name, result)
                     from .context_evidence import preview
                     task["messages"].append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(preview(task, result))})
+                    if isinstance(result, dict) and result.get('code') == 'syntax_edit_rejected' and result.get('attempts', 0) >= 2:
+                        coordinator_applied = self.recover_worker_stall(runtime,
+                            f"Repeated syntax-breaking edits to {result['path']}: {result['syntax_warning']}. "
+                            'The file was preserved; the rejected replacements made no progress.')
                     if coordinator_applied:
                         for skipped in calls[call_index + 1:]:
                             task['messages'].append({'role':'tool', 'tool_call_id':skipped['id'],

@@ -112,6 +112,10 @@ def packet(engine, runtime, reason):
     def add(kind, value, maximum=1200):
         result['evidence'].append({'id': 'e' + str(len(result['evidence']) + 1), 'kind': kind, 'text': _text(value, maximum)})
     add('observed_stall', str(reason))
+    if task.get('syntax_edit_recovery'):
+        from .edit_recovery import syntax_records
+        add('rejected_edits', [{'path': path, 'attempts': row['attempts'], 'error': row['warning'],
+                               'file_preserved': True} for path, row in syntax_records(task).items()], 1600)
     add('saved_changes', [{'path': c.get('path'), 'hash': c.get('hash')} for c in task.get('changes', [])], 1800)
     if task.get('checks'):
         check = task['checks'][-1]
@@ -137,7 +141,7 @@ def packet(engine, runtime, reason):
         # paths from saved tool metadata, never from arbitrary model prose.
         for event in reversed(task.get('events', [])):
             detail = event.get('detail')
-            if event.get('kind') != 'tool' or not isinstance(detail, dict):
+            if event.get('kind') not in {'tool', 'tool_error'} or not isinstance(detail, dict):
                 continue
             for field in ('result', 'arguments'):
                 value = detail.get(field)
