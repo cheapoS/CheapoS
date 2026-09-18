@@ -1,4 +1,7 @@
-from .pinner import PennyPinner
+try:
+    from .pinner import PennyPinner
+except ImportError:
+    from pinner import PennyPinner
 
 def generate_html(bookmark):
     return f"""
