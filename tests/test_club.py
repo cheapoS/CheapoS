@@ -153,3 +153,54 @@ class ClubTests(unittest.TestCase):
         self.club.disconnect()
         self.assertIsNone(self.club._remote_profile_cache)
         self.assertEqual(self.club._remote_profile_cache_time,0)
+
+    def test_remote_profile_self_heals_when_handle_renamed(self):
+        import urllib.error
+        from unittest.mock import patch, MagicMock
+        self.club.state['identity']={'handle':'alice','name':'Alice'}
+        self.club._call=Mock(return_value={'status':'connected','handle':'cheaposnumero1','name':'Bob'})
+
+        def fake_urlopen(req, timeout=4):
+            if 'alice' in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 404, 'Not Found', hdrs={}, fp=None)
+            if 'cheaposnumero1' in req.full_url:
+                resp=MagicMock()
+                resp.status=200
+                resp.read.return_value=json.dumps({'handle':'cheaposnumero1','tokens':12345}).encode('utf-8')
+                resp.__enter__.return_value=resp
+                return resp
+            raise ValueError('Unexpected URL')
+
+        with patch('urllib.request.urlopen', side_effect=fake_urlopen):
+            profile=self.club.get_remote_profile(force=True)
+            self.assertEqual(profile['handle'],'cheaposnumero1')
+            self.assertEqual(self.club.state['identity']['handle'],'cheaposnumero1')
+            self.club._call.assert_called_once_with('status')
+            status=self.club.get_status(include_remote=True)
+            self.assertEqual(status['x_identity']['handle'],'cheaposnumero1')
+            self.assertEqual(status['remote_profile']['tokens'],12345)
+
+    def test_sync_includes_work_outcomes(self):
+        self.club.set_sync(True)
+        self.rows.append(self.row())
+        self.ledger.summary=Mock(return_value={'completion':{'human_accepted_jobs':12,'merged_runs':60,'independent_review_approved_jobs':79}})
+        self.club.sync_now(self.ledger)
+        payload=json.loads(self.sent[-1]['payload'])
+        self.assertIn('work_outcomes', payload)
+        self.assertEqual(payload['work_outcomes']['completed_tasks'], 72)
+        self.assertEqual(payload['work_outcomes']['human_accepted_jobs'], 12)
+        self.assertEqual(payload['work_outcomes']['merged_runs'], 60)
+        self.assertEqual(payload['work_outcomes']['review_approved_jobs'], 79)
+        self.assertEqual(payload['work_outcomes']['acceptance_rate'], 91.1)
+
+    def test_check_pairing_force_refreshes_handle(self):
+        self.club.state['identity']={'handle':'alice','name':'Alice','account_id':'acc1'}
+        self.club._call=Mock(return_value={'status':'connected','pairing_id':'pair','handle':'bob','name':'Bob','account_id':'acc1','sequence':1,'previous_hash':'abc'})
+        self.club.check_pairing(force=False)
+        self.club._call.assert_not_called()
+        self.assertEqual(self.club.state['identity']['handle'],'alice')
+
+        self.club.check_pairing(force=True)
+        self.club._call.assert_called_once_with('status')
+        self.assertEqual(self.club.state['identity']['handle'],'bob')
+
