@@ -107,6 +107,25 @@ class ClubManager:
     def _call(self,action,**fields):
         return self._request(self._signed(self._message(action,**fields)))
 
+    def _heal_handle_from_status(self):
+        """When cached handle returns 404, check installation status using cryptographic credentials to self-heal."""
+        try:
+            with self.lock:
+                if not self.state.get('identity'):
+                    return None
+            result = self._call('status')
+            if result.get('status') == 'connected' and result.get('handle'):
+                with self.lock:
+                    self.state.setdefault('identity', {})
+                    self.state['identity']['handle'] = result['handle']
+                    if result.get('name'):
+                        self.state['identity']['name'] = result['name']
+                    self._save()
+                return result['handle'].lstrip('@').lower()
+        except Exception:
+            pass
+        return None
+
     def get_remote_profile(self, force=False):
         """Fetch and cache the public member profile from the Club leaderboard."""
         with self.lock:
@@ -130,6 +149,27 @@ class ClubManager:
                         self._remote_profile_cache=data
                         self._remote_profile_cache_time=now_ts
                     return data
+        except urllib.error.HTTPError as err:
+            if err.code == 404:
+                # Handle was likely renamed on the Club website!
+                # Recover true identity via signed status check.
+                new_handle = self._heal_handle_from_status()
+                if new_handle and new_handle != handle:
+                    try:
+                        url=f"{self.leaderboard_url}/api/profile/{new_handle}"
+                        req=urllib.request.Request(url,headers={'User-Agent':'cheapoS','Accept':'application/json'})
+                        with urllib.request.urlopen(req,timeout=4) as response:
+                            if response.status==200:
+                                data=json.loads(response.read(65536).decode('utf-8'))
+                                with self._remote_profile_lock:
+                                    self._remote_profile_cache=data
+                                    self._remote_profile_cache_time=now_ts
+                                return data
+                    except Exception:
+                        pass
+            with self._remote_profile_lock:
+                if self._remote_profile_cache:
+                    return self._remote_profile_cache
         except Exception:
             with self._remote_profile_lock:
                 if self._remote_profile_cache:
@@ -137,9 +177,9 @@ class ClubManager:
         return None
 
     def get_status(self,summary_dict=None,include_remote=False):
+        remote=self.get_remote_profile() if include_remote and self.state.get('identity') else self._remote_profile_cache
         with self.lock:
             s=self.state
-            remote=self.get_remote_profile() if include_remote and s.get('identity') else self._remote_profile_cache
             return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],share_models=s.get('share_models',False),last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']),remote_profile=remote)
 
     def start_pairing(self,lifetime):
@@ -166,9 +206,9 @@ class ClubManager:
             if legacy.exists(): legacy.unlink()
             return self.get_status()
 
-    def check_pairing(self):
+    def check_pairing(self, force=False):
         with self.lock:
-            if self.state['identity']: return self.get_status()
+            if self.state['identity'] and not force: return self.get_status()
             result=self._call('status')
             if result.get('status')=='connected':
                 self.state.update(pairing_id=result.get('pairing_id',self.state['pairing_id']),identity={'handle':result['handle'],'name':result['name'],'account_id':result['account_id']},sequence=result['sequence'],previous_hash=result['previous_hash'],error=None)
@@ -187,6 +227,10 @@ class ClubManager:
         if result.get('status')!='accepted' or result.get('sequence')!=message['sequence'] or result.get('hash')!=expected:
             raise ValueError('Club acknowledgment did not match the saved upload. Nothing was marked synced.')
         self.state.update(sequence=message['sequence'],previous_hash=expected,pending=None,error=None)
+        if result.get('handle') and self.state.get('identity'):
+            self.state['identity']['handle'] = result['handle']
+            if result.get('name'):
+                self.state['identity']['name'] = result['name']
         if message['action']=='sync':
             self.state['sent'].update(pending['fingerprints']);self.state['last_synced_at']=now()
         else:
@@ -259,7 +303,19 @@ class ClubManager:
                     event['slot']=len(events);events.append(event);fingerprints[rid]=fingerprint
                     if len(events)==100: break
                 if events:
-                    self._queue('sync',_fingerprints=fingerprints,events=events)
+                    queue_kwargs = dict(_fingerprints=fingerprints, events=events)
+                    if lifetime and hasattr(lifetime, 'summary'):
+                        try:
+                            summ = lifetime.summary('all')
+                            comp = summ.get('completion') or {}
+                            queue_kwargs['work_outcomes'] = dict(
+                                human_accepted_jobs=int(comp.get('human_accepted_jobs', 0)),
+                                merged_runs=int(comp.get('merged_runs', 0)),
+                                review_approved_jobs=int(comp.get('independent_review_approved_jobs', 0))
+                            )
+                        except Exception:
+                            pass
+                    self._queue('sync', **queue_kwargs)
                     self._flush()
                     uploaded+=len(events)
                 self.state['sync_message']=(f'Uploaded {uploaded} usage records. Additional queued usage syncs automatically.' if uploaded else 'No new usage yet. Only requests made after sharing was enabled are uploaded.' if not new_requests else 'Waiting for complete token usage before uploading.' if waiting else 'Up to date. All eligible usage has already been uploaded.')
