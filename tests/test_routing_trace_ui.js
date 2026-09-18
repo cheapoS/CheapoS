@@ -26,7 +26,9 @@ test('routing diagnostics are available separately without burying a chat reply'
  vm.createContext(context);vm.runInContext(source+'\nthis.view=CheapOSChatView;',context);
  const t={routing_traces:[{id:'trace',role:'worker',requested_route:'<alias>',selected_model:'b'}]};
  const e={kind:'assistant',id:'reply-1',steps:[],reply:'',live:false};
+ t.routing_traces[0].attempts=[{request_id:'request-1',structural_telemetry:[{version:1,boundary:'argument_decode',text_bytes:42,upstream:'unknown'}]}];
  const html=context.view.routingDetails(t);
+ assert.match(html,/Redacted structural telemetry/);assert.match(html,/argument_decode/);assert.match(html,/Upstream transformations are unknown/);
  assert.match(html,/data-event="routing-log"/);assert.match(html,/Routing &amp; request diagnostics/);
  assert.match(html,/&lt;alias>/);assert.doesNotMatch(html,/<alias>/);
  assert.equal(context.view.message(e,t),'');

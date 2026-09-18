@@ -300,6 +300,11 @@ class EditHistoryTests(unittest.TestCase):
             self.engine.file_tool(self.task, 'undo_edit', {'path': 'link.py', 'edit_id': result['edit_id']})
 
     def test_history_bound_noop_and_new_file_undo(self):
+        with patch('cheapos.structural_telemetry.validation', side_effect=RuntimeError('collector unavailable')):
+            result = self.edit('hello', 'hello2')
+            self.assertTrue(result['changed'])
+            self.edit('hello2', 'hello')
+        self.task.pop('edit_history', None)
         self.edit('hello', 'hello')
         self.assertNotIn('edit_history', self.task)
         for i in range(edit_history.KEEP_EDITS + 2):

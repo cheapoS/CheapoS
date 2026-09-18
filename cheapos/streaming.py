@@ -126,4 +126,4 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
                 raise error_type('The model streamed a tool call without a valid ID or name.', code='invalid_tool_envelope')
             # The complete response is accounted before the controller validates
             # argument JSON. Invalid arguments become tool feedback, never edits.
-    return {'choices':[{'message':message}], 'usage':usage, 'model':None if identity_conflict else reported_model}
+    return {'_wire_bytes':size, 'choices':[{'message':message}], 'usage':usage, 'model':None if identity_conflict else reported_model}

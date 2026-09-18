@@ -296,6 +296,11 @@ class ChatProvider:
         if self.key:
             headers["Authorization"] = "Bearer " + self.key
         request = Request(self.config["base_url"] + "/chat/completions", data=json.dumps(body).encode(), headers=headers)
+        from .structural_telemetry import add
+        try:
+            add(self.request_timing, 'request_wire', wire_bytes=len(request.data or b''))
+        except Exception:
+            pass
         provider_name = provider_identity(self.config)
         gateway_name = gateway_identity(self.config)
         payload_bytes = len(request.data) if request.data else 0
@@ -306,8 +311,10 @@ class ChatProvider:
                 with build_opener(NoRedirects(), ProxyHandler({})).open(request, timeout=timeout_seconds) as response, (BriefResponseGuard(response, stopped, stream_seconds if emit is not None else timeout_seconds) if brief or self.config.get("_operator_interruptible") else nullcontext()):
                     if emit is not None and response.headers.get_content_type() == "text/event-stream":
                         data = read_chat_stream(response, emit, stopped, ProviderError, max_seconds=stream_seconds)
+                        response_wire_bytes = data.get("_wire_bytes")
                     else:
                         raw = response.read(4_000_001)
+                        response_wire_bytes = len(raw)
                         if len(raw) > 4_000_000:
                             raise ProviderError("Provider response exceeded 4 MB", code="response_too_large")
                         try:
@@ -329,6 +336,13 @@ class ChatProvider:
                 raise ProviderError("Provider returned an invalid response structure. No tool calls from this response were executed.", code="invalid_response_shape") from None
             finally:
                 self.request_timing['gateway_request_seconds'] = time.monotonic() - network_started
+        try:
+            add(self.request_timing, 'response_extraction',
+                wire_bytes=response_wire_bytes,
+                extraction='native' if data['choices'][0]['message'].get('tool_calls') else 'none',
+                tool_count=len(data['choices'][0]['message'].get('tool_calls') or []), transformed=True)
+        except Exception:
+            pass
         try:
             choice = data["choices"][0]
             if not isinstance(choice, dict):

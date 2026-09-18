@@ -158,7 +158,7 @@ def worker_system(task):
 DEFAULT_LIMITS = {"dollars": 1.0, "reviewer_tokens": 200000, "worker_turns": 40, "iterations": 5, "output_tokens": 2048, "checkpoint_turns": 12, "run_minutes": 15, "check_seconds": 360}
 AUTOMATIC_ROUTE_CHARGE_CUTOFF = 0.01
 ACTIVE = {"running", "reviewing", "waiting_approval", "waiting_retry", "stopping"}
-def extract_fallback_tool_calls(content, offered_tool_names):
+def extract_fallback_tool_calls(content, offered_tool_names, task=None):
     if not isinstance(content, str) or not content.strip():
         return [], content
     import re, json, uuid
@@ -237,6 +237,17 @@ def extract_fallback_tool_calls(content, offered_tool_names):
         if not cleaned:
             cleaned = None
 
+    if task is not None and calls:
+        try:
+            from .structural_telemetry import add, task_record, publish
+            add(task_record(task), 'fallback_decode',
+                before_bytes=len(content.encode('utf-8')),
+                after_bytes=sum(len(c['function']['arguments'].encode('utf-8')) for c in calls),
+                extraction='xml' if invoke_pattern.search(content) else 'json_fallback',
+                tool_count=len(calls), transformed=True)
+            publish(task)
+        except Exception:
+            pass
     return calls, cleaned
 
 
@@ -3182,7 +3193,7 @@ class Engine:
             turns += 1
             message = self.request(runtime, messages, REVIEW_TOOLS, "reviewer")
             if not message.get("tool_calls"):
-                fallback_calls, cleaned = extract_fallback_tool_calls(message.get("content"), {t["function"]["name"] for t in REVIEW_TOOLS})
+                fallback_calls, cleaned = extract_fallback_tool_calls(message.get("content"), {t["function"]["name"] for t in REVIEW_TOOLS}, task=task)
                 if fallback_calls:
                     message["tool_calls"] = fallback_calls
                     message["content"] = cleaned
@@ -3198,7 +3209,7 @@ class Engine:
                 if runtime.stop.is_set():
                     raise InterruptedError("Task stopped")
                 try:
-                    name, params = self.parse_call(call)
+                    name, params = self.parse_call(call, task=task)
                 except ToolArgumentsError as error:
                     result = self.tool_argument_feedback(runtime, error)
                     messages.append({"role": "tool", "tool_call_id": error.call_id, "content": json.dumps(result)})
@@ -3235,7 +3246,7 @@ class Engine:
         raise BudgetError("Reviewer reached the eight-turn checkpoint limit without deciding. Inspect the saved checkpoint before resuming.")
 
     @staticmethod
-    def parse_call(call):
+    def parse_call(call, task=None):
         try:
             name = call["function"]["name"]
             call_id = call["id"]
@@ -3256,6 +3267,12 @@ class Engine:
             raise ToolArgumentsError(name, call_id, f"{error.msg} at line {error.lineno}, column {error.colno}") from None
         if not isinstance(params, dict):
             raise ToolArgumentsError(name, call_id, "arguments must contain an object")
+        if task is not None:
+            from .structural_telemetry import arguments
+            try:
+                arguments(task, call, params)
+            except Exception:
+                pass
         return name, params
 
     def tool_argument_feedback(self, runtime, error):
@@ -3538,7 +3555,7 @@ class Engine:
                     self.finish_answer(runtime)
                     continue
                 if not message.get("tool_calls"):
-                    fallback_calls, cleaned = extract_fallback_tool_calls(message.get("content"), {t["function"]["name"] for t in offered_tools})
+                    fallback_calls, cleaned = extract_fallback_tool_calls(message.get("content"), {t["function"]["name"] for t in offered_tools}, task=task)
                     if fallback_calls:
                         message["tool_calls"] = fallback_calls
                         message["content"] = cleaned
@@ -3708,7 +3725,7 @@ class Engine:
                     if runtime.stop.is_set():
                         raise InterruptedError("Task stopped")
                     try:
-                        name, args = self.parse_call(call)
+                        name, args = self.parse_call(call, task=task)
                     except ToolArgumentsError as error:
                         result = self.tool_argument_feedback(runtime, error)
                         task["messages"].append({"role": "tool", "tool_call_id": error.call_id, "content": json.dumps(result)})

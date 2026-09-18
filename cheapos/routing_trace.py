@@ -62,6 +62,11 @@ def request(task, metric):
          'served_model':model_label(metric.get('served_model')) if metric.get('served_model') else None,
          'identity_provenance':'response_model' if metric.get('identity_provenance')=='response_model' else 'unknown',
          'failure_category':metric.get('failure_category') if metric.get('failure_category') in CATEGORIES else None}
+    from .structural_telemetry import safe
+    try:
+        row['structural_telemetry'] = safe(metric.get('structural_telemetry'))
+    except Exception:
+        pass
     seconds=metric.get('seconds')
     if isinstance(seconds,(int,float)) and not isinstance(seconds,bool) and math.isfinite(seconds) and seconds>=0:row['seconds']=seconds
     index=next((i for i,a in enumerate(trace['attempts']) if a['request_id']==request_id),None)

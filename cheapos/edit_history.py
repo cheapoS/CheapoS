@@ -30,14 +30,20 @@ def identity(value):
     return (value['hash'], value['mode']) if value is not None else None
 
 
-def syntax_error(path, text):
+def syntax_error(path, text, diagnosis=None):
     try:
         if path.endswith('.py'):
             ast.parse(text)
         elif path.endswith('.json'):
             json.loads(text)
     except (SyntaxError, ValueError) as error:
+        if diagnosis is not None:
+            diagnosis.update(syntax=('tabs' if isinstance(error, TabError) else 'indentation' if isinstance(error, IndentationError) else 'syntax' if isinstance(error, SyntaxError) else 'json'))
+            for key, attr in (('line','lineno'), ('column','offset' if isinstance(error,SyntaxError) else 'colno')):
+                value = getattr(error,attr,None)
+                if type(value) is int: diagnosis[key]=value
         return str(error)
+    if diagnosis is not None: diagnosis["syntax"] = "valid" if path.endswith((".py", ".json")) else "unknown"
     return None
 
 
@@ -98,7 +104,13 @@ def apply(task, workspace, name, args, operation):
         return {**result, 'changed': False}
     # A valid existing file need not become the starting point for a syntax
     # repair loop. New/chunked files and already-invalid files remain editable.
-    warning = syntax_error(path, after['text'])
+    diagnosis = {}
+    warning = syntax_error(path, after['text'], diagnosis)
+    from .structural_telemetry import validation
+    try:
+        validation(task, before['text'] if before else None, after['text'], diagnosis)
+    except Exception:
+        pass
     if before is not None and warning and not syntax_error(path, before['text']):
         restore(workspace, path, before)
         return syntax_rejection(task, workspace, name, args, path, before, warning)

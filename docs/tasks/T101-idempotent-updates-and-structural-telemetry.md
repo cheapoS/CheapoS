@@ -1,6 +1,6 @@
 # T101 — Idempotent branch updates and redacted structural telemetry
 
-Status: **Planned — audit follow-up**, September 18, 2026. Priority: **P2**.
+Status: **Completed**, September 18, 2026. Priority: **P2**.
 Parent: [T94](T94-operator-limits-and-autonomous-completion.md).
 Deliver the two slices independently. Slice A can start without the other audit
 patches; align Slice B with [T96 context recovery](T96-context-error-recovery.md),
@@ -55,16 +55,16 @@ branch-update action as an error, although no branch update is needed.
 
 ### Acceptance
 
-- [ ] Already-current target returns successful `updated: false`; source/task
+- [x] Already-current target returns successful `updated: false`; source/task
   refs, trees and saved edits are unchanged and no model request is dispatched
   merely to determine that result.
-- [ ] Duplicate submission/reload preserves the same operation outcome and does
+- [x] Duplicate submission/reload preserves the same operation outcome and does
   not repeat completed checks or start two pending reviews.
-- [ ] Changed target, dirty task copy, stale ownership or invalid authorization
+- [x] Changed target, dirty task copy, stale ownership or invalid authorization
   still receive their correct handling; no-op detection bypasses none of them.
-- [ ] Current passing evidence reaches the existing ready-for-review state;
+- [x] Current passing evidence reaches the existing ready-for-review state;
   missing/stale evidence follows the authorized recheck path automatically.
-- [ ] A no-op never grants merge approval or marks incomplete review as approved.
+- [x] A no-op never grants merge approval or marks incomplete review as approved.
 
 Starting points: `cheapos/branch_update.py`, `branch_completion.py`, `server.py`,
 existing integration UI handlers, `tests/test_branch_update.py` and focused HTTP
@@ -114,17 +114,17 @@ that locally observed fields reveal unobserved upstream gateway behavior.
 
 ### Acceptance
 
-- [ ] Synthetic native and XML calls retain their executed text exactly, including
+- [x] Synthetic native and XML calls retain their executed text exactly, including
   meaningful indentation; before/after metrics identify the locally observed
   representation and transformation without inventing an upstream cause.
-- [ ] Fixture source, a secret marker, and their hex/base64 encodings never appear
+- [x] Fixture source, a secret marker, and their hex/base64 encodings never appear
   in serialized telemetry. Syntax diagnostics use allowlisted categories and
   numeric positions rather than source-bearing exception messages.
-- [ ] Missing telemetry, collector failure and old saved records leave execution
+- [x] Missing telemetry, collector failure and old saved records leave execution
   and continuation behavior unchanged; no request or tool is dispatched twice.
-- [ ] Collection/retention is bounded and uses existing identities. One request
+- [x] Collection/retention is bounded and uses existing identities. One request
   cannot create unbounded diagnostic rows by streaming many tiny chunks.
-- [ ] Correlation distinguishes request-size changes, parser transformations and
+- [x] Correlation distinguishes request-size changes, parser transformations and
   validation results without claiming these metrics prove historical causality.
 
 Starting points: `cheapos/providers.py`, `streaming.py`, existing fallback tool
@@ -134,8 +134,8 @@ schema for the same observed size/budget rather than competing measurements.
 
 ## Validation and delivery
 
-- [ ] Slice A implemented and validated.
-- [ ] Slice B implemented and validated.
+- [x] Slice A implemented and validated.
+- [x] Slice B implemented and validated.
 
 Start with `python3 -B scripts/check.py --plan`; run only affected checks. Prefer
 small deterministic parser/telemetry cases and existing branch-update fixtures.
@@ -148,3 +148,54 @@ response contract, telemetry schema, checks and remaining limitations here.
 External development agents commit only their own changes and tell the operator;
 internal cheapoS workers leave Git operations to the controller. The operator
 handles app restarts.
+
+
+## Implementation and validation — September 18
+
+Slice A returns the existing continuation envelope (`task`, `needs_consent` when
+applicable), plus `updated`, `state` (`already_current` or `updated`) and
+`operation_id`. Nested tasks use the normal public projection. The saved
+`branch_run.update_result` binds the original token to feature, target and private
+baseline identities. Prepared Git operations retain their original approval token
+across restart. Duplicate clicks reuse the receipt and the existing serialized
+Resume dispatcher. Valid final readiness is reused; otherwise unfinished checks
+and review continue with existing evidence. No-op receipts do not enter merge
+ancestry history or grant final merge approval. Target movement remains stale
+approval, and ownership/dirty-copy checks run before initial no-op recognition.
+
+Slice B uses schema version 1 at `request_wire`, `response_extraction`,
+`fallback_decode`, `argument_decode` and `edit_validation`. Numeric sizes, line and
+leading-whitespace totals, allowlisted extraction/syntax categories and existing
+tool IDs are retained under the existing request metric. Wire bytes are observed
+response bytes consumed, not decoded argument size; SSE may leave the blank line
+after DONE unread. Edit validation reuses the existing syntax parse and includes
+before/after structure counts. `transformed` describes representation decoding or
+candidate text change, not corruption. Upstream observations remain `unknown`.
+
+Each request retains at most 24 structural rows. Existing 2,000-request metric
+retention and bounded routing-trace retention also apply. Technical logs expose
+the redacted projection in a collapsed disclosure. No raw prompts, source,
+arguments, exception messages, credentials or content hashes are added to this
+schema. Collection is best effort and does not add requests or alter execution.
+Older records simply have no measurements; historical upstream causality cannot
+be reconstructed from these counts. Non-ChatProvider adapters may lack wire
+measurements, while local tool/edit boundaries remain observable.
+
+Validation used deterministic fixtures only:
+
+- Branch update/workspace/integration preparation: 42 tests passed in 42.462s.
+  Existing Git fixtures dominate; no new full workflow was added.
+- Focused transport, tool arguments, edit history and routing checks passed;
+  streaming plus structural telemetry and HTTP checks passed (56 tests, 34.122s).
+  Existing HTTP end-to-end workflows dominate that selection.
+- Latest small controller/telemetry selection: 11 tests in 0.019s. The four new
+  pure telemetry cases took about 0.016s; new controller cases are about 1–2ms
+  each. The extended existing HTTP envelope case took 0.036s.
+- Five routing UI tests passed (87ms runner total), JavaScript syntax passed,
+  and a disposable browser opened the Technical logs disclosure with synthetic
+  data. No app restart, live provider requests or private task data were used.
+
+The first HTTP invocation lacked loopback permission and was rerun with it.
+Two test expectations were corrected: Python ignores indentation in comment-only
+lines, and SSE counts consumed bytes through DONE rather than its trailing blank.
+No production validation rules were weakened.

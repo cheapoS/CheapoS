@@ -27,6 +27,7 @@ class StreamingTests(LocalCase):
         data+=chunk(finish='tool_calls')+chunk(usage={'prompt_tokens':10,'completion_tokens':20})+b'data: [DONE]\n\n'
         seen=[]
         result=self.parse(data,lambda kind,text:seen.append((kind,text)))
+        self.assertEqual(result['_wire_bytes'],len(data)-1)  # Read through DONE; trailing blank remains unread.
         message=result['choices'][0]['message']
         self.assertEqual(message['reasoning'],'Let me inspect the file.')
         self.assertEqual(message['content'],'Reading it now.')

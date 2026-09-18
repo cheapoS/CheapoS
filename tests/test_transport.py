@@ -53,6 +53,13 @@ class TransportTests(unittest.TestCase):
                 self.assertEqual(record['pacing_seconds'], 5)
                 self.assertEqual(record['gateway_request_seconds'], 40)
                 self.assertEqual(record['seconds'], 45)
+                rows=record['structural_telemetry']
+                self.assertEqual(rows[0]['boundary'],'request_wire')
+                self.assertGreater(rows[0]['wire_bytes'],0)
+                if not failed:
+                    self.assertEqual(rows[-1]['boundary'],'response_extraction')
+                    self.assertGreater(rows[-1]['wire_bytes'],0)
+
 
     def test_provider_failover_does_not_spend_quality_handoffs_or_replay_work(self):
         engine,runtime,calls=self.harness();task=runtime.task;cfg=task['providers']['worker']
