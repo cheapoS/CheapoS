@@ -1,5 +1,7 @@
 """Exercise gateway dispatch through serialized HTTP; no sockets, waits, or Git."""
 import json
+import shlex
+import sys
 import threading
 import unittest
 from contextlib import nullcontext
@@ -68,8 +70,8 @@ class GatewayToolChoiceTests(unittest.TestCase):
                                   stop=threading.Event(), guard=Mock())
         expected = {'items': [{'id': 'docs', 'title': 'Improve docs', 'instructions': 'Clarify setup',
                               'dependencies': [], 'acceptance_criteria': ['Setup is clear'],
-                              'required_checks': ['git diff --check']}],
-                    'limits': {'dollars': 0}, 'final_checks': ['git diff --check']}
+                              'required_checks': [shlex.join([sys.executable, '-m', 'unittest'])]}],
+                    'limits': {'dollars': 0}, 'final_checks': [shlex.join([sys.executable, '-m', 'unittest'])]}
         bodies = []
 
         def respond(request, **kwargs):
@@ -94,12 +96,12 @@ class GatewayToolChoiceTests(unittest.TestCase):
             result = branch_planner.plan(SimpleNamespace(request=request), runtime, inputs)
 
         self.assertEqual(result, expected)
-        self.assertEqual(inspect.call_count, branch_planner.MAX_DISCOVERY_REQUESTS)
-        self.assertEqual(len(bodies), branch_planner.MAX_DISCOVERY_REQUESTS + 1)
+        self.assertEqual(inspect.call_count, 2)  # The second read repeats the same evidence.
+        self.assertEqual(len(bodies), 3)
         self.assertTrue(all(body['tool_choice'] == 'auto' for body in bodies[:-1]))
         self.assertEqual(bodies[-1]['tool_choice'], {
             'type': 'function', 'function': {'name': 'propose_branch_plan'}})
         evidence = [m for m in bodies[-1]['messages'] if m['role'] == 'tool']
-        self.assertEqual(len(evidence), branch_planner.MAX_DISCOVERY_REQUESTS)
+        self.assertEqual(len(evidence), 2)
         self.assertTrue(all('Existing setup instructions' in m['content'] for m in evidence))
         self.assertEqual(runtime.task['planning_limits'], {'dollars': 0})

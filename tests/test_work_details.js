@@ -61,6 +61,14 @@ test('consecutive exploration collapses without hiding edits or crossing thinkin
  assert.ok(html.indexOf('Edited first.py')>html.indexOf('Read first.py'));
  assert.match(html,/data-event="generation-r" open/);
 });
+test('planner inspection labels omit a nonexistent limit and keep saved bounded counts',()=>{
+ for(const detail of [{inspection:18},{inspection:2,limit:6}]){
+  const html=render([event('inspection','planning_inspection','Inspected project context',{path:'app/package.json',...detail})],{phase:'plan'});
+  assert.match(html,/evidence saved for the proposal/);
+  assert.doesNotMatch(html,/undefined|null/);
+  assert.ok(html.includes(detail.limit?'Inspection 2 of 6':'Inspection 18 ·'));
+ }
+});
 test('failure and complete reviewer feedback are readable before another disclosure',()=>{
  const feedback='The UI is still missing. Add the control before resubmitting.';
  const html=render([event('error','tool_error','Action failed',{error:'File hash changed'}),

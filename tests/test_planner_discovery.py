@@ -88,7 +88,7 @@ class PlannerDiscoveryTests(unittest.TestCase):
         with patch.object(planner, 'inspect_project_file', wraps=planner.inspect_project_file) as reads:
             result = planner.plan(engine, runtime, captured)
         self.assertEqual(reads.call_count, 4)  # README context + source + one failed read + tests
-        repeated = json.loads(requests[3][-1]['content'])
+        repeated = json.loads(next(m['content'] for m in requests[3] if m.get('tool_call_id') == 'bad2'))
         self.assertTrue(repeated['repeated_failed_read'])
         self.assertIn('scripts/check.py', repeated['available_paths'])
         self.assertEqual(repeated['already_read'][0]['path'], 'scripts/check.py')

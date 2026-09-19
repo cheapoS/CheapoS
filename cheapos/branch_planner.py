@@ -89,12 +89,11 @@ def capture_inputs(source, prompt='', document=None):
     return captured
 
 
-MAX_DISCOVERY_REQUESTS = 6
-
-
 def _inspection_path(workspace, path):
-    if not isinstance(path, str) or not path.strip() or len(path) > 500 or '\0' in path:
+    if not isinstance(path, str) or not path.strip() or len(path) > 500:
         raise ValueError('Supply a relative project path of 1–500 characters')
+    if any(ord(char) < 32 or ord(char) == 127 for char in path):
+        raise ValueError('The path contains control characters, possibly from unescaped backslashes. Copy an exact project-relative path from the inventory using forward slashes.')
     normalized = path.strip().replace('\\', '/')
     if re.match(r'^[A-Za-z][A-Za-z0-9+.-]*://', normalized):
         raise ValueError('A URL is not a repository file. Choose an existing project-relative path or inspect ".". Discovery does not fetch preview URLs or authenticate to websites.')
@@ -305,6 +304,10 @@ Captured followups are later direct user messages in the same chat; use them to 
 
 class PlanningResponseError(ValueError):
     """An app-authored response diagnosis safe to show in the planning banner."""
+
+
+class PlanningInspectionError(PlanningResponseError):
+    """Inspection replies are already retained; repair without duplicating them."""
 
 
 def _parse(message, limits, source=None, assumptions=None, check_evidence=()):
@@ -545,8 +548,9 @@ def plan(engine, runtime, inputs):
                     call['id'] = call.get('id') or 'discovery-%s' % discovery
                     assistant_calls.append(call)
                 repeated_discovery = False
+                failed_discovery = False
                 messages.append({'role': 'assistant', 'content': '', 'tool_calls': assistant_calls})
-                for call in assistant_calls:
+                for inspection, call in enumerate(assistant_calls, discovery - len(assistant_calls) + 1):
                     arguments = None
                     read_key = None
                     try:
@@ -574,24 +578,31 @@ def plan(engine, runtime, inputs):
                         if read_key is not None:
                             failed_reads[read_key] = result.copy()
                     if result.get('error'):
+                        failed_discovery = True
                         result.update(_inspection_recovery(context, arguments, evidence))
                     if hasattr(engine, 'event'):
                         engine.event(runtime.task, 'planning_inspection', 'Project inspection failed' if result.get('error') else 'Inspected project context for the plan',
-                                     {'inspection': discovery,
+                                     {'inspection': inspection,
                                       **{k: result[k] for k in ('path', 'start_line', 'end_line', 'truncated', 'error', 'available_paths', 'already_read', 'repeated_failed_read') if k in result}})
-                    fingerprint = _digest([call['function'].get('arguments'), result])
+                    # Context hints and Carto readiness can change between the
+                    # same reads. They are not new repository evidence.
+                    fingerprint = _digest({k: v for k, v in result.items()
+                                           if k not in {'carto', 'available_paths', 'already_read', 'repeated_failed_read'}})
                     observed = saved.setdefault('observed_inspections', [])
-                    if fingerprint in observed:
+                    repeated = fingerprint in observed
+                    if repeated:
                         repeated_discovery = True
                     else:
                         observed.append(fingerprint)
-                    if result.get('repeated_failed_read') or repeated_discovery:
+                    if repeated and not result.get('error'):
                         saved['proposal_requested'] = True
-                        result['next_step'] = 'This exact inspection already failed. Use the saved evidence or identify the essential missing prerequisite in propose_branch_plan.'
+                        result['next_step'] = 'This inspection already supplied the same evidence. Use the retained findings to produce the proposal instead of reading it again.'
                     messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result)})
-                if repeated_discovery and saved.get('discovery_redirected'):
-                    raise PlanningResponseError('The same inspection has already been delivered. Use the retained findings to produce the proposal, or inspect a different relevant location.')
-                if repeated_discovery: saved['discovery_redirected'] = True
+                if failed_discovery or repeated_discovery:
+                    # A different invented filename is still a failed planning
+                    # turn. Use the existing repair/handoff path, not an endless
+                    # inspection loop or a new cumulative discovery allowance.
+                    raise PlanningInspectionError('Project inspection did not advance planning. Use exact inventory paths and retained findings; do not repeat failed or already delivered reads.')
                 continue
             assumptions = []
             result = _parse(response, limits, captured['source'], assumptions, check_evidence)
@@ -615,7 +626,8 @@ def plan(engine, runtime, inputs):
         except (ValueError, TypeError, KeyError, AttributeError) as error:
             detail = {'attempt': attempt + 1, 'error': str(error)[:1000]}
             if hasattr(engine, 'event'):
-                engine.event(runtime.task, 'planning_repair', 'Correcting the run proposal' if attempt < 2 else 'Run proposal needs attention', detail)
+                title = ('Correcting project inspection' if attempt < 2 else 'Choosing another planning strategy') if isinstance(error, PlanningInspectionError) else ('Correcting the run proposal' if attempt < 2 else 'Run proposal needs attention')
+                engine.event(runtime.task, 'planning_repair', title, detail)
             if attempt >= 2:
                 if isinstance(error, PlanningSetupRequired):
                     # Keep a complete blocked draft when repair cannot resolve
@@ -637,7 +649,7 @@ def plan(engine, runtime, inputs):
                         runtime.failed_models.add(failed)
                         if failed not in runtime.task.setdefault('failed_planners', []): runtime.task['failed_planners'].append(failed)
                         try:
-                            engine.event(runtime.task, 'planning_recovery', 'The planner could not produce a valid proposal. Trying another eligible planner.', {'model':failed})
+                            engine.event(runtime.task, 'planning_recovery', 'The planner could not complete planning. Continuing with another eligible planner.', {'model':failed})
                             saved.update(attempt=0, discovery=discovery, handoffs=handoffs+1)
                             engine.store.save(runtime.task)
                             select_remote(engine, runtime, 'planner', True)
@@ -648,12 +660,12 @@ def plan(engine, runtime, inputs):
                             attempt = 0
                             saved.pop('proposal_requested', None)
                             saved.pop('discovery_redirected', None)
-                            messages.append({'role':'user','content':'The previous planner could not format a complete proposal. Use the captured request and inspection evidence above to call propose_branch_plan with one valid proposal. No implementation is authorized.'})
+                            messages.append({'role':'user','content':'The previous planner could not complete planning. Continue the captured request using the actual project inventory and successful inspection evidence above. Failed paths are not project facts. Inspect a different relevant location only if evidence is missing, then call propose_branch_plan with one valid proposal. No implementation is authorized.'})
                             continue
                 from .continuation_policy import strategy_episode
                 episode = strategy_episode(runtime.task, 'planner', str(error)[:500], [digest, failed], ['minimal_proposal'])
                 if episode['next_action'] == 'minimal_proposal':
-                    messages.append({'role':'user','content':'Use one minimal complete proposal with the existing exact limits and required checks. Correct only the diagnosed schema error: '+str(error)[:1000]})
+                    messages.append({'role':'user','content':'Use one minimal complete proposal with the existing exact limits and required checks. Resolve the diagnosed planning problem using the actual inventory and retained evidence: '+str(error)[:1000]})
                     attempt = 0
                     continue
                 from .branch_pause import PauseError
@@ -667,7 +679,11 @@ def plan(engine, runtime, inputs):
             hint = ' (Each item needs a real, relevant executable check command grounded in the project; no prose, shell pipes or redirection)' if 'required_checks' in str(error) else ''
             feedback = 'The proposal was invalid: ' + str(error)[:1000] + hint + '. Call propose_branch_plan with the complete corrected plan, or status clarification and a specific question. Plain text is not a proposal. No work has been authorized.'
             rejected = copy.deepcopy(response.get('tool_calls') or []) if isinstance(response, dict) else []
-            if rejected and all(isinstance(c, dict) and isinstance(c.get('function'), dict) for c in rejected):
+            if isinstance(error, PlanningInspectionError):
+                # Every call in this inspection batch already has one tool
+                # reply. Keep the exchange intact across repairs and handoffs.
+                messages.append({'role': 'user', 'content': str(error) + ' Successful excerpts remain available above. Inspect an existing path if needed, or submit the proposal. No work has been authorized.'})
+            elif rejected and all(isinstance(c, dict) and isinstance(c.get('function'), dict) for c in rejected):
                 for index, call in enumerate(rejected):
                     call['id'] = call.get('id') or 'proposal-repair-%s-%s' % (attempt, index)
                 messages.append({'role': 'assistant', 'content': '', 'tool_calls': rejected})

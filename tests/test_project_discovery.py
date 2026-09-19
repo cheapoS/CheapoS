@@ -72,6 +72,13 @@ class DiscoveryTests(unittest.TestCase):
                 self.assertEqual(context['validation_scripts'], [])  # No invented runners.
                 self.assertEqual(context['discovery']['file_count'], len(files))
 
+    def test_escaped_windows_paths_do_not_turn_into_control_character_filenames(self):
+        self.write('app/test.py', 'print("fixture")')
+        for name in ('C:\fakepath\test.py', 'app\test.py', 'app/file\r.py', 'app/file\x7f.py'):
+            with self.subTest(path=name), self.assertRaisesRegex(ValueError, 'control characters'):
+                planner.inspect_project_file(self.root, name)
+        self.assertEqual(planner.inspect_project_file(self.root, r'app\test.py')['path'], 'app/test.py')
+
     def test_directory_pages_reach_components_beyond_initial_summary(self):
         for index in range(65):
             self.write('app%02d/package.json' % index, '{"scripts":{"test":"node --test"}}')

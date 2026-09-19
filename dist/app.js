@@ -24,7 +24,7 @@ const CheapOSChatView = (() => {
   function detailEvent(event,thinkingOpen=false,entryReply='') {
     const d=event.detail||{};
     if(event.kind==='generation') return thinkingMarkup(d,false,thinkingOpen,event.actor?.role||event.title);
-    if(event.kind==='planning_inspection') return `<div class="workflow-note"><strong>${esc(d.error?`Could not read ${d.path||'file'}`:`Read ${d.path||'project context'}`)}</strong><p>${esc(d.error||`Inspection ${d.inspection} of ${d.limit} · evidence saved for the proposal`)}</p></div>`;
+    if(event.kind==='planning_inspection') return `<div class="workflow-note"><strong>${esc(d.error?`Could not read ${d.path||'file'}`:`Read ${d.path||'project context'}`)}</strong><p>${esc(d.error||`Inspection ${d.inspection}${Number.isFinite(d.limit)?` of ${d.limit}`:''} · evidence saved for the proposal`)}</p></div>`;
     if(event.kind==='assistant') {
       const text=typeof d==='string'?d:(d.message||d.content||'');
       if(text && entryReply && (text.trim() === entryReply.trim() || entryReply.trim().includes(text.trim()))) return '';

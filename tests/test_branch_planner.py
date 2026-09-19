@@ -182,22 +182,20 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(self.task['planning_assumptions'], value['assumptions'])
         self.assertIn(value['assumptions'][0], result['items'][0]['instructions'])
 
-    def test_repeated_failed_discovery_preserves_error_and_requests_proposal(self):
+    def test_repeated_failed_discovery_preserves_error_and_repairs_without_reading_private_files(self):
         (self.root / '.env').write_text('TOP_SECRET')
         inspect = {'tool_calls': [{'function': {'name': 'inspect_project_file', 'arguments': '{"path":".env"}'}}]}
-        result = planner.plan(self.engine([inspect] * (planner.MAX_DISCOVERY_REQUESTS + 1) + [self.reply()]), self.runtime,
+        result = planner.plan(self.engine([inspect] * 3 + [self.reply()]), self.runtime,
                               planner.capture_inputs(self.root, 'Improve existing controls'))
         self.assertEqual(result, self.valid)
-        self.assertEqual(len(self.requests), planner.MAX_DISCOVERY_REQUESTS + 2)
-        self.assertTrue(self.task['planning_strategy']['proposal_requested'])
+        self.assertEqual(len(self.requests), 4)
         self.assertNotIn('TOP_SECRET', json.dumps(self.requests))
-        self.assertIn('error', self.requests[-1][-1]['content'])
+        self.assertIn('Project inspection did not advance', self.requests[-1][-1]['content'])
         self.assertIn('repeated_failed_read', json.dumps(self.requests[-1]))
-        self.assertIn('exact inspection already failed', json.dumps(self.requests[-1]))
         self.assertEqual([t['function']['name'] for t in self.offered[0][0]], ['propose_branch_plan', 'inspect_project_file'])
-        for tools, options in self.offered[planner.MAX_DISCOVERY_REQUESTS:]:
+        for tools, options in self.offered:
             self.assertEqual([t['function']['name'] for t in tools], ['propose_branch_plan', 'inspect_project_file'])
-            self.assertEqual(options['tool_choice']['function']['name'], 'propose_branch_plan')
+            self.assertNotIn('tool_choice', options)
         with self.assertRaises(ValueError):
             planner.inspect_project_file(self.root, '../outside')
 

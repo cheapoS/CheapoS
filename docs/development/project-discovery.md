@@ -65,6 +65,20 @@ instructions when resumed. They retain request history, evidence, failed reads,
 attempt counters and usage. A planner handoff can inspect again rather than
 inheriting a forced-proposal tool choice from a previous failed inspection.
 
+Failed inspections use the same correction and authorized handoff path as an
+invalid proposal. Changing an invented filename, its spelling or its query does
+not bypass recovery. The first failure receives grounded path choices; failures
+that persist after the existing two repairs select another eligible planner.
+Successful reads between failures remain available but do not erase the repair
+history. Explicit model selections and the saved spending policy still apply.
+
+Repeated identical evidence also triggers correction. Carto readiness metadata
+does not make an unchanged excerpt new evidence; distinct file ranges and
+directory pages do. There is no cumulative six-inspection cutoff. Each tool call
+retains exactly one reply across correction and handoff, including successful
+reads from a partially failed batch. Chat shows the inspection count without an
+invented total when no inspection allowance is present.
+
 ## Project registration and Carto
 
 The [Carto integration](carto-context.md) supplies symbol/import/dependency
@@ -92,3 +106,6 @@ network requests, live tasks, sleeps or full branch workflows are introduced.
 Fixtures cover nested applications, Python, mixed-language repositories, static
 and unknown layouts, permissions/exclusions, pagination, missing-runner
 provenance, automatic planner handoff and saved-conversation upgrades.
+`tests.test_planner_inspection_recovery` replays varied invalid paths, interleaved
+successful reads, repeated evidence, saved-task continuation and model pinning
+entirely in memory, through a validated proposal without operator rescue.
