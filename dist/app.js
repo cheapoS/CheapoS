@@ -311,6 +311,17 @@ async function exportTaskJson(task) {
     toast('Failed to export task JSON: '+e.message);
   }
 }
+async function shareToWorkbench(task) {
+  try {
+    toast('Preparing task for Community Workbench…');
+    await copyTaskJson(task);
+    const workbenchUrl = 'https://cheapos.lol/community/new';
+    window.open(workbenchUrl, '_blank', 'noopener,noreferrer');
+    toast('Opening Workbench! Telemetry copied to clipboard ready to paste.');
+  } catch(e) {
+    toast('Failed to share to Workbench: ' + e.message);
+  }
+}
 function taskMenu(task,anchor) {
   if(!task)return;
   const actions=task.trashed_at?[
@@ -322,6 +333,7 @@ function taskMenu(task,anchor) {
     {label:'Rename…',run:()=>renameTask(task)},
     {label:task.pinned?'Unpin':'Pin',run:async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()}},
     {label:task.archived_at?'Restore to active chats':taskBusy(task)?'Pause & archive':'Archive',run:()=>archiveTask(task,!task.archived_at)},
+    {label:'Share to Community Workbench ↗',run:()=>shareToWorkbench(task)},
     {label:'Copy task JSON',run:()=>copyTaskJson(task)},
     {label:'Export task JSON…',run:()=>exportTaskJson(task)},
     {label:taskBusy(task)?'Pause & move to trash':'Move to trash',danger:true,run:()=>moveToTrash(task)}

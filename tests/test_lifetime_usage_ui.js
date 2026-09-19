@@ -114,7 +114,7 @@ test('reconciliation switches between local installation and remote club scorebo
   assert.match(remoteHtml,/gemini-3.1-flash-lite/);
   assert.match(remoteHtml,/worker/);
   assert.match(remoteHtml,/cheaposnumero1/);
-  assert.match(remoteHtml,/cheapskate-club.vercel.app/);
+  assert.match(remoteHtml,/cheapos\.lol/);
   assert.match(remoteHtml,/Completed tasks/);
   assert.match(remoteHtml,/72/);
   assert.match(remoteHtml,/91\.1%/);
