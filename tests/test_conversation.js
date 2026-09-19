@@ -94,6 +94,34 @@ test('opening greeting retains separate thinking through streaming and completio
  assert.equal(reply.live,false);
 });
 
+test('completed conversational worker replies have no fictitious work summary after thinking or route recovery',()=>{
+ const events=[event(1,'model','Requesting worker: chat-model',{}),
+  event(2,'guard','Model check failed',{message:'Try another authorized route.'}),
+  event(3,'handoff','Selected another worker',{role:'worker'}),
+  event(4,'generation','Model thinking',{thinking:'Consider the question'}),
+  event(5,'assistant','Worker','Tell me more.')];
+ const t=task({conversational:true,status:'awaiting_reply',events});
+ const before=JSON.stringify(t),reply=replies(t).at(-1);
+ assert.equal(reply.reply,'Tell me more.');assert.equal(reply.intro,'');
+ assert.deepEqual(reply.steps,[]);assert.equal(reply.thinking,'Consider the question');
+ assert.equal(JSON.stringify(t),before,'Routing evidence must remain saved');
+ const stale=replies({...t,stream:{phase:'answer',content:'Earlier answer',thinking:'Earlier thought'}}).at(-1);
+ assert.equal(stale.reply,reply.reply);assert.equal(stale.thinking,reply.thinking);
+ for(const work of [event(6,'tool','read file',{arguments:{path:'app.py'}}),
+                   event(6,'checks','Check passed',{passed:true,command:['check']})]){
+  const worked=replies({...t,events:[...events.slice(0,-1),work,events.at(-1)]}).at(-1);
+  assert.ok(worked.steps.length,'Actual work and check evidence remain visible');
+ }
+ for(const pending of [{pending_approval:{id:'permission'}},{pending_review:{candidate:'saved'}},{status:'paused'}]){
+  assert.ok(replies({...t,...pending}).at(-1).steps.length,'Pending work must not disappear into a chat answer');
+ }
+ t.events.push(event(6,'user','You','Inspect the code'),event(7,'tool','read file',{arguments:{path:'app.py'}}));
+ t.status='running';
+ assert.equal(replies(t)[0].intro,'','Later work must not relabel an earlier chat reply');
+ assert.equal(replies(t)[0].thinking,'Consider the question');
+ assert.ok(replies(t).at(-1).steps.length);
+});
+
 test('accepted updates show saved preparation stages in both chat modes before agents restart',()=>{
  for(const unattended of [false,true]){
   const t=task({status:'paused',events:[event(1,'tool','read file',{arguments:{path:'README.md'}})],

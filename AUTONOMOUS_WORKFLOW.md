@@ -49,6 +49,11 @@ approval, with an immediate saved-message receipt. An in-flight request or check
 finishes first. The work's requirements, review, check evidence, pause reason and
 recovery history remain intact. Discussion is included as discussion in later
 worker context; it is not silently added to the acceptance criteria.
+Answered discussion is historical context before the current exchange, never
+appended as a fresh operator message. Chat replies receive the interleaved user
+and assistant conversation up to their saved position, with the current question
+last. Pure text replies do not display a completed-work summary merely because
+the worker thought or switched routes before answering.
 
 Work-turn/request ceilings do not prevent answering a question or count chat
 replies as implementation progress. Monetary and per-request limits still apply,

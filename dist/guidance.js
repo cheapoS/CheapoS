@@ -782,7 +782,12 @@ const CheapOSConversation = (() => {
     const stream = latest ? task.stream : null;
     // A simple streamed chat answer needs no execution row.
     const openingChat = stream?.opening_chat || events.some(e=>e.kind==='model'&&e.detail?.opening_chat);
-    const onlyChat = openingChat || stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','review_request','review_coaching','coordinator_recovery','tool_error'].includes(e.kind));
+    // A completed text reply is still conversation when the worker route was
+    // used. Thinking and recovered routing attempts are not completed work.
+    const plainReply = task.conversational && !task.branch_run && !live && final?.kind==='assistant' &&
+      (!latest || task.status==='awaiting_reply' && !task.pending_approval && !task.pending_review && !task.commit_pending && !task.error) &&
+      !events.some(e=>['tool','checks','check_reused','checkpoint','review','review_request','review_coaching','coordinator_recovery','tool_error','permission','commit','web','planning_inspection'].includes(e.kind));
+    const onlyChat = plainReply || openingChat || stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','review_request','review_coaching','coordinator_recovery','tool_error'].includes(e.kind));
     if (live && !onlyChat) {
       phase = currentPhase(task, steps.at(-1)?.phase);
       if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-live-${phase}`,phase,events:[],live:false});
@@ -828,7 +833,7 @@ const CheapOSConversation = (() => {
       else if (latest && guide.canCommit(task)) intro = task.status === 'completed' ? 'Checks have passed. The changes are ready for your review.' : 'The changes have passed checks and review. They’re ready for your decision.';
       else if (steps.at(-1).phase === 'commit' && steps.at(-1).events.some(e => e.detail?.commit)) intro = 'Your approved changes are committed to the project.';
     }
-    return {kind:'assistant',id:key,latest,live,intro,reply:onlyChat ? stream?.content || reply : reply,thinking:onlyChat ? stream?.thinking || thinkingText || '' : '',stream:live && !onlyChat ? stream : null,steps:steps.map(s => stepView(s,task,at)),_order:eventOrder(task,events[0])};
+    return {kind:'assistant',id:key,latest,live,intro,reply:onlyChat && live ? stream?.content || reply : reply,thinking:onlyChat ? (live && stream?.thinking) || thinkingText || '' : '',stream:live && !onlyChat ? stream : null,steps:steps.map(s => stepView(s,task,at)),_order:eventOrder(task,events[0])};
   }
   function branchBuild(task, at) {
     const run=task.branch_run, items=run.items||[], planning=Boolean(task.planning_request&&!run.authorization_ref);

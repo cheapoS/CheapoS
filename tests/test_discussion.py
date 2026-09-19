@@ -209,10 +209,82 @@ class DiscussionTests(unittest.TestCase):
             with patch('cheapos.reviewer_recovery.request', return_value={'content': 'Understood'}) as request, patch('cheapos.work_policy.refresh_edit_recovery'):
                 Engine.request(Mock(), runtime, messages, [], role, purpose=purpose)
             sent = request.call_args.args[2]
-            self.assertIn('Option one', sent[-1]['content'])
-            self.assertIn('not additional scope', sent[-1]['content'])
+            self.assertIn('Option one', sent[0]['content'])
+            self.assertIn('not additional scope', sent[0]['content'])
+            self.assertEqual(sent[-1], messages[-1], 'The current instruction must remain after historical discussion')
         self.assertEqual(len(messages), 1, 'Do not append duplicate context to durable worker messages')
         self.assertEqual(task, before)
+
+    def test_old_chat_is_not_redispatched_as_the_latest_user_message(self):
+        task = saved_task()
+        task['discussion'] = [{'id':'old', 'message':'just chatting', 'answer':'Happy to chat.',
+                               'status':'answered', 'after_event':2}]
+        latest = "Don't you have access to the code?"
+        messages = [{'role':'system', 'content':'Worker policy'},
+                    {'role':'user', 'content':json.dumps({'latest_message':latest})}]
+        runtime = Runtime(task)
+        before = copy.deepcopy(task)
+        def respond(engine, runtime, sent, tools, role, *args, **kwargs):
+            self.assertEqual(sent[0], messages[0])
+            self.assertIn('just chatting', sent[1]['content'])
+            current = json.loads(next(m['content'] for m in reversed(sent) if m['role']=='user'))
+            self.assertEqual(current['latest_message'], latest)
+            return {'content':'I can inspect the task copy with the read tools.'}
+        with patch('cheapos.reviewer_recovery.request', side_effect=respond), patch('cheapos.work_policy.refresh_edit_recovery'):
+            reply = Engine.request(Mock(), runtime, messages, [], 'worker')
+        self.assertIn('read tools', reply['content'])
+        self.assertEqual(task, before)
+        self.assertEqual(len(messages), 2)
+
+    def test_discussion_packet_is_idempotent_and_never_splits_tool_pairs(self):
+        task = saved_task()
+        task['discussion'][0].update(status='answered', answer='Previous explanation')
+        messages = [{'role':'system', 'content':'Policy'}, {'role':'user', 'content':'Inspect the file'},
+                    {'role':'assistant', 'tool_calls':[{'id':'read', 'function':{'name':'read_file','arguments':'{}'}}]},
+                    {'role':'tool', 'tool_call_id':'read', 'content':'Current file evidence'}]
+        result = discussion.with_context(task, messages)
+        self.assertEqual(result[2:], messages[1:])
+        self.assertEqual(discussion.with_context(task, result), result)
+        legacy = [*messages, {'role':'user', 'content':'Chat discussion for interpreting later operator directions (context only): []'}]
+        self.assertEqual(discussion.with_context(task, legacy), result)
+        self.assertEqual(messages[-1]['role'], 'tool')
+
+    def test_chat_question_receives_interleaved_history_and_the_current_question_last(self):
+        task = saved_task()
+        task.update(prompt='hello', events=[
+            {'kind':'assistant','detail':'<think>Greet briefly</think>Hello!'},
+            {'kind':'model','detail':{'purpose':'chat_reply'}},
+            {'kind':'user','detail':'Audit the docs'},
+            {'kind':'assistant','detail':'The README is stale. Two options: update the intro or the guide.'},
+            {'kind':'user','detail':'Inspect the source too'},
+            {'kind':'assistant','detail':'Found the handler in app.py.'}])
+        task['discussion'] = [
+            {'id':'old','message':'just chatting','answer':'Happy to chat.','status':'answered','after_event':1},
+            {'id':'question','message':'Which of those options fits the code?','status':'answering','after_event':6},
+            {'id':'later','message':'Later question','status':'queued','after_event':6}]
+        runtime = Runtime(task)
+        before = copy.deepcopy(task)
+        engine = Mock(); engine.request.return_value = {'content':'The second option fits the source.'}
+        discussion.answer(engine, runtime, task['discussion'][1])
+        sent = engine.request.call_args.args[1]
+        self.assertEqual([m['content'] for m in sent[2:]], [
+            'hello', 'Hello!', 'just chatting', 'Happy to chat.', 'Audit the docs',
+            'The README is stale. Two options: update the intro or the guide.',
+            'Inspect the source too', 'Found the handler in app.py.', 'Which of those options fits the code?'])
+        self.assertEqual(sent[-1]['role'], 'user')
+        self.assertNotIn('Later question', json.dumps(sent))
+        self.assertEqual(task, before)
+
+    def test_queued_chat_history_excludes_later_work_and_supports_legacy_timestamps(self):
+        task = saved_task()
+        task['events'] = [
+            {'kind':'assistant','detail':'Earlier reply','time':'2026-09-19T12:00:00+00:00'},
+            {'kind':'user','detail':'Later direction','time':'2026-09-19T12:02:00+00:00'}]
+        turn = {'id':'question','message':'Explain that','time':'2026-09-19T12:01:00+00:00'}
+        self.assertEqual(discussion.conversation_history(task, turn), [
+            {'role':'user','content':'Fix the bug'}, {'role':'assistant','content':'Earlier reply'}])
+        turn['after_event'] = 1
+        self.assertEqual(discussion.conversation_history(task, turn)[-1]['content'], 'Earlier reply')
 
     def test_chat_can_answer_at_work_limit_without_granting_more_work(self):
         runtime = Runtime(saved_task())

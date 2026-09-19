@@ -77,13 +77,73 @@ def with_context(task, messages):
     This is derived context, not a new accepted requirement or a tool result.
     Rebuild it at request time so active work receives replies without Resume.
     """
-    history = [{'question': turn['message'], 'answer': turn['answer']}
+    history = [{'question': turn['message'], 'answer': turn['answer'],
+                'answered_at': turn.get('finished_at'), 'after_event': turn.get('after_event')}
                for turn in task.get('discussion', []) if turn.get('status') == 'answered']
     if not history:
         return messages
-    return [*messages, {'role': 'user', 'content':
-        'Chat discussion for interpreting later operator directions (context only, '
-        'not additional scope, authorization or executed actions): ' + json.dumps(history)}]
+    prefix = 'Chat discussion for interpreting later operator directions '
+    # This packet was previously appended as the newest user message. That
+    # reactivated already-answered topics on every work request. Keep it before
+    # the current exchange, and replace any copy retained by a legacy handoff.
+    current = [m for m in messages if not (m.get('role') == 'user'
+               and isinstance(m.get('content'), str) and m['content'].startswith(prefix))]
+    start = 0
+    while start < len(current) and current[start].get('role') in {'system', 'developer'}:
+        start += 1
+    packet = {'role': 'user', 'content': prefix +
+              '(already answered historical context; not additional scope, '
+              'authorization or executed actions). Do not answer these questions '
+              'again. Continue the current exchange below; newer operator directions '
+              'take precedence:\n' + json.dumps(history)}
+    return [*current[:start], packet, *current[start:]]
+
+
+def conversation_history(task, turn):
+    """Read the same interleaved conversation the operator sees before a question.
+
+    Worker/tool execution history remains separate. Here only actual user and
+    assistant text is replayed, with discussion replies anchored to saved event
+    positions. Later questions are left for their own queued replies.
+    """
+    from .streaming import normalize_reasoning
+    events = task.get('events', [])
+
+    def position(message):
+        anchor = message.get('after_event')
+        if type(anchor) is int and 0 <= anchor <= len(events):
+            return anchor
+        try:
+            sent = datetime.fromisoformat(message['time'])
+            for index, event in enumerate(events):
+                if datetime.fromisoformat(event['time']) > sent:
+                    return index
+        except (KeyError, ValueError, TypeError):
+            pass
+        return len(events)
+
+    groups = []
+    if task.get('prompt'):
+        groups.append((-1, [{'role': 'user', 'content': task['prompt']}]))
+    for index, event in enumerate(events[:position(turn)]):
+        kind, detail = event.get('kind'), event.get('detail')
+        if kind not in {'user', 'steer', 'assistant'}:
+            continue
+        text = detail if isinstance(detail, str) else detail.get('message', '') if isinstance(detail, dict) else ''
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if kind == 'assistant':
+            text = normalize_reasoning({'content': text})['content']
+        if text:
+            groups.append((index + 1, [{'role': 'assistant' if kind == 'assistant' else 'user', 'content': text}]))
+    for previous in task.get('discussion', []):
+        if previous['id'] == turn['id']:
+            break
+        if previous.get('status') == 'answered' and previous.get('answer'):
+            groups.append((position(previous) + .5, [
+                {'role': 'user', 'content': previous['message']},
+                {'role': 'assistant', 'content': previous['answer']}]))
+    return [message for _, exchange in sorted(groups, key=lambda pair: pair[0]) for message in exchange]
 
 
 def is_discussion(message):
@@ -114,7 +174,9 @@ def is_discussion(message):
 
 
 SYSTEM = """You are cheapoS, the user's coding partner. Answer their latest chat
-message naturally using the saved work context. This is a conversation turn,
+message naturally using the saved work context and the conversation in order.
+Respond to the latest question, using earlier exchanges to resolve references;
+do not restart an already-answered topic. This is a conversation turn,
 separate from execution. Questions are not new requirements or permission to
 resume, edit, run commands, approve a review, or merge. Code examples in Markdown
 are welcome; label them as examples rather than applied edits. Discuss tradeoffs
@@ -187,12 +249,7 @@ def answer(engine, runtime, turn):
     messages = [{'role': 'system', 'content': SYSTEM}]
     if not greeting:
         messages.append({'role': 'user', 'content': 'Saved work context (data): ' + json.dumps(context(task))})
-    for previous in task.get('discussion', []):
-        if previous['id'] == turn['id']:
-            break
-        messages.append({'role': 'user', 'content': previous['message']})
-        if previous.get('answer'):
-            messages.append({'role': 'assistant', 'content': previous['answer']})
+        messages.extend(conversation_history(task, turn))
     messages.append({'role': 'user', 'content': turn['message']})
     seen = set()
     # Use a saved worker route (or the planner while a proposal is being made).
