@@ -42,6 +42,7 @@ class Store:
         for path in self.root.glob("tasks/*/task.json"):
             try:
                 task = json.loads(path.read_text(encoding="utf-8"))
+                changed = False
                 if task["status"] in {"running", "reviewing", "waiting_approval", "waiting_retry", "stopping"}:
                     if task['status'] == 'waiting_retry' and task.get('retry_wait_enabled'):
                         task['route_resume_on_start'] = True
@@ -59,13 +60,20 @@ class Store:
                     task["stream"] = None
                     task["check_stream"] = None
                     task["web_read"] = None
-                    write_json(path, task)
+                    changed = True
                 if "branch_run" in task:
+                    run = task["branch_run"]
+                    # Restart recovery only changes a run when its execution or
+                    # startup status changes; do not copy/serialize old histories.
+                    before = (run.get("status"), (run.get("startup") or {}).get("status"), task["status"], task.get("error"))
                     branch_runs.recover_restart(task["branch_run"])
                     task["status"] = branch_runs.task_status(task["branch_run"])
                     if not branch_runs.compatibility(task["branch_run"])["supported"]:
                         task["error"] = branch_runs.compatibility(task["branch_run"])["message"]
-                    write_json(path, task)
+                    after = (run.get("status"), (run.get("startup") or {}).get("status"), task["status"], task.get("error"))
+                    changed = changed or before != after
+                if changed:
+                    write_json(path, task, compact=True)
                 self.tasks[task["id"]] = task
                 self.lifetime.ingest_task(task)
             except (OSError, ValueError, KeyError):

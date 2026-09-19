@@ -97,6 +97,8 @@ class LocalServer(ThreadingHTTPServer):
         self.directory = Path(directory).resolve()
         self.engine = engine
         self.token = secrets.token_urlsafe(32)
+        self.restart_lock = threading.Lock()
+        self.restart_pending = False
         super().__init__(address, LocalHandler)
 
 
@@ -351,14 +353,26 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 raise ValueError("Expected a JSON object")
             engine = self.server.engine
             if path == "/api/restart":
-                self.trusted(mutation=True)
-                self.server.engine.shutdown()
-                result = {"status": "restarting"}
-                def restart_backend():
-                    time.sleep(0.4)
-                    self.server.server_close()
-                    os.execv(sys.executable, [sys.executable] + sys.argv)
-                threading.Thread(target=restart_backend, daemon=True).start()
+                with self.server.restart_lock:
+                    start_restart = not self.server.restart_pending
+                    self.server.restart_pending = True
+                # Acknowledge before waiting on background services to shut down.
+                try:
+                    self.reply({"status": "restarting"})
+                finally:
+                    # A disconnected browser must not cancel an accepted restart.
+                    if start_restart:
+                        def restart_backend():
+                            try:
+                                time.sleep(0.4)
+                                self.server.engine.shutdown()
+                                self.server.server_close()
+                                os.execv(sys.executable, [sys.executable] + sys.argv)
+                            finally:
+                                with self.server.restart_lock:
+                                    self.server.restart_pending = False
+                        threading.Thread(target=restart_backend, daemon=True, name='backend-restart').start()
+                return
             elif path in {"/api/settings/defaults", "/api/projects/settings"}:
                 allowed = {'patch','expected_revision','operation_id'}
                 if path == '/api/projects/settings': allowed |= {'project','expected_parent_revision','remove'}

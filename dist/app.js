@@ -1934,7 +1934,7 @@ async function resumeBranchRun(task,savedResult,approvalValues={}) {
   state.branchResumeStatus.set(task.id,{status:'pending'});
   if(state.task?.id===task.id)renderChat();
   let result;
-  try{result=savedResult||await api('/tasks/'+task.id+'/branch-resume',approvalValues);state.branchResumeStatus.delete(task.id);}
+  try{result=savedResult||(CheapOSBranchUI.isPlanning(task)?await api('/tasks/'+task.id+'/operator-recovery',{action:'retry'}):await api('/tasks/'+task.id+'/branch-resume',approvalValues));state.branchResumeStatus.delete(task.id);}
   catch(e){state.branchResumeStatus.set(task.id,{status:'error',message:e.message});throw e;}
   finally{if(state.task?.id===task.id)renderChat();}
   if(result.needs_merge_recovery){
@@ -1948,10 +1948,13 @@ async function resumeBranchRun(task,savedResult,approvalValues={}) {
   const form=$('form',d);form.onsubmit=e=>{e.preventDefault();d.close();void resumeBranchRun(task,null,{proposal_id:result.proposal_id,approved:true}).catch(error=>toast(error.message));};
 }
 async function bootstrap() {
+  if(state.bootstrapping||state.restarting)return;
+  state.bootstrapping=true;
   try {const data=await api('/bootstrap');state.token=data.token;state.config=data.config;state.gateway=data.gateway||{};state.startup=data.startup||{};state.tasks=data.tasks;state.projects=data.projects||[];state.hiddenProjects=data.hidden_projects||[];state.preferences=data.preferences||state.preferences;await loadAdmission({render:false});try{const path=localStorage.getItem('cheapos-project');state.project=state.projects.find(p=>p.path===path)||null}catch{}state.online=true;renderSidebar();void updateLifetimeSavingsBadge(true);let selected;try{selected=localStorage.getItem('cheapos-selected')}catch{}let freshStartup=false;try{freshStartup=Boolean(state.startup.started_at)&&localStorage.getItem('cheapos-startup-session')!==state.startup.session_id;localStorage.setItem('cheapos-startup-session',state.startup.session_id||'')}catch{}if(!freshStartup&&state.tasks.some(t=>t.id===selected))await selectTask(selected);else home();await loadReadiness(true);openInitialProjectManager();}
-  catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Start cheapoS locally.</h2><p>Run <code>python3 run.py</code> in the project directory, then refresh this page. No sign-in is needed.</p></div>';renderInspector()}
+  catch(e){console.error('cheapoS bootstrap failed',e);state.online=false;$('#chat-view').innerHTML='<div class="empty-state"><h2>Reconnecting to cheapoS…</h2><p>If cheapoS is restarting, this page will reconnect automatically. Otherwise run <code>python3 run.py</code> in the project directory. No sign-in is needed.</p></div>';renderInspector()}
+  finally{state.bootstrapping=false;}
 }
-async function poll() {try{if(state.online)await refresh({background:true})}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
+async function poll() {try{if(!state.restarting){if(state.online)await refresh({background:true});else await bootstrap();}}catch(e){console.error('cheapoS refresh failed',e);state.renderFailed=true;toast(/fetch|network/i.test(e.message||'')?'Cannot reach the local server. Retrying…':'Could not refresh this view. Retrying…');}finally{setTimeout(poll,1500)}}
 $$('.tabs .tab').forEach(b=>{b.onclick=()=>setView(b.dataset.view);b.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=$$('.tabs .tab').filter(t=>!t.hidden),i=tabs.indexOf(b),next=e.key==='Home'?tabs[0]:e.key==='End'?tabs.at(-1):tabs[(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];setView(next.dataset.view);next.focus();};});
 $('#home-trigger').onclick=()=>openProject();
 $('.brand').onclick=e=>{e.preventDefault();home()};
@@ -2059,7 +2062,7 @@ $('#composer-permissions').onclick=sessionPermissions;
   }
   async function restartAction({refresh=false,restart=true}={}){
     if(busy)return;
-    busy=true;modal.close();
+    busy=true;state.restarting=restart;modal.close();
     const controls=[btn,restartWebapp,restartBoth,restartOmniroute].filter(Boolean);
     controls.forEach(control=>control.disabled=true);
     toast(refresh?'Refreshing OmniRoute...':'Restarting cheapoS backend...');
@@ -2070,8 +2073,11 @@ $('#composer-permissions').onclick=sessionPermissions;
       if(typeof oldToken!=='string'||!oldToken)throw new Error('Refresh this page before restarting');
       toast('Restarting cheapoS backend...');
       await restartRequest('/api/restart',true);
-      for(let i=0;i<30;i++){
+      const deadline=Date.now()+60000;
+      let nextNotice=Date.now()+5000;
+      while(Date.now()<deadline){
         await new Promise(resolve=>setTimeout(resolve,500));
+        if(Date.now()>=nextNotice){toast('Restarting cheapoS… Waiting for the server to reconnect.');nextNotice=Date.now()+5000;}
         try{
           const data=await restartRequest('/api/bootstrap',false,1500);
           if(data.app==='CheapOS'&&typeof data.token==='string'&&data.token&&data.token!==oldToken){
@@ -2083,7 +2089,7 @@ $('#composer-permissions').onclick=sessionPermissions;
     }catch(error){
       toast('Restart/refresh failed: '+(error.name==='AbortError'?'request timed out':error.message));
     }finally{
-      busy=false;controls.forEach(control=>control.disabled=false);
+      busy=false;state.restarting=false;controls.forEach(control=>control.disabled=false);
     }
   }
   if(restartWebapp)restartWebapp.onclick=()=>restartAction();

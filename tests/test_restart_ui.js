@@ -16,7 +16,7 @@ function fixture(responses={}){
  };
  const ctx={fetch,AbortController,state:{token:'old'},toast:m=>toasts.push(m),console,
   $:node,document:{getElementById:id=>node('#'+id)},window:{location:{reload(){reloads++;}}},
-  setTimeout:(fn,ms)=>{timers.set(++id,{fn,at:now+ms});return id;},clearTimeout:id=>timers.delete(id)};
+  Date:{now:()=>now},setTimeout:(fn,ms)=>{timers.set(++id,{fn,at:now+ms});return id;},clearTimeout:id=>timers.delete(id)};
  vm.runInNewContext(code,ctx);
  async function click(selector='#restart-webapp'){
   let done=false,error;
@@ -46,10 +46,10 @@ test('rejected restart does not poll or reload',async()=>{
  const f=fixture({'/api/restart':(_,n,r)=>r({error:'Denied'},403)});await f.click();
  assert.equal(f.calls.length,1);assert.equal(f.reloads,0);assert.match(f.toasts.at(-1),/403|Denied/);
 });
-test('wrong app, missing token, and old boot all fail after 30 polls',async()=>{
+test('wrong app, missing token, and old boot never reload before the restart deadline',async()=>{
  const f=fixture({'/api/bootstrap':(_,n,r)=>r(n%3===0?{app:'CheapOS',token:'old'}:n%3===1?{app:'Other',token:'new'}:{app:'CheapOS'})});await f.click();
- assert.equal(f.reloads,0);assert.equal(f.calls.filter(c=>c.path==='/api/bootstrap').length,30);
- assert.equal(f.now,15000);assert.match(f.toasts.at(-1),/failed|did not/i);
+ assert.equal(f.reloads,0);assert.equal(f.calls.filter(c=>c.path==='/api/bootstrap').length,120);
+ assert.equal(f.now,60000);assert.match(f.toasts.at(-1),/failed|did not/i);
 });
 test('a hung restart request is aborted and finishes visibly',async()=>{
  const f=fixture({'/api/restart':options=>new Promise((_,reject)=>options.signal?.addEventListener('abort',()=>reject(new Error('Timed out'))))});await f.click();
@@ -65,4 +65,26 @@ test('failed gateway refresh is visible and does not claim success',async()=>{
  assert.equal(f.calls.length,1);assert.equal(f.reloads,0);assert.match(f.toasts.at(-1),/403|Denied/);
  const g=fixture({'/api/gateway/refresh':(_,n,r)=>r({error:'Denied'},403)});await g.click('#restart-omni');
  assert.doesNotMatch(g.toasts.at(-1),/restarted|refreshed/i);assert.match(g.toasts.at(-1),/403|Denied/);
+});
+
+test('a backend taking twenty seconds to restart still reconnects automatically',async()=>{
+ const f=fixture({'/api/bootstrap':(_,n,r)=>{if(n<40)throw Error('Network unavailable');return r({app:'CheapOS',token:'new'});}});
+ await f.click();assert.equal(f.reloads,1);assert.equal(f.now,20000);
+ assert.ok(f.toasts.some(m=>/Waiting for the server/.test(m)));assert.doesNotMatch(f.toasts.join(' '),/failed/i);
+});
+test('initial connection failure is retried and overlapping bootstraps are coalesced',async()=>{
+ const start=source.indexOf('async function bootstrap()'),end=source.indexOf("$$('.tabs .tab')",start);
+ let calls=0,release,homes=0,refreshes=0;const timers=[];
+ const node={innerHTML:''},state={online:false,preferences:{},restarting:false};
+ const ctx={state,console:{error(){}},$:()=>node,setTimeout:fn=>timers.push(fn),
+  api:async()=>{calls++;if(calls===1)throw Error('Network error');return new Promise(resolve=>release=resolve);},
+  localStorage:{getItem:()=>null,setItem(){}},loadAdmission:async()=>{},renderSidebar(){},updateLifetimeSavingsBadge(){},
+  home(){homes++;},loadReadiness:async()=>{},openInitialProjectManager(){},renderInspector(){},refresh:async()=>{refreshes++;}};
+ vm.createContext(ctx);vm.runInContext(source.slice(start,end),ctx);
+ await ctx.bootstrap();assert.equal(state.online,false);assert.match(node.innerHTML,/reconnect automatically/);
+ const retry=ctx.poll();await ctx.bootstrap();assert.equal(calls,2);
+ release({token:'new',tasks:[],projects:[],startup:{}});await retry;
+ assert.equal(state.online,true);assert.equal(homes,1);assert.equal(state.bootstrapping,false);
+ state.restarting=true;await ctx.poll();assert.equal(refreshes,0);assert.equal(calls,2);
+ state.restarting=false;await ctx.poll();assert.equal(refreshes,1);
 });

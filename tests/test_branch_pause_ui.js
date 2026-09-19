@@ -16,7 +16,7 @@ test('active or completed work hides stale pauses and legacy has no invented cau
  const t=task('restart','resume',{merge_operation:{id:'operation'}});assert.equal(pausePresentation(t).actionLabel,'Finish saved integration');
 });
 test('all supported blockers use explicit existing actions without claiming commits',()=>{
- for(const [cause,action] of [['missing_setup','environment'],['command_grant','permission'],['exhausted_work','limits'],['branch_drift','inspect'],['authority_changed','authorization'],['malformed_output','correction'],['repeated_work','correction']]){
+ for(const [cause,action] of [['missing_setup','resume'],['command_grant','permission'],['exhausted_work','limits'],['branch_drift','inspect'],['authority_changed','authorization'],['malformed_output','correction'],['repeated_work','correction']]){
   const v=pausePresentation(task(cause,action));assert.equal(v.action,action);assert.doesNotMatch(v.saved,/committed|passed/);
  }
 });
@@ -28,7 +28,7 @@ test('ordinary saved failures lead with Resume; required decisions remain explic
   assert.match(html,/<details[^>]*>[\s\S]*View technical logs[\s\S]*<\/details>/);
   assert.match(ui.pauseMarkup(t,{status:'pending'}),/class="primary-button"[^>]+disabled/);
  }
- for(const action of ['permission','limits','environment','reply','authorization','reviewer']){
+ for(const action of ['permission','limits','reply','authorization','reviewer']){
   const html=ui.pauseMarkup(task('command_grant',action,{authorization_ref:'auth'}));
   assert.doesNotMatch(html,/data-resume/);
   assert.match(html,/class="primary-button" data-pause-action/);
@@ -68,4 +68,30 @@ test('Activity shows escaped claims and counterevidence with bounded dispute his
  const finding={id:'a',status:'requested',attempts:3,structural:{criterion:'one:1'},history:[{candidate_id:'old',finding:{location:'a.py:2',expected:'safe',observed:'<script>',support:'code'}}],worker_counterevidence:{disposition:'disproved',evidence:'check 3 passed'}};
  const result=sandbox.reviewDisputeMarkup({branch_run:{dispute_ledger:{findings:{a:finding}}}});
  assert.match(result,/check 3 passed/);assert.match(result,/&lt;script>/);assert.doesNotMatch(result,/<script>/);assert.match(result,/not approval/);
+});
+
+test('paused planning uses the same retry as Advanced without authorizing implementation',async()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),app=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
+ const planning=task('missing_setup','environment');planning.id='saved';planning.planning_request={prompt:'Improve project'};
+ assert.equal(ui.pausePresentation(planning).action,'resume');
+ assert.match(ui.pauseMarkup(planning),/>Resume saved work<\/button>/);
+ assert.doesNotMatch(ui.pauseMarkup(planning),/Inspect task environment/);
+ for(const action of ['models','inspect','correction','reviewer']){
+  planning.branch_run.pause_detail.next_action=action;
+  assert.equal(ui.pausePresentation(planning).action,'resume');
+ }
+ for(const action of ['permission','limits','reply','authorization']){
+  planning.branch_run.pause_detail.next_action=action;
+  assert.equal(ui.pausePresentation(planning).action,action);
+ }
+ const calls=[],ctx={state:{task:planning},CheapOSBranchUI:ui,renderChat(){},refresh:async()=>{},
+  api:async(...args)=>{calls.push(args);return {task:planning};}};
+ vm.createContext(ctx);vm.runInContext(app.slice(app.indexOf('async function resumeBranchRun('),app.indexOf('async function bootstrap()')),ctx);
+ await ctx.resumeBranchRun(planning);
+ assert.equal(calls[0][0],'/tasks/saved/operator-recovery');
+ assert.deepEqual(JSON.parse(JSON.stringify(calls[0][1])),{action:'retry'});
+ planning.branch_run.authorization_ref='accepted';
+ await ctx.resumeBranchRun(planning);
+ assert.equal(calls[1][0],'/tasks/saved/branch-resume');
+ assert.deepEqual(JSON.parse(JSON.stringify(calls[1][1])),{});
 });
