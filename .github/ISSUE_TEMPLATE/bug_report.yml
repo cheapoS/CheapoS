@@ -1,0 +1,61 @@
+name: Bug Report
+description: Report a bug to help improve cheapoS
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue!
+        **Security Notice:** Please do **NOT** include API keys, credentials, or private repository source code in public issues. For vulnerabilities, please refer to [SECURITY.md](SECURITY.md) or email security@cheapos.lol.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what happened and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Exact steps to reproduce the issue.
+      placeholder: |
+        1. Open project '...'
+        2. Select model '...'
+        3. Submit prompt '...'
+        4. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS (Apple Silicon / arm64)
+        - macOS (Intel / x86_64)
+        - Linux (Ubuntu / Debian)
+        - Linux (Arch / Fedora / RHEL)
+        - Windows / WSL2
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment & Versions
+      description: cheapoS release/commit hash, Python version (`python3 --version`), Git version.
+      placeholder: cheapoS v0.1.0, Python 3.11, Git 2.43
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Model Provider / Connection
+      description: e.g. OmniRoute, Ollama direct, Anthropic, OpenRouter, etc.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Error Output
+      description: Please paste any relevant error messages or traceback.
+      render: shell
