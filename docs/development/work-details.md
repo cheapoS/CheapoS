@@ -22,6 +22,21 @@ unknown-served-model notices, and show newest selections/requests first. Nothing
 in the persisted events, route policy, accounting, permissions, or controller
 execution changes. This is a presentation filter, not deletion of diagnostics.
 
+## Live progress personality
+
+Live chat introductions use a small, mostly straightforward phrase rotation:
+“Putting the pieces together” while working, “Assembling the crew” when selecting
+the first worker, and “Checking that everyone did their homework” during review.
+Planning has its own phrases. The factual stage, actual model output, check
+results and next action stay visible alongside the introduction.
+
+Selection is deterministic for the saved task, response and stage. Polling,
+streamed tokens and reloads do not shuffle the words or imply new progress.
+Permission requests, route waits, paused work, errors and review corrections
+retain their direct explanations. There are no extra model calls or timers.
+The rotation makes no claims about free tokens or zero spending: cheapoS also
+supports paid and included-access routes.
+
 ## Validation
 
 - Changed-file selector: JavaScript syntax and 164 frontend cases passed;

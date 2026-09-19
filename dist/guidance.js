@@ -591,6 +591,56 @@ const CheapOSConversation = (() => {
   const last = (events, kind) => events.filter(e => e.kind === kind).at(-1);
   const finalEvent = events => events.findLast(e => !['generation','state','context'].includes(e.kind));
   const committed = event => event?.kind === 'commit' && Boolean(event.detail?.commit);
+  // Personality belongs in the live introduction, beside the factual stage.
+  // Most choices are plain; the occasional crew-chief line adds some character.
+  const progressPhrases = {
+    work: [
+      'On it. Let’s get this moving.',
+      'Putting the pieces together.',
+      'Turning your ask into action.',
+      'Getting the gears turning.',
+      'Working on the good stuff.',
+      'Making sense of the moving parts.',
+      'Untangling this one thread at a time.',
+      'Putting the plan into motion.',
+      'Applying carefully organized chaos.',
+      'Putting the ‘work’ in teamwork.',
+      'Less pondering. More doing. Some pondering.'
+    ],
+    plan: [
+      'I’m preparing a plan for your request.',
+      'Putting the pieces together for your plan.',
+      'Making sense of the moving parts.',
+      'Working out the next steps.',
+      'Turning your idea into a plan you can review.',
+      'A little coordination, a little magic.'
+    ],
+    select: [
+      'Assembling the crew.',
+      'Calling in the specialists.',
+      'Rounding up the right brains.',
+      'Getting the task force organized.',
+      'Dispatching the nerd squad.'
+    ],
+    review: [
+      'I’m getting a second opinion on the changes and test results.',
+      'Getting another set of eyes on the changes.',
+      'Checking the work against your request.',
+      'Reviewing the changes and the evidence together.',
+      'Checking that everyone did their homework.',
+      'Making sure the confident answer is also the correct one.'
+    ]
+  };
+  function progressIntro(task, phase, key, fallback) {
+    const phrases=progressPhrases[phase],request=last(task.events||[],'model');
+    if(!phrases||!task.id||!['running','reviewing'].includes(task.status)||task.pending_approval||task.resource_wait||task.error||task.check_stream?.kind==='command')return fallback;
+    if(task.stream?.purpose==='probe'||request?.detail?.purpose==='probe')return fallback;
+    // Stable for this task/response/stage, including polling and page reloads.
+    // Never rotate on a timer or a streamed token: that would invent progress.
+    let hash=2166136261;
+    for(const char of `${task.id}:${key}:${phase}`)hash=Math.imul(hash^char.charCodeAt(0),16777619);
+    return phrases[(hash>>>0)%phrases.length];
+  }
   function readyForNext(task) {
     return Boolean(task && !task.demo && task.status === 'awaiting_reply' && !task.commit_pending && !task.changes?.length && committed(finalEvent(task.events || [])));
   }
@@ -745,9 +795,11 @@ const CheapOSConversation = (() => {
     let intro = '';
     if (steps.length) {
       intro = live ? {coordinator:"The worker got stuck. I'm checking the saved work to help it choose the next step.",work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';
+      if(live)intro=progressIntro(task,phase,steps.at(-1).id,intro);
       if (live && phase === 'work' && last(events, 'review')?.detail?.decision === 'REQUEST_CHANGES') intro = 'The review found something to improve. I’m addressing that feedback.';
       if (latest && task.status==='waiting_retry') intro='No model request is running. I’m waiting to check authorized routes again; your saved work is retained.';
       else if (latest && task.pending_approval) intro = 'I need your permission to run this check.';
+      else if (latest && task.status==='stopping') intro = 'I’m pausing work after the current operation.';
       else if (latest && ['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)) intro = 'I’ve saved the work so far. I need your attention before continuing.';
       else if (latest && guide.canCommit(task)) intro = task.status === 'completed' ? 'Checks have passed. The changes are ready for your review.' : 'The changes have passed checks and review. They’re ready for your decision.';
       else if (steps.at(-1).phase === 'commit' && steps.at(-1).events.some(e => e.detail?.commit)) intro = 'Your approved changes are committed to the project.';
@@ -792,13 +844,14 @@ const CheapOSConversation = (() => {
         step.detail=ready?'Review the plan before authorizing work.':busy?'You can add guidance while I work.':active?'The saved planning work is retained.':'The proposal is retained in Plan.';
         if(!busy){step.live=false;step.outcome=ready?'done':active?'pending':'done';}
         reply.steps=[step];reply.live=busy;reply.stream=busy?task.stream:null;
-        reply.intro=busy?'I’m preparing a plan for your request.':ready?'Your plan is ready to review.':active?'Planning has stopped. The saved details are below.':'I prepared the plan for this work.';
+        reply.intro=busy?progressIntro(view,'plan',key,'I’m preparing a plan for your request.'):ready?'Your plan is ready to review.':active?'Planning has stopped. The saved details are below.':'I prepared the plan for this work.';
         reply.label=busy?'Planning':'';
         if(active&&task.status==='waiting_retry'){
           const waiting=guide.progress(view,at);
           step.title=waiting.title;step.detail=waiting.detail;
           reply.intro=waiting.hint;reply.label='Waiting';reply.stream=null;
         }
+        if(active&&task.status==='stopping')reply.intro='I’m pausing planning after the current operation.';
       } else {
         if(!reply.steps.length&&(active||events.some(e=>['assistant','generation'].includes(e.kind)))){const live=active&&guide.isActive(view.status);reply.steps=[stepView({id:key+'-work',phase:currentPhase(view,'work'),events,live},view,at)];reply.live=live;reply.stream=live?view.stream:null;}
         if(commitPending) {
@@ -821,9 +874,10 @@ const CheapOSConversation = (() => {
             reply.steps[0].detail={accepted:'Preparing the approved work in the background.',verifying_snapshot:'Checking the task copy against the approved baseline.',preparing_branch:'Preparing the feature branch for this run.',preparing_permissions:'Validating the commands approved with your plan.',selecting_worker:'Preparing the first item and selecting its worker.'}[run.startup.stage]||'Preparing your run.';
             reply.steps[0].events=events.filter(e=>e.kind==='branch_startup');
             reply.steps[0].elapsed=guide.duration(Math.max(0,(at-Date.parse(run.startup.started_at))/1000));
+            if(run.startup.stage==='selecting_worker')reply.intro='Your approval is saved. '+progressIntro(view,'select',key,'I’m selecting the first worker.');
           }
         }
-        if(active&&id==='final'&&run.status==='finalizing'){reply.live=true;reply.intro='I’m running final checks on the integrated changes.';}
+        if(active&&id==='final'&&run.status==='finalizing'&&['running','reviewing'].includes(view.status)){reply.live=true;reply.intro=currentPhase(view,reply.steps.at(-1)?.phase)==='review'?progressIntro(view,'review',key,'I’m getting a second opinion on the integrated changes.'):'I’m running final checks on the integrated changes.';}
         if(active&&id==='final'&&run.status==='ready_for_merge'){reply.live=false;reply.intro='Final checks and independent review are complete. Inspect the cumulative changes before merging.';}
         if(active&&id==='final'&&run.status==='merged'){
           const merged=run.merge_receipt?.stage==='completed',record=events.findLast(e=>e.kind==='branch_merged');

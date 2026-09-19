@@ -6,6 +6,40 @@ const event=(id,kind,title,detail)=>({id,kind,title,detail,time:stamp});
 const task=overrides=>({prompt:'Fix the script.',status:'awaiting_reply',active_role:'worker',changes:[],checks:[],checkpoints:[],events:[],providers:{worker:{model:'worker-model'},reviewer:{model:'reviewer-model'}},...overrides});
 const replies=t=>build(t).filter(e=>e.kind==='assistant');
 
+test('live personality varies by task but stays stable through output, polling and reloads',()=>{
+ const intros=new Set();
+ for(let i=0;i<32;i++){
+  const t=task({id:'personality-'+i,status:'running',events:[event(1,'model','Requesting worker: worker-model',{})]});
+  const original=JSON.stringify(t),[reply]=replies(t);
+  intros.add(reply.intro);
+  assert.equal(JSON.stringify(t),original);
+  t.stream={request_id:1,role:'worker',phase:'thinking',thinking:'Inspecting the implementation.'};
+  t.updated_at='2026-09-13T12:01:00Z';
+  t.events.push(event(2,'tool','read file',{arguments:{path:'script.py'}}));
+  assert.equal(build(t,Date.parse(t.updated_at)).at(-1).intro,reply.intro);
+  assert.equal(replies(JSON.parse(JSON.stringify(t))).at(-1).intro,reply.intro);
+  assert.equal(reply.steps[0].title,'Working on your request');
+  assert.doesNotMatch(reply.intro,/free tokens|zero dollars|budget is zero|APPROVE|checks passed/i);
+ }
+ assert.ok(intros.size>=6,'Different tasks should not all get the same stock introduction');
+});
+
+test('personality never replaces permissions, stops, route waits or reviewer corrections',()=>{
+ const base=task({id:'personality-paused',events:[event(1,'model','Requesting worker: worker-model',{})]});
+ for(const status of ['paused','error','budget_paused','interrupted','takeover_requested']){
+  // Retain an execution event so the stopped response has a status introduction.
+  const [stopped]=replies({...base,status,events:[...base.events,event(2,'tool','read file',{arguments:{path:'script.py'}})]});
+  assert.match(stopped.intro,/attention before continuing/);assert.equal(stopped.live,false);
+ }
+ assert.match(replies({...base,status:'stopping'})[0].intro,/pausing work/);
+ assert.match(replies({...base,status:'waiting_retry',route_wait:{}})[0].intro,/No model request is running/);
+ assert.match(replies({...base,status:'waiting_approval',pending_approval:{command:['python3','test.py']}})[0].intro,/permission/);
+ const recovering={...base,status:'running',events:[event(1,'review','Changes requested',{decision:'REQUEST_CHANGES',feedback:'Fix the assertion.'}),event(2,'model','Requesting worker: worker-model',{})]};
+ assert.match(replies(recovering)[0].intro,/addressing that feedback/);
+ const probing={...base,status:'running',stream:{request_id:1,purpose:'probe',phase:'waiting'},events:[event(1,'model','Requesting worker: worker-model',{purpose:'probe'})]};
+ assert.equal(replies(probing)[0].intro,'I’m working through your request.');
+});
+
 test('branch planning and work label route waits without stale model activity',()=>{
  for(const planning of [true,false]){
   const t=task({status:'waiting_retry',active_role:planning?'planner':'worker',
@@ -180,6 +214,24 @@ test('a failed final file action is marked as needing attention',()=>{
 });
 
 const branchTask=overrides=>task({id:'branch-task',status:'running',planning_request:{prompt:'Build restart'},branch_run:{id:'run1',status:'draft',items:[{id:'planning',title:'Prepare plan',status:'working'}],current_item_id:'planning'},...overrides});
+test('unattended personality follows selection, planning and final review without hiding waiting',()=>{
+ const startup=branchTask({branch_run:{id:'run1',authorization_ref:'auth',status:'running',current_item_id:null,items:[],startup:{status:'running',stage:'selecting_worker',label:'Selecting worker',started_at:stamp}}});
+ const selecting=replies(startup).at(-1);
+ assert.match(selecting.intro,/Your approval is saved/);
+ assert.equal(selecting.steps.at(-1).title,'Selecting worker');
+ startup.branch_run.startup.stage='preparing_branch';
+ assert.equal(replies(startup).at(-1).intro,'Your approval is saved. I’m preparing your run.');
+ const planning=branchTask();
+ const plan=replies(planning)[0];assert.equal(plan.label,'Planning');assert.equal(plan.steps[0].title,'Selecting a planner');
+ planning.status='stopping';assert.match(replies(planning)[0].intro,/pausing planning/);
+ const final=branchTask({planning_request:null,status:'reviewing',active_role:'reviewer',branch_run:{id:'run1',authorization_ref:'auth',status:'finalizing',current_item_id:null,items:[]},events:[event(1,'review_request','Requesting final packet review',{}),event(2,'model','Requesting reviewer: reviewer-model',{})].map(e=>({...e,branch_run_id:'run1',item_id:null}))});
+ const review=replies(final).at(-1);
+ assert.equal(review.steps.at(-1).phase,'review');assert.doesNotMatch(review.intro,/running final checks/);
+ assert.equal(review.steps.at(-1).outcome,'live');
+ final.status='waiting_retry';final.route_wait={};
+ assert.match(replies(final).at(-1).intro,/No model request is running/);
+ final.status='paused';assert.match(replies(final).at(-1).intro,/attention/);
+});
 test('one planning operation retains stable identity through selection stream and proposal readiness',()=>{
  const t=branchTask();let [reply]=replies(t);const id=reply.id,step=reply.steps[0].id;
  assert.equal(reply.label,'Planning');assert.match(reply.steps[0].title,/Selecting a planner/);
