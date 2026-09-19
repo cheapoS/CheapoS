@@ -50,7 +50,19 @@ class ClubManager:
             self.state.setdefault('share_models',False)
             self.state.setdefault('endpoint',self.leaderboard_url)
             if self.state['endpoint']!=self.leaderboard_url:
-                raise ValueError()
+                legacy={'https://cheapskate-club.vercel.app'}
+                if self.state['endpoint'] in legacy and self.leaderboard_url==DEFAULT_LEADERBOARD_URL:
+                    inst_id=self.state.get('installation_id')
+                    if inst_id:
+                        old_slot=self.state['endpoint']+'/installation/'+inst_id
+                        new_slot=self.leaderboard_url+'/installation/'+inst_id
+                        old_key=self.credentials.get(old_slot)
+                        if old_key and not self.credentials.get(new_slot):
+                            self.credentials.set(new_slot,old_key)
+                    self.state['endpoint']=self.leaderboard_url
+                    self._save()
+                else:
+                    raise ValueError()
         except (ValueError,OSError):
             self.blocked='Club connection settings could not be loaded. Restore the saved file or original endpoint; local work is unaffected.'
             self.state={**default,'error':self.blocked}
