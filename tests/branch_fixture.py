@@ -101,7 +101,7 @@ class ScriptedProvider:
             packet=json.loads(messages[1]['content']);item=packet['item']
             if item['id']=='markdown' and not self.reviewer_revision:
                 self.reviewer_revision=True
-                result=call('review_decision',{'decision':'REQUEST_CHANGES','feedback':'Add an explicit empty-table test for the renderer before approval.', 'candidate_id':packet['candidate_id'], 'defects':[{'criterion':item['acceptance_criteria'][0], 'location':'test_markdown.py', 'expected':'Empty-table regression coverage', 'observed':'No empty-table assertion', 'kind':'static', 'support':'The supplied tests omit the documented empty-table path.', 'reproduction':''}]})
+                result=call('review_decision',{'decision':'REQUEST_CHANGES','feedback':'Add an explicit empty-table test for the renderer before approval.', 'candidate_id':packet['candidate_id'], 'defects':[{'criterion':item['acceptance_criteria'][0], 'location':'test_markdown.py:1', 'expected':'Empty-table regression coverage', 'observed':'No empty-table assertion', 'kind':'static', 'support':'The supplied tests omit the documented empty-table path.', 'reproduction':''}]})
             else:
                 result=call('review_decision',{'decision':'APPROVE','feedback':'Implementation and actual tests satisfy the supplied criteria.','candidate_id':packet['candidate_id'],'criteria_outcomes':{c:{'passed':True,'evidence':'Read implementation and passing behavioral test'} for c in item['acceptance_criteria']}})
         else:

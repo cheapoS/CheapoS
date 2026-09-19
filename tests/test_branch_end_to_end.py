@@ -34,7 +34,7 @@ class BranchEndToEndTests(unittest.TestCase):
 
         baseline = source_state()
         proposal = engine.branch.prepare(fixture.values())
-        task = engine.branch.authorize(proposal['task_id'], {'proposal_id': proposal['proposal_id'], 'approved': True})
+        task = engine.branch.authorize(proposal['task_id'], {'proposal_id': proposal['proposal_id'], 'approved': True, 'full_suite_approved': True})
         task = finished(task['id']); task_id = task['id']; run = task['branch_run']
         self.assertEqual([item['id'] for item in run['items']], ['csv', 'markdown', 'cli'])
         self.assertEqual([item['status'] for item in run['items']], ['committed'] * 3)
