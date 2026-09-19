@@ -114,3 +114,40 @@ def read_wav_info(path_or_fileobj):
     finally:
         if open_file:
             f.close()
+def make_laser_shot(sample_rate=SAMPLE_RATE):
+    s = generate_samples(0.18, 880, 110, waveform='sawtooth', sample_rate=sample_rate)
+    return apply_envelope(s, sample_rate, attack=0.005, decay=0.12, sustain=0.0, release=0.0)
+
+def make_jump(sample_rate=SAMPLE_RATE):
+    s = generate_samples(0.25, 200, 600, waveform='square', sample_rate=sample_rate)
+    return apply_envelope(s, sample_rate, attack=0.02, decay=0.0, sustain=1.0, release=0.05)
+
+def make_coin_pickup(sample_rate=SAMPLE_RATE):
+    a = apply_envelope(generate_samples(0.07, 1200, waveform='triangle', sample_rate=sample_rate), sample_rate, attack=0.01, decay=0.0, sustain=1.0, release=0.03)
+    b = apply_envelope(generate_samples(0.07, 1600, waveform='triangle', sample_rate=sample_rate), sample_rate, attack=0.0, decay=0.0, sustain=1.0, release=0.05)
+    out = array.array('h', a)
+    out.extend(b)
+    return out
+
+def make_powerup(sample_rate=SAMPLE_RATE):
+    s = generate_samples(0.4, 200, 1600, waveform='square', sample_rate=sample_rate)
+    return apply_envelope(s, sample_rate, attack=0.05, decay=0.05, sustain=0.9, release=0.1)
+
+def make_explosion(sample_rate=SAMPLE_RATE):
+    rng = random.Random(42)
+    n = round(0.6 * sample_rate)
+    s = array.array('h', [rng.randint(-MAX_AMP, MAX_AMP) for _ in range(n)])
+    return apply_envelope(s, sample_rate, attack=0.005, decay=0.4, sustain=0.0, release=0.0)
+
+def make_hit(sample_rate=SAMPLE_RATE):
+    s = generate_samples(0.15, 120, waveform='sawtooth', sample_rate=sample_rate)
+    return apply_envelope(s, sample_rate, attack=0.005, decay=0.1, sustain=0.0, release=0.0)
+
+PRESETS = {
+    'laser-shot': make_laser_shot,
+    'jump': make_jump,
+    'coin-pickup': make_coin_pickup,
+    'powerup': make_powerup,
+    'explosion': make_explosion,
+    'hit': make_hit,
+}

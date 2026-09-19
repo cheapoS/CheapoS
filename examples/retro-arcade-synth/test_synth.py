@@ -96,6 +96,32 @@ class TestSynthFunctions(unittest.TestCase):
         self.assertEqual(info['nframes'], len(samples))
         self.assertEqual(info['comptype'], 'NONE')
 
+    def test_presets_exist_and_count(self):
+        self.assertTrue(hasattr(self.module, 'PRESETS'))
+        self.assertEqual(len(self.module.PRESETS), 6)
+        for name in ['laser-shot', 'jump', 'coin-pickup', 'powerup', 'explosion', 'hit']:
+            self.assertIn(name, self.module.PRESETS)
+
+    def test_presets_return_valid_arrays(self):
+        for name, func in self.module.PRESETS.items():
+            samples = func()
+            self.assertIsInstance(samples, array.array)
+            self.assertEqual(samples.typecode, 'h')
+            self.assertGreater(len(samples), 0)
+            for s in samples:
+                self.assertGreaterEqual(s, -self.module.MAX_AMP)
+                self.assertLessEqual(s, self.module.MAX_AMP)
+
+    def test_explosion_deterministic(self):
+        a = self.module.make_explosion()
+        b = self.module.make_explosion()
+        self.assertEqual(a, b)
+
+    def test_coin_pickup_length(self):
+        a = self.module.make_coin_pickup()
+        seg1_len = round(0.07 * self.module.SAMPLE_RATE)
+        self.assertEqual(len(a), seg1_len * 2)
+
 
 if __name__ == "__main__":
     unittest.main()
