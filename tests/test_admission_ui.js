@@ -38,6 +38,7 @@ test('delivery rejection restores editable draft and late delivery cannot overwr
 
 function branchSendFixture(){
  const f=sendFixture(),{c,state}=f;
+ c.CheapOSBranchUI=require('../dist/branch_ui.js');
  state.admission.unattended={allowed:true};
  state.task={id:'b',status:'paused',pause_summary:{question:'Which behavior do you need?'},branch_run:{status:'paused',authorization_ref:'accepted',guidance:[]}};
  vm.runInContext(source.slice(source.indexOf('async function steerTask('),source.indexOf('async function boostHeadroom(')),c);
