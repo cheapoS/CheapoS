@@ -8,6 +8,12 @@ MAX_RESPONSE_BYTES = 4_000_000
 STREAM_MAX_SECONDS = 600
 
 
+def reasoning_text(message):
+    """Use the same supplied text aliases for streamed and complete replies."""
+    return next((message[key] for key in ('reasoning', 'reasoning_content', 'thinking')
+                 if isinstance(message.get(key), str) and message[key]), '')
+
+
 def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX_SECONDS):
     started = time.monotonic()
     content, thinking, calls, usage = [], [], {}, {}
@@ -62,7 +68,7 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
                     raise error_type(f'The provider ended the response with finish_reason={label}. Partial tool calls were not executed; saved files are unchanged by this response.', code='stream_error' if label == 'error' else 'model_refusal', usage=usage or None)
                 finished = True
             delta = choice.get('delta') or {}
-            thought = delta.get('reasoning') or delta.get('reasoning_content') or delta.get('thinking')
+            thought = reasoning_text(delta)
             if isinstance(thought, str) and thought:
                 thinking.append(thought)
                 emit('thinking', thought)

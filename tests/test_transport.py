@@ -14,6 +14,51 @@ from cheapos.providers import guard_inference_route, ChatProvider
 
 
 class TransportTests(unittest.TestCase):
+    def test_complete_json_thinking_is_retained_for_each_role_and_transport(self):
+        from email.message import Message
+        for role in ('worker', 'reviewer', 'planner', 'coordinator'):
+            for mode in ('json', 'sse'):
+                for field in ('reasoning', 'reasoning_content', 'thinking'):
+                    with self.subTest(role=role, mode=mode, field=field):
+                        engine, runtime, _ = self.harness()
+                        config = {**runtime.task['providers']['worker'], 'pacing_interval': 0}
+                        runtime.task['providers'][role] = config
+                        provider = ChatProvider(config)
+                        engine.provider_factory = lambda *args: provider
+                        response = io.BytesIO(json.dumps({'choices': [{'message': {
+                            'role': 'assistant', 'content': None, field: 'Inspecting the saved evidence.',
+                            'tool_calls': [{'id': 'read', 'type': 'function', 'function': {
+                                'name': 'read_file', 'arguments': '{"path":"example.py"}'}}]}}],
+                            'usage': {'prompt_tokens': 2, 'completion_tokens': 3}}).encode())
+                        response.headers = Message()
+                        response.headers['Content-Type'] = 'application/json'
+                        with patch('cheapos.providers.build_opener') as opener:
+                            opener.return_value.open.return_value = response
+                            message = engine._request_attempt(runtime, [], [], role, transport_override=mode)
+                        self.assertIsNone(message['content'])
+                        self.assertEqual(message['tool_calls'][0]['id'], 'read')
+                        self.assertEqual(message['reasoning'], 'Inspecting the saved evidence.')
+                        events = [e['detail'][2] for e in runtime.task['events'] if e['detail'][0] == 'generation']
+                        self.assertEqual(len(events), 1)
+                        self.assertEqual(events[0]['thinking'], message['reasoning'])
+                        self.assertEqual(events[0]['role'], role)
+                        self.assertIsNone(runtime.task['stream'])
+
+    def test_stream_aliases_preserve_whitespace_and_do_not_invent_thinking(self):
+        for field in ('reasoning', 'reasoning_content', 'thinking'):
+            frames = [{'choices': [{'delta': {field: part}}]} for part in ('Inspect', ' ', 'files.')]
+            frames += [{'choices': [{'delta': {'content': 'Ready.'}, 'finish_reason': 'stop'}]}]
+            wire = ''.join('data: '+json.dumps(frame)+'\n\n' for frame in frames).encode() + b'data: [DONE]\n\n'
+            seen = []
+            result = read_chat_stream(io.BytesIO(wire), lambda *args: seen.append(args), lambda: False, ProviderError)
+            self.assertEqual(result['choices'][0]['message']['reasoning'], 'Inspect files.')
+            self.assertEqual(''.join(text for kind, text in seen if kind == 'thinking'), 'Inspect files.')
+        marker = '<|channel>thought\n<channel|>'
+        wire = ('data: '+json.dumps({'choices': [{'delta': {'content': marker}, 'finish_reason': 'stop'}]})+'\n\ndata: [DONE]\n\n').encode()
+        result = read_chat_stream(io.BytesIO(wire), lambda *args: None, lambda: False, ProviderError)
+        self.assertEqual(result['choices'][0]['message']['content'], marker)
+        self.assertNotIn('reasoning', result['choices'][0]['message'])
+
     def test_request_metrics_separate_pacing_from_gateway_time_on_success_and_failure(self):
         from urllib.error import HTTPError
         from cheapos.gateways import OmniRouteGateway
