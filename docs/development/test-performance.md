@@ -195,3 +195,27 @@ The full-suite two-minute target remains unmet; use a 600-second check allowance
 for this gate. The slowest scenario was the seven-fixture benchmark (25.859s).
 JavaScript: 70 tests passed. No unchanged passing gate was repeated after the
 final documentation update.
+
+## Restart preparation with accumulated task history (2026-09-19)
+
+On macOS/Python 3.9, a temporary copy of a 103-task profile (about 124 MB of
+task records) took 2.621 seconds for Engine construction plus continuation
+restoration. Selecting only the fields required by permission registration,
+integration restoration and settings restoration reduced this to 0.494 seconds.
+Both measurements disabled Club sync, credential lookup and work dispatch; they
+measure local startup preparation, not the entire browser/provider reconnect.
+The original profile and running tasks were untouched.
+
+Gateway shutdown no longer waits up to five seconds for a daemon catalog probe.
+The closed flag prevents late probe results or new process launches; the saved
+keep-running preference still controls cleanup of an owned gateway process.
+An isolated server's real restart acknowledged immediately and reconnected with
+a new request token in 0.566 seconds, including the existing 0.4-second delay.
+Server output now records shutdown, saved-work loading and continuation timings
+without task contents or credentials, to distinguish any remaining delays.
+
+Five new deterministic cases in `tests/test_restart.py` took 0.007 seconds
+together. They reject unnecessary history copying, check detached metadata,
+retain permission and continuation behavior, and simulate late catalog results
+without real network requests or waits. Existing focused coverage was reused;
+no new heavy restart benchmark was added to the normal suite.

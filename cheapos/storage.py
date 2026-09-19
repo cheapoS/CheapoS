@@ -124,9 +124,13 @@ class Store:
             task = copy.deepcopy(self.tasks[task_id])
             return self._present(task, metadata, task), etag
 
-    def list(self, summary=False):
+    def list(self, summary=False, *, fields=None):
         with self.lock:
             tasks = sorted(self.tasks.values(), key=lambda t: t["created_at"], reverse=True)
+            if fields is not None:
+                # Startup registries need metadata, not copies of every saved
+                # conversation, patch, edit receipt and check output.
+                return [{key: copy.deepcopy(t[key]) for key in fields if key in t} for t in tasks]
             if summary:
                 keys = ("id", "title", "source", "status", "created_at", "updated_at", "demo", "usage")
                 return [{**{key: copy.deepcopy(t.get(key)) for key in keys if key in t},

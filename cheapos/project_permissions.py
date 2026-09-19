@@ -31,7 +31,7 @@ class ProjectTestGrants:
         self.workspaces = {}
         self.grants = {}
         self.revisions = {}
-        for task in store.list():
+        for task in store.list(fields=('id', 'workspace', 'source', 'snapshot')):
             self.register(task)
 
     def register(self, task):

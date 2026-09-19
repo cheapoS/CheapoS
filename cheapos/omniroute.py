@@ -280,6 +280,8 @@ class OmniRouteManager:
 
     def _set_state(self, state, message, models=None, code=None):
         with self.lock:
+            if self.closed.is_set():
+                return
             self.state, self.message = state, message
             self.diagnostic_code = code
             if models is not None:
@@ -290,12 +292,16 @@ class OmniRouteManager:
             self.checked_at = time.monotonic()
 
     def _connect(self, start):
+        if self.closed.is_set():
+            return
         try:
             try:
                 models = self._probe()
                 self._set_state("ready", GATEWAY_TYPES[self.settings["gateway_type"]] + " is connected. Model availability is checked when a task runs.", models)
                 return
             except ProviderError as error:
+                if self.closed.is_set():
+                    return
                 detail = str(error)
                 if self._port_open():
                     state = "auth_required" if error.code == "client_key_rejected" else "unavailable"
@@ -383,11 +389,13 @@ class OmniRouteManager:
 
     def shutdown(self):
         self.closed.set()
-        if self.thread:
-            self.thread.join(5)
+        # Catalog probes run in a daemon thread and own no task writes. A slow
+        # endpoint must not hold up backend restart. _connect checks closed
+        # under this lock before spawning; keep owned-process cleanup intact.
         with self.lock:
-            if not self.settings["keep_running"] and self.process is not None:
-                self._terminate(self.process)
+            process = self.process if not self.settings["keep_running"] else None
+        if process is not None:
+            self._terminate(process)
 
     def catalog(self, fresh=False):
         if fresh and (self.state != "ready" or time.monotonic() - self.checked_at >= 300):

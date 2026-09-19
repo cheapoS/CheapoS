@@ -329,8 +329,10 @@ def observe(engine,task):
 
 
 def restore(engine):
-    for task in engine.store.list():
-        if task.get('integration_preparation',{}).get('authorized'):resume(engine,task['id'])
+    for task in engine.store.list(fields=('id', 'integration_preparation')):
+        operation = task.get('integration_preparation', {})
+        if operation.get('authorized') and operation.get('status') not in TERMINAL:
+            resume(engine,task['id'])
 
 
 def local_changes(engine,task_id):

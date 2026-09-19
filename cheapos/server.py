@@ -365,8 +365,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
                         def restart_backend():
                             try:
                                 time.sleep(0.4)
+                                started = time.monotonic()
+                                print('cheapoS restart: stopping background services.', flush=True)
                                 self.server.engine.shutdown()
                                 self.server.server_close()
+                                print(f'cheapoS restart: shutdown completed in {time.monotonic()-started:.2f}s.', flush=True)
                                 os.execv(sys.executable, [sys.executable] + sys.argv)
                             finally:
                                 with self.server.restart_lock:

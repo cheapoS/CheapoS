@@ -10,11 +10,115 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from cheapos import branch_runs
+from cheapos import integration_preparation, task_settings
+from cheapos.omniroute import OmniRouteManager
+from cheapos.project_permissions import ProjectTestGrants
+from cheapos.providers import ProviderError
 from cheapos.server import LocalHandler
 from cheapos.storage import Store, write_json
 
 
+class UncopyableHistory(list):
+    def __deepcopy__(self, memo):
+        raise AssertionError('Restart traversed unrelated execution history')
+
+
 class RestartTests(unittest.TestCase):
+    def test_startup_metadata_copies_are_detached_and_do_not_traverse_history(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(root)
+            store.tasks['saved'] = {'id': 'saved', 'created_at': '2026-09-19',
+                'snapshot': {'source': '/project'}, 'events': UncopyableHistory()}
+            records = store.list(fields=('id', 'snapshot', 'missing'))
+            self.assertEqual(records, [{'id': 'saved', 'snapshot': {'source': '/project'}}])
+            records[0]['snapshot']['source'] = '/changed'
+            self.assertEqual(store.tasks['saved']['snapshot']['source'], '/project')
+            store.tasks['saved']['events'] = ['original']
+            full = store.list()[0]
+            self.assertEqual(full['events'], ['original'])
+            full['events'].clear()
+            self.assertEqual(store.tasks['saved']['events'], ['original'])
+
+    def test_permission_registration_uses_metadata_and_does_not_restore_grants(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(root)
+            source = store.root / 'project'
+            source.mkdir()
+            (source / '.git').mkdir()
+            workspace = store.root / 'tasks/saved/workspace'
+            workspace.mkdir(parents=True)
+            (workspace / '.git').mkdir()
+            store.tasks['saved'] = {'id': 'saved', 'created_at': '2026-09-19',
+                'source': str(source), 'workspace': str(workspace),
+                'snapshot': {'source': str(source)}, 'events': UncopyableHistory(),
+                'command_grants': ['previous session']}
+            permissions = ProjectTestGrants(store)
+            self.assertIn('saved', permissions.workspaces)
+            self.assertEqual(permissions.grants, {})
+            store.tasks['saved']['snapshot']['source'] = '/different'
+            self.assertEqual(ProjectTestGrants(store).workspaces, {})
+
+    def test_restoration_dispatches_only_pending_saved_operations(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(root)
+            base = {'created_at': '2026-09-19', 'usage': {'tokens': 123},
+                'checks': [{'passed': True}], 'events': UncopyableHistory()}
+            store.tasks = {
+                'ordinary': {**base, 'id': 'ordinary'},
+                'finished': {**base, 'id': 'finished',
+                    'integration_preparation': {'authorized': True, 'status': 'failed'},
+                    'settings_operations': {'done': {'stage': 'continuing'}}},
+                'integration': {**base, 'id': 'integration',
+                    'integration_preparation': {'authorized': True, 'status': 'waiting'}},
+                'settings': {**base, 'id': 'settings', 'events': [],
+                    'settings_operations': {'pending': {'stage': 'pending'},
+                        'dispatching': {'stage': 'dispatching'}, 'done': {'stage': 'continuing'}}},
+            }
+            engine = SimpleNamespace(store=store, lock=threading.RLock(), runtimes={})
+            with patch.object(integration_preparation, 'resume') as resume, \
+                    patch.object(task_settings, 'continue_operation') as continuation:
+                integration_preparation.restore(engine)
+                task_settings.restore(engine)
+            resume.assert_called_once_with(engine, 'integration')
+            self.assertEqual([call.args[1:] for call in continuation.call_args_list],
+                             [('settings', 'pending'), ('settings', 'dispatching')])
+            saved = store.get('settings')
+            self.assertEqual(saved['usage'], base['usage'])
+            self.assertEqual(saved['checks'], base['checks'])
+
+    def test_gateway_shutdown_does_not_wait_for_catalog_but_keeps_process_policy(self):
+        with tempfile.TemporaryDirectory() as root:
+            manager = OmniRouteManager(root)
+            manager.thread = Mock()
+            manager.process = Mock()
+            with patch.object(manager, '_terminate') as terminate:
+                manager.settings['keep_running'] = True
+                manager.shutdown()
+                terminate.assert_not_called()
+                manager.settings['keep_running'] = False
+                manager.shutdown()
+                terminate.assert_called_once_with(manager.process)
+            manager.thread.join.assert_not_called()
+            self.assertTrue(manager.closed.is_set())
+
+    def test_late_catalog_success_or_failure_cannot_reopen_a_closed_gateway(self):
+        for fail in (False, True):
+            with self.subTest(fail=fail), tempfile.TemporaryDirectory() as root:
+                manager = OmniRouteManager(root)
+                before = manager.snapshot()
+                def probe():
+                    manager.shutdown()
+                    if fail:
+                        raise ProviderError('offline')
+                    return []
+                with patch.object(manager, '_probe', side_effect=probe), \
+                        patch.object(manager, '_port_open') as port, \
+                        patch('cheapos.omniroute.subprocess.Popen') as spawn:
+                    manager._connect(start=True)
+                port.assert_not_called()
+                spawn.assert_not_called()
+                self.assertEqual(manager.snapshot(), before)
+
     def task(self, status='draft'):
         run = branch_runs.create_run({'items': [{'id': 'one', 'title': 'One',
             'instructions': 'One', 'dependencies': [], 'acceptance_criteria': ['Works'],

@@ -4,6 +4,7 @@
 import argparse
 import json
 import sys
+import time
 import webbrowser
 from pathlib import Path
 from urllib.error import URLError
@@ -68,11 +69,15 @@ def main():
 
     try:
         data_lock = lock_data(args.data_dir.expanduser().resolve())
+        started = time.monotonic()
         server.engine = Engine(args.data_dir.expanduser())
+        loaded = time.monotonic()
         # Gateway startup is asynchronous; local tasks and saved patches remain accessible.
         server.engine.gateway.startup()
         server.engine.startup.start(automatic=True)
         server.engine.restore_route_waits()
+        print(f'cheapoS startup: saved work loaded in {loaded-started:.2f}s; '
+              f'continuations restored in {time.monotonic()-loaded:.2f}s.', flush=True)
     except (OSError, ValueError) as error:
         server.server_close()
         print(str(error), file=sys.stderr)

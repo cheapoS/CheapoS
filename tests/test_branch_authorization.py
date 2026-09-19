@@ -170,7 +170,8 @@ class CheckScopeTests(unittest.TestCase):
         source = root / 'source'; source.mkdir(); (source / '.git').mkdir()
         workspace = root / 'tasks' / 't' / 'workspace'; workspace.mkdir(parents=True); (workspace / '.git').mkdir()
         self.task = {'id': 't', 'source': str(source), 'workspace': str(workspace), 'snapshot': {'source': str(source)}}
-        self.store = SimpleNamespace(root=root, list=lambda: [self.task])
+        self.store = SimpleNamespace(root=root, list=lambda *, fields: [
+            {key: copy.deepcopy(self.task[key]) for key in fields if key in self.task}])
         self.grants = ProjectTestGrants(self.store)
         self.scopes = CheckScopes(self.grants)
         self.argv = [sys.executable, '-B', '-m', 'unittest', 'discover']

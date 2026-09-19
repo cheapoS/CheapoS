@@ -316,7 +316,7 @@ def continue_operation(engine, task_id, operation_id):
 
 def restore(engine):
     """Recover acknowledged apply-and-continue after process loss, using saved work."""
-    for task in engine.store.list():
+    for task in engine.store.list(fields=('id', 'settings_operations')):
         for operation_id, operation in task.get('settings_operations', {}).items():
             if operation.get('stage') not in {'pending', 'dispatching'}:
                 continue
