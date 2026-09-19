@@ -19,5 +19,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # Hosted images register LFS filters globally even for plain Git fixtures.
+      # Change only the disposable runner; keep the app's filter guard and tests.
+      - name: Remove preinstalled LFS filters from the test runner
+        shell: bash
+        run: |
+          for scope in global system; do
+            if git config --"$scope" --get-regexp '^filter\.lfs\.' >/dev/null; then
+              if [ "$scope" = system ]; then
+                sudo git config --system --remove-section filter.lfs
+              else
+                git config --global --remove-section filter.lfs
+              fi
+            fi
+          done
       - run: python -B scripts/check.py --full --jobs 4
       - run: git diff --check

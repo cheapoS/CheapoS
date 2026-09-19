@@ -62,3 +62,25 @@ No generated app or DMG is committed to the source repository.
   not read repository metadata or hosted Actions status.
 
 No repository visibility change or release tag is part of this cleanup.
+
+## Launch follow-up — September 19
+
+Rechecked runtime revision `4a64f8c` in a disposable clone. All 1,482 Python
+regressions and 325 JavaScript regressions passed across the initial run and a
+focused retry. The initial sandbox blocked local HTTP fixture sockets; the five
+affected modules (97 tests) passed outside that restriction in 11.793 seconds.
+No real model requests or operator profile were used.
+
+GitHub's main-branch run `35473287769` exposed preinstalled Git LFS filters on its
+hosted runners. Both CI workflows now remove only the runner's global/system LFS
+defaults before tests. Repository-local filters and the application's filter
+rejection stay intact. The exact shell step passed a disposable configuration
+check for removal, preservation of another filter, and repeated execution.
+The hosted matrix still needs a passing run on the resulting commit.
+
+A local credential-pattern scan inspected 3,580 reachable historical blobs
+(129 MB), including the three remote branches and release tag. It found no
+private-key, provider-key, GitHub-token, AWS-key, JWT or long literal-secret
+matches. This is a targeted scan, not a guarantee that history contains no
+sensitive information. The historical `pinner.db` sample contains an empty
+bookmark table. No history rewrite was performed.
