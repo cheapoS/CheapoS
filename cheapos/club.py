@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from .credentials import CredentialStore
 from .lifetime_usage import resolve_category, safe_model
 
-DEFAULT_LEADERBOARD_URL = "https://cheapos.lol"
+DEFAULT_LEADERBOARD_URL = "https://cheapskate-club.vercel.app"
 
 def now():
     return datetime.now(timezone.utc).isoformat()
