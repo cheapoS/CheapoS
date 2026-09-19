@@ -7,6 +7,7 @@ Hooks, signing, editors and automatic stashing are disabled under existing polic
 """
 import copy
 import hashlib
+import unicodedata
 import uuid
 from pathlib import Path
 from . import branch_workspace as workspace
@@ -44,7 +45,57 @@ def destination_identity(mapping, destination):
     return identity
 
 
-def _clean(source, target):
+def local_paths(source, raw=None):
+    """Both sides of renames matter; -z keeps quoting/newlines unambiguous."""
+    if raw is None:
+        raw = workspace.source_git(source, 'status', '--porcelain=v1', '-z',
+                                   '--untracked-files=all', '--ignore-submodules=none', binary=True)
+    entries = iter((raw.decode('utf-8', errors='surrogateescape') if isinstance(raw, bytes) else raw).split('\0'))
+    paths = []
+    for entry in entries:
+        if not entry:
+            continue
+        paths.append(entry[3:])
+        if any(c in entry[:2] for c in 'RC'):
+            paths.append(next(entries))
+    return list(dict.fromkeys(paths))
+
+
+def paths_overlap(left, right):
+    # Conservatively protect aliases on case-insensitive/normalizing filesystems,
+    # and file/directory replacements, not just exact equal spellings.
+    left, right = (unicodedata.normalize('NFC', p).casefold().rstrip('/') for p in (left, right))
+    return left == right or left.startswith(right + '/') or right.startswith(left + '/')
+
+
+def local_overlaps(source, old, new, paths=None):
+    """Read-only check of local edits against the exact incoming tree delta.
+
+    Ignored files are absent from status but must not be overwritten either.
+    Query only incoming paths (and file ancestors), avoiding a scan of unrelated
+    ignored dependency/build directories. Git rechecks this at the actual merge.
+    """
+    raw = workspace.source_git(source, 'diff-tree', '--no-commit-id', '-r', '--name-only',
+                               '--no-renames', '-z', old, new, binary=True)
+    incoming = [p for p in raw.decode('utf-8', errors='surrogateescape').split('\0') if p]
+    if not incoming:
+        return []
+    paths = local_paths(source) if paths is None else list(paths)
+    inspected = set(incoming)
+    for name in incoming:
+        for parent in Path(name).parents:
+            if parent == Path('.'):
+                break
+            disk = Path(source) / parent
+            if disk.is_symlink() or (disk.exists() and not disk.is_dir()):
+                inspected.add(parent.as_posix())
+    raw = workspace.source_git(source, 'ls-files', '--others', '--ignored', '--exclude-standard', '-z',
+                               '--', *(':(icase,literal)' + p for p in sorted(inspected)), binary=True)
+    paths.extend(p for p in raw.decode('utf-8', errors='surrogateescape').split('\0') if p)
+    return sorted({p for p in paths if any(paths_overlap(p, changed) for changed in incoming)})
+
+
+def _check_destination(source, target, old, new):
     if workspace.source_git(source, 'symbolic-ref', '--quiet', 'HEAD') != target:
         raise ValueError('Destination checkout branch changed')
     markers = ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply', 'sequencer')
@@ -53,8 +104,10 @@ def _clean(source, target):
         path = Path(raw)
         if (path if path.is_absolute() else Path(source) / path).exists():
             raise ValueError('Finish the existing Git operation before integration')
-    if workspace.source_git(source, 'status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none'):
-        raise ValueError('Target checkout has uncommitted changes; saved feature branch is intact')
+    conflicts = local_overlaps(source, old, new)
+    if conflicts:
+        raise ValueError('Target checkout has uncommitted changes overlapping the reviewed work: '
+                         + ', '.join(conflicts) + '. Saved feature branch and local edits are intact')
 
 
 def _validate(operation, recovering=False):
@@ -82,9 +135,9 @@ def _validate(operation, recovering=False):
             or _manifest(source, mapping['base_sha'], operation['feature_tip']) != operation['cumulative_manifest_digest']):
         raise ValueError('Approved change manifest changed')
     if destination:
-        _clean(destination, operation['target_ref'])
-        if actual == operation['feature_tip']:
-            workspace.source_git(destination, 'diff-index', '--cached', '--quiet', operation['feature_tip'], '--')
+        # Check the original delta even during recovery after HEAD has moved.
+        # Unrelated staged entries remain staged; they are not part of the merge.
+        _check_destination(destination, operation['target_ref'], operation['target_old'], operation['feature_tip'])
     return actual
 
 
@@ -140,7 +193,7 @@ def integrate(operation, persist, validate_approval, *, progress=None):
             if operation['destination']:
                 destination = operation['destination']
                 workspace.source_git(destination, '-c', 'merge.autoStash=false', '-c', 'core.editor=true',
-                                     'merge', '--ff-only', '--no-edit', '--no-stat', operation['feature_tip'])
+                                     'merge', '--ff-only', '--no-edit', '--no-stat', '--no-overwrite-ignore', operation['feature_tip'])
                 if workspace.source_git(destination, 'rev-parse', 'ORIG_HEAD') != operation['target_old']:
                     raise ValueError('Target moved during integration; inspect the retained operation')
             else:

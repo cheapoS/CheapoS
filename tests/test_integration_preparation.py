@@ -215,6 +215,8 @@ class IntegrationPreparationTests(unittest.TestCase):
             self.assertEqual(source,'linked-target')
             if args[0]=='symbolic-ref':return 'refs/heads/main'
             if args[0]=='status':return ' M a.py'
+            if args[0]=='diff-tree':return b'a.py\0'
+            if args[0]=='ls-files':return b''
             return ''
         with patch.object(prep.work,'_tip',return_value='target'),patch.object(prep.work,'source_git',side_effect=git), \
                 patch.object(prep.branch_merge,'_destination',return_value='linked-target'), \
@@ -236,6 +238,8 @@ class IntegrationPreparationTests(unittest.TestCase):
             self.assertEqual(source,'linked-target')
             if args[0]=='symbolic-ref':return 'refs/heads/main'
             if args[0]=='status':return '?? notes.md\0?? protocol.md\0'
+            if args[0]=='diff-tree':return b'app.py\0'
+            if args[0]=='ls-files':return b''
             self.assertEqual(args[0],'rev-parse')
             return ''
         with patch.object(prep.work,'_tip',return_value='target'),patch.object(prep.work,'source_git',side_effect=git), \
@@ -253,14 +257,26 @@ class IntegrationPreparationTests(unittest.TestCase):
             update.assert_called_once_with(engine.branch,'task',{'approved':True,'update_token':'token'})
             resolve.assert_called_once_with(engine.branch,'task',{'approved':True,'update_token':'token'})
             self.assertEqual(task['integration_preparation']['stage'],'resolving')
-            # Once committed changes are included, local edits still block merge.
+            # Once committed changes are included, unrelated drafts require no
+            # operator cleanup, extra agent work, or repeated verification.
             advanced=False
             state=prep.readiness(engine,'task')
-            self.assertEqual(state['code'],'dirty_destination')
+            self.assertEqual(state['code'],'ready')
+            self.assertEqual(state['local_changes'],['notes.md','protocol.md'])
             self.assertNotIn('update_resolve',state['actions'])
+            self.assertIn('preserved',state['message'])
         engine.reconcile_project.assert_not_called()
         self.assertEqual(task['usage'],{'tokens':23})
         self.assertEqual(task['checks'],[{'passed':True}])
+
+    def test_interactive_local_changes_still_require_existing_commit_safeguards(self):
+        engine,task=self.fixture(branch=False)
+        def git(source,*args,**kwargs):
+            return 'refs/heads/main' if args[0]=='symbolic-ref' else b'?? notes.md\0' if args[0]=='status' else ''
+        with patch.object(prep.work,'_tip',return_value='target'),patch.object(prep.work,'source_git',side_effect=git):
+            state=prep.readiness(engine,'task')
+        self.assertEqual(state['code'],'dirty_destination')
+        self.assertEqual(state['files'],['notes.md'])
 
     def test_dirty_destination_does_not_bypass_authority_or_owned_workspace(self):
         for failure in ('authority_changed','ownership_changed','work_remaining'):

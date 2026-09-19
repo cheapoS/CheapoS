@@ -56,15 +56,11 @@ def _readiness(engine, task_id):
                 return blocked('git_operation','An external Git operation is in progress. Finish it before integration.')
         raw=work.source_git(destination,'status','--porcelain=v1','-z','--untracked-files=all','--ignore-submodules=none',binary=True)
         if raw:
-            entries=(raw.decode('utf-8',errors='replace') if isinstance(raw,bytes) else raw).split('\0')
-            files=[];skip=False
-            for entry in entries:
-                if skip:files.append(entry);skip=False;continue
-                if entry:files.append(entry[3:]);skip=entry[:1] in {'R','C'}
+            files=branch_merge.local_paths(destination,raw)
             result['local_changes']=files
             dirty=blocked('dirty_destination','Waiting for local changes in the destination.',('inspect_local_changes',),files)
             # Branch preparation combines committed versions in the owned task
-            # copy. Local destination edits only block the eventual merge.
+            # copy. Only overlapping destination edits block the eventual merge.
             # Interactive reconciliation still depends on the source snapshot.
             if not run:return dirty
     if run:
@@ -78,7 +74,12 @@ def _readiness(engine, task_id):
         try:work.source_git(source,'merge-base','--is-ancestor',tip,run['expected_feature_tip'])
         except ValueError:return blocked('target_advanced','The target changed while this task was running.',('update_resolve','keep_saved_work')+inspect)
         if not run.get('readiness'):return blocked('review_required','The combined candidate needs verification and review.',('update_resolve',)+inspect)
-        if dirty:return dirty
+        if destination:
+            overlaps=branch_merge.local_overlaps(destination,tip,run['expected_feature_tip'],result.get('local_changes',[]))
+            if overlaps:
+                return blocked('dirty_destination','Local edits overlap the reviewed changes. Both versions are preserved.',('inspect_local_changes',),overlaps)
+        if dirty:
+            result['message']='Ready for review. Unrelated local changes will be preserved.'
     else:
         from . import commits
         if not task.get('patch') and task.get('integration_preparation',{}).get('already_included'):

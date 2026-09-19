@@ -9,7 +9,8 @@ test('readiness exposes only supported preparation actions and escapes paths',()
  html=integration.markup(task,{code:'target_advanced',actions:['update_resolve','inspect_local_changes'],local_changes:['<protocol>.md']});
  assert.match(html,/data-integration-prepare/);assert.match(html,/data-integration-local/);
  assert.match(html,/Local changes will stay untouched/);assert.match(html,/committed changes/);
- assert.match(html,/final merge will wait/);assert.match(html,/&lt;protocol&gt;.md/);
+ assert.match(html,/Unrelated local edits can stay in place when you merge/);assert.match(html,/&lt;protocol&gt;.md/);
+ assert.doesNotMatch(html,/until the destination is clean/);
  assert.doesNotMatch(html,/<protocol>/);
 });
 test('local comparison lists untracked files even when Git diff is empty',()=>{

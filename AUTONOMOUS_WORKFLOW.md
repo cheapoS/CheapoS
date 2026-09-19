@@ -9,6 +9,23 @@ This is the development direction for the next iteration. The item-review and
 final-review handoffs described below are implemented; the broader changes are milestones,
 not claims about current behavior.
 
+## Implemented: merge around unrelated local drafts
+
+Unattended branch integration compares destination edits with the exact incoming
+file changes. Unrelated staged, unstaged and untracked work can remain in place
+through preview, explicit merge approval and interrupted-merge recovery. It is
+neither committed into the task nor stashed or discarded. A newer target still
+goes through the existing isolated update, conflict repair and independent review.
+
+Edits on affected paths, rename endpoints, file/directory collisions and ignored
+files that would be overwritten remain protected. These checks repeat at the
+actual merge and recovery; branch ownership, destination identity and approval
+checks still apply. Interactive direct commits retain their existing safeguards.
+Resolving overlapping **uncommitted** drafts with agents is not implemented by
+this change: it needs a captured local/index snapshot, review of the combined
+result and conditional application that preserves edits made after capture.
+The existing agent conflict workflow resolves committed branch changes only.
+
 ## What went wrong
 
 We have repeatedly treated engine failures as operator decisions. The recent
