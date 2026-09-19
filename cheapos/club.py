@@ -85,7 +85,7 @@ class ClubManager:
         return dict(version=1,action=action,installation_id=self.state['installation_id'],pairing_id=self.state['pairing_id'],**fields)
 
     def _request(self,envelope):
-        req=urllib.request.Request(self.leaderboard_url+'/api/installation',data=json.dumps(envelope).encode(),headers={'Content-Type':'application/json'},method='POST')
+        req=urllib.request.Request(self.leaderboard_url+'/api/installation',data=json.dumps(envelope).encode(),headers={'Content-Type':'application/json','User-Agent':'cheapoS/0.1.0'},method='POST')
         try:
             with urllib.request.urlopen(req,timeout=5) as response:
                 return json.loads(response.read(65536))
