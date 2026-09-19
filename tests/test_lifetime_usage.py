@@ -7,10 +7,12 @@ from cheapos.lifetime_usage import LifetimeUsage, now
 
 
 def record(id, role='worker', category='public_free', **extra):
-    return dict(id=id, dispatched=True, requested_at=now(), role=role, access_class=category,
+    base = dict(id=id, dispatched=True, requested_at=now(), role=role, access_class=category,
                 input_tokens=8, output_tokens=2, reasoning_tokens=2, cached_tokens=3,
                 usage_reconciled=True, accounted_tokens=10, accounted_cost=0,
-                requested_model='vendor/model', served_model='vendor/model', **extra)
+                requested_model='vendor/model', served_model='vendor/model')
+    base.update(extra)
+    return base
 
 
 class LifetimeUsageTests(unittest.TestCase):
@@ -118,5 +120,48 @@ class LifetimeUsageTests(unittest.TestCase):
             self.assertEqual(ledger.summary()['categories']['unknown']['tokens'], 20)
 
 
+    def test_model_health_purposes_and_pairs_telemetry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = LifetimeUsage(directory)
+            req_ok = record('r1', requested_model='vendor/flash', served_model='vendor/flash', purpose='work', status='responded')
+            req_fail = record('r2', requested_model='vendor/flash', served_model='vendor/flash', purpose='recovery', status='failed', failure_category='rate_limit')
+            req_rev = record('r3', role='reviewer', requested_model='vendor/auditor', served_model='vendor/auditor', purpose='review', status='responded')
+            task = dict(
+                id='pair-task',
+                request_metrics=[req_ok, req_fail, req_rev],
+                branch_run={'status': 'merged', 'merge_receipt': 'receipt-123'},
+                checks=[{'passed': True}],
+                checkpoints=[{'decision': 'APPROVE'}],
+            )
+            ledger.ingest(task)
+            summ = ledger.summary()
+
+            # Purpose telemetry
+            self.assertEqual(summ['purposes']['work']['requests'], 1)
+            self.assertEqual(summ['purposes']['recovery']['requests'], 1)
+            self.assertEqual(summ['purposes']['review']['requests'], 1)
+
+            # Model health telemetry
+            flash_stats = summ['models']['vendor/flash']
+            self.assertEqual(flash_stats['requests'], 2)
+            self.assertEqual(flash_stats['successes'], 1)
+            self.assertEqual(flash_stats['failures'], 1)
+            self.assertEqual(flash_stats['success_rate'], 50.0)
+            self.assertEqual(flash_stats['failure_breakdown']['rate_limit'], 1)
+
+            # Model pair telemetry
+            pair = summ['model_pairs']['vendor/flash + vendor/auditor']
+            self.assertEqual(pair['worker'], 'vendor/flash')
+            self.assertEqual(pair['reviewer'], 'vendor/auditor')
+            self.assertEqual(pair['total_jobs'], 1)
+            self.assertEqual(pair['merged_runs'], 1)
+            self.assertEqual(pair['completion_rate'], 100.0)
+
+            # Honest zero-cost metrics
+            self.assertIsNone(summ['estimated_savings'])
+            self.assertEqual(summ['zero_cost_share'], 100.0)
+
+
 if __name__ == '__main__':
+
     unittest.main()

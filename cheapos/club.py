@@ -302,9 +302,33 @@ class ClubManager:
                     if self.state['sent'].get(rid)==fingerprint: continue
                     event['slot']=len(events);events.append(event);fingerprints[rid]=fingerprint
                     if len(events)==100: break
+                queue_kwargs = None
                 if events:
                     queue_kwargs = dict(_fingerprints=fingerprints, events=events)
-                    if lifetime and hasattr(lifetime, 'summary'):
+                elif lifetime and hasattr(lifetime, 'summary'):
+                    try:
+                        summ = lifetime.summary('all')
+                        comp = summ.get('completion') or {}
+                        h_jobs = int(comp.get('human_accepted_jobs', 0))
+                        m_runs = int(comp.get('merged_runs', 0))
+                        r_jobs = int(comp.get('independent_review_approved_jobs', 0))
+                        completed = h_jobs + m_runs
+                        rate = round((completed / r_jobs * 100), 1) if r_jobs > 0 else None
+                        current_outcomes = dict(
+                            completed_tasks=completed,
+                            human_accepted_jobs=h_jobs,
+                            merged_runs=m_runs,
+                            review_approved_jobs=r_jobs,
+                            acceptance_rate=rate
+                        )
+                        last_synced = self.state.get('last_synced_outcomes')
+                        if completed > 0 and current_outcomes != last_synced:
+                            queue_kwargs = dict(_fingerprints={}, events=[], work_outcomes=current_outcomes)
+                    except Exception:
+                        pass
+
+                if queue_kwargs is not None:
+                    if 'work_outcomes' not in queue_kwargs and lifetime and hasattr(lifetime, 'summary'):
                         try:
                             summ = lifetime.summary('all')
                             comp = summ.get('completion') or {}
@@ -324,7 +348,9 @@ class ClubManager:
                             pass
                     self._queue('sync', **queue_kwargs)
                     self._flush()
-                    uploaded+=len(events)
+                    if queue_kwargs.get('work_outcomes'):
+                        self.state['last_synced_outcomes'] = queue_kwargs['work_outcomes']
+                    uploaded += len(queue_kwargs.get('events', []))
                 self.state['sync_message']=(f'Uploaded {uploaded} usage records. Additional queued usage syncs automatically.' if uploaded else 'No new usage yet. Only requests made after sharing was enabled are uploaded.' if not new_requests else 'Waiting for complete token usage before uploading.' if waiting else 'Up to date. All eligible usage has already been uploaded.')
                 self.state['error']=None
                 self._save()

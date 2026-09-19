@@ -66,11 +66,20 @@ def clean(record):
     srv_m = safe_model(record.get('served_model'))
     cat = resolve_category(record, fallback_cat=record.get('access_class'))
 
+    status = record.get('status') or ('responded' if record.get('usage_reconciled') else 'pending')
+    purpose = record.get('purpose') or 'work'
+    failure_category = record.get('failure_category')
+    error_code = record.get('error_code')
+
     result.update(role=record.get('role') if record.get('role') in ROLES else 'unknown',
                   date=date(record.get('requested_at', record.get('created_at'))), category=cat,
                   reconciled=bool(record.get('usage_reconciled') or record.get('cost_provenance') in {'provider_reported', 'estimated'}),
                   requested_model=req_m,
-                  served_model=srv_m)
+                  served_model=srv_m,
+                  status=status,
+                  purpose=purpose,
+                  failure_category=failure_category,
+                  error_code=error_code)
     # Club classification requires explicit access evidence; never infer free pricing from a model prefix.
     result['club_category'] = cat if record.get('access_class') in CATEGORIES else 'unknown'
     if (result['reported_cost'] or 0) > 0: result['club_category'] = 'paid'
@@ -147,6 +156,18 @@ class LifetimeUsage:
             latest = {role: next((r for r in reversed(list(entry['requests'].values())) if r['role'] == role), {}) for role in ('worker', 'reviewer')}
             worker, reviewer = latest['worker'].get('served_model'), latest['reviewer'].get('served_model')
             independent = bool(worker and reviewer and normalized(worker) != normalized(reviewer))
+            checks = task.get('checks', [])
+            checkpoints = task.get('checkpoints', [])
+            entry['worker_model'] = worker
+            entry['reviewer_model'] = reviewer
+            entry['independent'] = independent
+            entry['checks_summary'] = {
+                'runs': len(checks),
+                'passed': sum(bool(c.get('passed')) for c in checks),
+            }
+            entry['reviews_summary'] = {
+                'decisions': [c.get('decision') for c in checkpoints if c.get('decision')],
+            }
             entry['completion'] = {
                 'merged_runs': bool(previous.get('completion', {}).get('merged_runs') or run.get('status') == 'merged' and run.get('merge_receipt')),
                 'human_accepted_jobs': bool(previous.get('completion', {}).get('human_accepted_jobs') or not run and task.get('commits')),
@@ -185,6 +206,8 @@ class LifetimeUsage:
                       tokens=dict(reported=0, accounted_historical=0, estimated=0, reserved=0, input=0, output=0, reasoning=0, cached=0, unknown_requests=0, unknown_reasoning_requests=0, unknown_cached_requests=0),
                       categories={k: dict(tokens=0, requests=0) for k in CATEGORIES}, roles={k: dict(tokens=0, requests=0) for k in ROLES},
                       models={},
+                      purposes={},
+                      model_pairs={},
                       cost=dict(provider_reported=0, configured_estimate=0, reserved=0, historical_accounted=0, accounted=0),
                       charged_free_requests=0, charged_free_tokens=0, missing_identity_requests=0, undated_requests=0, history=[],
                       completion=dict(human_accepted_jobs=0, merged_runs=0, independent_review_approved_jobs=0), savings_comparison='not configured')
@@ -215,11 +238,22 @@ class LifetimeUsage:
                 result['categories'][cat]['requests'] += 1
                 result['roles'][r['role']]['tokens'] += tokens
                 result['roles'][r['role']]['requests'] += 1
+                purp = r.get('purpose') or 'work'
+                p_stat = result['purposes'].setdefault(purp, dict(tokens=0, requests=0))
+                p_stat['tokens'] += tokens
+                p_stat['requests'] += 1
                 m = r.get('served_model') or r.get('requested_model')
                 if m:
-                    m_stat = result['models'].setdefault(m, dict(tokens=0, requests=0, category=cat))
+                    m_stat = result['models'].setdefault(m, dict(tokens=0, requests=0, category=cat, successes=0, failures=0, success_rate=100.0, failure_breakdown={}))
                     m_stat['tokens'] += tokens
                     m_stat['requests'] += 1
+                    st = r.get('status')
+                    if st == 'responded' or (st is None and r.get('reconciled')):
+                        m_stat['successes'] += 1
+                    elif st == 'failed':
+                        m_stat['failures'] += 1
+                        fc = r.get('failure_category') or 'unknown'
+                        m_stat['failure_breakdown'][fc] = m_stat['failure_breakdown'].get(fc, 0) + 1
                 result['charged_free_requests'] += int(r['charged_free'])
                 result['charged_free_tokens'] += tokens if r['charged_free'] else 0
                 result['missing_identity_requests'] += int(not r['served_model'])
@@ -239,9 +273,41 @@ class LifetimeUsage:
                     day['tokens'] += tokens
                     day['cost'] += max(cost, r['reported_cost'] or 0)
         result['cost']['accounted'] = sum(result['cost'][k] for k in ('provider_reported', 'configured_estimate', 'reserved', 'historical_accounted'))
+        for m_data in result['models'].values():
+            decided = m_data['successes'] + m_data['failures']
+            if decided > 0:
+                m_data['success_rate'] = round((m_data['successes'] / decided) * 100, 1)
+
+        model_pairs = {}
+        for task in state['tasks'].values():
+            w = task.get('worker_model')
+            rv = task.get('reviewer_model')
+            if w and rv:
+                pair_key = f"{w} + {rv}"
+                pair = model_pairs.setdefault(pair_key, {
+                    'pair_id': pair_key,
+                    'worker': w,
+                    'reviewer': rv,
+                    'is_independent': bool(task.get('independent')),
+                    'total_jobs': 0,
+                    'merged_runs': 0,
+                    'human_accepted_jobs': 0,
+                    'review_approved_jobs': 0,
+                    'completion_rate': 0.0,
+                })
+                pair['total_jobs'] += 1
+                comp = task.get('completion', {})
+                if comp.get('merged_runs'): pair['merged_runs'] += 1
+                if comp.get('human_accepted_jobs'): pair['human_accepted_jobs'] += 1
+                if comp.get('independent_review_approved_jobs'): pair['review_approved_jobs'] += 1
+                completed = pair['merged_runs'] + pair['human_accepted_jobs']
+                pair['completion_rate'] = round((completed / pair['total_jobs']) * 100, 1)
+        result['model_pairs'] = dict(sorted(model_pairs.items(), key=lambda item: item[1]['total_jobs'], reverse=True))
+
         total_free = sum(result['categories'][k]['tokens'] for k in ('public_free', 'included', 'local'))
         result['total_free_tokens'] = total_free
-        result['estimated_savings'] = round((total_free / 1_000_000) * 3.0, 2)
+        result['zero_cost_share'] = round((total_free / max(result['tokens']['reported'], 1)) * 100, 1) if result['tokens']['reported'] > 0 else 100.0
+        result['estimated_savings'] = None
         result['models'] = dict(sorted(result['models'].items(), key=lambda item: item[1]['tokens'], reverse=True))
         result['history'] = sorted(history.values(), key=lambda d: d['date'])[-366:]
         result['limitations'] = [
