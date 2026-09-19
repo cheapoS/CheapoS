@@ -149,6 +149,11 @@ class DiscoveryTests(unittest.TestCase):
 class ProposalProvenanceTests(unittest.TestCase):
     limits = {'dollars': 0, 'requests': 30}
 
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.source = directory.name
+
     def response(self, command):
         proposal = {'items': [{'id': 'one', 'title': 'Small fix', 'instructions': 'Implement the requested fix',
                               'dependencies': [], 'acceptance_criteria': ['The defect is fixed'],
@@ -159,30 +164,31 @@ class ProposalProvenanceTests(unittest.TestCase):
     def test_invented_command_is_model_error_but_documented_missing_runner_is_setup(self):
         with patch('cheapos.test_profiles.executable_identity', return_value=None):
             with self.assertRaises(planner.PlanningResponseError):
-                planner._parse(self.response('Run the identified test command'), self.limits, '/fixture')
+                planner._parse(self.response('Run the identified test command'), self.limits, self.source)
             docs = project_discovery.command_evidence({'path': 'CONTRIBUTING.md', 'contents': 'Use `custom-check test`.'})
             with self.assertRaises(planner.PlanningSetupRequired) as stopped:
-                planner._parse(self.response('custom-check test'), self.limits, '/fixture', check_evidence=docs)
+                planner._parse(self.response('custom-check test'), self.limits, self.source, check_evidence=docs)
             self.assertEqual(stopped.exception.plan['final_checks'], ['custom-check test'])
             with self.assertRaises(planner.PlanningResponseError):
-                planner._parse(self.response('custom-check invented'), self.limits, '/fixture', check_evidence=docs)
+                planner._parse(self.response('custom-check invented'), self.limits, self.source, check_evidence=docs)
 
     def test_missing_declared_package_manager_is_a_real_setup_issue(self):
         docs = project_discovery.command_evidence({'path': 'app/package.json', 'contents': json.dumps({
             'packageManager': 'pnpm@10.0.0', 'scripts': {'test': 'node --test'}})})
         with patch('cheapos.test_profiles.executable_identity', return_value=None):
             with self.assertRaises(planner.PlanningSetupRequired):
-                planner._parse(self.response('pnpm --dir app test'), self.limits, '/fixture', check_evidence=docs)
+                planner._parse(self.response('pnpm --dir app test'), self.limits, self.source, check_evidence=docs)
 
     def test_bad_planner_hands_off_and_completes_proposal_without_operator_setup(self):
         task = {'planning_limits': self.limits, 'execution': {'mode': 'remote'}, 'route': {'base_url': 'fixture'},
                 'providers': {'planner': {'model': 'bad'}}, 'usage': {'cost': 0}}
         runtime = SimpleNamespace(task=task, stop=threading.Event(), guard=Mock(), failed_models=set())
-        inputs = {'source': '/fixture', 'prompt': 'Suggest one small improvement. Explain before changing.'}
+        inputs = {'source': self.source, 'prompt': 'Suggest one small improvement. Explain before changing.'}
         inputs['hash'] = planner._digest(inputs)
         requests = []
         def request(runtime, messages, *args, **kwargs):
             requests.append(copy.deepcopy(messages))
+            self.assertLessEqual(len(requests), 4, 'Recovery must finish after the valid proposal')
             task['usage']['cost'] += 1
             return self.response('Run the identified test command' if len(requests) < 4 else 'real-check test')
         engine = SimpleNamespace(request=request, event=Mock(), store=SimpleNamespace(save=Mock()))
@@ -201,7 +207,7 @@ class ProposalProvenanceTests(unittest.TestCase):
         self.assertNotIn('authorization_ref', task)
 
     def test_saved_strategy_gets_new_map_without_resetting_history_or_usage(self):
-        inputs = {'source': '/fixture', 'prompt': 'Keep scope'}
+        inputs = {'source': self.source, 'prompt': 'Keep scope'}
         inputs['hash'] = planner._digest(inputs)
         historical = {'role': 'user', 'content': 'Earlier retained findings'}
         task = {'planning_limits': self.limits, 'usage': {'cost': 8}, 'planning_strategy': {

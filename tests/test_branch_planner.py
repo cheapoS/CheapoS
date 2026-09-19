@@ -110,10 +110,10 @@ class PlannerTests(unittest.TestCase):
         result = planner.plan(engine, self.runtime, planner.capture_inputs(self.root, 'Implement the utility'))
         self.assertEqual(result, self.valid)
         repair = self.requests[-1]
-        self.assertEqual(repair[-2]['tool_calls'], response['tool_calls'])
-        self.assertEqual(repair[-1]['role'], 'tool')
-        self.assertEqual(repair[-1]['tool_call_id'], response['tool_calls'][0]['id'])
-        self.assertIn('missing: status', repair[-1]['content'])
+        self.assertEqual(repair[-3]['tool_calls'], response['tool_calls'])
+        self.assertEqual(repair[-2]['role'], 'tool')
+        self.assertEqual(repair[-2]['tool_call_id'], response['tool_calls'][0]['id'])
+        self.assertIn('missing: status', repair[-2]['content'])
         self.assertEqual(events[0][0], 'planning_repair')
         self.assertEqual(events[0][1]['attempt'], 1)
         self.assertEqual(response, original)
@@ -153,7 +153,7 @@ class PlannerTests(unittest.TestCase):
             result = planner.plan(self.engine([self.reply(invalid), self.reply()]), self.runtime,
                                   planner.capture_inputs(self.root, 'Implement reader'))
             self.assertEqual(result, self.valid)
-            feedback = self.requests[-1][-1]['content']
+            feedback = self.requests[-1][-2]['content']
             self.assertIn('items[one].required_checks[0]' if field == 'item' else 'final_checks[0]', feedback)
             self.assertIn('List' if field == 'item' else 'shell', feedback.lower() if field != 'item' else feedback)
 
@@ -178,7 +178,7 @@ class PlannerTests(unittest.TestCase):
         self.assertNotIn('.env', context['files'])
         self.assertNotIn('linked', context['files'])
         self.assertIn('node --test', context['manifests'][0]['contents'])
-        self.assertIn('restartServer', self.requests[1][-1]['content'])
+        self.assertIn('restartServer', self.requests[1][-2]['content'])
         self.assertEqual(self.task['planning_assumptions'], value['assumptions'])
         self.assertIn(value['assumptions'][0], result['items'][0]['instructions'])
 
@@ -190,7 +190,7 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(result, self.valid)
         self.assertEqual(len(self.requests), 4)
         self.assertNotIn('TOP_SECRET', json.dumps(self.requests))
-        self.assertIn('Project inspection did not advance', self.requests[-1][-1]['content'])
+        self.assertIn('Project inspection did not advance', self.requests[-1][-2]['content'])
         self.assertIn('repeated_failed_read', json.dumps(self.requests[-1]))
         self.assertEqual([t['function']['name'] for t in self.offered[0][0]], ['propose_branch_plan', 'inspect_project_file'])
         for tools, options in self.offered:
@@ -448,9 +448,9 @@ class PlannerExcerptTests(unittest.TestCase):
         self.assertEqual(result['items'][0]['id'], 'restart')
         self.assertEqual(result['limits'], self.limits)
         self.assertEqual(len(self.requests), 3)
-        self.assertEqual(self.requests[1][-2], {'role': 'assistant', 'content': prose['content']})
-        self.assertIn('plain text instead of', self.requests[1][-1]['content'])
-        excerpt = json.loads(self.requests[2][-1]['content'])
+        self.assertEqual(self.requests[1][-3], {'role': 'assistant', 'content': prose['content']})
+        self.assertIn('plain text instead of', self.requests[1][-2]['content'])
+        excerpt = json.loads(self.requests[2][-2]['content'])
         self.assertTrue(excerpt['found'])
         self.assertIn('function restartServer()', excerpt['contents'])
         self.assertNotIn('error', excerpt)
@@ -509,11 +509,11 @@ class PlannerExcerptTests(unittest.TestCase):
                                                         'clarification': 'Restart the app or the model gateway?'})
         with self.assertRaises(planner.ClarificationRequired):
             self.run_plan([{'content': 'x' * 20000}, clarification])
-        self.assertEqual(len(self.requests[1][-2]['content']), 12000)
+        self.assertEqual(len(self.requests[1][-3]['content']), 12000)
         truncated = self.call('inspect_project_file', {'path': 'app.js'})
         truncated['finish_reason'] = 'length'
         with patch.object(planner, 'inspect_project_file') as inspect:
             with self.assertRaises(planner.ClarificationRequired):
                 self.run_plan([truncated, clarification])
             inspect.assert_not_called()
-        self.assertIn('output limit', self.requests[1][-1]['content'])
+        self.assertIn('output limit', self.requests[1][-2]['content'])

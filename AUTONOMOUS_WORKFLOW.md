@@ -603,3 +603,23 @@ Trusted check amendments may update the current item, final checks and explicitl
 named pending sibling items together. They retain the previous authorization and
 check history, invalidate affected readiness, and keep usage and file scope.
 Committed or already-started siblings cannot be rewritten by this amendment.
+
+## Implemented: give planners the contract before correction
+
+Planning starts with a short checklist, the two available tools, a canonical
+proposal format and a clearly labeled structural example. The advertised schema
+requires the complete item and plan fields; the parser still accepts supported
+legacy response forms without another model request. Commands retain their
+working directory and the planner must copy the operator's displayed limits.
+
+Each request adds one fresh index of recent inspections, failed paths and partial
+read continuation coordinates. Full evidence and paired tool replies remain in
+history. This reminder does not accumulate in saved messages, cap inspection or
+grant execution authority. Resumed sessions receive the current opening contract
+without resetting recovery attempts, evidence, usage or pending proposal requests.
+
+Routine format and inspection corrections remain in Technical logs, with their
+attempt numbers and diagnostics. Chat shows the automatic planner handoff and
+keeps useful findings, actual failures and operator decisions visible. Small
+deterministic replays cover malformed proposals and failed inspections through
+automatic handoff to a valid proposal, including restart with retained history.

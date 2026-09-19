@@ -14,7 +14,7 @@ const CheapOSChatView = (() => {
   }
   function operatorEvents(events,task) {
     const history=task.events||events;
-    return events.filter(e=>!['model','checkpoint','permission','review_request'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error)&&!(e.kind==='generation'&&isProbe(e.detail,history)));
+    return events.filter(e=>!['model','checkpoint','permission','review_request','planning_repair'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error)&&!(e.kind==='generation'&&isProbe(e.detail,history)));
   }
   function formatWorkflowMessage(roleLabel, text) {
     let cleaned = modelText(text).trim();
@@ -32,6 +32,7 @@ const CheapOSChatView = (() => {
   function detailEvent(event,thinkingOpen=false,entryReply='') {
     const d=event.detail||{};
     if(event.kind==='generation') return thinkingMarkup(d,false,thinkingOpen,event.actor?.role||event.title);
+    if(event.kind==='planning_recovery') return '<div class="workflow-note"><strong>Trying another planner</strong><p>Keeping your request and the findings gathered so far.</p></div>';
     if(event.kind==='planning_inspection') return `<div class="workflow-note"><strong>${esc(d.error?`Could not read ${d.path||'file'}`:`Read ${d.path||'project context'}`)}</strong><p>${esc(d.error||`Inspection ${d.inspection}${Number.isFinite(d.limit)?` of ${d.limit}`:''} · evidence saved for the proposal`)}</p></div>`;
     if(event.kind==='assistant') {
       const text=typeof d==='string'?d:(d.message||d.content||'');

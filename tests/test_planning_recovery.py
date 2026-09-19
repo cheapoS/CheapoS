@@ -42,7 +42,7 @@ class PlanningRecoveryTests(unittest.TestCase):
             if response.get('ok'):return {'items':['valid']}
             raise planner.PlanningResponseError('bad format')
         def select(*args):task['providers']['planner']={'model':'good'}
-        with patch.object(planner,'project_context',return_value='context'),patch.object(planner,'_parse',side_effect=parse),patch('cheapos.routing._select_connections',side_effect=select) as selected:
+        with patch.object(planner,'project_context',return_value={'files': []}),patch.object(planner,'_parse',side_effect=parse),patch('cheapos.routing._select_connections',side_effect=select) as selected:
             self.assertEqual(planner.plan(engine,runtime,inputs),{'items':['valid']})
         self.assertEqual(selected.call_count,1);self.assertEqual(task['usage']['cost'],4)
         self.assertEqual(requests[0][:2],requests[-1][:2]);self.assertNotIn('routing_ready',str(requests[-1]))

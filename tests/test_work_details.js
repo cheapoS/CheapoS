@@ -90,6 +90,26 @@ test('planner inspection labels omit a nonexistent limit and keep saved bounded 
   assert.ok(html.includes(detail.limit?'Inspection 2 of 6':'Inspection 18 ·'));
  }
 });
+test('automatic planning corrections stay in technical logs while chat shows findings and handoff',()=>{
+ const events=[event('repair','planning_repair','Correcting project inspection',{attempt:2,error:'Use exact inventory paths and retained findings'}),
+   event('read','planning_inspection','Inspected project context',{path:'app/package.json',inspection:3}),
+   event('thought','generation','Model thinking',{thinking:'The manifest identifies the relevant check.'}),
+   event('handoff','planning_recovery','The planner could not complete planning.',{model:'previous-planner'}),
+   event('ready','assistant','Plan ready','The proposal is ready.')];
+ const task={events},saved=JSON.stringify(task),html=render(events,{phase:'plan',task});
+ assert.doesNotMatch(html,/Correcting project inspection|Use exact inventory paths|"attempt"|previous-planner/);
+ assert.match(html,/Read app\/package.json/);
+ assert.match(html,/The manifest identifies the relevant check/);
+ assert.match(html,/Trying another planner/);
+ assert.match(html,/Keeping your request and the findings gathered so far/);
+ assert.match(html,/The proposal is ready/);
+ assert.match(html,/data-workflow-logs/);
+ const logs=require('../dist/branch_ui.js').technicalMarkup(task);
+ assert.match(logs,/Correcting project inspection/);
+ assert.match(logs,/Use exact inventory paths and retained findings/);
+ assert.match(logs,/<dt>attempt<\/dt><dd><pre>2<\/pre>/);
+ assert.equal(JSON.stringify(task),saved);
+});
 test('failure and complete reviewer feedback are readable before another disclosure',()=>{
  const feedback='The UI is still missing. Add the control before resubmitting.';
  const html=render([event('error','tool_error','Action failed',{error:'File hash changed'}),

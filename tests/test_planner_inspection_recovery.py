@@ -1,6 +1,7 @@
-"""Planning recovery replays: in memory, no Git, sockets, model calls or waits."""
+"""Small planning recovery replays; no Git, sockets, model calls or waits."""
 import copy
 import json
+import tempfile
 import threading
 import unittest
 from types import SimpleNamespace
@@ -11,7 +12,9 @@ from cheapos import branch_planner as planner
 
 class InspectionRecoveryTests(unittest.TestCase):
     def setUp(self):
-        self.inputs = {'source': '/fixture', 'prompt': 'Suggest one small improvement; explain before editing.'}
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.inputs = {'source': directory.name, 'prompt': 'Suggest one small improvement; explain before editing.'}
         self.inputs['hash'] = planner._digest(self.inputs)
         self.limits = {'dollars': 0, 'requests': 30}
         self.task = {'planning_limits': self.limits, 'execution': {'mode': 'remote'},
@@ -77,6 +80,35 @@ class InspectionRecoveryTests(unittest.TestCase):
                 self.assertFalse(pending)
         self.assertFalse(pending)
 
+    def test_opening_contract_advertises_complete_envelope_and_example_parses(self):
+        self.run_plan([self.finish()])
+        messages = self.requests[0]['messages']
+        self.assertIn('Planning checklist:', messages[0]['content'])
+        self.assertIn('Only inspect_project_file and propose_branch_plan are available', messages[0]['content'])
+        envelope = json.loads(messages[1]['content'])
+        example = envelope['proposal_format_example']
+        self.assertEqual(example['plan']['limits'], self.limits)
+        schema = planner.TOOLS[0]['function']['parameters']
+        plan_schema = schema['properties']['plan']
+        item_schema = plan_schema['properties']['items']['items']
+        self.assertEqual(set(example), set(schema['required']))
+        self.assertEqual(set(example['plan']), set(plan_schema['required']))
+        self.assertEqual(set(example['plan']['items'][0]), set(item_schema['required']))
+        self.assertFalse(plan_schema['additionalProperties'])
+        self.assertFalse(item_schema['additionalProperties'])
+        self.assertNotIn('description', item_schema['properties'])
+        self.assertNotIn('depends_on', item_schema['properties'])
+        # Fill the instructional placeholders with evidence from this fixture.
+        example['plan']['items'] = self.proposal['items']
+        example['plan']['final_checks'] = self.proposal['final_checks']
+        with patch('cheapos.test_profiles.executable_identity', return_value='/fixture/node'):
+            self.assertEqual(planner._parse(self.call('propose_branch_plan', example), self.limits), self.proposal)
+        state = json.loads(messages[-1]['content'])['planning_state']
+        self.assertEqual(state['recent_inspections'], [])
+        self.assertEqual(state['recent_failed_paths'], [])
+        self.assertEqual(state['supplied_manifest_excerpts'], ['app/package.json'])
+        self.assertEqual(state['allowed_tools'], [tool['function']['name'] for tool in reversed(planner.TOOLS)])
+
     def test_different_bad_paths_handoff_after_correction_despite_interleaved_good_reads(self):
         replies = [self.read('C:\fakepath\test.py'), self.read('app/package.json'),
                    self.read('app/nonexistent.ts'), self.read('app/src/main.ts'),
@@ -95,6 +127,64 @@ class InspectionRecoveryTests(unittest.TestCase):
         self.assertIn('retained source for app/src/main.ts', str(messages))
         self.assertIn('C:', str(messages))
         self.assert_paired(messages)
+        reminder = json.loads(messages[-1]['content'])['planning_state']
+        self.assertEqual([r['path'] for r in reminder['recent_inspections']], ['app/package.json', 'app/src/main.ts'])
+        self.assertEqual(len(reminder['recent_failed_paths']), 3)
+        for request in self.requests:
+            self.assertEqual(sum('"planning_state"' in m.get('content', '') for m in request['messages']), 1)
+        self.assertFalse(any('"planning_state"' in m.get('content', '') for m in self.task['planning_strategy']['messages']))
+
+    def test_invalid_proposal_fields_handoff_and_finish_without_operator_action(self):
+        bad = {'status': 'plan', 'plan': copy.deepcopy(self.proposal), 'clarification': ''}
+        bad['plan']['items'][0]['invented_instructions_field'] = 'Keep the same scope'
+        result, inspected, selected = self.run_plan([
+            self.read('app/src/main.ts'), *[self.call('propose_branch_plan', bad) for _ in range(3)], self.finish()])
+        self.assertEqual(result, self.proposal)
+        self.assertEqual(inspected.call_count, 1)
+        self.assertEqual(selected.call_count, 1)
+        self.assertEqual(self.task['usage']['tokens'], 150)
+        self.assertEqual(self.task['planning_limits'], self.limits)
+        self.assertNotIn('authorization_ref', self.task)
+        messages = self.requests[-1]['messages']
+        self.assertIn('invented_instructions_field', str(messages))
+        self.assertEqual(json.loads(messages[-1]['content'])['planning_state']['recent_inspections'][0]['path'], 'app/src/main.ts')
+        self.assert_paired(messages)
+
+    def test_reminder_preserves_partial_read_coordinates_without_duplicating_contents(self):
+        def inspect(source, path, **kwargs):
+            return {**self.inspect(source, path, **kwargs), 'truncated': True, 'has_more': True,
+                    'next_start_line': 2, 'next_start_column': 41}
+        self.run_plan([self.read('app/src/main.ts'), self.finish()], inspect=inspect)
+        messages = self.requests[-1]['messages']
+        recent = json.loads(messages[-1]['content'])['planning_state']['recent_inspections'][0]
+        self.assertTrue(recent['has_more'])
+        self.assertEqual((recent['next_start_line'], recent['next_start_column']), (2, 41))
+        self.assertNotIn('contents', recent)
+        self.assertIn('retained source for app/src/main.ts', messages[-2]['content'])
+
+    def test_contract_upgrade_retains_pending_proposal_and_recovery_history(self):
+        with self.assertRaises(InterruptedError):
+            self.run_plan([self.read('app/src/main.ts'), self.read('app/src/main.ts'), InterruptedError('restart')])
+        saved = self.task['planning_strategy']
+        saved['contract_version'] = 0
+        saved['messages'][0]['content'] = 'Earlier contract'
+        saved['messages'][1]['content'] = '{}'
+        before = copy.deepcopy(saved)
+        result, inspected, selected = self.run_plan([self.finish()])
+        self.assertEqual(result, self.proposal)
+        inspected.assert_not_called()
+        selected.assert_not_called()
+        self.assertEqual(saved['messages'][2:], before['messages'][2:])
+        for field in ('attempt', 'discovery', 'handoffs', 'evidence', 'failed_reads', 'observed_inspections', 'proposal_requested'):
+            self.assertEqual(saved[field], before[field])
+        self.assertEqual(saved['contract_version'], planner.CONTRACT_VERSION)
+        self.assertEqual(saved['messages'][0]['content'], planner.SYSTEM)
+        self.assertEqual(json.loads(saved['messages'][1]['content'])['proposal_format_example']['plan']['limits'], self.limits)
+        self.assertEqual(self.task['usage']['tokens'], 140)
+        request = self.requests[-1]
+        self.assertEqual(request['options']['tool_choice']['function']['name'], 'propose_branch_plan')
+        self.assertIn('Submit propose_branch_plan', json.loads(request['messages'][-1]['content'])['planning_state']['next_action'])
+        self.assert_paired(request['messages'])
 
     def test_single_typo_can_be_corrected_without_switching_or_forcing_proposal(self):
         result, _, selected = self.run_plan([self.read('typo.ts'), self.read('app/src/main.ts'), self.finish()])
