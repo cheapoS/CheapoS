@@ -73,7 +73,7 @@ def mix_samples(*arrays):
     if not arrays:
         return array.array('h')
     out = array.array('h')
-    length = len(arrays[0])
+    length = min(len(a) for a in arrays)
     for i in range(length):
         mixed = sum(a[i] for a in arrays)
         out.append(max(-MAX_AMP, min(MAX_AMP, mixed)))

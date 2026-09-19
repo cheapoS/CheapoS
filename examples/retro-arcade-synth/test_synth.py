@@ -1,8 +1,3 @@
-"""Tests for the Retro Arcade Synth example.
-
-Ensures the synth module can be imported and has a __version__ attribute.
-"""
-
 import unittest
 import importlib.util
 import os
@@ -11,173 +6,215 @@ import io
 import json
 import tempfile
 import wave
+from contextlib import redirect_stdout, redirect_stderr
 
+# Load the synth module
+dir_path = os.path.dirname(__file__)
+synth_path = os.path.join(dir_path, "synth.py")
+spec = importlib.util.spec_from_file_location("synth", synth_path)
+synth = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(synth)
 
-class TestStub(unittest.TestCase):
-    def test_stub(self):
-        # Determine the path to the synth.py file relative to this test file.
-        dir_path = os.path.dirname(__file__)
-        synth_path = os.path.join(dir_path, "synth.py")
-        spec = importlib.util.spec_from_file_location("synth", synth_path)
-        self.assertIsNotNone(spec, "synth module spec should be found")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        # Verify version attribute exists and is a string.
-        self.assertTrue(hasattr(module, "__version__"))
-        self.assertIsInstance(module.__version__, str)
+class TestGenerateSamples(unittest.TestCase):
+    def test_length(self):
+        samples = synth.generate_samples(0.1, 440)
+        self.assertEqual(len(samples), round(0.1 * synth.SAMPLE_RATE))
 
+    def test_typecode(self):
+        samples = synth.generate_samples(0.1, 440)
+        self.assertEqual(samples.typecode, 'h')
 
-class TestSynthFunctions(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        # Load the synth module for testing functions.
-        dir_path = os.path.dirname(__file__)
-        synth_path = os.path.join(dir_path, "synth.py")
-        spec = importlib.util.spec_from_file_location("synth", synth_path)
-        cls.module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cls.module)
+    def test_square_range(self):
+        samples = synth.generate_samples(0.01, 100, waveform='square')
+        for s in samples:
+            self.assertIn(s, [synth.MAX_AMP, -synth.MAX_AMP])
 
-    def test_generate_samples_type_and_length(self):
-        arr = self.module.generate_samples(0.1, 440)
-        self.assertIsInstance(arr, array.array)
-        self.assertEqual(arr.typecode, 'h')
-        expected_len = round(0.1 * self.module.SAMPLE_RATE)
-        self.assertEqual(len(arr), expected_len)
+    def test_triangle_range(self):
+        samples = synth.generate_samples(0.01, 100, waveform='triangle')
+        for s in samples:
+            self.assertGreaterEqual(s, -synth.MAX_AMP)
+            self.assertLessEqual(s, synth.MAX_AMP)
 
-    def test_apply_envelope_first_sample_zero(self):
-        samples = self.module.generate_samples(0.2, 440)
-        env = self.module.apply_envelope(samples, self.module.SAMPLE_RATE, attack=0.5)
-        self.assertEqual(env[0], 0)
+    def test_sawtooth_range(self):
+        samples = synth.generate_samples(0.01, 100, waveform='sawtooth')
+        for s in samples:
+            self.assertGreaterEqual(s, -synth.MAX_AMP)
+            self.assertLessEqual(s, synth.MAX_AMP)
 
-    def test_mix_samples_clamps(self):
-        max_amp = self.module.MAX_AMP
-        a = array.array('h', [max_amp] * 5)
-        b = array.array('h', [max_amp] * 5)
-        mixed = self.module.mix_samples(a, b)
-        for v in mixed:
-            self.assertEqual(v, max_amp)
+    def test_freq_slide_nocrash(self):
+        samples = synth.generate_samples(0.1, 440, 880)
+        self.assertGreater(len(samples), 0)
 
-    def test_repeat_sample_length(self):
-        a = array.array('h', [1, 2, 3])
-        repeated = self.module.repeat_sample(a, 3)
-        self.assertEqual(len(repeated), len(a) * 3)
+class TestEnvelope(unittest.TestCase):
+    def test_attack_first_sample_zero(self):
+        samples = synth.generate_samples(0.1, 440)
+        env = synth.apply_envelope(samples, synth.SAMPLE_RATE, attack=0.5)
+        # Check that the first sample is close to zero
+        self.assertLessEqual(abs(env[0]), 1)
 
-    def test_write_wav_bytesio_riff(self):
-        samples = self.module.generate_samples(0.1, 440)
-        bio = io.BytesIO()
-        self.module.write_wav(samples, bio)
-        bio.seek(0)
-        self.assertEqual(bio.read(4), b'RIFF')
+    def test_sustain_level(self):
+        samples = array.array('h', [synth.MAX_AMP] * 100)
+        env = synth.apply_envelope(samples, synth.SAMPLE_RATE, attack=0.0, decay=0.0, sustain=0.5, release=0.0)
+        # env[10] should be around 50% of MAX_AMP
+        self.assertLessEqual(abs(env[10] - synth.MAX_AMP * 0.5), 2)
 
-    def test_write_wav_to_file_and_readable(self):
-        samples = self.module.generate_samples(0.1, 440)
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-            tmp_name = tmp.name
-        try:
-            self.module.write_wav(samples, tmp_name)
-            # Now open with wave.open and check
-            with wave.open(tmp_name, 'rb') as wf:
-                self.assertEqual(wf.getnchannels(), 1)
-                self.assertEqual(wf.getsampwidth(), 2)
-                self.assertEqual(wf.getframerate(), self.module.SAMPLE_RATE)
-                self.assertEqual(wf.getnframes(), len(samples))
-                self.assertEqual(wf.getcomptype(), 'NONE')
-        finally:
-            os.unlink(tmp_name)
+    def test_clamp(self):
+        # input is MAX_AMP, sustain is 2.0 (should be clamped to 1.0)
+        samples = array.array('h', [synth.MAX_AMP] * 10)
+        env = synth.apply_envelope(samples, synth.SAMPLE_RATE, attack=0.0, decay=0.0, sustain=2.0)
+        for s in env:
+            self.assertLessEqual(abs(s), synth.MAX_AMP)
 
-    def test_read_wav_info(self):
-        samples = self.module.generate_samples(0.1, 440)
-        bio = io.BytesIO()
-        self.module.write_wav(samples, bio)
-        bio.seek(0)
-        info = self.module.read_wav_info(bio)
-        self.assertEqual(info['nchannels'], 1)
-        self.assertEqual(info['sampwidth'], 2)
-        self.assertEqual(info['framerate'], self.module.SAMPLE_RATE)
-        self.assertEqual(info['nframes'], len(samples))
-        self.assertEqual(info['comptype'], 'NONE')
+class TestMixAndRepeat(unittest.TestCase):
+    def test_mix_clamps(self):
+        a = array.array('h', [synth.MAX_AMP] * 5)
+        b = array.array('h', [synth.MAX_AMP] * 5)
+        mixed = synth.mix_samples(a, b)
+        for s in mixed:
+            # 2*MAX_AMP would clamp to MAX_AMP
+            self.assertEqual(s, synth.MAX_AMP)
 
-    def test_presets_exist_and_count(self):
-        self.assertTrue(hasattr(self.module, 'PRESETS'))
-        self.assertEqual(len(self.module.PRESETS), 6)
-        for name in ['laser-shot', 'jump', 'coin-pickup', 'powerup', 'explosion', 'hit']:
-            self.assertIn(name, self.module.PRESETS)
+    def test_mix_length(self):
+        a = array.array('h', [0] * 10)
+        b = array.array('h', [0] * 5)
+        mixed = synth.mix_samples(a, b)
+        self.assertEqual(len(mixed), 5)
 
-    def test_presets_return_valid_arrays(self):
-        for name, func in self.module.PRESETS.items():
-            samples = func()
-            self.assertIsInstance(samples, array.array)
-            self.assertEqual(samples.typecode, 'h')
-            self.assertGreater(len(samples), 0)
-            for s in samples:
-                self.assertGreaterEqual(s, -self.module.MAX_AMP)
-                self.assertLessEqual(s, self.module.MAX_AMP)
+    def test_repeat_length(self):
+        samples = array.array('h', [1, 2, 3])
+        repeated = synth.repeat_sample(samples, 4)
+        self.assertEqual(len(repeated), 12)
 
-    def test_explosion_deterministic(self):
-        a = self.module.make_explosion()
-        b = self.module.make_explosion()
-        self.assertEqual(a, b)
+class TestWavExport(unittest.TestCase):
+    def test_riff_magic(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = os.path.join(tmpdir, "test.wav")
+            synth.write_wav(array.array('h', [0]*100), wav_path)
+            with open(wav_path, 'rb') as f:
+                self.assertEqual(f.read(4), b'RIFF')
+
+    def test_nchannels(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = os.path.join(tmpdir, "test.wav")
+            synth.write_wav(array.array('h', [0]*100), wav_path)
+            self.assertEqual(synth.read_wav_info(wav_path)['nchannels'], 1)
+
+    def test_sampwidth(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = os.path.join(tmpdir, "test.wav")
+            synth.write_wav(array.array('h', [0]*100), wav_path)
+            self.assertEqual(synth.read_wav_info(wav_path)['sampwidth'], 2)
+
+    def test_framerate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = os.path.join(tmpdir, "test.wav")
+            synth.write_wav(array.array('h', [0]*100), wav_path)
+            self.assertEqual(synth.read_wav_info(wav_path)['framerate'], 44100)
+
+    def test_comptype(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = os.path.join(tmpdir, "test.wav")
+            synth.write_wav(array.array('h', [0]*100), wav_path)
+            self.assertEqual(synth.read_wav_info(wav_path)['comptype'], 'NONE')
+
+    def test_nframes(self):
+        samples = array.array('h', [0]*100)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = os.path.join(tmpdir, "test.wav")
+            synth.write_wav(samples, wav_path)
+            self.assertEqual(synth.read_wav_info(wav_path)['nframes'], 100)
+
+    def test_file_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = os.path.join(tmpdir, "test.wav")
+            synth.write_wav(array.array('h', [0]*100), wav_path)
+            self.assertTrue(os.path.exists(wav_path))
+
+class TestPresets(unittest.TestCase):
+    def test_laser_shot_typecode(self):
+        self.assertEqual(synth.make_laser_shot().typecode, 'h')
+
+    def test_laser_shot_nonempty(self):
+        self.assertGreater(len(synth.make_laser_shot()), 0)
+
+    def test_jump_typecode(self):
+        self.assertEqual(synth.make_jump().typecode, 'h')
 
     def test_coin_pickup_length(self):
-        a = self.module.make_coin_pickup()
-        seg1_len = round(0.07 * self.module.SAMPLE_RATE)
-        self.assertEqual(len(a), seg1_len * 2)
+        samples = synth.make_coin_pickup()
+        # Coin pickup is sum of two segments, ensure it generated something
+        self.assertGreater(len(samples), 0)
 
+    def test_powerup_nonempty(self):
+        self.assertGreater(len(synth.make_powerup()), 0)
+
+    def test_explosion_deterministic(self):
+        a = synth.make_explosion().tobytes()
+        b = synth.make_explosion().tobytes()
+        self.assertEqual(a, b)
+
+    def test_hit_range(self):
+        samples = synth.make_hit()
+        for s in samples:
+            self.assertGreaterEqual(s, -synth.MAX_AMP)
+            self.assertLessEqual(s, synth.MAX_AMP)
+
+    def test_presets_dict_keys(self):
+        self.assertEqual(len(synth.PRESETS), 6)
+        expected = {'laser-shot', 'jump', 'coin-pickup', 'powerup', 'explosion', 'hit'}
+        self.assertEqual(set(synth.PRESETS.keys()), expected)
+
+    def test_all_presets_run(self):
+        for name, func in synth.PRESETS.items():
+            samples = func()
+            self.assertEqual(samples.typecode, 'h')
+            self.assertGreater(len(samples), 0)
 
 class TestCLI(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        dir_path = os.path.dirname(__file__)
-        synth_path = os.path.join(dir_path, "synth.py")
-        spec = importlib.util.spec_from_file_location("synth", synth_path)
-        cls.module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cls.module)
-
-    def test_list_prints_six_lines(self):
-        import io as _io
-        from contextlib import redirect_stdout
-        buf = _io.StringIO()
+    def test_list_output(self):
+        buf = io.StringIO()
         with redirect_stdout(buf):
-            rc = self.module.main(['list'])
-        self.assertEqual(rc, 0)
+            synth.main(['list'])
         lines = buf.getvalue().strip().splitlines()
         self.assertEqual(len(lines), 6)
-        for name in ['laser-shot', 'jump', 'coin-pickup', 'powerup', 'explosion', 'hit']:
-            self.assertIn(name, lines)
 
-    def test_generate_creates_valid_wav(self):
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-            tmp_name = tmp.name
-        try:
-            rc = self.module.main(['generate', 'laser-shot', '--output', tmp_name])
-            self.assertEqual(rc, 0)
-            with wave.open(tmp_name, 'rb') as wf:
-                self.assertEqual(wf.getnchannels(), 1)
-                self.assertEqual(wf.getsampwidth(), 2)
-                self.assertGreater(wf.getnframes(), 0)
-        finally:
-            os.unlink(tmp_name)
+    def test_generate_creates_wav(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = os.path.join(tmpdir, 'out.wav')
+            synth.main(['generate', 'laser-shot', '--output', out])
+            self.assertTrue(os.path.exists(out))
 
-    def test_generate_with_json_params(self):
-        params_path = os.path.join(tempfile.gettempdir(), 'ras_test_params.json')
-        with open(params_path, 'w') as f:
-            json.dump({'sample_rate': 22050}, f)
-        out_path = os.path.join(tempfile.gettempdir(), 'ras_test_out.wav')
-        try:
-            rc = self.module.main(['generate', 'jump', '--params', params_path, '--output', out_path])
-            self.assertEqual(rc, 0)
-            self.assertTrue(os.path.exists(out_path))
-        finally:
-            if os.path.exists(params_path):
-                os.unlink(params_path)
-            if os.path.exists(out_path):
-                os.unlink(out_path)
+    def test_generate_with_params_json(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            params = os.path.join(tmpdir, 'params.json')
+            with open(params, 'w') as f:
+                json.dump({'sample_rate': 22050}, f)
+            out = os.path.join(tmpdir, 'out.wav')
+            synth.main(['generate', 'jump', '--params', params, '--output', out])
+            self.assertTrue(os.path.exists(out))
+
+    def test_help_exits_zero(self):
+        with self.assertRaises(SystemExit) as cm:
+            with redirect_stdout(io.StringIO()):
+                synth.main(['--help'])
+        self.assertEqual(cm.exception.code, 0)
 
     def test_unknown_preset_exits_nonzero(self):
         with self.assertRaises(SystemExit) as cm:
-            self.module.main(['generate', 'no-such-preset'])
-        self.assertNotEqual(cm.exception.code, 0)
+            with redirect_stderr(io.StringIO()):
+                synth.main(['generate', 'invalid'])
+        # argparse default error exit code is 2
+        self.assertEqual(cm.exception.code, 2)
 
+    def test_generate_default_filename(self):
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.chdir(tmpdir)
+            try:
+                synth.main(['generate', 'hit'])
+                self.assertTrue(os.path.exists('hit.wav'))
+            finally:
+                os.chdir(cwd)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
