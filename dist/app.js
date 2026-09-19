@@ -9,6 +9,14 @@ const CheapOSChatView = (() => {
     // Keep the saved event intact for diagnostics and replay.
     return compact===emptyChannel||(live&&compact&&emptyChannel.startsWith(compact))?'':text;
   }
+  function replyParts(value,live=false) {
+    // Older saved replies can contain inline reasoning. Keep records intact;
+    // only a leading model envelope is presentation metadata, never code tags.
+    const content=String(value||''),start=content.trimStart(),open=start.match(/^<(think|thinking)>/i);
+    if(!open)return {content:live&&start&&['<think>','<thinking>'].some(tag=>tag.startsWith(start.toLowerCase()))?'':content,thinking:''};
+    const body=start.slice(open[0].length),close=`</${open[1].toLowerCase()}>`,end=body.toLowerCase().indexOf(close);
+    return {content:end<0?'':body.slice(end+close.length).trimStart(),thinking:end<0?body:body.slice(0,end)};
+  }
   function isProbe(detail,events) {
     return detail?.purpose==='probe'||Boolean(detail?.request_id&&events.some(e=>e.kind==='model'&&e.id===detail.request_id&&e.detail?.purpose==='probe'));
   }
@@ -116,8 +124,11 @@ const CheapOSChatView = (() => {
       return `<article class="chat-message from-user ${entry.steer?'steer-bubble':''}" data-message="${entry.id}"><div class="chat-author"><strong>You</strong>${entry.steer?'<span>Follow-up while working</span>':''}</div><div class="chat-message-body">${attMarkup}${messageText(stripAttachmentNotes(entry.text))}</div></article>`;
     }
     const steps=entry.steps, older=steps.length>4?steps.slice(0,-3):[], visible=older.length?steps.slice(-3):steps;
-    const visibleReply=modelText(entry.reply,entry.live);
-    if(!steps.length&&!visibleReply&&!decision&&!entry.live&&!entry.owner)return '';
+    const parts=entry.thinking?{content:entry.reply,thinking:''}:replyParts(entry.reply,entry.live);
+    const visibleReply=modelText(parts.content,entry.live);
+    const thought=parts.thinking||entry.thinking;
+    const replyThinking=thought?thinkingMarkup({thinking:thought,request_id:`reply-${entry.id}`},entry.live,false,'Chat model'):'';
+    if(!steps.length&&!visibleReply&&!replyThinking&&!decision&&!entry.live&&!entry.owner)return '';
     const history=older.length?`<details class="workflow-history" data-event="history-${entry.id}"><summary>${icon('clock')}Earlier steps${entry.itemTitle?' · '+esc(entry.itemTitle):''} <span>${older.length}</span>${icon('chevron')}</summary>${older.map(s=>stepMarkup(s,task,null,entry.reply)).join('')}</details>`:'';
     let replyText = visibleReply;
     if(replyText && visible.length) {
@@ -132,7 +143,7 @@ const CheapOSChatView = (() => {
         }
       }
     }
-    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${entry.discussion?entry.label:task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':entry.label||'Working'}</span>`:''}</div><div class="chat-message-body">${entry.itemTitle?`<h3 class="operation-item-title">${esc(entry.itemTitle)}</h3>`:''}${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${entry.preparation?`<section class="branch-start-status" role="status" aria-live="polite" aria-atomic="true"><strong><span class="spinner" aria-hidden="true"></span> ${esc(entry.preparation.title)}</strong><p>${esc(entry.preparation.detail)}</p></section>`:workingMarkup(task,entry)}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream,entry.reply)).join('')}</div>`:''}${replyText?`<div class="cheapos-answer">${messageText(replyText)}</div>`:''}${decision}${entry.owner?'<section data-operation-actions aria-label="Run actions"></section>':''}</div></article>`;
+    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${entry.discussion?entry.label:task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':entry.label||'Working'}</span>`:''}</div><div class="chat-message-body">${entry.itemTitle?`<h3 class="operation-item-title">${esc(entry.itemTitle)}</h3>`:''}${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${entry.preparation?`<section class="branch-start-status" role="status" aria-live="polite" aria-atomic="true"><strong><span class="spinner" aria-hidden="true"></span> ${esc(entry.preparation.title)}</strong><p>${esc(entry.preparation.detail)}</p></section>`:workingMarkup(task,entry)}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream,entry.reply)).join('')}</div>`:''}${replyThinking}${replyText?`<div class="cheapos-answer">${messageText(replyText)}</div>`:''}${decision}${entry.owner?'<section data-operation-actions aria-label="Run actions"></section>':''}</div></article>`;
   }
   return {message,routingDetails};
 })();

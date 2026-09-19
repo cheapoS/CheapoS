@@ -12,7 +12,7 @@ from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
-from .streaming import read_chat_stream, reasoning_text
+from .streaming import read_chat_stream, normalize_reasoning
 from .served_identity import metadata
 from .request_pacer import pacer, provider_identity, gateway_identity, pacing_interval
 
@@ -317,12 +317,14 @@ class ChatProvider:
         gateway_name = gateway_identity(self.config)
         payload_bytes = len(request.data) if request.data else 0
         interval = pacing_interval(self.config, provider_name, payload_bytes=payload_bytes)
+        assembled_stream = False
         with pacer.throttle(provider_name, interval, gateway=gateway_name, stopped=stopped, timing=self.request_timing):
             network_started = time.monotonic()
             try:
                 with build_opener(NoRedirects(), ProxyHandler({})).open(request, timeout=timeout_seconds) as response, (BriefResponseGuard(response, stopped, stream_seconds if emit is not None else timeout_seconds) if brief or self.config.get("_operator_interruptible") else nullcontext()):
                     if emit is not None and response.headers.get_content_type() == "text/event-stream":
                         data = read_chat_stream(response, emit, stopped, ProviderError, max_seconds=stream_seconds)
+                        assembled_stream = True
                         response_wire_bytes = data.get("_wire_bytes")
                     else:
                         raw = response.read(4_000_001)
@@ -365,9 +367,8 @@ class ChatProvider:
             message = choice["message"]
             if not isinstance(message, dict):
                 raise ValueError()
-            thought = reasoning_text(message)
-            if thought:
-                message = {**message, 'reasoning': thought}
+            if not assembled_stream:
+                message = normalize_reasoning(message)
             if not bool(message.get("tool_calls")) and not (isinstance(message.get("content"), str) and message["content"].strip()) and isinstance(message.get("reasoning"), str) and message["reasoning"].strip():
                 message["content"] = message["reasoning"]
                 message["reasoning_fallback"] = True

@@ -14,6 +14,69 @@ def reasoning_text(message):
                  if isinstance(message.get(key), str) and message[key]), '')
 
 
+class InlineThinking:
+    """Separate a leading model reasoning envelope, including split SSE tags.
+
+    Once ordinary answer text starts, leave it alone: quoted tags and code
+    examples are content, not protocol. Only an undecided tag suffix is held.
+    """
+    OPENERS = ('<think>', '<thinking>')
+
+    def __init__(self, emit):
+        self.emit = emit
+        self.pending = ''
+        self.phase = 'start'
+        self.closing = ''
+
+    def feed(self, text, final=False):
+        self.pending += text
+        if self.phase == 'start':
+            candidate = self.pending.lstrip().lower()
+            opener = next((tag for tag in self.OPENERS if candidate.startswith(tag)), None)
+            if opener:
+                self.pending = self.pending.lstrip()[len(opener):]
+                self.closing = '</' + opener[1:]
+                self.phase = 'thinking'
+            elif not final and any(tag.startswith(candidate) for tag in self.OPENERS):
+                return
+            else:
+                self.phase = 'answer'
+        if self.phase == 'thinking':
+            end = self.pending.lower().find(self.closing)
+            if end >= 0:
+                self.emit('thinking', self.pending[:end])
+                self.pending = self.pending[end + len(self.closing):]
+                self.phase = 'answer_start'
+            else:
+                keep = 0
+                if not final:
+                    for size in range(1, min(len(self.pending), len(self.closing) - 1) + 1):
+                        if self.closing.startswith(self.pending[-size:].lower()):
+                            keep = size
+                boundary = len(self.pending) - keep
+                self.emit('thinking', self.pending[:boundary])
+                self.pending = self.pending[boundary:]
+                return
+        if self.phase == 'answer_start':
+            self.pending = self.pending.lstrip()
+            if not self.pending:
+                return
+            self.phase = 'answer'
+        self.emit('answer', self.pending)
+        self.pending = ''
+
+
+def normalize_reasoning(message):
+    """Give non-streamed replies the same answer/thinking split as SSE."""
+    parts = {'answer': [], 'thinking': []}
+    content = message.get('content')
+    if isinstance(content, str):
+        InlineThinking(lambda kind, text: parts[kind].append(text)).feed(content, final=True)
+        message = {**message, 'content': ''.join(parts['answer']) or None}
+    thought = '\n\n'.join(part for part in (reasoning_text(message), ''.join(parts['thinking'])) if part)
+    return {**message, 'reasoning': thought} if thought else message
+
+
 def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX_SECONDS):
     started = time.monotonic()
     content, thinking, calls, usage = [], [], {}, {}
@@ -21,6 +84,13 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
     frame = []
     reported_model = None
     identity_conflict = False
+
+    def output(kind, text):
+        if text:
+            (thinking if kind == 'thinking' else content).append(text)
+            emit(kind, text)
+
+    inline = InlineThinking(output)
 
     def consume(payload):
         nonlocal usage, finished, done, limited, reported_model, identity_conflict
@@ -70,12 +140,10 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
             delta = choice.get('delta') or {}
             thought = reasoning_text(delta)
             if isinstance(thought, str) and thought:
-                thinking.append(thought)
-                emit('thinking', thought)
+                output('thinking', thought)
             answer = delta.get('content')
             if isinstance(answer, str) and answer:
-                content.append(answer)
-                emit('answer', answer)
+                inline.feed(answer)
             for fragment in delta.get('tool_calls') or []:
                 index = fragment.get('index', 0)
                 if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < 8:
@@ -122,6 +190,7 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
         raise error_type('The model reached its output limit before finishing. Partial tool calls were not executed.', code='output_limit', usage=usage or None)
     if not done or not finished:
         raise error_type('The model stream ended before its response was complete. Partial tool calls were not executed.', code='stream_interrupted', usage=usage or None)
+    inline.feed('', final=True)
     message = {'role':'assistant', 'content':''.join(content) or None}
     if thinking:
         message['reasoning'] = ''.join(thinking)

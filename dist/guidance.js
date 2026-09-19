@@ -608,6 +608,9 @@ if(typeof module!=='undefined')module.exports=CheapOSGuide;
 'use strict';
 const CheapOSConversation = (() => {
   const guide = CheapOSGuide;
+  const eventOrder = (task,event) => task.conversationPositions?.get(event) ?? task.conversationEventCount ?? 0;
+  const userEntry = (turn,task) => ({kind:'user',id:`user-${turn.index}`,text:turn.userPrompt,
+    _order:turn.index ? eventOrder(task,task.conversationUserEvents?.[turn.index-1]) : -1});
   const last = (events, kind) => events.filter(e => e.kind === kind).at(-1);
   const finalEvent = events => events.findLast(e => !['generation','state','context'].includes(e.kind));
   const committed = event => event?.kind === 'commit' && Boolean(event.detail?.commit);
@@ -778,7 +781,8 @@ const CheapOSConversation = (() => {
     const live = latest && guide.isActive(task.status);
     const stream = latest ? task.stream : null;
     // A simple streamed chat answer needs no execution row.
-    const onlyChat = stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','review_request','review_coaching','coordinator_recovery','tool_error'].includes(e.kind));
+    const openingChat = stream?.opening_chat || events.some(e=>e.kind==='model'&&e.detail?.opening_chat);
+    const onlyChat = openingChat || stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','review_request','review_coaching','coordinator_recovery','tool_error'].includes(e.kind));
     if (live && !onlyChat) {
       phase = currentPhase(task, steps.at(-1)?.phase);
       if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-live-${phase}`,phase,events:[],live:false});
@@ -824,7 +828,7 @@ const CheapOSConversation = (() => {
       else if (latest && guide.canCommit(task)) intro = task.status === 'completed' ? 'Checks have passed. The changes are ready for your review.' : 'The changes have passed checks and review. They’re ready for your decision.';
       else if (steps.at(-1).phase === 'commit' && steps.at(-1).events.some(e => e.detail?.commit)) intro = 'Your approved changes are committed to the project.';
     }
-    return {kind:'assistant',id:key,latest,live,intro,reply:onlyChat ? stream.content || reply : reply,stream:live && !onlyChat ? stream : null,steps:steps.map(s => stepView(s,task,at))};
+    return {kind:'assistant',id:key,latest,live,intro,reply:onlyChat ? stream?.content || reply : reply,thinking:onlyChat ? stream?.thinking || thinkingText || '' : '',stream:live && !onlyChat ? stream : null,steps:steps.map(s => stepView(s,task,at)),_order:eventOrder(task,events[0])};
   }
   function branchBuild(task, at) {
     const run=task.branch_run, items=run.items||[], planning=Boolean(task.planning_request&&!run.authorization_ref);
@@ -914,13 +918,13 @@ const CheapOSConversation = (() => {
     }
     const turns=guide.turns(task,at);
     for(const turn of turns) {
-      entries.push({kind:'user',id:`user-${turn.index}`,text:turn.userPrompt});
+      entries.push(userEntry(turn,task));
       let batch=[],id=inherited,part=0,attempt=null;
       const flush=(latest=false)=>{emit(batch,`operation-${turn.index}-${id}-${part++}`,id,latest);batch=[];};
       for(const event of turn.events) {
         if(event.kind==='steer') {
           if(batch.length)flush();
-          entries.push({kind:'user',id:`steer-${turn.index}-${event.id}`,text:typeof event.detail==='string'?event.detail:event.detail?.message||event.title,steer:true});
+          entries.push({kind:'user',id:`steer-${turn.index}-${event.id}`,text:typeof event.detail==='string'?event.detail:event.detail?.message||event.title,steer:true,_order:eventOrder(task,event)});
           continue;
         }
         const next=owner(event);
@@ -946,7 +950,7 @@ const CheapOSConversation = (() => {
     }
     entries.push({kind:'assistant',id:'integration-'+preparation.id,latest:true,live:true,owner:false,
       label:'Preparing update',intro:'Your update request is saved. I’ll continue here automatically.',
-      steps:[],reply:'',stream:null,preparation});
+      steps:[],reply:'',stream:null,preparation,_order:(task.conversationEventCount||0)+1});
     return entries;
   }
   function workConversation(task, at = Date.now()) {
@@ -954,11 +958,11 @@ const CheapOSConversation = (() => {
     if(task.branch_run)return withPreparation(branchBuild(task,at),task);
     const entries = [];
     for (const turn of guide.turns(task, at)) {
-      entries.push({kind:'user',id:`user-${turn.index}`,text:turn.userPrompt});
+      entries.push(userEntry(turn,task));
       let start = 0, part = 0;
       for (const steer of turn.steerMessages) {
         if (steer.eventIndex > start) entries.push(response(turn.events.slice(start,steer.eventIndex),`reply-${turn.index}-${part++}`,task,false,at));
-        entries.push({kind:'user',id:`steer-${turn.index}-${steer.id ?? steer.eventIndex}`,text:steer.text,steer:true});
+        entries.push({kind:'user',id:`steer-${turn.index}-${steer.id ?? steer.eventIndex}`,text:steer.text,steer:true,_order:eventOrder(task,turn.events[steer.eventIndex])});
         start = steer.eventIndex + 1;
       }
       entries.push(response(turn.events.slice(start),`reply-${turn.index}-${part}`,task,turn.isLatest,at));
@@ -967,17 +971,28 @@ const CheapOSConversation = (() => {
   }
   function build(task, at = Date.now()) {
     // Model traffic for an answer is not worker/reviewer execution progress.
-    const work={...task,events:(task.events||[]).filter(e=>e.detail?.purpose!=='chat_reply'||e.detail?.opening_chat),
+    // Discussion anchors count the original saved events, including filtered
+    // model traffic. Never renumber them using only the visible work events.
+    const events=task.events||[];
+    const work={...task,conversationPositions:new Map(events.map((e,i)=>[e,i+1])),
+      conversationEventCount:events.length,conversationUserEvents:events.filter(e=>e.kind==='user'),
+      events:events.filter(e=>e.detail?.purpose!=='chat_reply'||e.detail?.opening_chat),
       stream:task.stream?.purpose==='chat_reply'&&!task.stream.opening_chat?null:task.stream};
     const entries=workConversation(work,at);
     for(const turn of task.discussion||[]){
-      entries.push({kind:'user',id:'discussion-user-'+turn.id,text:turn.message});
+      let anchor=turn.after_event;
+      if(!Number.isInteger(anchor)||anchor<0||anchor>events.length){
+        const next=Number.isFinite(Date.parse(turn.time))?events.findIndex(e=>Date.parse(e.time)>Date.parse(turn.time)):-1;
+        anchor=next<0?events.length:next;
+      }
+      const order=anchor+0.5;
+      entries.push({kind:'user',id:'discussion-user-'+turn.id,text:turn.message,_order:order});
       entries.push({kind:'assistant',id:'discussion-reply-'+turn.id,discussion:true,latest:false,owner:false,
         live:['queued','answering'].includes(turn.status),steps:[],stream:null,
         label:turn.status==='queued'?'Message received':turn.status==='answering'?'Replying':'',
-        intro:'',reply:turn.answer||(turn.status==='queued'?'I’ll answer after the current operation. Your work stays in place.':'Thinking about your question…')});
+        intro:'',reply:turn.answer||(turn.status==='queued'?'I’ll answer after the current operation. Your work stays in place.':'Thinking about your question…'),_order:order});
     }
-    return entries;
+    return entries.sort((a,b)=>a._order-b._order).map(({_order,...entry})=>entry);
   }
   return {build,readyForNext};
 })();

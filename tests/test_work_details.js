@@ -68,6 +68,29 @@ test('route waiting shows a clock rather than an active-work spinner',()=>{
  assert.doesNotMatch(html,/class="spinner"/);
 });
 
+test('saved inline thinking is collapsed separately from the answer without rewriting history',()=>{
+ const entry={kind:'assistant',id:'greeting',steps:[],reply:'<think>Consider greeting.</think>\n\nHello!'};
+ const before=JSON.stringify(entry),html=ctx.view.message(entry,{});
+ assert.match(html,/<details class="thinking-panel/);
+ assert.doesNotMatch(html,/<details[^>]*\sopen\b/);
+ assert.match(html,/class="thinking-output"[^>]*>Consider greeting\.<\/div>/);
+ assert.match(html,/class="cheapos-answer">[\s\S]*Hello!/);
+ assert.doesNotMatch(html,/&lt;\/?think&gt;/);
+ assert.equal(JSON.stringify(entry),before);
+ for(const prefix of ['<','<th','<think>Consider greeting.']){
+  assert.doesNotMatch(ctx.view.message({...entry,reply:prefix,live:true},{}),/class="cheapos-answer"/);
+ }
+ const separate=ctx.view.message({...entry,reply:'Hello!',thinking:'Separate thought'},{});
+ assert.match(separate,/thinking-output[^>]*>Separate thought/);
+ const normalized=ctx.view.message({...entry,reply:'<think>literal example</think>',thinking:'Separate thought'},{});
+ assert.match(normalized,/class="cheapos-answer">[\s\S]*&lt;think&gt;literal example/);
+ for(const text of ['Use <think> in a test.', '```xml\n<think>literal</think>\n```']){
+  const markup=ctx.view.message({...entry,reply:text},{});
+  assert.match(markup,/&lt;think&gt;/);assert.doesNotMatch(markup,/thinking-panel/);
+ }
+ assert.match(ctx.view.message({kind:'user',id:'user-0',text:entry.reply},{}),/&lt;think&gt;/);
+});
+
 test('large routing history never displaces thinking or edits from chat',()=>{
  const routing=Array.from({length:120},(_,i)=>event('route-'+i,'routing','Checking candidates',{model:'candidate-noise'}));
  const thinking=event('think','generation','Model output',{request_id:'r',model:'worker',thinking:'I will make the focused change.'});

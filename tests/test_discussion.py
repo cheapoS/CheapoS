@@ -126,6 +126,7 @@ class DiscussionTests(unittest.TestCase):
         for values in directions:
             result = engine.chat_message(task['id'], values)
             self.assertEqual(result['discussion'][-1]['status'], 'work_queued')
+            self.assertEqual(result['discussion'][-1]['after_event'], len(task['events']))
         self.assertEqual(len(task['chat_work_queue']), 2)
         engine.chat_message = Mock(return_value={'id': task['id']})
         discussion.finish(engine, runtime)

@@ -30,6 +30,44 @@ test('queued questions acknowledge delivery and never pretend to resume paused w
  assert.ok(build(t).slice(0,-2).every(e=>!e.stream),'A chat answer is not a live worker step');
 });
 
+test('discussion stays between the work turns where it was sent, including hidden model traffic',()=>{
+ const t=task({prompt:'hi',events:[
+  event(1,'model','Opening greeting',{purpose:'chat_reply',opening_chat:true}),
+  event(2,'assistant','Chat','Hello!'),
+  event(3,'model','Answering chat',{purpose:'chat_reply'}),
+  event(4,'generation','Chat thinking',{purpose:'chat_reply',thinking:'Private to this reply'}),
+  event(5,'user','You','I have a lot on my mind'),
+  event(6,'model','Requesting worker'),event(7,'assistant','Worker','Tell me more.')],
+  discussion:[{id:'earlier',message:'just chatting',answer:'Happy to chat.',after_event:2,status:'answered'}]});
+ const before=JSON.stringify(t),entries=build(t);
+ assert.deepEqual(entries.map(e=>e.text||e.reply),['hi','Hello!','just chatting','Happy to chat.','I have a lot on my mind','Tell me more.']);
+ assert.equal(JSON.stringify(t),before);
+ assert.deepEqual(build(JSON.parse(before)),entries);
+ t.discussion.push({id:'later',message:'Why?',after_event:7,status:'queued'});
+ const ids=build(t).map(e=>e.id);
+ t.discussion[1].status='answered';t.discussion[1].answer='Here is why.';
+ assert.deepEqual(build(t).map(e=>e.id),ids,'Receiving the answer must not move its question');
+});
+
+test('discussion with a timestamp retains chronology for older receipts without an event anchor',()=>{
+ const t=task({events:[{...event(1,'assistant','Worker','First answer'),time:'2026-09-19T12:00:00Z'},
+  {...event(2,'user','You','Later direction'),time:'2026-09-19T12:02:00Z'},
+  {...event(3,'assistant','Worker','Later answer'),time:'2026-09-19T12:03:00Z'}],
+  discussion:[{id:'q',message:'Earlier question',answer:'Earlier reply',status:'answered',time:'2026-09-19T12:01:00Z'}]});
+ assert.deepEqual(build(t).map(e=>e.text||e.reply),['Fix the script.','First answer','Earlier question','Earlier reply','Later direction','Later answer']);
+});
+
+test('unattended discussion order preserves the final work owner and merge controls',()=>{
+ const t=task({status:'approved',events:[event(1,'assistant','Worker','Initial work'),event(2,'user','You','Apply the improvement')],
+  branch_run:{id:'run',status:'ready_for_merge',authorization_ref:'auth',current_item_id:null,items:[{id:'one',status:'committed'}],readiness:{manifest:{files:[{path:'app.py'}]}}},
+  discussion:[{id:'q',message:'Earlier question',answer:'Earlier reply',status:'answered',after_event:1}]});
+ const entries=build(t),question=entries.findIndex(e=>e.id==='discussion-user-q'),direction=entries.findIndex(e=>e.text==='Apply the improvement');
+ assert.ok(question<direction);
+ assert.equal(entries.filter(e=>e.owner).length,1);
+ assert.ok(entries.find(e=>e.owner).id.startsWith('operation-1-'));
+ assert.ok(entries.filter(e=>e.discussion).every(e=>!e.owner&&!e.latest));
+});
+
 test('opening greeting streams its actual answer without a synthetic coding step',()=>{
  const stream={purpose:'chat_reply',opening_chat:true,phase:'answer',role:'worker',model:'fast-model',request_id:2,content:'Hi! What would you like to work on?'};
  const t=task({prompt:'hi there',status:'running',stream,
@@ -38,6 +76,22 @@ test('opening greeting streams its actual answer without a synthetic coding step
  assert.equal(reply.reply,stream.content);
  assert.equal(reply.steps.length,0);
  assert.equal(reply.live,true);
+});
+
+test('opening greeting retains separate thinking through streaming and completion',()=>{
+ const t=task({prompt:'hi',status:'running',
+  stream:{purpose:'chat_reply',opening_chat:true,phase:'thinking',thinking:'Considering greeting',content:''},
+  events:[event(2,'model','Requesting worker',{purpose:'chat_reply',opening_chat:true})]});
+ let reply=replies(t).at(-1);
+ assert.equal(reply.reply,'');assert.equal(reply.thinking,'Considering greeting');assert.equal(reply.steps.length,0);
+ t.stream.phase='answer';t.stream.content='Hello!';
+ reply=replies(t).at(-1);
+ assert.equal(reply.reply,'Hello!');assert.equal(reply.thinking,'Considering greeting');assert.equal(reply.steps.length,0);
+ t.stream=null;t.status='awaiting_reply';
+ t.events.push(event(3,'generation','Model thinking',{purpose:'chat_reply',opening_chat:true,thinking:'Considering greeting'}),event(4,'assistant','Chat','Hello!'));
+ reply=replies(t).at(-1);
+ assert.equal(reply.reply,'Hello!');assert.equal(reply.thinking,'Considering greeting');assert.equal(reply.steps.length,0);
+ assert.equal(reply.live,false);
 });
 
 test('accepted updates show saved preparation stages in both chat modes before agents restart',()=>{

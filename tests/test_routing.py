@@ -19,7 +19,7 @@ def model(name, **extra):
 class RoutingTests(LocalCase):
     def test_opening_greeting_skips_probe_but_following_work_still_qualifies(self):
         task = self.chat('remote', prompt='hi there')
-        requests = self.responses([{'role': 'assistant', 'content': 'Hi! What would you like to work on?'},
+        requests = self.responses([{'role': 'assistant', 'content': 'Hi! What would you like to work on?', 'reasoning': 'Keep the greeting brief.'},
                                    call('ask_user', {'question': 'Which behavior should change?'})])
         self.engine.start(task['id'])
         result = self.finish(task)
@@ -28,6 +28,9 @@ class RoutingTests(LocalCase):
         self.assertEqual(requests[0]['tools'], [])
         self.assertNotIn('math_utils.py', json.dumps(requests[0]['messages']))
         self.assertEqual(result['request_metrics'][0]['purpose'], 'chat_reply')
+        thought = next(e['detail'] for e in result['events'] if e['kind'] == 'generation')
+        self.assertTrue(thought['opening_chat'])
+        self.assertEqual(thought['thinking'], 'Keep the greeting brief.')
         self.assertEqual(result['usage']['worker']['tokens'], 15)
         self.assertFalse(result['route']['ready'])
         self.assertIsNone(result['providers']['worker'])

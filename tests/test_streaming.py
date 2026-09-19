@@ -2,11 +2,14 @@ import io
 import json
 import threading
 import time
+import unittest
+from contextlib import nullcontext
+from email.message import Message
 from unittest.mock import patch
 from urllib.error import URLError
 
 from cheapos.providers import ChatProvider, ProviderError
-from cheapos.streaming import read_chat_stream
+from cheapos.streaming import read_chat_stream, normalize_reasoning
 from test_engine import LocalCase, call
 
 
@@ -14,6 +17,75 @@ def chunk(delta=None, finish=None, usage=None):
     value={'choices':[{'index':0,'delta':delta or {},'finish_reason':finish}]}
     if usage is not None:value['usage']=usage
     return ('data: '+json.dumps(value)+'\n\n').encode()
+
+
+class InlineThinkingTests(unittest.TestCase):
+    def test_streamed_tags_never_enter_answer_at_any_split_boundary(self):
+        text=' \n<think>Consider the greeting.\n</think>\n\nHello!'
+        fragments=[[text[:i], text[i:]] for i in range(1, len(text))] + [list(text)]
+        for pieces in fragments:
+            seen=[]
+            data=b''.join(chunk({'content':piece}) for piece in pieces)
+            data+=chunk(finish='stop', usage={'prompt_tokens':12, 'completion_tokens':7})+b'data: [DONE]\n\n'
+            result=read_chat_stream(io.BytesIO(data), lambda *part:seen.append(part), lambda:False, ProviderError)
+            message=result['choices'][0]['message']
+            self.assertEqual(message['content'], 'Hello!')
+            self.assertEqual(message['reasoning'], 'Consider the greeting.\n')
+            self.assertEqual(''.join(text for kind,text in seen if kind=='answer'), 'Hello!')
+            self.assertEqual(''.join(text for kind,text in seen if kind=='thinking'), message['reasoning'])
+            self.assertEqual(result['usage'], {'prompt_tokens':12, 'completion_tokens':7})
+
+    def test_normal_answers_and_code_examples_are_preserved(self):
+        for text in ('Hello!', '  Hello!', '<thread>example</thread>', '<',
+                     'Use <think> for the example.', '```xml\n<think>literal</think>\n```',
+                     '`<think>literal</think>`'):
+            with self.subTest(text=text):
+                self.assertEqual(normalize_reasoning({'content':text}), {'content':text})
+                seen=[]
+                data=b''.join(chunk({'content':c}) for c in text)+chunk(finish='stop')+b'data: [DONE]\n\n'
+                message=read_chat_stream(io.BytesIO(data),lambda kind,text:seen.append((kind,text)),lambda:False,ProviderError)['choices'][0]['message']
+                self.assertEqual(message['content'], text)
+                self.assertNotIn('reasoning', message)
+                self.assertEqual(''.join(text for kind,text in seen if kind=='answer'), text)
+
+    def test_complete_replies_preserve_structured_reasoning_tools_and_details(self):
+        tools=[call('read_file', {'path':'README.md'})]
+        original={'content':'<THINKING>Inline thought</THINKING>\nAnswer', 'reasoning_content':'Structured thought',
+                  'tool_calls':tools, 'reasoning_details':[{'type':'fixture'}]}
+        result=normalize_reasoning(original)
+        self.assertEqual(result['content'], 'Answer')
+        self.assertEqual(result['reasoning'], 'Structured thought\n\nInline thought')
+        self.assertEqual(result['tool_calls'], tools)
+        self.assertEqual(result['reasoning_details'], original['reasoning_details'])
+        self.assertTrue(original['content'].startswith('<THINKING>'))
+
+    def test_provider_json_and_sse_keep_thinking_out_of_the_answer(self):
+        for streaming in (False, True):
+            for content, answer, fallback in (
+                ('<think>Consider greeting</think>\nHello!', 'Hello!', False),
+                ('<think>Consider greeting', 'Consider greeting', True),
+                ('<think>Consider greeting</think>', 'Consider greeting', True),
+                ('<think>First</think><think>literal answer</think>', '<think>literal answer</think>', False),
+            ):
+                with self.subTest(streaming=streaming, content=content):
+                    data=(chunk({'content':content})+chunk(finish='stop',usage={'completion_tokens':7})+b'data: [DONE]\n\n'
+                          if streaming else json.dumps({'choices':[{'message':{'content':content}}], 'usage':{'completion_tokens':7}}).encode())
+                    response=io.BytesIO(data)
+                    response.headers=Message()
+                    response.headers['Content-Type']='text/event-stream' if streaming else 'application/json'
+                    provider=ChatProvider({'base_url':'http://127.0.0.1:11434/v1', 'model':'fixture'})
+                    seen=[]
+                    with patch('cheapos.providers.build_opener') as opener, patch('cheapos.providers.pacer.throttle', return_value=nullcontext()):
+                        opener.return_value.open.return_value=response
+                        if streaming:
+                            result,usage=provider.complete_with_progress([],[],128,lambda *part:seen.append(part),lambda:False)
+                        else:
+                            result,usage=provider.complete([],[],128)
+                    self.assertEqual(result['content'], answer)
+                    self.assertEqual(bool(result.get('reasoning_fallback')), fallback)
+                    self.assertEqual(usage['completion_tokens'], 7)
+                    if fallback:
+                        self.assertFalse(any(kind=='answer' for kind,_ in seen))
 
 
 class StreamingTests(LocalCase):

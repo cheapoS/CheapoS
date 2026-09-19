@@ -1315,6 +1315,7 @@ class Engine:
             runtime = self.runtimes.get(task_id)
             if runtime and runtime.thread and runtime.thread.is_alive() and getattr(runtime, 'discussion_only', False) and not getattr(runtime, 'discussion_finished', False):
                 receipt = {'id': uuid.uuid4().hex, 'message': message.strip(), 'time': now(),
+                           'after_event': len(runtime.task.get('events', [])),
                            'status': 'work_queued', 'answer': 'Your direction is saved. I’ll apply it after this reply.'}
                 runtime.task.setdefault('discussion', []).append(receipt)
                 runtime.task.setdefault('chat_work_queue', []).append({'receipt': receipt['id'], 'values': copy.deepcopy(values)})
@@ -2736,7 +2737,7 @@ class Engine:
             finally:
                 task["stream"] = None
                 if live["thinking"] or not completed and live["content"]:
-                    self.event(task, "generation", "Model thinking" if completed else "Interrupted model output", {"request_id":live["request_id"], "model":config["model"], "role":role, "purpose":purpose, "thinking":live["thinking"], "content":live["content"] if not completed else "", "interrupted":not completed, "truncated":live["truncated"]})
+                    self.event(task, "generation", "Model thinking" if completed else "Interrupted model output", {"request_id":live["request_id"], "model":config["model"], "role":role, "purpose":purpose, "opening_chat":live['opening_chat'], "thinking":live["thinking"], "content":live["content"] if not completed else "", "interrupted":not completed, "truncated":live["truncated"]})
                 self.store.save(task)
         else:
             task['stream'] = {'request_id': task['events'][-1]['id'], 'model': config['model'], 'role': role, 'purpose': purpose,
@@ -2759,6 +2760,7 @@ class Engine:
                     thought = message['reasoning']
                     self.event(task, 'generation', 'Model thinking', {
                         'request_id': task['stream']['request_id'], 'model': config['model'],
+                        'opening_chat': task['stream']['opening_chat'],
                         'role': role, 'purpose': purpose, 'thinking': thought[:16000], 'content': '',
                         'interrupted': False, 'truncated': len(thought) > 16000})
             except ProviderError as error:
