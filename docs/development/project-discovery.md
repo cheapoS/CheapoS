@@ -65,33 +65,24 @@ instructions when resumed. They retain request history, evidence, failed reads,
 attempt counters and usage. A planner handoff can inspect again rather than
 inheriting a forced-proposal tool choice from a previous failed inspection.
 
-## Next step: prepare context when a project is added
+## Project registration and Carto
 
-The existing optional [Carto integration](carto-context.md) already supplies
-symbol/import/dependency context to planners, workers and reviewers. Today it
-starts indexing on the first context lookup (or through Project context
-settings), rather than automatically when a project is registered.
+The [Carto integration](carto-context.md) supplies symbol/import/dependency
+context to planners, workers and reviewers. It now defaults on and queues local
+indexing when a project is added or reopened. Source capture and hashing happen
+in the background too; Add project does not wait for the index. Explicit project
+off choices are preserved. Builds are serialized across projects and task copies.
 
-A follow-up should prepare these two complementary sources on project addition:
-
-1. Save the deterministic repository map and its source-file identities in the
-   local app profile. It identifies components, guidance and validation
-   declarations, including files that a code-symbol index does not cover.
-2. Queue Carto indexing in the background when installed and enabled for the
-   project. Return the Add project response immediately; source capture/hashing
-   must also run outside the HTTP request path.
-3. Show compact context status (available, mapping, unavailable) as information,
-   never a task-start gate. Agents can inspect files while indexing proceeds.
-4. Refresh after relevant file/branch changes. Match results to the actual task
-   copy's content identity, not merely the source project or current main branch.
-   Keep separate indexes for divergent task copies; do not serve stale facts.
+The deterministic repository map is still generated from current permitted files
+when planning or building a worker brief. It identifies components, guidance and
+validation declarations, including documents that a symbol index does not cover.
+Carto enriches that map with code relationships and reuses its index while the
+source content matches. Different task copies retain separate index identities.
+Neither missing runtime nor indexing progress blocks ordinary file inspection.
 
 Carto helps locate symbols and affected tests; it does not decide which nested
 application the user intends, establish that a script is safe, or validate a
-model's proposal. Keep both kinds of context available and retain ordinary file
-inspection as the fallback. This onboarding/cache lifecycle is a follow-up design;
-the current change builds discovery at planning/brief time and preserves the
-existing optional Carto integration.
+model's proposal. Both sources are evidence, not execution authority.
 
 ## Regression checks
 

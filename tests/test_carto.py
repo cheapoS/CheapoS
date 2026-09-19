@@ -1,8 +1,11 @@
 """Small deterministic cache/permission cases; no Node installation or model calls."""
 import tempfile
+import json
+import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from cheapos.carto import Carto
 from cheapos.storage import write_json
@@ -73,7 +76,7 @@ class CartoTests(unittest.TestCase):
         self.assertNotEqual(self.calls[0]['root'], self.calls[1]['root'])
 
     def test_disabled_missing_runtime_and_failures_do_not_block(self):
-        write_json(self.carto.settings_file, {})
+        write_json(self.carto.settings_file, {str(self.source):False})
         self.assertEqual(self.context()['status'], 'disabled')
         write_json(self.carto.settings_file, {str(self.source): True})
         with patch.object(self.carto, 'available', return_value=False):
@@ -82,6 +85,118 @@ class CartoTests(unittest.TestCase):
             self.context()
             self.assertEqual(self.context()['status'], 'unavailable')
         self.assertEqual(self.calls, [])
+
+    def test_project_mapping_defaults_on_and_preserves_explicit_opt_out(self):
+        self.carto.settings_file.unlink()
+        self.assertTrue(self.carto.status(self.source)['enabled'])
+        self.assertEqual(self.carto.prepare(self.source)['status'], 'indexing')
+        self.assertEqual([c['action'] for c in self.calls], ['index'])
+        self.assertEqual(self.context()['status'], 'ready')
+        self.calls.clear()
+        write_json(self.carto.settings_file, {str(self.source): False})
+        self.assertFalse(self.carto.status(self.source)['enabled'])
+        self.assertEqual(self.carto.prepare(self.source)['status'], 'disabled')
+        self.assertEqual(self.context()['status'], 'disabled')
+        self.assertEqual(self.calls, [])
+
+    def test_add_project_returns_before_capture_and_duplicate_requests_share_work(self):
+        pending = []
+        class DeferredThread:
+            def __init__(self, target, args, **kwargs):
+                self.run = lambda: target(*args)
+            def start(self):
+                pending.append(self.run)
+        with patch('cheapos.carto.threading.Thread', DeferredThread), \
+                patch.object(self.carto, 'capture', wraps=self.carto.capture) as capture:
+            self.assertEqual(self.carto.prepare(self.source)['status'], 'indexing')
+            self.carto.prepare(self.source)
+            self.assertEqual(self.context()['status'], 'indexing')
+            self.assertEqual(len(pending), 1)
+            capture.assert_not_called()
+            self.assertEqual(self.calls, [])
+            pending.pop()()
+            capture.assert_called_once()
+        self.assertFalse(self.carto.building)
+        self.assertEqual(self.context()['status'], 'ready')
+
+    def test_reopening_reuses_index_and_refreshes_changes_without_a_timer(self):
+        self.carto.prepare(self.source)
+        self.carto.prepare(self.source)
+        self.assertEqual([c['action'] for c in self.calls], ['index'])
+        (self.source / 'app.py').write_text('def different(): return 42\n')
+        self.carto.prepare(self.source)
+        self.assertEqual([c['action'] for c in self.calls], ['index', 'index'])
+        (self.source / 'app.py').unlink()
+        self.carto.prepare(self.source)
+        self.assertEqual(self.context()['indexed_files'], 0)
+
+    def test_warmup_failures_and_unavailable_runtime_leave_file_discovery_usable(self):
+        with patch.object(self.carto, 'available', return_value=False), \
+                patch.object(self.carto, 'capture') as capture:
+            self.assertEqual(self.carto.prepare(self.source)['status'], 'unavailable')
+            capture.assert_not_called()
+        with patch.object(self.carto, 'capture', side_effect=ValueError('fixture unavailable')):
+            self.carto.prepare(self.source)
+        self.assertFalse(self.carto.building)
+        self.assertEqual(self.carto.prepare(self.source)['status'], 'unavailable')
+        self.assertEqual(self.context()['status'], 'unavailable')
+        self.assertEqual((self.source / 'app.py').read_text(), 'def hello(): return 1\n')
+
+    def test_thread_start_failure_does_not_break_project_registration(self):
+        thread = Mock()
+        thread.start.side_effect = RuntimeError('cannot start thread')
+        with patch('cheapos.carto.threading.Thread', return_value=thread):
+            self.assertEqual(self.carto.prepare(self.source)['status'], 'unavailable')
+        self.assertFalse(self.carto.building)
+
+    def test_disabled_queued_project_is_not_indexed(self):
+        pending = []
+        class DeferredThread:
+            def __init__(self, target, args, **kwargs):
+                self.run = lambda: target(*args)
+            def start(self):
+                pending.append(self.run)
+        with patch('cheapos.carto.threading.Thread', DeferredThread):
+            self.carto.prepare(self.source)
+            write_json(self.carto.settings_file, {str(self.source): False})
+            pending.pop()()
+        self.assertFalse(self.carto.building)
+        self.assertEqual(self.calls, [])
+
+    def test_index_operations_share_serial_gate(self):
+        # No sleeping threads: assert both warm-up and task refresh execute
+        # their index mutation under the same non-reentrant serialization gate.
+        original = self.carto.call
+        def guarded(request):
+            if request['action'] == 'index':
+                self.assertFalse(self.carto.index_lock.acquire(blocking=False))
+            return original(request)
+        with patch.object(self.carto, 'call', side_effect=guarded):
+            self.carto.prepare(self.source)
+            (self.source / 'app.py').write_text('def edited(): pass\n')
+            self.context()
+        self.assertEqual([c['action'] for c in self.calls], ['index', 'index'])
+
+    def test_registered_project_schedules_mapping_after_saving_without_extra_authority(self):
+        from cheapos.engine import Engine
+        from cheapos.workspace import Workspace
+        engine = object.__new__(Engine)
+        profile = self.root / 'registration'
+        profile.mkdir()
+        engine.store = SimpleNamespace(root=profile)
+        engine.lock = threading.RLock()
+        engine.projects = lambda **kwargs: []
+        engine.hidden_project_paths = lambda: {str(self.source)}
+        def prepare(source):
+            self.assertEqual(json.loads((profile / 'projects.json').read_text()), [str(self.source)])
+            self.assertEqual(json.loads((profile / 'hidden-projects.json').read_text()), [])
+            return {'status': 'indexing'}
+        engine.carto = SimpleNamespace(prepare=Mock(side_effect=prepare))
+        with patch.object(Workspace, 'project_root', return_value=self.source):
+            result = engine.open_project({'repository': str(self.source)})
+        engine.carto.prepare.assert_called_once_with(str(self.source))
+        self.assertEqual(result, {'path': str(self.source), 'name': 'repo'})
+        self.assertEqual({p.name for p in profile.iterdir()}, {'projects.json', 'hidden-projects.json'})
 
     def test_building_index_never_serves_stale_context(self):
         self.context()

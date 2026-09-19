@@ -1,4 +1,4 @@
-"""Optional advisory Carto context, indexed outside repositories per workspace."""
+"""Automatic advisory Carto context, indexed outside repositories per workspace."""
 import hashlib
 import json
 import os
@@ -21,14 +21,22 @@ class Carto:
         self.root=Path(profile)/'carto'
         self.settings_file=self.root/'settings.json'
         self.lock=threading.RLock()
+        self.index_lock=threading.Lock()
         self.building=set()
         self.failures={}
 
     def settings(self):
         try:
             value = json.loads(self.settings_file.read_text())
-            return value if isinstance(value, dict) else {}
-        except (OSError,ValueError):return {}
+            return value if isinstance(value, dict) else None
+        except FileNotFoundError:return {}
+        except (OSError,ValueError):return None
+
+    def enabled(self, source):
+        settings=self.settings()
+        # An absent preference inherits the default. Unreadable/corrupt settings
+        # cannot silently override a previously saved opt-out.
+        return isinstance(settings,dict) and settings.get(source,True) is True
 
     def runtime(self):
         node=RUNTIME/'runtime'/'node_modules'/'node'/'bin'/'node'
@@ -41,15 +49,53 @@ class Carto:
         if type(enabled) is not bool:raise ValueError('Carto enabled must be true or false')
         source=str(Workspace.project_root(source))
         with self.lock:
-            settings=self.settings();settings[source]=enabled
+            settings=self.settings() or {};settings[source]=enabled
             write_json(self.settings_file,settings)
         return self.status(source)
 
     def status(self, source):
         source=str(Path(source).resolve())
-        return {'enabled':self.settings().get(source,False),'installed':self.available(),
-                'message':'Carto supplies advisory context. File inspection remains available.',
+        return {'enabled':self.enabled(source),'installed':self.available(),
+                'message':'Carto maps projects automatically unless turned off for this project. File inspection remains available.',
                 'install_command':'python3 scripts/install_carto.py'}
+
+    def prepare(self, source):
+        """Warm a registered project's index without scanning on the caller."""
+        source=str(Path(source).resolve())
+        if not self.enabled(source):return {'status':'disabled'}
+        if not self.available():return {'status':'unavailable'}
+        key=hashlib.sha256(source.encode()).hexdigest()
+        with self.lock:
+            if key in self.building:return {'status':'indexing'}
+            failed=self.failures.get(key)
+            if failed and time.monotonic()-failed[0]<60:return {'status':'unavailable'}
+            self.building.add(key)
+            try:
+                threading.Thread(target=self._prepare,args=(source,key),daemon=True).start()
+            except RuntimeError:
+                self.building.discard(key)
+                self.failures[key]=(time.monotonic(),'Background mapping could not start. Continue normal file inspection.')
+                return {'status':'unavailable'}
+        return {'status':'indexing'}
+
+    def _prepare(self, source, key):
+        try:
+            # Serialize index work across projects and task copies. A queued
+            # add/reopen does not start another parser or hash the repository.
+            with self.index_lock:
+                if not self.enabled(source):return
+                files,identity,omitted=self.capture(source)
+                if not self.enabled(source):return
+                mirror=self.root/'cache'/key/'source'
+                try:manifest=json.loads((mirror.parent/'manifest.json').read_text())
+                except (OSError,ValueError):manifest={}
+                if not isinstance(manifest,dict) or manifest.get('identity')!=identity:
+                    self._build(mirror,files,identity,omitted)
+                with self.lock:self.failures.pop(key,None)
+        except (OSError,ValueError,subprocess.SubprocessError) as error:
+            with self.lock:self.failures[key]=(time.monotonic(),str(error))
+        finally:
+            with self.lock:self.building.discard(key)
 
     def capture(self, root):
         workspace=Workspace(root);files={};omitted=0;size=0
@@ -75,37 +121,45 @@ class Carto:
 
     def build(self, key, mirror, files, identity, omitted, rebuild=False):
         try:
-            mirror.mkdir(parents=True,exist_ok=True)
-            if rebuild: shutil.rmtree(mirror/'.carto', ignore_errors=True)
-            previous={p.relative_to(mirror).as_posix():p for p in mirror.rglob('*') if p.is_file() and '.carto' not in p.relative_to(mirror).parts}
-            for name,data in files.items():
-                path=mirror/name
-                path.parent.mkdir(parents=True,exist_ok=True)
-                if not path.exists() or path.read_bytes()!=data:
-                    previous_mtime = path.stat().st_mtime if path.exists() else 0
-                    path.write_bytes(data)
-                    # Carto uses millisecond mtime/size as its fast path.
-                    stamp = max(time.time(), previous_mtime + 1)
-                    os.utime(path, (stamp, stamp))
-            for name,path in previous.items():
-                if name not in files:path.unlink()
-            result=self.call({'action':'index','root':str(mirror),'files':sorted(files)})
-            write_json(mirror.parent/'manifest.json',{'identity':identity,'omitted':omitted,'indexed_at':time.time(),**result})
+            with self.index_lock:
+                self._build(mirror,files,identity,omitted,rebuild)
             with self.lock:self.failures.pop(key,None)
         except (OSError,ValueError,subprocess.SubprocessError) as error:
             with self.lock:self.failures[key]=(time.monotonic(),str(error))
         finally:
             with self.lock:self.building.discard(key)
 
+    def _build(self, mirror, files, identity, omitted, rebuild=False):
+        mirror.mkdir(parents=True,exist_ok=True)
+        if rebuild: shutil.rmtree(mirror/'.carto', ignore_errors=True)
+        previous={p.relative_to(mirror).as_posix():p for p in mirror.rglob('*') if p.is_file() and '.carto' not in p.relative_to(mirror).parts}
+        for name,data in files.items():
+            path=mirror/name
+            path.parent.mkdir(parents=True,exist_ok=True)
+            if not path.exists() or path.read_bytes()!=data:
+                previous_mtime = path.stat().st_mtime if path.exists() else 0
+                path.write_bytes(data)
+                # Carto uses millisecond mtime/size as its fast path.
+                stamp = max(time.time(), previous_mtime + 1)
+                os.utime(path, (stamp, stamp))
+        for name,path in previous.items():
+            if name not in files:path.unlink()
+        result=self.call({'action':'index','root':str(mirror),'files':sorted(files)})
+        write_json(mirror.parent/'manifest.json',{'identity':identity,'omitted':omitted,'indexed_at':time.time(),**result})
+
     def context(self, source, workspace, *, path=None, query=None, rebuild=False):
         source=str(Path(source).resolve());workspace=str(Path(workspace).resolve())
         base={'advisory':NOTE}
-        if not self.settings().get(source,False):return {**base,'status':'disabled'}
+        if not self.enabled(source):return {**base,'status':'disabled'}
         if not self.available():return {**base,'status':'unavailable','message':'Install optional Carto with python3 scripts/install_carto.py. Continue normal file inspection.'}
         if path is not None:Workspace(workspace).path(path)
         if query is not None and (not isinstance(query,str) or len(query)>500):raise ValueError('Use a search query of up to 500 characters')
         key=hashlib.sha256(workspace.encode()).hexdigest();mirror=self.root/'cache'/key/'source'
         try:
+            # An Add project warm-up may already be queued or running. Avoid
+            # rescanning on a simultaneous task/context request.
+            with self.lock:
+                if key in self.building:return {**base,'status':'indexing','message':'Index refresh is running. Use ordinary file inspection for now.'}
             files,identity,omitted=self.capture(workspace)
             with self.lock:
                 if key in self.building:return {**base,'status':'indexing','message':'Index refresh is running. Use ordinary file inspection for now.'}
@@ -113,6 +167,7 @@ class Carto:
                 if failed and time.monotonic()-failed[0]<60 and not rebuild:return {**base,'status':'unavailable','message':failed[1]}
                 try:manifest=json.loads((mirror.parent/'manifest.json').read_text())
                 except (OSError,ValueError):manifest={}
+                if not isinstance(manifest,dict):manifest={}
                 if rebuild or manifest.get('identity')!=identity:
                     self.building.add(key)
                     threading.Thread(target=self.build,args=(key,mirror,files,identity,omitted,rebuild),daemon=True).start()

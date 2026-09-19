@@ -651,6 +651,7 @@ class Engine:
             paths = [p["path"] for p in self.projects(include_hidden=True) if p["path"] != source]
             write_json(self.store.root / "projects.json", [source] + paths[:49])
             write_json(self.store.root / "hidden-projects.json", sorted(self.hidden_project_paths() - {source}))
+        self.carto.prepare(source)
         return {"path": source, "name": Path(source).name}
 
     @property
