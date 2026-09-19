@@ -28,8 +28,18 @@ class BranchReviewTests(LocalCase):
 
     def test_real_checks_independent_review_receipt_and_reuse(self):
         task=self.task();runtime=Runtime(task)
+        component=Path(task['workspace'])/'component';component.mkdir()
+        (component/'check.py').write_text("from pathlib import Path\nassert Path.cwd().name == 'component'\nprint('component verified')\n")
+        command=[sys.executable,'-B','check.py']
+        spec={'command':command,'directory':'component'}
+        run=task['branch_run'];run['items'][0]['required_checks']=[spec];run['plan']['items'][0]['required_checks']=[spec]
+        run['current_item_id']='fix'
+        scope=self.engine.branch.scopes.prepare(task,command,directory='component')
+        self.engine.branch.scopes.consent(task,scope);run['check_scope']=[scope]
         def review(runtime,messages,tools,role):
             packet=json.loads(messages[1]['content'])
+            self.assertEqual(packet['checks'][0]['directory'], 'component')
+            self.assertEqual(packet['checks'][0]['record']['directory'], 'component')
             return call('review_decision',{'decision':'APPROVE','feedback':'Inspected both bounds','candidate_id':packet['candidate_id'], 'criteria_outcomes':{'Both bounds work':{'passed':True,'evidence':'Tests and code cover lower and upper bounds'}}})
         self.engine.request=Mock(side_effect=review)
         result=checkpoint(self.engine,runtime,{})

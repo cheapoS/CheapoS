@@ -43,7 +43,7 @@ def verification(task, command):
     if choice != 'automatic': return choice
     allowance = task['limits'].get('check_seconds', 90)
     for check in task.get('checks', []):
-        if check.get('command') != command: continue
+        if check.get('command') != command or check.get('directory', '.') != task.get('check_directory', '.'): continue
         if check.get('outcome') == 'process_timeout':
             allowance = max(allowance, (check.get('allowed_seconds') or check.get('duration') or allowance) * 2)
         elif check.get('passed'):

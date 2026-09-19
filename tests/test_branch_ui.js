@@ -185,3 +185,13 @@ test('actual startup renderer covers pending, accepted-stale, running and paused
  t.branch_run.status='awaiting_authorization';t.branch_run.startup={status:'failed',error:'Snapshot <changed>'};context.render(t);
  assert.match(panel.innerHTML,/Startup needs attention/);assert.match(panel.innerHTML,/Snapshot &lt;changed&gt;/);assert.match(panel.innerHTML,/data-finish-startup/);assert.doesNotMatch(panel.innerHTML,/data-start-time/);
 });
+test('component check editor roundtrips directory and shell quoting without changing commands',()=>{
+ const checks=['node test.js',{command:'npm run build',directory:'cloudflare'},{command:['python3','-c',"print('hi there')"],directory:'other app'}];
+ const text=checks.map(ui.checkText).join('\n');
+ assert.match(text,/\[cloudflare\] npm run build/);
+ const parsed=ui.parseChecks(text);assert.deepEqual(parsed.slice(0,2),checks.slice(0,2));
+ assert.equal(parsed[2].directory,'other app');assert.match(parsed[2].command,/print/);
+ assert.equal(ui.checkText({command:['npm','run','build'],directory:'/task/workspace/cloudflare',check_directory:'cloudflare'}),'[cloudflare] npm run build');
+ const task={branch_run:{status:'awaiting_authorization',plan:{items:[{id:'one',title:'One',required_checks:[checks[1]]}],final_checks:[checks[1]]}}};
+ assert.match(ui.planMarkup(task),/\[cloudflare\] npm run build/);
+});

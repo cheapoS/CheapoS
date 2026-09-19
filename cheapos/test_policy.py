@@ -4,6 +4,7 @@ from pathlib import PurePath
 
 
 def argv(command):
+    if isinstance(command, dict): command = command['command']
     return shlex.split(command) if isinstance(command, str) else list(command)
 
 
@@ -46,7 +47,15 @@ def full_suite(command):
 
 def plan_commands(plan):
     commands=[c for i in plan.get('items',[]) for c in i.get('required_checks',[])]+plan.get('final_checks',[])
-    return list(dict.fromkeys(shlex.join(argv(c)) for c in commands if full_suite(c)))
+    return list(dict.fromkeys(check_key(c) for c in commands if full_suite(c)))
+
+
+def check_key(command, directory='.'):
+    if isinstance(command, dict): directory = command.get('directory', '.')
+    from .check_specs import directory as normalize
+    directory = normalize(directory)
+    text = shlex.join(argv(command))
+    return text if directory == '.' else directory + ': ' + text
 
 
 def disclosure(engine, task):
@@ -55,7 +64,7 @@ def disclosure(engine, task):
     for saved in getattr(engine.store,'tasks',{}).values():
         if saved.get('source') != task.get('source'):continue
         records=saved.get('checks',[])+[{**e['detail'],'time':e.get('time','')} for e in saved.get('events',[]) if e.get('kind')=='checks' and isinstance(e.get('detail'),dict)]
-        samples.extend(c for c in records if c.get('duration') is not None and shlex.join(argv(c.get('command',[]))) in commands)
+        samples.extend(c for c in records if c.get('duration') is not None and check_key(c.get('command',[]), c.get('directory', '.')) in commands)
     latest=max(samples,key=lambda c:c.get('time',''),default={})
     return {'full_suite_checks':commands,'full_suite_last_seconds':latest.get('duration')}
 
@@ -105,7 +114,7 @@ def require_verification(command):
 def guard(task, command):
     require_verification(command)
     if not task.get('branch_run') or not full_suite(command):return
-    canonical=shlex.join(argv(command))
+    canonical=check_key(command,task.get('check_directory', '.'))
     if canonical in task.get('full_suite_approval',[]):return
     run=task['branch_run']
     # Preserve already-authorized live/legacy runs, only for their captured commands.

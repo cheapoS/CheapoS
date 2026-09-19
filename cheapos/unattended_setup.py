@@ -17,13 +17,13 @@ def inspect(task, scopes):
     for index,scope in enumerate(scopes):
         argv=scope['command']
         try:
-            found=environment.inspect(task,argv)
+            found=environment.inspect({**task, 'check_directory':scope.get('check_directory','.')},argv)
             ready=found['status']=='ready'
             detail=('Start authorizes this command'+(' and its displayed test profile.' if scope.get('profile') else ' exactly.')
                     +' Observable prerequisites are present; undeclared dependencies and future environment changes remain unverified.') if ready else found['evidence']+' '+found['next_step']
         except (OSError,ValueError) as error:
             ready=False;detail='Could not inspect this command environment: '+str(error)[:500]
-        checks.append({'id':'command-'+str(index),'label':shlex.join(argv),'status':'ready' if ready else 'blocked','detail':detail})
+        checks.append({'id':'command-'+str(index),'label':(scope['check_directory']+': ' if scope.get('check_directory') else '')+shlex.join(argv),'status':'ready' if ready else 'blocked','detail':detail})
     assumptions=task.get('planning_assumptions',[])
     return {'ready':bool(scopes) and all(c['status']=='ready' for c in checks),'checks':checks,
             'assumptions':[a for a in assumptions if isinstance(a,str)][:12], 'policy':POLICY}

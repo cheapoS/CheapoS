@@ -16,7 +16,7 @@ def queue(controller, runtime, item):
     runtime.guard()
     controller.validate_authority(task,run)
     branch_workspace.validate_owned(run['workspace_mapping'],run['expected_feature_tip'])
-    if any(not controller.scopes.authorize(task,scope['command']) for scope in run['check_scope']):
+    if any(not controller.scopes.authorize(task,scope['command'],directory=scope.get('check_directory','.')) for scope in run['check_scope']):
         return False
     recovery=run.setdefault('implementation_recovery',{'attempts':0,'failed_models':[]})
     per_item=item.setdefault('recovery',{'attempts':0})

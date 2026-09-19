@@ -6,9 +6,9 @@ Persist receipts as JSON strings; later baseline advances never rewrite them.
 import copy
 import hashlib
 import json
-import shlex
-from .verification import evidence_identity, normalize_unittest
+from .verification import evidence_identity
 from .workspace import Workspace, git
+from .check_specs import specifications as check_specs, same
 
 
 def _json(value):
@@ -20,20 +20,8 @@ def _digest(value):
 
 
 def commands(specifications):
-    """Normalize captured check specs without mutating a task's command field."""
-    if not isinstance(specifications, list) or len(specifications) > 20:
-        raise ValueError('Required checks must be a finite list')
-    result = []
-    for spec in specifications:
-        command = spec.get('command') if isinstance(spec, dict) else spec
-        argv = shlex.split(command) if isinstance(command, str) else command
-        if not isinstance(argv, list) or not argv or not all(isinstance(s, str) and s and '\0' not in s for s in argv):
-            raise ValueError('Invalid required check command')
-        argv = normalize_unittest(argv)
-        if argv in result:
-            raise ValueError('Duplicate required check command')
-        result.append(list(argv))
-    return result
+    """Compatibility argv view; execution and consent use specifications()."""
+    return [s['command'] for s in check_specs(specifications)]
 
 
 def candidate(task, context, required_checks, criteria=None):
@@ -47,11 +35,13 @@ def candidate(task, context, required_checks, criteria=None):
     workspace = Workspace(task['workspace'])
     patch = workspace.patch(validate=True)
     checks = []
-    for argv in commands(required_checks):
-        identity = evidence_identity({**task, 'check_command': argv})
+    for spec in check_specs(required_checks):
+        argv = spec['command']
+        identity = evidence_identity({**task, 'check_command': argv, 'check_directory': spec['directory']})
         if not identity:
             raise ValueError('Verification environment is missing or cannot be identified')
-        checks.append({'command': argv, 'verification_identity': identity})
+        checks.append({'command': argv, 'verification_identity': identity,
+                       **({'directory': spec['directory']} if spec['directory'] != '.' else {})})
     value = {'version': 1, 'context': copy.deepcopy(context), 'criteria': list(criteria),
              'workspace': str(workspace.root), 'generation': task.get('workspace_generation', 0),
              'private_baseline': git(workspace.root, 'rev-parse', 'HEAD').strip(),
@@ -61,24 +51,26 @@ def candidate(task, context, required_checks, criteria=None):
     return value
 
 
-def bind_check(current, command, record):
+def bind_check(current, command, record, directory="."):
     """Accept only controller-executed, complete checks of these exact inputs."""
     from .test_policy import require_verification
     require_verification(command)
-    expected = next((c for c in current['checks'] if c['command'] == command), None)
-    if not expected or record.get('command') != command or record.get('passed') is not True or record.get('exit_code') != 0 or record.get('reason') or record.get('truncated') or record.get('outcome', 'passed') != 'passed':
+    spec = {'command': command, 'directory': directory}
+    expected = next((c for c in current['checks'] if same(c, spec)), None)
+    if not expected or not same(record, spec) or record.get('passed') is not True or record.get('exit_code') != 0 or record.get('reason') or record.get('truncated') or record.get('outcome', 'passed') != 'passed':
         raise ValueError('Required verification did not complete successfully')
     if record.get('verification_identity') != expected['verification_identity'] or record.get('input_identity') != expected['verification_identity']:
         raise ValueError('Verification is stale or its inputs changed')
-    return {'candidate_id': current['id'], 'command': list(command), 'record': copy.deepcopy(record)}
+    return {'candidate_id': current['id'], 'command': list(command), 'record': copy.deepcopy(record),
+            **({'directory': directory} if directory != '.' else {})}
 
 
 def current_checks(current, records):
     """Use the latest result matching each command; older failures are history."""
     result = []
     for expected in current['checks']:
-        record = next((r for r in reversed(records) if r.get('command') == expected['command']), {})
-        result.append(bind_check(current, expected['command'], record))
+        record = next((r for r in reversed(records) if same(r, expected)), {})
+        result.append(bind_check(current, expected['command'], record, expected.get('directory', '.')))
     return result
 
 
@@ -134,7 +126,7 @@ def ready_receipt(current, checks, review, worker_model, reviewer_model, criteri
     for expected, bound in zip(current['checks'], checks):
         if bound.get('candidate_id') != current['id']:
             raise ValueError('Check belongs to a different candidate')
-        bind_check(current, expected['command'], bound['record'])
+        bind_check(current, expected['command'], bound['record'], expected.get('directory', '.'))
     receipt = {'version': 1, 'candidate': copy.deepcopy(current), 'checks': copy.deepcopy(checks),
                'review': copy.deepcopy(review), 'worker_model': worker, 'reviewer_model': reviewer,
                'criteria_outcomes': copy.deepcopy(criteria_outcomes),

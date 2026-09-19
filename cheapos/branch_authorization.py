@@ -16,6 +16,7 @@ import time
 from . import branch_runs
 from .project_permissions import config_identity, identity
 from .test_profiles import executable_identity, unittest_selection
+from .check_specs import cwd, directory as check_directory
 
 
 def digest(value):
@@ -129,16 +130,19 @@ not mutated. A projected scope must equal the materialized prepare() result.
         self.project_grants = project_grants
         self.exact_grants = {}
 
-    def prepare(self, task, argv, *, allow_missing=False):
+    def prepare(self, task, argv, *, directory=".", allow_missing=False):
         if not isinstance(argv, list) or not argv or any(not isinstance(a, str) or not a or '\0' in a for a in argv):
             raise ValueError('Supply an exact executable and argument list')
         self.project_grants.binding(task)
-        profile = self.project_grants.proposal(task, argv)
-        executable = executable_identity(argv[0], task['workspace'])
+        directory = check_directory(directory)
+        working = cwd(task, directory, allow_missing=allow_missing)
+        scoped = {'check_directory': directory} if directory != '.' else {}
+        profile = self.project_grants.proposal(task, argv) if directory == '.' else None
+        executable = executable_identity(argv[0], working) if working.is_dir() else None
         if not executable and allow_missing:
             binding = {'task_id': task['id'], 'source': identity(task['source']),
-                       'workspace': identity(task['workspace']), 'command': argv}
-            return {'command': list(argv), 'directory': task['workspace'], 'profile': None,
+                       'workspace': identity(task['workspace']), 'command': argv, **scoped}
+            return {'command': list(argv), 'directory': str(working), 'profile': None, **scoped,
                     'setup_required': True, 'fingerprint': digest(binding)}
         if not executable:
             from .branch_pause import PauseError
@@ -149,14 +153,16 @@ not mutated. A projected scope must equal the materialized prepare() result.
                    'source_config': config_identity(task['source']), 'workspace_config': config_identity(task['workspace']),
                    'venv_config': config_identity(Path(executable).parent.parent),
                    'revision': self.project_grants.revisions.get(task['source'], 0)}
-        return {'command': list(argv), 'directory': task['workspace'], 'profile': profile,
+        if scoped:
+            binding.update(check_directory=directory, directory_identity=[str(working), working.stat().st_dev, working.stat().st_ino], directory_config=config_identity(working))
+        return {'command': list(argv), 'directory': str(working), 'profile': profile, **scoped,
                 'fingerprint': digest(binding)}
 
     def consent(self, task, scope, *, exact=False):
-        current = self.prepare(task, scope['command'])
+        current = self.prepare(task, scope['command'], directory=scope.get('check_directory', '.'))
         if current != scope:
             raise ValueError('Runner, configuration or workspace changed; inspect fresh command scope')
-        existing, _ = self.project_grants.authorize(task, scope['command'])
+        existing, _ = self.project_grants.authorize(task, scope['command']) if scope.get('check_directory', '.') == '.' else (None, None)
         if existing:
             return existing
         if scope['profile'] and not exact:
@@ -165,14 +171,19 @@ not mutated. A projected scope must equal the materialized prepare() result.
         self.exact_grants[key] = copy.deepcopy(scope)
         return key
 
-    def authorize(self, task, argv):
+    def authorize(self, task, argv, *, directory="."):
         from .task_commands import allowed
+        try:
+            directory = check_directory(directory)
+            cwd(task, directory, allow_missing=allowed(task))
+        except (ValueError, OSError):
+            return None
         if allowed(task): return 'task_commands'
-        granted, _ = self.project_grants.authorize(task, argv)
+        granted, _ = self.project_grants.authorize(task, argv) if directory == '.' else (None, None)
         if granted:
             return granted
         try:
-            scope = self.prepare(task, argv)
+            scope = self.prepare(task, argv, directory=directory)
         except (ValueError, OSError):
             return None
         key = digest(scope)
@@ -180,16 +191,16 @@ not mutated. A projected scope must equal the materialized prepare() result.
             return key
         return None
 
-    def approved_command(self, task, argv):
+    def approved_command(self, task, argv, *, directory="."):
         """Reuse a captured check without expanding the operator's command grant."""
         selection = unittest_selection(argv)
         if selection is None:
             return list(argv)
-        commands = [scope['command'] for scope in task.get('branch_run', {}).get('check_scope', [])]
+        commands = [scope['command'] for scope in task.get('branch_run', {}).get('check_scope', []) if scope.get('check_directory', '.') == directory]
         if argv in commands:
             return list(argv)
         for command in commands:
-            if unittest_selection(command) == selection and self.authorize(task, command):
+            if unittest_selection(command) == selection and self.authorize(task, command, directory=directory):
                 # Revalidate live grants, including workspace, runner, configuration
                 # and revocation. A saved plan alone never grants execution.
                 return list(command)

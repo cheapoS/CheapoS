@@ -107,7 +107,7 @@ def amend(controller, task_id, values):
     from .providers import validate_provider
     from .branch_authorization import contract_builder
     action=values.get('action')
-    allowed={'action','approved','message','model','instructions','revision_token','required_checks','final_checks','full_suite_approved','resume'}
+    allowed={'action','approved','message','model','instructions','revision_token','required_checks','item_checks','final_checks','full_suite_approved','resume'}
     if set(values)-allowed or action not in {'model','reviewer','revise','checks'} or values.get('approved') is not True:
         raise ValueError('Explicitly approve the selected model or current-item revision')
     if 'resume' in values and not isinstance(values['resume'],bool):raise ValueError('Resume must be a boolean')
@@ -163,13 +163,23 @@ def amend(controller, task_id, values):
         elif action=='checks':
             from . import test_policy
             from .engine import check_argv
-            from .branch_evidence import commands
+            from .check_specs import specifications
             required=values.get('required_checks');final=values.get('final_checks')
-            if not all(isinstance(v,list) and v and len(v)<=12 and all(isinstance(c,str) and c.strip() for c in v) for v in (required,final)):
+            if not all(isinstance(v,list) and v and len(v)<=12 for v in (required,final)):
                 raise ValueError('Provide one or more executable commands for both item and final verification')
             revised=copy.deepcopy(run['plan'])
             next(i for i in revised['items'] if i['id']==item['id'])['required_checks']=required
             revised['final_checks']=final
+            # Explicit trusted correction for checks on future, unstarted items.
+            # Completed/active siblings must retain their original review contract.
+            updates=values.get('item_checks',{})
+            if not isinstance(updates,dict):raise ValueError('Item checks must map saved item IDs to check specifications')
+            for item_id, checks in updates.items():
+                saved=next((i for i in run['items'] if i['id']==item_id),None)
+                if not saved or saved['status'] != 'pending' or saved.get('commit_receipt') or item_id==item['id']:
+                    raise ValueError('Only pending sibling item checks can be revised together')
+                if not isinstance(checks,list) or not 1 <= len(checks) <= 12:raise ValueError('Supply pending item checks')
+                next(i for i in revised['items'] if i['id']==item_id)['required_checks']=copy.deepcopy(checks)
             if 'instructions' in values:
                 instructions=values['instructions']
                 if not isinstance(instructions,str) or not instructions.strip() or len(instructions)>4000:raise ValueError('Provide instructions of up to 4,000 characters')
@@ -179,16 +189,21 @@ def amend(controller, task_id, values):
             test_policy.approve(candidate,values.get('full_suite_approved'))
             all_commands=[]
             for spec in [c for i in revised['items'] for c in i['required_checks']]+final:
-                command=commands([spec])[0]
+                check=specifications([spec])[0];command=check['command']
                 import shlex
                 check_argv(shlex.join(command))
-                if command not in all_commands:all_commands.append(command)
-            scopes=[controller.scopes.prepare(task,c) for c in all_commands]
+                if check not in all_commands:all_commands.append(check)
+            scopes=[controller.scopes.prepare(task,c['command'],directory=c['directory']) for c in all_commands]
             run['plan']=revised;item['required_checks']=required
+            for sibling in run['items']:
+                if sibling['id'] in updates:
+                    sibling['required_checks']=copy.deepcopy(updates[sibling['id']])
+                    sibling['revision']=sibling.get('revision',1)+1
             item['instructions']=next(i for i in revised['items'] if i['id']==item['id'])['instructions']
             run['check_scope']=scopes;run['test_policy_version']=1
             task['full_suite_approval']=candidate['full_suite_approval']
-            task['check_command']=commands([required[0]])[0]
+            first=specifications([required[0]])[0]
+            task['check_command']=first['command'];task['check_directory']=first['directory']
             task.pop('validated_check_command',None)
             for scope in scopes:controller.scopes.consent(task,scope)
         else:
@@ -258,7 +273,7 @@ def recover(controller, task_id, values):
             task=control(controller,task_id,{'action':'enable','approved':True})
             try:
                 for captured in task['branch_run']['check_scope']:
-                    scope=controller.scopes.prepare(task,captured['command'])
+                    scope=controller.scopes.prepare(task,captured['command'],directory=captured.get('check_directory','.'))
                     controller.scopes.consent(task,scope)
             except (ValueError,OSError):
                 # Direction is still captured below; resume explains the exact

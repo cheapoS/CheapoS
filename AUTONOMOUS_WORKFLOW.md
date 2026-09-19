@@ -580,3 +580,26 @@ and submits it through independent review. Existing disagreement stops use the
 ordinary Resume action instead of sending the operator to Activity to adjudicate
 model claims. Focused in-memory cases cover a fourth repair through independent
 approval, saved history, unchanged authority and proposal bounds.
+
+## Implemented: checks retain their working directory
+
+A component check carries both its executable command and its task-relative
+`directory`. For example, `{"command":"npm run build","directory":"cloudflare"}`
+runs in that component for worker verification, item checkpoints and final review.
+The planner captures the directory from project evidence; acceptance text alone
+cannot change execution. Existing string checks continue to mean repository root.
+The proposal and verification editors display scoped checks as
+`[cloudflare] npm run build` and preserve that directory through editing.
+
+Directory is part of command consent, verification identity and evidence reuse.
+Identical commands in different folders are separate checks. Paths outside the
+task copy, Git internals and escaping symlinks are rejected. Exact component
+consent cannot become a root project-test grant. Setup commands remain separate
+from verification, and missing component setup returns to an authorized worker.
+A check in the wrong directory is a contract problem, not a reason to create
+out-of-scope wrapper files or weaken the review criteria.
+
+Trusted check amendments may update the current item, final checks and explicitly
+named pending sibling items together. They retain the previous authorization and
+check history, invalidate affected readiness, and keep usage and file scope.
+Committed or already-started siblings cannot be rewritten by this amendment.

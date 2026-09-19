@@ -212,7 +212,7 @@ def before_write(task, path):
                 and not record.get('reason') and not record.get('truncated')
                 and isinstance(record.get('exit_code'), int) and record['exit_code'] != 0
                 and record.get('input_identity')
-                and record['input_identity'] == evidence_identity({**task, 'check_command': record['command']})):
+                and record['input_identity'] == evidence_identity({**task, 'check_command': record['command'], 'check_directory': record.get('directory', '.')})):
             repair['probe_observed'] = {'run_id': record.get('run_id'), 'input_identity': record['input_identity'],
                                         'command': copy.deepcopy(record['command'])}
             return

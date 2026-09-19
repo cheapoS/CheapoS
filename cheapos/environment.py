@@ -26,13 +26,16 @@ def guidance(task):
 
 
 def inspect(task,argv):
-    root=Path(task['workspace']);value=argv[0]
+    from .check_specs import cwd
+    root=cwd(task, allow_missing=True);value=argv[0]
     found=shutil.which(value) if '/' not in value and '\\' not in value else None
     selected=Path(value) if Path(value).is_absolute() else root/value if '/' in value or '\\' in value else Path(found) if found else None
-    state={'version':1,'status':'ready','workspace':str(root),'command':list(argv),'missing':None,
+    state={'version':1,'status':'ready','workspace':task['workspace'],'directory':str(root),'command':list(argv),'missing':None,
            'evidence':'Only directly observable prerequisites were inspected; installed dependencies and test correctness are otherwise unverified.',
            'next_step':'Run the selected verification command with its normal permission checks.','setup_commands':[],'sources':[]}
-    if selected is None or not selected.is_file() or not os.access(selected,os.X_OK):
+    if not root.is_dir():
+        state.update(status='missing', missing='directory', evidence='The verification working directory does not exist: '+task.get('check_directory', '.'), next_step='Create the planned component in this task copy before running its checks.')
+    elif selected is None or not selected.is_file() or not os.access(selected,os.X_OK):
         environment=any(part in {'.venv','venv'} for part in Path(value).parts)
         state.update(status='missing',missing='selected_environment' if environment else 'executable',
                      evidence=f'The selected {"environment executable" if environment else "executable"} is absent or not executable: {value}',

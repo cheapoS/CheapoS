@@ -155,9 +155,9 @@ class BranchController:
             commands=[]
             from .engine import check_argv
             for spec in [s for item in plan['items'] for s in item['required_checks']]+plan['final_checks']:
-                argv=evidence.commands([spec])[0]
+                check=evidence.check_specs([spec])[0];argv=check['command']
                 check_argv(shlex.join(argv))
-                if argv not in commands: commands.append(argv)
+                if check not in commands: commands.append(check)
             settings_snapshot=copy.deepcopy((planning_task or {}).get('settings_snapshot'))
             if settings_snapshot is None and hasattr(self.engine,'settings_capture'):
                 settings_snapshot=self.engine.settings_capture(values,values.get('repository'))
@@ -200,13 +200,14 @@ class BranchController:
             run['model_policy']=policy
             limits=run['limits']
             task=self.engine.create({'repository':mapping['source'],'prompt':original or 'Complete '+str((inputs.get('document') or {}).get('path') or 'the proposed work')+': '+plan['items'][0]['title'], 'conversational':True,
-                                     'check_command':shlex.join(commands[0]),'limits':{'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),
+                                     'check_command':shlex.join(commands[0]['command']),'limits':{'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),
                                      'worker_turns':200,'iterations':20,'reviewer_tokens':limits['reviewer_tokens'],'check_seconds':limits['check_seconds'],'output_tokens':limits['output_tokens']}},
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id,
                                     **({'settings_snapshot':settings_snapshot} if settings_snapshot is not None else {}))
             from .work_budgets import KEYS
             task['limits'].update({k:v for k,v in limits.items() if k in KEYS})
             task['branch_run']=run
+            task['check_directory']=commands[0]['directory']
             if settings_snapshot is not None:
                 task['settings_snapshot']=copy.deepcopy(settings_snapshot)
                 run['settings_snapshot_digest']=digest(settings_snapshot)
@@ -221,7 +222,7 @@ class BranchController:
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
             try:
-                scopes=[self.scopes.prepare(task,argv,allow_missing=True) for argv in commands]
+                scopes=[self.scopes.prepare(task,c['command'],directory=c['directory'],allow_missing=True) for c in commands]
             except (OSError,ValueError) as error:
                 run['status']='blocked';run['pause_reason']='missing_setup'
                 branch_pause.apply(task,error,cause='missing_setup',stage='planning')
@@ -317,7 +318,7 @@ class BranchController:
             raise work.WorkspaceChanged('Feature branch now exists; inspect branch ownership before continuing.')
         if not allow_commands:
             for scope in run['check_scope']:
-                if self.scopes.prepare(task,scope['command'])!=scope:
+                if self.scopes.prepare(task,scope['command'],directory=scope.get('check_directory','.'))!=scope:
                     raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
                         'message':'Verification command scope changed; inspect task setup before continuing.'})
         from .unattended_setup import require_ready
@@ -343,7 +344,7 @@ class BranchController:
                      'message':'The base branch has newer commits. Work uses the approved task copy; integration will check the updated target.'})
         if not allow_commands:
             for scope in run['check_scope']:
-                if self.scopes.prepare(task,scope['command'])!=scope:
+                if self.scopes.prepare(task,scope['command'],directory=scope.get('check_directory','.'))!=scope:
                     raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
                         'message':'Verification command scope changed; inspect task setup before continuing.'})
         from .unattended_setup import require_ready
@@ -535,6 +536,9 @@ class BranchController:
                         from .branch_completion import finalize
                         if finalize(self.engine,runtime):return
                         continue
+                    if run.get('current_item_id') != item['id']:
+                        first=evidence.check_specs(item['required_checks'])[0]
+                        task['check_command']=first['command'];task['check_directory']=first['directory']
                     if item['status'] in {'pending','blocked'}:
                         state.transition_item(run,item['id'],'working')
                         task.update(request_worker_turns=0,iterations=0,active_role='worker',turn_start_patch='',answer_pending=False,action_pending=False)
@@ -826,11 +830,11 @@ class BranchController:
                 op=run['merge_operation']
                 return {'needs_merge_recovery':True,'feature_tip':op['feature_tip'],'target_ref':op['target_ref'],'target_old':op['target_old'],'operation_id':op['id']}
             if run.get('waiting_for_user'):raise ValueError('Send the missing information as guidance in this chat before resuming.')
-            commands=[scope['command'] for scope in run['check_scope']]
+            commands=[{'command':scope['command'],'directory':scope.get('check_directory','.')} for scope in run['check_scope']]
             from .task_commands import allowed
-            scopes=[self.scopes.prepare(task,argv,allow_missing=allowed(task)) for argv in commands]
+            scopes=[self.scopes.prepare(task,c['command'],directory=c['directory'],allow_missing=allowed(task)) for c in commands]
             contract={'authorization_id':run.get('authorization_ref'),'feature_tip':run.get('expected_feature_tip'),'scopes':scopes}
-            missing=any(not self.scopes.authorize(task,argv) for argv in commands)
+            missing=any(not self.scopes.authorize(task,c['command'],directory=c['directory']) for c in commands)
             if missing and values.get('approved') is not True:
                 proposal=self.resume_proposals.prepare(task_id,contract)
                 return {'needs_consent':True,'scopes':scopes,**proposal}
@@ -970,8 +974,8 @@ class BranchController:
                     raise ValueError('Revised limit is below already consumed work: '+key)
             commands=[]
             for spec in [s for item in plan['items'] for s in item['required_checks']]+plan['final_checks']:
-                argv=evidence.commands([spec])[0];check_argv(shlex.join(argv))
-                if argv not in commands:commands.append(argv)
+                check=evidence.check_specs([spec])[0];argv=check['command'];check_argv(shlex.join(argv))
+                if check not in commands:commands.append(check)
             mapping['target_ref']=values.get('target_ref',mapping['target_ref'])
             mapping['feature_ref']=values.get('feature_ref',mapping['feature_ref'])
             work._local_ref(mapping['source'],mapping['target_ref'])
@@ -983,7 +987,7 @@ class BranchController:
             # Revalidates original snapshot contents and identities without any
             # source mutation or replacement of the registered private copy.
             mapping=work.materialize(mapping,lambda _:None)
-            scopes=[self.scopes.prepare(task,argv,allow_missing=True) for argv in commands]
+            scopes=[self.scopes.prepare(task,c['command'],directory=c['directory'],allow_missing=True) for c in commands]
             run=state.new_run(plan,original_request=old['original_request'],inputs=old['inputs'],project=old['project'],
                               base_ref=mapping['base_ref'],base_sha=mapping['base_sha'],target_ref=mapping['target_ref'],
                               feature_ref=mapping['feature_ref'],run_id=old['id'])
@@ -1000,7 +1004,7 @@ class BranchController:
             if type(keep_up_to_date) is not bool:raise ValueError('Keep up to date must be a boolean')
             run['integration_policy']={'keep_up_to_date':keep_up_to_date,'target_ref':mapping['target_ref'],'target_tip':work._tip(mapping['source'],mapping['target_ref'])}
             task['integration_policy']=copy.deepcopy(run['integration_policy'])
-            task['branch_run']=run;task['check_command']=commands[0]
+            task['branch_run']=run;task['check_command']=commands[0]['command'];task['check_directory']=commands[0]['directory']
             limits=run['limits']
             task['limits']=limits_from({'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),
                                        'worker_turns':200,'iterations':20,'reviewer_tokens':limits['reviewer_tokens'],

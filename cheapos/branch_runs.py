@@ -145,6 +145,8 @@ def _checks(values):
             raise ValueError('Each check must be a nonempty bounded JSON specification')
         if isinstance(value, str) and not value.strip():
             raise ValueError('Checks cannot be blank')
+    from .check_specs import specifications
+    specifications(values)
     return copy.deepcopy(values)
 
 

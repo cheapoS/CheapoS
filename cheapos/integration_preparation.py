@@ -125,7 +125,7 @@ def _renew_unchanged_checks(engine,task):
     engine.branch.validate_authority(task,run)
     scopes=engine.branch.scopes
     for scope in run.get('check_scope',[]):
-        if not scopes.authorize(task,scope['command']) and scopes.prepare(task,scope['command'])==scope:
+        if not scopes.authorize(task,scope['command'],directory=scope.get('check_directory','.')) and scopes.prepare(task,scope['command'],directory=scope.get('check_directory','.'))==scope:
             scopes.consent(task,scope,exact=True)
 
 

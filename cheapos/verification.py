@@ -34,16 +34,17 @@ def normalize_unittest(argv):
     return argv
 
 
-def reusable_check(task, argv):
+def reusable_check(task, argv, directory=None):
     """Latest exact successful command only; reread all inputs before reuse."""
+    directory = task.get('check_directory', '.') if directory is None else directory
     record = (task.get('checks') or [{}])[-1]
-    if (record.get('command') != argv or record.get('passed') is not True
+    if (record.get('command') != argv or record.get('directory', '.') != directory or record.get('passed') is not True
             or record.get('exit_code') != 0 or record.get('reason') or record.get('truncated')
             or record.get('outcome', 'passed') != 'passed'
             or not record.get('input_identity')
             or record.get('input_identity') != record.get('verification_identity')):
         return None
-    identity = evidence_identity({**task, 'check_command': argv})
+    identity = evidence_identity({**task, 'check_command': argv, 'check_directory': directory})
     return record if identity and identity == record['verification_identity'] else None
 
 
@@ -77,7 +78,9 @@ def runner_identity(argv, workspace):
 def evidence_identity(task):
     try:
         workspace = Workspace(task['workspace'])
-        runner = runner_identity(task['check_command'], workspace.root)
+        from .check_specs import cwd
+        working = cwd(task)
+        runner = runner_identity(task['check_command'], working)
         if runner is None:
             return None
         value = {'version': 1, 'workspace': str(workspace.root),
@@ -86,6 +89,10 @@ def evidence_identity(task):
                  'patch': hashlib.sha256(workspace.patch(validate="branch_run" in task).encode()).hexdigest(),
                  'command': task['check_command'], 'runner': runner,
                  'config': config_identity(workspace.root)}
+        if task.get('check_directory', '.') != '.':
+            stat = working.stat()
+            value['check_directory'] = [task['check_directory'], str(working), stat.st_dev, stat.st_ino]
+            value['directory_config'] = config_identity(working)
         if task.get('command_environment_revision'):
             value['command_environment_revision'] = task['command_environment_revision']
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()

@@ -1,5 +1,7 @@
 """Tiny approval dispatch regressions; no workers, Git, or commands run."""
 import threading
+import tempfile
+from pathlib import Path
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -9,8 +11,10 @@ from cheapos.branch_authorization import CheckScopes
 
 class BranchCommandPermissions(unittest.TestCase):
     def fixture(self):
-        scope={'command':['runner','test'],'directory':'/copy','profile':None,'fingerprint':'current'}
-        task={'id':'t','workspace':'/copy','branch_run':{},'pending_approval':{'id':'p',**scope,'branch_scope':scope.copy()}}
+        temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
+        workspace=str(Path(temp.name).resolve())
+        scope={'command':['runner','test'],'directory':workspace,'profile':None,'fingerprint':'current'}
+        task={'id':'t','workspace':workspace,'branch_run':{},'pending_approval':{'id':'p',**scope,'branch_scope':scope.copy()}}
         runtime=SimpleNamespace(task=task,approval=threading.Event(),stop=threading.Event())
         engine=SimpleNamespace(lock=threading.RLock(),require_active_task=Mock(),runtimes={'t':runtime},branch=SimpleNamespace(validate_authority=Mock(),scopes=Mock()),project_test_grants=Mock(),command_permissions={},event=Mock())
         engine.branch.scopes.prepare.return_value=scope

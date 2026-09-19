@@ -87,7 +87,7 @@ WORKER_TOOLS = READ_TOOLS + [
 BLOCKER_TOOL = tool("report_blocker", "Report an essential unresolved decision after inspecting repository evidence. Already authorized work needs no new permission. Saved edits remain pending.",
                     {"question": TEXT, "inspected_evidence": TEXT, "why_blocked": TEXT}, ["question", "inspected_evidence", "why_blocked"])
 UNATTENDED_TOOLS = [t for t in WORKER_TOOLS if t['function']['name'] != 'run_checks'] + [
-    tool('run_checks', 'Run a planned approved check. Omit command to reuse the selected check. Extra assertions belong in test files covered by an approved runner. An unapproved extra command returns guidance to existing checks; use report_blocker only if an essential check cannot be performed within saved authority.', {'command': TEXT}), BLOCKER_TOOL]
+    tool('run_checks', 'Run a planned approved check. Omit command to reuse the selected check. Directory is task-relative; use the planned directory. A bare planned command inherits its unique saved directory. Extra assertions belong in test files covered by an approved runner. An unapproved extra command returns guidance to existing checks; use report_blocker only if an essential check cannot be performed within saved authority.', {'command': TEXT, 'directory': TEXT}), BLOCKER_TOOL]
 REVIEW_TOOLS = READ_TOOLS + [tool("review_decision", "Return the checkpoint decision. Read relevant source before deciding.", {"decision": {"type": "string", "enum": ["APPROVE", "REQUEST_CHANGES", "REQUEST_TESTS", "TAKE_OVER"]}, "feedback": TEXT}, ["decision", "feedback"])]
 WORKER_SYSTEM = """You are the cheapoS worker, coding in an isolated snapshot of the user's personal repository.
 When receiving instructions or guidance, acknowledge the user's direction clearly and concisely alongside your tool calls so the operator is informed of your reasoning and progress.
@@ -103,7 +103,7 @@ When your implementation is ready, call checkpoint with a useful summary and unc
 Use the reviewer's feedback to continue. Only the controller can declare approval.
 After an interruption, use the controller's current-file snapshot when supplied; previous edits may already be present. Request missing evidence only through tools currently offered. Never call an unavailable tool."""
 CHAT_TOOLS = [t for t in WORKER_TOOLS if t["function"]["name"] != "run_checks"] + [
-    tool("run_checks", "Request verification in the task copy. Call this directly: the controller presents any required command approval before execution. Do not ask for permission in chat first. Inspect project guidance to choose a real check, not a selection preview such as check.py --plan. Omit command to reuse the previous one. No shell pipes or redirects.", {"command": TEXT}),
+    tool("run_checks", "Request verification in the task copy. Call this directly: the controller presents any required command approval before execution. Do not ask for permission in chat first. Inspect project guidance to choose a real check, not a selection preview such as check.py --plan. Omit command to reuse the previous one. No shell pipes or redirects. Supply directory for a component-relative check.", {"command": TEXT, "directory": TEXT}),
     tool("ask_user", "Ask for a missing essential requirement or necessary blocker decision and wait for the reply. Never use ask_user to ask for permission to proceed, propose options, or ask routine engineering questions answerable from code. For verification command permission, call run_checks directly: the controller presents any required command approval before execution. Saved edits remain unapproved until checkpoint review.", {"question": TEXT}, ["question"]),
 ]
 CHAT_SYSTEM = """You are cheapoS, an autonomous coding partner working in a separate copy of the user's local project.
@@ -1345,7 +1345,8 @@ class Engine:
             if not runtime or not runtime.task.get("pending_approval") or runtime.approval.is_set() or runtime.stop.is_set():
                 raise ValueError("No command is waiting for approval")
             pending = runtime.task["pending_approval"]
-            if pending["directory"] != runtime.task["workspace"]:
+            from .check_specs import cwd
+            if pending["directory"] != str(cwd(runtime.task, pending.get("check_directory", "."))):
                 raise ValueError("Task copy changed. Request fresh command approval")
             if (scope is not None or remember or approval_id is not None) and approval_id != pending["id"]:
                 raise ValueError("This approval request changed. Refresh the chat before approving.")
@@ -1354,10 +1355,12 @@ class Engine:
                 if approval_id != pending["id"]:
                     raise ValueError("Inspect the current branch command approval before approving")
                 self.branch.validate_authority(runtime.task, runtime.task["branch_run"])
-                branch_scope = self.branch.scopes.prepare(runtime.task, pending["command"])
+                branch_scope = self.branch.scopes.prepare(runtime.task, pending["command"], directory=pending.get("check_directory", "."))
                 if branch_scope != pending.get("branch_scope"):
                     raise ValueError("Command scope changed. Request fresh command approval")
             if approved is True and scope == "project_tests_session":
+                if pending.get("check_directory", ".") != ".":
+                    raise ValueError("Use exact task approval for a component check")
                 self.project_test_grants.approve(runtime.task, pending)
             if approved is True and remember:
                 if branch_scope is not None:
@@ -1554,7 +1557,7 @@ class Engine:
             return self.action_messages(task)
         workspace = Workspace(task["workspace"])
         previous = task["checkpoints"][-1].get("feedback", "") if task["checkpoints"] else ""
-        summary = {"original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "latest_message": task.get("requests", [task["prompt"]])[-1], "files": workspace.list_files()[:500], "current_diff": workspace.patch(validate="branch_run" in task)[:30000], "last_review_feedback": previous, "check_command": task["check_command"], "web_urls": sorted(allowed_urls(task))[:80]}
+        summary = {"original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "latest_message": task.get("requests", [task["prompt"]])[-1], "files": workspace.list_files()[:500], "current_diff": workspace.patch(validate="branch_run" in task)[:30000], "last_review_feedback": previous, "check_command": task["check_command"], "check_directory":task.get("check_directory", "."), "web_urls": sorted(allowed_urls(task))[:80]}
         if task.get("attachments"):
             summary["attachments"] = [{"id": a.get("id"), "filename": a.get("filename"), "mime_type": a.get("mime_type"), "path": a.get("path"), "is_image": a.get("is_image", False)} for a in task["attachments"]]
         summary.update(project_brief=project_context.brief(task), continuation_record=project_context.continuation(task))
@@ -1881,6 +1884,7 @@ class Engine:
                     break
             summary["recent_actions"] = list(reversed(activity))
             summary["check_command"] = task["check_command"]
+            summary["check_directory"] = task.get("check_directory", ".")
         names = workspace.list_files()
         summary["available_files"] = names[:60]
         summary["file_listing"] = {"total": len(names), "partial": len(names) > 60,
@@ -2917,7 +2921,7 @@ class Engine:
             task["updated_at"] = now()
             self.store.publish(task)
 
-    def verification_argv(self, task, command=None):
+    def verification_argv(self, task, command=None, directory=None):
         argv = task["check_command"]
         if command is not None:
             if not task.get("conversational") or not isinstance(command, str) or len(command) > 2000:
@@ -2935,7 +2939,8 @@ class Engine:
         if not argv:
             raise CheckCommandError("Choose a check from this project's guidance and call run_checks with its command. If none is suitable, use ask_user.")
         from .test_policy import guard
-        try:guard(task,argv)
+        from .check_specs import selected_directory
+        try:guard({**task, 'check_directory':selected_directory(task, argv, directory)},argv)
         except ValueError as error:raise CheckCommandError(str(error)) from error
         return argv
 
@@ -2956,10 +2961,11 @@ class Engine:
             self.event(task,'setup','Task environment rechecked',result)
             return task
 
-    def checks(self, runtime, command=None, *, operation="verification", directory="."):
+    def checks(self, runtime, command=None, *, operation="verification", directory=None):
         if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_action=True)
         task = runtime.task
         from .task_commands import allowed as commands_allowed, directory as command_directory
+        from .check_specs import selected_directory, cwd
         general = operation == 'command'
         if general:
             if not commands_allowed(task):
@@ -2967,27 +2973,32 @@ class Engine:
             if not isinstance(command, str) or not command.strip():
                 raise ValueError('Provide a command string')
             argv = check_argv(command)
+            directory = '.' if directory is None else directory
             command_directory(task['workspace'], directory)
             from .test_policy import full_suite, guard
-            if full_suite(argv): guard(task, argv)
+            if full_suite(argv): guard({**task, 'check_directory':directory}, argv)
         else:
             reconciliation.ensure_resolved(task)
-            argv = self.verification_argv(task, command)
+            argv = self.verification_argv(task, command, directory)
+            directory = selected_directory(task, argv, directory)
+        check_task = {**task, 'check_directory':directory}
+        working = str(cwd(check_task, allow_missing=True))
         if not general and task.get('branch_run', {}).get('check_scope'):
             with self.lock:
-                approved = self.branch.scopes.approved_command(task, argv)
+                approved = self.branch.scopes.approved_command(task, argv, directory=directory)
             if approved != argv:
                 from .test_policy import guard
-                guard(task, approved)
+                guard(check_task, approved)
                 self.event(task, 'check_command', 'Using the approved verification command',
                            {'requested_command': argv, 'command': approved})
                 argv = approved
-        readiness = environment.inspect(task, argv) if not general else {"status": "ready"}
+        readiness = environment.inspect(check_task, argv) if not general else {"status": "ready"}
         if readiness['status'] == 'missing':
             task['environment_setup'] = readiness
             task['pending_verification'] = True
-            if argv != task['check_command']: task['auto_approve_checks'] = False
+            if argv != task['check_command'] or directory != task.get('check_directory', '.'): task['auto_approve_checks'] = False
             task['check_command'] = list(argv)
+            task['check_directory'] = directory
             self.event(task,'setup','Verification environment needs setup',readiness)
             if commands_allowed(task):
                 return {'passed': False, 'outcome': 'setup_required', 'output': readiness['evidence'],
@@ -2996,11 +3007,12 @@ class Engine:
         if task.get('environment_setup'): task['environment_setup']=readiness
         # An explicit Interactive check still runs with normal permissions.
         # Unattended repeats can use evidence without executing a new command.
-        saved = reusable_check(task, argv) if not general and task.get('branch_run') else None
+        saved = reusable_check(task, argv, directory) if not general and task.get('branch_run') else None
         if saved:
             runtime.guard()
             task['check_command'] = list(argv)
             task['validated_check_command'] = list(argv)
+            task['check_directory'] = directory
             task['tool_actions'] += 1
             self.event(task, 'check_reused', 'Checks already passed for these unchanged inputs',
                        {'command': argv, 'run_id': saved.get('run_id'), 'digest': saved.get('digest')})
@@ -3009,15 +3021,15 @@ class Engine:
         # Session grants match this chat, workspace, and parsed argument vector.
         # They are held in memory, never restored from task history.
         with self.lock:
-            exact_allowed = (task["workspace"], tuple(argv)) in self.command_permissions.get(task["id"], set())
-            project_grant, scope_reason = self.project_test_grants.authorize(task, argv)
-            session_allowed = commands_allowed(task) or developing(task) or (bool(self.branch.scopes.authorize(task,argv)) if "branch_run" in task else exact_allowed or bool(project_grant))
-        if not session_allowed and ("branch_run" in task or not task["auto_approve_checks"] or argv != task["check_command"]):
+            exact_allowed = (working, tuple(argv)) in self.command_permissions.get(task["id"], set())
+            project_grant, scope_reason = self.project_test_grants.authorize(task, argv) if directory == '.' else (None, 'Component checks require exact or task command permission')
+            session_allowed = commands_allowed(task) or developing(task) or (bool(self.branch.scopes.authorize(task,argv,directory=directory)) if "branch_run" in task else exact_allowed or bool(project_grant))
+        if not session_allowed and ("branch_run" in task or not task["auto_approve_checks"] or argv != task["check_command"] or directory != task.get("check_directory", ".")):
             runtime.approved = False
             runtime.approval.clear()
-            task["pending_approval"] = {"id": uuid.uuid4().hex, "command": argv, "directory": task["workspace"], "profile": self.project_test_grants.proposal(task, argv), "scope_reason": scope_reason}
+            task["pending_approval"] = {"id": uuid.uuid4().hex, "command": argv, "directory": working, "check_directory": directory, "profile": self.project_test_grants.proposal(task, argv) if directory == "." else None, "scope_reason": scope_reason}
             if "branch_run" in task:
-                task["pending_approval"]["branch_scope"] = self.branch.scopes.prepare(task, argv)
+                task["pending_approval"]["branch_scope"] = self.branch.scopes.prepare(task, argv, directory=directory)
             task["status"] = "waiting_approval"
             self.event(task, "permission", "Permission needed to run the verification command", task["pending_approval"])
             waiting_since = time.monotonic()
@@ -3036,11 +3048,12 @@ class Engine:
                 raise InterruptedError("Verification command was declined")
             task["status"] = "running"
         elif session_allowed:
-            self.event(task, "permission", "Running task command · allowed for this task" if general else "Running tests · allowed for this session", {"command": argv, "directory": task["workspace"], "kind": "command" if general else "verification", "scope": "task_commands" if commands_allowed(task) else "operator_development" if developing(task) else "project_tests_session" if project_grant else "task_exact", "grant_id": project_grant})
+            self.event(task, "permission", "Running task command · allowed for this task" if general else "Running tests · allowed for this session", {"command": argv, "directory": working, "kind": "command" if general else "verification", "scope": "task_commands" if commands_allowed(task) else "operator_development" if developing(task) else "project_tests_session" if project_grant else "task_exact", "grant_id": project_grant})
         if not general:
-            if argv != task["check_command"]:
+            if argv != task["check_command"] or directory != task.get("check_directory", "."):
                 task["auto_approve_checks"] = False
             task["check_command"] = argv
+            task["check_directory"] = directory
             task["validated_check_command"] = list(argv)
         workspace = Workspace(task["workspace"])
         before = workspace.patch(validate="branch_run" in task) if not general else None
@@ -3052,7 +3065,7 @@ class Engine:
         operation_limit=task['limits'].get('verification_seconds')
         if operation_limit is not None:
             from .request_budget import verification
-            budget_task = {**task, 'checks': task.get('command_runs', [])} if general else task
+            budget_task = {**task, 'check_directory':directory, 'checks': task.get('command_runs', [])} if general else task
             effective = verification(budget_task, argv)
         from .work_budgets import active as explicit_budgets, effective as work_budget
         work_deadline = False
@@ -3063,12 +3076,13 @@ class Engine:
             work_deadline = effective is None or work_remaining <= effective
             effective = work_remaining if effective is None else min(effective, work_remaining)
         live = {"run_id": uuid.uuid4().hex, "command": argv, "started_at": now(), "updated_at": now(), "output": "", "truncated": False, "session_allowed": session_allowed, "timeout_seconds": effective}
+        if directory != '.': live['directory'] = directory
         if general:
             live.update(kind='command', directory=directory)
             # Commands can change ignored dependencies even when the patch is unchanged.
             task['command_environment_revision'] = task.get('command_environment_revision', 0) + 1
         task["check_stream"] = live
-        self.event(task, "tool", "Running task command" if general else "Running verification", {"command": argv, "run_id": live["run_id"], "timeout_seconds": effective})
+        self.event(task, "tool", "Running task command" if general else "Running verification", {"command": argv, "directory": directory, "run_id": live["run_id"], "timeout_seconds": effective})
 
         def emit(output, truncated):
             live.update(output=output, truncated=truncated, updated_at=now())
@@ -3082,7 +3096,7 @@ class Engine:
             with self.admission.resource("checks", runtime):
                 runtime.guard()
                 try:
-                    result = workspace.run_checks(argv, runtime if developing(task) else runtime.stop, timeout=effective, on_output=emit, on_raw_file=retain_raw, **({'directory': directory} if general else {}))
+                    result = workspace.run_checks(argv, runtime if developing(task) else runtime.stop, timeout=effective, on_output=emit, on_raw_file=retain_raw, **({'directory': directory} if general or directory != '.' else {}))
                 except OSError as error:
                     if not general: raise
                     result = {'command': argv, 'passed': False, 'exit_code': None, 'output': str(error), 'reason': 'process could not start', 'duration': 0}
@@ -3090,6 +3104,7 @@ class Engine:
             task["check_stream"] = None
             task["updated_at"] = now()
             self.store.publish(task)
+        if directory != '.': result['directory'] = directory
         result["run_id"] = live["run_id"]
         result["raw_output"] = raw_info
         result['allowed_seconds'] = effective
@@ -3143,7 +3158,7 @@ class Engine:
             raise ProgressPause(result["next_action"])
         return result
 
-    def unattended_check_feedback(self, runtime, command):
+    def unattended_check_feedback(self, runtime, command, directory=None):
         """Redirect optional command expansion without granting it or pausing work."""
         task = runtime.task
         run = task.get('branch_run') or {}
@@ -3151,26 +3166,29 @@ class Engine:
         if not run.get('authorization_ref') or developing(task) or commands_allowed(task):
             return None
         item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
-        from .branch_evidence import commands
-        required = commands(item.get('required_checks', []))
+        from .check_specs import specifications, selected_directory
+        required = specifications(item.get('required_checks', []))
         if not required:
             return None
-        requested = self.verification_argv(task, command)
-        captured = [scope['command'] for scope in run.get('check_scope', [])]
-        if requested in required or requested in captured:
+        requested = self.verification_argv(task, command, directory)
+        directory = selected_directory(task, requested, directory)
+        requested_spec = {"command":requested, "directory":directory}
+        captured = [{'command':scope['command'],'directory':scope.get('check_directory','.')} for scope in run.get('check_scope', [])]
+        if requested_spec in required or requested_spec in captured:
             return None  # Normal dispatch revalidates required/revoked consent.
         with self.lock:
-            selected = self.branch.scopes.approved_command(task, requested)
-            if selected != requested or self.branch.scopes.authorize(task, selected):
+            selected = self.branch.scopes.approved_command(task, requested, directory=directory)
+            if selected != requested or self.branch.scopes.authorize(task, selected, directory=directory):
                 return None
             available = []
-            for argv in required:
+            for spec in required:
+                argv = spec["command"]
                 try:
-                    argv = self.verification_argv(task, shlex.join(argv))
+                    argv = self.verification_argv(task, shlex.join(argv), spec["directory"])
                 except CheckCommandError:
                     continue
-                if self.branch.scopes.authorize(task, argv):
-                    available.append(argv)
+                if self.branch.scopes.authorize(task, argv, directory=spec["directory"]):
+                    available.append(argv if spec["directory"] == "." else spec)
         if not available:
             return None
         scope = [*edit_history.scope(task), item.get('revision'), run.get('authorization_ref'),
@@ -3193,10 +3211,10 @@ class Engine:
 
     def worker_checks(self, runtime, args, last_call=True):
         if (runtime.task.get('branch_run') or {}).get('authorization_ref'):
-            feedback = self.unattended_check_feedback(runtime, args.get('command'))
+            feedback = self.unattended_check_feedback(runtime, args.get('command'), args.get('directory'))
             if feedback is not None:
                 return feedback
-        result = self.checks(runtime, args.get('command'))
+        result = self.checks(runtime, args.get('command'), **({'directory':args['directory']} if 'directory' in args else {}))
         run = runtime.task.get('branch_run') or {}
         item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
         if result.get('reused') and run and last_call and not item.get('review_repair'):

@@ -121,6 +121,9 @@ class BranchOperatorTests(unittest.TestCase):
         projected=completion.authorization_run(run)
         self.assertEqual(projected['plan'],run['authorization']['contract']['plan'])
         run['development_authorization']['enabled']=False
+        # Repairs stay within the original authority even with development off.
+        self.assertEqual(completion.authorization_run(run)['plan'],projected['plan'])
+        run['plan']['final_checks']=[{'command':'python3 test.py','directory':'other'}]
         with self.assertRaises(ValueError):completion.authorization_run(run)
 
     def test_chat_correction_automatically_attempts_resume_and_retains_consent_requirement(self):
@@ -208,7 +211,7 @@ class BranchOperatorTests(unittest.TestCase):
                 self.assertEqual(policy_for_saved(policy,saved)['execution']['mode'],'remote')
 
     def test_check_revision_preserves_history_and_requires_broad_consent(self):
-        self.controller.scopes=SimpleNamespace(prepare=lambda task,c:{'command':c},consent=Mock())
+        self.controller.scopes=SimpleNamespace(prepare=lambda task,c,**kw:{'command':c,**kw},consent=Mock())
         original=copy.deepcopy(self.saved)
         values={'action':'checks','approved':True,'revision_token':revision_token(self.saved['branch_run'],self.saved),
                 'required_checks':['python3 -m unittest tests.test_http'],
@@ -227,6 +230,32 @@ class BranchOperatorTests(unittest.TestCase):
         self.assertEqual(task['operator_continue']['status'],'ready')
         run=task['branch_run']
         self.controller.proposals.validate(run['authorization'],contract_builder(run,run['authorization_workspace'],run['model_policy'],run['check_scope']))
+
+    def test_check_directory_revision_updates_pending_sibling_and_preserves_history(self):
+        self.controller.scopes=SimpleNamespace(prepare=lambda task,c,**kw:{'command':c,**kw},consent=Mock())
+        run=self.saved['branch_run']
+        sibling={**copy.deepcopy(run['plan']['items'][0]),'id':'two','title':'Document','dependencies':['one']}
+        run['plan']['items'].append(copy.deepcopy(sibling));run['items'].append({**sibling,'status':'pending','revision':1})
+        contract=contract_builder(run,{},run['model_policy'],[])
+        proposal=self.controller.proposals.prepare('task',contract)
+        run['authorization']=self.controller.proposals.authorize('task',proposal['proposal_id'],True,contract)
+        run['authorization_ref']=run['authorization']['id']
+        original=copy.deepcopy(self.saved)
+        check={'command':'python3 test.py','directory':'component'}
+        values={'action':'checks','approved':True,'resume':False,'revision_token':revision_token(run,self.saved),
+                'required_checks':[check],'final_checks':[check],'item_checks':{'two':[check]}}
+        with patch('cheapos.branch_workspace.validate_owned'):
+            task=recover(self.controller,'task',values)
+        self.assertEqual(task['branch_run']['items'][1]['required_checks'],[check])
+        self.assertEqual(task['check_directory'],'component')
+        self.assertEqual(task['branch_run']['check_scope'],[{'command':['python3','test.py'],'directory':'component'}])
+        self.assertEqual(task['branch_run']['operator_revision_history'][-1]['authorization'],original['branch_run']['authorization'])
+        self.assertEqual(task['usage'],original['usage'])
+        self.controller.message.assert_not_called()
+        self.saved=original;self.saved['branch_run']['items'][1]['status']='committed'
+        values['revision_token']=revision_token(self.saved['branch_run'],self.saved)
+        with patch('cheapos.branch_workspace.validate_owned'),self.assertRaisesRegex(ValueError,'pending sibling'):
+            recover(self.controller,'task',values)
 
     def test_reviewer_only_amendment_preserves_checkpoint_item_and_messages_without_development(self):
         endpoint='http://127.0.0.1:20128/v1'

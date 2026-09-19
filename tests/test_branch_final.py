@@ -36,13 +36,14 @@ class BranchFinalTests(unittest.TestCase):
     receipt = fixtures.BranchCommitTests.receipt
     save = fixtures.BranchCommitTests.save
 
-    def checks(self, runtime, command):
+    def checks(self, runtime, command, directory="."):
         import shlex
         argv = shlex.split(command)
-        result = subprocess.run(argv, cwd=self.task['workspace'], capture_output=True, text=True)
-        identity = evidence_identity({**self.task, 'check_command': argv})
+        result = subprocess.run(argv, cwd=Path(self.task['workspace'])/directory, capture_output=True, text=True)
+        identity = evidence_identity({**self.task, 'check_command': argv, 'check_directory': directory})
         record = {'command':argv, 'passed':result.returncode == 0, 'exit_code':result.returncode,
                   'verification_identity':identity, 'input_identity':identity, 'output':result.stdout}
+        if directory != '.':record['directory']=directory
         self.task['checks'].append(record)
         return record
 
@@ -57,6 +58,12 @@ class BranchFinalTests(unittest.TestCase):
         return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
 
     def test_cumulative_diff_clean_private_copy_and_actual_final_check(self):
+        specs=self.run['plan']['final_checks']
+        # Reuse existing .git-free component: create and commit a fixture directory
+        # before candidate construction, so final review covers the actual file too.
+        folder=Path(self.task['workspace'])/'component';folder.mkdir()
+        # Empty directory avoids altering the manifest asserted below.
+        specs.append({'command':specs[0], 'directory':'component'})
         original=self.engine.request
         def request(*args,**kwargs):
             self.task['providers']['reviewer']['model']='replacement'
@@ -76,6 +83,11 @@ class BranchFinalTests(unittest.TestCase):
         self.assertEqual(result['decision'],'APPROVE')
         self.assertEqual(self.events[-1][3]['decision'],'APPROVE')
         self.assertEqual(self.task['checks'][0]['output'], 'final passed\n')
+        self.assertEqual(len(self.task['checks']),2)
+        self.assertEqual(self.task['checks'][1]['directory'],'component')
+        self.assertNotEqual(self.task['checks'][0]['verification_identity'],self.task['checks'][1]['verification_identity'])
+        packet=next(p for p in self.requests if 'chunk' in p)
+        self.assertEqual(packet['review_context']['final_checks'][1]['directory'],'component')
         count = len(self.requests)
         self.assertTrue(final.validate(result['readiness'], self.task))
         self.assertEqual(len(self.requests),count)

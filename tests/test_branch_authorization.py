@@ -176,6 +176,25 @@ class CheckScopeTests(unittest.TestCase):
         self.scopes = CheckScopes(self.grants)
         self.argv = [sys.executable, '-B', '-m', 'unittest', 'discover']
 
+    def test_component_permissions_are_exact_and_invalidate_on_directory_or_config_change(self):
+        root=Path(self.task['workspace']);component=root/'component';component.mkdir()
+        other=root/'other';other.mkdir()
+        command=[sys.executable,'-B','-m','unittest','tests.test_one']
+        self.scopes.consent(self.task,self.scopes.prepare(self.task,command))
+        self.assertFalse(self.scopes.authorize(self.task,command,directory='component'))
+        scope=self.scopes.prepare(self.task,command,directory='component')
+        self.assertIsNone(scope['profile'])
+        grant=self.scopes.consent(self.task,scope)
+        self.assertEqual(self.scopes.authorize(self.task,command,directory='component'),grant)
+        self.assertFalse(self.scopes.authorize(self.task,command,directory='other'))
+        (component/'package.json').write_text('{"scripts":{"test":"changed"}}')
+        self.assertFalse(self.scopes.authorize(self.task,command,directory='component'))
+        (component/'package.json').unlink()
+        component.rename(root/'old-component');component.symlink_to(other,target_is_directory=True)
+        self.assertFalse(self.scopes.authorize(self.task,command,directory='component'))
+        for value in ('../','/tmp','.git'):
+            self.assertFalse(self.scopes.authorize(self.task,command,directory=value))
+
     def test_profile_reused_for_ordinary_tests_but_not_config_changes(self):
         scope = self.scopes.prepare(self.task, self.argv)
         grant = self.scopes.consent(self.task, scope)

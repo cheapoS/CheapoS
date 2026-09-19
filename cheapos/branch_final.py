@@ -346,10 +346,10 @@ def final_check_review(engine, runtime):
     current = evidence.candidate(task, context, specifications, criteria)
     for expected in current['checks']:
         try:
-            existing = next((c for c in reversed(task['checks']) if c['command'] == expected['command']), {})
-            evidence.bind_check(current, expected['command'], existing)
+            existing = next((c for c in reversed(task['checks']) if evidence.same(c, expected)), {})
+            evidence.bind_check(current, expected['command'], existing, expected.get('directory', '.'))
         except ValueError:
-            result = engine.checks(runtime, shlex.join(expected['command']))
+            result = engine.checks(runtime, shlex.join(expected['command']), directory=expected.get('directory', '.'))
             if not result.get('passed'):
                 return {'decision': 'REQUEST_CHANGES', 'feedback': 'Repair the failing final integration check.', 'checks': result}
     checks = evidence.current_checks(current, task['checks'])
@@ -365,6 +365,7 @@ def final_check_review(engine, runtime):
         'repair_history': [{ 'item_id':i['id'], 'candidate_id':i['review_repair'].get('candidate_id'),'finding_ids':i['review_repair'].get('finding_ids',[]),'dispositions':i['review_repair'].get('dispositions',[]),'prior_counterevidence':i['review_repair'].get('prior_counterevidence',[])} for i in run['items'] if i.get('review_repair')][-3:],
         'acceptance_criteria': [{'id': r['id'], 'criterion': r['criterion']} for r in manifest['requirements']],
         'final_checks': [{'candidate_id': bound['candidate_id'], 'command': bound['command'],
+                          **({'directory': bound['directory']} if 'directory' in bound else {}),
                           'passed': bound['record']['passed'], 'exit_code': bound['record']['exit_code'],
                           'verification_identity': bound['record']['verification_identity'],
                           'input_identity': bound['record']['input_identity'],
@@ -440,6 +441,6 @@ def validate(readiness, task):
     if evidence.candidate(task, current['context'], current['check_specifications'], current['criteria']) != current:
         raise ValueError('Final verification environment or workspace changed')
     for expected, bound in zip(current['checks'], saved['checks']):
-        evidence.bind_check(current, expected['command'], bound['record'])
+        evidence.bind_check(current, expected['command'], bound['record'], expected.get('directory', '.'))
     if len(current['checks']) != len(saved['checks']): raise ValueError('Final check evidence is incomplete')
     return True

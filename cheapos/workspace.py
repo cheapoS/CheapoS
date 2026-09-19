@@ -484,6 +484,9 @@ class Workspace:
         home.mkdir(exist_ok=True)
         env = {k: v for k, v in os.environ.items() if k in {"PATH", "SystemRoot", "WINDIR", "LANG", "LC_ALL", "PYTHONPATH"}}
         pythonpaths = []
+        if cwd != self.root:
+            if (cwd / "tests").is_dir(): pythonpaths.append(str(cwd / "tests"))
+            pythonpaths.append(str(cwd))
         if (self.root / "tests").is_dir():
             pythonpaths.append(str(self.root / "tests"))
         pythonpaths.append(str(self.root))

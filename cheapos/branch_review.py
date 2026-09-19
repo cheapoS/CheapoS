@@ -153,11 +153,11 @@ def _checkpoint(engine, runtime, args):
     current = evidence.candidate(task, ctx, specs, criteria)
     for expected in current['checks']:
         try:
-            record = next((c for c in reversed(task['checks']) if c['command'] == expected['command']), {})
-            evidence.bind_check(current, expected['command'], record)
+            record = next((c for c in reversed(task['checks']) if evidence.same(c, expected)), {})
+            evidence.bind_check(current, expected['command'], record, expected.get('directory', '.'))
             engine.event(task, 'check_reused', 'Reusing current item verification', {'command':expected['command']})
         except ValueError:
-            result = engine.checks(runtime, shlex.join(expected['command']))
+            result = engine.checks(runtime, shlex.join(expected['command']), directory=expected.get('directory', '.'))
             if not result['passed']:
                 branch_runs.transition_item(run, item['id'], 'working')
                 feedback = engine.worker_check_feedback(runtime, result)
