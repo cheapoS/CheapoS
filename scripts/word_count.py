@@ -28,8 +28,8 @@ def main():
         try:
             with open(args.path, "r", encoding="utf-8") as f:
                 text = f.read()
-        except FileNotFoundError:
-            print(f"Error: File '{args.path}' not found.", file=sys.stderr)
+        except (FileNotFoundError, IsADirectoryError):
+            print(f"Error: '{args.path}' is not a readable file.", file=sys.stderr)
             sys.exit(1)
     else:
         text = sys.stdin.read()

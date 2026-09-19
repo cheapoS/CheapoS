@@ -74,6 +74,11 @@ class TestMain(unittest.TestCase):
              self.assertRaises(SystemExit):
             main()
 
+    def test_is_a_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("sys.argv", ["word_count.py", tmpdir]), \
+                 self.assertRaises(SystemExit):
+                main()
 
 if __name__ == "__main__":
     unittest.main()
