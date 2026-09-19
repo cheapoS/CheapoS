@@ -6,6 +6,35 @@ const event=(id,kind,title,detail)=>({id,kind,title,detail,time:stamp});
 const task=overrides=>({prompt:'Fix the script.',status:'awaiting_reply',active_role:'worker',changes:[],checks:[],checkpoints:[],events:[],providers:{worker:{model:'worker-model'},reviewer:{model:'reviewer-model'}},...overrides});
 const replies=t=>build(t).filter(e=>e.kind==='assistant');
 
+test('accepted updates show saved preparation stages in both chat modes before agents restart',()=>{
+ for(const unattended of [false,true]){
+  const t=task({status:'paused',events:[event(1,'tool','read file',{arguments:{path:'README.md'}})],
+   integration_preparation:{id:'update-1',authorized:true,status:'running',stage:'accepted'},
+   ...(unattended?{branch_run:{id:'run',authorization_ref:'auth',status:'paused',current_item_id:null,items:[{id:'one',title:'Saved work',status:'committed'}]}}:{})});
+  for(const [stage,title] of [['accepted','Update request saved'],['checking','Checking latest project'],['combining','Combining changes'],['resolving','Preparing conflict resolution']]){
+   t.integration_preparation.stage=stage;
+   const before=JSON.stringify(t),entries=build(t),reply=entries.at(-1);
+   assert.equal(reply.preparation.title,title);assert.equal(reply.live,true);
+   assert.match(reply.intro,/request is saved.*automatically/);
+   assert.equal(reply.id,'integration-update-1');assert.equal(reply.stream,null);
+   assert.ok(entries.filter(e=>e!==reply&&e.kind==='assistant').every(e=>!e.live&&!e.owner));
+   assert.ok(entries.every(e=>!e.intro?.includes('I need your attention before continuing')));
+   assert.equal(JSON.stringify(t),before);
+   assert.deepEqual(build(JSON.parse(before)),entries,'Refresh restores the saved stage without a new request');
+  }
+  t.status='running';if(unattended)t.branch_run.status='finalizing';
+  assert.ok(!replies(t).some(e=>e.preparation),'Normal activity takes over when execution starts');
+ }
+});
+
+test('preparation acknowledgement never masks a stop, failed update or permission request',()=>{
+ const base=task({status:'paused',integration_preparation:{id:'update',authorized:true,status:'running',stage:'accepted'}});
+ const preparation=require('../dist/guidance.js').integrationPreparation;
+ for(const status of ['ready','decision','failed','cancelled','waiting'])assert.equal(preparation({...base,integration_preparation:{...base.integration_preparation,status}}),null);
+ for(const change of [{status:'stopping'},{status:'error'},{pending_approval:{command:['check']}},{archived_at:stamp},{trashed_at:stamp},{integration_preparation:{...base.integration_preparation,authorized:false}}])assert.equal(preparation({...base,...change}),null);
+ assert.equal(preparation(task()),null);
+});
+
 test('live personality varies by task but stays stable through output, polling and reloads',()=>{
  const intros=new Set();
  for(let i=0;i<32;i++){

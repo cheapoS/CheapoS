@@ -5,7 +5,7 @@ test('operator development is explicit opt-in with truthful preserved safeguards
 test('correction acknowledgment distinguishes interruption, running, consent, and actual blocker',()=>{assert.equal(c.operatorContinuationMarkup({}),'');for(const status of ['interrupting','blocked','needs_consent']){const html=c.operatorContinuationMarkup({status:'running',operator_continue:{status,reason:'Exact <blocker>'}});assert.match(html,/Exact &lt;blocker>/);assert.equal(html.includes('data-chat-action="resume"'),status==='needs_consent');}assert.match(c.operatorContinuationMarkup({status:'running',operator_continue:{status:'interrupting'}}),/stopping the previous approach/);});
 vm.runInContext(source.slice(source.indexOf('function operatorRecoveryFields'),source.indexOf('async function operatorRecovery')),c);
 test('recovery controls follow server capabilities and revision approval is explicit',()=>{const none=c.operatorRecoveryFields({reason:'Wait for pause'});assert.doesNotMatch(none,/data-recovery=/);const html=c.operatorRecoveryFields({can_enable:true,can_retry:true,can_model:true,can_revise:true,models:[{id:'allowed',label:'Allowed model'}]});assert.match(html,/Enable development mode for this task/);assert.match(html,/value="allowed"/);assert.match(html,/Approve item revision &amp; continue/);assert.match(html,/Other accepted criteria, checks, spending and permissions remain in force/);});
-c.CheapOSBranchUI=require('../dist/branch_ui.js');c.taskBusy=c.CheapOSBranchUI.isBusy;
+c.CheapOSBranchUI=require('../dist/branch_ui.js');c.CheapOSGuide=require('../dist/guidance.js');c.taskBusy=c.CheapOSBranchUI.isBusy;
 vm.runInContext(source.slice(source.indexOf('function recoveryActionAvailable'),source.indexOf('function renderChat')),c);
 test('completed branch awaiting target update keeps review controls without worker recovery',()=>{
  const task={status:'paused',error:'Target branch has new commits',branch_run:{id:'run',status:'paused',pause_reason:'branch_drift',
@@ -25,6 +25,9 @@ test('completed branch awaiting target update keeps review controls without work
 test('recovery remains available for actual stops but not active or permission-waiting tasks',()=>{
  for(const status of ['paused','blocked','interrupted','error','budget_paused'])assert.equal(c.recoveryActionAvailable({status}),true,status);
  for(const task of [{status:'running'},{status:'approved'},{status:'paused',pending_approval:{}},{status:'paused',demo:true},{status:'error',archived_at:'now'},{status:'error',trashed_at:'now'}])assert.equal(c.recoveryActionAvailable(task),false);
+ const preparing={status:'paused',integration_preparation:{authorized:true,status:'running',stage:'accepted'}};
+ assert.equal(c.recoveryOptionsMarkup(preparing),'');
+ preparing.integration_preparation.status='failed';assert.equal(c.recoveryActionAvailable(preparing),true);
 });
 test('manual recovery is collapsed advanced UI for both task modes',()=>{
  for(const task of [{status:'paused'},{status:'paused',branch_run:{status:'paused',authorization_ref:'auth'}}]){

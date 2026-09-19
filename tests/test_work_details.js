@@ -16,6 +16,20 @@ function render(events,{live=false,stream=null,task={},phase='work'}={}){
  return ctx.view.message({kind:'assistant',id:'reply',steps:[step(events,{live,phase})],live,stream,reply:''},task);
 }
 
+test('update preparation is immediately visible in Chat without empty agent output or stale actions',()=>{
+ const task={id:'saved',prompt:'Improve the project',status:'paused',events:[],changes:[],
+  integration_preparation:{id:'update',authorized:true,status:'running',stage:'checking'}};
+ const entry=ctx.CheapOSGuide.conversation.build(task).at(-1);
+ const html=ctx.view.message(entry,task);
+ assert.match(html,/Your update request is saved/);
+ assert.match(html,/role="status" aria-live="polite"/);
+ assert.match(html,/spinner/);assert.match(html,/Checking latest project/);
+ assert.doesNotMatch(html,/data-operation-actions|Waiting for the first action|Model identity unavailable|data-work-elapsed/);
+ entry.preparation.title='<unsafe>';entry.preparation.detail='<details>';
+ assert.match(ctx.view.message(entry,task),/&lt;unsafe&gt;/);
+ assert.match(ctx.view.message(entry,task),/&lt;details&gt;/);
+});
+
 test('empty model channel markers stay out of saved and live chat without hiding real text',()=>{
  const marker='<|channel>thought\n<channel|>';
  const saved=event('marker','assistant','Worker',marker);

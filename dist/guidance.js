@@ -130,6 +130,22 @@ const CheapOSGuide = (() => {
     }
     return stream;
   }
+  function integrationPreparation(task) {
+    const op=task?.integration_preparation;
+    // The acknowledgement can arrive while the old task still says paused.
+    // Hand off to ordinary activity as soon as execution or a decision starts.
+    if(!op?.authorized||op.status!=='running'||active.has(task.status)||task.status==='error'||task.pending_approval||task.archived_at||task.trashed_at||['running','finalizing','merging','merged','left_on_branch'].includes(task.branch_run?.status))return null;
+    const stages={
+      accepted:['Update request saved','Preparing your saved work to continue automatically.'],
+      checking:['Checking latest project','Checking the target branch and your saved task copy.'],
+      combining:['Combining changes','Bringing the target branch’s committed changes into the task copy.'],
+      resolving:['Preparing conflict resolution','Preparing the saved changes for the agents to resolve and recheck.'],
+      checks:['Preparing verification','Getting the approved checks ready for the updated task copy.'],
+      review:['Preparing independent review','Getting the updated work and check evidence ready for review.']
+    };
+    const [title,detail]=stages[op.stage]||['Preparing your update','The saved update is being prepared. Progress will appear here.'];
+    return {id:op.id,title,detail};
+  }
   function progress(task, at=Date.now()) {
     if(!active.has(task.status))return null;
     task={...task,stream:liveStream(task)};
@@ -580,7 +596,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {coordinatorStatus,connectionNotice,metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,liveStream,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {coordinatorStatus,connectionNotice,metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,liveStream,integrationPreparation,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 
@@ -914,9 +930,24 @@ const CheapOSConversation = (() => {
     for(const entry of entries){if(entry.kind==='assistant'&&entries.findLast(e=>e.kind==='assistant'&&e.operation===entry.operation)!==entry){entry.steps=entry.steps.filter(s=>!s.receipt);if(entry.intro.includes('committed')||entry.intro.includes('already satisfied'))entry.intro='Earlier work on this item.';}}
     return entries;
   }
+  function withPreparation(entries,task) {
+    const preparation=guide.integrationPreparation(task);
+    if(!preparation)return entries;
+    for(const entry of entries.filter(e=>e.kind==='assistant')){
+      if(entry.latest||entry.owner){
+        entry.latest=false;entry.owner=false;entry.live=false;entry.stream=null;
+        entry.steps=entry.steps.map(step=>({...step,live:false}));
+        if(entry.intro==='I’ve saved the work so far. I need your attention before continuing.')entry.intro='The work so far is saved.';
+      }
+    }
+    entries.push({kind:'assistant',id:'integration-'+preparation.id,latest:true,live:true,owner:false,
+      label:'Preparing update',intro:'Your update request is saved. I’ll continue here automatically.',
+      steps:[],reply:'',stream:null,preparation});
+    return entries;
+  }
   function build(task, at = Date.now()) {
     task={...task,stream:guide.liveStream(task)};
-    if(task.branch_run)return branchBuild(task,at);
+    if(task.branch_run)return withPreparation(branchBuild(task,at),task);
     const entries = [];
     for (const turn of guide.turns(task, at)) {
       entries.push({kind:'user',id:`user-${turn.index}`,text:turn.userPrompt});
@@ -928,7 +959,7 @@ const CheapOSConversation = (() => {
       }
       entries.push(response(turn.events.slice(start),`reply-${turn.index}-${part}`,task,turn.isLatest,at));
     }
-    return entries;
+    return withPreparation(entries,task);
   }
   return {build,readyForNext};
 })();
