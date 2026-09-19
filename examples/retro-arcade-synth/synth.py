@@ -151,3 +151,36 @@ PRESETS = {
     'explosion': make_explosion,
     'hit': make_hit,
 }
+
+import argparse, json, os, sys
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog='synth', description='RetroArcadeSynth: 8-bit sound effects generator.')
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
+    sub = parser.add_subparsers(dest='command')
+    sub.add_parser('list', help='List available preset names.')
+    gen = sub.add_parser('generate', help='Generate a preset sound effect as a WAV file.')
+    gen.add_argument('preset', choices=list(PRESETS.keys()))
+    gen.add_argument('--output', '-o', default=None)
+    gen.add_argument('--params', '-p', default=None, help='JSON file with synthesis parameter overrides.')
+    gen.add_argument('--sample-rate', type=int, default=SAMPLE_RATE)
+    args = parser.parse_args(argv)
+    if args.command == 'list':
+        for name in PRESETS:
+            print(name)
+        return 0
+    if args.command == 'generate':
+        kwargs = {'sample_rate': args.sample_rate}
+        if args.params:
+            with builtins.open(args.params, 'r') as f:
+                kwargs.update(json.load(f))
+        samples = PRESETS[args.preset](**kwargs)
+        out_path = args.output or f'{args.preset}.wav'
+        write_wav(samples, out_path, sample_rate=args.sample_rate)
+        print(f'Wrote {out_path}: {len(samples)} frames, {len(samples)/args.sample_rate:.3f}s, {args.sample_rate} Hz')
+        return 0
+    parser.print_help()
+    return 1
+
+if __name__ == '__main__':
+    sys.exit(main())

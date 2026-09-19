@@ -8,6 +8,7 @@ import importlib.util
 import os
 import array
 import io
+import json
 import tempfile
 import wave
 
@@ -121,6 +122,61 @@ class TestSynthFunctions(unittest.TestCase):
         a = self.module.make_coin_pickup()
         seg1_len = round(0.07 * self.module.SAMPLE_RATE)
         self.assertEqual(len(a), seg1_len * 2)
+
+
+class TestCLI(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        dir_path = os.path.dirname(__file__)
+        synth_path = os.path.join(dir_path, "synth.py")
+        spec = importlib.util.spec_from_file_location("synth", synth_path)
+        cls.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.module)
+
+    def test_list_prints_six_lines(self):
+        import io as _io
+        from contextlib import redirect_stdout
+        buf = _io.StringIO()
+        with redirect_stdout(buf):
+            rc = self.module.main(['list'])
+        self.assertEqual(rc, 0)
+        lines = buf.getvalue().strip().splitlines()
+        self.assertEqual(len(lines), 6)
+        for name in ['laser-shot', 'jump', 'coin-pickup', 'powerup', 'explosion', 'hit']:
+            self.assertIn(name, lines)
+
+    def test_generate_creates_valid_wav(self):
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            tmp_name = tmp.name
+        try:
+            rc = self.module.main(['generate', 'laser-shot', '--output', tmp_name])
+            self.assertEqual(rc, 0)
+            with wave.open(tmp_name, 'rb') as wf:
+                self.assertEqual(wf.getnchannels(), 1)
+                self.assertEqual(wf.getsampwidth(), 2)
+                self.assertGreater(wf.getnframes(), 0)
+        finally:
+            os.unlink(tmp_name)
+
+    def test_generate_with_json_params(self):
+        params_path = os.path.join(tempfile.gettempdir(), 'ras_test_params.json')
+        with open(params_path, 'w') as f:
+            json.dump({'sample_rate': 22050}, f)
+        out_path = os.path.join(tempfile.gettempdir(), 'ras_test_out.wav')
+        try:
+            rc = self.module.main(['generate', 'jump', '--params', params_path, '--output', out_path])
+            self.assertEqual(rc, 0)
+            self.assertTrue(os.path.exists(out_path))
+        finally:
+            if os.path.exists(params_path):
+                os.unlink(params_path)
+            if os.path.exists(out_path):
+                os.unlink(out_path)
+
+    def test_unknown_preset_exits_nonzero(self):
+        with self.assertRaises(SystemExit) as cm:
+            self.module.main(['generate', 'no-such-preset'])
+        self.assertNotEqual(cm.exception.code, 0)
 
 
 if __name__ == "__main__":
