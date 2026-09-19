@@ -219,6 +219,8 @@ class BranchController:
                 initialize_actions(planning_task)
                 for key in ('planning_work_policy','planning_strategy','strategy_episodes','strategy_continuation','context_evidence','context_recovery','session_actions','usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
+                from .discussion import preserve
+                preserve(planning_task, task)
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
             try:
@@ -612,6 +614,9 @@ class BranchController:
             # result (or pause) so Chat cannot remain at "Combining changes".
             from .integration_preparation import observe
             observe(self.engine, task)
+            from .discussion import drain, finish
+            drain(self.engine, runtime)
+            finish(self.engine, runtime)
 
     def project(self, values):
         source=work.inspect_source(values.get('repository',''))['source']
@@ -742,8 +747,10 @@ class BranchController:
                     with self.proposals.lock:
                         self.proposals.proposals={token:p for token,p in self.proposals.proposals.items() if p['task_id']!=task['id'] or token==result['proposal_id']}
                     saved=self.engine.store.get(task['id'])
+                    from .discussion import preserve
+                    preserve(task, saved)
+                    runtime.task = saved
                     self.engine.event(saved,'assistant','Proposal ready','The proposal is ready. Inspect it below to review the plan and start the run, or reply here to change it.')
-                    self.engine.runtimes.pop(task['id'],None)
                     return result
         except Exception as error:
             if not runtime.branch_ledger.closed.is_set():runtime.branch_ledger.end()
@@ -756,13 +763,19 @@ class BranchController:
                         saved['branch_run']['waiting_for_user']=str(error)
                     branch_pause.apply(saved,error,cause='operator' if runtime.stop.is_set() else 'essential_clarification' if type(error).__name__=='ClarificationRequired' else None,stage='planning')
                 saved['stream']=None
+                from .discussion import preserve
+                preserve(task, saved)
+                runtime.task = saved
                 self.engine.event(saved,'assistant','Planning needs attention',str(error) or saved['error'])
-                self.engine.runtimes.pop(task['id'],None)
             raise
         finally:
             with self.engine.lock:
-                if self.engine.runtimes.get(task['id']) is runtime:self.engine.runtimes.pop(task['id'],None)
                 self.planning.pop(identity,None)
+            from .discussion import drain, finish
+            drain(self.engine, runtime)
+            finish(self.engine, runtime)
+            with self.engine.lock:
+                if self.engine.runtimes.get(task['id']) is runtime:self.engine.runtimes.pop(task['id'],None)
 
     def planning_message(self, task, message):
         from .branch_planner import _digest

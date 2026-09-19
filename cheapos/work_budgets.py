@@ -42,6 +42,8 @@ def effective(task):
 def usage(task, *, seconds=None):
     from .metrics import action_totals
     counts = action_totals(task)['counts']
+    replies = task.get('discussion_requests', {})
+    counts = {role: max(0, value - replies.get(role, 0)) for role, value in counts.items()}
     consumed = task.get('branch_run', {}).get('consumption', {})
     used = {'work_requests': sum(v for k,v in counts.items() if k != 'tools'),
             'work_turns': counts.get('worker',0), 'work_tools':counts.get('tools',0),

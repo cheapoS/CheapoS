@@ -596,6 +596,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     if not msg.strip() and not attachments:
                         raise ValueError("Provide a message")
                     result = public_task(engine.start(task_id, {"message": msg, "attachments": attachments}))
+                elif action == "chat-message":
+                    result = public_task(engine.chat_message(task_id, values))
                 elif action == "limits":
                     result = public_task(engine.update_limits(task_id, values))
                 elif action == "stop":

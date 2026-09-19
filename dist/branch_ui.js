@@ -563,10 +563,7 @@ function mount(options){
   d.querySelector('[data-keep]').onclick=()=>d.close();const button=d.querySelector('[data-confirm]');button.onclick=()=>guarded(button,async()=>{const result=await api('/tasks/'+task.id+'/branch-revise',{proposal_id:revision.proposal_id,approved:true});delete group.dataset.revising;input.value='';save();d.close();await options.handleResumeResult?.(task,result);await refresh();},d);
  }
  async function interceptSubmit(){sync();if(busy&&busySelection===getState().selection)return true;const task=getState().task;if(isRevisionTarget(task,group.dataset.revising)){const message=input.value.trim();if(!message)return true;busy=true;busySelection=getState().selection;try{await requestRevision(task,message);}catch(e){toast(e.message);}finally{busy=false;}return true;}
- if(['merged','left_on_branch'].includes(task?.branch_run?.status)){toast('Start a new chat to continue with a new job.');return true;}
- if(isPlanning(task))return false;
- if(task?.branch_run&&!task.branch_run.authorization_ref){toast('Inspect the proposal to edit or start this run.');return true;}
- if(task?.branch_run?.authorization_ref)return false;
+ if(task)return false; // The shared chat endpoint distinguishes discussion from work.
  if(interactiveOnce){interactiveOnce=false;return false;}
  if(selector.value==='unattended'){save();submitPlanning(startState?.error&&getState().selection===startState.selection&&startState.draftSignature===JSON.stringify(drafts[key()])?startState.request:undefined);return true;}
  if(intent(input.value)==='offer'){const d=dialog('Choose how to work',`<p>This sounds like a branch run. Unattended prepares a bounded plan for your approval.</p><div class="branch-actions"><button type="button" data-unattended>Prepare unattended proposal</button><button type="button" data-interactive>Keep Interactive</button></div>`);d.querySelector('[data-unattended]').onclick=()=>{selector.value='unattended';save();sync();d.close();submitPlanning();};d.querySelector('[data-interactive]').onclick=()=>{interactiveOnce=true;d.close();toast('Interactive selected. Send your message to continue conversationally.');};return true;}return false;

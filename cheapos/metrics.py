@@ -172,11 +172,18 @@ def dispatched_action(task, record):
     role = record.get('role') if record.get('role') in ACTION_ROLES else 'other'
     counts = task['session_actions']['counts']
     counts[role] = counts.get(role, 0) + 1
+    if record.get('purpose') == 'chat_reply' or record.get('request_context') == 'chat_reply':
+        replies = task.setdefault('discussion_requests', {})
+        replies[role] = replies.get(role, 0) + 1
     record['session_action_counted'] = True
 
 
-def tool_action(task):
+def tool_action(task, *, discussion=False):
     from .work_budgets import guard
-    guard(task, additions={'work_tools':1})
+    if not discussion:
+        guard(task, additions={'work_tools':1})
     initialize_actions(task)
     task['session_actions']['counts']['tools'] += 1
+    if discussion:
+        replies = task.setdefault('discussion_requests', {})
+        replies['tools'] = replies.get('tools', 0) + 1

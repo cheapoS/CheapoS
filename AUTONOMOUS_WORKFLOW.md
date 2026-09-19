@@ -26,6 +26,35 @@ this change: it needs a captured local/index snapshot, review of the combined
 result and conditional application that preserves edits made after capture.
 The existing agent conflict workflow resolves committed branch changes only.
 
+## Implemented: discussion is separate from execution
+
+Existing chats accept questions and discussion while work is running, paused,
+awaiting review, or merged. Explicit questions, explanations, examples and social
+replies use a read-only conversation turn; ambiguous or implementation requests
+keep the existing execution path. Mixed questions and requested edits remain
+worker instructions. Code examples are allowed in chat and do not count as edits.
+
+Replies use the saved task context and normal model connection, spending, token
+accounting and read-only workspace tools. They do not use the local coordinator.
+During work they run at model-operation boundaries, or while waiting for command
+approval, with an immediate saved-message receipt. An in-flight request or check
+finishes first. The work's requirements, review, check evidence, pause reason and
+recovery history remain intact. Discussion is included as discussion in later
+worker context; it is not silently added to the acceptance criteria.
+
+Work-turn/request ceilings do not prevent answering a question or count chat
+replies as implementation progress. Monetary and per-request limits still apply,
+and all usage remains visible. A chat reply is not code authorship or independent
+review evidence. Sending a message no longer implicitly approves an uncapped
+takeover. Tests, review, command consent and final integration approval remain
+required on their existing work paths.
+
+The same chat remains open for discussion after integration; starting a new
+authorized job after a merged unattended run still uses the existing new-job
+flow. Restarted incomplete replies are labeled interrupted, never left spinning
+or replayed as work. Deterministic tests cover questions during review, paused
+work, example snippets, denied mutation tools, accounting and spending refusal.
+
 ## What went wrong
 
 We have repeatedly treated engine failures as operator decisions. The recent

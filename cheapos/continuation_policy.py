@@ -38,6 +38,9 @@ def is_implementation(task):
     from . import work_policy
     from .engine import needs_patch_review
     prompt = (task.get('requests') or [task.get('prompt', '')])[-1]
+    from .discussion import is_discussion
+    if not work_policy.active_implementation(task) and is_discussion(prompt):
+        return False
     if isinstance(prompt, str):
         prompt_clean = prompt.strip().casefold()
         if re.search(r'\b(?:do\s+not\s+edit|without\s+(?:making\s+)?(?:more\s+)?changes|no\s+changes|don\'?t\s+change|don\'?t\s+edit)\b', prompt_clean):

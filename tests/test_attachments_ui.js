@@ -221,12 +221,12 @@ function deliveryFixture(status='awaiting_reply') {
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
-test('Send, Enter, takeover and Send update deliver the same image with immediate pending feedback',async()=>{
+test('Send, Enter and Send update deliver the same image through chat with immediate pending feedback',async()=>{
   for(const [status,method] of [['awaiting_reply','click'],['awaiting_reply','enter'],['paused','click'],['paused','enter'],['running','update']]){
     const f=deliveryFixture(status), pending=f.send(method);await tick();
     assert.equal(f.calls.length,1);assert.equal(f.calls[0].body.message,'A draft');
     assert.deepEqual(Array.from(f.calls[0].body.attachments,a=>a.id),['screenshot']);
-    assert.equal(f.calls[0].path,'/tasks/A/'+(status==='paused'?'operator-recovery':status==='running'?'steer':'message'));
+    assert.equal(f.calls[0].path,'/tasks/A/chat-message');
     assert.match(f.c.pendingMessageMarkup(),/<img[^>]*screenshot\.png/);
     assert.match(f.c.pendingMessageMarkup(),/Sending…/);
     f.c.renderComposerAttachments();assert.equal(f.c.$('#composer-attachments').hidden,true);

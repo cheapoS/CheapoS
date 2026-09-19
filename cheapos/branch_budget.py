@@ -61,7 +61,8 @@ class Ledger:
         # Stable IDs survive the bounded request_metrics preview history. Pending
         # and uncertain requests count too; no retry is made free by a restart.
         seen = set(self.data['request_ids'])
-        seen.update(str(r['id']) for r in self.task.get('request_metrics', []) if r.get('id'))
+        seen.update(str(r['id']) for r in self.task.get('request_metrics', [])
+                    if r.get('id') and r.get('purpose') != 'chat_reply' and r.get('request_context') != 'chat_reply')
         self.data['request_ids'] = sorted(seen)
         consumed['requests'] = max(_number(consumed.get('requests', 0)), len(seen), _number(self.task.get('worker_turns', 0)) + _number(self.task.get('review_count', 0)) if self.task.get('demo') else 0)
         usage = self.task.get('usage', {})

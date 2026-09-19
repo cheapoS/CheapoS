@@ -106,6 +106,7 @@ const CheapOSChatView = (() => {
     return `<details class="working-approach" data-event="working-approach-${esc(entry.id)}"><summary>${esc(phase)} · ${esc(work.next_action||(work.steps||[]).find(s=>s.status==='working')?.text||'Current approach')}</summary><p class="small muted">Worker checklist · checks and independent review remain separate.</p><ol>${(work.steps||[]).map(s=>`<li>${esc(s.status)} · ${esc(s.text)}</li>`).join('')}</ol>${(work.decisions||[]).map(d=>`<p>${esc(d)}</p>`).join('')}${(work.findings||[]).map(d=>`<p>Open finding: ${esc(d)}</p>`).join('')}</details>`;
   }
   function message(entry,task,decision='') {
+    if(entry.discussion)decision=''; // Work controls never belong to a chat answer.
     if(entry.kind==='user') {
       const atts=(entry.id==='user-0'?task?.attachments:null)||[];
       const attMarkup=atts.length?`<div class="chat-message-attachments">${atts.map(att=>{
@@ -131,7 +132,7 @@ const CheapOSChatView = (() => {
         }
       }
     }
-    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':entry.label||'Working'}</span>`:''}</div><div class="chat-message-body">${entry.itemTitle?`<h3 class="operation-item-title">${esc(entry.itemTitle)}</h3>`:''}${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${entry.preparation?`<section class="branch-start-status" role="status" aria-live="polite" aria-atomic="true"><strong><span class="spinner" aria-hidden="true"></span> ${esc(entry.preparation.title)}</strong><p>${esc(entry.preparation.detail)}</p></section>`:workingMarkup(task,entry)}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream,entry.reply)).join('')}</div>`:''}${replyText?`<div class="cheapos-answer">${messageText(replyText)}</div>`:''}${decision}${entry.owner?'<section data-operation-actions aria-label="Run actions"></section>':''}</div></article>`;
+    return `<article class="chat-message from-agent cheapos-response" data-message="${entry.id}"><div class="chat-author"><span class="cheapos-avatar"><img class="brand-icon" src="./brand-icon.svg" alt="" /></span><strong>cheapoS</strong>${entry.live?`<span class="response-live">${entry.discussion?entry.label:task.pending_approval?'Needs you':task.status==='stopping'?'Pausing':task.status==='waiting_retry'?'Waiting':entry.label||'Working'}</span>`:''}</div><div class="chat-message-body">${entry.itemTitle?`<h3 class="operation-item-title">${esc(entry.itemTitle)}</h3>`:''}${entry.intro?`<p class="orchestration-intro">${esc(entry.intro)}</p>`:''}${entry.preparation?`<section class="branch-start-status" role="status" aria-live="polite" aria-atomic="true"><strong><span class="spinner" aria-hidden="true"></span> ${esc(entry.preparation.title)}</strong><p>${esc(entry.preparation.detail)}</p></section>`:workingMarkup(task,entry)}${steps.length?`<div class="workflow" aria-label="cheapoS work for this message">${history}${visible.map(s=>stepMarkup(s,task,entry.stream,entry.reply)).join('')}</div>`:''}${replyText?`<div class="cheapos-answer">${messageText(replyText)}</div>`:''}${decision}${entry.owner?'<section data-operation-actions aria-label="Run actions"></section>':''}</div></article>`;
   }
   return {message,routingDetails};
 })();
@@ -487,7 +488,7 @@ async function loadStartup() {
   if(changed){renderSidebar();renderComposer();if(!state.task)renderHome()}
 }
 function submissionAvailability(task=state.task,mode=branchUI?.getMode()||'interactive') {
-  if(task&&taskBusy(task))return {allowed:true};
+  if(task)return {allowed:true}; // Conversation remains available; execution admission is server-side.
   if(state.startup.busy)return {allowed:false,reason:'Checking your free model. This draft has not been sent.'};
   if(!state.admission)return {allowed:false,reason:'Checking task capacity. This draft has not been sent.'};
   if(state.admission.legacy){const other=state.tasks.find(t=>t.id!==task?.id&&taskBusy(t));return {allowed:!other,task_id:other?.id,reason:other?'Another task is running: '+other.title+'. This draft has not been sent. Concurrent tasks become available after a later app restart.':''};}
@@ -672,16 +673,16 @@ function renderComposer() {
   }
   if(task?.execution?.development_mode){$('#composer-note').textContent=busy?'Send a correction to interrupt the current approach and continue from your instruction.':'Send a correction to apply it and continue this saved task.';}
   if(task?.branch_run){$('#chat-input').placeholder='Add guidance within the accepted scope…';$('#composer-note').textContent=['paused','blocked'].includes(task.branch_run.status)&&task.branch_run.authorization_ref?'Send a correction or “try again” to continue this saved run. Existing permissions and limits still apply.':'Guidance stays within this run’s accepted plan. Use Request changes for a reviewed revision.';}
-  if(task?.branch_run&&!task.branch_run.authorization_ref&&!CheapOSBranchUI.isPlanning(task)){$('#chat-input').disabled=true;$('#chat-input').placeholder='Inspect the proposal to edit or start this run.';$('#chat-send').disabled=true;if($('#chat-steer'))$('#chat-steer').hidden=true;$('#composer-note').textContent='This is an Unattended proposal. Inspect its captured plan before editing or starting work.';}
+  if(task?.branch_run&&!task.branch_run.authorization_ref&&!CheapOSBranchUI.isPlanning(task)){$('#chat-input').placeholder='Ask about the proposal…';$('#composer-note').textContent='Discuss the proposal here. Starting work still needs your approval.';}
   if(CheapOSBranchUI.isPlanning(task)){$('#chat-input').placeholder=busy?'Add details for the proposal…':'Reply or describe changes to the proposal…';$('#composer-note').textContent=busy?'Planning continues here. Your reply will guide the proposal.':'Questions and issues stay in this chat. Reply to continue planning, or inspect the ready proposal.';}
   if(!busy&&!availability.allowed){$('#composer-note').textContent=availability.reason;if(availability.task_id){const link=document.createElement('button');link.className='text-link';link.textContent='Open running task';link.onclick=()=>selectTask(availability.task_id);$('#composer-note').append(' ',link);}}
-  if(['merged','left_on_branch'].includes(task?.branch_run?.status)){$('#chat-input').disabled=true;$('#chat-input').placeholder='Start a new chat to continue';$('#chat-send').disabled=true;if($('#chat-steer'))$('#chat-steer').hidden=true;$('#composer-note').textContent=task.branch_run.status==='merged'?'This run is merged. Start a new chat for the next job; its scope and approvals will be separate.':'Work is saved on its feature branch. Start a new chat for another job, or inspect the saved review above.';}
+  if(['merged','left_on_branch'].includes(task?.branch_run?.status)){$('#chat-input').placeholder='Ask about the work or discuss what comes next…';$('#composer-note').textContent='This work is saved. You can keep discussing it here.';}
+  if(task&&busy){$('#chat-input').placeholder='Ask a question or change direction…';$('#composer-note').textContent='Questions get a reply. Directions guide the work at the next step.';}
   if(task&&!task.demo)$('#composer-note').textContent+=` · Est. ${money(task.usage.cost)} used.`;
   const sending=sendingHere(),send=$('#chat-send');
-  const takeover=canTakeOver(task);send.setAttribute('aria-label',sending?'Sending message':takeover?'Take over & continue':'Send message');
-  send.classList.toggle('send-recovery',takeover);
-  send.innerHTML=sending?'<span class="spinner" aria-hidden="true"></span>':takeover?'Take over &amp; continue':icon('up');
-  if(takeover&&!sending)$('#composer-note').textContent='Your directions take priority. Sending takes over this saved task without automatic work or recovery caps. Recovery can run verification commands in this task copy; usage and spending limits remain tracked. Independent review still applies.';
+  send.setAttribute('aria-label',sending?'Sending message':'Send message');
+  send.classList.remove('send-recovery');
+  send.innerHTML=sending?'<span class="spinner" aria-hidden="true"></span>':icon('up');
   if(state.branchResumeStatus?.get(task?.id)?.status==='pending'){$('#composer-note').textContent='Your guidance is saved. Continuing from the current files…';send.setAttribute('aria-label','Continuing saved work');}
   else if(sending)$('#composer-note').textContent='Sending your message… Waiting for cheapoS to accept it. Your draft is saved.';
   else if(state.sendErrors?.has(draftKey()))$('#composer-note').textContent=state.sendErrors.get(draftKey())+' Your draft remains saved.';
@@ -1138,8 +1139,8 @@ function renderChat() {
   else if(!taskBusy(task)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(guide.primary==='retry-wait'?'retry-wait':guide.primary==='clarify'?'clarify':task.status==='error'?'start':'resume',guide.primary==='retry-wait'?'Retry when available':guide.primary==='clarify'?guide.primaryLabel||'Continue in chat':task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?guide.primaryLabel:'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
   if(task.archived_at||task.trashed_at||task.branch_run)decision=task.branch_run&&task.pending_approval?permissionMarkup(task):'';
   if(CheapOSGuide.integrationPreparation(task))decision='';
-  const lastReply=conversation.findLast(entry=>entry.kind==='assistant');
-  $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastReply?decision:'')).join('')+pendingMessageMarkup()+recoveryOptionsMarkup(task);
+  const lastWorkReply=conversation.findLast(entry=>entry.kind==='assistant'&&!entry.discussion);
+  $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastWorkReply?decision+recoveryOptionsMarkup(task):'')).join('')+pendingMessageMarkup();
   if($('[data-sample-diagnostics]'))$('[data-sample-diagnostics]').onclick=()=>openConnections();
   $$('[data-environment]').forEach(b=>b.onclick=async()=>{try{if(b.dataset.environment==='recheck'){b.disabled=true;await api('/tasks/'+task.id+'/environment-recheck',{});await refresh()}else{await navigator.clipboard.writeText(b.dataset.environment==='path'?task.workspace:task.environment_setup.setup_commands[Number(b.dataset.environment)]);toast('Copied')}}catch(e){toast(e.message)}finally{b.disabled=false}});
   for(const d of $$('#chat-view details[data-event]')){
@@ -1162,8 +1163,9 @@ function renderChat() {
     }
   }
   const recovery=$('#chat-view [data-manual-recovery]');if(recovery)recovery.onclick=()=>operatorRecovery(task);
-  const continuation=operatorContinuationMarkup(task);if(continuation){const notice=document.createElement('div');notice.innerHTML=continuation;$('#chat-view').append(notice);}
-  if(task.error&&!task.branch_run){const logs=document.createElement('button');logs.className='text-link';logs.textContent='View technical logs';logs.onclick=()=>setView('logs');$('#chat-view').append(logs);}
+  const workBody=lastWorkReply&&$(`[data-message="${lastWorkReply.id}"] .chat-message-body`,$('#chat-view'))||$('#chat-view');
+  const continuation=operatorContinuationMarkup(task);if(continuation){const notice=document.createElement('div');notice.innerHTML=continuation;workBody.append(notice);}
+  if(task.error&&!task.branch_run){const logs=document.createElement('button');logs.className='text-link';logs.textContent='View technical logs';logs.onclick=()=>setView('logs');workBody.append(logs);}
   $$('[data-workflow-logs]').forEach(b=>b.onclick=()=>{setView('logs');const routing=$('#routing-diagnostics');if(routing){routing.open=true;routing.scrollIntoView({block:'start',behavior:'instant'});$('summary',routing)?.focus({preventScroll:true});}});
   updateProgressClock();bindCommitDecision(task);bindTerminalCopy();bindPermissions(task);
   $$('#chat-view [data-chat-action]').forEach(b=>b.onclick=async()=>{
@@ -1654,11 +1656,8 @@ async function dispatchChat() {
   const task=state.task,busy=task&&taskBusy(task);
   if(sendingHere())return;
   if(!busy&&!submissionAvailability(task).allowed){renderComposer();return;}
-  if(canTakeOver(task)){await takeOverTask(task,$('#chat-input').value.trim());return;}
   if(await branchUI.interceptSubmit())return;
   if(state.task!==task)return;
-  if(task?.branch_run||busy){await steerTask();return;}
-  if(task?.status==='ready'){await startTask(task.id);return;}
   const message=$('#chat-input').value.trim();
   const attachments=[...(state.composerAttachments||[])];
   if(!message&&!attachments.length)return;
@@ -1675,15 +1674,19 @@ async function dispatchChat() {
     return;
   }
   let newSetup;try{newSetup=task?null:await setupDraft(state.project.path);}catch(error){toast(error.message);return;}
-  if((task?.execution?.mode||newSetup?.values.execution?.mode||state.preferences.execution?.mode||'manual')==='manual'&&(!state.config.worker||!state.config.reviewer)){openConnections(()=>{$('#chat-input').focus()});return;}
+  if(!task&&(newSetup?.values.execution?.mode||state.preferences.execution?.mode||'manual')==='manual'&&(!state.config.worker||!state.config.reviewer)){openConnections(()=>{$('#chat-input').focus()});return;}
   const key=draftKey(),selection=state.selection,repository=state.project.path;beginMessageSend(key,message);
+  let delivered=false;
   try {
     if(task){
-      const saved=await api('/tasks/'+task.id+'/message',{message,attachments});
+      const saved=await api('/tasks/'+task.id+'/chat-message',{message,attachments});
+      delivered=true;
       state.pendingMessages.delete(key);
       clearOwnedDraft(key,message,attachments);
       if(typeof renderComposerAttachments==='function')renderComposerAttachments();
       if(state.selection===selection&&state.task?.id===task.id){state.task=saved;renderTask();}
+      const discussionReply=(saved.discussion?.length||0)>(task.discussion?.length||0);
+      if(!discussionReply&&!saved.operator_continue&&saved.branch_run?.authorization_ref&&['paused','blocked'].includes(saved.branch_run.status))await resumeBranchRun(saved);
       void refreshContext();
     }
     else {
@@ -1696,7 +1699,7 @@ async function dispatchChat() {
       try{const started=await startTask(created.id);if(started)clearOwnedDraft(key,message,attachments);}finally{state.pendingSends.delete(created.id);}
     }
     if(state.selection===selection)$('#view-container').scrollTop=$('#view-container').scrollHeight;
-  }catch(e){state.sendErrors.set(key,e.message);toast(e.message);}
+  }catch(e){if(!delivered)state.sendErrors.set(key,e.message);toast(e.message);}
   finally{state.pendingMessages.delete(key);state.pendingSends.delete(key);if(draftKey()===key){if(state.task)renderChat();else renderHome();}renderComposer();if(state.selection===selection)$('#chat-input').focus();}
 }
 async function steerTask(text) {

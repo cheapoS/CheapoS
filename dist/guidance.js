@@ -949,7 +949,7 @@ const CheapOSConversation = (() => {
       steps:[],reply:'',stream:null,preparation});
     return entries;
   }
-  function build(task, at = Date.now()) {
+  function workConversation(task, at = Date.now()) {
     task={...task,stream:guide.liveStream(task)};
     if(task.branch_run)return withPreparation(branchBuild(task,at),task);
     const entries = [];
@@ -964,6 +964,20 @@ const CheapOSConversation = (() => {
       entries.push(response(turn.events.slice(start),`reply-${turn.index}-${part}`,task,turn.isLatest,at));
     }
     return withPreparation(entries,task);
+  }
+  function build(task, at = Date.now()) {
+    // Model traffic for an answer is not worker/reviewer execution progress.
+    const work={...task,events:(task.events||[]).filter(e=>e.detail?.purpose!=='chat_reply'),
+      stream:task.stream?.purpose==='chat_reply'?null:task.stream};
+    const entries=workConversation(work,at);
+    for(const turn of task.discussion||[]){
+      entries.push({kind:'user',id:'discussion-user-'+turn.id,text:turn.message});
+      entries.push({kind:'assistant',id:'discussion-reply-'+turn.id,discussion:true,latest:false,owner:false,
+        live:['queued','answering'].includes(turn.status),steps:[],stream:null,
+        label:turn.status==='queued'?'Message received':turn.status==='answering'?'Replying':'',
+        intro:'',reply:turn.answer||(turn.status==='queued'?'I’ll answer after the current operation. Your work stays in place.':'Thinking about your question…')});
+    }
+    return entries;
   }
   return {build,readyForNext};
 })();

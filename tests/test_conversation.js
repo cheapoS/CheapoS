@@ -6,6 +6,30 @@ const event=(id,kind,title,detail)=>({id,kind,title,detail,time:stamp});
 const task=overrides=>({prompt:'Fix the script.',status:'awaiting_reply',active_role:'worker',changes:[],checks:[],checkpoints:[],events:[],providers:{worker:{model:'worker-model'},reviewer:{model:'reviewer-model'}},...overrides});
 const replies=t=>build(t).filter(e=>e.kind==='assistant');
 
+test('questions have their own replies while work keeps its review controls',()=>{
+ for(const status of ['running','reviewing','paused','approved']){
+  const t=task({status,discussion:[{id:'q',message:'Why that approach?',status:'answered',answer:'Here is why.'}],
+   branch_run:{id:'run',status:'ready_for_merge',authorization_ref:'auth',items:[{id:'one',status:'committed'}],readiness:{manifest:{files:[{path:'app.py'}]}}}});
+  const before=JSON.stringify(t),entries=build(t),reply=entries.at(-1);
+  assert.equal(reply.reply,'Here is why.');assert.equal(reply.owner,false);
+  assert.equal(entries.at(-2).text,'Why that approach?');
+  assert.ok(entries.some(e=>e.owner),'The work still owns its approval controls');
+  assert.equal(JSON.stringify(t),before);
+  assert.deepEqual(build(JSON.parse(before)),entries);
+ }
+});
+
+test('queued questions acknowledge delivery and never pretend to resume paused work',()=>{
+ const t=task({status:'paused',discussion:[{id:'q',message:'Show an example?',status:'queued'}]});
+ const reply=build(t).at(-1);assert.equal(reply.label,'Message received');
+ assert.match(reply.reply,/answer after the current operation/);assert.equal(reply.owner,false);
+ t.discussion[0].status='answering';
+ t.stream={purpose:'chat_reply',phase:'waiting',role:'worker',request_id:2};
+ t.events=[event(2,'model','Requesting worker',{purpose:'chat_reply'})];
+ assert.equal(build(t).at(-1).label,'Replying');
+ assert.ok(build(t).slice(0,-2).every(e=>!e.stream),'A chat answer is not a live worker step');
+});
+
 test('accepted updates show saved preparation stages in both chat modes before agents restart',()=>{
  for(const unattended of [false,true]){
   const t=task({status:'paused',events:[event(1,'tool','read file',{arguments:{path:'README.md'}})],
@@ -318,6 +342,17 @@ test('rendered operation contains live details and action slot without routing n
  const t=branchTask({stream:{role:'planner',phase:'thinking',thinking:'Actual planner output',model:'planner-model'},events:[event(1,'model','Requesting planner: planner-model',{})],routing_traces:[{role:'unknown',selected_model:'chosen'}]});
  const [entry]=replies(t),html=context.view.message(entry,t,'',true);
  assert.equal((html.match(/<article/g)||[]).length,1);assert.match(html,/data-operation-actions/);assert.match(html,/Actual planner output/);assert.match(html,/workflow-details/);assert.doesNotMatch(html,/unknown: selected/);assert.match(html,/<span>Planner<\/span>/);
+});
+test('chat answers never inherit work pause, review or permission controls',()=>{
+ const vm=require('node:vm'),fs=require('node:fs');
+ const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8').split("\n'use strict';\nconst $ =")[0];
+ const context={CheapOSGuide:require('../dist/guidance.js'),esc:x=>String(x??''),icon:()=>'',messageText:x=>x};
+ vm.createContext(context);vm.runInContext(source+'\nthis.view=CheapOSChatView;',context);
+ const t=task({status:'paused',pending_approval:{id:'command'},discussion:[{id:'q',message:'Why?',status:'answering'}]});
+ const reply=build(t).at(-1),html=context.view.message(reply,t,'<button>Resume review</button>');
+ assert.match(html,/Replying/);assert.doesNotMatch(html,/Needs you|Resume review|data-operation-actions|Paused/);
+ const work=build(t).findLast(e=>e.kind==='assistant'&&!e.discussion);
+ assert.match(context.view.message(work,t,'<button>Resume review</button>'),/Resume review/);
 });
 test('final checks and review with explicit null item ownership cannot join the last item',()=>{
  const t=branchTask({planning_request:null,status:'reviewing',branch_run:{id:'run1',status:'finalizing',authorization_ref:'auth',current_item_id:null,items:[{id:'one',title:'Only item',status:'committed',commit_receipt:{stage:'completed',item_id:'one',run_id:'run1',new_tip:'a'.repeat(40)}}]},events:[

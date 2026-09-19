@@ -115,7 +115,7 @@ For general conversation, questions, exploration, or chat (e.g. "Just chatting",
 2. Code Changes / Implementation:
 When the user asks you to implement, fix, refactor, or build something, execute the autonomous loop directly without stalling or asking 1,000 preliminary questions:
 - Bias to autonomous action: Inspect code, tests, and manifests directly. Do NOT ask for permission to start, do NOT ask "Shall I proceed?", and do NOT ask questions whose answers are available by reading the repository.
-- NEVER output code in conversational chat text or markdown. Outputting code in chat text does NOT modify repository files. You MUST call write_file, replace_text, or append_text directly to apply changes to files.
+- Questions, design discussions and requests for examples may include code in Markdown without editing files. When the user requests actual implementation, use the file tools to apply it; a code example alone does not complete an implementation request.
 - For unspecified reversible details, follow existing project conventions, make reasonable engineering decisions, and record your assumptions in the checkpoint summary.
 - Practice test-driven discipline: inspect or write tests first, make focused edits, choose an appropriate verification command from the project, and call run_checks directly. The controller presents any required command approval to the user; never ask for command permission in prose or ask_user.
 - Selection previews such as check.py --plan are not verification: choose an executable scoped check from project guidance.
@@ -510,6 +510,8 @@ class Runtime:
         return self.stop.is_set() or self.interrupt_request.is_set()
 
     def guard(self):
+        if getattr(self, 'answering_chat', False):
+            return  # Chat has normal request/spending limits, not a work deadline.
         from .work_budgets import guard
         if not hasattr(self, 'branch_ledger'):
             if not hasattr(self, 'work_seconds_base'): self.work_seconds_base=self.task.get('active_work_seconds',0)
@@ -1295,6 +1297,34 @@ class Engine:
             sync_saved(task)
             self.event(task, "state", "Chat limits updated")
             return task
+
+    def chat_message(self, task_id, values):
+        """Discussion does not authorize or restart implementation."""
+        from .discussion import is_discussion, enqueue
+        message = values.get('message', '')
+        attachments = values.get('attachments') or []
+        if not isinstance(message, str) or not isinstance(attachments, list):
+            raise ValueError('Provide a message and a list of attachments')
+        if len(message) > 8000 or (not message.strip() and not attachments):
+            raise ValueError('Enter a message of up to 8,000 characters or attach a file')
+        if is_discussion(message) and not attachments:
+            return enqueue(self, task_id, message)
+        with self.lock:
+            self.require_active_task(task_id)
+            task = self.store.get(task_id)
+            runtime = self.runtimes.get(task_id)
+            if runtime and runtime.thread and runtime.thread.is_alive() and getattr(runtime, 'discussion_only', False) and not getattr(runtime, 'discussion_finished', False):
+                receipt = {'id': uuid.uuid4().hex, 'message': message.strip(), 'time': now(),
+                           'status': 'work_queued', 'answer': 'Your direction is saved. I’ll apply it after this reply.'}
+                runtime.task.setdefault('discussion', []).append(receipt)
+                runtime.task.setdefault('chat_work_queue', []).append({'receipt': receipt['id'], 'values': copy.deepcopy(values)})
+                self.store.save(runtime.task)
+                return runtime.task
+        if task.get('branch_run'):
+            return self.branch.message(task_id, values)
+        if runtime and runtime.thread and runtime.thread.is_alive():
+            return self.steer(task_id, message, attachments=attachments)['task']
+        return self.start(task_id, {'message': message, 'attachments': attachments})
 
     def session_permissions(self, task_id):
         from .task_commands import allowed
@@ -2147,12 +2177,23 @@ class Engine:
         runtime.step_turns += 1
 
     def request(self, runtime, messages, tools, role, config_override=None, purpose=None, tool_choice=None):
+        if purpose != 'chat_reply':
+            from .discussion import drain
+            drain(self, runtime)
+        if (role == 'worker' and not purpose) or (role == 'planner' and purpose == 'branch_planning'):
+            from .discussion import with_context
+            messages = with_context(runtime.task, messages)
         from . import reviewer_recovery
-        if role == 'worker':
+        if role == 'worker' and purpose != 'chat_reply':
             work_policy.refresh_edit_recovery(runtime.task)
         if not runtime.task.get('branch_run',{}).get('conflict_resolution'):
             tools=[t for t in tools if t.get('function',{}).get('name') not in {'read_merge_context','apply_merge_version'}]
-        return reviewer_recovery.request(self, runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
+        try:
+            return reviewer_recovery.request(self, runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
+        finally:
+            if purpose != 'chat_reply':
+                from .discussion import drain
+                drain(self, runtime)
 
     def _request_routed(self, runtime, messages, tools, role, config_override=None, purpose=None, tool_choice=None):
         from .context_budget import context_rejection, payload_bytes
@@ -2195,7 +2236,7 @@ class Engine:
         if role == 'worker' and not purpose and task.get('branch_run'):
             from .branch_worker_recovery import restore_local_repair_routes
             restore_local_repair_routes(self,runtime)
-        routed_purpose = purpose in {None, 'branch_planning', 'branch_final'}
+        routed_purpose = purpose in {None, 'branch_planning', 'branch_final', 'chat_reply'}
         if config_override is not None or not routed_purpose or not automatic(task, role):
             return self._request(runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
         attempted = False
@@ -2218,7 +2259,7 @@ class Engine:
             branch_worker = role == 'worker' and bool(task.get('branch_run'))
             if recovery and not unavailable and runtime.handoffs >= MAX_HANDOFFS and not measuring(task) and not branch_worker:
                 raise RoutingPause("Two automatic model handoffs were tried for this request. Saved work and usage are kept. Inspect Models and send a specific next instruction; Resume does not replenish handoffs.")
-            if attempted:
+            if attempted and purpose != 'chat_reply':
                 self.count_recovery_turn(runtime)
                 attempted = False
             if recovery:
@@ -2248,14 +2289,16 @@ class Engine:
                 if hasattr(runtime, 'file_observations') and hasattr(runtime.file_observations, 'clear'):
                     runtime.file_observations.clear()
                 had_edit_recovery = bool(task.get('compact_edits') or task.get('output_retry'))
-                if role == 'worker':
+                if role == 'worker' and purpose != 'chat_reply':
                     work_policy.refresh_edit_recovery(task)
                 if not purpose and (had_edit_recovery or task.get("action_pending")) and task["status"] != "reviewing":
                     from .worker_conversation import continue_session
                     snapshot = self.compact_context(runtime) if task.get("compact_edits") else self.action_messages(task)
                     messages[:] = continue_session(task, snapshot, 'model_handoff')
+                    from .discussion import with_context
+                    messages[:] = with_context(task, messages)
             cfg = task["providers"][role]
-            if role == 'worker':
+            if role == 'worker' and purpose != 'chat_reply':
                 work_policy.refresh_edit_recovery(task)
             try:
                 gateway = self.connection_for(cfg)
@@ -2443,7 +2486,7 @@ class Engine:
             return result
 
     def _request_attempt(self, runtime, messages, tools, role, config_override=None, purpose=None, transport_override=None, retry_of=None, tool_choice=None):
-        if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.guard(next_request=True)
+        if hasattr(runtime,"branch_ledger") and purpose != 'chat_reply': runtime.branch_ledger.guard(next_request=True)
         task=runtime.task
         if task.get('demo'):return self._perform_request(runtime,messages,tools,role,config_override,purpose,tool_choice=tool_choice)
         config = self._resolve_provider_config(task, role, config_override)
@@ -2454,6 +2497,8 @@ class Engine:
                 'purpose':record_purpose,'retry_of':retry_of,'dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation',
                 'requested_at':now(),'synthetic':self.provider_factory is not None,
                 'input_rate':config['input_rate'],'output_rate':config['output_rate']}
+        if getattr(runtime, 'answering_chat', False):
+            record['request_context'] = 'chat_reply'  # Includes route probes for this reply.
         from .served_identity import metadata
         record.update(metadata(config['model']))
         if task.get('branch_run'):
@@ -2534,7 +2579,7 @@ class Engine:
             messages.append({'role':'user','content':json.dumps({'active_item':{k:item[k] for k in ('id','title','instructions','acceptance_criteria','required_checks')},'completed_items':[{'id':i['id'],'outcome':i['outcome_summary'][:500]} for i in run['items'] if i['status'] in branch_runs.DONE]})})
             if item.get('clarification_history'):messages.append({'role':'user','content':'Previous questions and operator guidance for this item: '+json.dumps(item['clarification_history'])})
             if run.get('guidance'):messages.append({'role':'user','content':'Operator guidance within the accepted item scope (does not authorize extra scope): '+json.dumps(run['guidance'])})
-        if task["usage"]["cost"] > task["limits"]["dollars"] or (not measuring(task) and task["usage"]["reviewer"]["tokens"] > task["limits"]["reviewer_tokens"]):
+        if task["usage"]["cost"] > task["limits"]["dollars"] or (not getattr(runtime, 'answering_chat', False) and not measuring(task) and task["usage"]["reviewer"]["tokens"] > task["limits"]["reviewer_tokens"]):
             key = 'dollars' if task['usage']['cost'] > task['limits']['dollars'] else 'reviewer_tokens'
             used = task['usage']['cost'] if key == 'dollars' else task['usage']['reviewer']['tokens']
             raise BudgetError("The provider's reported usage reached the task limit. No further requests will be made.", key, used, task['limits'][key])
@@ -2576,7 +2621,8 @@ class Engine:
             budget['source'] = 'brief_operation'
         config = {**config, '_effective_output_tokens':budget['tokens']}
         from .work_budgets import guard as guard_work
-        guard_work(task, additions={'work_requests':1, 'work_turns':int(role == 'worker')})
+        if not getattr(runtime, 'answering_chat', False) and purpose != 'chat_reply':
+            guard_work(task, additions={'work_requests':1, 'work_turns':int(role == 'worker')})
         reservation = reserve(account, config, messages, tools, role)
         record=task['request_metrics'][-1]
         reservation['metric_id']=record['id']
@@ -3034,7 +3080,10 @@ class Engine:
             self.event(task, "permission", "Permission needed to run the verification command", task["pending_approval"])
             waiting_since = time.monotonic()
             if hasattr(runtime,"branch_ledger"): runtime.branch_ledger.suspend()
-            try: runtime.approval.wait()
+            try:
+                while not runtime.approval.wait(.2):
+                    from .discussion import drain
+                    drain(self, runtime)
             finally:
                 if hasattr(runtime,"branch_ledger") and not runtime.stop.is_set(): runtime.branch_ledger.begin()
             waited=time.monotonic()-waiting_since
@@ -4081,6 +4130,11 @@ class Engine:
             integration_preparation.observe(self, task)
             if task.get("status") in {"approved", "completed"}:
                 integration_preparation.automatic(self, task)
+            from .discussion import drain
+            drain(self, runtime)
+            if not hasattr(runtime, 'branch_ledger'):
+                from .discussion import finish
+                finish(self, runtime)
 
     def fixture_response(self, task, role):
         if role == "reviewer":

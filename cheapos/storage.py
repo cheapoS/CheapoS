@@ -43,6 +43,11 @@ class Store:
             try:
                 task = json.loads(path.read_text(encoding="utf-8"))
                 changed = False
+                for turn in task.get('discussion', []):
+                    if turn.get('status') in {'queued', 'answering', 'work_queued'}:
+                        turn.update(status='interrupted', answer='The app restarted before this reply finished. Your work is saved; send your question again to continue the conversation.')
+                        changed = True
+                if task.pop('chat_work_queue', None): changed = True
                 if task["status"] in {"running", "reviewing", "waiting_approval", "waiting_retry", "stopping"}:
                     if task['status'] == 'waiting_retry' and task.get('retry_wait_enabled'):
                         task['route_resume_on_start'] = True

@@ -50,7 +50,7 @@ def review_workers(task, record):
     item that changed the candidate, or when its provenance is incomplete.
     """
     workers=[q for q in task.get('request_metrics',[]) if q.get('role')=='worker' and q.get('dispatched')
-             and q.get('purpose')!='probe']
+             and q.get('purpose') not in {'probe', 'chat_reply'}]
     run=task.get('branch_run') or {}
     items=run.get('items',[])
     excluded=set()
