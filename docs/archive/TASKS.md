@@ -4,7 +4,7 @@
 
 This is the completed first implementation milestone for [the September 13 check-in](CHECK_IN_2026-09-13.md): **sidebar cleanup, clearer task titles, and fewer approval interruptions**, followed by the controller/onboarding improvements below. All 27 cards are Done and record their validation and limitations. Local `main` includes the final integration commit `39903c9`.
 
-**Completed next milestone: [a job on a feature branch](BRANCH_RUNS.md).** All T28–T40 cards are Done, with [validation results](docs/experiments/branch-runs.md) and a [work-mode/trigger guide](docs/unattended-runs.md). Those changes and subsequent live-trial repairs are integrated into `main`. Do not restart T01 or T28.
+**Completed next milestone: [a job on a feature branch](BRANCH_RUNS.md).** All T28–T40 cards are Done, with [validation results](../experiments/branch-runs.md) and a [work-mode/trigger guide](../unattended-runs.md). Those changes and subsequent live-trial repairs are integrated into `main`. Do not restart T01 or T28.
 
 Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes below that describe that baseline are historical; re-read current code before changing behavior. A dependency means its acceptance checks have passed and its commit is available, not merely that someone started it.
 
@@ -12,28 +12,28 @@ Original first-milestone baseline: `6f22bf6` (application code `e5bddde`). Notes
 
 ### Operator limits and autonomous completion — September 18
 
-**T94–T100 completed.** The [task index](docs/tasks/T94-operator-limits-and-autonomous-completion.md) records all six implementation cards: planning policy, context repair, provider recovery, durable strategies, scoped limits, and large evidence/history. See the [validation report](docs/development/operator-limits-validation.md) and [user guide](docs/development/limits-and-recovery-user-guide.md). [T101](docs/tasks/T101-idempotent-updates-and-structural-telemetry.md) is also completed: idempotent branch updates and bounded local structural telemetry.
+**T94–T100 completed.** The [task index](../tasks/T94-operator-limits-and-autonomous-completion.md) records all six implementation cards: planning policy, context repair, provider recovery, durable strategies, scoped limits, and large evidence/history. See the [validation report](../development/operator-limits-validation.md) and [user guide](../development/limits-and-recovery-user-guide.md). [T101](../tasks/T101-idempotent-updates-and-structural-telemetry.md) is also completed: idempotent branch updates and bounded local structural telemetry.
 
 ### Next UI task
 
 | ID | Task | Status |
 | --- | --- | --- |
-| [T93](docs/tasks/T93-session-action-total.md) | Show “This session · N actions” above the full breakdown | Completed — durable per-chat total and role/tool breakdown |
+| [T93](../tasks/T93-session-action-total.md) | Show “This session · N actions” above the full breakdown | Completed — durable per-chat total and role/tool breakdown |
 
 ### Settings and integration recovery — September 17
 
 | ID | Task | Status |
 | --- | --- | --- |
-| [T92](docs/tasks/T92-unified-integration-recovery.md) | Resolve integration conflicts without operator troubleshooting | Done |
-| [T91](docs/tasks/T91-settings-system.md) | Explicit settings scopes and safe chat changes | Done |
+| [T92](../tasks/T92-unified-integration-recovery.md) | Resolve integration conflicts without operator troubleshooting | Done |
+| [T91](../tasks/T91-settings-system.md) | Explicit settings scopes and safe chat changes | Done |
 
-Settings usage: [Settings scopes](docs/USER_GUIDE.md#settings-scopes).
+Settings usage: [Settings scopes](../USER_GUIDE.md#settings-scopes).
 
 
-**Active roadmap:** [Durable milestones for empowering smaller models](docs/ROADMAP.md). Milestone 1 (**Reliable small changes**) is in progress on branch `feature/reliable-small-changes`.
+**Active roadmap:** [Durable milestones for empowering smaller models](../ROADMAP.md). Milestone 1 (**Reliable small changes**) is in progress on branch `feature/reliable-small-changes`.
 
 **Next milestone: a continuous agent session that finishes the job.**
-The [DeepSeek Harness assessment](docs/development/deepseek-harness-assessment.md)
+The [DeepSeek Harness assessment](../development/deepseek-harness-assessment.md)
 compares upstream session, compaction, and continuation behavior with current
 cheapoS code. T84–T88 are completed; see the qualification report. These cards are not
 completed fixes or authorization for a live model trial. Reconcile the currently
@@ -41,18 +41,18 @@ in-progress engine/review edits before changing their files.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T84](docs/tasks/T84-session-continuity.md) | Preserve conversation across resume, review repair, handoff, and post-commit follow-up | Current conversation/storage contracts | M | Done |
-| [T85](docs/tasks/T85-working-state.md) | Persist the actual approach, unfinished steps, and current action | T84 | M | Done |
-| [T86](docs/tasks/T86-context-continuity.md) | Compact older context while retaining working state and retrievable evidence | T84, T85 | M/L | Done |
-| [T87](docs/tasks/T87-continuation-policy.md) | Consolidate recovery, preserve useful exploration, and make Continue actionable | T84, T85; T86 before qualification | M/L | Done |
-| [T88](docs/tasks/T88-harness-qualification.md) | Qualify completion, continuity, and operator intervention with comparable evidence | T84–T87 | M | Done |
+| [T84](../tasks/T84-session-continuity.md) | Preserve conversation across resume, review repair, handoff, and post-commit follow-up | Current conversation/storage contracts | M | Done |
+| [T85](../tasks/T85-working-state.md) | Persist the actual approach, unfinished steps, and current action | T84 | M | Done |
+| [T86](../tasks/T86-context-continuity.md) | Compact older context while retaining working state and retrievable evidence | T84, T85 | M/L | Done |
+| [T87](../tasks/T87-continuation-policy.md) | Consolidate recovery, preserve useful exploration, and make Continue actionable | T84, T85; T86 before qualification | M/L | Done |
+| [T88](../tasks/T88-harness-qualification.md) | Qualify completion, continuity, and operator intervention with comparable evidence | T84–T87 | M | Done |
 
 Keep authorization and evidence checks enforceable while making implementation
 guidance more flexible. Preserve free-only/local-only and spending choices;
 keep the optional coordinator idle between eligible consultations. No new heavy
 tests are authorized by this milestone. Follow the existing cost-disclosure rule.
 
-**Completed: [T82 — optional coordinator-assisted recovery](docs/tasks/T82-coordinator-assisted-recovery.md).**
+**Completed: [T82 — optional coordinator-assisted recovery](../tasks/T82-coordinator-assisted-recovery.md).**
 Make a configured local coordinator useful after delegation: when a worker gets
 stuck, brief the coordinator on saved evidence and let it propose a concrete next
 step before asking the operator to invent a correction. Recommend this option in
@@ -65,7 +65,7 @@ between interventions and returns to idle as soon as its consultation finishes.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T82](docs/tasks/T82-coordinator-assisted-recovery.md) | Give an optional local coordinator saved evidence to help recover stalled workers | Existing progress recovery, T65/T73/T74/T77, T80/T81 | M/L | Complete — [validation](docs/development/coordinator-assisted-recovery.md) |
+| [T82](../tasks/T82-coordinator-assisted-recovery.md) | Give an optional local coordinator saved evidence to help recover stalled workers | Existing progress recovery, T65/T73/T74/T77, T80/T81 | M/L | Complete — [validation](../development/coordinator-assisted-recovery.md) |
 
 This card is an implementation handoff, not authorization to start a live trial
 or change existing model/spending settings. Complete its ordered increments and
@@ -79,34 +79,34 @@ one shared slot each. Capacity errors preserve drafts and saved tasks.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T81](docs/tasks/T81-lifetime-usage-savings.md) | Durable lifetime usage, free versus paid breakdown, and shareable evidence | Existing T24 metrics and role accounting | M | Complete |
-| [T79](docs/tasks/T79-blocked-submission-feedback.md) | Make Send, Enter, and saved-but-not-started feedback agree | Current composer/start flow | S | Complete |
-| [T80](docs/tasks/T80-concurrent-interactive-unattended.md) | Interactive and Unattended tasks with isolated ownership | T79; existing workspace, budget, and commit contracts | L | Complete |
+| [T81](../tasks/T81-lifetime-usage-savings.md) | Durable lifetime usage, free versus paid breakdown, and shareable evidence | Existing T24 metrics and role accounting | M | Complete |
+| [T79](../tasks/T79-blocked-submission-feedback.md) | Make Send, Enter, and saved-but-not-started feedback agree | Current composer/start flow | S | Complete |
+| [T80](../tasks/T80-concurrent-interactive-unattended.md) | Interactive and Unattended tasks with isolated ownership | T79; existing workspace, budget, and commit contracts | L | Complete |
 
-See [usage coverage](docs/development/lifetime-usage.md) and
-[validation evidence](docs/development/usage-and-concurrency-validation.md).
+See [usage coverage](../development/lifetime-usage.md) and
+[validation evidence](../development/usage-and-concurrency-validation.md).
 The earlier live T44 trial remains operator-deferred; this batch used no live
 models and did not restart the application or disturb the concurrent stress test.
 
-**Completed: [T78 — planner source excerpts and accurate response diagnostics](docs/tasks/T78-planner-source-excerpts.md).**
+**Completed: [T78 — planner source excerpts and accurate response diagnostics](../tasks/T78-planner-source-excerpts.md).**
 The planner can search and page through source files larger than the 64 KB
 complete-document limit. Plain-text replies retain their repair context and are
 reported accurately rather than being mislabeled as truncated/multiple plans.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T78](docs/tasks/T78-planner-source-excerpts.md) | Read large source in bounded excerpts and diagnose missing proposal calls | T65, T73 | S | Complete |
+| [T78](../tasks/T78-planner-source-excerpts.md) | Read large source in bounded excerpts and diagnose missing proposal calls | T65, T73 | S | Complete |
 
-**Completed: [T77 — automatic reviewer reassessment before a routine stall](docs/tasks/T77-reviewer-coaching.md).**
+**Completed: [T77 — automatic reviewer reassessment before a routine stall](../tasks/T77-reviewer-coaching.md).**
 The engine gives an unattended item reviewer one focused, evidence-based nudge
 before stopping repeated reads, failed actions, or invalid/no decisions. Chat
 shows the recovery attempt; an exhausted attempt retains its specific diagnostic.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T77](docs/tasks/T77-reviewer-coaching.md) | Coach a stalled item reviewer automatically within the existing allowance | T60, T73, T74 | S | Complete |
+| [T77](../tasks/T77-reviewer-coaching.md) | Coach a stalled item reviewer automatically within the existing allowance | T60, T73, T74 | S | Complete |
 
-**Completed: [T76 — visible progress from approval to the first worker response](docs/tasks/T76-visible-startup-progress.md).**
+**Completed: [T76 — visible progress from approval to the first worker response](../tasks/T76-visible-startup-progress.md).**
 Start now applies the returned task immediately, keeps elapsed waiting feedback
 visible, and refreshes Chat independently of gateway/sidebar readiness checks.
 The accepted first-item wait leads into the actual worker output with Pause
@@ -114,9 +114,9 @@ available. No model or backend execution policy changed.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T76](docs/tasks/T76-visible-startup-progress.md) | Eliminate the apparent idle gap after approving an unattended plan | T70, T74, T75 | S | Complete |
+| [T76](../tasks/T76-visible-startup-progress.md) | Eliminate the apparent idle gap after approving an unattended plan | T70, T74, T75 | S | Complete |
 
-**Completed: [T75 — one Review & start screen for Unattended work](docs/tasks/T75-single-unattended-approval.md).**
+**Completed: [T75 — one Review & start screen for Unattended work](../tasks/T75-single-unattended-approval.md).**
 Submit the job directly from the composer, let cheapoS plan visibly in Chat,
 then inspect the plan and execution settings together before clicking Start.
 Remove the initial mandatory Start unattended work dialog. Use the open project
@@ -126,7 +126,7 @@ and allowance; the final approval authorizes execution, not earlier spending.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T75](docs/tasks/T75-single-unattended-approval.md) | Submit directly, plan in Chat, and approve the whole run in one screen | T65, T69, T70, T74 | M | Complete |
+| [T75](../tasks/T75-single-unattended-approval.md) | Submit directly, plan in Chat, and approve the whole run in one screen | T65, T69, T70, T74 | M | Complete |
 
 T62–T74 below are completed foundations. Extend their saved-plan, immediate-Start,
 inline-error, and unified-conversation behavior rather than rebuilding them.
@@ -134,7 +134,7 @@ inline-error, and unified-conversation behavior rather than rebuilding them.
 **Completed: T62–T74 — reliable planning, one continuous conversation, and clear failure explanations.**
 These completed implementation cards are based on the planner review at
 `db774c7` (September 14, 2026) and the operator's follow-up UI requests.
-See [validation and browser evidence](docs/development/planner-reliability.md).
+See [validation and browser evidence](../development/planner-reliability.md).
 The review is a historical reproduction record, not a reason to undo newer fixes. T01–T61 completion records below are
 historical, not the next work queue.
 
@@ -147,19 +147,19 @@ Clicking Start should immediately return to a visibly starting conversation.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T62](docs/tasks/T62-planner-access-binding.md) | Bind planner requests to the authorized gateway and access policy | Current planner implementation | S/M | Complete |
-| [T63](docs/tasks/T63-planner-role-selection.md) | Preserve working two-model routes when a planner is configured | T62 | S/M | Complete |
-| [T64](docs/tasks/T64-planner-fallback-credentials.md) | Resolve fallback credentials without losing their provider identity | T62 | S | Complete |
-| [T65](docs/tasks/T65-planner-configuration.md) | Configure, save, and restore a dedicated planner | T63, T64 | M | Complete |
-| [T66](docs/tasks/T66-planner-task-migration.md) | Resume older planning tasks without losing usage or authorization | T64 | S | Complete |
-| [T67](docs/tasks/T67-complete-final-plan-checks.md) | Repair plan schema without silently dropping verification coverage | Current plan parser | S | Complete |
-| [T68](docs/tasks/T68-planner-usage-visibility.md) | Include planner usage and identity in totals, traces, and the UI | T65, T66 | S/M | Complete |
-| [T73](docs/tasks/T73-specific-stop-explanations.md) | Show the actual saved failure and next action directly in Chat | Existing T53/T54 pause contract | M | Completed |
-| [T69](docs/tasks/T69-persistent-plan-tab.md) | Keep the approved plan visible and reorder task tabs | Current saved plan contract | M | Complete |
-| [T70](docs/tasks/T70-responsive-run-start.md) | Close Start immediately and report startup progress in chat | T69 | M | Complete |
-| [T71](docs/tasks/T71-readable-planner-dialog.md) | Widen the planner and make long proposals easier to read | Current planner dialog | S | Complete |
-| [T72](docs/tasks/T72-technical-logs-tab.md) | Put Technical logs last and show the newest events first | T69, T73 | S/M | Complete |
-| [T74](docs/tasks/T74-unified-orchestration-reply.md) | Keep planning, worker, and reviewer progress inside the owning cheapoS reply | T68, T69, T70, T73; coordinate with T71/T72 | M | Complete |
+| [T62](../tasks/T62-planner-access-binding.md) | Bind planner requests to the authorized gateway and access policy | Current planner implementation | S/M | Complete |
+| [T63](../tasks/T63-planner-role-selection.md) | Preserve working two-model routes when a planner is configured | T62 | S/M | Complete |
+| [T64](../tasks/T64-planner-fallback-credentials.md) | Resolve fallback credentials without losing their provider identity | T62 | S | Complete |
+| [T65](../tasks/T65-planner-configuration.md) | Configure, save, and restore a dedicated planner | T63, T64 | M | Complete |
+| [T66](../tasks/T66-planner-task-migration.md) | Resume older planning tasks without losing usage or authorization | T64 | S | Complete |
+| [T67](../tasks/T67-complete-final-plan-checks.md) | Repair plan schema without silently dropping verification coverage | Current plan parser | S | Complete |
+| [T68](../tasks/T68-planner-usage-visibility.md) | Include planner usage and identity in totals, traces, and the UI | T65, T66 | S/M | Complete |
+| [T73](../tasks/T73-specific-stop-explanations.md) | Show the actual saved failure and next action directly in Chat | Existing T53/T54 pause contract | M | Completed |
+| [T69](../tasks/T69-persistent-plan-tab.md) | Keep the approved plan visible and reorder task tabs | Current saved plan contract | M | Complete |
+| [T70](../tasks/T70-responsive-run-start.md) | Close Start immediately and report startup progress in chat | T69 | M | Complete |
+| [T71](../tasks/T71-readable-planner-dialog.md) | Widen the planner and make long proposals easier to read | Current planner dialog | S | Complete |
+| [T72](../tasks/T72-technical-logs-tab.md) | Put Technical logs last and show the newest events first | T69, T73 | S/M | Complete |
+| [T74](../tasks/T74-unified-orchestration-reply.md) | Keep planning, worker, and reviewer progress inside the owning cheapoS reply | T68, T69, T70, T73; coordinate with T71/T72 | M | Complete |
 
 **Required tab order:** without a plan, **Chat → Changes → Activity → Tests → Technical logs**;
 with a plan, **Chat → Changes → Plan & review → Activity → Tests → Technical logs**. The current Checks
@@ -215,15 +215,15 @@ a green report. Record whether they remain when exercising an affected path.
 
 ### Previous milestone status
 
-**T49–T60 implemented and validated; browser scenarios remain pending where recorded.** See [review correctness closeout](docs/development/review-correctness.md). T49–T60 turn the halfway assessment and review-loop inspection into bounded implementation and evidence tasks. T49–T55 were planned against `4b6ed68`; T56–T60 against `5a463b4` on `main` (September 14, 2026). Both baselines include the trial's engine fixes. Read current code before assuming a reported issue remains unfixed.
+**T49–T60 implemented and validated; browser scenarios remain pending where recorded.** See [review correctness closeout](../development/review-correctness.md). T49–T60 turn the halfway assessment and review-loop inspection into bounded implementation and evidence tasks. T49–T55 were planned against `4b6ed68`; T56–T60 against `5a463b4` on `main` (September 14, 2026). Both baselines include the trial's engine fixes. Read current code before assuming a reported issue remains unfixed.
 
 T41–T43 and T45–T48 are recorded below; T44 remains deferred by the operator.
 The expanded automatic-routing trial passed, with browser verification pending
 where noted. Those earlier cards are not a request to restart completed work.
 
-The [live qualification matrix](docs/trials/matrix/RESULTS.md) establishes that the workflow can complete real work: 30 execution attempts, 18 app-ready outcomes, and no operator interventions after Start in those attempts. Three app-ready results failed independent checks. Models, fixtures, and revisions differed, so these are observations, not a production success-rate estimate. The next iteration should improve correctness and useful completion, not merely raise caps or count more tokens.
+The [live qualification matrix](../trials/matrix/RESULTS.md) establishes that the workflow can complete real work: 30 execution attempts, 18 app-ready outcomes, and no operator interventions after Start in those attempts. Three app-ready results failed independent checks. Models, fixtures, and revisions differed, so these are observations, not a production success-rate estimate. The next iteration should improve correctness and useful completion, not merely raise caps or count more tokens.
 
-Already implemented: stalled-worker handoffs, preserved recovery context, review-schema correction, scoped quota reporting, explicit measurement mode, and faster change-scoped development checks. Extend these mechanisms; do not rebuild them. [Test-performance measurements](docs/development/test-performance.md) show the same 26 commit tests dropping from 120.899 seconds serially to 46.329 seconds in parallel. That is not a complete-suite benchmark.
+Already implemented: stalled-worker handoffs, preserved recovery context, review-schema correction, scoped quota reporting, explicit measurement mode, and faster change-scoped development checks. Extend these mechanisms; do not rebuild them. [Test-performance measurements](../development/test-performance.md) show the same 26 commit tests dropping from 120.899 seconds serially to 46.329 seconds in parallel. That is not a complete-suite benchmark.
 
 **New test cost rule:** do not introduce more slow/heavy regression tests by
 default. Reuse existing integration coverage and keep new cases small. Before
@@ -234,7 +234,7 @@ Live trials are explicitly selected experiments, not additions to everyday tests
 
 ### Upstream maintenance
 
-Use [the upstream compatibility watchlist](docs/upstream-issues.md) to recognize
+Use [the upstream compatibility watchlist](../upstream-issues.md) to recognize
 relevant OmniRoute/OpenRouter failures and track fixes. Review weekly, before
 gateway upgrades, and after new local failure signatures. This is a manual
 maintenance workflow; no background monitor or automatic routing changes are
@@ -242,7 +242,7 @@ configured. Third-party reports remain leads until matched to our own evidence.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T61](docs/tasks/T61-upstream-issue-triage.md) | Establish upstream issue triage and a scoped compatibility reference | Current gateway/transport behavior | S | Done — initial triage; repeat maintenance as needed |
+| [T61](../tasks/T61-upstream-issue-triage.md) | Establish upstream issue triage and a scoped compatibility reference | Current gateway/transport behavior | S | Done — initial triage; repeat maintenance as needed |
 
 T61 includes the repeatable handoff instructions. Subsequent passes update the
 watchlist and its review log; any runtime fix gets a separate scoped task.
@@ -257,18 +257,18 @@ stay stable for handoffs; T55 is the final evidence closeout after the new work.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T56](docs/tasks/T56-explicit-review-decisions.md) | Require explicit approval; reject missing or contradictory decisions | Current review implementation | S | Done |
-| [T57](docs/tasks/T57-canonical-review-findings.md) | Enforce the validated findings throughout repair | T56 | S/M | Done |
-| [T49](docs/tasks/T49-complete-repair-coverage.md) | Repair late-item requirements without truncating coverage | T57 | M | Done |
-| [T50](docs/tasks/T50-accounted-transport-recovery.md) | Scope transport compatibility and account every retry | Current provider/streaming implementation | M | Done |
-| [T51](docs/tasks/T51-predictable-compact-edits.md) | Verify edit sequencing and improve stale-edit recovery | Existing version-bound edits | S/M | Done |
-| [T52](docs/tasks/T52-unattended-mode-boundaries.md) | Separate unattended execution from chat while preserving real blockers | Current setup/scheduling | M | Done |
-| [T53](docs/tasks/T53-structured-pause-causes.md) | Persist safe, specific pause causes and next actions | Current branch state/errors | M | Done |
-| [T58](docs/tasks/T58-focused-review-repairs.md) | Localize repairs and distinguish defects from non-blocking advice | T49, T51, T57 | M | Done |
-| [T59](docs/tasks/T59-candidate-bound-review-context.md) | Resolve missing reviewer context against the exact candidate | T56, T57 | M | Done |
-| [T60](docs/tasks/T60-review-dispute-progress.md) | Track repeated disputes, progress, and counterevidence | T53, T57, T58, T59 | M | Done |
-| [T54](docs/tasks/T54-actionable-pause-ui.md) | Explain pauses and recovery inside the conversation | T53, T60 | M | Done |
-| [T55](docs/tasks/T55-halfway-evidence-closeout.md) | Reconcile milestone claims and close focused verification gaps | T49–T54, T56–T60 | S/M | Done |
+| [T56](../tasks/T56-explicit-review-decisions.md) | Require explicit approval; reject missing or contradictory decisions | Current review implementation | S | Done |
+| [T57](../tasks/T57-canonical-review-findings.md) | Enforce the validated findings throughout repair | T56 | S/M | Done |
+| [T49](../tasks/T49-complete-repair-coverage.md) | Repair late-item requirements without truncating coverage | T57 | M | Done |
+| [T50](../tasks/T50-accounted-transport-recovery.md) | Scope transport compatibility and account every retry | Current provider/streaming implementation | M | Done |
+| [T51](../tasks/T51-predictable-compact-edits.md) | Verify edit sequencing and improve stale-edit recovery | Existing version-bound edits | S/M | Done |
+| [T52](../tasks/T52-unattended-mode-boundaries.md) | Separate unattended execution from chat while preserving real blockers | Current setup/scheduling | M | Done |
+| [T53](../tasks/T53-structured-pause-causes.md) | Persist safe, specific pause causes and next actions | Current branch state/errors | M | Done |
+| [T58](../tasks/T58-focused-review-repairs.md) | Localize repairs and distinguish defects from non-blocking advice | T49, T51, T57 | M | Done |
+| [T59](../tasks/T59-candidate-bound-review-context.md) | Resolve missing reviewer context against the exact candidate | T56, T57 | M | Done |
+| [T60](../tasks/T60-review-dispute-progress.md) | Track repeated disputes, progress, and counterevidence | T53, T57, T58, T59 | M | Done |
+| [T54](../tasks/T54-actionable-pause-ui.md) | Explain pauses and recovery inside the conversation | T53, T60 | M | Done |
+| [T55](../tasks/T55-halfway-evidence-closeout.md) | Reconcile milestone claims and close focused verification gaps | T49–T54, T56–T60 | S/M | Done |
 
 ### What the assessment changes
 
@@ -312,14 +312,14 @@ silently write that feature itself when it is eventually resumed.
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T41](docs/tasks/T41-current-validation-docs.md) | Align current validation instructions and exporter trial checks | — | S | Done |
-| [T42](docs/tasks/T42-report-acceptance-contract.md) | Prepare independent acceptance evidence for report export | T41 | M | Done |
-| [T43](docs/tasks/T43-actionable-review-disagreement.md) | Make review disagreements concrete before changing passing work | T41 | M | Done |
-| [T44](docs/tasks/T44-live-report-export.md) | Have cheapoS implement the three-item report exporter | T42, T43 | L | Deferred by operator — two live attempts retained |
-| [T45](docs/tasks/T45-report-export-qualification.md) | Verify the real download and record the feature trial outcome | T44 attempted; feature checks require its complete candidate | M | Done — both attempts recorded; feature unqualified |
-| [T46](docs/tasks/T46-connection-access-policy.md) | Explicit access, cached health, and scoped failures | T45 findings recorded | M | Done — expanded code; browser verification pending |
-| [T47](docs/tasks/T47-outcome-aware-routing.md) | Completed-work selection, served identity, and visible traces | T46 | M | Done — expanded code; browser verification pending |
-| [T48](docs/tasks/T48-controlled-routing-trial.md) | Qualify the real gateway path and automatic selection | T47 | M | Done — automatic task independently qualified |
+| [T41](../tasks/T41-current-validation-docs.md) | Align current validation instructions and exporter trial checks | — | S | Done |
+| [T42](../tasks/T42-report-acceptance-contract.md) | Prepare independent acceptance evidence for report export | T41 | M | Done |
+| [T43](../tasks/T43-actionable-review-disagreement.md) | Make review disagreements concrete before changing passing work | T41 | M | Done |
+| [T44](../tasks/T44-live-report-export.md) | Have cheapoS implement the three-item report exporter | T42, T43 | L | Deferred by operator — two live attempts retained |
+| [T45](../tasks/T45-report-export-qualification.md) | Verify the real download and record the feature trial outcome | T44 attempted; feature checks require its complete candidate | M | Done — both attempts recorded; feature unqualified |
+| [T46](../tasks/T46-connection-access-policy.md) | Explicit access, cached health, and scoped failures | T45 findings recorded | M | Done — expanded code; browser verification pending |
+| [T47](../tasks/T47-outcome-aware-routing.md) | Completed-work selection, served identity, and visible traces | T46 | M | Done — expanded code; browser verification pending |
+| [T48](../tasks/T48-controlled-routing-trial.md) | Qualify the real gateway path and automatic selection | T47 | M | Done — automatic task independently qualified |
 
 T46–T48 incorporate design lessons from
 [free-coding-models](https://github.com/vava-nessa/free-coding-models/tree/536af716263e514723594dd13e755fb06fcdec2d):
@@ -429,33 +429,33 @@ The order is recommended, not a request to run all tasks now. Size is relative: 
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T01](docs/tasks/T01-task-metadata.md) | Persistent task metadata and lifecycle API foundation | — | M | Done |
-| [T02](docs/tasks/T02-task-titles.md) | Useful task titles, editable names, one clear header | T01 | M | Done |
-| [T03](docs/tasks/T03-sidebar.md) | Sidebar menus, pin/archive, collapse, and full history | T01, T02 | M | Done |
-| [T04](docs/tasks/T04-trash-backend.md) | Recoverable Delete/Restore backend | T01 | M | Done |
-| [T05](docs/tasks/T05-trash-ui.md) | Delete, Undo, Trash, and Restore UI | T03, T04 | M | Done |
-| [T06](docs/tasks/T06-project-visibility.md) | Remove/reopen a project without deleting its files | T03 | M | Done |
-| [T07](docs/tasks/T07-existing-permission-ux.md) | Make existing session approval obvious; diagnose repeats | — | S | Done |
-| [T08](docs/tasks/T08-test-profile-matcher.md) | Pure, explicit unittest command-profile matcher | — | M | Done |
-| [T09](docs/tasks/T09-project-session-grants.md) | Project-session test grants in the controller | T08 | L | Done |
-| [T10](docs/tasks/T10-project-permission-ui.md) | One clear project-test approval and revocation UI | T07, T09 | M | Done |
-| [T11](docs/tasks/T11-test-timings.md) | Measure the app's test bottlenecks | — | S | Done |
-| [T12](docs/tasks/T12-fast-tests.md) | Fast/focused/full checks and measured fixture improvements | T11 | M | Done |
-| [T13](docs/tasks/T13-verification-evidence.md) | Suitable check timeouts and reusable verification evidence | T09, T12 | L | Done |
-| [T14](docs/tasks/T14-checkpoint-boundaries.md) | Internal checkpoint boundaries with hard outer limits | T13 | M | Done |
-| [T15](docs/tasks/T15-progress-recovery.md) | Bounded recovery with actionable pause explanations | T14 | M | Done |
-| [T16](docs/tasks/T16-cooldown-retry.md) | Cancelable waiting for a free route | T15 | M | Done |
-| [T17](docs/tasks/T17-work-presets.md) | Simple Free only / working-time controls | T14, T16 | M | Done |
-| [T18](docs/tasks/T18-connection-readiness.md) | Structured onboarding readiness and recovery states | — | M | Done |
-| [T19](docs/tasks/T19-omniroute-onboarding.md) | Guided OmniRoute setup and return to cheapoS | T18 | M | Done |
-| [T20](docs/tasks/T20-local-and-sample-onboarding.md) | Local-only onboarding and an honest sample loop | T19, T10 | M | Done |
-| [T21](docs/tasks/T21-project-context.md) | Compact project brief and durable continuation state | — | M | Done |
-| [T22](docs/tasks/T22-focused-agent-work.md) | Proactive small edits and stage-appropriate tool/context use | T21 | M | Done |
-| [T23](docs/tasks/T23-environment-readiness.md) | Detect missing project tools and explain setup | T13, T21 | M | Done |
-| [T24](docs/tasks/T24-completion-metrics.md) | End-to-end task metrics and trustworthy cost display | — | M | Done |
-| [T25](docs/tasks/T25-model-selection.md) | Model ranking informed by completed work | T24 | M | Done |
-| [T26](docs/tasks/T26-output-filtering.md) | Benchmark optional test-output filtering | T13, T24 | M | Done |
-| [T27](docs/tasks/T27-context-compression.md) | Evaluate one optional context-compression layer | T21, T22, T26 | M | Done |
+| [T01](../tasks/T01-task-metadata.md) | Persistent task metadata and lifecycle API foundation | — | M | Done |
+| [T02](../tasks/T02-task-titles.md) | Useful task titles, editable names, one clear header | T01 | M | Done |
+| [T03](../tasks/T03-sidebar.md) | Sidebar menus, pin/archive, collapse, and full history | T01, T02 | M | Done |
+| [T04](../tasks/T04-trash-backend.md) | Recoverable Delete/Restore backend | T01 | M | Done |
+| [T05](../tasks/T05-trash-ui.md) | Delete, Undo, Trash, and Restore UI | T03, T04 | M | Done |
+| [T06](../tasks/T06-project-visibility.md) | Remove/reopen a project without deleting its files | T03 | M | Done |
+| [T07](../tasks/T07-existing-permission-ux.md) | Make existing session approval obvious; diagnose repeats | — | S | Done |
+| [T08](../tasks/T08-test-profile-matcher.md) | Pure, explicit unittest command-profile matcher | — | M | Done |
+| [T09](../tasks/T09-project-session-grants.md) | Project-session test grants in the controller | T08 | L | Done |
+| [T10](../tasks/T10-project-permission-ui.md) | One clear project-test approval and revocation UI | T07, T09 | M | Done |
+| [T11](../tasks/T11-test-timings.md) | Measure the app's test bottlenecks | — | S | Done |
+| [T12](../tasks/T12-fast-tests.md) | Fast/focused/full checks and measured fixture improvements | T11 | M | Done |
+| [T13](../tasks/T13-verification-evidence.md) | Suitable check timeouts and reusable verification evidence | T09, T12 | L | Done |
+| [T14](../tasks/T14-checkpoint-boundaries.md) | Internal checkpoint boundaries with hard outer limits | T13 | M | Done |
+| [T15](../tasks/T15-progress-recovery.md) | Bounded recovery with actionable pause explanations | T14 | M | Done |
+| [T16](../tasks/T16-cooldown-retry.md) | Cancelable waiting for a free route | T15 | M | Done |
+| [T17](../tasks/T17-work-presets.md) | Simple Free only / working-time controls | T14, T16 | M | Done |
+| [T18](../tasks/T18-connection-readiness.md) | Structured onboarding readiness and recovery states | — | M | Done |
+| [T19](../tasks/T19-omniroute-onboarding.md) | Guided OmniRoute setup and return to cheapoS | T18 | M | Done |
+| [T20](../tasks/T20-local-and-sample-onboarding.md) | Local-only onboarding and an honest sample loop | T19, T10 | M | Done |
+| [T21](../tasks/T21-project-context.md) | Compact project brief and durable continuation state | — | M | Done |
+| [T22](../tasks/T22-focused-agent-work.md) | Proactive small edits and stage-appropriate tool/context use | T21 | M | Done |
+| [T23](../tasks/T23-environment-readiness.md) | Detect missing project tools and explain setup | T13, T21 | M | Done |
+| [T24](../tasks/T24-completion-metrics.md) | End-to-end task metrics and trustworthy cost display | — | M | Done |
+| [T25](../tasks/T25-model-selection.md) | Model ranking informed by completed work | T24 | M | Done |
+| [T26](../tasks/T26-output-filtering.md) | Benchmark optional test-output filtering | T13, T24 | M | Done |
+| [T27](../tasks/T27-context-compression.md) | Evaluate one optional context-compression layer | T21, T22, T26 | M | Done |
 
 ### Final integration gate
 
@@ -484,14 +484,14 @@ CONTRIBUTING.md for focused iteration and explicitly selected integration checks
 
 ## Deliberate follow-ups after these milestones
 
-**Deferred: [cheapoS in VS Code chat](docs/development/vscode-integration.md).**
+**Deferred: [cheapoS in VS Code chat](../development/vscode-integration.md).**
 Investigate a thin `@cheapos` chat participant connected to the existing local
 engine, inspired by OmniCopilot's model integration. The note records the
 architecture, a deterministic Interactive prototype, and unresolved onboarding,
 approval, cancellation, and editor-state questions. Implementation is not started
 or authorized by this backlog entry; revisit when the operator selects it.
 
-An [optional low-cost model workflow](docs/development/optional-low-cost-workflow.md)
+An [optional low-cost model workflow](../development/optional-low-cost-workflow.md)
 is documented for consideration after T41–T48. It would compare free-only work
 with explicitly budgeted paid access using verified completion, cost, elapsed
 time, and operator interventions. It is not an active implementation task or

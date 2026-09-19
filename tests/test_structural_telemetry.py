@@ -44,14 +44,14 @@ class StructuralTelemetryTests(unittest.TestCase):
         for i in range(1000):telemetry.add(record,'argument_decode',text_bytes=i,source='SECRET',syntax='SECRET',headers={'password':'SECRET'})
         self.assertEqual(len(record['structural_telemetry']),telemetry.LIMIT)
         self.assertNotIn('SECRET',json.dumps(record))
-        call={'id':'call1','function':{'name':'write_file','arguments':json.dumps({'content':'  exact\n'})}}
+        call={'id':'call1','function':{'name':'write_file','arguments':json.dumps({'path':'example.py','content':'  exact\n'})}}
         before=copy.deepcopy(call)
         with patch.object(telemetry,'arguments',side_effect=RuntimeError('collector failed')):
             self.assertEqual(Engine.parse_call(call,task)[1]['content'],'  exact\n')
         self.assertEqual(call,before)
         self.assertEqual(Engine.parse_call(call)[1]['content'],'  exact\n')
         with patch.object(telemetry,'add',side_effect=RuntimeError('collector failed')):
-            calls,_=extract_fallback_tool_calls('<invoke name="write_file"><parameter name="content">  exact\n</parameter></invoke>',{'write_file'},task)
+            calls,_=extract_fallback_tool_calls('<invoke name="write_file"><parameter name="path">example.py</parameter><parameter name="content">  exact\n</parameter></invoke>',{'write_file'},task)
             self.assertEqual(Engine.parse_call(calls[0])[1]['content'],'  exact\n')
 
     def test_syntax_categories_use_existing_validation_only(self):

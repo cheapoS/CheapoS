@@ -96,7 +96,7 @@ def run(output_filter=False, retrieve=False, verbose=False, only=None):
                         else:raise AssertionError('Conflicting source change was not blocked')
                         assert git(source,'rev-parse','HEAD')==conflict_head
                         task=engine.store.get(task['id']);assert task.get('commit_conflict_observed')
-                evidence={role:engine.gateway.pool.observation(config['base_url'],config['model'])['role_evidence'][role] for role,config in task['providers'].items()}
+                evidence={role:engine.gateway.pool.observation(config['base_url'],config['model'])['role_evidence'][role] for role,config in task['providers'].items() if config}
                 assert evidence['worker']['valid_calls']>0
                 if kind!='public_link':assert evidence['reviewer']['reviews_completed']>0
                 if kind=='readme':assert evidence['worker']['accepted']==1 and evidence['reviewer']['accepted']==1

@@ -34,4 +34,4 @@ Status: Done
 - Browser scenarios and results: Restarted disposable fixture using updated Engine; normal scripted demo reached passed checks and independent approval with final human decision still required.
 - Remaining limitations: Full suite improved about 7.9% in one comparison but remains above the two-minute target. Larger verification allowance is required in T13; no further unmeasured optimizations added.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

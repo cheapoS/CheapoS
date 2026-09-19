@@ -2637,7 +2637,8 @@ class Engine:
             raise ValueError('Planner credentials are missing. Open Models and configure the selected planner connection or its reviewer fallback.')
         from .request_budget import resolve as resolve_budget
         model = None
-        if account['limits'].get('response_tokens') == 'automatic' and getattr(self, 'gateway', None):
+        if (account['limits'].get('response_tokens') == 'automatic'
+                and config.get('gateway') == 'omniroute' and getattr(self, 'gateway', None)):
             gateway = self.connection_for(config)
             if gateway and hasattr(gateway, 'catalog'):
                 model = next((m for m in gateway.catalog(fresh=False).get('models', []) if m['id'] == config['model']), None)

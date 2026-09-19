@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 from cheapos.server import LocalServer
 from cheapos.workspace import git
 from cheapos.branch_workspace import _tip
-from test_engine import call
+from test_engine import call, wait_for
 import test_branch_start as fixture
 
 
@@ -35,6 +35,7 @@ class PlanningProvider:
 class BranchPlanningHTTPTests(unittest.TestCase):
     def setUp(self):
         fixture.BranchStartTests.setUp(self)
+        self.engine.branch._launch = Mock()
         self.provider = PlanningProvider(self.values['plan']['final_checks'][0])
         self.engine.provider_factory = lambda *args: self.provider
         self.server = LocalServer(('127.0.0.1', 0), Path(__file__).resolve().parent.parent / 'dist', self.engine)
@@ -74,7 +75,12 @@ class BranchPlanningHTTPTests(unittest.TestCase):
                 # Ordinary draft selection/planning never authorizes a branch.
                 start_status, _ = self.post('/api/tasks/' + task['id'] + '/branch-start', {'proposal_id': proposal['proposal_id'], 'approved': True, 'full_suite_approved': True})
                 self.assertEqual(start_status, 200)
+                preparation = self.engine.runtimes[task['id']]
+                preparation.thread.join(10)
+                self.assertFalse(preparation.thread.is_alive())
                 self.assertIsNotNone(_tip(self.source, 'refs/heads/feature/' + str(n)))
+                self.engine.branch.revoke(task['id'])
+                self.engine.runtimes.pop(task['id'], None)
 
     def test_project_defaults_to_main_not_current_feature_and_capture_errors_do_not_infer(self):
         git(self.source, 'checkout', '-qb', 'feature/operator')
@@ -91,6 +97,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         from cheapos.routing import PROBE_MESSAGES
         from cheapos.providers import ToolCallValidationError
         self.engine.save_preferences({'execution': {'mode': 'remote'}})
+        self.engine.config = {'worker': None, 'reviewer': None, 'planner': None}
         self.engine.gateway.catalog = Mock(return_value={'status': 'ready', 'models': [
             {'id': 'planner:free', 'free': True, 'local': False, 'tool_calling': True}]})
         provider = self.provider
@@ -135,17 +142,21 @@ class BranchPlanningHTTPTests(unittest.TestCase):
 
     def test_missing_runner_retains_complete_plan_and_identifies_executable(self):
         self.provider.command = 'cheapos-missing-test-runner --verify'
-        status, result = self.post('/api/branch-runs/plan', self.request_values())
-        self.assertEqual(status, 400, result)
-        self.assertIn('cheapos-missing-test-runner', result['error'])
-        task = next(iter(self.engine.store.tasks.values()))
-        self.assertEqual(task['branch_run']['status'], 'blocked')
-        self.assertEqual(task['branch_run']['pause_reason'], 'missing_setup')
+        status, result = self.post('/api/branch-runs/plan', self.request_values(prompt='Implement utility. Verify with `cheapos-missing-test-runner --verify`.'))
+        self.assertEqual(status, 200, result)
+        # A project-declared runner may be installed in the task copy after
+        # Start grants setup authority. Planning only discloses its absence.
+        self.assertFalse(result['readiness']['ready'])
+        missing = [c for c in result['readiness']['checks'] if c['status'] == 'blocked']
+        self.assertTrue(missing)
+        self.assertIn('cheapos-missing-test-runner', missing[0]['detail'])
+        task = self.engine.store.get(result['task_id'])
+        self.assertEqual(task['branch_run']['status'], 'awaiting_authorization')
+        self.assertFalse(task['branch_run'].get('authorization_ref'))
         self.assertEqual(task['branch_run']['plan']['items'][0]['id'], 'utility')
         self.assertEqual(task['branch_run']['plan']['final_checks'], [self.provider.command])
-        self.assertIn('cheapos-missing-test-runner', task['error'])
-        self.assertEqual(task['usage']['planner']['tokens'], 90)
-        self.assertEqual(len([e for e in task['events'] if e['kind'] == 'planning_repair']), 3)
+        self.assertEqual(task['usage']['planner']['tokens'], 30)
+        self.assertFalse([e for e in task['events'] if e['kind'] == 'planning_repair'])
         self.assertIsNone(_tip(self.source, 'refs/heads/feature/job'))
         self.assertFalse(self.engine.runtimes)
 
@@ -240,10 +251,12 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertEqual(task['status'], 'paused')
         self.assertEqual(task['branch_run'].get('waiting_for_user'), 'Keep or remove the original utility?')
         limits = copy.deepcopy(task['branch_run']['limits'])
+        settings = copy.deepcopy(task['settings_snapshot'])
+        self.engine.save_preferences({'execution': {'mode': 'remote'}})
         (self.source / 'scope.md').write_text('Changed after capture; this must not replace the saved document.')
         self.provider.clarify = False; self.provider.release = threading.Event()
         status, _ = self.post('/api/tasks/' + task_id + '/branch-message', {'message': 'Keep it and add the new utility beside it.'})
-        self.assertEqual(status, 200)
+        self.assertEqual(status, 200, _)
         runtime = self.engine.runtimes[task_id]
         self.provider.release.set(); runtime.thread.join(10)
         self.assertFalse(runtime.thread.is_alive())
@@ -254,6 +267,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         self.assertEqual(task['branch_run']['inputs']['document']['contents'], 'Remove the original utility.')
         self.assertEqual(self.provider.inputs[-1]['followups'], ['Keep it and add the new utility beside it.'])
         self.assertEqual(task['branch_run']['limits'], limits)
+        self.assertEqual(task['settings_snapshot'], settings)
         self.assertEqual(task['usage']['planner']['tokens'], 60)
         self.assertEqual(task['branch_run']['consumption']['requests'], 2)
         self.assertIn('proposal is ready', task['events'][-1]['detail'])
@@ -262,7 +276,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         old = self.engine.branch.proposal(task_id)
         self.provider.release = threading.Event()
         status, _ = self.post('/api/tasks/' + task_id + '/branch-message', {'message': 'Also preserve its command-line flags.'})
-        self.assertEqual(status, 200)
+        self.assertEqual(status, 200, _)
         runtime = self.engine.runtimes[task_id]
         self.provider.release.set(); runtime.thread.join(10)
         self.assertFalse(runtime.thread.is_alive())
@@ -279,7 +293,7 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         try:
             self.assertTrue(self.provider.entered.wait(5))
             status, _ = self.post('/api/tasks/' + task_id + '/branch-message', {'message': 'Preserve the existing behavior too.'})
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 200, _)
             self.assertEqual(len(self.engine.runtimes), 1)
         finally:
             self.provider.release.set(); runtime.thread.join(10)

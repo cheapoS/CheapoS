@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Deterministic local provider; matching Chat/Activity primary labels; granted from Activity; later checks ran visibly without prompts; composer grant control showed exact command and expiry; revocation removed control. No external model requests.
 - Remaining limitations: Scope remains one exact command and task workspace until restart. Project-wide profiles follow in T08–T10.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

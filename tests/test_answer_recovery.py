@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import test_chat
 from cheapos.engine import Engine, observation_key
 from cheapos.providers import ProviderError
-from test_engine import LocalCase, call
+from test_engine import LocalCase, call, legacy_limits
 
 
 class AnswerRecoveryTests(LocalCase):
@@ -141,7 +141,7 @@ class AnswerRecoveryTests(LocalCase):
         self.assertEqual(result['changes'],[])
 
     def test_forced_answer_cannot_execute_tools_and_requires_correction_after_failure(self):
-        t=self.chat();t.update(status='paused',error_code='progress_limit');self.engine.store.save(t)
+        t=legacy_limits(self.chat());t.update(status='paused',error_code='progress_limit');self.engine.store.save(t)
         requests=self.provider([call('write_file',{'path':'unwanted.txt','content':'no'}),{'content':'Here is the answer.'}])
         self.engine.start(t['id']);first=self.finish(t)
         self.assertEqual(first['status'],'paused')
@@ -163,7 +163,7 @@ class AnswerRecoveryTests(LocalCase):
         self.assertTrue(requests[0][1])
         self.assertEqual(len(result['changes']),1)
         self.assertFalse(result['checkpoints'])
-        fresh=self.chat();fresh.update(status='paused',error_code='progress_limit',request_worker_turns=40,worker_turns=40)
+        fresh=legacy_limits(self.chat());fresh.update(status='paused',error_code='progress_limit',request_worker_turns=40,worker_turns=40)
         self.engine.store.save(fresh)
         factory=Mock();self.engine.provider_factory=factory
         self.engine.start(fresh['id']);result=self.finish(fresh)

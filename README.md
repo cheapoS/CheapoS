@@ -20,6 +20,8 @@ No CheapoS account. No hosted project. No required package installation to launc
 
 > **Available today:** a working local alpha for small personal projects. Model providers may require their own setup or credentials. Cost savings are an experiment to measure; they are not yet a benchmark claim.
 
+[Public-alpha validation and remaining platform checks](docs/development/public-alpha-readiness.md).
+
 ## The workspace
 
 ![CheapoS Activity view showing the scripted clamp demo, two saved files, passing checks, reviewer approval, and separate worker and reviewer accounting.](docs/assets/workspace.png)
@@ -111,7 +113,7 @@ Make expensive compute the exception. Keep the work visible and the decisions yo
 
 **Unattended:** inspect a finite plan and choose **Start run**. Reviewed items become feature-branch commits within the authorized scope and cumulative limits. The completed branch comes back for your explicit merge decision. The local server must stay running.
 
-Automatic remote selection uses different worker and reviewer model IDs. All local and manual setups can use the same model in separate requests; that is not an independent model review. Unattended runs require a distinct reviewer.
+Automatic remote selection uses distinct worker and reviewer model IDs. New manual settings also require distinct pinned models. All local can use one installed model in separate requests, which is labeled as a same-model review. Unattended runs require a distinct reviewer.
 
 **Follow the plan as it happens.** The **Plan** tab keeps the approved scope, item progress, and planned verification commands together. **Changes** is the review workspace in both modes: inspect an interactive patch before committing, or the cumulative unattended diff and saved review evidence before merging. Every **Review changes** action opens Changes.
 
@@ -121,10 +123,8 @@ Automatic remote selection uses different worker and reviewer model IDs. All loc
 
 ## Quick start
 
-### macOS App (Apple Silicon & Intel)
-Download the latest `cheapoS-macos-arm64.dmg` or `cheapoS-macos-x86_64.dmg` from [Releases](https://github.com/cheapos/CheapoS/releases). Drag `cheapoS.app` into `/Applications` and launch.
+### Recommended for the public alpha: from source
 
-### From Source (macOS & Linux)
 Requires **Python 3.9+** and **Git**. No extra Python or JavaScript packages are required to run CheapoS.
 
 ```sh
@@ -139,6 +139,26 @@ The app opens in your browser at **http://127.0.0.1:5173/**. On macOS, you can a
 
 **Start with your project:** connect models, open a local Git repository, and describe your task. New chats default to a $0 estimated spending cap; explicitly change it before choosing paid models. Startup can make a bounded greeting request to an eligible installed local model; free-cloud startup is opt-in.
 
+### Experimental macOS builds
+
+Source installation is the supported first-run path for this alpha. When available,
+architecture-specific DMGs appear under [prereleases](https://github.com/cheapos/CheapoS/releases).
+These builds are not Developer ID signed or notarized and may be blocked by macOS.
+Use the source instructions if your security policy does not allow an unsigned app.
+Git must still be installed. Install to Applications before launching; do not run
+from the disk image. Desktop distribution remains experimental until its fresh-install
+and upgrade checks pass on both Apple Silicon and Intel.
+
+Packaged builds keep task data in `~/Library/Application Support/cheapoS`, outside
+the replaceable app. If you used an older experimental bundle, stop it and back up
+its `Contents/Resources/.cheapos` directory before replacing it. Use `--data-dir`
+to open that saved profile outside the bundle; existing profiles are not overwritten
+or combined automatically.
+
+Report problems using the [bug template](https://github.com/cheapos/CheapoS/issues/new?template=bug_report.yml).
+Include OS/Python, provider/model, expected behavior, and redacted Technical logs.
+Try the demo and a small task in a trusted repository first; keep your normal backups.
+
 <details>
 <summary><strong>Launch options and task storage</strong></summary>
 
@@ -148,7 +168,7 @@ python3 run.py --port 5174
 python3 run.py --data-dir /path/to/local-task-storage
 ```
 
-Task data defaults to `.cheapos/` beside the launcher. When asking CheapoS to work on its own repository, use `--data-dir` with a location outside that repository. Task storage must not overlap the project being edited.
+Source-install task data defaults to `.cheapos/` beside the launcher. Packaged macOS builds use `~/Library/Application Support/cheapoS`. When asking CheapoS to work on its own repository, use `--data-dir` with a location outside that repository. Task storage must not overlap the project being edited.
 
 [Setup and startup behavior →](docs/USER_GUIDE.md#run-locally)
 

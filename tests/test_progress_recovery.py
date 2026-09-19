@@ -2,7 +2,7 @@ import copy
 from unittest.mock import Mock
 from cheapos import progress
 from cheapos.engine import Engine
-from test_engine import LocalCase, call
+from test_engine import LocalCase, call, legacy_limits
 import test_chat
 
 
@@ -33,7 +33,8 @@ class ProgressRecoveryTests(LocalCase):
         self.assertEqual(progress.state(restored)['revision'], revision)
 
     def test_exhausted_answer_requires_changed_input_after_restart(self):
-        task = self.chat('Explain this repository')
+        task = legacy_limits(self.chat('Explain this repository'))
+        self.engine.store.save(task)
         requests = self.provider([call('read_file', {'path':'math_utils.py'})] * 4)
         self.engine.start(task['id']); stopped = self.finish(task)
         self.assertEqual(stopped['status'], 'paused')

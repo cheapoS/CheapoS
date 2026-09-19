@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0.0  
 **Scope:** CheapOS Open-Source Client Implementation
-**Module Reference:** [`cheapos/club.py`](file:///Users/carlosa8c/Desktop/CheapOS/cheapos/club.py), [`cheapos/lifetime_usage.py`](file:///Users/carlosa8c/Desktop/CheapOS/cheapos/lifetime_usage.py), [`dist/lifetime_usage.js`](file:///Users/carlosa8c/Desktop/CheapOS/dist/lifetime_usage.js)
+**Module Reference:** [`cheapos/club.py`](../../cheapos/club.py), [`cheapos/lifetime_usage.py`](../../cheapos/lifetime_usage.py), [`dist/lifetime_usage.js`](../../dist/lifetime_usage.js)
 
 ---
 

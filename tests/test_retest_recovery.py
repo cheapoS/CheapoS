@@ -68,7 +68,7 @@ class RetestRecoveryTests(unittest.TestCase):
                 self.assertIsNone(verification.reusable_check(task,argv))
 
     def test_engine_reuse_does_not_run_subprocess_or_request_execution_permission(self):
-        record=self.record();task={'id':'task','checks':[record],'tool_actions':2,'check_command':record['command'],'branch_run':{'status':'running'}}
+        record=self.record();task={'id':'task','workspace':'.','checks':[record],'tool_actions':2,'check_command':record['command'],'branch_run':{'status':'running'}}
         engine=SimpleNamespace(verification_argv=Mock(return_value=record['command']),event=Mock())
         with patch('cheapos.engine.reconciliation.ensure_resolved'), \
              patch('cheapos.engine.environment.inspect',return_value={'status':'ready'}), \

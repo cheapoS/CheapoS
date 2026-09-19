@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Delete/Undo with 2 saved edits; archived-to-Trash; reload and Trash inspection; restore returns to Archived; Pause & move to Trash stops a scripted permission wait; expired token after test-server restart shows inline error and leaves task intact; narrow 390px dialog and Escape checked.
 - Remaining limitations: Undo toast lasts 15 seconds; Trash remains available afterward. No permanent deletion or cleanup.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

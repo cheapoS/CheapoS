@@ -34,4 +34,4 @@ Status: Done
 - Browser scenarios and results: 15 history fixtures plus demo group; pinned-first order; Show more exposes old rows; collapse survives reload; keyboard pin action; archive selected task returns home; archived inspection blocks execution; restore does not start; search labels archived results; Pause & archive stops a permission-waiting scripted worker.
 - Remaining limitations: Trash and project removal follow in T04–T06. History filter starts at Active after reload.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

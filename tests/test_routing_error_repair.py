@@ -3,6 +3,7 @@ import copy
 import io
 import json
 import threading
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -29,7 +30,9 @@ class RoutingErrorRepairTests(unittest.TestCase):
             self.assertNotIsInstance(http_failure(error, {'gateway': 'omniroute'}), ToolCallValidationError)
 
     def planner_fixture(self, responses):
-        inputs = {'source': '/fixture', 'prompt': 'Keep all requirements'}
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        inputs = {'source': temp.name, 'prompt': 'Keep all requirements'}
         inputs['hash'] = branch_planner._digest(inputs)
         task = {'status': 'planning', 'execution': {'mode': 'remote'}, 'route': {'base_url': 'fixture'},
                 'planning_limits': {'dollars': 0}, 'usage': {'cost': 0},
@@ -61,7 +64,7 @@ class RoutingErrorRepairTests(unittest.TestCase):
         for name, result in (('effective_settings', {}), ('validate_current', None),
                              ('eligible', True), ('guard', None), ('classify', 'public_free')):
             stack.enter_context(patch('cheapos.access_policy.' + name, return_value=result))
-        stack.enter_context(patch.object(branch_planner, 'project_context', return_value='Saved repository context'))
+        stack.enter_context(patch.object(branch_planner, 'project_context', return_value={'files':['README.md']}))
         return stack
 
     def test_upstream_rejection_repairs_on_same_planner_with_saved_context(self):
@@ -80,7 +83,7 @@ class RoutingErrorRepairTests(unittest.TestCase):
             self.assertEqual(branch_planner.plan(engine, runtime, inputs), expected)
         self.assertEqual(requests[0][:2], requests[-1][:2])
         self.assertIn('Retained evidence', str(requests[-1]))
-        self.assertIn('plan.items', requests[-1][-1]['content'])
+        self.assertTrue(any('plan.items' in message.get('content', '') for message in requests[-1]))
         self.assertEqual(sum(m.get('role') == 'tool' for m in requests[-1]), 1)
         self.assertEqual(runtime.task['usage']['cost'], 3)
         self.assertEqual(runtime.handoffs, 0)

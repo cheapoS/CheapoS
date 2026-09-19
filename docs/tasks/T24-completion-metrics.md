@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: CUA isolated port 51031: completed sample displayed 75 accounted tokens, $0.00, Provider-reported cost; hypothetical Saved dollars text absent. Sample still distinguished reviewer approval from human commit acceptance.
 - Remaining limitations: docs/development/task-metrics.md defines timing coverage, unknown fields, provenance and history bounds. Fixture usage is synthetic and no live-model quality/savings claim is made. Time outside active runs is unmeasured. Accounted cost is not a provider billing receipt; export is local and opt-in.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

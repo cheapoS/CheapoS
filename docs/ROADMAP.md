@@ -5,12 +5,13 @@
 
 ---
 
-## Next: operator-owned limits and automatic completion
+## Shipped foundation: operator-owned limits and recovery
 
 [T94 — Operator-controlled limits and autonomous completion](tasks/T94-operator-limits-and-autonomous-completion.md)
 is the tracking task for the [limits design](development/operator-limits-and-recovery.md)
-and the six remaining audit patch areas. These cards are **planned**, not claims
-that the runtime fixes have shipped:
+and the six audit patch areas. T94–T101 are recorded as completed in the
+[implementation archive](archive/TASKS.md). The cards retain their original design
+and acceptance criteria; ongoing reliability work continues below:
 
 1. [T95 — Apply the selected work policy during planning](tasks/T95-planning-work-policy.md).
 2. [T96 — Repair oversized context before changing routes](tasks/T96-context-error-recovery.md).
@@ -26,8 +27,8 @@ already-current updates and bounded local diagnostics in two independent slices.
 Each card retains operator spending/model/command authority and requires an
 automatic path to useful work. Internal thresholds select another strategy;
 explicit user budgets decide when authorized work must stop. Preserve existing
-saved policies on upgrade. Implement these in focused slices using deterministic
-checks before any separately authorized live trial.
+saved policies on upgrade. Extend these through focused changes and deterministic
+checks before separately authorized live trials.
 
 ## Core Milestones
 

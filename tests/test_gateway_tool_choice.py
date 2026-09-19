@@ -3,6 +3,7 @@ import json
 import shlex
 import sys
 import threading
+import tempfile
 import unittest
 from contextlib import nullcontext
 from types import SimpleNamespace
@@ -64,14 +65,16 @@ class GatewayToolChoiceTests(unittest.TestCase):
                     self.assertEqual(body['tool_choice'], 'auto')
 
     def test_discovery_closes_with_forced_proposal_and_retained_evidence_on_wire(self):
-        inputs = {'source': '/fixture', 'prompt': 'Suggest one improvement before changing anything'}
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        inputs = {'source': temp.name, 'prompt': 'Suggest one improvement before changing anything'}
         inputs['hash'] = branch_planner._digest(inputs)
         runtime = SimpleNamespace(task={'planning_limits': {'dollars': 0}},
                                   stop=threading.Event(), guard=Mock())
         expected = {'items': [{'id': 'docs', 'title': 'Improve docs', 'instructions': 'Clarify setup',
                               'dependencies': [], 'acceptance_criteria': ['Setup is clear'],
-                              'required_checks': [shlex.join([sys.executable, '-m', 'unittest'])]}],
-                    'limits': {'dollars': 0}, 'final_checks': [shlex.join([sys.executable, '-m', 'unittest'])]}
+                              'required_checks': [shlex.join([sys.executable, '-m', 'unittest', 'tests.test_docs'])]}],
+                    'limits': {'dollars': 0}, 'final_checks': [shlex.join([sys.executable, '-m', 'unittest', 'tests.test_docs'])]}
         bodies = []
 
         def respond(request, **kwargs):

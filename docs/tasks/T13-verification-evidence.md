@@ -34,4 +34,4 @@ Status: Done
 - Browser scenarios and results: Isolated scripted local demo reached actual checks, independent review and human approval preview. Expanded check output displayed exact argv, individual test output and Allowed: 360.0 seconds. No source commit was approved in the fixture.
 - Remaining limitations: Legacy checks stay readable but require fresh checks/review before commit. Environment tracking covers known configuration and installed-package file metadata, not an OS sandbox or arbitrary external services. Unidentifiable environments are conservatively untrusted. Focused and documentation commands prove only their recorded command, not full-suite coverage.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

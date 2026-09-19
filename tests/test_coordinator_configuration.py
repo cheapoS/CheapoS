@@ -1,6 +1,7 @@
 """Optional assistance selection is local, pinned, and network-free on save."""
 import copy
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 from cheapos.routing import coordinator_assistance_config, execution_from, RoutingPause
 from cheapos.coordinator_dispatch import reassessment_availability
@@ -9,7 +10,7 @@ from cheapos.coordinator_recovery import episode_key, identity
 
 class CoordinatorConfigurationTests(unittest.TestCase):
     def test_paused_opt_in_is_only_an_unused_interactive_consultation(self):
-        task={'id':'task', 'prompt':'Add trash controls', 'requests':['Add trash controls'],
+        task={'id':'task', 'workspace':str(Path(__file__).resolve().parent.parent), 'prompt':'Add trash controls', 'requests':['Add trash controls'],
               'status':'paused','error_code':'progress_limit','active_role':'worker',
               'execution':{'mode':'delegate','local_model':'local:1','coordinator_assistance':False},
               'limits':{'worker_turns':40,'run_minutes':15},'conversational':True,'worker_turns':12,'request_worker_turns':12,

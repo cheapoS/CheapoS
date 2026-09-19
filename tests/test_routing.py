@@ -1,3 +1,4 @@
+from test_engine import legacy_limits
 from cheapos.routing import PROBE_MARKER
 """Placement, tool isolation, free selection, and bounded progress without inference."""
 import copy
@@ -308,7 +309,7 @@ class RoutingTests(LocalCase):
         self.assertEqual(Engine(self.engine.store.root).preferences()['execution']['mode'],'remote')
 
     def test_three_identical_reads_allow_one_answer_request_without_tools(self):
-        task=self.chat('local');requests=self.responses([call('read_file',{'path':'math_utils.py'})]*4)
+        task=legacy_limits(self.chat('local',prompt='Explain clamp without editing.'));self.engine.store.save(task);requests=self.responses([call('read_file',{'path':'math_utils.py'})]*4)
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['error_code'],'progress_limit');self.assertEqual(result['status'],'paused')
         self.assertEqual(len(requests),4);self.assertFalse(result['checkpoints'])
@@ -316,7 +317,7 @@ class RoutingTests(LocalCase):
         self.assertEqual(sum(e['title']=='read file' for e in result['events']),3)
 
     def test_legacy_checkpoint_turn_limit_bounds_even_changing_edits(self):
-        task=self.chat('local');task.pop('checkpoint_policy');task['limits'].update(checkpoint_turns=2,worker_turns=100);self.engine.store.save(task)
+        task=legacy_limits(self.chat('local'));task.pop('checkpoint_policy');task['limits'].update(checkpoint_turns=2,worker_turns=100);self.engine.store.save(task)
         requests=self.responses([call('write_file',{'path':'new1.py','content':'one'}),call('write_file',{'path':'new2.py','content':'two'}),{'content':'Never called'}])
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'paused');self.assertEqual(len(result['changes']),2);self.assertEqual(len(requests),2)
@@ -325,7 +326,7 @@ class RoutingTests(LocalCase):
         self.assertEqual(result['error_code'],'checkpoint_turn_limit')
 
     def test_expired_run_stops_before_inference(self):
-        task=self.chat('local');runtime=Runtime(task);runtime.started-=10000
+        task=legacy_limits(self.chat('local'));self.engine.store.save(task);runtime=Runtime(task);runtime.started-=10000
         self.engine.provider_factory=Mock(side_effect=AssertionError('No call'))
         with self.assertRaises(ProgressPause):self.engine.request(runtime,[],[],'worker')
         self.engine.provider_factory.assert_not_called()
@@ -376,14 +377,14 @@ class RoutingTests(LocalCase):
         self.assertEqual(sum(a['action']=='read file' for a in summary['recent_activity']),1)
 
     def test_coordinator_cannot_exceed_cumulative_turn_limit_during_handoff(self):
-        task=self.chat();task['limits']['worker_turns']=1;self.engine.store.save(task)
+        task=legacy_limits(self.chat());task['limits']['worker_turns']=1;self.engine.store.save(task)
         requests=self.responses([call('delegate_work',{'summary':'Do work.'})])
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'budget_paused');self.assertEqual(len(requests),1)
         self.assertEqual(result['worker_turns'],1);self.assertFalse(result['route']['ready'])
 
     def test_invalid_checkpoints_cannot_reset_the_progress_limit(self):
-        task=self.chat('local');task['limits']['checkpoint_turns']=2;self.engine.store.save(task)
+        task=legacy_limits(self.chat('local'));task['limits']['checkpoint_turns']=2;self.engine.store.save(task)
         requests=self.responses([call('checkpoint',{'summary':'Done','uncertainties':''})]*3)
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['error_code'],'progress_limit');self.assertEqual(len(requests),2)

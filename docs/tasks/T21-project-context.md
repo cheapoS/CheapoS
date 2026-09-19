@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Backend prompt construction only; no presentation changes.
 - Remaining limitations: Documented in docs/development/project-context.md: brief ≤24 KB, continuation ≤112 KB, user requirements/corrections ≤48 KB before explicit pause. Source excerpts are labeled/retrievable. Deterministic retrieval fixture reduces one extra guidance read to zero; no live model quality or latency claim.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

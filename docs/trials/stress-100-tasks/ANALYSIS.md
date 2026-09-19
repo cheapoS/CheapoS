@@ -20,7 +20,7 @@ This document records the operational telemetry, bug fixes, failure-recovery mec
 
 ## 2. Token Quota Telemetry & Hourly Reset Schedule
 
-Quota usage is monitored in real-time via OmniRoute's SQLite database at `/Users/carlosa8c/.omniroute/storage.sqlite` (table `quota_snapshots`).
+Quota usage is monitored in real-time via OmniRoute's SQLite database at `~/.omniroute/storage.sqlite` (table `quota_snapshots`).
 
 ### Live Telemetry
 - **Starting Quota:** ~67.0%
@@ -34,8 +34,9 @@ Quota usage is monitored in real-time via OmniRoute's SQLite database at `/Users
 Run this command from any shell to inspect the exact remaining percentage and reset timestamp:
 ```bash
 python3 -c "
+import os
 import sqlite3
-conn = sqlite3.connect('/Users/carlosa8c/.omniroute/storage.sqlite')
+conn = sqlite3.connect(os.path.expanduser('~/.omniroute/storage.sqlite'))
 cur = conn.cursor()
 cur.execute('SELECT provider, window_key, remaining_percentage, next_reset_at FROM quota_snapshots ORDER BY id DESC LIMIT 1')
 print(cur.fetchone())
@@ -172,9 +173,9 @@ If Google Gemini reaches HTTP 429 quota exhaustion before the hourly reset:
 
 ## 7. Artifact & Code Reference Manifest
 
-- **Benchmark Definitions:** [`docs/trials/stress-100-tasks/tasks.json`](file:///Users/carlosa8c/Desktop/CheapOS/docs/trials/stress-100-tasks/tasks.json)
-- **Machine Telemetry Results:** [`docs/trials/stress-100-tasks/results.json`](file:///Users/carlosa8c/Desktop/CheapOS/docs/trials/stress-100-tasks/results.json)
-- **Human-Readable Summary Table:** [`docs/trials/stress-100-tasks/SUMMARY.md`](file:///Users/carlosa8c/Desktop/CheapOS/docs/trials/stress-100-tasks/SUMMARY.md)
-- **Stress Test Runner Script:** [`scripts/stress_runner.py`](file:///Users/carlosa8c/Desktop/CheapOS/scripts/stress_runner.py)
+- **Benchmark Definitions:** [`docs/trials/stress-100-tasks/tasks.json`](tasks.json)
+- **Machine Telemetry Results:** [`docs/trials/stress-100-tasks/results.json`](results.json)
+- **Human-Readable Summary Table:** [`docs/trials/stress-100-tasks/SUMMARY.md`](SUMMARY.md)
+- **Stress Test Runner Script:** [`scripts/stress_runner.py`](../../../scripts/stress_runner.py)
 - **Isolated Target Git Repository:** `/tmp/cheapoS-stress-repo` (clean linear git commit history on `main`)
-- **CheapOS Engine Source:** [`cheapos/engine.py`](file:///Users/carlosa8c/Desktop/CheapOS/cheapos/engine.py), [`cheapos/branch_controller.py`](file:///Users/carlosa8c/Desktop/CheapOS/cheapos/branch_controller.py), [`cheapos/branch_final.py`](file:///Users/carlosa8c/Desktop/CheapOS/cheapos/branch_final.py)
+- **CheapOS Engine Source:** [`cheapos/engine.py`](../../../cheapos/engine.py), [`cheapos/branch_controller.py`](../../../cheapos/branch_controller.py), [`cheapos/branch_final.py`](../../../cheapos/branch_final.py)

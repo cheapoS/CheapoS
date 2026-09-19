@@ -102,7 +102,8 @@ class VisionResponsivenessTests(unittest.TestCase):
         result = self.engine.worker_file_tool(self.runtime, 'write_file', {'path': 'note.txt', 'content': 'ok'}, {})
 
         self.assertEqual(observations, [False])
-        self.assertEqual(result, {'written': True})
+        self.assertTrue(result['written'])
+        self.assertEqual(result['current_file']['path'], 'note.txt')
 
 
 class VisionToolTests(LocalCase):

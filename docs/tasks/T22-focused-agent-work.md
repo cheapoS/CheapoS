@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: No presentation changes; existing handoff and small-edit presentation reused. Controller fixtures verify named model selection stays unchanged.
 - Remaining limitations: Thresholds and comparison are documented in docs/development/work-policy.md. This deterministic comparison is not a live quality/speed result. Existing hard limits, exact edit evidence, current checks/review and human commit approval remain required.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

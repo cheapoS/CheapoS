@@ -14,6 +14,9 @@ from test_engine import CONFIG
 
 class BranchStartTests(unittest.TestCase):
     def setUp(self):
+        carto = patch('cheapos.carto.Carto.available', return_value=False)
+        carto.start()
+        self.addCleanup(carto.stop)
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name).resolve();self.source=self.root/'repo';self.source.mkdir()
         git(self.source,'init','-qb','main');git(self.source,'config','user.name','Fixture');git(self.source,'config','user.email','fixture@example.invalid')

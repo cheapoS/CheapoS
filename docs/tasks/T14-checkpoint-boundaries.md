@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Isolated scripted 13-edit task displayed 13 saved files, actual checks passed, independent review passed and human approval preview. Expanded Details showed Saved progress; continuing the remaining step. No source commit approved.
 - Remaining limitations: Implementation continuation requires a changed patch, not a model claim. T15 adds request-scoped durable recovery/progress history so repeated resumed stalls cannot replenish recovery. The thirteen-edit fixture uses a bounded 30-second join because actual Git snapshots exceed the shared ten-second small-fixture wait on this host.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Dedicated scripted server at port 51027 offered Retry when available for a known provider cooldown. Waiting showed a live eligibility countdown, no model request running, Pause and Inspect Models. Pause canceled the wait. A later explicit retry continued the saved request to Ready for your message. Corrected the live step countdown to update with the main countdown.
 - Remaining limitations: A countdown is next eligibility, not a health guarantee. Unknown provider retry times use manual recovery. A request exhausting waits/probes needs a changed instruction or operator decision; Resume does not reset those counters. No background scheduler or paid/local fallback added.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

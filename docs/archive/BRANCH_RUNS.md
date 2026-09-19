@@ -2,7 +2,7 @@
 
 **North star:** give cheapoS a bounded job, see it implement, test, review, and commit each part, then make one final decision about the finished branch.
 
-This is the completed implementation companion to [TASKS.md](TASKS.md), continuing after T01–T27. **T28–T40 are Done** on `work/unattended-runs`. The [user guide](docs/unattended-runs.md) documents work modes and triggers; the [experiment report](docs/experiments/branch-runs.md) records browser proof, recovery coverage, and the passing 514 Python / 88 JavaScript test gate. The milestone has not been merged or pushed. The next step is operator review, followed by the separately selected live trial described below.
+This is the completed implementation companion to [TASKS.md](TASKS.md), continuing after T01–T27. **T28–T40 are Done** on `work/unattended-runs`. The [user guide](../unattended-runs.md) documents work modes and triggers; the [experiment report](../experiments/branch-runs.md) records browser proof, recovery coverage, and the passing 514 Python / 88 JavaScript test gate. The milestone has not been merged or pushed. The next step is operator review, followed by the separately selected live trial described below.
 
 ## Why this milestone
 
@@ -69,7 +69,7 @@ the draft. Both paths produce the same validated, editable plan and authorizatio
 flow. If prompt and document conflict, surface the conflict before authorization;
 do not silently choose or discard instructions.
 
-These triggers are implemented. See [the user guide](docs/unattended-runs.md) for the shipped flow and first-version limits.
+These triggers are implemented. See [the user guide](../unattended-runs.md) for the shipped flow and first-version limits.
 Natural-language examples describe intent; they are not exact-match passwords.
 
 | Operator action or input | Trigger and result |
@@ -154,19 +154,19 @@ Card status below reflects implementation and recorded validation. Sizes describ
 
 | ID | Task | Depends on | Size | Status |
 | --- | --- | --- | --- | --- |
-| [T28](docs/tasks/T28-branch-run-state.md) | Durable run plan, item states, and compatibility | T01–T27 | M | Done |
-| [T29](docs/tasks/T29-branch-workspace.md) | Snapshot from a committed base and owned feature ref | T28 | L | Done |
-| [T30](docs/tasks/T30-branch-authorization.md) | One run authorization and scoped test permissions | T28, T29 | M | Done |
-| [T31](docs/tasks/T31-branch-evidence.md) | Exact candidate evidence and independent review gate | T28, T29 | M | Done |
-| [T32](docs/tasks/T32-branch-autocommit.md) | Journaled automatic commits to the owned ref | T30, T31 | L | Done |
-| [T33](docs/tasks/T33-branch-execution.md) | Sequential execution, recovery, and shared limits | T32 | L | Done |
-| [T34](docs/tasks/T34-branch-resume.md) | Pause/restart recovery and branch drift handling | T33 | M | Done |
-| [T35](docs/tasks/T35-branch-start-ui.md) | Document-to-plan proposal and simple start flow | T30, T33, T34 | M | Done |
-| [T36](docs/tasks/T36-branch-progress-ui.md) | One cheapoS conversation with visible milestones | T33, T35 | M | Done |
-| [T37](docs/tasks/T37-branch-final-readiness.md) | Combined verification, review, and revision loop | T31, T33, T34 | L | Done |
-| [T38](docs/tasks/T38-branch-final-review-ui.md) | Cumulative diff and one final decision | T36, T37 | M | Done |
-| [T39](docs/tasks/T39-branch-local-merge.md) | Explicit local integration and conversation close | T32, T37, T38 | L | Done |
-| [T40](docs/tasks/T40-branch-end-to-end.md) | Three-task end-to-end proof and user documentation | T28–T39 | M | Done |
+| [T28](../tasks/T28-branch-run-state.md) | Durable run plan, item states, and compatibility | T01–T27 | M | Done |
+| [T29](../tasks/T29-branch-workspace.md) | Snapshot from a committed base and owned feature ref | T28 | L | Done |
+| [T30](../tasks/T30-branch-authorization.md) | One run authorization and scoped test permissions | T28, T29 | M | Done |
+| [T31](../tasks/T31-branch-evidence.md) | Exact candidate evidence and independent review gate | T28, T29 | M | Done |
+| [T32](../tasks/T32-branch-autocommit.md) | Journaled automatic commits to the owned ref | T30, T31 | L | Done |
+| [T33](../tasks/T33-branch-execution.md) | Sequential execution, recovery, and shared limits | T32 | L | Done |
+| [T34](../tasks/T34-branch-resume.md) | Pause/restart recovery and branch drift handling | T33 | M | Done |
+| [T35](../tasks/T35-branch-start-ui.md) | Document-to-plan proposal and simple start flow | T30, T33, T34 | M | Done |
+| [T36](../tasks/T36-branch-progress-ui.md) | One cheapoS conversation with visible milestones | T33, T35 | M | Done |
+| [T37](../tasks/T37-branch-final-readiness.md) | Combined verification, review, and revision loop | T31, T33, T34 | L | Done |
+| [T38](../tasks/T38-branch-final-review-ui.md) | Cumulative diff and one final decision | T36, T37 | M | Done |
+| [T39](../tasks/T39-branch-local-merge.md) | Explicit local integration and conversation close | T32, T37, T38 | L | Done |
+| [T40](../tasks/T40-branch-end-to-end.md) | Three-task end-to-end proof and user documentation | T28–T39 | M | Done |
 
 Do these sequentially in this shared checkout. Do not dispatch multiple models to edit the same engine/UI files. Lower-level helpers may be callable by deterministic tests before UI exists, but no incomplete automatic-run action should appear usable to the operator.
 
@@ -200,7 +200,7 @@ If a card cannot fit one attempt, finish a coherent boundary, mark **In progress
 
 ## Validation and definition of done
 
-Follow [CONTRIBUTING.md](CONTRIBUTING.md). During iteration, use focused selections such as `python3 -B scripts/dev_tests.py --pattern test_branch_runs.py`; filenames in new cards are proposals until created. For frontend work, run `node --check dist/app.js`, the relevant Node tests, and an isolated browser scenario. New static modules need the HTML reference and server allowlist entry.
+Follow [CONTRIBUTING.md](../../CONTRIBUTING.md). During iteration, use focused selections such as `python3 -B scripts/dev_tests.py --pattern test_branch_runs.py`; filenames in new cards are proposals until created. For frontend work, run `node --check dist/app.js`, the relevant Node tests, and an isolated browser scenario. New static modules need the HTML reference and server allowlist entry.
 
 Use real temporary Git repositories for branch, index, ref, conflict, and crash tests; scripted providers for inference; actual subprocesses for cancellation/check evidence. Test the feature's transaction, not a mocked success string. Full-suite gates belong at required integration/release boundaries, not at every unchanged UI or approval stage. The previous full Python gate took about seven minutes; allow at least 600 seconds and record the actual new duration.
 

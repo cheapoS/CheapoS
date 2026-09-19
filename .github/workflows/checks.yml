@@ -19,6 +19,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python -B -m unittest discover -s tests -v
-      - run: node --check dist/app.js
+      - run: python -B scripts/check.py --full --jobs 4
       - run: git diff --check

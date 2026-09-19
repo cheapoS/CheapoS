@@ -38,4 +38,4 @@ Status: Done
 - Browser scenarios and results: Backend-only card; UI arrives in T05.
 - Remaining limitations: Trash retains disk usage; no purge or retention policy, documented in EXECUTION.md.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

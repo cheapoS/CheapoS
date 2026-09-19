@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Backend-only card; UI coverage follows in T19.
 - Remaining limitations: Installed CLI version is not proof of the running service version. Optional setup/enrollment APIs remain disabled for all versions; the dashboard is the supported fallback. No installs, upgrades, inference, or foreign-process stops are performed.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

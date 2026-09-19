@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Deterministic two-selector/checkpoint provider, real unittest processes, initial grant, follow-up, second registered copy, unknown-command fallback, revoke, restart, and 390px approval/Pause controls. Scope panel names project/executable/roots and later test edits. Fixture left paused.
 - Remaining limitations: Unittest only, server-session only, no persistent trust or commit-policy change.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

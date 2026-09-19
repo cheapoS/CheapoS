@@ -41,4 +41,4 @@ Status: Done
 - Browser scenarios and results: Not applicable: pure matcher, no UI or authorization changes.
 - Remaining limitations: Unittest only; unknown forms require ordinary command approval. No shell normalization or execution.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: CUA on isolated port 51029: ready connection opened project selector without IDs; missing prerequisites and key distinction displayed; failed connection remained retryable; recovered metadata displayed Connected; setup choice survived reload; explicit pair preserved in persisted config. Narrow viewport found and fixed inherited dialog overflow; measured scrollWidth = clientWidth = 240, keyboard return succeeded.
 - Remaining limitations: Installation, dashboard login, and provider enrollment remain manual. Install instructions use the official v3.8.49 README (https://raw.githubusercontent.com/diegosouzapw/OmniRoute/v3.8.49/README.md). Optional APIs are not assumed. Local model selection is completed in T20.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

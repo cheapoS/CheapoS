@@ -12,6 +12,7 @@ from urllib.request import urlopen
 
 from cheapos.engine import Engine
 from cheapos.server import LocalServer
+from cheapos.launch import default_data_directory
 
 
 APP_DIRECTORY = Path(__file__).resolve().parent / "dist"
@@ -40,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run cheapoS locally. No account required.")
     parser.add_argument("--port", type=int, default=5173, help="Local port (default: 5173)")
     parser.add_argument("--no-open", action="store_true", help="Do not open a browser automatically")
-    parser.add_argument("--data-dir", type=Path, default=Path(__file__).resolve().parent / ".cheapos", help="Local task storage directory")
+    parser.add_argument("--data-dir", type=Path, default=default_data_directory(__file__), help="Local task storage directory (source: .cheapos; packaged: per-user application data)")
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("port must be between 1 and 65535")

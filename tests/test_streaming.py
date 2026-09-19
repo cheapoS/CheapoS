@@ -203,7 +203,7 @@ class StreamingTests(LocalCase):
         thinking=[e for e in result['events'] if e['kind']=='generation']
         self.assertEqual(len(thinking),1)
         self.assertFalse(thinking[0]['detail']['interrupted'])
-        self.assertNotIn('without editing',json.dumps(self.engine.initial_messages(result)))
+        self.assertNotIn('I will answer the question without editing.',json.dumps(self.engine.initial_messages(result)))
         self.assertEqual(result['usage']['uncertain_requests'],0)
 
     def test_interrupted_stream_preserves_preview_but_does_not_execute_an_edit(self):

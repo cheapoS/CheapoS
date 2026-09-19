@@ -8,7 +8,7 @@ CheapoS is an open-source, local coding workspace experimenting with a simple tr
 
 **CheapoS decides why and when to spend intelligence. OmniRoute decides where to get it.** CheapoS owns task execution, verification, review checkpoints, and budget accounting. Its optional OmniRoute companion owns provider access and routing. Automatic remote chats maintain a pool of free candidates and visibly hand off failed requests; manual and local model choices stay fixed.
 
-This is an early, working alpha for personal projects. It has real repository tools and an execution engine, available as a packaged native macOS desktop app (`cheapoS.app` / `.dmg`) or as a lightweight local server. No account or hosted project requirement. Cost savings are a hypothesis to measure, not a benchmark claim.
+This is an early, working alpha for personal projects. It has real repository tools and an execution engine. The recommended public-alpha installation runs from source as a local server; [macOS desktop builds are experimental](../README.md#experimental-macos-builds). No account or hosted project requirement. Cost savings are a hypothesis to measure, not a benchmark claim.
 
 ## Run locally
 
@@ -20,7 +20,7 @@ cd CheapoS
 python3 run.py
 ```
 
-On macOS, you can also double-click **Start CheapOS.command**. The app opens at **http://127.0.0.1:5173/**. It binds only to the loopback interface. There is no sign-in, telemetry, remote asset loading, or cloud deployment dependency.
+On macOS, you can also double-click **Start CheapOS.command**. The app opens at **http://127.0.0.1:5173/**. It binds only to the loopback interface. Local coding needs no sign-in or cloud deployment. Usage stays local by default; optional Club sharing is described in [Security](../SECURITY.md#optional-club-sharing).
 
 ```sh
 python3 run.py --no-open
@@ -189,38 +189,60 @@ By default, dependencies are not installed automatically without permission. The
 
 ## Limits and recovery
 
-Use the budget button beside the composer to choose **Uncapped work · ∞** for
-this chat or new-chat defaults. Paused unattended runs can use the same control;
-save the change, then Resume. The choice is also available when reviewing an
-unattended proposal. Worker turns can also be set above 200 without enabling
-uncapped work.
+**Settings → Limits & recovery** defines defaults for new chats. **Chat setup**
+shows and edits the selected chat's effective limits; changing defaults does not
+silently rewrite existing work. Choose separate request, turn, tool-action,
+review-token, iteration and working-time budgets, or **Uncapped work · ∞**.
+Uncapped work removes cumulative work ceilings while keeping spending policy,
+command permission, independent review and usage accounting. Older saved tasks
+retain their captured policy until you explicitly change it.
 
-Uncapped work removes turn, iteration, request, tool-action, reviewer-token and
-working-time caps. It keeps usage totals, spending limits, model policy, command
-permissions, independent review and stalled-work recovery. Per-command timeouts
-and per-response output limits remain separate. It does not automatically resume
-saved work or renew exhausted recovery attempts. See [work allowance details](development/uncapped-work.md).
+Per-response capacity, request timeouts and verification deadlines are separate
+from cumulative work budgets. **Automatic** uses available capacity and previous
+operation evidence; finite provider/resource boundaries still apply. Model
+metadata is not a billing guarantee. See [effective budget details](development/limits-and-recovery-user-guide.md).
 
-- Estimated dollar cap, reviewer token cap, worker model-turn cap, iteration cap, and per-request output cap. In chats, each user message gets its own worker-turn allowance; Resume preserves turns already used on that message. Spending, token usage, and review iterations remain cumulative.
-- Before dispatch, conservatively reserve prompt/output usage; reconcile with provider-reported tokens and cost. When cost is absent, calculate it from your configured prices.
-- Automatic free/included routes tolerate unexpected reports below **$0.01 total per task**, provided they fit the task’s dollar budget. Reaching one cent stops returned tools and further requests; retries, handoffs and restarts keep the accumulated cost. An explicit $0 budget still permits no charge. Startup greetings keep their separate zero-charge rule.
-- Dollar caps are **estimates**, not guaranteed billing limits. Provider tokenization, pricing, and reported costs can differ. Configure a provider-side spending cap for a billing guarantee.
-- Delegate and All remote can make up to two automatic handoffs to different free models per run after transient errors, broken JSON, or incomplete streams. Authentication, credit errors, output limits, refusals, missing usage, user stops, and exhausted task limits do not trigger fallback. Manual and All local do not switch. The separate startup greeting can try up to three distinct free candidates. An intermediary gateway may have its own retry policy. Uncertain reservations remain counted. Missing token usage pauses the task before tools execute.
-- A completed response with malformed tool arguments is accounted, then returned to the model as tool feedback without executing the invalid call. Correction turns use the same model and limits; three consecutive malformed calls pause the task. Broken response JSON or an incomplete stream never executes partial tools; automatic remote chats can hand the request to another free model.
-- Stop prevents further tool work. Ollama and OmniRoute streams check for cancellation as output arrives; a stalled connection can take 3 minutes to release. Streaming also checks a 10-minute generation limit between chunks. Other model requests retain a 3-minute network timeout and may still be billed after stopping. Partial or interrupted tool calls never execute. Slow free or reasoning models may also require a longer queue wait in an intermediary gateway.
-- Tasks, patches, checks, checkpoints, and accounting are saved under `.cheapos/`. Interrupted tasks require an explicit resume and retain their usage. The server never automatically resumes paid work.
-- Compaction and resume preserve a bounded history of completed file observations and worker notes alongside the current patch and review feedback, without replaying old tool calls.
-- Research keeps a compact record of the sources and sections already read. When no patch still needs review, CheapoS reserves the final available research turn for an answer with tools disabled; repeated reads can trigger this earlier. If saved edits still need work, recovery supplies fresh file contents (up to four files and 24,000 characters, with incomplete snapshots labeled), the latest request, and check results. It offers editing, verification, checkpoint, and clarification tools for the next step, with reading tools disabled. Automatic remote routes reject calls to unavailable tools before executing any calls in that response, then use the same bounded free-model handoff policy. It uses the remaining limits; automatic remote routing can replace a failing worker. Retry preserves the appropriate recovery step, including after a provider interruption; recovery cannot approve edits or bypass command permission.
-- One task runs at a time. A process lock prevents two app servers from using the same data directory.
+- Requests reserve estimated usage before dispatch, then reconcile it with
+  provider-reported usage. Uncertain requests retain their reservations; inspect
+  **Token accounting** for the breakdown. Retries do not erase usage.
+- Dollar caps are estimates. Use provider-side spending controls for a billing
+  guarantee. A $0 task permits no reported charge; automatic free/included routing
+  also stops at one cent of unexpected cumulative charges even with a higher cap.
+- Automatic routes preserve saved work and try another eligible route after
+  recoverable provider/model failures. Provider cooldowns apply before retrying;
+  a pinned role does not silently switch to an unauthorized model.
+- Invalid or incomplete tool calls do not execute. Repeated failures trigger
+  focused guidance, available coordinator assistance or an authorized handoff.
+  Recovery retains the current files, requirements, check evidence and attempt
+  history. It cannot grant commands, raise spending, or approve its own work.
+- **Pause** prevents further tool work. An in-flight provider operation can take
+  time to cancel and may still report usage. **Resume** continues saved work;
+  it does not recreate the task or reset its counters. Eligible saved route waits
+  can resume automatically after restart within their original authority.
+- Checks run in their captured task-relative directory. Missing setup can be
+  repaired by the worker when task-command permission is enabled. Without that
+  permission, additional command authority may be needed. Successful setup alone
+  does not count as verification or independent review.
 
-Unattended runs can create reviewed commits on the feature branch authorized by Start run. Final local merge requires a separate explicit decision. There is no automatic push, dependency installation, unrestricted shell tool, or production sandbox. Keep tasks small: snapshots are limited to 5,000 files / 100 MB, and review checkpoints to a 30,000-character patch. Task history is currently retained until you remove it locally with the app stopped.
+Unattended work commits reviewed items to its authorized feature branch. The final
+local merge still requires your approval, and there is no automatic push. Use
+**Changes** for the final diff in either mode. Large reviews are divided into
+visible chunks; incomplete evidence is not an approval. Task copies and commands
+are not an OS sandbox. Snapshot/resource limits still apply to very large projects.
+
+Saved tasks live in your data directory: `.cheapos/` for a source installation,
+`~/Library/Application Support/cheapoS` for a packaged Mac app, or your explicit
+`--data-dir`. Back up that directory with the app stopped. Archive and restorable
+Trash manage history in the app; emptying Trash permanently removes that saved work.
+A process lock prevents two servers from using the same profile.
 
 ## Development
 
 ```sh
-python3 -B -m unittest discover -s tests -v
-node --check dist/app.js
-node --test tests/test_guidance.js
+python3 -B scripts/check.py --plan
+python3 -B scripts/check.py
+# Before a release:
+python3 -B scripts/check.py --full --jobs 4
 ```
 
 Node is only needed for JavaScript development checks and tests. Tests use temporary local repositories and HTTP servers; they require no API keys and make no external inference calls.
@@ -257,7 +279,7 @@ all grants expire on restart. See [execution permissions](EXECUTION.md#session-t
 
 ### Task-copy environment setup
 
-A missing verification executable or selected virtual environment pauses with its task-copy path and a recheck action. Recognized setup commands are shown only when present in project guidance. Prepare that separate copy manually; source environments and excluded dependency folders are not copied automatically. Rechecking restored prerequisites invalidates old verification evidence, then Resume continues the saved check. Generic import errors remain test failures with their original output. Test permission never authorizes package installation.
+The proposal discloses missing verification tools. With **Allow task commands**, the worker can prepare dependencies inside the task copy and retry verification. Without that grant, approve the additional command authority or prepare the copy yourself. Source environments and excluded dependency folders are not copied automatically. Environment changes invalidate affected verification evidence; successful setup must still be followed by the required checks and review. A test-only grant does not authorize package installation.
 
 ### Brand spelling
 

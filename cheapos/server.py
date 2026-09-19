@@ -370,7 +370,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                                 self.server.engine.shutdown()
                                 self.server.server_close()
                                 print(f'cheapoS restart: shutdown completed in {time.monotonic()-started:.2f}s.', flush=True)
-                                os.execv(sys.executable, [sys.executable] + sys.argv)
+                                from .launch import restart_arguments
+                                os.execv(sys.executable, restart_arguments())
                             finally:
                                 with self.server.restart_lock:
                                     self.server.restart_pending = False

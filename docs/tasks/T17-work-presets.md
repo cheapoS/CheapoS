@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Changed defaults to Extended while an existing task stayed Interactive. Customized it to 22 minutes; ordinary Pause/Resume used Custom 22 without a modal. Hard worker stop showed Used 1 of 1; adjusted only turns to 2 and continued. A newly created task inherited Extended 45/120/10 and zero dollars. Verified stored fixture limits. Narrow dialog remained scrollable and Save was keyboard-reachable; viewport reset afterward.
 - Remaining limitations: Presets are bounded work envelopes, not a reliability promise. Advanced overrides intentionally keep Custom even when the duration matches a preset. Nonadjustable accounting/model/patch blockers direct the user to the specific evidence instead of increasing unrelated limits. Free-only depends on configured prices; provider billing remains separate.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

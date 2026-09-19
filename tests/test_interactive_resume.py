@@ -2,6 +2,8 @@
 import copy
 import json
 import threading
+import tempfile
+from pathlib import Path
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -40,7 +42,9 @@ class InteractiveResumeTests(unittest.TestCase):
         engine.lock = threading.RLock()
         engine.runtimes = {}
         engine.startup = SimpleNamespace(busy=lambda:False)
-        engine.store = SimpleNamespace(get=lambda _:task, save=Mock())
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        engine.store = SimpleNamespace(root=Path(temp.name), get=lambda _:task, save=Mock())
         engine.require_active_task = Mock()
         engine.admission = Mock()
         engine.event = Mock()

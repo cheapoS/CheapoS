@@ -35,4 +35,4 @@ Status: Done
 - Browser scenarios and results: UI remains compatible with legacy clients; broader scope UI is T10.
 - Remaining limitations: Grants are server-session only, unittest only, and not a sandbox. External file changes after authorization remain subject to the normal local execution model.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: CUA disposable port 51030: setup card named missing .venv interpreter and task path; copied-command affordance cited README.md:2. Unresolved recheck stayed paused. Restored fixture interpreter enabled Resume saved verification, which ran one actual check and separate review, ending at human approval.
 - Remaining limitations: No native Open Folder integration exists, so Copy task-copy path is offered. Dependency detection is deliberately narrow: an isolated declared pytest environment without custom .pth paths. Other dependencies remain unverified; generic ImportError output is not relabeled. Setup commands are copied only from recognized project guidance and run manually.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

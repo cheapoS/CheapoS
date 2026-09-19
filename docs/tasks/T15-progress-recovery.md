@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Scripted successful recovery showed Moving from repeated reads to the next action, two saved files, actual tests and independent review passed. Exhausted read-only recovery showed saved-file count, attempted answer, precise blocker and Add a correction; clicking focused the composer. No source commit approved.
 - Remaining limitations: Retry allowances are intentionally request-scoped; an exhausted same-request handoff no longer gets a new allowance merely from Resume. New instructions may start a new work segment while preserving cumulative accounting. Known cooldown waiting is T16. Progress evidence is deterministic and conservative, not a semantic judgment that the whole request is finished.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

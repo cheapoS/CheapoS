@@ -3,7 +3,7 @@
 
 Supports both:
 1. Frozen standalone binary via PyInstaller (when installed, e.g. in CI/CD).
-2. Native macOS application bundle (zero dependencies, works on any Mac).
+2. Native macOS application bundle (requires Python 3.9+ and Git).
 """
 
 import argparse
@@ -20,7 +20,8 @@ RUN_PY = REPO_ROOT / "run.py"
 OUTPUT_DIR = REPO_ROOT / "dist_release"
 APP_NAME = "cheapoS"
 BUNDLE_ID = "lol.cheapos.desktop"
-VERSION = "1.0.0"
+sys.path.insert(0, str(REPO_ROOT))
+from cheapos import __version__ as VERSION
 
 
 def generate_info_plist(output_path: Path):
@@ -129,6 +130,9 @@ def build_pyinstaller_bundle(app_dir: Path):
         APP_NAME,
         "--distpath",
         str(OUTPUT_DIR),
+        "--workpath", str(OUTPUT_DIR / "build"),
+        "--specpath", str(OUTPUT_DIR),
+        "--osx-bundle-identifier", BUNDLE_ID,
         "--add-data",
         f"{DIST_SRC}:dist",
         "--add-data",
@@ -138,6 +142,9 @@ def build_pyinstaller_bundle(app_dir: Path):
     subprocess.run(cmd, check=True)
     # Generate/update Info.plist
     generate_info_plist(app_dir / "Contents" / "Info.plist")
+    # Updating Info.plist invalidates PyInstaller's ad-hoc bundle signature.
+    # This is integrity signing only, not Developer ID signing/notarization.
+    subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app_dir)], check=True)
     print(f"[✓] PyInstaller standalone bundle ready at {app_dir}")
 
 

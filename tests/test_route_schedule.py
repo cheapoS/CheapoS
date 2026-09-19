@@ -38,7 +38,7 @@ class ScheduleTests(unittest.TestCase):
                'c':{'id':'c','status':'interrupted'}}
         stop=Mock();stop.is_set.return_value=False
         engine=SimpleNamespace(route_restore_stop=stop,lock=threading.RLock(),startup=SimpleNamespace(busy=lambda:False),
-            store=SimpleNamespace(tasks=tasks,lock=threading.RLock(),save=Mock(),get=lambda key:tasks[key]),
+            store=SimpleNamespace(tasks=tasks,list=lambda **kw:list(tasks.values()),lock=threading.RLock(),save=Mock(),get=lambda key:tasks[key]),
             start=Mock(),branch=SimpleNamespace(resume=Mock(return_value={'needs_consent':True})))
         with patch('cheapos.engine.threading.Thread') as thread:
             Engine.restore_route_waits(engine)

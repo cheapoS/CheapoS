@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from cheapos.engine import Engine, Runtime, WORKER_TOOLS, limits_from
@@ -29,8 +30,21 @@ def wait_for(predicate, seconds=5):
     raise AssertionError('Timed out waiting for state')
 
 
+def legacy_limits(task):
+    """Exercise saved pre-v2 budgets, not the current unlimited chat defaults."""
+    from cheapos.work_budgets import KEYS
+    for key in KEYS:
+        task['limits'].pop(key, None)
+    task['limits']['uncapped_work'] = False
+    return task
+
+
 class LocalCase(unittest.TestCase):
     def setUp(self):
+        # Installed optional tooling must not index disposable test repositories.
+        carto = patch('cheapos.carto.Carto.available', return_value=False)
+        carto.start()
+        self.addCleanup(carto.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.engine = Engine(self.root / 'state', fixture_delay=0)

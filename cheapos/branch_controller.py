@@ -780,7 +780,10 @@ class BranchController:
     def planning_message(self, task, message):
         from .branch_planner import _digest
         run=task['branch_run']
-        if task['planning_policy']!=policy_for_saved(self.model_policy(), task['planning_policy']):raise ValueError('Model policy changed; start a new planning chat with the selected models.')
+        # A follow-up belongs to this chat's captured settings, just like plan()
+        # and prepare(). Global defaults may have changed in another chat.
+        policy = self.model_policy(task.get('settings_snapshot'))
+        if task['planning_policy']!=policy_for_saved(policy, task['planning_policy']):raise ValueError('Model policy changed; start a new planning chat with the selected models.')
         messages=run['inputs'].get('followups',[])
         if sum(map(len,messages))+len(message)>24000:raise ValueError('Planning conversation is full; start a new chat.')
         runtime=self.engine.runtimes.get(task['id'])

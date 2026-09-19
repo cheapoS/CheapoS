@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Isolated port 51032: noisy 44-test failure shows three tracebacks in Details/Checks; reload retains evidence, original-output dialog shows all 3,340 bytes and download action. Fixed binding when switching views.
 - Remaining limitations: Two-MB/eight-run retention is bounded, older logs expire. No live token/billing measurements. Unknown gateway compression disables the local pass. UTF-8 display pagination may split a character; downloads retain exact bytes.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

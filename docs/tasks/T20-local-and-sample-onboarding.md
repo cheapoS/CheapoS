@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: CUA isolated port 51029: eligible local picker saved All local; real sample made edits, ran four tests and a separate same-model reviewer request, ending at human commit approval. No-model path showed manual setup guidance and successfully ran the separately labeled scripted demo. Saved samples remained in history. Shared responsive dialog uses the T19 overflow fix.
 - Remaining limitations: Downloads/install remain manual via https://ollama.com/download; tool-capability guidance follows https://docs.ollama.com/capabilities/tool-calling. No performance claim or live personal model test. Same-model review is explicitly identified. Sample command authorization expires on server restart; final commit remains a separate operator decision.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

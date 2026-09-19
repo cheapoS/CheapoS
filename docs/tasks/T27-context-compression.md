@@ -37,4 +37,4 @@ Status: Done
 - Browser scenarios and results: No runtime UI added; T26 raw-evidence viewer already verified.
 - Remaining limitations: No real-model quality/token/billing claim; no production retrieval integration for this candidate. A future adoption experiment needs explicit model/budget selection and repeated representative trials.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

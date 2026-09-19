@@ -879,7 +879,7 @@ class PromptParityTests(unittest.TestCase):
         "Inspect existing project code and conventions before asking questions. "
         "Make and record reasonable reversible choices within the accepted scope. "
         "If a genuinely blocked item has no edits, continue independent items; "
-        "pause for essential decisions, changed setup, or additional authority."
+        "use authorized task commands to repair setup; pause only for essential decisions or missing authority."
     )
 
     CANONICAL_WORKER_POLICY = (
@@ -1027,12 +1027,13 @@ class PromptParityTests(unittest.TestCase):
 
     def test_representative_delivered_worker_system_prompts(self):
         """worker_system delivered prompts maintain exact string parity across interactive and unattended modes."""
-        from cheapos import engine, unattended_setup
+        from cheapos import engine, unattended_setup, task_commands
+        command_policy = task_commands.POLICY + "\nTask command permission: not granted; existing check permissions still apply"
 
         # 1. Interactive mode without finish_review
         task_interactive = {"conversational": True}
         prompt_interactive = engine.worker_system(task_interactive)
-        expected_interactive = engine.CHAT_SYSTEM
+        expected_interactive = engine.CHAT_SYSTEM + "\n" + command_policy
         self.assertEqual(prompt_interactive, expected_interactive)
 
         # 2. Interactive mode with finish_review: complete string comparison
@@ -1042,6 +1043,7 @@ class PromptParityTests(unittest.TestCase):
             engine.CHAT_SYSTEM
             + "\nThe operator selected Finish review for the saved patch. Complete verification and independent checkpoint review even if you make no new edits. Keep the implementation unchanged unless checks or review require a fix. Call run_checks to select a missing verification command and present any required permission. A prose description of next steps does not finish this request. Ask only for a genuinely missing requirement. The operator will approve the final commit separately."
         )
+        expected_finish += "\n" + command_policy
         self.assertEqual(prompt_finish, expected_finish)
 
         # 3. Unattended mode with authorization: complete string comparison
@@ -1058,6 +1060,7 @@ class PromptParityTests(unittest.TestCase):
             + unattended_setup.WORKER_POLICY
             + " Use report_blocker for a genuine essential decision, including inspected evidence and why it cannot be resolved within scope."
         )
+        expected_unattended += "\n" + command_policy
         self.assertEqual(prompt_unattended, expected_unattended)
 
         # 4. In-memory fault injection: verify that appending unexpected text fails exact parity

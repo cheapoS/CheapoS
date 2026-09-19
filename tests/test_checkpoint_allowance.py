@@ -10,6 +10,7 @@ from cheapos.engine import Engine, BudgetError, CheckCommandError
 class CheckpointAllowanceTests(unittest.TestCase):
     def setup_run(self, uncapped):
         engine = Engine.__new__(Engine)
+        engine.lock = threading.RLock()
         task = dict(limits={'uncapped_work': uncapped, 'iterations': 5},
                     patch='', iterations=0, checks=[], changes=[], checkpoints=[],
                     prompt='Hide samples', providers={}, active_role='worker',

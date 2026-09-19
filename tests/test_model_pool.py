@@ -1,3 +1,4 @@
+from test_engine import legacy_limits
 from cheapos.route_health import probe_identity
 from cheapos.routing import PROBE_MARKER
 """Automatic free recovery preserves work, accounting, and human control."""
@@ -315,7 +316,8 @@ class FailoverTests(LocalCase):
         self.assertIn('return min(value, upper)',(Path(task['source'])/'math_utils.py').read_text())
 
     def test_two_handoffs_remain_exhausted_on_unchanged_resume(self):
-        task=self.chat('remote')
+        task=legacy_limits(self.chat('remote'))
+        self.engine.store.save(task)
         requests=self.responding([ProviderError('Broken',code='invalid_response_json') for _ in range(3)])
         self.engine.start(task['id']);paused=self.finish(task)
         self.assertEqual(paused['status'],'paused');self.assertEqual(paused['error_code'],'routing_unavailable')
@@ -330,7 +332,7 @@ class FailoverTests(LocalCase):
         self.assertEqual(result['usage']['uncertain_requests'],3)
 
     def test_worker_turn_cap_stops_before_replacement_probe(self):
-        task=self.chat('remote');task['limits']['worker_turns']=1;self.engine.store.save(task)
+        task=legacy_limits(self.chat('remote'));task['limits']['worker_turns']=1;self.engine.store.save(task)
         requests=self.responding([ProviderError('Broken',code='stream_error')])
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'budget_paused');self.assertEqual(result['error_code'],'worker_turn_limit')
@@ -397,7 +399,7 @@ class FailoverTests(LocalCase):
         self.assertEqual({r['model'] for r in requests},{'b'})
 
     def test_reviewer_eight_turn_cap_includes_failed_response(self):
-        task=self.chat('remote');task['check_command']=[sys.executable,'-m','unittest','discover','-v'];task['auto_approve_checks']=True
+        task=legacy_limits(self.chat('remote'));task['check_command']=[sys.executable,'-m','unittest','discover','-v'];task['auto_approve_checks']=True
         self.engine.store.save(task)
         requests=self.responding([call('replace_text',{'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
             call('checkpoint',{'summary':'Fixed'}),ProviderError('Broken',code='stream_error')]+[{'content':'Still reviewing'}]*8)
@@ -423,7 +425,7 @@ class FailoverTests(LocalCase):
         task.update(action_pending=True,loop_guidance=ACTION_GUIDANCE)
         self.engine.store.save(task)
         mixed=call('write_file',{'path':'unwanted.txt','content':'Must not execute'})
-        mixed['tool_calls']+=call('delete_file',{'path':'notes.txt'})['tool_calls']
+        mixed['tool_calls']+=call('execute_shell',{'command':'remove notes.txt'})['tool_calls']
         requests=self.responding([mixed,call('replace_text',{'path':'notes.txt','old_text':'Saved work','new_text':'Corrected work'}),call('ask_user',{'question':'Which example next?'})])
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'awaiting_reply',result['error'])

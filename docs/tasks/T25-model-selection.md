@@ -33,4 +33,4 @@ Status: Done
 - Browser scenarios and results: Models label covered by pure UI test; no new navigation flow.
 - Remaining limitations: Protocol completion is not independently proven correctness. No real-model quality claim. Acceptance is attributed only to observed contributors in the latest run.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

@@ -32,4 +32,4 @@ Status: Done
 - Browser scenarios and results: Not applicable: development tooling only. Browser fixture idle during full profile.
 - Remaining limitations: Per-test totals identify slow workflows but do not isolate fsync/Git/process shares. Module/class setup is represented in the overall suite total.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.

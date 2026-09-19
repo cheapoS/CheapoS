@@ -10,12 +10,28 @@ The verification command is user supplied and runs on the host. It can access fi
 
 The optional **Allow task commands** permission lets the worker choose setup and diagnostic commands as well as checks inside the selected task copy. It is shown at plan approval, applies to that task only, persists across restarts, and can be revoked while paused through Session permissions. Dependency installation can execute package scripts with the same host access as other commands. Directory checks constrain the initial working directory, not everything the process can access. Required verification and independent review still apply; deployment, publishing, credential access and changes to other checkouts are not authorized.
 
-Model API keys supplied in the UI are kept only in process memory. The API adapter rejects redirects to avoid forwarding credentials to an unexpected endpoint. Configuration and task records use private local files. Provider secrets are not passed in the verification process environment.
+Session-only API keys stay in process memory. When **Remember this key on this computer** is selected, gateway client keys are stored in macOS Keychain or Linux Secret Service (`secret-tool`). The option is selected by default on supported computers; turn it off for a session-only key. There is no plaintext storage fallback. The API adapter rejects redirects to avoid forwarding credentials to an unexpected endpoint. Configuration and task records use private local files. Provider secrets are not passed in the verification process environment.
 
-OmniRoute is an optional local companion. cheapoS can start the installed CLI on loopback and only stops processes it owns in the current session. Provider credentials remain in OmniRoute; its client API key is held in cheapoS memory or supplied by the launch environment. The gateway may implement its own retries and routing, so its configuration is part of the trust boundary. Catalog metadata advertises capabilities; it is not evidence of successful inference or a billing guarantee.
+OmniRoute is an optional local companion. cheapoS can start the installed CLI on loopback and only stops processes it owns in the current session. Provider credentials remain in OmniRoute; its client API key is held in cheapoS memory, restored from the chosen OS credential store, or supplied by the launch environment. The gateway may implement its own retries and routing, so its configuration is part of the trust boundary. Catalog metadata advertises capabilities; it is not evidence of successful inference or a billing guarantee.
 
-Tasks pause after restarts or uncertain provider responses. Cost reservations are estimates and are not a substitute for provider-side spending limits.
+Interrupted work and uncertain provider responses retain their saved records. Eligible failures can continue on another authorized route; operator-paused work stays paused. Cost reservations are estimates and are not a substitute for provider-side spending limits.
 
 Do not publish real credentials or private repository content in bug reports. For vulnerabilities, report them privately via GitHub Security Advisories or email security@cheapos.lol. Otherwise, open a minimal issue asking for a private reporting channel without exploit details or sensitive data.
 
 Automatic startup can send a small greeting to an installed local Ollama model or an eligible configured free route. New cloud fallback requires an explicit opt-in; a saved free provider choice is reused. Greeting requests contain no repository contents and expose no tools. Catalog prices and free-route IDs are eligibility signals, not provider-side billing guarantees. Unknown prices and automatic combos are excluded. A reported charge stops fallback and disables automatic startup. Existing chats keep their original model pair.
+
+## Optional Club sharing
+
+Sharing is off by default. Linking an X account through the Club website and enabling
+sync sends signed usage events: a pseudonymous installation/event identity, day,
+compute category, input/output token counts, and agent role. It also sends aggregate
+completed/merged/review-approved task counts and acceptance rate. Model names are
+included only when the separate model-sharing option is enabled. Prompts, source
+files, task titles, file paths, command output and API keys are not part of this
+payload. The receiving service still observes ordinary connection metadata, such
+as your IP address, and links the public profile to the selected X identity.
+
+Pause sharing or disconnect in **Settings → Usage & sharing**. This stops future
+uploads; it does not retract data already received. Club signing keys use the OS
+credential store and need the optional `requirements-club.txt` dependency. Local
+coding works without Club or that dependency.

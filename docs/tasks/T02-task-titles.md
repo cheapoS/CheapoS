@@ -38,4 +38,4 @@ Status: Done
 - Browser scenarios and results: Enter saves; whitespace errors stay inline; Escape cancels and returns focus; literal HTML-looking/emoji names render safely; reload retains name; in-session draft survives rename. Renamed an active scripted task through checks/review; worker events and title survived. Checked header/dialog at 390px and reset viewport.
 - Remaining limitations: Long names truncate visually with full title available; composer drafts retain existing session-only persistence.
 
-Before implementing, read [TASKS.md](../../TASKS.md) for the shared contract. Update this record and the matching board row when complete.
+Before implementing, read [TASKS.md](../archive/TASKS.md) for the shared contract. Update this record and the matching board row when complete.
