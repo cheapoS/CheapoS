@@ -37,7 +37,7 @@ class PlanningRecoveryTests(unittest.TestCase):
         def request(runtime,messages,*args,**kwargs):
             requests.append(copy.deepcopy(messages));task['usage']['cost']+=1
             return {'content':'bad'} if len(requests)<4 else {'ok':True}
-        engine=SimpleNamespace(request=request,event=Mock())
+        engine=SimpleNamespace(request=request,event=Mock(),store=SimpleNamespace(save=Mock()))
         def parse(response,*args):
             if response.get('ok'):return {'items':['valid']}
             raise planner.PlanningResponseError('bad format')
