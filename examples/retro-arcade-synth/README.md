@@ -75,15 +75,14 @@ synth.write_wav(samples, 'custom.wav')
 
 ## Presets
 
-| Preset        | Waveform     | Description                                  |
-| ------------- | ------------ | -------------------------------------------- |
-| `laser-shot`  | sawtooth     | Descending pitch sweep, quick decay.         |
-| `jump`        | square       | Ascending pitch sweep, short sustain.        |
-| `coin-pickup` | triangle     | Two stacked triangle tones (1200 + 1600 Hz). |
-| `powerup`     | square       | Rising arpeggio-like sweep with sustain.     |
-| `explosion`   | noise        | Seeded white noise with fast decay.          |
-| `hit`         | sawtooth     | Low, punchy impact with quick decay.         |
-
+| Preset        | Waveform | Duration | Description                                  |
+| ------------- | -------- | -------- | -------------------------------------------- |
+| `laser-shot`  | sawtooth | 0.18s    | Descending pitch sweep, quick decay.         |
+| `jump`        | square   | 0.25s    | Ascending pitch sweep, short sustain.        |
+| `coin-pickup` | triangle | 0.14s    | Two stacked triangle tones (1200+1600 Hz).   |
+| `powerup`     | square   | 0.40s    | Rising arpeggio-like sweep with sustain.     |
+| `explosion`   | noise    | 0.60s    | Seeded white noise with fast decay.          |
+| `hit`         | sawtooth | 0.15s    | Low, punchy impact with quick decay.         |
 All presets are deterministic: `make_explosion()` uses a fixed seed so it
 produces the same samples every time.
 
@@ -121,7 +120,8 @@ audio player, editor, or the standard library `wave` module.
 Run the unit tests with:
 
 ```bash
-python3 -m unittest examples/retro-arcade-synth/test_synth.py -v
+python3 -m unittest examples/retro-arcade-synth/test_synth.py
+```
 ```
 
 The test suite verifies:
