@@ -1583,6 +1583,9 @@ class Engine:
         self.connections.shutdown()
 
     def initial_messages(self, task):
+        from .discussion import opening_greeting, greeting_messages
+        if opening_greeting(task):
+            return greeting_messages(task)
         if task.get("action_pending") or task.get("compact_edits"):
             return self.action_messages(task)
         workspace = Workspace(task["workspace"])
@@ -2188,9 +2191,29 @@ class Engine:
             work_policy.refresh_edit_recovery(runtime.task)
         if not runtime.task.get('branch_run',{}).get('conflict_resolution'):
             tools=[t for t in tools if t.get('function',{}).get('name') not in {'read_merge_context','apply_merge_version'}]
+        # Text-only conversation can use a responsive authorized route without
+        # a synthetic tool probe. Do not promote it to a qualified coding route.
+        text_reply = purpose == 'chat_reply' and not tools and config_override is None and automatic(runtime.task, role)
+        if text_reply:
+            task = runtime.task
+            route = task['route']
+            saved_provider = copy.deepcopy(task['providers'].get(role))
+            saved_ready = route.get('ready', False)
+            saved_recovery = copy.deepcopy(route.get('recovery', {}).get(role))
+            route.get('recovery', {}).pop(role, None)
+            task['providers'][role] = None
+            runtime.text_only_route = True
         try:
             return reviewer_recovery.request(self, runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
         finally:
+            if text_reply:
+                runtime.text_only_route = False
+                task['providers'][role] = saved_provider
+                route['ready'] = saved_ready
+                route.get('recovery', {}).pop(role, None)
+                if saved_recovery is not None:
+                    route.setdefault('recovery', {})[role] = saved_recovery
+                self.store.save(task)
             if purpose != 'chat_reply':
                 from .discussion import drain
                 drain(self, runtime)
@@ -2360,6 +2383,8 @@ class Engine:
                 # loop. A stale discovery call is not a broken provider route.
                 if (purpose or role != 'worker') and not (role == 'planner' and purpose == 'branch_planning'):
                     self.validate_offered_tools(message, tools)
+                if purpose == 'chat_reply' and not tools and (not isinstance(message.get('content'), str) or not message['content'].strip() or message.get('reasoning_fallback')):
+                    raise ProviderError('The model did not return a chat answer.', code='empty_response')
             except ProviderError as error:
                 from .context_budget import context_rejection
                 if context_rejection(error): raise
@@ -2651,7 +2676,7 @@ class Engine:
             # This reservation is an estimate until usage arrives, not an upper
             # bound on tokens. Zero rates keep the monetary reservation sound.
             reservation['tokens_are_upper_bound'] = False
-        self.event(task, "model", f"Requesting {role}: {config['model']}", {"purpose": purpose, "reserved_cost": reservation["cost"], "max_output_tokens": maximum, "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
+        self.event(task, "model", f"Requesting {role}: {config['model']}", {"purpose": purpose, "opening_chat": bool(getattr(runtime, 'opening_chat', False)), "reserved_cost": reservation["cost"], "max_output_tokens": maximum, "timeout_seconds": 30 if brief else REQUEST_TIMEOUT_SECONDS, "streaming": streaming, "stream_limit_seconds": (60 if brief else STREAM_MAX_SECONDS) if streaming else None, "recovery_reasoning": config.get("_recovery_reasoning")})
         if runtime.stop.is_set():
             raise InterruptedError("Task stopped before dispatch")
         runtime.guard()
@@ -2666,6 +2691,7 @@ class Engine:
         record['dispatched']=True
         if streaming:
             live = {"request_id": task["events"][-1]["id"], "model": config["model"], "role": role, "purpose": purpose, "started_at": now(), "updated_at": now(), "phase": "waiting", "thinking": "", "content": "", "tool": "", "truncated": False}
+            live['opening_chat'] = bool(getattr(runtime, 'opening_chat', False))
             task["stream"] = live
             self.store.save(task)
             published = None
@@ -2714,6 +2740,7 @@ class Engine:
                 self.store.save(task)
         else:
             task['stream'] = {'request_id': task['events'][-1]['id'], 'model': config['model'], 'role': role, 'purpose': purpose,
+                              'opening_chat': bool(getattr(runtime, 'opening_chat', False)),
                               'started_at': now(), 'updated_at': now(), 'phase': 'waiting',
                               'thinking': '', 'content': '', 'tool': '', 'truncated': False}
             self.store.save(task)
@@ -3640,6 +3667,10 @@ class Engine:
         task = runtime.task
         from . import coordinator_dispatch
         try:
+            from .discussion import opening_greeting, greet
+            if opening_greeting(task):
+                greet(self, runtime)
+                return
             reassessment = getattr(runtime, 'coordinator_reassessment', None)
             if reassessment:
                 runtime.coordinator_reassessment = None

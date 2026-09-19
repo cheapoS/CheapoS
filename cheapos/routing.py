@@ -303,7 +303,10 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         if reason in {'eligible', 'fit_unknown'}: candidates.append(model)
     preferred = route.get("preferred", {})
     connection_revision=(policy or {}).get('connection_revision')
-    if hasattr(gateway.pool, 'interleave'):
+    text_only = getattr(runtime, 'text_only_route', False)
+    if text_only:
+        candidates.sort(key=lambda m: gateway.pool.conversation_rank(base_url, m, role, preferred.get(role), connection_revision))
+    elif hasattr(gateway.pool, 'interleave'):
         candidates = gateway.pool.interleave(base_url, candidates, role, preferred.get(role), connection_revision)
     else:
         candidates.sort(key=lambda m: gateway.pool.rank(base_url, m, role, preferred.get(role), connection_revision))
@@ -330,7 +333,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
             continue
         identity = route_health.probe_identity(base_url, model, connection_revision)
         cached = gateway.pool.fresh_probe(base_url, model['id'], connection_revision, identity)
-        if model['id'] in tried or (not cached and round_state['probes'] >= route_schedule.BATCH_SIZE): continue
+        if model['id'] in tried or (not text_only and not cached and round_state['probes'] >= route_schedule.BATCH_SIZE): continue
         tried.add(model['id'])
         candidate_provider = provider(model['id'])
         all_deferred = deferred_providers | active_failure_provider
@@ -346,9 +349,11 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         if access_policy.classify(model, policy) == 'included':
             cfg = access_policy.bind_provider(cfg, policy, model)
         label = 'included' if cfg.get('access') == 'included' else 'free'
-        engine.event(task, "routing", ("Checking included " if label == "included" else "Checking a free ") + role, {"model": model["id"], "role": role, "connection_id":connection_id, "gateway":gateway.settings.get("name","OmniRoute")})
+        engine.event(task, "routing", "Connecting for a chat reply" if text_only else ("Checking included " if label == "included" else "Checking a free ") + role, {"model": model["id"], "role": role, "connection_id":connection_id, "gateway":gateway.settings.get("name","OmniRoute")})
         try:
-            if not cached:
+            if text_only:
+                routing_trace.candidate(trace, model['id'], 'text_reply_no_tools')
+            elif not cached:
                 owner, pending = gateway.pool.claim_probe(identity)
                 if pending is None and not owner:
                     raise RoutingPause('Connection checks are busy. Your task will retry automatically.', retry_at=time.time()+route_schedule.ROUND_SECONDS, scope='probe_capacity')
@@ -385,7 +390,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
             runtime.route_wait_started_at = None
             route["ready"] = bool(task["providers"].get("worker"))
             route.pop("waiting_for", None)
-            engine.event(task, "routing", label.capitalize() + " " + role + " is ready", {"model": model["id"], "role": role, "tool_check": "recent cached observation" if cached else "new probe"})
+            engine.event(task, "routing", "Chat route selected" if text_only else label.capitalize() + " " + role + " is ready", {"model": model["id"], "role": role, "tool_check": "not needed for a text reply" if text_only else "recent cached observation" if cached else "new probe"})
             engine.store.save(task)
             return
         except (ProviderError, ValueError, TypeError, KeyError) as error:

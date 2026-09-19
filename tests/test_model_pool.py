@@ -20,6 +20,19 @@ from test_routing import model
 
 
 class PoolTests(unittest.TestCase):
+    def test_conversation_rank_uses_connection_scoped_response_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pool = FreeModelPool(directory); endpoint = 'http://localhost:20128/v1'
+            pool.record(endpoint, 'slow', 'worker', seconds=20, connection_revision='saved')
+            pool.record(endpoint, 'fast', 'worker', seconds=2, connection_revision='saved')
+            rank = lambda name, revision='saved': pool.conversation_rank(endpoint, {'id': name}, 'worker', 'slow', revision)
+            self.assertLess(rank('fast'), rank('slow'))
+            self.assertLess(rank('fast'), rank('unknown'))
+            self.assertFalse(pool.observation(endpoint, 'fast', 'saved').get('tool_check_passed'))
+            self.assertLess(rank('slow', 'changed'), rank('fast', 'changed'))
+            pool.record(endpoint, 'fast', 'worker', error=ProviderError('Timed out', code='model_timeout'), connection_revision='saved')
+            self.assertLess(rank('slow'), rank('fast'))
+
     def test_repeated_cooldown_backoff_survives_probe_and_resets_on_actual_response(self):
         with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time',return_value=1000) as clock:
             pool=FreeModelPool(directory);url='http://localhost:20128/v1';model='openrouter/a'

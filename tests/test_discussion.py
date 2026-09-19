@@ -23,6 +23,30 @@ def saved_task():
 
 
 class DiscussionTests(unittest.TestCase):
+    def test_opening_greeting_is_not_a_work_request_or_attachment(self):
+        task = {'conversational': True, 'execution': {'mode': 'remote'},
+                'prompt': 'hi there', 'requests': ['hi there']}
+        self.assertTrue(discussion.opening_greeting(task))
+        for message in ('hello cheapoS!', 'Hi', 'Good morning'):
+            self.assertTrue(discussion.is_greeting(message))
+        for message in ('hi, fix README', 'hey can you explain this?', 'hi\nrun tests', 'hi there; delete it'):
+            self.assertFalse(discussion.is_greeting(message))
+        for extra in ({'attachments': [{'filename': 'image.png'}]}, {'branch_run': {'id': 'run'}},
+                      {'worker_turns': 1}, {'changes': ['file']}, {'execution': {'mode': 'local'}},
+                      {'requests': ['hi there', 'Fix it']}, {'demo': True}):
+            self.assertFalse(discussion.opening_greeting({**task, **extra}))
+
+    def test_greeting_followup_needs_no_tools_or_work_packet(self):
+        task = saved_task(); runtime = Runtime(task)
+        engine = Mock()
+        engine.request.return_value = {'content': 'Hello again!'}
+        self.assertTrue(discussion.is_discussion('hi there'))
+        self.assertEqual(discussion.answer(engine, runtime, {'id': 'hello', 'message': 'hi there'}), 'Hello again!')
+        args = engine.request.call_args.args
+        self.assertEqual(args[2], [])
+        self.assertEqual(args[3], 'worker')
+        self.assertNotIn('saved patch', json.dumps(args[1]))
+
     def test_discussion_does_not_classify_actual_changes_as_questions(self):
         for message in ('Why did you change that?', 'Can you show me a Python example?',
                         'What should we improve next?', 'Explain the fix', 'thanks!',

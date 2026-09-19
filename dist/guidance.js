@@ -967,8 +967,8 @@ const CheapOSConversation = (() => {
   }
   function build(task, at = Date.now()) {
     // Model traffic for an answer is not worker/reviewer execution progress.
-    const work={...task,events:(task.events||[]).filter(e=>e.detail?.purpose!=='chat_reply'),
-      stream:task.stream?.purpose==='chat_reply'?null:task.stream};
+    const work={...task,events:(task.events||[]).filter(e=>e.detail?.purpose!=='chat_reply'||e.detail?.opening_chat),
+      stream:task.stream?.purpose==='chat_reply'&&!task.stream.opening_chat?null:task.stream};
     const entries=workConversation(work,at);
     for(const turn of task.discussion||[]){
       entries.push({kind:'user',id:'discussion-user-'+turn.id,text:turn.message});

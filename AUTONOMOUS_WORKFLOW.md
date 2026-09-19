@@ -28,6 +28,14 @@ The existing agent conflict workflow resolves committed branch changes only.
 
 ## Implemented: discussion is separate from execution
 
+An opening greeting in remote Interactive chat uses a small text-only request.
+Automatic selection favors successful observed response times on the authorized
+connection, without a synthetic coding-tool probe or repository context. This
+does not qualify that model for tools: subsequent implementation still uses the
+ordinary worker selection and verification flow. Explicit model pins, access
+policy, provider pacing, cooldowns and spending limits continue to apply. This
+avoids unnecessary setup; it does not guarantee a remote provider's latency.
+
 Existing chats accept questions and discussion while work is running, paused,
 awaiting review, or merged. Explicit questions, explanations, examples and social
 replies use a read-only conversation turn; ambiguous or implementation requests

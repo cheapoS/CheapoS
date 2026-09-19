@@ -17,6 +17,87 @@ def model(name, **extra):
 
 
 class RoutingTests(LocalCase):
+    def test_opening_greeting_skips_probe_but_following_work_still_qualifies(self):
+        task = self.chat('remote', prompt='hi there')
+        requests = self.responses([{'role': 'assistant', 'content': 'Hi! What would you like to work on?'},
+                                   call('ask_user', {'question': 'Which behavior should change?'})])
+        self.engine.start(task['id'])
+        result = self.finish(task)
+        self.assertEqual(result['status'], 'awaiting_reply', result['error'])
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0]['tools'], [])
+        self.assertNotIn('math_utils.py', json.dumps(requests[0]['messages']))
+        self.assertEqual(result['request_metrics'][0]['purpose'], 'chat_reply')
+        self.assertEqual(result['usage']['worker']['tokens'], 15)
+        self.assertFalse(result['route']['ready'])
+        self.assertIsNone(result['providers']['worker'])
+        self.assertEqual(result['checks'], [])
+        self.assertEqual(result['changes'], [])
+        self.engine.start(task['id'], {'message': 'Change clamp behavior.'})
+        result = self.finish(task)
+        self.assertEqual(result['status'], 'awaiting_reply', result['error'])
+        self.assertEqual([r['purpose'] for r in result['request_metrics']], ['chat_reply', 'probe', 'work'])
+        self.assertEqual(requests[1]['messages'], PROBE_MESSAGES)
+        self.assertTrue(requests[2]['tools'])
+
+    def test_text_chat_prefers_responding_route_and_restores_work_selection(self):
+        task = self.chat('remote'); runtime = Runtime(task)
+        base = task['route']['base_url']
+        policy = task.get('access_policy') or {}
+        revision = policy.get('connection_revision')
+        self.engine.gateway.pool.record(base, 'b:free', 'worker', seconds=1, connection_revision=revision)
+        self.engine.gateway.catalog.return_value['models'].extend([
+            model('paid-fast', free=False), model('local-fast', local=True), model('no-tools', tool_calling=False)])
+        for name in ('paid-fast', 'local-fast', 'no-tools'):
+            self.engine.gateway.pool.record(base, name, 'worker', seconds=.01, connection_revision=revision)
+        task['route']['preferred']['worker'] = 'a:free'
+        recovery = {'from': 'a:free', 'reason': 'Saved work recovery'}
+        task['route']['recovery'] = {'worker': recovery.copy()}
+        requests = self.responses([{'content': 'Hello'}])
+        self.engine.request(runtime, [{'role': 'user', 'content': 'Hi'}], [], 'worker', purpose='chat_reply')
+        self.assertEqual([r['model'] for r in requests], ['b:free'])
+        self.assertIsNone(task['providers']['worker'])
+        self.assertFalse(task['route']['ready'])
+        self.assertEqual(task['route']['recovery']['worker'], recovery)
+        self.assertFalse(runtime.text_only_route)
+        self.assertFalse(self.engine.gateway.pool.observation(base, 'b:free', revision).get('tool_check_passed'))
+
+    def test_text_reply_respects_explicit_only_model(self):
+        from cheapos.providers import validate_provider
+        task = self.chat('remote'); runtime = Runtime(task)
+        cfg = validate_provider({'base_url': task['route']['base_url'], 'gateway': 'omniroute',
+                                 'model': 'a:free', 'input_rate': 0, 'output_rate': 0}, 'worker')
+        if task.get('gateway_connections'):
+            from cheapos import access_policy
+            entry = task['gateway_connections'][0]
+            cfg['connection_id'] = entry['connection_id']
+            cfg['access_binding'] = access_policy.connection_policy(entry)
+        task['providers']['worker'] = cfg
+        task['settings_snapshot']['values']['roles']['worker']['strategy'] = 'only'
+        task['route']['ready'] = True
+        requests = self.responses([{'content': 'Hello'}])
+        self.engine.request(runtime, [{'role': 'user', 'content': 'Hi'}], [], 'worker', purpose='chat_reply')
+        self.assertEqual([r['model'] for r in requests], ['a:free'])
+        self.assertEqual(task['providers']['worker'], cfg)
+        self.assertTrue(task['route']['ready'])
+
+    def test_text_reply_provider_failure_hands_off_without_tool_probes(self):
+        task = self.chat('remote'); runtime = Runtime(task)
+        models = []
+        class Provider:
+            def __init__(self, config): self.config = config
+            def complete(self, messages, tools, maximum, tool_choice=None):
+                models.append(self.config['model'])
+                if self.config['model'] == 'a:free':
+                    raise ProviderError('Temporarily unavailable', code='http_503')
+                return {'content': 'Hello'}, {'prompt_tokens': 10, 'completion_tokens': 5, 'cost': 0}
+        self.engine.provider_factory = lambda role, cfg: Provider(cfg)
+        response = self.engine.request(runtime, [{'role': 'user', 'content': 'Hi'}], [], 'worker', purpose='chat_reply')
+        self.assertEqual(response['content'], 'Hello')
+        self.assertEqual(models, ['a:free', 'b:free'])
+        self.assertEqual([r['purpose'] for r in task['request_metrics']], ['chat_reply', 'chat_reply'])
+        self.assertIsNone(task['providers']['worker'])
+
     def test_unattended_requests_select_free_roles_and_keep_accounting_purpose(self):
         task = self.chat('remote')
         requests = self.responses([{'content': 'Plan'}, {'content': 'Review'}, {'content': 'Final'}])

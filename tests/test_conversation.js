@@ -30,6 +30,16 @@ test('queued questions acknowledge delivery and never pretend to resume paused w
  assert.ok(build(t).slice(0,-2).every(e=>!e.stream),'A chat answer is not a live worker step');
 });
 
+test('opening greeting streams its actual answer without a synthetic coding step',()=>{
+ const stream={purpose:'chat_reply',opening_chat:true,phase:'answer',role:'worker',model:'fast-model',request_id:2,content:'Hi! What would you like to work on?'};
+ const t=task({prompt:'hi there',status:'running',stream,
+  events:[event(2,'model','Requesting worker',{purpose:'chat_reply',opening_chat:true})]});
+ const reply=replies(t).at(-1);
+ assert.equal(reply.reply,stream.content);
+ assert.equal(reply.steps.length,0);
+ assert.equal(reply.live,true);
+});
+
 test('accepted updates show saved preparation stages in both chat modes before agents restart',()=>{
  for(const unattended of [false,true]){
   const t=task({status:'paused',events:[event(1,'tool','read file',{arguments:{path:'README.md'}})],

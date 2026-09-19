@@ -17,6 +17,53 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def is_greeting(message):
+    """Only a complete social greeting, never a greeting followed by work."""
+    return isinstance(message, str) and bool(re.fullmatch(
+        r'\s*(?:hi|hello|hey|good (?:morning|afternoon|evening))'
+        r'(?:\s+(?:there|cheapos|everyone))?[!.\s]*', message, re.IGNORECASE))
+
+
+def opening_greeting(task):
+    return (task.get('conversational') and not task.get('demo')
+            and not task.get('branch_run') and not task.get('attachments')
+            and task.get('execution', {}).get('mode') == 'remote'
+            and not task.get('worker_turns') and not task.get('changes')
+            and len(task.get('requests', [])) == 1
+            and is_greeting(task.get('prompt')))
+
+
+def greeting_messages(task):
+    return [{'role': 'system', 'content':
+             "You are cheapoS, the user's coding partner. Reply naturally and briefly "
+             "to their greeting and invite them to chat or describe what they want to do. "
+             "No project files have been inspected and no work has been performed. "
+             "Do not claim otherwise. No tools are needed for this reply."},
+            {'role': 'user', 'content': task['prompt']}]
+
+
+def greet(engine, runtime):
+    """Use the normal accounted model path, without qualifying coding tools."""
+    from .providers import ProviderError
+    task = runtime.task
+    runtime.answering_chat = True
+    runtime.opening_chat = True
+    try:
+        response = engine.request(runtime, greeting_messages(task), [], 'worker', purpose='chat_reply')
+        engine.validate_offered_tools(response, [])
+        if not isinstance(response.get('content'), str) or not response['content'].strip() or response.get('reasoning_fallback'):
+            raise ProviderError('The model did not return a chat answer.', code='empty_response')
+        task['messages'].append(response)
+        engine.event(task, 'assistant', 'Chat', response['content'])
+        record = task['request_metrics'][-1]
+        task['events'][-1]['actor'] = {'role': 'worker', 'model': record['model']}
+        task.update(status='awaiting_reply', stream=None)
+        engine.store.save(task)
+    finally:
+        runtime.answering_chat = False
+        runtime.opening_chat = False
+
+
 def preserve(source, destination):
     """Planning replaces its draft record; keep conversation and accounting."""
     for key in ('discussion', 'discussion_requests', 'chat_work_queue'):
@@ -47,6 +94,8 @@ def is_discussion(message):
     """
     if not isinstance(message, str):
         return False
+    if is_greeting(message):
+        return True
     text = message.strip().casefold()
     action = r'(?:fix|patch|implement|edit|update|add|remove|delete|replace|build|change|create|refactor|run|commit|merge|resume|continue)\b'
     if re.match(r'^(?:can|could|would) you (?:please )?' + action, text):
@@ -132,10 +181,12 @@ def answer(engine, runtime, turn):
     from .workspace import Workspace
     from .providers import ProviderError
     task = runtime.task
-    tools = [t for t in WORKER_TOOLS if t['function']['name'] in
-             {'list_files', 'read_file', 'search', 'outline_file'}]
-    messages = [{'role': 'system', 'content': SYSTEM},
-                {'role': 'user', 'content': 'Saved work context (data): ' + json.dumps(context(task))}]
+    greeting = is_greeting(turn['message'])
+    tools = [] if greeting else [t for t in WORKER_TOOLS if t['function']['name'] in
+                                {'list_files', 'read_file', 'search', 'outline_file'}]
+    messages = [{'role': 'system', 'content': SYSTEM}]
+    if not greeting:
+        messages.append({'role': 'user', 'content': 'Saved work context (data): ' + json.dumps(context(task))})
     for previous in task.get('discussion', []):
         if previous['id'] == turn['id']:
             break
@@ -146,7 +197,7 @@ def answer(engine, runtime, turn):
     seen = set()
     # Use a saved worker route (or the planner while a proposal is being made).
     # These requests use the normal provider, spending and token accounting path.
-    role = 'worker' if task.get('providers', {}).get('worker') else 'planner'
+    role = 'worker' if greeting or task.get('providers', {}).get('worker') else 'planner'
     while not runtime.stop.is_set():
         response = engine.request(runtime, messages, tools, role, purpose='chat_reply')
         calls = response.get('tool_calls') or []

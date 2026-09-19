@@ -219,6 +219,18 @@ class FreeModelPool:
                 del self.inflight_probes[identity]
                 event.set()
 
+    def conversation_rank(self, endpoint, model, role, preferred=None, connection_revision=None):
+        """Prefer observed responsive routes for text, without assuming vendor speed.
+
+        These are response observations, not coding or tool qualifications.
+        Connection revisions prevent old credentials' observations leaking in.
+        """
+        health = self.observation(endpoint, model['id'], connection_revision)
+        answered = bool(health.get('request_observed_at') and not health.get('last_error'))
+        seconds = health.get(role + '_seconds', float('inf'))
+        return (not answered, bool(health.get('last_error')), seconds,
+                model['id'] != preferred if preferred else False, model['id'])
+
     def rank(self, endpoint, model, role, preferred=None, connection_revision=None):
         health = self.observation(endpoint, model["id"], connection_revision)
         evidence=health['role_evidence'].get(role,{})
