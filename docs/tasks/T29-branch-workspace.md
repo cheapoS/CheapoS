@@ -2,7 +2,7 @@
 
 **Depends on:** T28. **Size:** L. **Result:** a run has an isolated execution copy and a new source-repository feature ref without changing the operator's checkout.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. T30 will expose authorized creation; this card provides validated controller-only primitives and real Git fixtures.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. T30 will expose authorized creation; this card provides validated controller-only primitives and real Git fixtures.
 
 ## Read first
 

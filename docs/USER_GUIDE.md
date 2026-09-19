@@ -8,7 +8,7 @@ CheapoS is an open-source, local coding workspace experimenting with a simple tr
 
 **CheapoS decides why and when to spend intelligence. OmniRoute decides where to get it.** CheapoS owns task execution, verification, review checkpoints, and budget accounting. Its optional OmniRoute companion owns provider access and routing. Automatic remote chats maintain a pool of free candidates and visibly hand off failed requests; manual and local model choices stay fixed.
 
-This is an early, working alpha for small personal projects. It has real repository tools and an execution engine, a desktop-style browser interface, and no account or hosted project requirement. It is not a packaged native desktop application yet. Cost savings are a hypothesis to measure, not a benchmark claim.
+This is an early, working alpha for personal projects. It has real repository tools and an execution engine, available as a packaged native macOS desktop app (`cheapoS.app` / `.dmg`) or as a lightweight local server. No account or hosted project requirement. Cost savings are a hypothesis to measure, not a benchmark claim.
 
 ## Run locally
 
@@ -183,7 +183,7 @@ git apply /path/to/cheapos-TASK_ID.patch
 
 Snapshots omit common secret filenames, symlinks, dependency directories, and ignored files. This is not comprehensive secret detection. Inspect your repository before sending its contents to a remote provider.
 
-Dependencies are not installed automatically. This alpha works best with small, dependency-light projects. For other projects, pause the chat, find its copy under **Details → Workspace details**, prepare dependencies there yourself, then resume. Commands are split into arguments without a shell; pipes, shell expansion, and redirection are not interpreted.
+By default, dependencies are not installed automatically without permission. The optional **Allow task commands** permission lets the worker run project setup (such as dependency installation) and diagnostic commands directly inside the task copy. Otherwise, you can pause the chat, find its copy under **Details → Workspace details**, prepare dependencies there yourself, then resume. Commands are split into arguments without a shell; pipes, shell expansion, and redirection are not interpreted.
 
 **Verification runs repository code on your host computer. A separate copy is not an operating-system sandbox.** Commands require approval by default. Choose **Run once** or **Allow for this session** to remember an exact command for the current chat's task copy, including checkpoint reruns. Different commands still ask. Session grants expire when CheapoS restarts and can be cleared under **Details → Session permissions**. Legacy tasks may separately have a saved permission for their exact configured command. Use repositories you trust. New tasks default to a 360-second verification allowance; legacy tasks without a configured allowance retain 90 seconds. Checks have output limits; child processes are stopped as a group on macOS/Linux. Model API keys are removed from their environment.
 

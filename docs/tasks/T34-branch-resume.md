@@ -2,7 +2,7 @@
 
 **Depends on:** T33. **Size:** M. **Result:** an interrupted run resumes from saved facts rather than repeating work, renewing limits, or silently following another branch.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. This card hardens the scheduler; it does not add automatic reconciliation or branch adoption.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. This card hardens the scheduler; it does not add automatic reconciliation or branch adoption.
 
 ## Read first
 

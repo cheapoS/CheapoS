@@ -2,7 +2,7 @@
 
 **Depends on:** T28, T29. **Size:** M. **Result:** the operator can authorize a concrete branch-run contract once without granting unlimited execution or changing manual chats.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. T35 owns the polished UI; this card supplies the server contract and fixtures.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. T35 owns the polished UI; this card supplies the server contract and fixtures.
 
 ## Read first
 

@@ -2,7 +2,7 @@
 
 **Depends on:** T32, T37, T38. **Size:** L. **Result:** one final operator approval integrates the exact reviewed branch locally and closes the job without another commit/review cycle.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. This first version supports fast-forward integration only. Push, PR creation, squash, rebase, and conflict-resolution merges are not part of the card.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. This first version supports fast-forward integration only. Push, PR creation, squash, rebase, and conflict-resolution merges are not part of the card.
 
 ## Read first
 

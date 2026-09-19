@@ -2,7 +2,7 @@
 
 **Depends on:** T36, T37. **Size:** M. **Result:** the operator reviews the complete finished branch in Chat and can approve, request changes, or leave it saved.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. T39 implements merge execution; do not ship an enabled button backed by a placeholder success response.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. T39 implements merge execution; do not ship an enabled button backed by a placeholder success response.
 
 ## Read first
 

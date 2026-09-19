@@ -2,7 +2,7 @@
 
 **Depends on:** completed T01–T27. **Size:** M. **Result:** the controller can represent one bounded multi-item job without changing existing chats.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. This card builds state/validation/storage only; it does not execute a plan or create a branch.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. This card builds state/validation/storage only; it does not execute a plan or create a branch.
 
 ## Read first
 

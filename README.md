@@ -121,7 +121,11 @@ Automatic remote selection uses different worker and reviewer model IDs. All loc
 
 ## Quick start
 
-Requires **Python 3.9+** and **Git**. Development and verification target **macOS and Linux**. No Python or JavaScript packages are required to run CheapoS.
+### macOS App (Apple Silicon & Intel)
+Download the latest `cheapoS-macos-arm64.dmg` or `cheapoS-macos-x86_64.dmg` from [Releases](https://github.com/cheapos/CheapoS/releases). Drag `cheapoS.app` into `/Applications` and launch.
+
+### From Source (macOS & Linux)
+Requires **Python 3.9+** and **Git**. No extra Python or JavaScript packages are required to run CheapoS.
 
 ```sh
 git clone https://github.com/cheapos/CheapoS.git
@@ -129,7 +133,7 @@ cd CheapoS
 python3 run.py
 ```
 
-The app opens at **http://127.0.0.1:5173/**. On macOS, you can also double-click **Start CheapOS.command**.
+The app opens in your browser at **http://127.0.0.1:5173/**. On macOS, you can also double-click **Start CheapOS.command**.
 
 **Start with the demo:** choose **Try a sample task → Run scripted demonstration**. Watch a failing test become a corrected implementation, a reviewer request a regression test, and the final patch pass review. No model setup needed.
 
@@ -180,7 +184,7 @@ Provider access, availability, and costs depend on your configuration. A free-mo
 
 The current evidence includes a **completed live delegation loop**: a local Gemma coordinator handed off a small Python fix to a free remote worker, tests passed, and a different free reviewer approved the patch in **30.73 seconds**. It was one small fixture, with $0.00 accounted using configured prices—not a provider billing receipt or a savings benchmark. [Read the experiment and its limits →](docs/experiments/2026-09-13-delegation.md)
 
-The implementation is documented feature by feature: [**workspace, permissions, onboarding, recovery, context, and model selection**](TASKS.md) · [**planning, feature-branch commits, final review, and local merge**](BRANCH_RUNS.md). Each card records its scope and validation. [Task metrics](docs/development/task-metrics.md) and [optimization experiments](docs/experiments/context-compression.md) make the underlying measurements inspectable.
+The implementation is documented feature by feature: [**workspace, permissions, onboarding, recovery, context, and model selection**](docs/archive/TASKS.md) · [**planning, feature-branch commits, final review, and local merge**](docs/archive/BRANCH_RUNS.md). Each card records its scope and validation. [Task metrics](docs/development/task-metrics.md) and [optimization experiments](docs/experiments/context-compression.md) make the underlying measurements inspectable.
 
 **Know the boundaries:** checks execute project code on your computer; a separate task copy is not an operating-system sandbox. Remote models receive the context sent to them. Budget caps are estimates. Workers can prepare dependencies when you enable [task command permission](docs/development/task-command-execution.md); otherwise setup remains manual. Read the [user guide](docs/USER_GUIDE.md) and [security notes](SECURITY.md) before using an unfamiliar repository.
 

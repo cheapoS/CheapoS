@@ -2,7 +2,7 @@
 
 **Depends on:** T30, T33, T34. **Size:** M. **Result:** an operator can request a job from chat or a document, inspect one concise plan, and start the authorized branch run.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. Do not turn onboarding into a second settings dashboard.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. Do not turn onboarding into a second settings dashboard.
 
 ## Read first
 

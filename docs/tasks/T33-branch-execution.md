@@ -2,7 +2,7 @@
 
 **Depends on:** T32. **Size:** L. **Result:** cheapoS completes the accepted items sequentially, automatically moving from a verified commit to the next task.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. This is the scheduler/controller card. T35 supplies plan generation/UI; use structured fixtures now.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. This is the scheduler/controller card. T35 supplies plan generation/UI; use structured fixtures now.
 
 ## Read first
 

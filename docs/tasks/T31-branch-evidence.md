@@ -2,7 +2,7 @@
 
 **Depends on:** T28, T29. **Size:** M. **Result:** automatic commit eligibility is a controller decision about actual verified work, never a model's completion claim.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. This card produces an evidence receipt; T32 consumes it to commit.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. This card produces an evidence receipt; T32 consumes it to commit.
 
 ## Read first
 

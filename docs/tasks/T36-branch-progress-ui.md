@@ -2,7 +2,7 @@
 
 **Depends on:** T33, T35. **Size:** M. **Result:** every worker, test, reviewer, and commit step feels like part of cheapoS's response, with no unexplained silent task switching.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. Preserve the existing conversation layout and recent panel improvements.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. Preserve the existing conversation layout and recent panel improvements.
 
 ## Read first
 

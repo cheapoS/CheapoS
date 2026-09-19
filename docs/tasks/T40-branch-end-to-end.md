@@ -2,7 +2,7 @@
 
 **Depends on:** T28–T39. **Size:** M. **Result:** the milestone is demonstrated through actual UI, Git, tests, reviewer feedback, recovery, and final approval, with limitations reported honestly.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md), AGENTS.md, and CONTRIBUTING.md first. This is a verification/release card, not permission for a broad engine rewrite or unbounded live-model experiment.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md), AGENTS.md, and CONTRIBUTING.md first. This is a verification/release card, not permission for a broad engine rewrite or unbounded live-model experiment.
 
 ## Read first
 

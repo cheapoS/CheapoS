@@ -2,7 +2,7 @@
 
 **Depends on:** T30, T31. **Size:** L. **Result:** one approved item becomes one recoverable local feature-branch commit without touching the operator's index or files.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. Keep the existing manual commit endpoint intact. This is an internal controller operation, not a model tool.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. Keep the existing manual commit endpoint intact. This is an internal controller operation, not a model tool.
 
 ## Read first
 

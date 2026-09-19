@@ -1,6 +1,6 @@
 # Unattended branch-run proof — 2026-09-13
 
-T28–T40 implement Interactive/Unattended work modes, bounded planning from a prompt, a project document, or both, sequential reviewed feature commits, recoverable execution, and an explicitly approved local fast-forward. See the [user guide](../unattended-runs.md) and [milestone board](../../BRANCH_RUNS.md).
+T28–T40 implement Interactive/Unattended work modes, bounded planning from a prompt, a project document, or both, sequential reviewed feature commits, recoverable execution, and an explicitly approved local fast-forward. See the [user guide](../unattended-runs.md) and [milestone board](../archive/BRANCH_RUNS.md).
 
 ## Method and provenance
 

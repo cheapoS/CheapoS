@@ -2,7 +2,7 @@
 
 **Depends on:** T31, T33, T34. **Size:** L. **Result:** a finished item list becomes a genuinely reviewable branch, and feedback can reopen work without discarding its history.
 
-Read [BRANCH_RUNS.md](../../BRANCH_RUNS.md) and AGENTS.md first. This card produces final readiness and preview data; T38 renders it and T39 performs the separate approved integration.
+Read [BRANCH_RUNS.md](../archive/BRANCH_RUNS.md) and AGENTS.md first. This card produces final readiness and preview data; T38 renders it and T39 performs the separate approved integration.
 
 ## Read first
 
