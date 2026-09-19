@@ -70,6 +70,7 @@ def clean(record):
     purpose = record.get('purpose') or 'work'
     failure_category = record.get('failure_category')
     error_code = record.get('error_code')
+    seconds = number(record.get('seconds'))
 
     result.update(role=record.get('role') if record.get('role') in ROLES else 'unknown',
                   date=date(record.get('requested_at', record.get('created_at'))), category=cat,
@@ -79,7 +80,8 @@ def clean(record):
                   status=status,
                   purpose=purpose,
                   failure_category=failure_category,
-                  error_code=error_code)
+                  error_code=error_code,
+                  seconds=seconds)
     # Club classification requires explicit access evidence; never infer free pricing from a model prefix.
     result['club_category'] = cat if record.get('access_class') in CATEGORIES else 'unknown'
     if (result['reported_cost'] or 0) > 0: result['club_category'] = 'paid'
@@ -244,9 +246,11 @@ class LifetimeUsage:
                 p_stat['requests'] += 1
                 m = r.get('served_model') or r.get('requested_model')
                 if m:
-                    m_stat = result['models'].setdefault(m, dict(tokens=0, requests=0, category=cat, successes=0, failures=0, success_rate=100.0, failure_breakdown={}))
+                    m_stat = result['models'].setdefault(m, dict(tokens=0, requests=0, category=cat, successes=0, failures=0, success_rate=100.0, total_seconds=0.0, avg_latency_ms=0, failure_breakdown={}))
                     m_stat['tokens'] += tokens
                     m_stat['requests'] += 1
+                    sec = r.get('seconds') or 0.0
+                    m_stat['total_seconds'] += sec
                     st = r.get('status')
                     if st == 'responded' or (st is None and r.get('reconciled')):
                         m_stat['successes'] += 1
@@ -277,6 +281,8 @@ class LifetimeUsage:
             decided = m_data['successes'] + m_data['failures']
             if decided > 0:
                 m_data['success_rate'] = round((m_data['successes'] / decided) * 100, 1)
+            if m_data['successes'] > 0 and m_data.get('total_seconds'):
+                m_data['avg_latency_ms'] = round((m_data['total_seconds'] / m_data['successes']) * 1000)
 
         model_pairs = {}
         for task in state['tasks'].values():
@@ -294,8 +300,13 @@ class LifetimeUsage:
                     'human_accepted_jobs': 0,
                     'review_approved_jobs': 0,
                     'completion_rate': 0.0,
+                    'total_tokens': 0,
+                    'avg_tokens_per_job': 0,
                 })
                 pair['total_jobs'] += 1
+                task_tokens = sum((r.get('input_tokens') or 0) + (r.get('output_tokens') or 0) for r in task.get('requests', {}).values())
+                pair['total_tokens'] += task_tokens
+                pair['avg_tokens_per_job'] = round(pair['total_tokens'] / pair['total_jobs'])
                 comp = task.get('completion', {})
                 if comp.get('merged_runs'): pair['merged_runs'] += 1
                 if comp.get('human_accepted_jobs'): pair['human_accepted_jobs'] += 1
@@ -303,6 +314,15 @@ class LifetimeUsage:
                 completed = pair['merged_runs'] + pair['human_accepted_jobs']
                 pair['completion_rate'] = round((completed / pair['total_jobs']) * 100, 1)
         result['model_pairs'] = dict(sorted(model_pairs.items(), key=lambda item: item[1]['total_jobs'], reverse=True))
+
+        work_tokens = result['purposes'].get('work', {}).get('tokens', 0)
+        recovery_tokens = result['purposes'].get('recovery', {}).get('tokens', 0)
+        total_code_tokens = work_tokens + recovery_tokens
+        result['self_healing_index'] = {
+            'initial_work_tokens': work_tokens,
+            'recovery_tokens': recovery_tokens,
+            'repair_overhead_pct': round((recovery_tokens / max(total_code_tokens, 1)) * 100, 1) if total_code_tokens > 0 else 0.0
+        }
 
         total_free = sum(result['categories'][k]['tokens'] for k in ('public_free', 'included', 'local'))
         result['total_free_tokens'] = total_free

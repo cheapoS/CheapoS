@@ -2420,8 +2420,11 @@ class Engine:
         task=runtime.task
         if task.get('demo'):return self._perform_request(runtime,messages,tools,role,config_override,purpose,tool_choice=tool_choice)
         config = self._resolve_provider_config(task, role, config_override)
+        is_repair = bool(task.get('review_repair') or (task.get('branch_run', {}).get('current_item_id') and
+            any(i.get('review_repair') for i in task.get('branch_run', {}).get('items', []) if i.get('id')==task['branch_run']['current_item_id'])))
+        record_purpose = purpose or ('recovery' if is_repair else 'work')
         record={'id':uuid.uuid4().hex,'run_id':task.get('metric_run_id'),'role':role,'model':config['model'],
-                'purpose':purpose or 'work','retry_of':retry_of,'dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation',
+                'purpose':record_purpose,'retry_of':retry_of,'dispatched':False,'status':'pending','cost_provenance':'uncertain_reservation',
                 'requested_at':now(),'synthetic':self.provider_factory is not None,
                 'input_rate':config['input_rate'],'output_rate':config['output_rate']}
         from .served_identity import metadata

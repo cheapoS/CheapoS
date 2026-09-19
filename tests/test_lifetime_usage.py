@@ -156,6 +156,14 @@ class LifetimeUsageTests(unittest.TestCase):
             self.assertEqual(pair['total_jobs'], 1)
             self.assertEqual(pair['merged_runs'], 1)
             self.assertEqual(pair['completion_rate'], 100.0)
+            self.assertGreater(pair['total_tokens'], 0)
+            self.assertEqual(pair['avg_tokens_per_job'], pair['total_tokens'])
+
+            # Self-healing index
+            self.assertIn('self_healing_index', summ)
+            self.assertGreater(summ['self_healing_index']['initial_work_tokens'], 0)
+            self.assertGreater(summ['self_healing_index']['recovery_tokens'], 0)
+            self.assertGreater(summ['self_healing_index']['repair_overhead_pct'], 0.0)
 
             # Honest zero-cost metrics
             self.assertIsNone(summ['estimated_savings'])
