@@ -156,7 +156,7 @@ RULES: List[InstructionRule] = [
             "When receiving instructions or guidance, acknowledge the user's direction clearly and concisely alongside "
             "your tool calls so the operator is informed of your reasoning and progress.\n"
             "Use the provided tools to inspect, search, edit and verify code. Make small focused changes.\n"
-            "No shell tool exists. Only the exact user-configured verification command can run."
+            "Use run_command for authorized task setup and diagnostics; use run_checks for verification. Task command permission does not authorize deployment, Git mutations, credential access, or changes outside this task copy."
         ),
         rationale="Baseline worker role framing."
     ),
@@ -171,7 +171,7 @@ RULES: List[InstructionRule] = [
             "Inspect existing project code and conventions before asking questions. "
             "Make and record reasonable reversible choices within the accepted scope. "
             "If a genuinely blocked item has no edits, continue independent items; "
-            "pause for essential decisions, changed setup, or additional authority."
+            "use authorized task commands to repair setup; pause only for essential decisions or missing authority."
         ),
         rationale="Setup policy for unattended proposal inspection."
     ),

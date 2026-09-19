@@ -68,7 +68,8 @@ def decide(task, trigger=None):
     run=task.get('branch_run') or {}
     if task.get('pending_approval'):
         return {'kind':'authorization','action':'approve_command','reason':'Approve or deny the displayed command before continuing.'}
-    if task.get('environment_setup',{}).get('status')=='missing':
+    from .task_commands import allowed as commands_allowed
+    if task.get('environment_setup',{}).get('status')=='missing' and not commands_allowed(task):
         return {'kind':'environment','action':'repair_environment','reason':'Complete the displayed environment setup, then re-check it.'}
     if run.get('waiting_for_user'):
         return {'kind':'authorization','action':'answer_question','reason':run['waiting_for_user']}

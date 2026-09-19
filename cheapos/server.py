@@ -604,6 +604,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     if not isinstance(values.get("approved"), bool):
                         raise ValueError("Provide an approval decision")
                     result = engine.approve_check(task_id, values["approved"], values.get("remember", False), values.get("approval_id"), values.get("scope"))
+                elif action == "task-commands":
+                    result = engine.set_task_command_permission(task_id, values)
                 elif action == "permissions":
                     if set(values) == {"revoke_project_grant"} and isinstance(values["revoke_project_grant"], str):
                         result = engine.revoke_project_permission(task_id, values["revoke_project_grant"])

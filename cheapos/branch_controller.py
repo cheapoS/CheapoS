@@ -221,7 +221,7 @@ class BranchController:
                 run['consumption']=copy.deepcopy(planning_task['branch_run']['consumption'])
                 if 'budget_ledger' in planning_task['branch_run']:run['budget_ledger']=copy.deepcopy(planning_task['branch_run']['budget_ledger'])
             try:
-                scopes=[self.scopes.prepare(task,argv) for argv in commands]
+                scopes=[self.scopes.prepare(task,argv,allow_missing=True) for argv in commands]
             except (OSError,ValueError) as error:
                 run['status']='blocked';run['pause_reason']='missing_setup'
                 branch_pause.apply(task,error,cause='missing_setup',stage='planning')
@@ -272,7 +272,10 @@ class BranchController:
     def authorize(self, task_id, values, *, background=False):
         with self.engine.lock:
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
-            if set(values)-{'proposal_id','approved','full_suite_approved'}: raise ValueError('Start accepts only the inspected proposal and operator decision')
+            if set(values)-{'proposal_id','approved','full_suite_approved','allow_task_commands'}: raise ValueError('Start accepts only the inspected proposal and operator decision')
+            from .task_commands import grant
+            if 'allow_task_commands' in values and type(values['allow_task_commands']) is not bool:
+                raise ValueError('Provide a task command permission decision')
             runtime=self.engine.runtimes.get(task_id)
             if task.get('planning_request') and not run.get('authorization_ref') and runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError('Planning is still in progress. Continue in chat until the proposal is ready.')
@@ -291,16 +294,19 @@ class BranchController:
                 return task
             from .test_policy import approve
             approve(task,values.get('full_suite_approved'))
-            if not background: self._validate_start_inputs(task)
+            if not background: self._validate_start_inputs(task, allow_commands=values.get('allow_task_commands', False))
             auth=self.proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),self.contract(task))
             run['authorization']=auth;run['authorization_ref']=auth['id']
+            grant(task, values.get('allow_task_commands', False))
             self.engine.store.save(task)
             if background:
                 from .branch_startup import start
                 return start(self,task)
             return self._finish_start(task)
 
-    def _validate_start_inputs(self, task):
+    def _validate_start_inputs(self, task, *, allow_commands=False):
+        from .task_commands import allowed
+        allow_commands = allow_commands or allowed(task)
         run=task['branch_run']
         mapping=run['workspace_mapping']
         if work.inspect_source(mapping['source'])!={k:mapping[k] for k in ('source','source_identity','common_identity')}:
@@ -309,12 +315,13 @@ class BranchController:
         work._available(mapping['source'],mapping['feature_ref'],mapping['target_ref'],mapping['protected_refs'])
         if work._tip(mapping['source'],mapping['feature_ref']):
             raise work.WorkspaceChanged('Feature branch now exists; inspect branch ownership before continuing.')
-        for scope in run['check_scope']:
-            if self.scopes.prepare(task,scope['command'])!=scope:
-                raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
-                    'message':'Verification command scope changed; inspect task setup before continuing.'})
+        if not allow_commands:
+            for scope in run['check_scope']:
+                if self.scopes.prepare(task,scope['command'])!=scope:
+                    raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
+                        'message':'Verification command scope changed; inspect task setup before continuing.'})
         from .unattended_setup import require_ready
-        require_ready(task,run['check_scope'])
+        require_ready(task,run['check_scope'],allow_commands=allow_commands)
         return current_base
 
     def _finish_start(self, task, runtime=None):
@@ -322,6 +329,8 @@ class BranchController:
         if runtime is None: self.engine.admission.require('unattended', task['id'])
         from .branch_startup import progress
         notify = (lambda stage: progress(self,runtime,stage)) if runtime else None
+        from .task_commands import allowed
+        allow_commands = allowed(task)
         run=task['branch_run'];self.validate_authority(task,run)
         if notify:
             notify('verifying_snapshot')
@@ -332,12 +341,13 @@ class BranchController:
                     {'stage':'verifying_snapshot','base_sha':run['workspace_mapping']['base_sha'],
                      'current_base_sha':current_base,
                      'message':'The base branch has newer commits. Work uses the approved task copy; integration will check the updated target.'})
-        for scope in run['check_scope']:
-            if self.scopes.prepare(task,scope['command'])!=scope:
-                raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
-                    'message':'Verification command scope changed; inspect task setup before continuing.'})
+        if not allow_commands:
+            for scope in run['check_scope']:
+                if self.scopes.prepare(task,scope['command'])!=scope:
+                    raise branch_pause.PauseError('authority_changed', diagnostic={'kind':'safe_message',
+                        'message':'Verification command scope changed; inspect task setup before continuing.'})
         from .unattended_setup import require_ready
-        require_ready(task,run['check_scope'])
+        require_ready(task,run['check_scope'],allow_commands=allow_commands)
         def save_mapping(value):
             with self.engine.lock:
                 run['workspace_mapping']=value
@@ -346,7 +356,8 @@ class BranchController:
             mapping=work.create(run['workspace_mapping'],save_mapping, **({'progress':notify} if notify else {}))
             run['workspace_mapping']=mapping;run['expected_feature_tip']=mapping['feature_tip']
             if notify: notify('preparing_permissions')
-            for scope in run['check_scope']: self.scopes.consent(task,scope)
+            if not allow_commands:
+                for scope in run['check_scope']: self.scopes.consent(task,scope)
         except (OSError,ValueError) as error:
             task['error']=branch_pause.classify(error,task,stage='planning')['explanation']
             self.engine.store.save(task)
@@ -816,7 +827,8 @@ class BranchController:
                 return {'needs_merge_recovery':True,'feature_tip':op['feature_tip'],'target_ref':op['target_ref'],'target_old':op['target_old'],'operation_id':op['id']}
             if run.get('waiting_for_user'):raise ValueError('Send the missing information as guidance in this chat before resuming.')
             commands=[scope['command'] for scope in run['check_scope']]
-            scopes=[self.scopes.prepare(task,argv) for argv in commands]
+            from .task_commands import allowed
+            scopes=[self.scopes.prepare(task,argv,allow_missing=allowed(task)) for argv in commands]
             contract={'authorization_id':run.get('authorization_ref'),'feature_tip':run.get('expected_feature_tip'),'scopes':scopes}
             missing=any(not self.scopes.authorize(task,argv) for argv in commands)
             if missing and values.get('approved') is not True:
@@ -971,7 +983,7 @@ class BranchController:
             # Revalidates original snapshot contents and identities without any
             # source mutation or replacement of the registered private copy.
             mapping=work.materialize(mapping,lambda _:None)
-            scopes=[self.scopes.prepare(task,argv) for argv in commands]
+            scopes=[self.scopes.prepare(task,argv,allow_missing=True) for argv in commands]
             run=state.new_run(plan,original_request=old['original_request'],inputs=old['inputs'],project=old['project'],
                               base_ref=mapping['base_ref'],base_sha=mapping['base_sha'],target_ref=mapping['target_ref'],
                               feature_ref=mapping['feature_ref'],run_id=old['id'])

@@ -86,6 +86,8 @@ def evidence_identity(task):
                  'patch': hashlib.sha256(workspace.patch(validate="branch_run" in task).encode()).hexdigest(),
                  'command': task['check_command'], 'runner': runner,
                  'config': config_identity(workspace.root)}
+        if task.get('command_environment_revision'):
+            value['command_environment_revision'] = task['command_environment_revision']
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
     except (OSError, ValueError, KeyError):
         return None

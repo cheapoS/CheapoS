@@ -41,7 +41,7 @@ class EnvironmentTests(LocalCase):
                 requests.append(messages);return next(replies),{'prompt_tokens':5,'completion_tokens':5,'cost':0}
         self.engine.provider_factory=lambda *args:Provider();self.engine.start(task['id']);paused=self.finish(task)
         self.assertEqual(paused['error_code'],'environment_setup');self.assertEqual(paused['checks'],[])
-        with self.assertRaisesRegex(ValueError,'Re-check'):self.engine.start(task['id'])
+        with self.assertRaisesRegex(ValueError,'(?i)re-check'):self.engine.start(task['id'])
         self.assertEqual(len(requests),1)
         runner=root/'.venv/bin/python';runner.parent.mkdir(parents=True);runner.symlink_to(sys.executable)
         ready=self.engine.recheck_environment(task['id']);self.assertEqual(ready['environment_setup']['status'],'ready')

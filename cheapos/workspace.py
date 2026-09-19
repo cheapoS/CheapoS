@@ -472,11 +472,13 @@ class Workspace:
                 Path(temp_path).unlink(missing_ok=True)
         return self.changes()
 
-    def run_checks(self, argv, stop_event, timeout=90, on_output=None, on_raw=None, on_raw_file=None):
+    def run_checks(self, argv, stop_event, timeout=90, on_output=None, on_raw=None, on_raw_file=None, directory="."):
         if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 2**53-1):
             raise ValueError("Verification timeout must be a finite positive duration")
         if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a and "\x00" not in a for a in argv):
             raise ValueError("Check command must be an argument list")
+        from .task_commands import directory as command_directory
+        cwd = command_directory(self.root, directory)
         started = time.monotonic()
         home = self.root.parent / "process-home"
         home.mkdir(exist_ok=True)
@@ -496,7 +498,7 @@ class Workspace:
         with tempfile.TemporaryDirectory(prefix="cheapos-check-") as spool:
             path = Path(spool) / "output"
             with path.open("wb") as output, path.open("rb") as reader:
-                process = subprocess.Popen(argv, cwd=str(self.root), env=env, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
+                process = subprocess.Popen(argv, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
                 reason, text, published, last_publish = None, "", None, 0
                 decoder = codecs.getincrementaldecoder("utf-8")("replace")
 

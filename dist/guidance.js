@@ -143,7 +143,7 @@ const CheapOSGuide = (() => {
     if(task.status==='waiting_approval'){stage='approval';title='Waiting for your approval';detail=(task.pending_approval?.command||[]).join(' ')}
     else if(task.status==='stopping'){stage='stopping';title='Stop requested';detail='Waiting for the current operation to finish. No new tools will start.'}
     else if(task.branch_run?.startup?.status==='running'){stage='startup';title=task.branch_run.startup.label||'Starting your approved plan';detail='Your approval is saved.';since=task.branch_run.startup.started_at}
-    else if(task.check_stream){stage='checks';title='Running checks';detail=task.check_stream.command.join(' ');since=task.check_stream.started_at}
+    else if(task.check_stream){stage=task.check_stream.kind==='command'?'command':'checks';title=task.check_stream.kind==='command'?'Running task command':'Running checks';detail=task.check_stream.command.join(' ');since=task.check_stream.started_at}
     else if(task.web_read){stage='web';title='Opening web page';detail=task.web_read.url;since=task.web_read.started_at}
     else if(latest?.kind==='model'){
       stage='model';const role=latest.title.startsWith('Requesting reviewer:')?'reviewer':latest.title.startsWith('Requesting coordinator:')?'coordinator':latest.title.startsWith('Requesting planner:')?'planner':'worker';
@@ -597,6 +597,7 @@ const CheapOSConversation = (() => {
   function eventPhase(event, previous = 'work') {
     if(event.kind==='coordinator_recovery')return event.detail?.state==='result'?(['run_checks','checkpoint'].includes(event.detail?.result?.action)?'checks':'work'):'coordinator';
     if(event.title?.startsWith('Requesting coordinator:')&&previous==='coordinator')return 'coordinator';
+    if(event.kind==='command'||event.detail?.kind==='command'||event.title==='Running task command')return 'work';
     if (event.kind === 'checks' || event.kind === 'check_reused' || event.kind === 'permission' || event.title === 'Running verification') return 'checks';
     if (event.kind === 'review' || event.kind === 'review_request' || event.kind === 'checkpoint' || event.detail?.role === 'reviewer' || event.title?.startsWith('Requesting reviewer:')) return 'review';
     if (event.kind === 'commit') return 'commit';
@@ -606,6 +607,7 @@ const CheapOSConversation = (() => {
   }
   function currentPhase(task, fallback) {
     if(task.stream?.role==='coordinator'&&task.coordinator_recovery?.some(e=>e.state==='dispatched'))return 'coordinator';
+    if(task.check_stream?.kind==='command')return 'work';
     if (task.check_stream || task.pending_approval) return 'checks';
     if (task.status === 'reviewing' || task.stream?.role === 'reviewer') return 'review';
     if (task.active_role === 'coordinator' || task.active_role === 'planner') return 'plan';

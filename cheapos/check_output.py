@@ -47,7 +47,7 @@ def retain_file(root, task_id, run_id, source, truncated):
 
 def raw(store, task_id, run_id):
     task = store.get(task_id)  # Resolve known task before constructing any path.
-    if not re.fullmatch(r'[a-f0-9]{32}', run_id) or not any(c.get('run_id')==run_id and c.get('raw_output') for c in task.get('checks',[])):
+    if not re.fullmatch(r'[a-f0-9]{32}', run_id) or not any(c.get('run_id')==run_id and c.get('raw_output') for c in [*task.get('checks',[]), *task.get('command_runs',[])]):
         raise ValueError('Unknown retained check run')
     path = store.root / 'tasks' / task_id / 'check-output' / (run_id+'.log')
     try:
@@ -61,7 +61,7 @@ def read(store, task_id, run_id, offset=0):
     if type(offset) is not int or offset<0 or offset>RAW_LIMIT:
         raise ValueError('Offset must be a byte position within retained output')
     task=store.get(task_id)
-    if not re.fullmatch(r'[a-f0-9]{32}',run_id) or not any(c.get('run_id')==run_id and c.get('raw_output') for c in task.get('checks',[])):
+    if not re.fullmatch(r'[a-f0-9]{32}',run_id) or not any(c.get('run_id')==run_id and c.get('raw_output') for c in [*task.get('checks',[]), *task.get('command_runs',[])]):
         raise ValueError('Unknown retained check run')
     path=store.root/'tasks'/task_id/'check-output'/(run_id+'.log')
     try:

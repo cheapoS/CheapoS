@@ -129,12 +129,17 @@ not mutated. A projected scope must equal the materialized prepare() result.
         self.project_grants = project_grants
         self.exact_grants = {}
 
-    def prepare(self, task, argv):
+    def prepare(self, task, argv, *, allow_missing=False):
         if not isinstance(argv, list) or not argv or any(not isinstance(a, str) or not a or '\0' in a for a in argv):
             raise ValueError('Supply an exact executable and argument list')
         self.project_grants.binding(task)
         profile = self.project_grants.proposal(task, argv)
         executable = executable_identity(argv[0], task['workspace'])
+        if not executable and allow_missing:
+            binding = {'task_id': task['id'], 'source': identity(task['source']),
+                       'workspace': identity(task['workspace']), 'command': argv}
+            return {'command': list(argv), 'directory': task['workspace'], 'profile': None,
+                    'setup_required': True, 'fingerprint': digest(binding)}
         if not executable:
             from .branch_pause import PauseError
             raise PauseError('missing_setup', diagnostic={'kind':'missing_executable','executable':argv[0]})
@@ -161,6 +166,8 @@ not mutated. A projected scope must equal the materialized prepare() result.
         return key
 
     def authorize(self, task, argv):
+        from .task_commands import allowed
+        if allowed(task): return 'task_commands'
         granted, _ = self.project_grants.authorize(task, argv)
         if granted:
             return granted

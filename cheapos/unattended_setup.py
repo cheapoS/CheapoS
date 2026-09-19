@@ -29,9 +29,9 @@ def inspect(task, scopes):
             'assumptions':[a for a in assumptions if isinstance(a,str)][:12], 'policy':POLICY}
 
 
-def require_ready(task, scopes):
+def require_ready(task, scopes, *, allow_commands=False):
     result=inspect(task,scopes)
-    if not result['ready']:
+    if not result['ready'] and not (allow_commands and result['checks'][0]['status']=='ready'):
         raise ValueError('Unattended setup needs attention before Start: '+'; '.join(c['detail'] for c in result['checks'] if c['status']=='blocked'))
     return result
 

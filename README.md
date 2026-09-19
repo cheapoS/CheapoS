@@ -86,7 +86,7 @@ Make expensive compute the exception. Keep the work visible and the decisions yo
 - **Public-link reading:** ask about an HTTPS page or GitHub README and see the source and lines the model read.
 - **Visible progress:** streaming output and expandable reasoning for supported Ollama and OmniRoute connections.
 - **An adaptable workspace:** resizable panels, keyboard controls, chat search, editable task titles, pinned tasks, archive, and restorable Trash. Hide or reopen a project without deleting its files.
-- **Explicit permissions:** allow a check once or for the session; inspect and revoke remembered grants.
+- **Explicit permissions:** allow individual checks, or authorize task commands once so the worker can prepare dependencies and diagnose failures. Inspect and revoke grants in Session permissions.
 - **A gentle first run:** discover eligible installed local models, use guided OmniRoute setup, or try the scripted demo without connecting a provider.
 - **Project context that carries forward:** a compact project brief and durable continuation record retain requirements, steering, file observations, and verification evidence.
 - **Small edits before trouble starts:** large files and tight output allowances trigger focused edits; stale file versions are rejected and refreshed.
@@ -182,7 +182,7 @@ The current evidence includes a **completed live delegation loop**: a local Gemm
 
 The implementation is documented feature by feature: [**workspace, permissions, onboarding, recovery, context, and model selection**](TASKS.md) · [**planning, feature-branch commits, final review, and local merge**](BRANCH_RUNS.md). Each card records its scope and validation. [Task metrics](docs/development/task-metrics.md) and [optimization experiments](docs/experiments/context-compression.md) make the underlying measurements inspectable.
 
-**Know the boundaries:** checks execute project code on your computer; a separate task copy is not an operating-system sandbox. Remote models receive the context sent to them. Budget caps are estimates. One task runs at a time, and dependencies are prepared manually. Read the [user guide](docs/USER_GUIDE.md) and [security notes](SECURITY.md) before using an unfamiliar repository.
+**Know the boundaries:** checks execute project code on your computer; a separate task copy is not an operating-system sandbox. Remote models receive the context sent to them. Budget caps are estimates. Workers can prepare dependencies when you enable [task command permission](docs/development/task-command-execution.md); otherwise setup remains manual. Read the [user guide](docs/USER_GUIDE.md) and [security notes](SECURITY.md) before using an unfamiliar repository.
 
 ## Why CheapoS exists
 

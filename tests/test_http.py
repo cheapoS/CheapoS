@@ -225,6 +225,14 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post(path + '/permissions', {'command': ['anything']})[0], 400)
         self.assertEqual(self.post(path + '/permissions', {'clear': True})[0], 200)
         self.assertEqual(json.loads(self.request('GET', path + '/permissions')[2])['commands'], [])
+        choice = {'enabled': True, 'directory': task['workspace']}
+        self.assertEqual(self.request('POST', path + '/task-commands', choice, {'Content-Type': 'application/json'})[0], 403)
+        self.assertEqual(self.post(path + '/task-commands', {**choice, 'enabled': 'true'})[0], 400)
+        self.assertEqual(self.post(path + '/task-commands', {**choice, 'directory': task['source']})[0], 400)
+        self.assertEqual(self.post(path + '/task-commands', choice)[0], 200)
+        self.assertTrue(json.loads(self.request('GET', path + '/permissions')[2])['task_commands'])
+        self.assertEqual(self.post(path + '/task-commands', {**choice, 'enabled': False})[0], 200)
+        self.assertFalse(json.loads(self.request('GET', path + '/permissions')[2])['task_commands'])
 
     def test_metadata_routes_share_titles_and_filter_history(self):
         task = self.engine.create_demo()
