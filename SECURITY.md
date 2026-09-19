@@ -16,6 +16,6 @@ OmniRoute is an optional local companion. cheapoS can start the installed CLI on
 
 Tasks pause after restarts or uncertain provider responses. Cost reservations are estimates and are not a substitute for provider-side spending limits.
 
-Do not publish real credentials or private repository content in bug reports. For vulnerabilities, use the repository's private vulnerability reporting option if available. Otherwise, open a minimal issue asking the maintainer for a private reporting channel, without exploit details or sensitive data.
+Do not publish real credentials or private repository content in bug reports. For vulnerabilities, report them privately via GitHub Security Advisories or email security@cheapos.lol. Otherwise, open a minimal issue asking for a private reporting channel without exploit details or sensitive data.
 
 Automatic startup can send a small greeting to an installed local Ollama model or an eligible configured free route. New cloud fallback requires an explicit opt-in; a saved free provider choice is reused. Greeting requests contain no repository contents and expose no tools. Catalog prices and free-route IDs are eligibility signals, not provider-side billing guarantees. Unknown prices and automatic combos are excluded. A reported charge stops fallback and disables automatic startup. Existing chats keep their original model pair.
