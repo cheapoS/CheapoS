@@ -135,6 +135,10 @@ const CheapOSGuide = (() => {
     // The acknowledgement can arrive while the old task still says paused.
     // Hand off to ordinary activity as soon as execution or a decision starts.
     if(!op?.authorized||op.status!=='running'||active.has(task.status)||task.status==='error'||task.pending_approval||task.archived_at||task.trashed_at||['running','finalizing','merging','merged','left_on_branch'].includes(task.branch_run?.status))return null;
+    // An executor's completed result outranks a stale preparation stage. Keep
+    // showing a newly accepted update until it is dispatched: its old review
+    // may still be present while the background preparation is starting.
+    if(op.dispatched&&(['approved','completed'].includes(task.status)||task.branch_run?.status==='ready_for_merge'))return null;
     const stages={
       accepted:['Update request saved','Preparing your saved work to continue automatically.'],
       checking:['Checking latest project','Checking the target branch and your saved task copy.'],

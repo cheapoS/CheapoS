@@ -3,7 +3,10 @@
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pending=new Map();
 function markup(task,readiness){
- const op=task.integration_preparation;
+ let op=task.integration_preparation;
+ // Old saved operations may predate the unattended completion observer. Show
+ // the current reviewed result without rewriting their retained history.
+ if(op?.status==='running'&&op.dispatched&&readiness?.code==='ready'&&(['approved','completed'].includes(task.status)||task.branch_run?.status==='ready_for_merge'))op={...op,status:'ready',stage:'ready',label:'Ready for your review'};
  const permission=op?.authorized&&op.status==='decision'&&op.reason?.code==='command_permission_required';
  const summary=op?`<section class="integration-update" aria-label="Integration update"><h3>Integration update</h3><p role="status">${esc(op.label||op.stage||op.status)}</p>${op.target_tip?`<p class="small muted">Target for this update: <code>${esc(op.target_tip.slice(0,12))}</code></p>`:''}${(op.error||op.reason?.message)?`<p role="alert">${esc(op.error||op.reason.message)}</p>`:''}${permission?'<button type="button" class="primary-button" data-integration-permission>Review test permissions &amp; continue</button>':''}${(op.files||[]).length?`<p>Overlaps: ${op.files.map(esc).join(', ')}</p>`:''}<button type="button" class="subtle-button" data-integration-comparison>Changes from conflict resolution</button><p class="form-error" role="alert" data-integration-error></p></section>`:'';
  if(!readiness)return summary;

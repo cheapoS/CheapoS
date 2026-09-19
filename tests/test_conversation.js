@@ -35,6 +35,23 @@ test('preparation acknowledgement never masks a stop, failed update or permissio
  assert.equal(preparation(task()),null);
 });
 
+test('completed review keeps its action owner despite an old combining update',()=>{
+ const t=task({status:'approved',integration_preparation:{id:'update',authorized:true,status:'running',stage:'combining',dispatched:true},
+  branch_run:{id:'run',status:'ready_for_merge',authorization_ref:'auth',items:[{id:'one',title:'One',status:'committed'}],
+   readiness:{manifest:{files:[{path:'app.js'}]},review:{decision:'APPROVE'}}}});
+ const original=JSON.stringify(t),reply=build(t).at(-1);
+ assert.equal(reply.operation,'final');assert.equal(reply.owner,true);assert.equal(reply.live,false);
+ assert.match(reply.intro,/Final checks and independent review are complete/);
+ assert.ok(!reply.preparation);
+ assert.equal(require('../dist/branch_ui.js').reviewAction(t).label,'Review changes');
+ assert.equal(JSON.stringify(t),original,'Present the saved result without rewriting history');
+ assert.deepEqual(build(JSON.parse(original)),build(t),'Old persisted tasks also recover after reload');
+ // Starting a NEW update must still acknowledge the click while the previous
+ // ready result remains in the task, before the executor has been dispatched.
+ delete t.integration_preparation.dispatched;
+ assert.equal(build(t).at(-1).preparation.title,'Combining changes');
+});
+
 test('live personality varies by task but stays stable through output, polling and reloads',()=>{
  const intros=new Set();
  for(let i=0;i<32;i++){

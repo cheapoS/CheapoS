@@ -30,6 +30,16 @@ test('update preparation is immediately visible in Chat without empty agent outp
  assert.match(ctx.view.message(entry,task),/&lt;details&gt;/);
 });
 
+test('finished unattended review renders the action mount instead of stale preparation',()=>{
+ const task={status:'approved',prompt:'Improve the project',events:[],changes:[],
+  integration_preparation:{id:'update',authorized:true,status:'running',stage:'combining',dispatched:true},
+  branch_run:{id:'run',status:'ready_for_merge',readiness:{manifest:{files:[{path:'app.js'}]}},items:[{id:'one',status:'committed'}]}};
+ const entry=ctx.CheapOSGuide.conversation.build(task).at(-1),html=ctx.view.message(entry,task);
+ assert.match(html,/data-operation-actions/);
+ assert.match(html,/Final checks and independent review are complete/);
+ assert.doesNotMatch(html,/Combining changes|Preparing update|Your update request is saved/);
+});
+
 test('empty model channel markers stay out of saved and live chat without hiding real text',()=>{
  const marker='<|channel>thought\n<channel|>';
  const saved=event('marker','assistant','Worker',marker);

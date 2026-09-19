@@ -12,6 +12,34 @@ from cheapos import integration_preparation as prep
 
 
 class IntegrationPreparationTests(unittest.TestCase):
+    def test_unattended_finalization_settles_saved_preparation_without_another_resume(self):
+        """Exercise the outer controller's completion hook without Git/models."""
+        from cheapos.branch_controller import BranchController
+        engine,task=self.fixture();self.accepted(engine,task)
+        engine.gateway=SimpleNamespace(pool=Mock())
+        task.update(status='running',events=[])
+        task['branch_run'].update(status='finalizing',pending_operations=[])
+        task['integration_preparation'].update(stage='combining',dispatched=True)
+        runtime=SimpleNamespace(task=task,stop=threading.Event(),guard=Mock())
+        controller=SimpleNamespace(engine=engine,validate_authority=Mock())
+        def finalize(engine,runtime):
+            runtime.task.update(status='approved',error=None)
+            runtime.task['branch_run'].update(status='ready_for_merge',readiness={'id':'final-approved'})
+            engine.store.save(runtime.task)
+            return True
+        with patch('cheapos.branch_budget.Ledger'),patch.object(prep.work,'validate_owned'), \
+                patch('cheapos.branch_completion.finalize',side_effect=finalize) as finish, \
+                patch('cheapos.model_pool.observe_task'),patch('cheapos.model_pool.observe_completions'), \
+                patch.object(prep,'readiness',return_value={'code':'ready'}),patch.object(prep.threading,'Timer') as timer:
+            BranchController.execute(controller,runtime)
+        finish.assert_called_once()
+        self.assertEqual(task['status'],'approved')
+        self.assertEqual(task['branch_run']['status'],'ready_for_merge')
+        self.assertEqual(task['branch_run']['readiness'],{'id':'final-approved'})
+        self.assertEqual(task['integration_preparation']['status'],'ready')
+        self.assertEqual(task['integration_preparation']['label'],'Ready for your review')
+        engine.branch.resume.assert_not_called();timer.assert_not_called()
+
     def authorized_fixture(self):
         """Real consent/Resume/launch with tiny directories, no Git or execution."""
         from tests.test_branch_authorization import CheckScopeTests

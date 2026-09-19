@@ -1,5 +1,14 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const integration=require('../dist/integration.js');
+test('current review readiness supersedes an old combining label without changing the saved operation',()=>{
+ const task={status:'approved',branch_run:{status:'ready_for_merge'},integration_preparation:{id:'old',authorized:true,status:'running',stage:'combining',label:'Combining changes',dispatched:true}};
+ const before=JSON.stringify(task),html=integration.markup(task,{code:'ready',actions:[],message:'Ready for review'});
+ assert.match(html,/Ready for your review/);assert.doesNotMatch(html,/Combining changes/);
+ assert.equal(JSON.stringify(task),before);
+ delete task.integration_preparation.dispatched;
+ assert.match(integration.markup(task,{code:'ready'}),/Combining changes/,'A newly accepted update retains immediate feedback');
+ assert.match(integration.markup({...task,integration_preparation:{...task.integration_preparation,dispatched:true}},{code:'review_required'}),/Combining changes/,'Missing verification must not be presented as completed');
+});
 test('readiness exposes only supported preparation actions and escapes paths',()=>{
  const task={id:'a',branch_run:{}};
  let html=integration.markup(task,{code:'dirty_destination',message:'Waiting for local changes',actions:['inspect_local_changes'],files:['<source>']});

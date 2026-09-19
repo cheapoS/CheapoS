@@ -607,6 +607,11 @@ class BranchController:
             observe_completions(self.engine.gateway.pool,task)
             task['stream']=None;task['check_stream']=None;task['updated_at']=now()
             self.engine.store.save(task)
+            # Final review runs in this controller, outside Engine._run's
+            # completion observer. Settle the saved update after the final
+            # result (or pause) so Chat cannot remain at "Combining changes".
+            from .integration_preparation import observe
+            observe(self.engine, task)
 
     def project(self, values):
         source=work.inspect_source(values.get('repository',''))['source']
