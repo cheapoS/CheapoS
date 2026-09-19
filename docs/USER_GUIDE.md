@@ -15,8 +15,8 @@ This is an early, working alpha for small personal projects. It has real reposit
 Requires **Python 3.9+** and **Git**. No Python or JavaScript packages need installing. Development and verification currently target macOS and Linux.
 
 ```sh
-git clone https://github.com/carlosa8c/CheapOS.git
-cd CheapOS
+git clone https://github.com/cheapos/CheapoS.git
+cd CheapoS
 python3 run.py
 ```
 

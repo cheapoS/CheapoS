@@ -124,8 +124,8 @@ Automatic remote selection uses different worker and reviewer model IDs. All loc
 Requires **Python 3.9+** and **Git**. Development and verification target **macOS and Linux**. No Python or JavaScript packages are required to run CheapoS.
 
 ```sh
-git clone https://github.com/carlosa8c/CheapOS.git
-cd CheapOS
+git clone https://github.com/cheapos/CheapoS.git
+cd CheapoS
 python3 run.py
 ```
 
@@ -203,7 +203,7 @@ committed branch changes. See [validation guidance](CONTRIBUTING.md#fast-iterati
 Try a small task. Share a reproducible failure. Help measure which model pairs produce a correct patch at a sensible cost.
 
 - [**Contribute**](CONTRIBUTING.md) — development setup, focused checks, and project principles.
-- [**Report an issue**](https://github.com/carlosa8c/CheapOS/issues) — bugs, model compatibility, and feature ideas.
+- [**Report an issue**](https://github.com/cheapos/CheapoS/issues) — bugs, model compatibility, and feature ideas.
 - [**Read the docs**](docs/USER_GUIDE.md) — setup, project workflows, permissions, and recovery.
 - [**Explore the engine**](docs/USER_GUIDE.md#development) — source map and development commands.
 - [**Extend this presentation**](docs/presentation/README.md) — theme tokens, SVG templates, and feature-block recipes.
