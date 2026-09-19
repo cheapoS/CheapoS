@@ -7,6 +7,7 @@ It defines a version string and can be extended with actual synthesis functional
 __version__ = "0.1.0"
 
 import array, math, random
+import wave, io, builtins
 
 SAMPLE_RATE = 44100
 MAX_AMP = 32767
@@ -84,3 +85,32 @@ def repeat_sample(samples, times):
     for _ in range(times):
         out.extend(samples)
     return out
+def write_wav(samples, path_or_fileobj, sample_rate=SAMPLE_RATE, channels=1, sampwidth=2):
+    open_file = isinstance(path_or_fileobj, str)
+    f = builtins.open(path_or_fileobj, 'wb') if open_file else path_or_fileobj
+    try:
+        with wave.open(f, 'w') as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(sampwidth)
+            wf.setframerate(sample_rate)
+            wf.writeframes(samples.tobytes())
+    finally:
+        if open_file:
+            f.close()
+
+
+def read_wav_info(path_or_fileobj):
+    open_file = isinstance(path_or_fileobj, str)
+    if open_file:
+        f = builtins.open(path_or_fileobj, 'rb')
+    else:
+        path_or_fileobj.seek(0)
+        f = path_or_fileobj
+    try:
+        with wave.open(f, 'r') as wf:
+            return dict(nchannels=wf.getnchannels(), sampwidth=wf.getsampwidth(),
+                        framerate=wf.getframerate(), nframes=wf.getnframes(),
+                        comptype=wf.getcomptype())
+    finally:
+        if open_file:
+            f.close()
