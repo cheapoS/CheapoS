@@ -207,18 +207,77 @@ class IntegrationPreparationTests(unittest.TestCase):
 
     def test_readiness_dirty_is_not_branch_update(self):
         engine,task=self.fixture()
+        task['branch_run']['readiness']={'id':'reviewed'}
         def git(source,*args,**kwargs):
+            if args[0]=='merge-base':
+                self.assertEqual(source,'source')
+                return ''
             self.assertEqual(source,'linked-target')
             if args[0]=='symbolic-ref':return 'refs/heads/main'
             if args[0]=='status':return ' M a.py'
             return ''
         with patch.object(prep.work,'_tip',return_value='target'),patch.object(prep.work,'source_git',side_effect=git), \
                 patch.object(prep.branch_merge,'_destination',return_value='linked-target'), \
-                patch.object(prep.branch_merge,'destination_identity'):
+                patch.object(prep.branch_merge,'destination_identity'),patch.object(prep.work,'validate_owned'):
             state=prep.readiness(engine,'task')
         self.assertEqual(state['code'],'dirty_destination');self.assertEqual(state['actions'],['inspect_local_changes'])
         self.assertEqual(state['files'],['a.py'])
         self.assertEqual(state['destination'],'linked-target')
+
+    def test_dirty_destination_keeps_update_action_and_dispatches_isolated_preparation(self):
+        engine,task=self.fixture();task['branch_run']['readiness']={'id':'reviewed'}
+        self.accepted(engine,task)
+        advanced=True
+        def git(source,*args,**kwargs):
+            if args[0]=='merge-base':
+                self.assertEqual(source,'source')
+                if advanced:raise ValueError('target is not an ancestor')
+                return ''
+            self.assertEqual(source,'linked-target')
+            if args[0]=='symbolic-ref':return 'refs/heads/main'
+            if args[0]=='status':return '?? notes.md\0?? protocol.md\0'
+            self.assertEqual(args[0],'rev-parse')
+            return ''
+        with patch.object(prep.work,'_tip',return_value='target'),patch.object(prep.work,'source_git',side_effect=git), \
+                patch.object(prep.branch_merge,'_destination',return_value='linked-target'), \
+                patch.object(prep.branch_merge,'destination_identity'),patch.object(prep.work,'validate_owned'), \
+                patch('cheapos.branch_completion.update_token',return_value='token'), \
+                patch('cheapos.branch_completion.update_branch',return_value={'needs_conflict_resolution':True}) as update, \
+                patch('cheapos.branch_conflicts.start',return_value={}) as resolve:
+            state=prep.readiness(engine,'task')
+            self.assertEqual(state['code'],'target_advanced')
+            self.assertIn('update_resolve',state['actions'])
+            self.assertIn('inspect_local_changes',state['actions'])
+            self.assertEqual(state['local_changes'],['notes.md','protocol.md'])
+            prep._drive(engine,'task')
+            update.assert_called_once_with(engine.branch,'task',{'approved':True,'update_token':'token'})
+            resolve.assert_called_once_with(engine.branch,'task',{'approved':True,'update_token':'token'})
+            self.assertEqual(task['integration_preparation']['stage'],'resolving')
+            # Once committed changes are included, local edits still block merge.
+            advanced=False
+            state=prep.readiness(engine,'task')
+            self.assertEqual(state['code'],'dirty_destination')
+            self.assertNotIn('update_resolve',state['actions'])
+        engine.reconcile_project.assert_not_called()
+        self.assertEqual(task['usage'],{'tokens':23})
+        self.assertEqual(task['checks'],[{'passed':True}])
+
+    def test_dirty_destination_does_not_bypass_authority_or_owned_workspace(self):
+        for failure in ('authority_changed','ownership_changed','work_remaining'):
+            with self.subTest(failure=failure):
+                engine,task=self.fixture()
+                if failure=='authority_changed':engine.branch.validate_authority.side_effect=ValueError('authority changed')
+                if failure=='work_remaining':task['branch_run']['items'][0]['status']='working'
+                def git(source,*args,**kwargs):
+                    self.assertNotEqual(args[0],'merge-base')
+                    return 'refs/heads/main' if args[0]=='symbolic-ref' else '?? notes.md\0' if args[0]=='status' else ''
+                with patch.object(prep.work,'_tip',return_value='target'),patch.object(prep.work,'source_git',side_effect=git), \
+                        patch.object(prep.branch_merge,'_destination',return_value='linked-target'), \
+                        patch.object(prep.branch_merge,'destination_identity'), \
+                        patch.object(prep.work,'validate_owned',side_effect=ValueError('ownership changed') if failure=='ownership_changed' else None):
+                    state=prep.readiness(engine,'task')
+                self.assertEqual(state['code'],failure)
+                self.assertNotIn('update_resolve',state['actions'])
 
     def test_unchecked_out_branch_readiness_ignores_unrelated_checkout(self):
         engine,task=self.fixture()
@@ -233,11 +292,12 @@ class IntegrationPreparationTests(unittest.TestCase):
 
     def test_inspect_local_changes_reads_only_the_actual_destination(self):
         engine,task=self.fixture()
-        with patch.object(prep,'readiness',return_value={'destination':'linked-target','files':['a.py']}), \
+        with patch.object(prep,'readiness',return_value={'destination':'linked-target','files':[],'local_changes':['a.py']}), \
                 patch.object(prep.work,'source_git',return_value='target edits') as git:
             result=prep.local_changes(engine,'task')
         git.assert_called_once_with('linked-target','diff','HEAD','--no-ext-diff','--no-renames')
         self.assertEqual(result['diff'],'target edits')
+        self.assertEqual(result['files'],['a.py'])
         with patch.object(prep,'readiness',return_value={'destination':None,'files':[]}), \
                 patch.object(prep.work,'source_git') as git:
             self.assertEqual(prep.local_changes(engine,'task')['diff'],'')

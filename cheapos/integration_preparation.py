@@ -45,6 +45,7 @@ def _readiness(engine, task_id):
         destination=branch_merge._destination(run['workspace_mapping'],target)
         branch_merge.destination_identity(run['workspace_mapping'],destination)
     result['destination']=destination
+    dirty=None
     if destination:
         head=work.source_git(destination,'symbolic-ref','--quiet','HEAD')
         if head!=target:return blocked('destination_changed','The destination checkout is on a different branch.')
@@ -60,7 +61,12 @@ def _readiness(engine, task_id):
             for entry in entries:
                 if skip:files.append(entry);skip=False;continue
                 if entry:files.append(entry[3:]);skip=entry[:1] in {'R','C'}
-            return blocked('dirty_destination','Waiting for local changes in the destination.',('inspect_local_changes',),files)
+            result['local_changes']=files
+            dirty=blocked('dirty_destination','Waiting for local changes in the destination.',('inspect_local_changes',),files)
+            # Branch preparation combines committed versions in the owned task
+            # copy. Local destination edits only block the eventual merge.
+            # Interactive reconciliation still depends on the source snapshot.
+            if not run:return dirty
     if run:
         try:engine.branch.validate_authority(task,run)
         except (ValueError,OSError) as error:return blocked('authority_changed',str(error))
@@ -68,9 +74,11 @@ def _readiness(engine, task_id):
         except (ValueError,OSError) as error:return blocked('ownership_changed',str(error))
         if any(i.get('status') not in branch_runs.DONE for i in run.get('items',[])):
             return blocked('work_remaining','The current work must finish before integration.')
+        inspect=('inspect_local_changes',) if dirty else ()
         try:work.source_git(source,'merge-base','--is-ancestor',tip,run['expected_feature_tip'])
-        except ValueError:return blocked('target_advanced','The target changed while this task was running.',('update_resolve','keep_saved_work'))
-        if not run.get('readiness'):return blocked('review_required','The combined candidate needs verification and review.',('update_resolve',))
+        except ValueError:return blocked('target_advanced','The target changed while this task was running.',('update_resolve','keep_saved_work')+inspect)
+        if not run.get('readiness'):return blocked('review_required','The combined candidate needs verification and review.',('update_resolve',)+inspect)
+        if dirty:return dirty
     else:
         from . import commits
         if not task.get('patch') and task.get('integration_preparation',{}).get('already_included'):
@@ -340,7 +348,7 @@ def local_changes(engine,task_id):
     if 'destination' not in state:raise ValueError(state['message'])
     destination=state['destination']
     return {'diff':work.source_git(destination,'diff','HEAD','--no-ext-diff','--no-renames') if destination else '',
-            'destination':destination, 'files':state['files'], 'label':'Uncommitted destination changes; nothing is modified'}
+            'destination':destination, 'files':state.get('local_changes',state['files']), 'label':'Local changes in the destination checkout. This view is read-only.'}
 
 
 def resolution_changes(engine,task_id):

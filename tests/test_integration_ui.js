@@ -6,6 +6,19 @@ test('readiness exposes only supported preparation actions and escapes paths',()
  assert.match(html,/Inspect local changes/);assert.doesNotMatch(html,/data-integration-prepare/);assert.match(html,/&lt;source&gt;/);
  html=integration.markup(task,{code:'target_advanced',actions:['update_resolve'],target_tip:'abc',candidate:'def'});
  assert.match(html,/Update &amp; resolve/);assert.match(html,/Final approval is still required/);assert.match(html,/Keep on branch/);
+ html=integration.markup(task,{code:'target_advanced',actions:['update_resolve','inspect_local_changes'],local_changes:['<protocol>.md']});
+ assert.match(html,/data-integration-prepare/);assert.match(html,/data-integration-local/);
+ assert.match(html,/Local changes will stay untouched/);assert.match(html,/committed changes/);
+ assert.match(html,/final merge will wait/);assert.match(html,/&lt;protocol&gt;.md/);
+ assert.doesNotMatch(html,/<protocol>/);
+});
+test('local comparison lists untracked files even when Git diff is empty',()=>{
+ const text=integration.comparisonText({files:['PROTOCOL.md','cheapskate-club-protocol.md'],diff:''},true);
+ assert.match(text,/Files with local changes:\nPROTOCOL.md\ncheapskate-club-protocol.md/);
+ assert.match(text,/New, untracked files do not appear in Git diff/);
+ assert.doesNotMatch(text,/No comparison is available/);
+ assert.match(integration.comparisonText({files:['tracked.py'],diff:'-old\n+new'},true),/tracked.py[\s\S]*-old\n\+new/);
+ assert.equal(integration.comparisonText({diff:''}),'No comparison is available yet.');
 });
 test('duplicate clicks share one server-owned operation and never dispatch start in the browser',async()=>{
  const calls=[];let resolve;
