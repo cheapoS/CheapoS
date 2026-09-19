@@ -12,7 +12,7 @@ not automatically change routing or establish that a model is unusable.
 
 ## Fast iteration is the default
 
-This is an actively developed private alpha. Run checks that exercise the change;
+This is an actively developed alpha. Run checks that exercise the change;
 merging a small change does **not** require the entire regression suite. The
 current policy here supersedes blanket full-gate instructions in historical task
 cards. Preserve real failure, permission, persistence and Git coverage when those
