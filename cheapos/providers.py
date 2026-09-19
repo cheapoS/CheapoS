@@ -12,7 +12,7 @@ from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
-from .streaming import read_chat_stream
+from .streaming import read_chat_stream, reasoning_text
 from .served_identity import metadata
 from .request_pacer import pacer, provider_identity, gateway_identity, pacing_interval
 
@@ -363,6 +363,11 @@ class ChatProvider:
                 raise ProviderError("The model reached its output limit before finishing. Partial tool calls were not executed.",
                                     code="output_limit", usage=data.get("usage"))
             message = choice["message"]
+            if not isinstance(message, dict):
+                raise ValueError()
+            thought = reasoning_text(message)
+            if thought:
+                message = {**message, 'reasoning': thought}
             if not bool(message.get("tool_calls")) and not (isinstance(message.get("content"), str) and message["content"].strip()) and isinstance(message.get("reasoning"), str) and message["reasoning"].strip():
                 message["content"] = message["reasoning"]
                 message["reasoning_fallback"] = True

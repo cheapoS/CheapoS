@@ -2,6 +2,13 @@
 'use strict';
 const CheapOSChatView = (() => {
   const inspectionTools=new Set(['read file','outline file','list files','search','get diff']);
+  function modelText(value,live=false) {
+    const text=String(value||''), compact=text.replace(/\s+/g,'');
+    const emptyChannel='<|channel>thought<channel|>';
+    // Hide only the observed empty protocol envelope, never real model text.
+    // Keep the saved event intact for diagnostics and replay.
+    return compact===emptyChannel||(live&&compact&&emptyChannel.startsWith(compact))?'':text;
+  }
   function isProbe(detail,events) {
     return detail?.purpose==='probe'||Boolean(detail?.request_id&&events.some(e=>e.kind==='model'&&e.id===detail.request_id&&e.detail?.purpose==='probe'));
   }
@@ -10,10 +17,11 @@ const CheapOSChatView = (() => {
     return events.filter(e=>!['model','checkpoint','permission','review_request'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error)&&!(e.kind==='generation'&&isProbe(e.detail,history)));
   }
   function formatWorkflowMessage(roleLabel, text) {
-    let cleaned = String(text || '').trim();
+    let cleaned = modelText(text).trim();
     if (cleaned.startsWith(`${roleLabel}:`)) {
       cleaned = cleaned.slice(roleLabel.length + 1).trimStart();
     }
+    if(!cleaned)return '';
     const formatted = messageText(cleaned);
     const roleBadge = `<strong class="workflow-role">${esc(roleLabel)}:</strong> `;
     if (typeof formatted === 'string' && formatted.startsWith('<p>')) {
@@ -64,10 +72,10 @@ const CheapOSChatView = (() => {
     const probe=isProbe(stream,task.events||step.events);
     if(probe)stream={...stream,thinking:'',content:'',phase:'waiting'};
     const streamLabel=probe?'Checking model connection':stream?.phase==='thinking'?`${role}: Thinking`:stream?.phase==='answer'?`${role}: Writing a response`:stream?.phase==='tool'?`Preparing ${String(stream.tool||'the next action').replaceAll('_',' ')}`:`Waiting for the ${role.toLowerCase()}’s response`;
-    const streamText=String(stream?.thinking||stream?.content||'');
+    const streamText=modelText(stream?.thinking||stream?.content,live);
     const streamKey=`workflow-stream-${stream?.request_id||step.id}`;
     const liveOutput=live&&task.check_stream?commandMarkup(task.check_stream,{live:true}):live&&stream?`<details class="workflow-stream" data-event="${esc(streamKey)}" ${stream.phase?`data-phase="${esc(stream.phase)}"`:''} aria-label="Live ${role.toLowerCase()} output" open><summary class="stream-label"><span class="task-dot pulsing"></span><strong>${esc(streamLabel)}</strong><span data-work-elapsed>${esc(step.elapsed)}</span>${icon('chevron')}</summary>${streamText?`<pre data-thinking="${esc(streamKey)}">${esc(streamText)}</pre>`:''}${stream.thinking&&stream.content&&stream.content.trim()!==stream.thinking.trim()?formatWorkflowMessage(role,stream.content):''}</details>`:'';
-    const liveText=live?String(task.check_stream?.output||stream?.content||stream?.thinking||'').trim():'';
+    const liveText=live?(task.check_stream?.output||modelText(stream?.content||stream?.thinking,true)).trim():'';
     const preview=liveText?`<span class="workflow-preview">${esc((liveText.length>240?'…':'')+liveText.slice(-240))}</span>`:'';
     const title=live&&task.check_stream?.kind==='command'?'Running task command':live&&probe?'Checking model connection':liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
     const status=live&&probe?'Verifying tool support before starting the request':step.detail;
@@ -106,9 +114,10 @@ const CheapOSChatView = (() => {
       return `<article class="chat-message from-user ${entry.steer?'steer-bubble':''}" data-message="${entry.id}"><div class="chat-author"><strong>You</strong>${entry.steer?'<span>Follow-up while working</span>':''}</div><div class="chat-message-body">${attMarkup}${messageText(stripAttachmentNotes(entry.text))}</div></article>`;
     }
     const steps=entry.steps, older=steps.length>4?steps.slice(0,-3):[], visible=older.length?steps.slice(-3):steps;
-    if(!steps.length&&!entry.reply&&!decision&&!entry.live&&!entry.owner)return '';
+    const visibleReply=modelText(entry.reply,entry.live);
+    if(!steps.length&&!visibleReply&&!decision&&!entry.live&&!entry.owner)return '';
     const history=older.length?`<details class="workflow-history" data-event="history-${entry.id}"><summary>${icon('clock')}Earlier steps${entry.itemTitle?' · '+esc(entry.itemTitle):''} <span>${older.length}</span>${icon('chevron')}</summary>${older.map(s=>stepMarkup(s,task,null,entry.reply)).join('')}</details>`:'';
-    let replyText = entry.reply;
+    let replyText = visibleReply;
     if(replyText && visible.length) {
       const thinkings = visible.flatMap(s => s.events || []).filter(e => e.kind === 'generation' && e.detail?.thinking).map(e => e.detail.thinking.trim());
       for (const th of thinkings) {

@@ -16,6 +16,27 @@ function render(events,{live=false,stream=null,task={},phase='work'}={}){
  return ctx.view.message({kind:'assistant',id:'reply',steps:[step(events,{live,phase})],live,stream,reply:''},task);
 }
 
+test('empty model channel markers stay out of saved and live chat without hiding real text',()=>{
+ const marker='<|channel>thought\n<channel|>';
+ const saved=event('marker','assistant','Worker',marker);
+ const html=render([saved,tool('read','read file','example.py')]);
+ assert.doesNotMatch(html,/&lt;\|channel|workflow-role/);
+ assert.match(html,/example.py/);
+ assert.equal(saved.detail,marker);
+ for(let i=1;i<=marker.length;i++){
+   const live=render([],{live:true,stream:{phase:'answer',content:marker.slice(0,i),role:'worker'}});
+   assert.doesNotMatch(live,/workflow-preview|<pre data-thinking/);
+ }
+ assert.equal(ctx.view.message({kind:'assistant',id:'empty',steps:[],reply:marker},{}),'');
+ const actual=render([event('text','assistant','Worker',marker+'Checking the file now.')]);
+ assert.match(actual,/Checking the file now/);
+ const thought=render([event('think','generation','Model thinking',{thinking:'Checking the file now.'})]);
+ assert.match(thought,/thinking-panel/);
+ assert.match(thought,/Checking the file now/);
+ const user=ctx.view.message({kind:'user',id:'user-0',text:marker},{});
+ assert.match(user,/&lt;\|channel/);
+});
+
 test('route waiting shows a clock rather than an active-work spinner',()=>{
  const t={status:'waiting_retry'};
  const html=ctx.view.message({kind:'assistant',id:'waiting',steps:[step([],{live:true,outcome:'live'})],live:true,reply:''},t);

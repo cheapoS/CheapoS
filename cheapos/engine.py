@@ -2649,6 +2649,10 @@ class Engine:
                             message, usage = provider.complete_with_progress(messages, tools, maximum, emit, getattr(runtime, 'request_cancelled', runtime.stop.is_set))
                     else:
                         message, usage = provider.complete_with_progress(messages, tools, maximum, emit, getattr(runtime, 'request_cancelled', runtime.stop.is_set))
+                # Some routes answer a streaming request with complete JSON.
+                # Retain supplied thinking even when no SSE deltas were emitted.
+                if not live['thinking'] and isinstance(message.get('reasoning'), str) and message['reasoning'].strip():
+                    emit('thinking', message['reasoning'])
                 completed = True
             except ProviderError as error:
                 self.account_failed_response(task, config, reservation, error)
@@ -2674,6 +2678,12 @@ class Engine:
                             message, usage = provider.complete(messages, tools, maximum)
                     else:
                         message, usage = provider.complete(messages, tools, maximum)
+                if isinstance(message.get('reasoning'), str) and message['reasoning'].strip():
+                    thought = message['reasoning']
+                    self.event(task, 'generation', 'Model thinking', {
+                        'request_id': task['stream']['request_id'], 'model': config['model'],
+                        'role': role, 'purpose': purpose, 'thinking': thought[:16000], 'content': '',
+                        'interrupted': False, 'truncated': len(thought) > 16000})
             except ProviderError as error:
                 self.account_failed_response(task, config, reservation, error)
                 raise
