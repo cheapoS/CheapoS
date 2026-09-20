@@ -72,6 +72,7 @@ def main():
         data_lock = lock_data(args.data_dir.expanduser().resolve())
         started = time.monotonic()
         server.engine = Engine(args.data_dir.expanduser())
+        server.data_lock = data_lock
         loaded = time.monotonic()
         # Gateway startup is asynchronous; local tasks and saved patches remain accessible.
         server.engine.gateway.startup()
@@ -94,7 +95,10 @@ def main():
     finally:
         server.engine.shutdown()
         server.server_close()
-        data_lock.close()
+        try:
+            data_lock.close()
+        except Exception:
+            pass
     return 0
 
 

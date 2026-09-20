@@ -1570,18 +1570,23 @@ class Engine:
             return task
 
     def shutdown(self):
-        self.store.club.shutdown()
-        self.previews.shutdown()
-        self.readiness.shutdown()
-        self.startup.shutdown()
+        for name, comp in [('club', getattr(self.store, 'club', None)), ('previews', self.previews), ('readiness', self.readiness), ('startup', self.startup)]:
+            if comp and hasattr(comp, 'shutdown'):
+                try: comp.shutdown()
+                except Exception as e: print(f"cheapoS shutdown error in {name}: {e}", file=sys.stderr)
         self.route_restore_stop.set()
         for runtime in list(self.runtimes.values()):
-            if runtime.task.get('status') == 'waiting_retry' and runtime.task.get('retry_wait_enabled'):
-                runtime.task['route_resume_on_start'] = True
-                self.store.save(runtime.task)
-            runtime.stop.set()
-            runtime.approval.set()
-        self.connections.shutdown()
+            try:
+                if runtime.task.get('status') == 'waiting_retry' and runtime.task.get('retry_wait_enabled'):
+                    runtime.task['route_resume_on_start'] = True
+                    self.store.save(runtime.task)
+                runtime.stop.set()
+                runtime.approval.set()
+            except Exception: pass
+        try:
+            self.connections.shutdown()
+        except Exception as e:
+            print(f"cheapoS shutdown error in connections: {e}", file=sys.stderr)
 
     def initial_messages(self, task):
         from .discussion import opening_greeting, greeting_messages

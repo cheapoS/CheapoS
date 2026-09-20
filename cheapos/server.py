@@ -367,11 +367,26 @@ class LocalHandler(SimpleHTTPRequestHandler):
                                 time.sleep(0.4)
                                 started = time.monotonic()
                                 print('cheapoS restart: stopping background services.', flush=True)
-                                self.server.engine.shutdown()
-                                self.server.server_close()
+                                try:
+                                    self.server.engine.shutdown()
+                                except Exception as err:
+                                    print(f'cheapoS restart: engine shutdown error: {err}', file=sys.stderr)
+                                try:
+                                    self.server.server_close()
+                                except Exception as err:
+                                    print(f'cheapoS restart: server_close error: {err}', file=sys.stderr)
+                                if hasattr(self.server, 'data_lock') and self.server.data_lock:
+                                    try:
+                                        self.server.data_lock.close()
+                                    except Exception as err:
+                                        print(f'cheapoS restart: data_lock close error: {err}', file=sys.stderr)
                                 print(f'cheapoS restart: shutdown completed in {time.monotonic()-started:.2f}s.', flush=True)
                                 from .launch import restart_arguments
-                                os.execv(sys.executable, restart_arguments())
+                                args = restart_arguments()
+                                os.execv(sys.executable, args)
+                            except Exception as err:
+                                import traceback
+                                traceback.print_exc()
                             finally:
                                 with self.server.restart_lock:
                                     self.server.restart_pending = False
