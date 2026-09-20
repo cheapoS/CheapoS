@@ -2475,6 +2475,8 @@ class Engine:
             record['request_context'] = 'chat_reply'  # Includes route probes for this reply.
         from .served_identity import metadata
         record.update(metadata(config['model']))
+        from .request_health import route_metadata
+        record.update(route_metadata(config, local=is_local_ollama(config)))
         if task.get('branch_run'):
             record['branch_item_id'] = task['branch_run'].get('current_item_id')
             if role == 'reviewer' and not purpose:

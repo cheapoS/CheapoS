@@ -251,6 +251,8 @@ class StartupManager:
                 # Greeting accounting historically used worker; retain that role
                 # for consistency with the existing cumulative account buckets.
                 record['role']='worker'
+                from .request_health import route_metadata
+                record.update(route_metadata(config, local=candidate['local']))
                 account['request_metrics'].append(record)
                 self._record(account)
                 def emit(kind, value):

@@ -198,7 +198,53 @@ class LifetimeUsageTests(unittest.TestCase):
             self.assertEqual(summ['task_types']['reviewing']['completed'], 1)
             self.assertEqual(summ['task_types']['coordination']['completed'], 1)
 
+    def test_summary_scoped_to_allowed_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = LifetimeUsage(directory)
+            task1 = dict(
+                id='task-baseline',
+                request_metrics=[
+                    record('b1', input_tokens=1000, output_tokens=1000, purpose='work'),
+                ]
+            )
+            task2 = dict(
+                id='task-synced',
+                request_metrics=[
+                    record('s1', input_tokens=50, output_tokens=50, purpose='work'),
+                ]
+            )
+            ledger.ingest(task1)
+            ledger.ingest(task2)
+
+            full_summ = ledger.summary()
+            self.assertEqual(full_summ['tokens']['reported'], 2100)
+
+            synced_req = [r['request_id'] for r in ledger.raw_requests() if r['input_tokens'] == 50]
+            scoped_summ = ledger.summary(allowed_request_ids=synced_req)
+            self.assertEqual(scoped_summ['tokens']['reported'], 100)
+            self.assertEqual(scoped_summ['self_healing_index']['initial_work_tokens'], 100)
+
+    def test_request_duration_counts_failures_zero_and_missing_measurements(self):
+        from cheapos.request_health import route_metadata, event_health
+        with tempfile.TemporaryDirectory() as directory:
+            ledger=LifetimeUsage(directory)
+            route=route_metadata({'gateway':'omniroute','model':'oc/vendor/new-model','provider':'wrong-publisher'})
+            ledger.ingest(dict(id='timings',request_metrics=[
+                record('a',status='responded',seconds=2,**route),
+                record('b',status='failed',seconds=4),
+                record('c',status='responded',seconds=0),
+                record('d',status='responded')]))
+            stats=ledger.summary()['models']['vendor/model']
+            self.assertEqual(stats['avg_latency_ms'],2000)
+            self.assertEqual(stats['duration_samples'],3)
+            a=next(r for r in ledger.raw_requests() if r['request_provider']=='opencode')
+            self.assertEqual(a['request_provider'],'opencode')
+            self.assertEqual(event_health(a,True)['gateway'],'omniroute')
+            self.assertNotIn('duration_ms',event_health({'status':'responded'},True))
+            self.assertEqual(route_metadata({'model':'anthropic/claude'})['request_provider'],'unknown')
+            self.assertEqual(route_metadata({'gateway':'omniroute','model':'future-route/new-model'})['request_provider'],'future-route')
+            self.assertEqual(route_metadata({'gateway':'omniroute','model':'combo/auto'})['request_provider'],'unknown')
+
 
 if __name__ == '__main__':
-
     unittest.main()

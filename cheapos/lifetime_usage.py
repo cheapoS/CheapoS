@@ -7,6 +7,7 @@ import threading
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from .metrics import number
+from .request_health import route_name
 from . import __version__
 from .served_identity import safe_model, normalized
 
@@ -81,7 +82,9 @@ def clean(record):
                   purpose=purpose,
                   failure_category=failure_category,
                   error_code=error_code,
-                  seconds=seconds)
+                  seconds=seconds,
+                  request_gateway=route_name(record.get('request_gateway')),
+                  request_provider=route_name(record.get('request_provider')))
     # Club classification requires explicit access evidence; never infer free pricing from a model prefix.
     result['club_category'] = cat if record.get('access_class') in CATEGORIES else 'unknown'
     if (result['reported_cost'] or 0) > 0: result['club_category'] = 'paid'
@@ -210,17 +213,18 @@ class LifetimeUsage:
 
     ingest_task = ingest
 
-    def summary(self, days=None):
+    def summary(self, days=None, allowed_request_ids=None):
         if days not in (None, 'all', 7, 30):
             raise ValueError('Usage period must be all, 7 or 30 days')
+        allowed_set = set(allowed_request_ids) if allowed_request_ids is not None else None
         with self.lock:
             cache_key = (days, datetime.now(timezone.utc).date().isoformat())
-            if cache_key in self._summaries:
+            if allowed_set is None and cache_key in self._summaries:
                 return copy.deepcopy(self._summaries[cache_key])
             state = copy.deepcopy(self.state)
         cutoff = (datetime.now(timezone.utc).date() - timedelta(days=days - 1)).isoformat() if isinstance(days, int) else None
         result = {k: state[k] for k in ('schema_version', 'recorded_since', 'updated_at')}
-        result.update(app_version=__version__, scope='Local installation', period=days or 'all', partial_earlier_history=any(t['partial'] for t in state['tasks'].values()),
+        result.update(app_version=__version__, scope='Local installation', period=days or 'all', partial_earlier_history=any(t['partial'] for t in state['tasks'].values()) if allowed_set is None else False,
                       tokens=dict(reported=0, accounted_historical=0, estimated=0, reserved=0, input=0, output=0, reasoning=0, cached=0, unknown_requests=0, unknown_reasoning_requests=0, unknown_cached_requests=0),
                       categories={k: dict(tokens=0, requests=0) for k in CATEGORIES}, roles={k: dict(tokens=0, requests=0) for k in ROLES},
                       models={},
@@ -231,14 +235,22 @@ class LifetimeUsage:
                       completion=dict(human_accepted_jobs=0, merged_runs=0, independent_review_approved_jobs=0), savings_comparison='not configured')
         history = {}
         for task in state['tasks'].values():
+            if allowed_set is not None:
+                task_requests = [r for req_id, r in task['requests'].items() if req_id in allowed_set]
+                if not task_requests:
+                    continue
+            else:
+                task_requests = list(task['requests'].values())
+
             # Completion receipts have no reliable date; show lifetime only.
             if not cutoff:
                 for k, v in task['completion'].items():
                     result['completion'][k] += int(v)
-                for role, residual in task['residual'].items():
-                    result['tokens']['accounted_historical'] += residual['tokens']
-                    result['cost']['historical_accounted'] += residual['cost']
-            for r in task['requests'].values():
+                if allowed_set is None:
+                    for role, residual in task['residual'].items():
+                        result['tokens']['accounted_historical'] += residual['tokens']
+                        result['cost']['historical_accounted'] += residual['cost']
+            for r in task_requests:
                 if not r['date']:
                     result['undated_requests'] += 1
                 if cutoff and (not r['date'] or r['date'] < cutoff):
@@ -262,12 +274,14 @@ class LifetimeUsage:
                 p_stat['requests'] += 1
                 m = r.get('served_model') or r.get('requested_model')
                 if m:
-                    m_stat = result['models'].setdefault(m, dict(tokens=0, requests=0, category=cat, successes=0, failures=0, success_rate=100.0, total_seconds=0.0, avg_latency_ms=0, failure_breakdown={}))
+                    m_stat = result['models'].setdefault(m, dict(tokens=0, requests=0, category=cat, successes=0, failures=0, success_rate=None, total_seconds=0.0, duration_samples=0, avg_latency_ms=None, failure_breakdown={}))
                     m_stat['tokens'] += tokens
                     m_stat['requests'] += 1
-                    sec = r.get('seconds') or 0.0
-                    m_stat['total_seconds'] += sec
+                    sec = number(r.get('seconds'))
                     st = r.get('status')
+                    if sec is not None and st in {'responded', 'failed', 'cancelled'}:
+                        m_stat['total_seconds'] += sec
+                        m_stat['duration_samples'] += 1
                     if st == 'responded' or (st is None and r.get('reconciled')):
                         m_stat['successes'] += 1
                     elif st == 'failed':
@@ -297,11 +311,17 @@ class LifetimeUsage:
             decided = m_data['successes'] + m_data['failures']
             if decided > 0:
                 m_data['success_rate'] = round((m_data['successes'] / decided) * 100, 1)
-            if m_data['successes'] > 0 and m_data.get('total_seconds'):
-                m_data['avg_latency_ms'] = round((m_data['total_seconds'] / m_data['successes']) * 1000)
+            if m_data['duration_samples']:
+                m_data['avg_latency_ms'] = round((m_data['total_seconds'] / m_data['duration_samples']) * 1000)
 
         model_pairs = {}
         for task in state['tasks'].values():
+            if allowed_set is not None:
+                task_requests = [r for req_id, r in task['requests'].items() if req_id in allowed_set]
+                if not task_requests:
+                    continue
+            else:
+                task_requests = list(task['requests'].values())
             w = task.get('worker_model')
             rv = task.get('reviewer_model')
             if w and rv:
@@ -320,7 +340,7 @@ class LifetimeUsage:
                     'avg_tokens_per_job': 0,
                 })
                 pair['total_jobs'] += 1
-                task_tokens = sum((r.get('input_tokens') or 0) + (r.get('output_tokens') or 0) for r in task.get('requests', {}).values())
+                task_tokens = sum((r.get('input_tokens') or 0) + (r.get('output_tokens') or 0) for r in task_requests)
                 pair['total_tokens'] += task_tokens
                 pair['avg_tokens_per_job'] = round(pair['total_tokens'] / pair['total_jobs'])
                 comp = task.get('completion', {})
@@ -348,9 +368,15 @@ class LifetimeUsage:
             'coordination': {'completed': 0, 'tokens': 0},
         }
         for task in state['tasks'].values():
+            if allowed_set is not None:
+                task_requests = [r for req_id, r in task['requests'].items() if req_id in allowed_set]
+                if not task_requests:
+                    continue
+            else:
+                task_requests = list(task['requests'].values())
             stg = task.get('stage_completion') or {}
             comp = task.get('completion') or {}
-            if stg.get('planning') or any(r.get('role') == 'planner' for r in task.get('requests', {}).values()):
+            if stg.get('planning') or any(r.get('role') == 'planner' for r in task_requests):
                 task_types['planning']['completed'] += 1
                 tasks_by_role['planner']['completed_tasks'] += 1
                 pm = task.get('planner_model')
@@ -363,13 +389,13 @@ class LifetimeUsage:
                 if wm:
                     tasks_by_role['worker']['models'][wm] = tasks_by_role['worker']['models'].get(wm, 0) + 1
             rev_count = stg.get('reviewing') if isinstance(stg.get('reviewing'), int) else len(task.get('reviews_summary', {}).get('decisions', []))
-            if rev_count > 0 or comp.get('independent_review_approved_jobs'):
+            if rev_count > 0 or comp.get('independent_review_approved_jobs') or any(r.get('role') == 'reviewer' for r in task_requests):
                 task_types['reviewing']['completed'] += max(1, rev_count)
                 tasks_by_role['reviewer']['completed_tasks'] += max(1, rev_count)
                 rm = task.get('reviewer_model')
                 if rm:
                     tasks_by_role['reviewer']['models'][rm] = tasks_by_role['reviewer']['models'].get(rm, 0) + 1
-            if stg.get('coordination') or any(r.get('role') == 'coordinator' for r in task.get('requests', {}).values()):
+            if stg.get('coordination') or any(r.get('role') == 'coordinator' for r in task_requests):
                 task_types['coordination']['completed'] += 1
                 tasks_by_role['coordinator']['completed_tasks'] += 1
                 cm = task.get('coordinator_model')

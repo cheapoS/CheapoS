@@ -25,6 +25,22 @@ path to completion without operator rescue using small deterministic cases.
 
 # Validation while iterating
 
+## Signed public statistics
+
+Every new metric intended for the Club site must have a documented signed-evidence
+contract. Send eligible facts through the existing installation signature, consent,
+stable event identity and replay/correction flow. A cumulative snapshot, model-name
+guess, reservation or local-only counter is not proof of accepted request membership.
+The Club must verify the signature and accept the facts before publishing derived
+statistics; missing evidence remains unavailable, never a fabricated zero or success.
+Task/completion claims need their own accepted evidence contract. Model/route detail
+must honor sharing consent. Add focused rejection, replay and privacy coverage when
+extending this protocol, and document coordinated rollout and sample limitations.
+Local diagnostics may remain unsigned; do not promote them into public statistics.
+See [signed request health](docs/development/signed-request-health.md).
+
+## Change-scoped checks
+
 Follow the current change-scoped policy in CONTRIBUTING.md. Start with
 `python3 -B scripts/check.py --plan` and run the relevant checks. UI-only and
 documentation-only changes do not require the full Python suite. A routine merge
