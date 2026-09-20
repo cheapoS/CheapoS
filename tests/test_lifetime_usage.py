@@ -198,6 +198,32 @@ class LifetimeUsageTests(unittest.TestCase):
             self.assertEqual(summ['task_types']['reviewing']['completed'], 1)
             self.assertEqual(summ['task_types']['coordination']['completed'], 1)
 
+    def test_summary_scoped_to_allowed_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = LifetimeUsage(directory)
+            task1 = dict(
+                id='task-baseline',
+                request_metrics=[
+                    record('b1', input_tokens=1000, output_tokens=1000, purpose='work'),
+                ]
+            )
+            task2 = dict(
+                id='task-synced',
+                request_metrics=[
+                    record('s1', input_tokens=50, output_tokens=50, purpose='work'),
+                ]
+            )
+            ledger.ingest(task1)
+            ledger.ingest(task2)
+
+            full_summ = ledger.summary()
+            self.assertEqual(full_summ['tokens']['reported'], 2100)
+
+            synced_req = [r['request_id'] for r in ledger.raw_requests() if r['input_tokens'] == 50]
+            scoped_summ = ledger.summary(allowed_request_ids=synced_req)
+            self.assertEqual(scoped_summ['tokens']['reported'], 100)
+            self.assertEqual(scoped_summ['self_healing_index']['initial_work_tokens'], 100)
+
 
 if __name__ == '__main__':
 

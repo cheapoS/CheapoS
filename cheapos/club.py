@@ -391,57 +391,43 @@ class ClubManager:
                     if self.state['sent'].get(rid)==fingerprint: continue
                     event['slot']=len(events);events.append(event);fingerprints[rid]=fingerprint
                     if len(events)==100: break
+                verified_rids = set(self.state.get('sent', {}).keys())
+                if events:
+                    verified_rids.update(fingerprints.keys())
+
                 queue_kwargs = None
                 if events:
                     queue_kwargs = dict(_fingerprints=fingerprints, events=events)
-                elif lifetime and hasattr(lifetime, 'summary'):
+
+                if lifetime and hasattr(lifetime, 'summary'):
                     try:
-                        summ = lifetime.summary('all')
-                        comp = summ.get('completion') or {}
-                        h_jobs = int(comp.get('human_accepted_jobs', 0))
-                        m_runs = int(comp.get('merged_runs', 0))
-                        r_jobs = int(comp.get('independent_review_approved_jobs', 0))
-                        completed = h_jobs + m_runs
-                        rate = round((completed / r_jobs * 100), 1) if r_jobs > 0 else None
-                        current_outcomes = dict(
-                            completed_tasks=completed,
-                            human_accepted_jobs=h_jobs,
-                            merged_runs=m_runs,
-                            review_approved_jobs=r_jobs,
-                            acceptance_rate=rate
-                        )
-                        telem = extract_telemetry(summ, share_models=bool(self.state.get('share_models')))
-                        last_synced = self.state.get('last_synced_outcomes')
-                        last_telem = self.state.get('last_synced_telemetry')
-                        if (completed > 0 and current_outcomes != last_synced) or (telem and telem != last_telem):
-                            queue_kwargs = dict(_fingerprints={}, events=[], work_outcomes=current_outcomes)
-                            if telem: queue_kwargs['telemetry'] = telem
+                        summ = lifetime.summary('all', allowed_request_ids=verified_rids) if verified_rids else None
+                        if summ:
+                            comp = summ.get('completion') or {}
+                            h_jobs = int(comp.get('human_accepted_jobs', 0))
+                            m_runs = int(comp.get('merged_runs', 0))
+                            r_jobs = int(comp.get('independent_review_approved_jobs', 0))
+                            completed = h_jobs + m_runs
+                            rate = round((completed / r_jobs * 100), 1) if r_jobs > 0 else None
+                            current_outcomes = dict(
+                                completed_tasks=completed,
+                                human_accepted_jobs=h_jobs,
+                                merged_runs=m_runs,
+                                review_approved_jobs=r_jobs,
+                                acceptance_rate=rate
+                            )
+                            telem = extract_telemetry(summ, share_models=bool(self.state.get('share_models')))
+                            last_synced = self.state.get('last_synced_outcomes')
+                            last_telem = self.state.get('last_synced_telemetry')
+                            if queue_kwargs is None and ((completed > 0 and current_outcomes != last_synced) or (telem and telem != last_telem)):
+                                queue_kwargs = dict(_fingerprints={}, events=[], work_outcomes=current_outcomes)
+                                if telem: queue_kwargs['telemetry'] = telem
+                            elif queue_kwargs is not None:
+                                queue_kwargs['work_outcomes'] = current_outcomes
+                                if telem: queue_kwargs['telemetry'] = telem
                     except Exception:
                         pass
-
                 if queue_kwargs is not None:
-                    if lifetime and hasattr(lifetime, 'summary'):
-                        try:
-                            summ = lifetime.summary('all')
-                            if 'work_outcomes' not in queue_kwargs:
-                                comp = summ.get('completion') or {}
-                                h_jobs = int(comp.get('human_accepted_jobs', 0))
-                                m_runs = int(comp.get('merged_runs', 0))
-                                r_jobs = int(comp.get('independent_review_approved_jobs', 0))
-                                completed = h_jobs + m_runs
-                                rate = round((completed / r_jobs * 100), 1) if r_jobs > 0 else None
-                                queue_kwargs['work_outcomes'] = dict(
-                                    completed_tasks=completed,
-                                    human_accepted_jobs=h_jobs,
-                                    merged_runs=m_runs,
-                                    review_approved_jobs=r_jobs,
-                                    acceptance_rate=rate
-                                )
-                            if 'telemetry' not in queue_kwargs:
-                                telem = extract_telemetry(summ, share_models=bool(self.state.get('share_models')))
-                                if telem: queue_kwargs['telemetry'] = telem
-                        except Exception:
-                            pass
                     self._queue('sync', **queue_kwargs)
                     self._flush()
                     if queue_kwargs.get('work_outcomes'):
