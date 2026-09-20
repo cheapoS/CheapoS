@@ -20,7 +20,16 @@ class BranchStartTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name).resolve();self.source=self.root/'repo';self.source.mkdir()
         git(self.source,'init','-qb','main');git(self.source,'config','user.name','Fixture');git(self.source,'config','user.email','fixture@example.invalid')
-        (self.source/'hello.py').write_text('value=1\n');git(self.source,'add','.');git(self.source,'commit','-qm','base')
+        (self.source/'hello.py').write_text('value=1\n')
+        # Python 3.13+ rejects discovery with zero tests. Give commit/recovery
+        # fixtures real verification instead of relying on an empty suite.
+        (self.source/'test_hello.py').write_text(
+            'import unittest\nfrom hello import value\n'
+            'class HelloTests(unittest.TestCase):\n'
+            '    def test_value(self):\n'
+            '        self.assertIsInstance(value, int)\n'
+            '        self.assertGreater(value, 0)\n')
+        git(self.source,'add','.');git(self.source,'commit','-qm','base')
         self.engine=Engine(self.root/'state',fixture_delay=0);self.addCleanup(self.engine.shutdown)
         self.engine.config={'worker':dict(CONFIG,model='worker',input_rate=0,output_rate=0),'reviewer':dict(CONFIG,model='reviewer',input_rate=0,output_rate=0)}
         self.launch=self.engine.branch.launch

@@ -99,3 +99,16 @@ recorded delay, first dispatch, and dispatch after cooldown expiry. Production
 pacing is unchanged. The 20 focused operator/pacing/policy tests passed in 2.391
 seconds; eight Resume/steering tests passed in 0.488 seconds. CI now lets all four
 platform/interpreter jobs finish so one failure cannot hide other results.
+
+Run `35477767545` passed both Python 3.9 jobs. Both Python 3.13 jobs exposed an
+empty shared verification fixture: modern unittest exits with code 5 when no
+tests are discovered. The fixture now includes an actual assertion about its
+sample module. No production verification rule was relaxed, and no new workflow
+test or deliberate wait was introduced. The 47 selected regressions passed in
+47.188 seconds on Python 3.9; 13 start/commit/recovery regressions also passed on
+Python 3.14 in 44.736 seconds. The complete hosted matrix will validate Python
+3.13 on the resulting commit.
+
+The app repository's public visibility and private vulnerability reporting were
+verified in GitHub. The separate Club repository remains private. Announcement
+drafts and site-deployment records are retained in that private repository.
