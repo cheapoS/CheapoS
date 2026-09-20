@@ -7,7 +7,7 @@ import threading
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from .metrics import number
-from .request_health import route_name
+from .request_health import route_name, historical_route_metadata
 from . import __version__
 from .served_identity import safe_model, normalized
 
@@ -130,9 +130,19 @@ class LifetimeUsage:
             previous = self.state['tasks'].get(key, {})
             entry = copy.deepcopy(previous) or {'requests': {}, 'residual': {}, 'partial': False}
             for record in task.get('request_metrics', []):
-                sanitized = clean(record)
+                route = historical_route_metadata(record, task.get('gateway_connections'))
+                sanitized = clean({**record, **route})
                 if sanitized is not None and record.get('id'):
-                    entry['requests'][digest(record['id'])] = sanitized
+                    request_id = digest(record['id'])
+                    prior = entry['requests'].get(request_id, {})
+                    if (not route and 'request_gateway' not in record and 'request_provider' not in record
+                            and sanitized['requested_model'] == prior.get('requested_model')
+                            and sanitized['role'] == prior.get('role')):
+                        # Later chat settings may no longer retain the original
+                        # connection. Keep already recorded evidence for this ID.
+                        for field in ('request_gateway', 'request_provider'):
+                            sanitized[field] = route_name(prior.get(field))
+                    entry['requests'][request_id] = sanitized
             usage = copy.deepcopy(task.get('usage') or {})
             for record in task.get('request_metrics', []):
                 if record.get('synthetic'):
