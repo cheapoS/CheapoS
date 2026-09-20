@@ -141,7 +141,9 @@ In PR mode, both Interactive and Unattended work use the same checks and
 independent review. In **Changes**, approve publishing the reviewed task branch
 and opening a pull request. cheapoS shows GitHub CI status; you make the final
 merge on GitHub under that repository's required checks and review rules.
-Your local destination checkout stays unchanged.
+Publishing leaves your local destination checkout unchanged. After GitHub reports
+the merge, cheapoS fetches and fast-forwards the local target when safe. New
+PR-mode tasks also check for remote updates before capturing their starting code.
 
 This uses your existing GitHub remote and a local [GitHub CLI](https://cli.github.com/)
 login. Configure branch protection and required CI checks on GitHub separately;

@@ -200,7 +200,9 @@ def status(engine, task_id):
     if not operation or not operation.get('number'):
         raise ValueError('Publish this task’s pull request first')
     result = {**operation, 'ci': github.checks(operation['repo'], operation['number'], operation['head'])}
-    # Status refresh changes only PR metadata, never work authority or local Git.
+    # Establish completion against the saved candidate before local sync can
+    # advance its source branch. A remote merge never renews execution authority.
+    sync = False
     with engine.lock:
         current = engine.store.get(task_id)
         if current.get('pull_request', {}).get('id') == operation['id']:
@@ -216,6 +218,8 @@ def status(engine, task_id):
                 # GitHub confirms the exact published head was merged. This is
                 # a remote receipt, not evidence of a local checkout mutation.
                 current.update(status='completed', error=None)
+                result['merged_head'] = operation['head']
+                current['pull_request']['merged_head'] = operation['head']
                 run = current.get('branch_run')
                 if run and run.get('expected_feature_tip') == operation['head']:
                     run.update(status='merged', pause_reason=None, merge_receipt={
@@ -223,4 +227,27 @@ def status(engine, task_id):
                         'target_ref': run['target_ref'], 'merge_commit': result['ci']['merged_commit'], 'url': operation['url']})
             if current != before:
                 engine.store.save(current)
+            sync = (result['ci']['state'] == 'merged' and not busy
+                    and current['pull_request'].get('merged_head') == operation['head'])
+    if sync:
+        # Network/Git I/O happens outside the global engine lock. A pending
+        # checkout sync must not turn an already merged task into a failed task.
+        from .git_sync import synchronize
+        try:
+            with engine.admission.integration(task_id, operation['source']):
+                local = synchronize(operation['source'], operation['remote'], 'refs/heads/' + operation['base'],
+                    expected_destination=(operation['repo'], operation['push_url']),
+                    merged_commit=result['ci'].get('merged_commit'))
+                with engine.lock:
+                    current = engine.store.get(task_id)
+                    if current.get('pull_request', {}).get('id') == operation['id']:
+                        previous = current['pull_request'].get('local_sync')
+                        current['pull_request']['local_sync'] = copy.deepcopy(local)
+                        if local != previous:
+                            engine.event(current, 'git_sync', local['message'], local)
+                        engine.store.save(current)
+                result['local_sync'] = local
+        except ValueError:
+            result['local_sync'] = {'state': 'deferred', 'retryable': True,
+                'message': 'The PR is merged. Local sync will retry after the current repository operation finishes.'}
     return result

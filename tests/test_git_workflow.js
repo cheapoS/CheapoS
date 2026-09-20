@@ -18,3 +18,10 @@ test('CI presentation does not claim unprotected branches are protected',()=>{
  assert.equal(workflow.safeURL('https://github.com.evil.test/org/repo/pull/1'),null);
  assert.doesNotMatch(workflow.content({repo:'<script>',base:'main',branch:'x'}),/<script>/);
 });
+test('merged PR distinguishes local sync and retries pending checkout updates',()=>{
+ const p={url:'https://github.com/org/repo/pull/7',number:7,ci:{state:'merged',message:'Merged on GitHub.'},local_sync:{state:'deferred',retryable:true,message:'Local draft preserved <safe>'}};
+ assert.match(workflow.content(p),/Local draft preserved &lt;safe&gt;/);
+ assert.equal(workflow.needsSync(p),true);
+ assert.equal(workflow.needsSync({...p,local_sync:{state:'current',retryable:false}}),false);
+ assert.equal(workflow.needsSync({...p,ci:{state:'changed'}}),false);
+});

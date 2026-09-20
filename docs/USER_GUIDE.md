@@ -413,7 +413,7 @@ Unattended chats.
 - **Local merge (default):** approve the existing local commit or branch merge.
   Nothing is pushed automatically.
 - **GitHub pull request:** approve publishing the reviewed task branch and
-  opening a PR from Changes. The destination branch and checkout stay unchanged.
+  opening a PR from Changes. Publishing leaves the destination checkout unchanged.
   Merge on GitHub after its checks and review rules are satisfied.
 
 Choose **Project settings → Git workflow** for one project's future chats, or
@@ -443,9 +443,23 @@ remote task branch is never overwritten. If GitHub checks fail, request a repair
 in the task with the failure details; automatic remote-CI repair is not included.
 
 GitHub status refreshes while the PR panel is open. After GitHub confirms the
-current reviewed commit was merged, cheapoS records completion. This does not
-pull into or modify your local checkout; update it through your normal Git
-workflow before starting subsequent work.
+current reviewed commit was merged, cheapoS records completion and fetches the
+selected remote branch. It fast-forwards the local target, including its linked
+worktree if checked out there, and refreshes the matching remote-tracking ref.
+New PR-mode Interactive and Unattended tasks also sync their selected starting
+branch before capturing the snapshot or planning inputs. Local workflow remains
+offline, and already captured tasks keep their original code and review evidence.
+
+Sync never switches your checkout, resets local commits, stashes drafts, rebases,
+or creates an automatic merge commit. Unrelated staged and unstaged edits are
+preserved. Overlapping drafts, an existing Git operation, changed destinations,
+or diverged history defer the local update; an unavailable remote also leaves
+local work usable. The PR remains completed and the panel explains whether local
+sync is complete or pending. Pending sync retries while that panel is open, and
+the next new task checks again. Until sync succeeds, new work uses the current
+local branch; the task records that freshness limitation. A local branch ahead
+of the remote retains its extra commits. Squash/rebase PR merges use GitHub's
+merge commit receipt rather than assuming the original task head is an ancestor.
 
 ## Settings scopes
 

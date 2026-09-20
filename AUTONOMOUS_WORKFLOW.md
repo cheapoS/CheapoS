@@ -11,6 +11,16 @@ not claims about current behavior.
 
 ## Implemented: merge around unrelated local drafts
 
+In the GitHub PR workflow, confirmed remote merges retain a completion receipt
+even when the local checkout cannot yet advance. The controller fetches the
+captured remote/base and performs a fast-forward when safe, including a target
+checked out in another linked worktree. New PR-mode tasks check their starting
+branch before capturing code or planning inputs. Local mode does not fetch.
+Already captured work, verification and authorization stay pinned. Local commits
+and overlapping drafts are never reset or stashed; a deferred sync records its
+freshness limitation and retries on PR refresh or the next new task. No worker
+Git tool, remote auto-merge or renewed execution authority is introduced.
+
 Unattended branch integration compares destination edits with the exact incoming
 file changes. Unrelated staged, unstaged and untracked work can remain in place
 through preview, explicit merge approval and interrupted-merge recovery. It is
