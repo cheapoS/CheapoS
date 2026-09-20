@@ -372,6 +372,28 @@ class Workspace:
             result["syntax_warning"] = warning
         return result
 
+    def replace_content(self, path, chunks=None, target=None, replacement=None):
+        file_path = self.path(path)
+        if not file_path.exists():
+            raise ValueError(f"File '{path}' does not exist; use write_file to create new files")
+        if file_path.stat().st_size > MAX_FILE_BYTES:
+            raise ValueError("File is too large")
+        if chunks is None:
+            if target is None or replacement is None:
+                raise ValueError("Provide either 'chunks' or both 'target' and 'replacement'")
+            chunks = [{"target": target, "replacement": replacement}]
+        from .edit_matcher import apply_chunks
+        text = file_path.read_text(encoding="utf-8")
+        new_text, count = apply_chunks(text, chunks, filename=str(file_path))
+        if len(new_text.encode("utf-8")) > MAX_FILE_BYTES:
+            raise ValueError("Replacement is too large")
+        file_path.write_text(new_text, encoding="utf-8")
+        result = {"path": path, "updated": True, "chunks_applied": count}
+        warning = self.validate_syntax(path)
+        if warning:
+            result["syntax_warning"] = warning
+        return result
+
     def append_text(self, path, text):
         target = self.path(path)
         if not target.exists():

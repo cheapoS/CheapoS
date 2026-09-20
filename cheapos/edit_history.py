@@ -7,7 +7,7 @@ import uuid
 from .workspace import FileTextMatchError
 
 KEEP_EDITS = 16
-TEXT_EDITS = frozenset({'write_file', 'replace_text', 'replace_lines', 'append_text'})
+TEXT_EDITS = frozenset({'write_file', 'replace_text', 'replace_lines', 'replace_content', 'append_text'})
 MUTATIONS = TEXT_EDITS | {'delete_file', 'apply_merge_version', 'undo_edit'}
 
 
