@@ -1775,7 +1775,8 @@ class Engine:
                     self.store.save(task)
                     raise
                 summary = (task.get("checkpoints") or [{}])[-1].get("worker_summary") or task["title"]
-                plan["message"] = " ".join(summary.split())[:120] or "Apply cheapoS changes"
+                summary = re.sub(r"\s+", " ", summary).strip()
+                plan["message"] = summary[:2000] or "Apply cheapoS changes"
             token = uuid.uuid4().hex
             self.commit_previews = {k: v for k, v in self.commit_previews.items() if time.monotonic() - v["created"] < 600}
             self.commit_previews[token] = {"task_id": task_id, "created": time.monotonic(), "plan": plan}
