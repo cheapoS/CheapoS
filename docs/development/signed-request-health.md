@@ -34,6 +34,21 @@ new fields; they cannot publish the new measurements. Existing accepted events
 are amended by the normal fingerprint/reconciliation mechanism after upgrade;
 unknown historical routing evidence is not guessed.
 
+For legacy requests that lack dispatch-time route fields, normal journal ingest
+can recover routing from the saved dispatch scope. Its endpoint, connection
+revision, requested model and role must match exactly, and the captured connection
+must explicitly be OmniRoute. Ambiguous, changed or missing connections are not
+used. The requested namespace establishes the route even when the served model
+omits that namespace. Explicit local access evidence also establishes a local
+route. Existing explicit route fields, including unknown values, are preserved.
+No current connection settings or model/vendor dictionary is consulted.
+
+This runs during the existing saved-task ingest on restart/save. It retains
+request IDs and token totals and never edits task records. Recovered route facts
+are sent as signed corrections under the same event IDs and existing consent;
+the site changes only after accepting them. Requests without retained evidence
+remain unknown. Endpoints and connection revisions stay local.
+
 The Club publishes metrics derived from accepted event rows joined to ingestion
 receipts. Legacy client aggregate snapshots are not sufficient proof of request
 membership. Completion/model-pair/stage claims need their own validated receipts.

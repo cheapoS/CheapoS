@@ -16,6 +16,35 @@ def record(id, role='worker', category='public_free', **extra):
 
 
 class LifetimeUsageTests(unittest.TestCase):
+    def test_historical_route_correction_keeps_identity_totals_and_private_evidence_local(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = LifetimeUsage(directory)
+            scope = dict(base_url='http://private.invalid/v1', connection_revision='private-revision',
+                         model='groq/openai/shared-model', role='worker')
+            item = record('legacy', requested_model=scope['model'], served_model='openai/shared-model', dispatch_scope=scope)
+            task = dict(id='old-task', request_metrics=[item])
+            ledger.ingest(task)
+            original = ledger.raw_requests()[0]
+            before = ledger.summary()['tokens']
+            self.assertEqual(original['request_provider'], 'unknown')
+            task['gateway_connections'] = [{**scope, 'gateway_type': 'omniroute'}]
+            ledger.ingest(task)
+            recovered = ledger.raw_requests()[0]
+            self.assertEqual(recovered['request_provider'], 'groq')
+            self.assertEqual(recovered['request_gateway'], 'omniroute')
+            self.assertEqual(recovered['request_id'], original['request_id'])
+            self.assertEqual(ledger.summary()['tokens'], before)
+            self.assertNotIn('request_provider', item)
+            for secret in ('private.invalid', 'private-revision', 'dispatch_scope'):
+                self.assertNotIn(secret, Path(directory, 'lifetime-usage.json').read_text())
+            with patch('cheapos.lifetime_usage.os.replace', side_effect=AssertionError('duplicate write')):
+                ledger.ingest(task)
+                task['gateway_connections'] = []
+                ledger.ingest(task)  # Later settings cannot erase retained evidence.
+            item.update(request_gateway='unknown', request_provider='unknown')
+            ledger.ingest(task)
+            self.assertEqual(ledger.raw_requests()[0]['request_provider'], 'unknown')
+
     def test_mixed_requests_and_export_deidentification(self):
         with tempfile.TemporaryDirectory() as directory:
             ledger = LifetimeUsage(directory)

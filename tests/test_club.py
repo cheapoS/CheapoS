@@ -64,6 +64,35 @@ class ClubTests(unittest.TestCase):
         second=json.loads(self.sent[-1]['payload'])['events'][0]
         self.assertEqual(first['event_id'],second['event_id']);self.assertEqual(second['input_tokens'],20)
 
+    def test_recovered_route_uses_existing_signed_correction_and_model_consent(self):
+        from cheapos.request_health import historical_route_metadata
+        self.club.set_sync(True, True)
+        scope = dict(base_url='http://private.invalid/v1', connection_revision='private-revision',
+                     model='groq/openai/shared-model', role='worker')
+        row = {**self.row(), 'requested_model': scope['model'], 'served_model': 'openai/shared-model'}
+        self.rows.append(row)
+        self.club.sync_now(self.ledger)
+        first = json.loads(self.sent[-1]['payload'])['events'][0]
+        row.update(historical_route_metadata({**row, 'dispatch_scope': scope}, [{**scope, 'gateway_type': 'omniroute'}]))
+        self.club.sync_now(self.ledger)
+        second = json.loads(self.sent[-1]['payload'])['events'][0]
+        self.assertEqual(second['event_id'], first['event_id'])
+        self.assertEqual(second['input_tokens'], first['input_tokens'])
+        self.assertEqual(second['model_name'], first['model_name'])
+        self.assertEqual(second['request_health']['provider'], 'groq')
+        self.assertEqual(second['request_health']['gateway'], 'omniroute')
+        self.assertNotIn('private.invalid', self.sent[-1]['payload'])
+        self.assertNotIn('private-revision', self.sent[-1]['payload'])
+        count = len(self.sent)
+        self.club.sync_now(self.ledger)
+        self.assertEqual(len(self.sent), count)
+        self.club.set_sync(True, False)
+        self.club.sync_now(self.ledger)
+        private = json.loads(self.sent[-1]['payload'])['events'][0]
+        self.assertNotIn('model_name', private)
+        self.assertNotIn('provider', private['request_health'])
+        self.assertNotIn('gateway', private['request_health'])
+
     def test_pause_does_not_transmit_unsent_batch(self):
         self.club.set_sync(True);self.rows.append(self.row());self.club._request=Mock(side_effect=ValueError('offline'))
         with self.assertRaises(ValueError):self.club.sync_now(self.ledger)
