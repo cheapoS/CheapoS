@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import Mock
 from cheapos.club import ClubManager
+from cheapos.club_routes import backfill_routes
+import uuid
 
 class ClubTests(unittest.TestCase):
     def setUp(self):
@@ -327,3 +329,121 @@ class ClubTests(unittest.TestCase):
                           'requested_model':'openrouter/vendor/model:free'})
         self.club.sync_now(self.ledger)
         self.assertEqual(json.loads(self.sent[-1]['payload'])['events'][0]['category'],'unknown')
+
+    def prepare_route_backfill(self):
+        self.rows.extend([{**self.row(rid), 'requested_model':'openrouter/vendor/model',
+                           'request_gateway':'omniroute', 'request_provider':'openrouter'}
+                          for rid in ('previously-shared', 'always-private')])
+        self.club.set_sync(True, True)
+        event_id = str(uuid.uuid5(uuid.UUID(self.club.state['installation_id']), 'previously-shared'))
+        def request(envelope):
+            message = json.loads(envelope['payload'])
+            if message['action'] == 'route_history':
+                self.sent.append(envelope)
+                self.assertEqual(set(message), {'version','action','installation_id','pairing_id','event_ids'})
+                return {'status':'route_history', 'event_ids':[event_id]}
+            return self.accept(envelope)
+        self.club._request = request
+        return event_id, request
+
+    def test_backfill_updates_only_server_confirmed_metadata_and_not_usage_eligibility(self):
+        event_id, _ = self.prepare_route_backfill()
+        original = json.dumps(self.rows, sort_keys=True)
+        self.club.sync_now(self.ledger)
+        message = json.loads(self.sent[-1]['payload'])
+        self.assertEqual(message['events'], [])
+        self.assertNotIn('telemetry', message)
+        self.assertNotIn('work_outcomes', message)
+        self.assertEqual(message['route_corrections'], [{'event_id':event_id,'gateway':'omniroute','provider':'openrouter'}])
+        self.assertEqual(self.club.state['sent'], {})
+        self.assertEqual(set(self.club.state['baseline']), {'previously-shared','always-private'})
+        self.assertEqual(json.dumps(self.rows, sort_keys=True), original)
+        self.assertIn('Token totals are unchanged', self.club.state['sync_message'])
+        calls = len(self.sent)
+        self.club.sync_now(self.ledger)
+        self.assertEqual(len(self.sent), calls)
+
+    def test_backfill_lost_ack_retries_same_envelope_after_restart(self):
+        _, request = self.prepare_route_backfill()
+        def lost_ack(envelope):
+            result = request(envelope)
+            if json.loads(envelope['payload'])['action'] == 'sync':
+                raise ValueError('offline')
+            return result
+        self.club._request = lost_ack
+        self.assertEqual(backfill_routes(self.club, self.ledger), 0)
+        saved = self.club.state['pending']['envelope']
+        self.assertNotIn('previously-shared', self.club.state['route_backfill_processed'])
+        reopened = ClubManager(self.temp.name, credentials=Mock())
+        reopened._request = request
+        reopened._flush()
+        self.assertEqual(self.sent[-1], saved)
+        self.assertIn('previously-shared', reopened.state['route_backfill_processed'])
+        self.assertEqual(reopened.state['sent'], {})
+
+    def test_backfill_discovery_failure_or_unknown_route_does_not_block_normal_usage(self):
+        self.prepare_route_backfill()
+        def old_server(envelope):
+            if json.loads(envelope['payload'])['action'] == 'route_history':
+                raise ValueError('unsupported')
+            return self.accept(envelope)
+        self.club._request = old_server
+        self.rows.append(self.row('new'))
+        self.club.sync_now(self.ledger)
+        self.assertIn('new', self.club.state['sent'])
+        self.assertIsNone(self.club.state['pending'])
+        self.assertIsNone(self.club.state['error'])
+        self.assertEqual(self.club.state['route_backfill_error'], 'unsupported')
+        for row in self.rows: row.pop('request_provider', None)
+        self.club._route_backfill_retry_at = 0
+        self.club._request = Mock(side_effect=AssertionError('No metadata may be inferred from a model prefix'))
+        self.assertEqual(backfill_routes(self.club, self.ledger), 0)
+
+    def test_backfill_honors_model_consent_and_rejects_unrequested_ids(self):
+        self.prepare_route_backfill()
+        self.club._request = Mock(side_effect=AssertionError('Sharing is off'))
+        self.club.state['share_models'] = False
+        self.assertEqual(backfill_routes(self.club, self.ledger), 0)
+        self.club.state['share_models'] = True
+        self.club._request = Mock(return_value={'status':'route_history','event_ids':[str(uuid.uuid4())]})
+        self.assertEqual(backfill_routes(self.club, self.ledger), 0)
+        self.assertIsNone(self.club.state['pending'])
+        self.assertEqual(self.club.state['route_backfill_processed'], {})
+
+    def test_backfill_batches_continue_and_model_consent_rechecks_saved_metadata(self):
+        self.rows.extend([{**self.row(str(n)), 'request_gateway':'omniroute', 'request_provider':'openrouter'} for n in range(101)])
+        self.club.set_sync(True, True)
+        def request(envelope):
+            message = json.loads(envelope['payload'])
+            if message['action'] == 'route_history':
+                return {'status':'route_history','event_ids':message['event_ids']}
+            return self.accept(envelope)
+        self.club._request = request
+        self.assertEqual(backfill_routes(self.club, self.ledger), 100)
+        self.assertEqual(backfill_routes(self.club, self.ledger), 1)
+        self.assertEqual(backfill_routes(self.club, self.ledger), 0)
+        self.assertEqual(len(self.club.state['route_backfill_processed']), 101)
+        self.assertEqual(self.club.state['sent'], {})
+        self.club.set_sync(True, False)
+        self.assertEqual(backfill_routes(self.club, self.ledger), 0)
+        self.club.set_sync(True, True)
+        self.assertEqual(backfill_routes(self.club, self.ledger), 100)
+
+    def test_pause_reconciles_backfill_ack_without_promoting_usage(self):
+        _, request = self.prepare_route_backfill()
+        def lost_ack(envelope):
+            result = request(envelope)
+            if json.loads(envelope['payload'])['action'] == 'sync':
+                raise ValueError('offline')
+            return result
+        self.club._request = lost_ack
+        backfill_routes(self.club, self.ledger)
+        envelope = self.club.state['pending']['envelope']
+        message = json.loads(envelope['payload'])
+        self.club._call = Mock(return_value={'sequence':message['sequence'],'previous_hash':hashlib.sha256(envelope['payload'].encode()).hexdigest()})
+        self.club._request = request
+        self.club.set_sync(False)
+        self.assertFalse(self.club.state['sync_enabled'])
+        self.assertEqual(self.club.state['sent'], {})
+        self.assertIn('previously-shared', self.club.state['route_backfill_processed'])
+        self.assertEqual(json.loads(self.sent[-1]['payload'])['action'], 'consent')

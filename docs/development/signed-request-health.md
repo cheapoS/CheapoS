@@ -43,6 +43,38 @@ omits that namespace. Explicit local access evidence also establishes a local
 route. Existing explicit route fields, including unknown values, are preserved.
 No current connection settings or model/vendor dictionary is consulted.
 
+### Metadata backfill after reconnecting
+
+Reconnects can leave accepted historical events outside the current connection's
+local `sent` map. Normal usage sync must continue excluding the pre-consent
+baseline. `club_routes.backfill_routes` uses a separate metadata path instead:
+
+1. A signed `route_history` lookup sends at most 500 opaque event IDs, with no
+   models, routes, tokens or task details. The Club returns only IDs already
+   accepted for this installation and current owner, linked to usage receipts.
+2. A signed, sequenced `sync` with `events: []` and up to 100 `route_corrections`
+   sends only `{event_id, gateway, provider}` for confirmed IDs. The Club rejects
+   missing, foreign or unreceipted events and all accounting fields. It never
+   inserts usage or changes model names, tokens, categories, health or outcomes.
+3. The site publishes receipt-backed `model_routes` for labels separately from
+   the existing health sample. A provider name therefore does not manufacture
+   reliability, latency, recovery or task measurements.
+
+The existing installation key, active pairing, sharing and model-sharing consent
+apply. Turning model sharing off clears metadata; negative lookups never upload
+private history. The independent processed map is scoped to the pairing/account
+and is cleared on model-consent changes. It never changes `baseline` or `sent`.
+Lost acknowledgments retain the exact signed envelope for replay. Unknown routes
+are not inferred from model prefixes. Each normal sync tick can process one
+metadata batch; discovery failures retry later without blocking normal usage.
+
+Roll out Club migration `202609200003_route_metadata_backfill.sql` and its API/UI
+first, then this client. The existing app restart/save ingest recovers locally
+retained connection evidence; the background Club sync performs the backfill.
+It needs no new model calls. Older servers cannot provide the lookup and receive
+no metadata mutation. Inspect `route_backfill_error` in local connection state
+when diagnosing an incomplete rollout; do not clear the sharing baseline.
+
 This runs during the existing saved-task ingest on restart/save. It retains
 request IDs and token totals and never edits task records. Recovered route facts
 are sent as signed corrections under the same event IDs and existing consent;
