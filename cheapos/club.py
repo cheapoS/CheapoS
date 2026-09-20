@@ -25,6 +25,79 @@ def crypto():
     except ImportError:
         raise ValueError("Club connections need the optional dependency: python3 -m pip install -r requirements-club.txt. Local work is unaffected.") from None
 
+def extract_telemetry(summ, share_models=False):
+    if not summ or not isinstance(summ, dict):
+        return None
+    healing = summ.get('self_healing_index') or {}
+    models = summ.get('models') or {}
+    total_reqs = sum(m.get('requests', 0) for m in models.values())
+    total_succ = sum(m.get('successes', 0) for m in models.values())
+    total_fail = sum(m.get('failures', 0) for m in models.values())
+    total_secs = sum(m.get('total_seconds', 0.0) for m in models.values())
+    avg_lat = round((total_secs / total_succ) * 1000) if total_succ > 0 else 0
+    succ_rate = round((total_succ / (total_succ + total_fail)) * 100, 1) if (total_succ + total_fail) > 0 else 100.0
+    fb = {}
+    for m in models.values():
+        for k, count in m.get('failure_breakdown', {}).items():
+            safe_k = str(k)[:60]
+            fb[safe_k] = fb.get(safe_k, 0) + int(count)
+
+    pairs = []
+    if share_models:
+        for p in list((summ.get('model_pairs') or {}).values())[:10]:
+            w = safe_model(p.get('worker'))
+            rv = safe_model(p.get('reviewer'))
+            if w and rv:
+                pairs.append(dict(
+                    worker=w[:160],
+                    reviewer=rv[:160],
+                    is_independent=bool(p.get('is_independent')),
+                    total_jobs=int(p.get('total_jobs', 0)),
+                    completion_rate=float(p.get('completion_rate', 0.0)),
+                    avg_tokens_per_job=int(p.get('avg_tokens_per_job', 0))
+                ))
+
+    tok = summ.get('tokens') or {}
+    task_types = summ.get('task_types') or {}
+    types_clean = {
+        k: dict(completed=int(v.get('completed', 0)), tokens=int(v.get('tokens', 0)))
+        for k, v in task_types.items() if isinstance(v, dict)
+    }
+
+    tasks_by_role = summ.get('tasks_by_role') or {}
+    roles_clean = {}
+    for r, v in tasks_by_role.items():
+        if isinstance(v, dict):
+            m_map = {m[:160]: int(count) for m, count in (v.get('models') or {}).items()} if share_models else {}
+            roles_clean[r] = dict(
+                completed_tasks=int(v.get('completed_tasks', 0)),
+                tokens=int(v.get('tokens', 0)),
+                models=m_map
+            )
+
+    return dict(
+        self_healing=dict(
+            initial_work_tokens=int(healing.get('initial_work_tokens', 0)),
+            recovery_tokens=int(healing.get('recovery_tokens', 0)),
+            repair_overhead_pct=float(healing.get('repair_overhead_pct', 0.0))
+        ),
+        model_pairs=pairs,
+        provider_health=dict(
+            total_requests=total_reqs,
+            successes=total_succ,
+            failures=total_fail,
+            success_rate=succ_rate,
+            avg_latency_ms=avg_lat,
+            failure_breakdown=fb
+        ),
+        token_depth=dict(
+            reasoning_tokens=int(tok.get('reasoning', 0)),
+            cached_tokens=int(tok.get('cached', 0))
+        ),
+        task_types=types_clean,
+        tasks_by_role=roles_clean
+    )
+
 class ClubManager:
     def __init__(self, data_directory, leaderboard_url=None, credentials=None):
         self.directory=Path(data_directory)
@@ -302,6 +375,10 @@ class ClubManager:
                     if any(type(row.get(k)) not in (int,float) or row[k]<0 or row[k]>1000000000 or int(row[k])!=row[k] for k in ('input_tokens','output_tokens')):
                         waiting+=1;continue
                     event=dict(event_id=str(uuid.uuid5(uuid.UUID(self.state['installation_id']),rid)),category='paid' if (row.get('reported_cost') or 0)>0 else resolve_category(row),input_tokens=int(row['input_tokens']),output_tokens=int(row['output_tokens']),accounting_at=row['date']+'T00:00:00Z')
+                    if row.get('reasoning_tokens') is not None and isinstance(row['reasoning_tokens'], (int, float)) and row['reasoning_tokens'] >= 0:
+                        event['reasoning_tokens'] = int(row['reasoning_tokens'])
+                    if row.get('cached_tokens') is not None and isinstance(row['cached_tokens'], (int, float)) and row['cached_tokens'] >= 0:
+                        event['cached_tokens'] = int(row['cached_tokens'])
                     role=row.get('role')
                     if role in ('worker','reviewer','planner','coordinator'):
                         event['role']=role
@@ -333,35 +410,44 @@ class ClubManager:
                             review_approved_jobs=r_jobs,
                             acceptance_rate=rate
                         )
+                        telem = extract_telemetry(summ, share_models=bool(self.state.get('share_models')))
                         last_synced = self.state.get('last_synced_outcomes')
-                        if completed > 0 and current_outcomes != last_synced:
+                        last_telem = self.state.get('last_synced_telemetry')
+                        if (completed > 0 and current_outcomes != last_synced) or (telem and telem != last_telem):
                             queue_kwargs = dict(_fingerprints={}, events=[], work_outcomes=current_outcomes)
+                            if telem: queue_kwargs['telemetry'] = telem
                     except Exception:
                         pass
 
                 if queue_kwargs is not None:
-                    if 'work_outcomes' not in queue_kwargs and lifetime and hasattr(lifetime, 'summary'):
+                    if lifetime and hasattr(lifetime, 'summary'):
                         try:
                             summ = lifetime.summary('all')
-                            comp = summ.get('completion') or {}
-                            h_jobs = int(comp.get('human_accepted_jobs', 0))
-                            m_runs = int(comp.get('merged_runs', 0))
-                            r_jobs = int(comp.get('independent_review_approved_jobs', 0))
-                            completed = h_jobs + m_runs
-                            rate = round((completed / r_jobs * 100), 1) if r_jobs > 0 else None
-                            queue_kwargs['work_outcomes'] = dict(
-                                completed_tasks=completed,
-                                human_accepted_jobs=h_jobs,
-                                merged_runs=m_runs,
-                                review_approved_jobs=r_jobs,
-                                acceptance_rate=rate
-                            )
+                            if 'work_outcomes' not in queue_kwargs:
+                                comp = summ.get('completion') or {}
+                                h_jobs = int(comp.get('human_accepted_jobs', 0))
+                                m_runs = int(comp.get('merged_runs', 0))
+                                r_jobs = int(comp.get('independent_review_approved_jobs', 0))
+                                completed = h_jobs + m_runs
+                                rate = round((completed / r_jobs * 100), 1) if r_jobs > 0 else None
+                                queue_kwargs['work_outcomes'] = dict(
+                                    completed_tasks=completed,
+                                    human_accepted_jobs=h_jobs,
+                                    merged_runs=m_runs,
+                                    review_approved_jobs=r_jobs,
+                                    acceptance_rate=rate
+                                )
+                            if 'telemetry' not in queue_kwargs:
+                                telem = extract_telemetry(summ, share_models=bool(self.state.get('share_models')))
+                                if telem: queue_kwargs['telemetry'] = telem
                         except Exception:
                             pass
                     self._queue('sync', **queue_kwargs)
                     self._flush()
                     if queue_kwargs.get('work_outcomes'):
                         self.state['last_synced_outcomes'] = queue_kwargs['work_outcomes']
+                    if queue_kwargs.get('telemetry'):
+                        self.state['last_synced_telemetry'] = queue_kwargs['telemetry']
                     uploaded += len(queue_kwargs.get('events', []))
                 self.state['sync_message']=(f'Uploaded {uploaded} usage records. Additional queued usage syncs automatically.' if uploaded else 'No new usage yet. Only requests made after sharing was enabled are uploaded.' if not new_requests else 'Waiting for complete token usage before uploading.' if waiting else 'Up to date. All eligible usage has already been uploaded.')
                 self.state['error']=None

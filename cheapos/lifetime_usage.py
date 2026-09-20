@@ -155,13 +155,17 @@ class LifetimeUsage:
                                     any(v['tokens'] or v['cost'] for v in entry['residual'].values()) or
                                     any(not r['date'] for r in entry['requests'].values()))
             run = task.get('branch_run') or {}
-            latest = {role: next((r for r in reversed(list(entry['requests'].values())) if r['role'] == role), {}) for role in ('worker', 'reviewer')}
+            latest = {role: next((r for r in reversed(list(entry['requests'].values())) if r['role'] == role), {}) for role in ROLES}
             worker, reviewer = latest['worker'].get('served_model'), latest['reviewer'].get('served_model')
+            planner = latest['planner'].get('served_model') or latest['planner'].get('requested_model')
+            coordinator = latest['coordinator'].get('served_model') or latest['coordinator'].get('requested_model')
             independent = bool(worker and reviewer and normalized(worker) != normalized(reviewer))
             checks = task.get('checks', [])
             checkpoints = task.get('checkpoints', [])
             entry['worker_model'] = worker
             entry['reviewer_model'] = reviewer
+            entry['planner_model'] = planner
+            entry['coordinator_model'] = coordinator
             entry['independent'] = independent
             entry['checks_summary'] = {
                 'runs': len(checks),
@@ -176,6 +180,18 @@ class LifetimeUsage:
                 'independent_review_approved_jobs': bool(previous.get('completion', {}).get('independent_review_approved_jobs') or
                     run.get('final_evidence', {}).get('review_approved') is True or
                     task.get('status') == 'approved' and independent and any(c.get('decision') == 'APPROVE' for c in task.get('checkpoints', [])))}
+            has_plan = bool(task.get('proposal') or run.get('plan') or run.get('items') or any(r.get('role') == 'planner' for r in entry['requests'].values()))
+            review_count = len(entry['reviews_summary']['decisions'])
+            if not review_count and any(r.get('role') == 'reviewer' for r in entry['requests'].values()):
+                review_count = 1
+            is_completed = bool(entry['completion']['merged_runs'] or entry['completion']['human_accepted_jobs'])
+            has_coord = bool(entry.get('coordinator_model') or any(r.get('role') == 'coordinator' for r in entry['requests'].values()))
+            entry['stage_completion'] = {
+                'planning': has_plan,
+                'reviewing': review_count,
+                'implementation': is_completed,
+                'coordination': has_coord
+            }
             if entry == previous:
                 return
             state = copy.deepcopy(self.state)
@@ -323,6 +339,54 @@ class LifetimeUsage:
             'recovery_tokens': recovery_tokens,
             'repair_overhead_pct': round((recovery_tokens / max(total_code_tokens, 1)) * 100, 1) if total_code_tokens > 0 else 0.0
         }
+
+        tasks_by_role = {role: {'completed_tasks': 0, 'tokens': 0, 'models': {}} for role in ROLES}
+        task_types = {
+            'planning': {'completed': 0, 'tokens': 0},
+            'implementation': {'completed': 0, 'tokens': 0},
+            'reviewing': {'completed': 0, 'tokens': 0},
+            'coordination': {'completed': 0, 'tokens': 0},
+        }
+        for task in state['tasks'].values():
+            stg = task.get('stage_completion') or {}
+            comp = task.get('completion') or {}
+            if stg.get('planning') or any(r.get('role') == 'planner' for r in task.get('requests', {}).values()):
+                task_types['planning']['completed'] += 1
+                tasks_by_role['planner']['completed_tasks'] += 1
+                pm = task.get('planner_model')
+                if pm:
+                    tasks_by_role['planner']['models'][pm] = tasks_by_role['planner']['models'].get(pm, 0) + 1
+            if stg.get('implementation') or comp.get('merged_runs') or comp.get('human_accepted_jobs'):
+                task_types['implementation']['completed'] += 1
+                tasks_by_role['worker']['completed_tasks'] += 1
+                wm = task.get('worker_model')
+                if wm:
+                    tasks_by_role['worker']['models'][wm] = tasks_by_role['worker']['models'].get(wm, 0) + 1
+            rev_count = stg.get('reviewing') if isinstance(stg.get('reviewing'), int) else len(task.get('reviews_summary', {}).get('decisions', []))
+            if rev_count > 0 or comp.get('independent_review_approved_jobs'):
+                task_types['reviewing']['completed'] += max(1, rev_count)
+                tasks_by_role['reviewer']['completed_tasks'] += max(1, rev_count)
+                rm = task.get('reviewer_model')
+                if rm:
+                    tasks_by_role['reviewer']['models'][rm] = tasks_by_role['reviewer']['models'].get(rm, 0) + 1
+            if stg.get('coordination') or any(r.get('role') == 'coordinator' for r in task.get('requests', {}).values()):
+                task_types['coordination']['completed'] += 1
+                tasks_by_role['coordinator']['completed_tasks'] += 1
+                cm = task.get('coordinator_model')
+                if cm:
+                    tasks_by_role['coordinator']['models'][cm] = tasks_by_role['coordinator']['models'].get(cm, 0) + 1
+
+        for role in ROLES:
+            if role in result['roles']:
+                tasks_by_role[role]['tokens'] = result['roles'][role]['tokens']
+
+        task_types['planning']['tokens'] = tasks_by_role['planner']['tokens']
+        task_types['implementation']['tokens'] = tasks_by_role['worker']['tokens']
+        task_types['reviewing']['tokens'] = tasks_by_role['reviewer']['tokens']
+        task_types['coordination']['tokens'] = tasks_by_role['coordinator']['tokens']
+
+        result['tasks_by_role'] = tasks_by_role
+        result['task_types'] = task_types
 
         total_free = sum(result['categories'][k]['tokens'] for k in ('public_free', 'included', 'local'))
         result['total_free_tokens'] = total_free
