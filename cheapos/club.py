@@ -25,6 +25,18 @@ def crypto():
     except ImportError:
         raise ValueError("Club connections need the optional dependency: python3 -m pip install -r requirements-club.txt. Local work is unaffected.") from None
 
+def classify_provider_name(name):
+    low = (name or '').lower()
+    if 'gemini' in low or 'google' in low or low.startswith('antigravity/'):
+        return 'Google'
+    if 'groq' in low:
+        return 'Groq'
+    if 'openrouter' in low or ':free' in low:
+        return 'OpenRouter'
+    if 'local' in low or 'ollama' in low or 'mlx' in low or 'gemma' in low:
+        return 'Local'
+    return 'Other'
+
 def extract_telemetry(summ, share_models=False):
     if not summ or not isinstance(summ, dict):
         return None
@@ -41,6 +53,33 @@ def extract_telemetry(summ, share_models=False):
         for k, count in m.get('failure_breakdown', {}).items():
             safe_k = str(k)[:60]
             fb[safe_k] = fb.get(safe_k, 0) + int(count)
+
+    by_provider = {}
+    if share_models:
+        for model_name, m in models.items():
+            prov = classify_provider_name(model_name)
+            p_stat = by_provider.setdefault(prov, {
+                'total_requests': 0,
+                'successes': 0,
+                'failures': 0,
+                'total_seconds': 0.0,
+                'failure_breakdown': {},
+            })
+            p_stat['total_requests'] += int(m.get('requests', 0))
+            p_stat['successes'] += int(m.get('successes', 0))
+            p_stat['failures'] += int(m.get('failures', 0))
+            p_stat['total_seconds'] += float(m.get('total_seconds', 0.0))
+            for k, count in m.get('failure_breakdown', {}).items():
+                safe_k = str(k)[:60]
+                p_stat['failure_breakdown'][safe_k] = p_stat['failure_breakdown'].get(safe_k, 0) + int(count)
+
+        for prov, p_stat in list(by_provider.items()):
+            succ = p_stat['successes']
+            fail = p_stat['failures']
+            decided = succ + fail
+            p_stat['success_rate'] = round((succ / decided) * 100, 1) if decided > 0 else 100.0
+            p_stat['avg_latency_ms'] = round((p_stat['total_seconds'] / succ) * 1000) if succ > 0 else 0
+            del p_stat['total_seconds']
 
     pairs = []
     if share_models:
@@ -88,7 +127,8 @@ def extract_telemetry(summ, share_models=False):
             failures=total_fail,
             success_rate=succ_rate,
             avg_latency_ms=avg_lat,
-            failure_breakdown=fb
+            failure_breakdown=fb,
+            by_provider=by_provider if by_provider else None
         ),
         token_depth=dict(
             reasoning_tokens=int(tok.get('reasoning', 0)),
