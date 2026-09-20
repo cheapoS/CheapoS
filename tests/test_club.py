@@ -23,7 +23,7 @@ class ClubTests(unittest.TestCase):
         self.accept=accept;self.club._request=accept
 
     def row(self,id='new',tokens=12,role='worker'):
-        return {'request_id':id,'date':'2026-09-15','reconciled':True,'input_tokens':tokens,'output_tokens':3,'category':'local','club_category':'unknown','role':role}
+        return {'request_id':id,'date':'2026-09-15','reconciled':True,'input_tokens':tokens,'output_tokens':3,'category':'local','club_category':'local','role':role}
 
     def test_opt_in_excludes_existing_usage_and_duplicate_ticks(self):
         self.rows.append(self.row('old'));self.club.set_sync(True)
@@ -238,10 +238,10 @@ class ClubTests(unittest.TestCase):
         self.assertEqual(telem['self_healing']['repair_overhead_pct'], 13.0)
         self.assertEqual(telem['token_depth']['reasoning_tokens'], 2500)
         self.assertEqual(telem['token_depth']['cached_tokens'], 4000)
-        self.assertEqual(telem['provider_health']['total_requests'], 10)
-        self.assertEqual(telem['provider_health']['success_rate'], 90.0)
-        self.assertEqual(telem['provider_health']['avg_latency_ms'], 2000)
-        self.assertEqual(telem['provider_health']['failure_breakdown'], {'timeout': 1})
+        self.assertNotIn('provider_health', telem)
+        self.assertNotIn('model_health', telem)
+        self.assertEqual(payload['events'][0]['request_health']['outcome'], 'unknown')
+        self.assertNotIn('provider', payload['events'][0]['request_health'])
         # Model pairs stripped when share_models is False
         self.assertEqual(telem['model_pairs'], [])
 
@@ -255,9 +255,8 @@ class ClubTests(unittest.TestCase):
         self.assertEqual(telem2['model_pairs'][0]['worker'], 'qwen2.5-coder:32b')
         self.assertEqual(telem2['model_pairs'][0]['reviewer'], 'deepseek-chat')
         self.assertEqual(telem2['model_pairs'][0]['completion_rate'], 87.5)
-        self.assertIn('by_provider', telem2['provider_health'])
-        self.assertIn('Qwen', telem2['provider_health']['by_provider'])
-        self.assertEqual(telem2['provider_health']['by_provider']['Qwen']['total_requests'], 10)
+        self.assertNotIn('provider_health', telem2)
+        self.assertEqual(payload2['events'][0]['request_health']['provider'], 'unknown')
 
     def test_sync_event_includes_reasoning_and_cached_tokens(self):
         self.club.set_sync(True)
@@ -269,3 +268,33 @@ class ClubTests(unittest.TestCase):
         event = json.loads(self.sent[-1]['payload'])['events'][0]
         self.assertEqual(event['reasoning_tokens'], 350)
         self.assertEqual(event['cached_tokens'], 800)
+
+    def test_health_only_travels_with_eligible_signed_events_and_retries_exactly(self):
+        from cheapos.request_health import route_metadata
+        self.rows.append(self.row('before-consent'))
+        self.club.set_sync(True, True)
+        for id, provider in [('a', 'antigravity'), ('b', 'openrouter')]:
+            self.rows.append({**self.row(id), **route_metadata({'gateway': 'omniroute', 'model': provider+'/publisher/shared'}),
+                              'served_model': 'shared', 'status': 'responded', 'seconds': 2})
+        self.rows.append({**self.row('unreconciled'), 'reconciled': False})
+        self.rows.append({**self.row('missing-usage'), 'input_tokens': None})
+        self.club._request=Mock(side_effect=ValueError('offline'))
+        with self.assertRaises(ValueError): self.club.sync_now(self.ledger)
+        saved=self.club.state['pending']['envelope']
+        events=json.loads(saved['payload'])['events']
+        self.assertEqual(len(events),2)
+        self.assertEqual([e['request_health']['provider'] for e in events],['antigravity','openrouter'])
+        self.assertEqual([e['model_name'] for e in events],['shared','shared'])
+        self.assertEqual(events[0]['request_health']['duration_ms'],2000)
+        self.assertFalse(self.club.state['sent'])
+        self.club._request=self.accept
+        self.club.sync_now(self.ledger)
+        self.assertEqual(saved,self.sent[-1])
+        self.assertEqual(set(self.club.state['sent']),{'a','b'})
+
+    def test_model_prefix_cannot_establish_free_access_in_signed_event(self):
+        self.club.set_sync(True, True)
+        self.rows.append({**self.row(), 'club_category':'unknown', 'category':'public_free',
+                          'requested_model':'openrouter/vendor/model:free'})
+        self.club.sync_now(self.ledger)
+        self.assertEqual(json.loads(self.sent[-1]['payload'])['events'][0]['category'],'unknown')

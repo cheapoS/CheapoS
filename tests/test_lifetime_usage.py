@@ -224,7 +224,27 @@ class LifetimeUsageTests(unittest.TestCase):
             self.assertEqual(scoped_summ['tokens']['reported'], 100)
             self.assertEqual(scoped_summ['self_healing_index']['initial_work_tokens'], 100)
 
+    def test_request_duration_counts_failures_zero_and_missing_measurements(self):
+        from cheapos.request_health import route_metadata, event_health
+        with tempfile.TemporaryDirectory() as directory:
+            ledger=LifetimeUsage(directory)
+            route=route_metadata({'gateway':'omniroute','model':'oc/vendor/new-model','provider':'wrong-publisher'})
+            ledger.ingest(dict(id='timings',request_metrics=[
+                record('a',status='responded',seconds=2,**route),
+                record('b',status='failed',seconds=4),
+                record('c',status='responded',seconds=0),
+                record('d',status='responded')]))
+            stats=ledger.summary()['models']['vendor/model']
+            self.assertEqual(stats['avg_latency_ms'],2000)
+            self.assertEqual(stats['duration_samples'],3)
+            a=next(r for r in ledger.raw_requests() if r['request_provider']=='opencode')
+            self.assertEqual(a['request_provider'],'opencode')
+            self.assertEqual(event_health(a,True)['gateway'],'omniroute')
+            self.assertNotIn('duration_ms',event_health({'status':'responded'},True))
+            self.assertEqual(route_metadata({'model':'anthropic/claude'})['request_provider'],'unknown')
+            self.assertEqual(route_metadata({'gateway':'omniroute','model':'future-route/new-model'})['request_provider'],'future-route')
+            self.assertEqual(route_metadata({'gateway':'omniroute','model':'combo/auto'})['request_provider'],'unknown')
+
 
 if __name__ == '__main__':
-
     unittest.main()

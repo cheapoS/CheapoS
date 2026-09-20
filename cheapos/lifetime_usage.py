@@ -7,6 +7,7 @@ import threading
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from .metrics import number
+from .request_health import route_name
 from . import __version__
 from .served_identity import safe_model, normalized
 
@@ -81,7 +82,9 @@ def clean(record):
                   purpose=purpose,
                   failure_category=failure_category,
                   error_code=error_code,
-                  seconds=seconds)
+                  seconds=seconds,
+                  request_gateway=route_name(record.get('request_gateway')),
+                  request_provider=route_name(record.get('request_provider')))
     # Club classification requires explicit access evidence; never infer free pricing from a model prefix.
     result['club_category'] = cat if record.get('access_class') in CATEGORIES else 'unknown'
     if (result['reported_cost'] or 0) > 0: result['club_category'] = 'paid'
@@ -271,12 +274,14 @@ class LifetimeUsage:
                 p_stat['requests'] += 1
                 m = r.get('served_model') or r.get('requested_model')
                 if m:
-                    m_stat = result['models'].setdefault(m, dict(tokens=0, requests=0, category=cat, successes=0, failures=0, success_rate=100.0, total_seconds=0.0, avg_latency_ms=0, failure_breakdown={}))
+                    m_stat = result['models'].setdefault(m, dict(tokens=0, requests=0, category=cat, successes=0, failures=0, success_rate=None, total_seconds=0.0, duration_samples=0, avg_latency_ms=None, failure_breakdown={}))
                     m_stat['tokens'] += tokens
                     m_stat['requests'] += 1
-                    sec = r.get('seconds') or 0.0
-                    m_stat['total_seconds'] += sec
+                    sec = number(r.get('seconds'))
                     st = r.get('status')
+                    if sec is not None and st in {'responded', 'failed', 'cancelled'}:
+                        m_stat['total_seconds'] += sec
+                        m_stat['duration_samples'] += 1
                     if st == 'responded' or (st is None and r.get('reconciled')):
                         m_stat['successes'] += 1
                     elif st == 'failed':
@@ -306,8 +311,8 @@ class LifetimeUsage:
             decided = m_data['successes'] + m_data['failures']
             if decided > 0:
                 m_data['success_rate'] = round((m_data['successes'] / decided) * 100, 1)
-            if m_data['successes'] > 0 and m_data.get('total_seconds'):
-                m_data['avg_latency_ms'] = round((m_data['total_seconds'] / m_data['successes']) * 1000)
+            if m_data['duration_samples']:
+                m_data['avg_latency_ms'] = round((m_data['total_seconds'] / m_data['duration_samples']) * 1000)
 
         model_pairs = {}
         for task in state['tasks'].values():

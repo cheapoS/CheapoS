@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from datetime import datetime, timezone
 from .credentials import CredentialStore
-from .lifetime_usage import resolve_category, safe_model
+from .lifetime_usage import safe_model
 
 DEFAULT_LEADERBOARD_URL = "https://cheapos.lol"
 
@@ -26,86 +26,12 @@ def crypto():
     except ImportError:
         raise ValueError("Club connections need the optional dependency: python3 -m pip install -r requirements-club.txt. Local work is unaffected.") from None
 
-def classify_provider_name(name, category=None):
-    clean = (name or '').strip()
-    low = clean.lower()
-    if category == 'local' or low.startswith(('local/', 'ollama/', 'mlx/')):
-        return 'Local'
-    if low.startswith('antigravity/'):
-        clean = clean[len('antigravity/'):]
-        low = clean.lower()
-    if low.startswith('openrouter/') or low.endswith(':free'):
-        return 'OpenRouter'
-    if '/' in clean:
-        prefix = clean.split('/')[0]
-        return prefix.replace('-', ' ').replace('_', ' ').title().replace(' ', '')
-    m = re.match(r'^[A-Za-z]+', clean)
-    return m.group(0).capitalize() if m else 'Other' 
-
 def extract_telemetry(summ, share_models=False):
     if not summ or not isinstance(summ, dict):
         return None
     healing = summ.get('self_healing_index') or {}
-    models = summ.get('models') or {}
-    total_reqs = sum(m.get('requests', 0) for m in models.values())
-    total_succ = sum(m.get('successes', 0) for m in models.values())
-    total_fail = sum(m.get('failures', 0) for m in models.values())
-    total_secs = sum(m.get('total_seconds', 0.0) for m in models.values())
-    avg_lat = round((total_secs / total_succ) * 1000) if total_succ > 0 else 0
-    succ_rate = round((total_succ / (total_succ + total_fail)) * 100, 1) if (total_succ + total_fail) > 0 else 100.0
-    fb = {}
-    for m in models.values():
-        for k, count in m.get('failure_breakdown', {}).items():
-            safe_k = str(k)[:60]
-            fb[safe_k] = fb.get(safe_k, 0) + int(count)
-
-    by_provider = {}
-    model_health = {}
-    if share_models:
-        for model_name, m in models.items():
-            safe_name = safe_model(model_name)
-            if not safe_name:
-                continue
-            prov = classify_provider_name(safe_name, category=m.get('category'))
-            p_stat = by_provider.setdefault(prov, {
-                'total_requests': 0,
-                'successes': 0,
-                'failures': 0,
-                'total_seconds': 0.0,
-                'failure_breakdown': {},
-                'models': {},
-            })
-            p_stat['total_requests'] += int(m.get('requests', 0))
-            p_stat['successes'] += int(m.get('successes', 0))
-            p_stat['failures'] += int(m.get('failures', 0))
-            p_stat['total_seconds'] += float(m.get('total_seconds', 0.0))
-            for k, count in m.get('failure_breakdown', {}).items():
-                safe_k = str(k)[:60]
-                p_stat['failure_breakdown'][safe_k] = p_stat['failure_breakdown'].get(safe_k, 0) + int(count)
-
-            succ = int(m.get('successes', 0))
-            fail = int(m.get('failures', 0))
-            decided = succ + fail
-            if decided > 0:
-                m_info = {
-                    'total_requests': int(m.get('requests', 0)),
-                    'successes': succ,
-                    'failures': fail,
-                    'success_rate': round((succ / decided) * 100, 1),
-                    'avg_latency_ms': round((float(m.get('total_seconds', 0.0)) / succ) * 1000) if succ > 0 else 0,
-                    'failure_breakdown': {str(k)[:60]: int(v) for k, v in m.get('failure_breakdown', {}).items()},
-                }
-                p_stat['models'][safe_name[:160]] = m_info
-                model_health[safe_name[:160]] = {**m_info, 'provider': prov}
-
-        for prov, p_stat in list(by_provider.items()):
-            succ = p_stat['successes']
-            fail = p_stat['failures']
-            decided = succ + fail
-            p_stat['success_rate'] = round((succ / decided) * 100, 1) if decided > 0 else 100.0
-            p_stat['avg_latency_ms'] = round((p_stat['total_seconds'] / succ) * 1000) if succ > 0 else 0
-            del p_stat['total_seconds']
-
+    # Request health is carried by signed events. Cumulative client snapshots
+    # cannot establish which accepted requests produced a provider/model total.
     pairs = []
     if share_models:
         for p in list((summ.get('model_pairs') or {}).values())[:10]:
@@ -146,16 +72,6 @@ def extract_telemetry(summ, share_models=False):
             repair_overhead_pct=float(healing.get('repair_overhead_pct', 0.0))
         ),
         model_pairs=pairs,
-        provider_health=dict(
-            total_requests=total_reqs,
-            successes=total_succ,
-            failures=total_fail,
-            success_rate=succ_rate,
-            avg_latency_ms=avg_lat,
-            failure_breakdown=fb,
-            by_provider=by_provider if by_provider else None
-        ),
-        model_health=model_health if model_health else None,
         token_depth=dict(
             reasoning_tokens=int(tok.get('reasoning', 0)),
             cached_tokens=int(tok.get('cached', 0))
@@ -440,7 +356,7 @@ class ClubManager:
                         waiting+=1;continue
                     if any(type(row.get(k)) not in (int,float) or row[k]<0 or row[k]>1000000000 or int(row[k])!=row[k] for k in ('input_tokens','output_tokens')):
                         waiting+=1;continue
-                    event=dict(event_id=str(uuid.uuid5(uuid.UUID(self.state['installation_id']),rid)),category='paid' if (row.get('reported_cost') or 0)>0 else resolve_category(row),input_tokens=int(row['input_tokens']),output_tokens=int(row['output_tokens']),accounting_at=row['date']+'T00:00:00Z')
+                    event=dict(event_id=str(uuid.uuid5(uuid.UUID(self.state['installation_id']),rid)),category='paid' if (row.get('reported_cost') or 0)>0 else row.get('club_category', 'unknown'),input_tokens=int(row['input_tokens']),output_tokens=int(row['output_tokens']),accounting_at=row['date']+'T00:00:00Z')
                     if row.get('reasoning_tokens') is not None and isinstance(row['reasoning_tokens'], (int, float)) and row['reasoning_tokens'] >= 0:
                         event['reasoning_tokens'] = int(row['reasoning_tokens'])
                     if row.get('cached_tokens') is not None and isinstance(row['cached_tokens'], (int, float)) and row['cached_tokens'] >= 0:
@@ -453,10 +369,12 @@ class ClubManager:
                     if self.state.get('share_models'):
                         model=safe_model(row.get('served_model') or row.get('requested_model'))
                         if model: event['model_name']=model[:160]
+                    from .request_health import event_health
+                    event['request_health'] = event_health(row, bool(self.state.get('share_models')))
                     fingerprint=hashlib.sha256(json.dumps(event,sort_keys=True).encode()).hexdigest()
                     if self.state['sent'].get(rid)==fingerprint: continue
                     event['slot']=len(events);events.append(event);fingerprints[rid]=fingerprint
-                    if len(events)==100: break
+                    if len(events)==40: break  # Keep the signed envelope below the server byte limit.
                 verified_rids = set(self.state.get('sent', {}).keys())
                 if events:
                     verified_rids.update(fingerprints.keys())
