@@ -25,15 +25,51 @@ def crypto():
     except ImportError:
         raise ValueError("Club connections need the optional dependency: python3 -m pip install -r requirements-club.txt. Local work is unaffected.") from None
 
-def classify_provider_name(name):
-    low = (name or '').lower()
-    if 'gemini' in low or 'google' in low or low.startswith('antigravity/'):
+PROVIDER_NAME_MAP = {
+    'google': 'Google',
+    'openai': 'OpenAI',
+    'anthropic': 'Anthropic',
+    'groq': 'Groq',
+    'deepseek': 'DeepSeek',
+    'mistral': 'Mistral',
+    'mistralai': 'Mistral',
+    'meta': 'Meta',
+    'qwen': 'Qwen',
+    'cerebras': 'Cerebras',
+    'together': 'Together',
+    'togetherai': 'Together',
+    'cohere': 'Cohere',
+    'fireworks': 'Fireworks',
+    'fireworksai': 'Fireworks',
+    'antigravity': 'Google',
+}
+
+def classify_provider_name(name, category=None):
+    low = (name or '').lower().strip()
+    if category == 'local' or low.startswith(('local/', 'ollama/', 'mlx/')):
+        return 'Local'
+    if low.startswith('openrouter/') or low.endswith(':free'):
+        return 'OpenRouter'
+    parts = low.split('/')
+    if len(parts) >= 2:
+        prefix = parts[0]
+        if prefix in PROVIDER_NAME_MAP:
+            return PROVIDER_NAME_MAP[prefix]
+        return prefix.capitalize()
+
+    if 'gemini' in low or 'google' in low:
         return 'Google'
+    if low.startswith('claude'):
+        return 'Anthropic'
+    if low.startswith(('gpt', 'o1', 'o3')):
+        return 'OpenAI'
+    if low.startswith('deepseek'):
+        return 'DeepSeek'
+    if low.startswith(('codestral', 'mistral')):
+        return 'Mistral'
     if 'groq' in low:
         return 'Groq'
-    if 'openrouter' in low or ':free' in low:
-        return 'OpenRouter'
-    if 'local' in low or 'ollama' in low or 'mlx' in low or 'gemma' in low:
+    if any(k in low for k in ('local', 'gemma', 'ollama', 'mlx')):
         return 'Local'
     return 'Other'
 
@@ -57,7 +93,7 @@ def extract_telemetry(summ, share_models=False):
     by_provider = {}
     if share_models:
         for model_name, m in models.items():
-            prov = classify_provider_name(model_name)
+            prov = classify_provider_name(model_name, category=m.get('category'))
             p_stat = by_provider.setdefault(prov, {
                 'total_requests': 0,
                 'successes': 0,
