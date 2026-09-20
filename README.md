@@ -3,6 +3,7 @@
   <br><br>
   <a href="#quick-start"><strong>Get started</strong></a> &nbsp; · &nbsp;
   <a href="#the-workspace">See the workspace</a> &nbsp; · &nbsp;
+  <a href="#work-modes">Work modes</a> &nbsp; · &nbsp;
   <a href="#why-cheapos-exists">The idea</a> &nbsp; · &nbsp;
   <a href="docs/USER_GUIDE.md">Documentation</a> &nbsp; · &nbsp;
   <a href="CONTRIBUTING.md">Contribute</a>
@@ -105,13 +106,34 @@ Make expensive compute the exception. Keep the work visible and the decisions yo
 
 </details>
 
+## Work modes
+
+**Work with cheapoS, or hand it a defined job.** Choose how you want to collaborate using **Work mode** below the message box.
+
+| Mode | Choose it for | What happens |
+| --- | --- | --- |
+| **Interactive — Work with me** | Questions, exploring ideas, debugging, and changes you want to steer as you go. | Keep a conversation going. Questions can end with an answer; code changes go through checks and model review. You approve each commit. |
+| **Unattended — Take it from here** | A defined task or project plan you want agents to carry through. | Sending prepares a proposal. You approve the plan once; agents implement, check, review, and commit its steps to a feature branch. You inspect the result and approve the final local merge. |
+
+![The cheapoS message box with the Work mode dropdown at its lower left, currently set to Interactive. Choose Interactive or Unattended here before sending a new task.](docs/assets/work-mode-selector.jpg)
+
+*The real composer in a disposable sample project. Work mode is the dropdown at the lower left, below your message; no live model request was sent for this screenshot.*
+
+1. Open your project and start a **New chat**.
+2. Select **Interactive** or **Unattended** from **Work mode**, then enter your request.
+3. Send it. In Unattended, choose **Review & start → Start run** when the proposal is ready. Selecting a mode alone starts nothing.
+
+**You can keep chatting in either mode.** During an unattended run, guidance stays within the approved plan; use **Request changes** to revise reviewed work. An approved run keeps its mode—start a new chat to choose a different workflow.
+
+Work mode is separate from your model choices, command permissions, and work/spending limits. **Unattended does not mean uncapped.** Keep cheapoS and your computer running for work to continue. Both modes keep edits in a separate task copy and leave the final commit or merge decision to you; neither automatically pushes to a remote repository.
+
+[Work-mode examples and approval details →](docs/USER_GUIDE.md#work-modes)
+
 ## From a request to a reviewed change
 
 ![Describe a task, let the worker build in a separate copy, run checks, get a reviewer decision, then approve a commit or local merge. Revisions return to the worker.](docs/assets/workflow.svg)
 
-**Interactive:** the worker makes the requested change, runs appropriate checks, and submits it to the reviewer. Approve a verification command when prompted; after review passes, inspect the diff and choose **Approve & commit**. You can ask for changes before committing. **Finish review** resumes verification and review of saved edits directly, reusing checks that still match the patch and command. Follow-ups keep the same task copy and history.
-
-**Unattended:** inspect a finite plan and choose **Start run**. Reviewed items become feature-branch commits within the authorized scope and cumulative limits. The completed branch comes back for your explicit merge decision. The local server must stay running.
+For code changes, cheapoS runs the worker/check/reviewer loop within your authorized permissions and limits. In Interactive, **Finish review** resumes verification and review of saved edits directly, reusing checks that still match the patch and command. Follow-ups keep the same task copy and history.
 
 Automatic remote selection uses distinct worker and reviewer model IDs. New manual settings also require distinct pinned models. All local can use one installed model in separate requests, which is labeled as a same-model review. Unattended runs require a distinct reviewer.
 
@@ -137,7 +159,7 @@ The app opens in your browser at **http://127.0.0.1:5173/**. On macOS, you can a
 
 **Start with the demo:** choose **Try a sample task → Run scripted demonstration**. Watch a failing test become a corrected implementation, a reviewer request a regression test, and the final patch pass review. No model setup needed.
 
-**Start with your project:** connect models, open a local Git repository, and describe your task. New chats default to a $0 estimated spending cap; explicitly change it before choosing paid models. Startup can make a bounded greeting request to an eligible installed local model; free-cloud startup is opt-in.
+**Start with your project:** connect models, open a local Git repository, [choose a work mode](#work-modes), and describe your task. New chats default to a $0 estimated spending cap; explicitly change it before choosing paid models. Startup can make a bounded greeting request to an eligible installed local model; free-cloud startup is opt-in.
 
 ### Experimental macOS builds
 

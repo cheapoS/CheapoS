@@ -2,7 +2,9 @@
 
 **Work mode** beside the composer controls how you supervise a job. It is separate from model placement and the duration/budget preset.
 
-- **Interactive** is the default. Chat, inspect changes, approve commands, and approve each proposed commit through the existing conversation.
+[See where to change Work mode, with a screenshot and examples →](USER_GUIDE.md#work-modes)
+
+- **Interactive** is the default. Chat, ask questions, explore ideas, and steer changes as you go. Code changes get checks and model review; you approve each commit to your project.
 - **Unattended** turns a prompt, a project document, or both into a finite proposal. After **Start run**, cheapoS implements, checks, independently reviews, and commits items sequentially to the inspected feature branch. You decide whether to merge the finished work.
 
 Changing the selector alone does not request a model, create a branch, or authorize work. Drafts retain their mode and inputs; new chats default to Interactive. An authorized run keeps its mode—use Pause and Resume instead of changing its authority through the selector.
@@ -30,7 +32,7 @@ For combined input, select the document and add a prompt such as “Complete thi
 
 | Your action | Result |
 | --- | --- |
-| Choose Unattended, submit a prompt/document, then **Start** | Open the chat immediately and prepare a bounded plan in the background; no implementation or feature branch yet. |
+| Choose Unattended and **Send** a prompt/document | Open the chat immediately and prepare a plan in the background; no implementation or feature branch yet. |
 | In Interactive, explicitly request “Start a branch run” or “Implement this job on a feature branch” | Offer a work-mode choice. Choosing the unattended proposal opens planning. |
 | Mention a branch, select a document without submitting, quote a trigger, or ask for an explanation/summary | Keep ordinary chat behavior; no automatic run authorization. |
 | **Start run** | Authorize the inspected revision, branch, models, limits, and shown checks. |

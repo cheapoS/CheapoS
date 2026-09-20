@@ -45,9 +45,47 @@ details. Narrow screens use one overlay panel at a time. Widths and visibility
 are saved in this browser. Keyboard users can focus a divider and use arrow keys
 to resize, Home to hide, or End to maximize.
 
-## Choose how to supervise work
+<a id="choose-how-to-supervise-work"></a>
 
-Use **Work mode** beside the composer: **Interactive** keeps conversational approvals; **Unattended** plans a bounded job from a prompt, project document, or both, then works on an authorized feature branch. You make the final local merge decision. See [work modes, triggers, and unattended runs](unattended-runs.md).
+## Work modes
+
+Use **Work mode** below the message box to choose how you collaborate with cheapoS.
+
+![The cheapoS composer with the Work mode dropdown at its lower left, currently set to Interactive.](assets/work-mode-selector.jpg)
+
+*The real app with a disposable sample project. Choose the mode before sending your new task; switching the selector does not start work.*
+
+### Interactive — Work with me
+
+Use Interactive for questions, brainstorming, debugging, or changes you want to steer as you go. It is the default for a new chat. You can simply talk: a question can finish with an answer and needs no code review. When you request code changes, cheapoS works in a separate task copy, runs authorized checks, and requests model review. Inspect **Changes** and choose **Approve & commit** when you want the reviewed patch applied to your project. You approve each commit; you can keep chatting before or after it.
+
+Example: “Explain how login works. Let's discuss ways to simplify it before changing anything.”
+
+### Unattended — Take it from here
+
+Use Unattended for a defined job you want agents to carry through, such as implementing a feature from a specification. Send a prompt, a project document, or both to prepare a proposal. **Send begins planning, not implementation.** Inspect **Review & start**, including the scope, checks, permissions, and limits, then choose **Start run**.
+
+cheapoS implements the approved items, runs checks, obtains independent review, and commits reviewed steps to the task's feature branch. It returns the completed work to **Changes**, where you decide whether to **Approve & merge locally**. You approve the plan and the final merge, rather than every item commit. If an essential decision or additional permission is needed, the run can still ask you.
+
+Example: “Add CSV export to the reports page, test it, and document the new option.”
+
+### Change the mode
+
+1. Open a local Git project and choose **New chat**.
+2. Below the message box, open **Work mode** and choose **Interactive** or **Unattended**.
+3. Enter your request and send it. Unattended prepares a proposal for your approval first.
+
+An authorized unattended run keeps its mode, so its selector is disabled. Use **Pause** or **Resume** for that run; start a new chat for a different workflow. A saved unsent draft can retain its previous mode, so check the selector before sending.
+
+### What stays the same
+
+- **Chat stays available.** Ask questions or add guidance in either mode. Guidance during an unattended run stays within its approved plan; **Request changes** starts a reviewed revision.
+- **Code changes still need checks and review.** Conversational answers do not themselves approve saved edits. Both modes use **Changes** for your final review.
+- **Your permissions and limits still apply.** Mode is separate from model placement, command authorization, and the work/spending budget. Unattended does not mean uncapped. For unattended setup and diagnostics, review **Allow task commands** on **Review & start**; only enable it for a project you trust.
+- **Work runs on your computer.** Keep the computer awake and cheapoS running for execution to continue. Closing or stopping the server does not leave a hosted agent working elsewhere.
+- **You decide what lands.** Interactive asks before each commit to your project; Unattended asks before its final local merge. Neither automatically pushes to a remote repository.
+
+See [the unattended walkthrough](unattended-runs.md) for document inputs, proposal editing, and integration details.
 
 ## Choose where work runs
 

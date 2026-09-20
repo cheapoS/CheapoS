@@ -85,7 +85,15 @@ It uses a new temporary data directory, creates a tiny fixture repository, runs 
 4. Save the browser viewport directly into `docs/assets/`. Use real state; do not retouch statuses or invent a patch. Check that there are no personal task names, credentials, or unrelated project paths.
 5. Retain the README caption identifying the model responses as scripted. The screenshots are product demonstrations, not live-model benchmarks.
 
-Current screenshots were captured on 2026-09-13. The actual UI still uses the earlier `cheapoS` casing; the repository presentation uses **CheapoS**.
+The Activity and Changes screenshots were captured on 2026-09-13.
+`work-mode-selector.jpg` was captured on 2026-09-19 with the same disposable
+server: open a temporary sample Git project, start a new chat, enter an unsent
+example request, and focus **Work mode** below the message box. Capture the real
+composer without submitting the request or configuring a live provider. The
+connection notice reflects that unconfigured screenshot session. Keep the mode
+caption and text instructions alongside the image.
+
+The actual UI uses the `cheapoS` casing; the repository presentation uses **CheapoS**.
 
 ## Review before committing
 
