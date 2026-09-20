@@ -133,6 +133,33 @@ class CommitTests(CommitCase):
         with self.assertRaisesRegex(ValueError, 'Check out a branch'):
             commits.source_state(self.source)
 
+    def test_custom_git_identity_applied(self):
+        # Setup repo with NO identity
+        git(self.source, 'config', '--unset', 'user.name')
+        git(self.source, 'config', '--unset', 'user.email')
+        
+        # Setup git settings
+        git_settings = {"user_name": "Custom", "user_email": "custom@example.com"}
+        self.task['settings_snapshot'] = {'values': {'git': git_settings}}
+        
+        # Prepare
+        plan = commits.prepare(self.task)
+        
+        # Verify identity flags
+        flags = commits.identity_flags(self.source, git_settings=plan.get('git_settings'))
+        self.assertIn('-c', flags)
+        self.assertIn('user.name=Custom', flags)
+        self.assertIn('user.email=custom@example.com', flags)
+        
+        # Commit
+        commit = commits.commit_object(plan, "Custom commit")
+        
+        # Verify commit author
+        author = git(self.source, 'show', '-s', '--format=%an', commit).strip()
+        email = git(self.source, 'show', '-s', '--format=%ae', commit).strip()
+        self.assertEqual(author, "Custom")
+        self.assertEqual(email, "custom@example.com")
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -136,3 +136,17 @@ class SettingsStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             store.initialize({'limits': {'dollars': -1}})
         self.assertFalse(store.path.exists())
+
+    def test_git_settings(self):
+        self.save({'git.user_name': 'NewUser', 'git.user_email': 'new@mail.com'})
+        result = self.store.view()
+        self.assertEqual(result['values']['git'], {'user_name': 'NewUser', 'user_email': 'new@mail.com'})
+        
+        # Test validation of invalid types
+        with self.assertRaises(ValueError):
+            self.save({'git.user_name': 123})
+        
+        # Test override
+        self.save({'git.user_name': 'ProjectUser'}, self.project, operation='project')
+        result_project = self.store.view(self.project)
+        self.assertEqual(result_project['values']['git'], {'user_name': 'ProjectUser', 'user_email': 'new@mail.com'})

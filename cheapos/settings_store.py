@@ -89,7 +89,7 @@ class SettingsStore:
         self.limit_keys = set(limits_validator({'dollars': 0})) | {'uncapped_work'} | KEYS
         self.allowed = ({f'execution.{k}' for k in self.execution_keys}
                         | {f'limits.{k}' for k in self.limit_keys}
-                        | {f'roles.{k}' for k in ROLES} | {'allowed_connections', 'keep_up_to_date'})
+                        | {f'roles.{k}' for k in ROLES} | {'allowed_connections', 'keep_up_to_date', 'git.user_name', 'git.user_email'})
 
     def validate_patch(self, patch):
         if not isinstance(patch, dict) or set(patch) - self.allowed:
@@ -97,8 +97,14 @@ class SettingsStore:
         return copy.deepcopy(patch)
 
     def validate(self, values, *, independence=True):
-        if not isinstance(values, dict) or set(values) - {'execution', 'limits', 'roles', 'allowed_connections', 'keep_up_to_date'}:
+        if not isinstance(values, dict) or set(values) - {'execution', 'limits', 'roles', 'allowed_connections', 'keep_up_to_date', 'git'}:
             raise ValueError('Unknown settings groups')
+        self.validate_patch(fields(values))
+        result = copy.deepcopy(values)
+        if 'git' in result:
+            for k in ('user_name', 'user_email'):
+                if k in result['git'] and not isinstance(result['git'][k], str):
+                    raise ValueError(f'Git {k} must be a string')
         self.validate_patch(fields(values))
         result = copy.deepcopy(values)
         result['execution'] = self.execution_validator(values['execution'])
@@ -189,7 +195,7 @@ class SettingsStore:
                     if provider and provider.get('model') == model:
                         public = {k: copy.deepcopy(v) for k, v in provider.items() if k in PROVIDER_FIELDS}
                         roles[role].update(provider=public, connection_id=public.get('connection_id'))
-            values = {'execution': execution, 'limits': self.limits_validator(preferences.get('limits', {'dollars': 0})), 'roles': roles, 'keep_up_to_date': False}
+            values = {'execution': execution, 'limits': self.limits_validator(preferences.get('limits', {'dollars': 0})), 'roles': roles, 'keep_up_to_date': False, 'git': {'user_name': 'cheapos', 'user_email': 'team@cheapos.lol'}}
             document = {'schema_version': 1, 'generation': 1,
                         'defaults': {'revision': 1, 'values': values}, 'projects': {}, 'operations': {}, 'migration_notices': copy.deepcopy(notices or []), 'placement_confirmed': not fresh_install}
             for project, choices in mappings.get('projects', {}).items():

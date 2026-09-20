@@ -39,21 +39,18 @@ def source_git(source, *args, input=None, index=None):
     return result.stdout.decode(errors="replace").strip()
 
 
-def identity_flags(source):
-    """Flags that supply :data:`DEFAULT_IDENTITY` for keys Git cannot resolve.
-
-    Operator-controlled configuration (repository or global) always wins for
-    any key it defines; only missing keys receive app-level defaults so the
-    commit approval still completes on a machine with no Git identity.
-    """
+def identity_flags(source, git_settings=None):
+    """Flags that supply fallback identity if Git cannot resolve it."""
     flags = []
-    for key, value in DEFAULT_IDENTITY.items():
+    for git_key, default_value in DEFAULT_IDENTITY.items():
+        setting_key = git_key.replace(".", "_")
+        value = (git_settings or {}).get(setting_key) or default_value
         try:
-            have = source_git(source, "config", "--get", key)
+            have = source_git(source, "config", "--get", git_key)
         except ValueError:
             have = ""
         if not have.strip():
-            flags.extend(["-c", f"{key}={value}"])
+            flags.extend(["-c", f"{git_key}={value}"])
     return flags
 
 
@@ -103,11 +100,12 @@ def prepare(task):
         tree = source_git(source, "write-tree", index=index)
     # The commit identity is chosen by the operator's Git configuration; any
     # missing key falls back to the app default so approval never dead-ends.
-    identity_flags(source)
+    git_settings = task.get("settings_snapshot", {}).get("values", {}).get("git")
+    identity_flags(source, git_settings=git_settings)
     if source_state(source) != state:
         raise ValueError("Your branch changed while preparing the preview. Open Apply & commit again.")
     require_clean(source)
-    return {**state, "tree": tree, "patch": task["patch"], "files": files}
+    return {**state, "tree": tree, "patch": task["patch"], "files": files, "git_settings": git_settings}
 
 
 def staged_exactly(plan):
@@ -132,7 +130,7 @@ def transaction_state(plan):
 
 
 def commit_object(plan, message):
-    return source_git(plan["source"], *identity_flags(plan["source"]), "commit-tree", plan["tree"], "-p", plan["head"], input=message + "\n")
+    return source_git(plan["source"], *identity_flags(plan["source"], git_settings=plan.get("git_settings")), "commit-tree", plan["tree"], "-p", plan["head"], input=message + "\n")
 
 
 def apply_and_commit(plan):
