@@ -91,15 +91,20 @@ def extract_telemetry(summ, share_models=False):
             fb[safe_k] = fb.get(safe_k, 0) + int(count)
 
     by_provider = {}
+    model_health = {}
     if share_models:
         for model_name, m in models.items():
-            prov = classify_provider_name(model_name, category=m.get('category'))
+            safe_name = safe_model(model_name)
+            if not safe_name:
+                continue
+            prov = classify_provider_name(safe_name, category=m.get('category'))
             p_stat = by_provider.setdefault(prov, {
                 'total_requests': 0,
                 'successes': 0,
                 'failures': 0,
                 'total_seconds': 0.0,
                 'failure_breakdown': {},
+                'models': {},
             })
             p_stat['total_requests'] += int(m.get('requests', 0))
             p_stat['successes'] += int(m.get('successes', 0))
@@ -108,6 +113,21 @@ def extract_telemetry(summ, share_models=False):
             for k, count in m.get('failure_breakdown', {}).items():
                 safe_k = str(k)[:60]
                 p_stat['failure_breakdown'][safe_k] = p_stat['failure_breakdown'].get(safe_k, 0) + int(count)
+
+            succ = int(m.get('successes', 0))
+            fail = int(m.get('failures', 0))
+            decided = succ + fail
+            if decided > 0:
+                m_info = {
+                    'total_requests': int(m.get('requests', 0)),
+                    'successes': succ,
+                    'failures': fail,
+                    'success_rate': round((succ / decided) * 100, 1),
+                    'avg_latency_ms': round((float(m.get('total_seconds', 0.0)) / succ) * 1000) if succ > 0 else 0,
+                    'failure_breakdown': {str(k)[:60]: int(v) for k, v in m.get('failure_breakdown', {}).items()},
+                }
+                p_stat['models'][safe_name[:160]] = m_info
+                model_health[safe_name[:160]] = {**m_info, 'provider': prov}
 
         for prov, p_stat in list(by_provider.items()):
             succ = p_stat['successes']
@@ -166,6 +186,7 @@ def extract_telemetry(summ, share_models=False):
             failure_breakdown=fb,
             by_provider=by_provider if by_provider else None
         ),
+        model_health=model_health if model_health else None,
         token_depth=dict(
             reasoning_tokens=int(tok.get('reasoning', 0)),
             cached_tokens=int(tok.get('cached', 0))
