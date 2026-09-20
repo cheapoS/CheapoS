@@ -16,6 +16,12 @@ class ProjectConflict(ValueError):
         super().__init__("These edits overlap changes already in your project. Reconcile in this chat to combine both versions, then run checks and review again. Your saved work is intact.")
 
 
+# App-level fallback identity. Any key already resolvable through the
+# repository's local or global Git configuration wins; these values only cover
+# keys Git would otherwise reject with "Please tell me who you are."
+DEFAULT_IDENTITY = {"user.name": "cheapos", "user.email": "team@cheapos.lol"}
+
+
 def source_git(source, *args, input=None, index=None):
     # Use the operator's Git identity, but never run hooks, signing or a shell.
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
@@ -31,6 +37,24 @@ def source_git(source, *args, input=None, index=None):
     if result.returncode:
         raise ValueError(result.stderr.decode(errors="replace").strip()[:1000] or "Git command failed")
     return result.stdout.decode(errors="replace").strip()
+
+
+def identity_flags(source):
+    """Flags that supply :data:`DEFAULT_IDENTITY` for keys Git cannot resolve.
+
+    Operator-controlled configuration (repository or global) always wins for
+    any key it defines; only missing keys receive app-level defaults so the
+    commit approval still completes on a machine with no Git identity.
+    """
+    flags = []
+    for key, value in DEFAULT_IDENTITY.items():
+        try:
+            have = source_git(source, "config", "--get", key)
+        except ValueError:
+            have = ""
+        if not have.strip():
+            flags.extend(["-c", f"{key}={value}"])
+    return flags
 
 
 def source_state(source):
@@ -77,9 +101,9 @@ def prepare(task):
             raise ProjectConflict(files) from error
         source_git(source, "apply", "--cached", "--whitespace=nowarn", "-", input=task["patch"], index=index)
         tree = source_git(source, "write-tree", index=index)
-    # Resolve identity now so a missing configuration is reported before approval.
-    source_git(source, "var", "GIT_AUTHOR_IDENT")
-    source_git(source, "var", "GIT_COMMITTER_IDENT")
+    # The commit identity is chosen by the operator's Git configuration; any
+    # missing key falls back to the app default so approval never dead-ends.
+    identity_flags(source)
     if source_state(source) != state:
         raise ValueError("Your branch changed while preparing the preview. Open Apply & commit again.")
     require_clean(source)
@@ -108,7 +132,7 @@ def transaction_state(plan):
 
 
 def commit_object(plan, message):
-    return source_git(plan["source"], "commit-tree", plan["tree"], "-p", plan["head"], input=message + "\n")
+    return source_git(plan["source"], *identity_flags(plan["source"]), "commit-tree", plan["tree"], "-p", plan["head"], input=message + "\n")
 
 
 def apply_and_commit(plan):
