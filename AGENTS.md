@@ -5,6 +5,7 @@ When working as an external assistant (e.g., Antigravity, Claude Code, Cursor) d
 - After completing and validating changes, commit your work before handing the project back. cheapoS workers also commit to this repository, and unrelated uncommitted changes can block their commit flow.
 - Stage only the changes you made for the current task. Preserve any unrelated user or worker changes; do not include, discard, or overwrite them just to make the working tree clean. If they prevent completion, explain what remains.
 - Tell the operator when changes are committed. The operator handles app reloads with the restart button; do not restart cheapoS automatically unless asked.
+- Keep public PRs, issues, commit messages and documentation free of private repository links, private PR references and internal deployment paths. Describe service dependencies by their public capabilities; keep private rollout details in the private project.
 
 ## cheapoS Internal Workers (Autonomous In-App Tasks)
 When executing inside cheapoS as an autonomous worker, planner, or reviewer:

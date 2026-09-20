@@ -12,6 +12,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from .credentials import CredentialStore
 from .lifetime_usage import safe_model
+from .club_routes import backfill_routes
 
 DEFAULT_LEADERBOARD_URL = "https://cheapos.lol"
 
@@ -300,13 +301,16 @@ class ClubManager:
                 self.state['identity']['name'] = result['name']
         if message['action']=='sync':
             self.state['sent'].update(pending['fingerprints']);self.state['last_synced_at']=now()
+            self.state.setdefault('route_backfill_processed', {}).update(pending.get('route_fingerprints', {}))
         else:
             self.state['sync_enabled']=message['enabled']
+            if message.get('share_models') is not None and message['share_models'] != self.state.get('share_models', False):
+                self.state.pop('route_backfill_processed', None)
             self.state['share_models']=message.get('share_models',self.state.get('share_models',False))
         self._save()
 
-    def _queue(self,action,_fingerprints=None,**fields):
-        self.state['pending']={'envelope':self._signed(self._message(action,sequence=self.state['sequence']+1,previous_hash=self.state['previous_hash'],**fields)), 'fingerprints':_fingerprints or {}}
+    def _queue(self,action,_fingerprints=None,_route_fingerprints=None,**fields):
+        self.state['pending']={'envelope':self._signed(self._message(action,sequence=self.state['sequence']+1,previous_hash=self.state['previous_hash'],**fields)), 'fingerprints':_fingerprints or {}, 'route_fingerprints':_route_fingerprints or {}}
         self._save()
 
     def set_sync(self,enabled,share_models=None):
@@ -323,7 +327,9 @@ class ClubManager:
                 remote=self._call('status')
                 expected=hashlib.sha256(pending['envelope']['payload'].encode()).hexdigest()
                 if remote.get('sequence')==message['sequence'] and remote.get('previous_hash')==expected:
-                    if message['action']=='sync': self.state['sent'].update(pending['fingerprints'])
+                    if message['action']=='sync':
+                        self.state['sent'].update(pending['fingerprints'])
+                        self.state.setdefault('route_backfill_processed', {}).update(pending.get('route_fingerprints', {}))
                     self.state.update(sequence=remote['sequence'],previous_hash=expected)
                 elif remote.get('sequence')!=self.state['sequence'] or remote.get('previous_hash')!=self.state['previous_hash']:
                     raise ValueError('Club cursor conflicts with saved work. Sharing remains paused.')
@@ -419,7 +425,8 @@ class ClubManager:
                     if queue_kwargs.get('telemetry'):
                         self.state['last_synced_telemetry'] = queue_kwargs['telemetry']
                     uploaded += len(queue_kwargs.get('events', []))
-                self.state['sync_message']=(f'Uploaded {uploaded} usage records. Additional queued usage syncs automatically.' if uploaded else 'No new usage yet. Only requests made after sharing was enabled are uploaded.' if not new_requests else 'Waiting for complete token usage before uploading.' if waiting else 'Up to date. All eligible usage has already been uploaded.')
+                corrected = backfill_routes(self, lifetime)
+                self.state['sync_message']=(f'Uploaded {uploaded} usage records. Additional queued usage syncs automatically.' if uploaded else f'Updated provider details for {corrected} previously shared records. Token totals are unchanged.' if corrected else 'No new usage yet. Only requests made after sharing was enabled are uploaded.' if not new_requests else 'Waiting for complete token usage before uploading.' if waiting else 'Up to date. All eligible usage has already been uploaded.')
                 self.state['error']=None
                 self._save()
                 return self.get_status()
