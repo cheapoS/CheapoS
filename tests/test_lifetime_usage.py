@@ -169,6 +169,35 @@ class LifetimeUsageTests(unittest.TestCase):
             self.assertIsNone(summ['estimated_savings'])
             self.assertEqual(summ['zero_cost_share'], 100.0)
 
+    def test_tasks_by_role_and_task_types(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = LifetimeUsage(directory)
+            task = dict(
+                id='multi-role-task',
+                planner_model='vendor/planner',
+                coordinator_model='vendor/coordinator',
+                branch_run={'status': 'merged', 'merge_receipt': 'receipt-xyz'},
+                checkpoints=[{'decision': 'APPROVE'}],
+                request_metrics=[
+                    record('r1', role='worker', purpose='work'),
+                    record('r2', role='reviewer', purpose='review'),
+                    record('r3', role='planner', purpose='planning'),
+                    record('r4', role='coordinator', purpose='coordination'),
+                ]
+            )
+            ledger.ingest(task)
+            summ = ledger.summary()
+
+            self.assertEqual(summ['tasks_by_role']['worker']['completed_tasks'], 1)
+            self.assertEqual(summ['tasks_by_role']['reviewer']['completed_tasks'], 1)
+            self.assertEqual(summ['tasks_by_role']['planner']['completed_tasks'], 1)
+            self.assertEqual(summ['tasks_by_role']['coordinator']['completed_tasks'], 1)
+
+            self.assertEqual(summ['task_types']['planning']['completed'], 1)
+            self.assertEqual(summ['task_types']['implementation']['completed'], 1)
+            self.assertEqual(summ['task_types']['reviewing']['completed'], 1)
+            self.assertEqual(summ['task_types']['coordination']['completed'], 1)
+
 
 if __name__ == '__main__':
 

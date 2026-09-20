@@ -203,3 +203,66 @@ class ClubTests(unittest.TestCase):
         self.club.check_pairing(force=True)
         self.club._call.assert_called_once_with('status')
         self.assertEqual(self.club.state['identity']['handle'],'bob')
+
+    def test_sync_includes_telemetry_respecting_share_models(self):
+        self.club.set_sync(True)
+        self.rows.append(self.row())
+        mock_summary = {
+            'completion': {'human_accepted_jobs': 5, 'merged_runs': 10, 'independent_review_approved_jobs': 15},
+            'self_healing_index': {'initial_work_tokens': 10000, 'recovery_tokens': 1500, 'repair_overhead_pct': 13.0},
+            'model_pairs': {
+                'qwen + deepseek': {
+                    'worker': 'qwen2.5-coder:32b',
+                    'reviewer': 'deepseek-chat',
+                    'is_independent': True,
+                    'total_jobs': 8,
+                    'completion_rate': 87.5,
+                    'avg_tokens_per_job': 4500
+                }
+            },
+            'models': {
+                'qwen2.5-coder:32b': {
+                    'requests': 10, 'successes': 9, 'failures': 1, 'total_seconds': 18.0,
+                    'failure_breakdown': {'timeout': 1}
+                }
+            },
+            'tokens': {'reasoning': 2500, 'cached': 4000}
+        }
+        self.ledger.summary = Mock(return_value=mock_summary)
+
+        # When share_models is False (default)
+        self.club.sync_now(self.ledger)
+        payload = json.loads(self.sent[-1]['payload'])
+        self.assertIn('telemetry', payload)
+        telem = payload['telemetry']
+        self.assertEqual(telem['self_healing']['repair_overhead_pct'], 13.0)
+        self.assertEqual(telem['token_depth']['reasoning_tokens'], 2500)
+        self.assertEqual(telem['token_depth']['cached_tokens'], 4000)
+        self.assertEqual(telem['provider_health']['total_requests'], 10)
+        self.assertEqual(telem['provider_health']['success_rate'], 90.0)
+        self.assertEqual(telem['provider_health']['avg_latency_ms'], 2000)
+        self.assertEqual(telem['provider_health']['failure_breakdown'], {'timeout': 1})
+        # Model pairs stripped when share_models is False
+        self.assertEqual(telem['model_pairs'], [])
+
+        # When share_models is True
+        self.club.set_sync(True, share_models=True)
+        self.rows.append(self.row('req2'))
+        self.club.sync_now(self.ledger)
+        payload2 = json.loads(self.sent[-1]['payload'])
+        telem2 = payload2['telemetry']
+        self.assertEqual(len(telem2['model_pairs']), 1)
+        self.assertEqual(telem2['model_pairs'][0]['worker'], 'qwen2.5-coder:32b')
+        self.assertEqual(telem2['model_pairs'][0]['reviewer'], 'deepseek-chat')
+        self.assertEqual(telem2['model_pairs'][0]['completion_rate'], 87.5)
+
+    def test_sync_event_includes_reasoning_and_cached_tokens(self):
+        self.club.set_sync(True)
+        r = self.row('token_depth_row')
+        r['reasoning_tokens'] = 350
+        r['cached_tokens'] = 800
+        self.rows.append(r)
+        self.club.sync_now(self.ledger)
+        event = json.loads(self.sent[-1]['payload'])['events'][0]
+        self.assertEqual(event['reasoning_tokens'], 350)
+        self.assertEqual(event['cached_tokens'], 800)
