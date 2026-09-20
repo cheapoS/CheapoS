@@ -256,8 +256,8 @@ class ClubTests(unittest.TestCase):
         self.assertEqual(telem2['model_pairs'][0]['reviewer'], 'deepseek-chat')
         self.assertEqual(telem2['model_pairs'][0]['completion_rate'], 87.5)
         self.assertIn('by_provider', telem2['provider_health'])
-        self.assertIn('Other', telem2['provider_health']['by_provider'])
-        self.assertEqual(telem2['provider_health']['by_provider']['Other']['total_requests'], 10)
+        self.assertIn('Qwen', telem2['provider_health']['by_provider'])
+        self.assertEqual(telem2['provider_health']['by_provider']['Qwen']['total_requests'], 10)
 
     def test_sync_event_includes_reasoning_and_cached_tokens(self):
         self.club.set_sync(True)

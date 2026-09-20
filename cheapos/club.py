@@ -1,5 +1,6 @@
 """Optional signed Club connection; never claims an offline upload succeeded."""
 import copy
+import re
 import hashlib
 import json
 import os
@@ -25,53 +26,21 @@ def crypto():
     except ImportError:
         raise ValueError("Club connections need the optional dependency: python3 -m pip install -r requirements-club.txt. Local work is unaffected.") from None
 
-PROVIDER_NAME_MAP = {
-    'google': 'Google',
-    'openai': 'OpenAI',
-    'anthropic': 'Anthropic',
-    'groq': 'Groq',
-    'deepseek': 'DeepSeek',
-    'mistral': 'Mistral',
-    'mistralai': 'Mistral',
-    'meta': 'Meta',
-    'qwen': 'Qwen',
-    'cerebras': 'Cerebras',
-    'together': 'Together',
-    'togetherai': 'Together',
-    'cohere': 'Cohere',
-    'fireworks': 'Fireworks',
-    'fireworksai': 'Fireworks',
-    'antigravity': 'Google',
-}
-
 def classify_provider_name(name, category=None):
-    low = (name or '').lower().strip()
+    clean = (name or '').strip()
+    low = clean.lower()
     if category == 'local' or low.startswith(('local/', 'ollama/', 'mlx/')):
         return 'Local'
+    if low.startswith('antigravity/'):
+        clean = clean[len('antigravity/'):]
+        low = clean.lower()
     if low.startswith('openrouter/') or low.endswith(':free'):
         return 'OpenRouter'
-    parts = low.split('/')
-    if len(parts) >= 2:
-        prefix = parts[0]
-        if prefix in PROVIDER_NAME_MAP:
-            return PROVIDER_NAME_MAP[prefix]
-        return prefix.capitalize()
-
-    if 'gemini' in low or 'google' in low:
-        return 'Google'
-    if low.startswith('claude'):
-        return 'Anthropic'
-    if low.startswith(('gpt', 'o1', 'o3')):
-        return 'OpenAI'
-    if low.startswith('deepseek'):
-        return 'DeepSeek'
-    if low.startswith(('codestral', 'mistral')):
-        return 'Mistral'
-    if 'groq' in low:
-        return 'Groq'
-    if any(k in low for k in ('local', 'gemma', 'ollama', 'mlx')):
-        return 'Local'
-    return 'Other'
+    if '/' in clean:
+        prefix = clean.split('/')[0]
+        return prefix.replace('-', ' ').replace('_', ' ').title().replace(' ', '')
+    m = re.match(r'^[A-Za-z]+', clean)
+    return m.group(0).capitalize() if m else 'Other' 
 
 def extract_telemetry(summ, share_models=False):
     if not summ or not isinstance(summ, dict):
