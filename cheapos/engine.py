@@ -954,7 +954,10 @@ class Engine:
             return self.store.present(task)
     def empty_trash(self):
         with self.lock:
-            return self.store.empty_trash()
+            result = self.store.empty_trash()
+            for project in self.projects(include_hidden=True):
+                self.store._cleanup_worktrees(project["path"])
+            return result
 
     def update_branch_run(self, task_id, operation):
         """Controller-only state mutation; never take a replacement record from HTTP."""

@@ -224,15 +224,19 @@ class Store:
     def delete_task(self, task_id):
         with self.lock:
             task = self.tasks.get(task_id)
-            if task and "branch_run" in task:
-                mapping = task["branch_run"].get("workspace_mapping") or {}
-                source = mapping.get("source")
-                worktree_path = Path(mapping.get("workspace") or task.get("workspace") or (self.root / "tasks" / task_id / "workspace"))
+            source = None
+            if task:
+                if "branch_run" in task:
+                    mapping = task["branch_run"].get("workspace_mapping") or {}
+                    source = mapping.get("source")
+                if not source:
+                    source = task.get("source")
+                worktree_path = Path((task.get("branch_run", {}).get("workspace_mapping") or {}).get("workspace") or task.get("workspace") or (self.root / "tasks" / task_id / "workspace"))
                 if source and worktree_path.exists():
                     try:
                         from .workspace import git
                         git(source, 'worktree', 'remove', '-f', str(worktree_path))
-                    except ValueError:
+                    except (ValueError, Exception):
                         pass
             if task_id in self.tasks:
                 del self.tasks[task_id]
@@ -241,9 +245,45 @@ class Store:
             task_path = self.root / "tasks" / task_id
             if task_path.exists():
                 shutil.rmtree(task_path)
+            if source:
+                self._cleanup_worktrees(source)
+
+    def _cleanup_worktrees(self, source):
+        try:
+            from .workspace import git
+            git(source, 'worktree', 'prune')
+            records = git(source, 'worktree', 'list', '--porcelain').splitlines()
+            for line in records:
+                if line.startswith('worktree '):
+                    p_str = line[len('worktree '):].strip()
+                    p = Path(p_str)
+                    is_temp = (
+                        p.name.startswith('cheapos')
+                        or str(p).startswith('/tmp/')
+                        or str(p).startswith('/private/tmp/')
+                        or str(p).startswith('/var/folders/')
+                        or str(p).startswith('/private/var/folders/')
+                        or '/tasks/' in str(p)
+                    )
+                    if is_temp:
+                        try:
+                            git(source, 'worktree', 'remove', '-f', str(p))
+                        except (ValueError, Exception):
+                            pass
+            git(source, 'worktree', 'prune')
+        except Exception:
+            pass
 
     def empty_trash(self):
         with self.lock:
             trashed_tasks = self.visible(view="trash")
+            sources = set()
             for task in trashed_tasks:
+                if task.get("source"):
+                    sources.add(task["source"])
+                br = task.get("branch_run") or {}
+                if br.get("workspace_mapping", {}).get("source"):
+                    sources.add(br["workspace_mapping"]["source"])
                 self.delete_task(task["id"])
+            for source in sources:
+                self._cleanup_worktrees(source)

@@ -56,3 +56,18 @@ class TrashWorkspaceTests(unittest.TestCase):
         # Verify worktree is removed from source
         worktrees = git(self.source, 'worktree', 'list')
         self.assertNotIn(str(workspace), worktrees)
+
+    def test_empty_trash_prunes_and_cleans_temporary_worktrees(self):
+        # Create a temporary worktree outside tasks (e.g. /tmp/cheapos-temp)
+        temp_wt = Path(tempfile.mkdtemp(prefix='cheapos-temp-wt-'))
+        try:
+            git(self.source, 'worktree', 'add', '-b', 'feature/temp', str(temp_wt), 'main')
+            self.assertIn(str(temp_wt), git(self.source, 'worktree', 'list'))
+
+            # Calling _cleanup_worktrees removes the temporary worktree
+            self.storage._cleanup_worktrees(str(self.source))
+            self.assertNotIn(str(temp_wt), git(self.source, 'worktree', 'list'))
+        finally:
+            if temp_wt.exists():
+                shutil.rmtree(temp_wt, ignore_errors=True)
+            git(self.source, 'worktree', 'prune')
