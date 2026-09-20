@@ -161,7 +161,9 @@ def preview(controller, task_id, values=None):
             controller.validate_authority(task, run)
             final.validate(readiness, task)
             if readiness['integration_blocker']: raise ValueError(readiness['integration_blocker'])
-            operation = branch_merge.prepare(run['workspace_mapping'], run['expected_feature_tip'], run['target_ref'])
+            from .git_workflow import enabled as pull_request_workflow
+            is_pr = pull_request_workflow(task)
+            operation = None if is_pr else branch_merge.prepare(run['workspace_mapping'], run['expected_feature_tip'], run['target_ref'])
             contract = {'kind':'merge', 'run_id':run['id'], 'readiness_id':readiness['id'], 'operation':operation}
             proposal = controller.final_proposals.prepare(task_id, contract)
         except (ValueError,OSError) as error:
@@ -239,6 +241,9 @@ def _merge_revalidate(task, operation):
 
 
 def merge(controller, task_id, values, *, background=False):
+    from .git_workflow import enabled as pull_request_workflow
+    if pull_request_workflow(controller.engine.store.get(task_id)):
+        raise ValueError('This chat uses pull requests. Publish the reviewed branch from Changes.')
     values = dict(values)
     if 'preview_id' in values:
         if 'proposal_id' in values: raise ValueError('Use only one preview ID')

@@ -404,6 +404,49 @@ Project overrides override app defaults. Chat setup can override those defaults 
 Explicit mappings do not alter budget, permissions, or merge authorization. Operator selection remains required to start work.
 Source labels identify App defaults, Project overrides, or the saved chat setup. Historical settings with unknown provenance are labeled explicitly.
 
+## Git workflows
+
+Work mode controls how agents work. **Git workflow** controls how reviewed work
+is delivered. They are separate choices, available for both Interactive and
+Unattended chats.
+
+- **Local merge (default):** approve the existing local commit or branch merge.
+  Nothing is pushed automatically.
+- **GitHub pull request:** approve publishing the reviewed task branch and
+  opening a PR from Changes. The destination branch and checkout stay unchanged.
+  Merge on GitHub after its checks and review rules are satisfied.
+
+Choose **Project settings → Git workflow** for one project's future chats, or
+**Settings → App defaults → Git workflow** for all future chats. **This new chat**
+can override that choice before submission. Existing chats retain their captured
+workflow; changing project defaults does not redirect ongoing work.
+
+PR mode needs a `github.com` SSH or HTTPS Git remote (usually `origin`), Git push
+access, and [GitHub CLI](https://cli.github.com/) signed in with
+`gh auth login --hostname github.com`. Set the remote's name in the same Git
+settings panel. The target is the task's selected destination branch, including
+`master` or another name; it is not hard-coded to `main`. Start from a committed
+baseline so the published files match the work that was verified.
+
+The flow has four parts: an isolated task branch, local verification and
+independent agent review, a PR with GitHub CI status, and your final merge under
+GitHub's repository rules. Set required checks, required PR reviews, and branch
+protection on GitHub. cheapoS reports protection status but does not configure or
+bypass it. Missing CI results are shown as pending, never as a pass.
+
+**Approve & open pull request** is explicit permission to push that reviewed
+commit to the displayed repository. An interrupted publication retains its
+intent so retrying can find the existing branch/PR instead of duplicating it.
+Further task edits must pass checks and independent review before **Approve &
+update pull request** can publish them to the same PR. An externally changed
+remote task branch is never overwritten. If GitHub checks fail, request a repair
+in the task with the failure details; automatic remote-CI repair is not included.
+
+GitHub status refreshes while the PR panel is open. After GitHub confirms the
+current reviewed commit was merged, cheapoS records completion. This does not
+pull into or modify your local checkout; update it through your normal Git
+workflow before starting subsequent work.
+
 ## Settings scopes
 
 A chat keeps its saved setup. Saving one scope never silently saves another.
@@ -419,7 +462,7 @@ A chat keeps its saved setup. Saving one scope never silently saves another.
 - **Appearance** affects this browser. **Usage & sharing** affects this installation
   and retains the existing explicit sharing opt-in.
 
-Agents, Spending & work, and Permissions share one scoped draft. Switching away
+Agents, Budgets, Git workflow, and Permissions share one scoped draft. Switching away
 from unsaved edits offers Save, Discard, or Keep editing. If another browser
 changed settings first, **Review newer settings** retains your edited fields so
 you can review before saving again. Saved choices remain visible while providers

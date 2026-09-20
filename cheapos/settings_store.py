@@ -51,7 +51,7 @@ def overlay(values, patch):
             output[key] = copy.deepcopy(value)
         else:
             group, name = key.split('.')
-            output[group][name] = copy.deepcopy(value)
+            output.setdefault(group, {})[name] = copy.deepcopy(value)
     return output
 
 
@@ -61,6 +61,8 @@ def resolve(document, project=None, draft=None):
     app = document['defaults']
     record = document['projects'].get(project, {'revision': 0, 'overrides': {}})
     values = copy.deepcopy(app['values'])
+    values.setdefault('git', {}).setdefault('workflow', 'local')
+    values['git'].setdefault('remote', 'origin')
     sources = {key: {'scope': 'defaults', 'revision': app['revision']}
                for key in fields(values)}
     for scope, revision, patch in (('project', record['revision'], record['overrides']),
@@ -89,7 +91,7 @@ class SettingsStore:
         self.limit_keys = set(limits_validator({'dollars': 0})) | {'uncapped_work'} | KEYS
         self.allowed = ({f'execution.{k}' for k in self.execution_keys}
                         | {f'limits.{k}' for k in self.limit_keys}
-                        | {f'roles.{k}' for k in ROLES} | {'allowed_connections', 'keep_up_to_date', 'git.user_name', 'git.user_email'})
+                        | {f'roles.{k}' for k in ROLES} | {'allowed_connections', 'keep_up_to_date', 'git.user_name', 'git.user_email', 'git.workflow', 'git.remote'})
 
     def validate_patch(self, patch):
         if not isinstance(patch, dict) or set(patch) - self.allowed:
@@ -105,8 +107,8 @@ class SettingsStore:
             for k in ('user_name', 'user_email'):
                 if k in result['git'] and not isinstance(result['git'][k], str):
                     raise ValueError(f'Git {k} must be a string')
-        self.validate_patch(fields(values))
-        result = copy.deepcopy(values)
+        from .git_workflow import validate_settings
+        validate_settings(result.get('git', {}))
         result['execution'] = self.execution_validator(values['execution'])
         result['limits'] = self.limits_validator(values['limits'])
         roles = values.get('roles', {})
@@ -195,7 +197,7 @@ class SettingsStore:
                     if provider and provider.get('model') == model:
                         public = {k: copy.deepcopy(v) for k, v in provider.items() if k in PROVIDER_FIELDS}
                         roles[role].update(provider=public, connection_id=public.get('connection_id'))
-            values = {'execution': execution, 'limits': self.limits_validator(preferences.get('limits', {'dollars': 0})), 'roles': roles, 'keep_up_to_date': False, 'git': {'user_name': 'cheapos', 'user_email': 'team@cheapos.lol'}}
+            values = {'execution': execution, 'limits': self.limits_validator(preferences.get('limits', {'dollars': 0})), 'roles': roles, 'keep_up_to_date': False, 'git': {'user_name': 'cheapos', 'user_email': 'team@cheapos.lol', 'workflow': 'local', 'remote': 'origin'}}
             document = {'schema_version': 1, 'generation': 1,
                         'defaults': {'revision': 1, 'values': values}, 'projects': {}, 'operations': {}, 'migration_notices': copy.deepcopy(notices or []), 'placement_confirmed': not fresh_install}
             for project, choices in mappings.get('projects', {}).items():

@@ -129,6 +129,26 @@ Work mode is separate from your model choices, command permissions, and work/spe
 
 [Work-mode examples and approval details →](docs/USER_GUIDE.md#work-modes)
 
+## Choose how finished work ships
+
+**Local merge is the default.** Keep approving local commits and merges while
+building a new project. When you want a PR workflow, open **Project settings →
+Git workflow** and select **GitHub pull request** for new chats in that project.
+App defaults and new-chat setup also offer this choice; existing chats keep
+their saved workflow.
+
+In PR mode, both Interactive and Unattended work use the same checks and
+independent review. In **Changes**, approve publishing the reviewed task branch
+and opening a pull request. cheapoS shows GitHub CI status; you make the final
+merge on GitHub under that repository's required checks and review rules.
+Your local destination checkout stays unchanged.
+
+This uses your existing GitHub remote and a local [GitHub CLI](https://cli.github.com/)
+login. Configure branch protection and required CI checks on GitHub separately;
+selecting PR mode does not change repository permissions.
+
+[Git workflow setup and publication details →](docs/USER_GUIDE.md#git-workflows)
+
 ## From a request to a reviewed change
 
 ![Describe a task, let the worker build in a separate copy, run checks, get a reviewer decision, then approve a commit or local merge. Revisions return to the worker.](docs/assets/workflow.svg)

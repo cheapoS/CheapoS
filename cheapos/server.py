@@ -158,7 +158,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js", "integration.js", "settings.js", "settings.css"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js", "integration.js", "settings.js", "settings.css", "git_workflow.js"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():
@@ -637,6 +637,13 @@ class LocalHandler(SimpleHTTPRequestHandler):
                         raise ValueError("Choose a grant to revoke or clear task commands")
                 elif action == "commit-preview":
                     result = engine.prepare_commit(task_id)
+                elif action in {"pull-request-preview", "pull-request-publish", "pull-request-status"}:
+                    from . import git_workflow
+                    if action == "pull-request-publish":
+                        result = git_workflow.publish(engine, task_id, values)
+                    else:
+                        if values: raise ValueError('This request accepts no fields')
+                        result = (git_workflow.preview if action == "pull-request-preview" else git_workflow.status)(engine, task_id)
                 elif action == "reconcile":
                     result = public_task(engine.reconcile_project(task_id, values))
                 elif action == "environment-recheck":

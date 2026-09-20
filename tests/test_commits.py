@@ -18,6 +18,30 @@ class CommitTests(CommitCase):
         self.assertEqual(git(self.source, 'rev-parse', 'HEAD').strip(), self.head)
         self.assertEqual(git(self.source, 'status', '--porcelain'), before)
         self.assertFalse((self.source / 'approved.txt').exists())
+        # Reuse this existing repository/evidence fixture for the PR handoff.
+        # Only GitHub traffic is mocked; temporary-index construction is real.
+        from cheapos import git_workflow, github
+        original = dict(self.task)
+        self.task.update(demo=False, settings_snapshot={'values': {'git': {'workflow':'pull_request','remote':'origin'}}})
+        self.review()
+        git(self.source, 'remote', 'add', 'origin', 'https://github.com/example/project.git')
+        pr = git_workflow.preview(self.engine, self.task['id'])
+        self.assertEqual(pr['base'], git(self.source,'branch','--show-current').strip())
+        original_git = git_workflow.work.source_git
+        def local_only(source, *args, **kwargs):
+            if args[0] in {'ls-remote','push'}:return ''
+            return original_git(source, *args, **kwargs)
+        def created(*args):
+            saved = self.engine.store.get(self.task['id'])['pull_request']
+            return {'number':1,'head':{'sha':saved['head']},'base':{'ref':pr['base']}}
+        with patch.object(git_workflow.work,'source_git',side_effect=local_only), patch.object(github,'find_pull',return_value=None), patch.object(github,'api',side_effect=created):
+            published=git_workflow.publish(self.engine,self.task['id'],{'approved':True,'id':pr['id']})
+        self.assertEqual(git(self.source,'rev-parse','HEAD').strip(),self.head)
+        self.assertEqual(git(self.source,'status','--porcelain'),before)
+        self.assertEqual(git(self.source,'show',published['head']+':approved.txt').strip(),'approved content')
+        self.assertEqual(git(self.source,'rev-parse',published['head']+'^').strip(),self.head)
+        self.task=original
+        self.engine.store.save(self.task)
         with self.assertRaisesRegex(ValueError, 'Approve'):
             self.approve(p, approved=False)
         result = self.approve(p, message='Add an approved example\n\nChosen by the operator.')
@@ -134,9 +158,9 @@ class CommitTests(CommitCase):
             commits.source_state(self.source)
 
     def test_custom_git_identity_applied(self):
-        # Setup repo with NO identity
-        git(self.source, 'config', '--unset', 'user.name')
-        git(self.source, 'config', '--unset', 'user.email')
+        # Empty local values also mask a developer's configured global identity.
+        git(self.source, 'config', 'user.name', '')
+        git(self.source, 'config', 'user.email', '')
         
         # Setup git settings
         git_settings = {"user_name": "Custom", "user_email": "custom@example.com"}

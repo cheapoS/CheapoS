@@ -377,6 +377,14 @@ class HTTPTests(unittest.TestCase):
         self.engine.runtimes[task['id']].thread.join(10)
         self.assertEqual(self.engine.store.get(task['id'])['status'], 'approved')
         path = '/api/tasks/' + task['id']
+        from cheapos import git_workflow
+        for action, method in [('preview','preview'),('publish','publish'),('status','status')]:
+            with patch.object(git_workflow,method,return_value={'fixture':True}) as handler:
+                route=path+'/pull-request-'+action
+                self.assertEqual(self.request('POST',route,{})[0],403)
+                handler.assert_not_called()
+                self.assertEqual(self.post(route,{})[0],200)
+                self.assertEqual(handler.call_count,1)
         self.assertEqual(self.request('POST', path + '/commit-preview', {}, {'Content-Type': 'application/json'})[0], 403)
         status, _, body = self.post(path + '/commit-preview', {})
         self.assertEqual(status, 200)
