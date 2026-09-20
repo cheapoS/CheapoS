@@ -3,7 +3,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from cheapos.engine import Engine, Runtime
 from cheapos.storage import Store
@@ -19,6 +19,38 @@ class TaskMetadataTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_save_detaches_live_task_before_json_writes_yield(self):
+        self.task['usage'] = {'worker': {'tokens': 5}}
+        self.task['events'] = [{'type': 'before'}]
+        original_dump = json.dump
+        def interleaved_dump(value, stream, **kwargs):
+            writes = 0
+            def write(chunk):
+                nonlocal writes
+                writes += 1
+                if writes == 5:
+                    # Reproduce a worker mutation while the watchdog's JSON
+                    # writer is already iterating the task. No timing race.
+                    self.task['new_worker_field'] = True
+                    self.task['usage']['worker']['tokens'] = 9
+                    self.task['events'][0]['type'] = 'after'
+                    self.task['events'].append({'type': 'next'})
+                return stream.write(chunk)
+            return original_dump(value, Mock(write=write), **kwargs)
+        with patch('cheapos.storage.json.dump', side_effect=interleaved_dump), \
+                patch.object(self.store.lifetime, 'ingest_task') as ingest:
+            self.store.save(self.task)
+        saved = self.store.get('known')
+        disk = json.loads((Path(self.temp.name) / 'tasks/known/task.json').read_text())
+        self.assertEqual(saved, disk)
+        self.assertNotIn('new_worker_field', saved)
+        self.assertEqual(saved['usage']['worker']['tokens'], 5)
+        self.assertEqual(saved['events'], [{'type': 'before'}])
+        ingest.assert_called_once_with(saved)
+        self.store.save(self.task)
+        self.assertEqual(self.store.get('known')['usage']['worker']['tokens'], 9)
+        self.assertTrue(self.store.get('known')['new_worker_field'])
 
     def test_metadata_survives_worker_saves_and_restart_without_rewriting_history(self):
         barrier = threading.Barrier(2)

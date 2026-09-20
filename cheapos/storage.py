@@ -15,6 +15,31 @@ from .titles import automatic_title
 from . import branch_runs
 
 
+def _snapshot(value, memo=None):
+    """Detach JSON containers before storage I/O yields to a live worker.
+
+    The store lock serializes saves, not every worker mutation. Copy each
+    container before walking its children so a concurrent insertion/removal
+    cannot invalidate an iterator. Reuse this one snapshot for disk, views and
+    accounting; none of those should reread the live task after writing it.
+    """
+    if not isinstance(value, (dict, list, tuple)):
+        return value
+    memo = {} if memo is None else memo
+    if id(value) in memo:
+        return memo[id(value)]
+    if isinstance(value, dict):
+        result = {}
+        memo[id(value)] = result
+        for key, item in value.copy().items():
+            result[key] = _snapshot(item, memo)
+    else:
+        result = []
+        memo[id(value)] = result
+        result.extend(_snapshot(item, memo) for item in list(value))
+    return result
+
+
 def write_json(path, value, *, compact=False):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -87,10 +112,11 @@ class Store:
 
     def save(self, task):
         with self.lock:
-            write_json(self.root / "tasks" / task["id"] / "task.json", task, compact=True)
-            self.tasks[task["id"]] = copy.deepcopy(task)
-            self._view_versions[task["id"]] = uuid.uuid4().hex
-            self.lifetime.ingest_task(task)
+            saved = _snapshot(task)
+            write_json(self.root / "tasks" / saved["id"] / "task.json", saved, compact=True)
+            self.tasks[saved["id"]] = saved
+            self._view_versions[saved["id"]] = uuid.uuid4().hex
+            self.lifetime.ingest_task(saved)
 
     def get(self, task_id):
         with self.lock:
@@ -105,10 +131,10 @@ class Store:
             # a durable event/save. Preserve the immutable saved history snapshot.
             saved = self.tasks.get(task['id'])
             if saved is None:
-                self.tasks[task['id']] = copy.deepcopy(task)
+                self.tasks[task['id']] = _snapshot(task)
             else:
                 for key in ('stream','check_stream','web_read','updated_at','status'):
-                    if key in task: saved[key] = copy.deepcopy(task[key])
+                    if key in task: saved[key] = _snapshot(task[key])
                     else: saved.pop(key,None)
             self._view_versions[task["id"]] = uuid.uuid4().hex
 
