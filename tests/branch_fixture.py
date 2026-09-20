@@ -8,10 +8,26 @@ import shlex
 import sys
 import tempfile
 import time
+import traceback
+from unittest.mock import patch
 from pathlib import Path
 from cheapos.engine import Engine
 from cheapos.server import LocalServer
 from cheapos.workspace import git
+
+
+def unexpected_stop_diagnostics():
+    """Keep the original controller exception visible when a fixture pauses."""
+    from cheapos import branch_pause
+    apply = branch_pause.apply
+
+    def observed(task, error=None, *args, **kwargs):
+        detail = apply(task, error, *args, **kwargs)
+        if detail['cause'] in {'unknown', 'controller_error'} and error is not None:
+            traceback.print_exception(type(error), error, error.__traceback__)
+        return detail
+
+    return patch('cheapos.branch_pause.apply', side_effect=observed)
 
 COMMAND=shlex.join([sys.executable,'-m','unittest','discover'])
 PROMPT='Build a CSV reader, Markdown table renderer, and a documented CLI. Preserve quoted CSV fields and report malformed row widths. Test each part.'
@@ -137,6 +153,8 @@ class ScriptedProvider:
 
 class Fixture:
     def __init__(self,delay=0):
+        self.stop_diagnostics = unexpected_stop_diagnostics()
+        self.stop_diagnostics.start()
         self.tmp=tempfile.TemporaryDirectory(prefix='cheapos-branch-proof-');self.root=Path(self.tmp.name).resolve()
         self.source=self.root/'project';self.source.mkdir()
         git(self.source,'init','-qb','main');git(self.source,'config','user.name','Fixture');git(self.source,'config','user.email','fixture@example.invalid')
@@ -149,6 +167,10 @@ class Fixture:
         self.engine.save_preferences({'execution':{'mode':'manual'}})
         self.engine.startup.busy=lambda:False
         self.provider=ScriptedProvider(delay);self.engine.provider_factory=lambda *args:self.provider
-    def close(self):self.engine.shutdown();self.tmp.cleanup()
+    def close(self):
+        try:
+            self.engine.shutdown();self.tmp.cleanup()
+        finally:
+            self.stop_diagnostics.stop()
     def values(self,feature='feature/csv-cli'):
         return {'repository':str(self.source),'prompt':PROMPT,'base_ref':'refs/heads/main','target_ref':'refs/heads/main','feature_ref':'refs/heads/'+feature,'plan':{'items':PLAN,'limits':{'dollars':0},'final_checks':[COMMAND]}}

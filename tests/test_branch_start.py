@@ -14,6 +14,10 @@ from test_engine import CONFIG
 
 class BranchStartTests(unittest.TestCase):
     def setUp(self):
+        from branch_fixture import unexpected_stop_diagnostics
+        diagnostics = unexpected_stop_diagnostics()
+        diagnostics.start()
+        self.addCleanup(diagnostics.stop)
         carto = patch('cheapos.carto.Carto.available', return_value=False)
         carto.start()
         self.addCleanup(carto.stop)
