@@ -84,3 +84,18 @@ private-key, provider-key, GitHub-token, AWS-key, JWT or long literal-secret
 matches. This is a targeted scan, not a guarantee that history contains no
 sensitive information. The historical `pinner.db` sample contains an empty
 bookmark table. No history rewrite was performed.
+
+Hosted run `35477212909` cleared the LFS failures and exposed a real concurrent
+save in Interactive takeover: the request handler serialized the worker-owned
+task after starting the worker. The continuation now persists before dispatch,
+and the handler returns the start snapshot without touching the live task.
+The existing takeover test now deterministically rejects any request-thread save
+after dispatch; it failed before the fix (0.233 seconds) and passes afterward.
+No additional workflow fixture or real-time wait was added.
+
+The same runner exceeded a pacing test's 250 ms wall-clock assertion by 8 ms.
+That case now uses a controlled clock to verify the exact remaining cooldown,
+recorded delay, first dispatch, and dispatch after cooldown expiry. Production
+pacing is unchanged. The 20 focused operator/pacing/policy tests passed in 2.391
+seconds; eight Resume/steering tests passed in 0.488 seconds. CI now lets all four
+platform/interpreter jobs finish so one failure cannot hide other results.

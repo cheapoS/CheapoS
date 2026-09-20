@@ -80,27 +80,30 @@ class TestRequestPacer(unittest.TestCase):
             del os.environ["CHEAPOS_DISABLE_PACING"]
 
     def test_throttle_delays_consecutive_requests(self):
-        # Test that consecutive requests within min_interval are throttled
+        # Measure the requested delay, independent of CI scheduling jitter.
         provider = "test_provider"
         interval = 0.15
-
-        # First request should proceed with virtually 0 delay
-        start = time.monotonic()
-        with self.pacer.throttle(provider, interval):
-            pass
-        first_duration = time.monotonic() - start
-        self.assertLess(first_duration, 0.05)
-
-        # Second request immediately following should wait the remaining interval
-        start = time.monotonic()
-        with self.pacer.throttle(provider, interval):
-            pass
-        second_duration = time.monotonic() - start
-        self.assertGreaterEqual(second_duration, 0.10)
-        self.assertLess(second_duration, 0.25)
+        clock=[100.0]
+        def advance(seconds): clock[0]+=seconds
+        with patch('cheapos.request_pacer.time.monotonic',side_effect=lambda:clock[0]), patch('cheapos.request_pacer.time.sleep',side_effect=advance) as sleep:
+            with self.pacer.throttle(provider, interval): pass
+            sleep.assert_not_called()
+            # Time already spent outside a request counts toward the cooldown.
+            clock[0]+=0.04
+            timing={}
+            with self.pacer.throttle(provider, interval,timing=timing): pass
+            self.assertAlmostEqual(clock[0],100.15)
+            self.assertAlmostEqual(timing['pacing_seconds'],0.11)
+            self.assertTrue(sleep.called)
+            self.assertAlmostEqual(sum(args[0] for args,kwargs in sleep.call_args_list),0.11)
+            clock[0]+=interval
+            sleep.reset_mock()
+            with self.pacer.throttle(provider, interval): pass
+            sleep.assert_not_called()
 
         stats = self.pacer.stats()
         self.assertEqual(stats["delays_count"].get(provider), 1)
+        self.assertAlmostEqual(stats['total_delayed_seconds'][provider],0.11)
 
     def test_throttle_does_not_delay_different_providers(self):
         # Delays for provider A should not delay provider B when no shared gateway

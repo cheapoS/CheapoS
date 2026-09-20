@@ -7,6 +7,7 @@ permissions:
 jobs:
   local-engine:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ['3.9', '3.13']

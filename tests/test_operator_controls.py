@@ -63,7 +63,21 @@ class OperatorControlsTests(LocalCase):
                 seen.append(json.dumps(messages))
                 return next(responses),{'prompt_tokens':2,'completion_tokens':2}
         self.engine.provider_factory=lambda *args:Provider()
-        saved=self.engine.operator_recovery(task['id'],{'action':'takeover','approved':True,'message':'Use the saved files and explain the next step.','attachments':[record]})
+        # After dispatch, the worker owns the mutable runtime task. A request
+        # handler saving it concurrently can corrupt/interrupt JSON persistence.
+        request_thread=threading.current_thread();dispatched=[]
+        original_start=self.engine.start;original_save=self.engine.store.save
+        def start(*args,**kwargs):
+            result=original_start(*args,**kwargs)
+            dispatched.append(True)
+            return result
+        def save(value):
+            if dispatched and threading.current_thread() is request_thread:
+                self.fail('Request handler persisted task state after worker dispatch')
+            return original_save(value)
+        with patch.object(self.engine,'start',side_effect=start), patch.object(self.engine.store,'save',side_effect=save):
+            saved=self.engine.operator_recovery(task['id'],{'action':'takeover','approved':True,'message':'Use the saved files and explain the next step.','attachments':[record]})
+        self.assertEqual(saved['operator_continue']['status'],'running')
         result=self.finish(task)
         self.assertEqual(result['status'],'awaiting_reply',result.get('error'))
         self.assertEqual(result['limits']['dollars'],dollars)

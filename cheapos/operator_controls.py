@@ -82,14 +82,14 @@ def interactive(engine, task_id, values=None):
             task['operator_continue']={'status':'ready','reason':'Development mode is enabled. Send your direction or choose Continue.'}
             engine.store.save(task)
             if action=='enable':return {'task':task,'operator_continue':task['operator_continue']}
+        task['operator_continue']={'status':'ready','reason':'Preparing to continue from saved files with your direction.'}
         engine.store.save(task)
         # A real operator request creates a new direction, preserving total usage.
         try:
             started=engine.start(task_id,{'message':message.strip(),**({'attachments':safe_attachments} if attachments else {})})
-            active=engine.runtimes[task_id].task
-            active['operator_continue']={'status':'running','reason':'Continuing from saved files with your direction.'}
-            engine.store.save(active)
-            return {'task':engine.store.get(task_id),'operator_continue':active['operator_continue']}
+            # start saves the continuation before dispatch and returns a snapshot.
+            # Do not mutate or serialize the worker-owned task after it starts.
+            return {'task':started,'operator_continue':started['operator_continue']}
         except ValueError as error:
             task=engine.store.get(task_id)
             append_attachments(task,safe_attachments)
