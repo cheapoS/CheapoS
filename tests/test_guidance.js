@@ -41,6 +41,18 @@ test('commit activity identifies the actual branch and commit',()=>{
   assert.equal(item.note,'abcd1234 · main · Fix clamp');
 });
 
+test('discussion after a confirmed PR merge does not reopen the saved patch decision',()=>{
+  const {canCommit}=require('../dist/guidance.js');
+  const t=task({status:'awaiting_reply',settings_snapshot:{values:{git:{workflow:'pull_request'}}},changes:[{path:'a.py'}],patch:'merged patch',patch_digest:'digest',checks:[{passed:true,digest:'digest'}],checkpoints:[{decision:'APPROVE',diff:'merged patch'}],pull_request:{head:'sha',merged_head:'sha',patch:'merged patch',ci:{state:'merged'},base:'main',local_sync:{state:'updated'}}});
+  assert.equal(canCommit(t),false);
+  assert.equal(taskGuide(t).eyebrow,'MERGED');
+  assert.match(taskGuide(t).description,/cheapoS pulled/);
+  assert.equal(taskGuide(t).primaryLabel,'View merged changes');
+  const newer={...t,patch:'new patch',checkpoints:[{decision:'APPROVE',diff:'new patch'}]};
+  assert.equal(canCommit(newer),true);
+  assert.notEqual(taskGuide(newer).eyebrow,'MERGED');
+});
+
 test('declining keeps the exact patch deferred while a changed patch gets a new decision',()=>{
   const {commitDeferred}=require('../dist/guidance.js');
   const t={patch_digest:'one',human_decision:{decision:'defer',digest:'one'}};

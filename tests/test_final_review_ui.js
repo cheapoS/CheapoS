@@ -57,7 +57,7 @@ test('actual preview loader displays progress before awaiting the API and ignore
  const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/branch_ui.js'),'utf8');
  const snippet=source.slice(source.indexOf(' async function loadFinal(task,slot)'),source.indexOf(' async function requestRevision'));
  let release,shown;const calls=[],node={isConnected:true,innerHTML:'',setAttribute(){},querySelector:()=>({})};
- const context={document:{createElement:()=>node},api:(url,body)=>{calls.push([url,body]);return new Promise(r=>release=r);}};
+ const context={workflow:require('../dist/git_workflow.js'),document:{createElement:()=>node},api:(url,body)=>{calls.push([url,body]);return new Promise(r=>release=r);}};
  vm.createContext(context);vm.runInContext(snippet,context);
  const pending=context.loadFinal({id:'saved-task'},{replaceChildren:el=>shown=el});
  assert.equal(shown,node);assert.match(node.innerHTML,/Preparing your review/);assert.equal(calls[0][0],'/tasks/saved-task/branch-final-preview');

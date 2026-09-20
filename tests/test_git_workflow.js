@@ -25,3 +25,34 @@ test('merged PR distinguishes local sync and retries pending checkout updates',(
  assert.equal(workflow.needsSync({...p,local_sync:{state:'current',retryable:false}}),false);
  assert.equal(workflow.needsSync({...p,ci:{state:'changed'}}),false);
 });
+const mergedTask=()=>({status:'awaiting_reply',patch:'reviewed patch',settings_snapshot:{values:{git:{workflow:'pull_request'}}},pull_request:{head:'a'.repeat(40),merged_head:'a'.repeat(40),patch:'reviewed patch',url:'https://github.com/org/repo/pull/7',number:7,base:'main',ci:{state:'merged'},local_sync:{state:'updated',branch:'main',retryable:false}}});
+test('merged work shows the recorded pull without asking for another approval',()=>{
+ const t=mergedTask();
+ assert.equal(workflow.merged(t),true);
+ for(const html of [workflow.content(t.pull_request),workflow.completionMarkup(t),workflow.markup(t)]){
+  assert.match(html,/Merged · local main up to date/);
+  assert.match(html,/cheapoS pulled the merged changes/);
+  assert.match(html,/View merged PR #7/);
+  assert.doesNotMatch(html,/data-pr-publish|Open pull request|Ready for|Preparing your reviewed|data-pr-refresh/);
+ }
+ assert.equal(workflow.merged({...t,patch:'new edits'}),false);
+ assert.doesNotMatch(workflow.markup({...t,patch:'new edits'}),/Merged ·/);
+ assert.equal(workflow.completionMarkup({...t,patch:'new edits'}),'');
+ assert.equal(workflow.merged({...t,pull_request:{...t.pull_request,merged_head:'other'}}),false);
+ assert.equal(workflow.merged({...t,pull_request:{...t.pull_request,ci:{state:'passed'}}}),false);
+ const branch={...t,branch_run:{status:'merged',expected_feature_tip:t.pull_request.head}};
+ assert.equal(workflow.merged(branch),true);
+ assert.equal(workflow.merged({...branch,branch_run:{...branch.branch_run,expected_feature_tip:'new head'}}),false);
+});
+test('local sync copy does not claim a pull or an up-to-date branch without evidence',()=>{
+ const p=mergedTask().pull_request;
+ const current=workflow.content({...p,local_sync:{state:'current',branch:'production'}});
+ assert.match(current,/local production up to date/);assert.match(current,/No pull was needed/);assert.doesNotMatch(current,/cheapoS pulled/);
+ const ahead=workflow.content({...p,local_sync:{state:'ahead',branch:'main'}});
+ assert.match(ahead,/additional local commits/);assert.doesNotMatch(ahead,/up to date/);
+ for(const local_sync of [undefined,{state:'deferred',retryable:true,message:'Draft <preserved>'}]){
+  const html=workflow.content({...p,local_sync});
+  assert.match(html,/local sync pending/);assert.match(html,/data-pr-refresh/);assert.doesNotMatch(html,/up to date|cheapoS pulled/);
+ }
+ assert.match(workflow.content({...p,local_sync:{state:'destination_changed',retryable:false}}),/local sync needs attention/);
+});
