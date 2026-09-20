@@ -144,6 +144,12 @@ class BranchController:
         return result
 
     def prepare(self, values, planning_task=None):
+        fresh_settings = None
+        git_sync = None
+        if not planning_task and hasattr(self.engine, 'settings_capture'):
+            fresh_settings = self.engine.settings_capture(values, values.get('repository'))
+            from .git_sync import before_task
+            git_sync = before_task(values.get('repository', ''), fresh_settings, values.get('base_ref'))
         with self.engine.lock:
             keep_up_to_date=values.get('keep_up_to_date',False)
             if type(keep_up_to_date) is not bool:raise ValueError('Keep up to date must be a boolean')
@@ -158,7 +164,7 @@ class BranchController:
                 check=evidence.check_specs([spec])[0];argv=check['command']
                 check_argv(shlex.join(argv))
                 if check not in commands: commands.append(check)
-            settings_snapshot=copy.deepcopy((planning_task or {}).get('settings_snapshot'))
+            settings_snapshot=copy.deepcopy((planning_task or {}).get('settings_snapshot')) or fresh_settings
             if settings_snapshot is None and hasattr(self.engine,'settings_capture'):
                 settings_snapshot=self.engine.settings_capture(values,values.get('repository'))
             policy=self.model_policy(settings_snapshot) if settings_snapshot is not None else copy.deepcopy(planning_task['planning_policy']) if planning_task else self.model_policy()
@@ -207,6 +213,9 @@ class BranchController:
             from .work_budgets import KEYS
             task['limits'].update({k:v for k,v in limits.items() if k in KEYS})
             task['branch_run']=run
+            if git_sync or (planning_task or {}).get('git_sync'):
+                task['git_sync'] = git_sync or copy.deepcopy(planning_task['git_sync'])
+                self.engine.event(task, 'git_sync', task['git_sync']['message'], task['git_sync'])
             task['check_directory']=commands[0]['directory']
             if settings_snapshot is not None:
                 task['settings_snapshot']=copy.deepcopy(settings_snapshot)
@@ -645,12 +654,18 @@ class BranchController:
             self.planning[identity]={'runtime':None,'cancelled':False}
         task=None;runtime=None;dispatched=False
         try:
+            fresh_settings = None
+            git_sync = None
+            if not planning_task and hasattr(self.engine, 'settings_capture'):
+                fresh_settings = self.engine.settings_capture(values, values.get('repository'))
+                from .git_sync import before_task
+                git_sync = before_task(values.get('repository', ''), fresh_settings, values.get('base_ref'))
             # Follow-ups use the original captured document, never a silent reread.
             inputs=copy.deepcopy(planning_task['branch_run']['inputs']) if planning_task else capture_inputs(values.get('repository',''),values.get('prompt',''),values.get('document'))
             measurement=values.get('measurement',False)
             if type(measurement) is not bool:raise ValueError('Measurement mode must be a boolean')
             if type(values.get('uncapped_work', False)) is not bool:raise ValueError('Uncapped work must be a boolean')
-            settings_snapshot=copy.deepcopy((planning_task or {}).get('settings_snapshot'))
+            settings_snapshot=copy.deepcopy((planning_task or {}).get('settings_snapshot')) or fresh_settings
             if settings_snapshot is None and not planning_task and hasattr(self.engine,'settings_capture'):
                 settings_snapshot=self.engine.settings_capture(values,inputs['source'])
             limits=planning_task['planning_limits'] if planning_task else run_limits(planning_limits_from_settings(settings_snapshot,values.get('limits',{})),3)
@@ -668,6 +683,9 @@ class BranchController:
                                          task_id=task_id,snapshot_override=(Workspace(directory),{'source':source,'files':0,'skipped':[]}),
                                          **({'settings_snapshot':settings_snapshot} if settings_snapshot is not None else {}))
                 if settings_snapshot is not None:task['settings_snapshot']=copy.deepcopy(settings_snapshot)
+                if git_sync:
+                    task['git_sync'] = git_sync
+                    self.engine.event(task, 'git_sync', git_sync['message'], git_sync)
                 task['planning_limits']=limits;task['planning_task_limits']=copy.deepcopy(task['limits']);task['planning_policy']=self.model_policy(settings_snapshot)
                 task['branch_run']=state.new_run({'items':[{'id':'planning','title':'Prepare run proposal','instructions':'Prepare a bounded plan','acceptance_criteria':['A complete proposal is ready']}],'limits':limits,**({'measurement':True} if measurement else {})},original_request=inputs['prompt'],inputs=inputs,
                                                 base_ref=values.get('base_ref',''),target_ref=values.get('target_ref',''),feature_ref=values.get('feature_ref',''),run_id=task_id)

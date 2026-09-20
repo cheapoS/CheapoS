@@ -785,6 +785,8 @@ class Engine:
         safe_attachments, augmented_prompt = prepare_attachments(self.store.root, attachments, prompt.strip())
         task_id = task_id or uuid.uuid4().hex
         directory = self.store.root / "tasks" / task_id
+        from .git_sync import before_task
+        git_sync = before_task(values.get('repository', ''), settings_snapshot) if not demo and snapshot_override is None else None
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
         task = {"served_identity_version":1, "id": task_id, "prompt": augmented_prompt, "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "planner": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         if keep_up_to_date:
@@ -812,6 +814,9 @@ class Engine:
             task["limits"]["uncapped_work"] = True
         self.project_test_grants.register(task)
         self.event(task, "snapshot", "Created an isolated repository snapshot", snapshot)
+        if git_sync:
+            task['git_sync'] = git_sync
+            self.event(task, 'git_sync', git_sync['message'], git_sync)
         return task
 
     def create_demo(self):

@@ -8,8 +8,8 @@ from urllib.parse import urlencode, quote
 from .branch_workspace import source_git
 
 
-def destination(source, remote):
-    urls = source_git(source, 'remote', 'get-url', '--push', '--all', remote).splitlines()
+def destination(source, remote, *, push=True):
+    urls = source_git(source, 'remote', 'get-url', *(['--push'] if push else []), '--all', remote).splitlines()
     if len(urls) != 1:
         raise ValueError('Choose a Git remote with one GitHub push destination')
     match = re.fullmatch(r'(?:git@github\.com:|https://github\.com/|ssh://git@github\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?', urls[0])

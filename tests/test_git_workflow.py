@@ -3,10 +3,11 @@ import copy
 import threading
 import unittest
 from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from cheapos import git_workflow as flow, github
+from cheapos import git_workflow as flow, github, git_sync
 
 
 class GitWorkflowTests(unittest.TestCase):
@@ -24,6 +25,7 @@ class GitWorkflowTests(unittest.TestCase):
         self.git = patch.object(flow.work, 'source_git', return_value='').start()
         self.find = patch.object(github, 'find_pull', return_value=None).start()
         self.create = patch.object(github, 'api', return_value={'number': 7, 'head': {'sha': 'a'*40}, 'base': {'ref': 'production'}}).start()
+        self.sync = patch.object(git_sync, 'synchronize', return_value={'state':'updated', 'retryable':False, 'message':'Updated local production.'}).start()
         self.addCleanup(patch.stopall)
 
     def approve(self, preview):
@@ -114,6 +116,33 @@ class GitWorkflowTests(unittest.TestCase):
         self.assertEqual(self.saved['status'],'approved')
         self.assertEqual(self.saved['pull_request']['head'],operation['head'])
 
+    def test_remote_merge_completion_survives_deferred_sync_and_restart(self):
+        operation = self.approve(flow.preview(self.engine, 'task'))
+        self.saved.update(status='approved', patch='saved edits')
+        self.sync.return_value = {'state':'deferred', 'retryable':True, 'message':'Draft preserved.'}
+        with patch.object(github,'checks',return_value={'state':'merged','merged_commit':'merge'}):
+            result = flow.status(self.engine,'task')
+            self.assertEqual(self.saved['status'],'completed')
+            self.assertEqual(result['local_sync']['state'],'deferred')
+            self.assertEqual(self.saved['pull_request']['merged_head'],operation['head'])
+            # Source advance makes the old interactive candidate unavailable;
+            # the persisted merge receipt still allows idempotent sync recovery.
+            self.candidate_mock.side_effect = ValueError('source advanced')
+            self.sync.return_value = {'state':'current', 'retryable':False, 'message':'Already current.'}
+            result = flow.status(self.engine,'task')
+        self.assertEqual(result['local_sync']['state'],'current')
+        self.assertEqual(self.saved['patch'],'saved edits')
+        self.sync.assert_called_with('/project','origin','refs/heads/production',
+            expected_destination=('org/repo','https://github.com/org/repo.git'), merged_commit='merge')
+
+    def test_open_changed_and_busy_tasks_do_not_sync(self):
+        self.approve(flow.preview(self.engine, 'task'))
+        for state in ('open','changed','failed'):
+            with patch.object(github,'checks',return_value={'state':state}):flow.status(self.engine,'task')
+        self.engine.runtimes = {'task':SimpleNamespace(thread=SimpleNamespace(is_alive=lambda:True))}
+        with patch.object(github,'checks',return_value={'state':'merged','merged_commit':'merge'}):flow.status(self.engine,'task')
+        self.sync.assert_not_called()
+
 
 class GitHubStatusTests(unittest.TestCase):
     def test_only_supported_remote_destinations_are_accepted(self):
@@ -140,3 +169,35 @@ class GitHubStatusTests(unittest.TestCase):
             pull={'head':{'sha':'expected'},'base':{'ref':'master'},'state':'open',**extra}
             with patch.object(github,'api',side_effect=[pull,{'protected':False},{'check_runs':[{'name':'ok','conclusion':'success'}],'total_count':101},{'statuses':[]}]):
                 self.assertEqual(github.checks('org/repo',1,'expected')['state'],state)
+
+
+class NewTaskSyncTests(unittest.TestCase):
+    def test_interactive_sync_precedes_snapshot_capture(self):
+        from cheapos.engine import Engine
+        class Captured(Exception): pass
+        snapshot = {'values': {'git': {'workflow':'pull_request'}, 'limits': {'dollars':0}}}
+        engine = SimpleNamespace(settings_capture=Mock(return_value=snapshot),
+            settings_policy=Mock(return_value={'execution':{'mode':'remote'},'providers':{}}),
+            store=SimpleNamespace(root=Path('/fixture')))
+        with patch.object(git_sync,'before_task',return_value={'state':'current'}) as sync:
+            def capture(*args):
+                sync.assert_called_once_with('/project',snapshot)
+                raise Captured()
+            with patch('cheapos.engine.Workspace.snapshot',side_effect=capture), self.assertRaises(Captured):
+                Engine.create(engine,{'repository':'/project','prompt':'Implement a parser','conversational':True})
+
+    def test_unattended_sync_precedes_document_capture(self):
+        from cheapos.branch_controller import BranchController
+        class Captured(Exception): pass
+        snapshot = {'values': {'git': {'workflow':'pull_request'}}}
+        engine = SimpleNamespace(lock=threading.RLock(),settings_capture=Mock(return_value=snapshot),
+            admission=SimpleNamespace(require=Mock(),pending={}))
+        controller = object.__new__(BranchController); controller.engine=engine; controller.planning={}
+        with patch.object(git_sync,'before_task',return_value={'state':'current'}) as sync:
+            def capture(*args):
+                sync.assert_called_once_with('/project',snapshot,'refs/heads/master')
+                raise Captured()
+            with patch('cheapos.branch_planner.capture_inputs',side_effect=capture), self.assertRaises(Captured):
+                controller.plan({'repository':'/project','base_ref':'refs/heads/master','planning_id':'test','prompt':'Implement a parser'})
+        self.assertEqual(controller.planning,{})
+        self.assertEqual(engine.admission.pending,{})
