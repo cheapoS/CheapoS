@@ -168,7 +168,11 @@ class LocalHandler(SimpleHTTPRequestHandler):
             path = path[4:]
         engine = self.server.engine
         try:
-            if path == "/api/bootstrap":
+            if path == "/api/connection":
+                # Restart polling must not wait on task/project restoration or
+                # configuration discovery. The token identifies this process.
+                self.reply({"app": "CheapOS", "token": self.server.token})
+            elif path == "/api/bootstrap":
                 self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.connections.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.visible(), "projects": engine.projects(), "hidden_projects": [p for p in engine.projects(include_hidden=True) if p["path"] in engine.hidden_project_paths()], "preferences": engine.preferences()})
             elif path == "/api/lifetime-usage":
                 period=parse_qs(urlsplit(self.path).query).get("days", ["all"])[0]

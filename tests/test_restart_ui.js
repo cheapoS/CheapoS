@@ -12,7 +12,7 @@ function fixture(responses={}){
  const fetch=async(path,options={})=>{
   calls.push({path,options});
   if(responses[path])return responses[path](options,calls.filter(c=>c.path===path).length,response);
-  return response(path==='/api/bootstrap'?{app:'CheapOS',token:'new'}:{status:'restarting'});
+  return response(path==='/api/connection'?{app:'CheapOS',token:'new'}:{status:'restarting'});
  };
  const ctx={fetch,AbortController,state:{token:'old'},toast:m=>toasts.push(m),console,
   $:node,document:{getElementById:id=>node('#'+id)},window:{location:{reload(){reloads++;}}},
@@ -37,18 +37,24 @@ function validPost(call){
  assert.deepEqual(JSON.parse(call.options.body),{});
 }
 test('restart waits for a new backend token, not a successful old response',async()=>{
- const f=fixture({'/api/bootstrap':(_,n,r)=>r({app:'CheapOS',token:n<3?'old':'new'})});await f.click();
+ const f=fixture({'/api/connection':(_,n,r)=>r({app:'CheapOS',token:n<3?'old':'new'})});await f.click();
  validPost(f.calls.find(c=>c.path==='/api/restart'));
  assert.equal(f.calls[0].path,'/api/restart');assert.equal(f.reloads,1);
- assert.equal(f.calls.filter(c=>c.path==='/api/bootstrap').length,3);assert.equal(f.now,1500);
+ assert.equal(f.calls.filter(c=>c.path==='/api/connection').length,3);assert.equal(f.now,1500);
+});
+test('reconnect never waits for the full bootstrap payload',async()=>{
+ const f=fixture({'/api/bootstrap':()=>{throw Error('Task restoration is busy');}});
+ await f.click();assert.equal(f.reloads,1);
+ assert.equal(f.calls.filter(c=>c.path==='/api/bootstrap').length,0);
+ assert.equal(f.calls.filter(c=>c.path==='/api/connection').length,1);
 });
 test('rejected restart does not poll or reload',async()=>{
  const f=fixture({'/api/restart':(_,n,r)=>r({error:'Denied'},403)});await f.click();
  assert.equal(f.calls.length,1);assert.equal(f.reloads,0);assert.match(f.toasts.at(-1),/403|Denied/);
 });
 test('wrong app, missing token, and old boot never reload before the restart deadline',async()=>{
- const f=fixture({'/api/bootstrap':(_,n,r)=>r(n%3===0?{app:'CheapOS',token:'old'}:n%3===1?{app:'Other',token:'new'}:{app:'CheapOS'})});await f.click();
- assert.equal(f.reloads,0);assert.equal(f.calls.filter(c=>c.path==='/api/bootstrap').length,120);
+ const f=fixture({'/api/connection':(_,n,r)=>r(n%3===0?{app:'CheapOS',token:'old'}:n%3===1?{app:'Other',token:'new'}:{app:'CheapOS'})});await f.click();
+ assert.equal(f.reloads,0);assert.equal(f.calls.filter(c=>c.path==='/api/connection').length,120);
  assert.equal(f.now,60000);assert.match(f.toasts.at(-1),/failed|did not/i);
 });
 test('a hung restart request is aborted and finishes visibly',async()=>{
@@ -68,7 +74,7 @@ test('failed gateway refresh is visible and does not claim success',async()=>{
 });
 
 test('a backend taking twenty seconds to restart still reconnects automatically',async()=>{
- const f=fixture({'/api/bootstrap':(_,n,r)=>{if(n<40)throw Error('Network unavailable');return r({app:'CheapOS',token:'new'});}});
+ const f=fixture({'/api/connection':(_,n,r)=>{if(n<40)throw Error('Network unavailable');return r({app:'CheapOS',token:'new'});}});
  await f.click();assert.equal(f.reloads,1);assert.equal(f.now,20000);
  assert.ok(f.toasts.some(m=>/Waiting for the server/.test(m)));assert.doesNotMatch(f.toasts.join(' '),/failed/i);
 });

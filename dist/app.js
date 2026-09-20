@@ -2117,7 +2117,7 @@ $('#composer-permissions').onclick=sessionPermissions;
         await new Promise(resolve=>setTimeout(resolve,500));
         if(Date.now()>=nextNotice){toast('Restarting cheapoS… Waiting for the server to reconnect.');nextNotice=Date.now()+5000;}
         try{
-          const data=await restartRequest('/api/bootstrap',false,1500);
+          const data=await restartRequest('/api/connection',false,5000);
           if(data.app==='CheapOS'&&typeof data.token==='string'&&data.token&&data.token!==oldToken){
             window.location.reload();return;
           }

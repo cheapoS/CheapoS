@@ -24,6 +24,21 @@ class UncopyableHistory(list):
 
 
 class RestartTests(unittest.TestCase):
+    def test_connection_probe_does_not_load_bootstrap_state(self):
+        handler = LocalHandler.__new__(LocalHandler)
+        # No configuration, task store or project discovery is available here.
+        handler.server = SimpleNamespace(token='new-process', engine=object())
+        handler.path = '/api/connection'
+        handler.trusted = Mock(return_value=True)
+        handler.reply = Mock()
+        handler.do_GET()
+        handler.reply.assert_called_once_with({'app': 'CheapOS', 'token': 'new-process'})
+        handler.trusted.assert_called_once_with()
+        handler.reply.reset_mock()
+        handler.trusted.return_value = False
+        handler.do_GET()
+        handler.reply.assert_not_called()
+
     def test_startup_metadata_copies_are_detached_and_do_not_traverse_history(self):
         with tempfile.TemporaryDirectory() as root:
             store = Store(root)
