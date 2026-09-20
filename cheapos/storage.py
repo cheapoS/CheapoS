@@ -225,15 +225,15 @@ class Store:
         with self.lock:
             task = self.tasks.get(task_id)
             if task and "branch_run" in task:
-                source = task["branch_run"].get("project", {}).get("source")
-                if source:
-                    worktree_path = self.root / "tasks" / task_id / "workspace"
-                    if worktree_path.exists():
-                        try:
-                            from .workspace import git
-                            git(source, 'worktree', 'remove', '-f', str(worktree_path))
-                        except ValueError:
-                            pass
+                mapping = task["branch_run"].get("workspace_mapping") or {}
+                source = mapping.get("source")
+                worktree_path = Path(mapping.get("workspace") or task.get("workspace") or (self.root / "tasks" / task_id / "workspace"))
+                if source and worktree_path.exists():
+                    try:
+                        from .workspace import git
+                        git(source, 'worktree', 'remove', '-f', str(worktree_path))
+                    except ValueError:
+                        pass
             if task_id in self.tasks:
                 del self.tasks[task_id]
             self._view_versions.pop(task_id, None)
