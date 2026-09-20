@@ -1410,6 +1410,7 @@ function commitReviewLink(task) {
 }
 function commitDecisionMarkup(task) {
   if(task.branch_run)return '';
+  if(CheapOSGitWorkflow.enabled(task))return CheapOSGitWorkflow.markup();
   if(CheapOSGuide.commitDeferred(task))return `<section class="chat-result"><div><strong>Changes are saved, without a commit.</strong><p>You can keep chatting or reconsider this patch whenever you’re ready.</p><button class="subtle-button" data-commit-action="reopen">Reopen decision</button></div></section>`;
   const entry=commitPreviews.get(task.id),current=entry?.key===previewKey(task)?entry:null;
   if(!current){ensureCommitPreview(task);return '<section class="chat-result"><div><strong>Checks and review are complete.</strong><p>Preparing your final diff and commit message…</p></div></section>'}
@@ -1435,6 +1436,7 @@ function requestChanges() {
 }
 function bindCommitDecision(task) {
   if(task.archived_at||task.trashed_at)return;
+  if(CheapOSGitWorkflow.enabled(task)){CheapOSGitWorkflow.mount($('#changes-view'),task,api,()=>{void refresh();});return;}
   const integrationState=commitPreviews.get(task.id)?.integration_readiness;
   CheapOSIntegration.bind($('#changes-view'),task,integrationState,api,async saved=>{
     commitPreviews.delete(task.id);

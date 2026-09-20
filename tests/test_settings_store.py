@@ -42,6 +42,17 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(result['values']['roles']['reviewer']['model'], 'review')
         self.assertEqual(result['sources']['roles.reviewer']['scope'], 'defaults')
 
+    def test_git_workflow_is_project_scoped_and_existing_chat_is_unchanged(self):
+        old = self.store.capture(self.project)
+        result = self.save({'git.workflow':'pull_request','git.remote':'upstream'}, self.project)
+        new = self.store.capture(self.project)
+        self.assertEqual(result['sources']['git.workflow']['scope'],'project')
+        self.assertEqual(old['values']['git']['workflow'],'local')
+        self.assertEqual(new['values']['git']['workflow'],'pull_request')
+        self.assertEqual(self.store.view(self.project+'-other')['values']['git']['workflow'],'local')
+        self.assertEqual(self.store.view()['values']['git']['workflow'],'local')
+        with self.assertRaises(ValueError):self.save({'git.workflow':'auto_merge'}, operation='invalid')
+
     def test_revisions_are_scope_local_but_parent_is_checked(self):
         original = self.store.view(self.project)
         self.save({'limits.dollars': 1}, self.project + '-other')
@@ -140,7 +151,7 @@ class SettingsStoreTests(unittest.TestCase):
     def test_git_settings(self):
         self.save({'git.user_name': 'NewUser', 'git.user_email': 'new@mail.com'})
         result = self.store.view()
-        self.assertEqual(result['values']['git'], {'user_name': 'NewUser', 'user_email': 'new@mail.com'})
+        self.assertEqual(result['values']['git'], {'user_name': 'NewUser', 'user_email': 'new@mail.com', 'workflow': 'local', 'remote': 'origin'})
         
         # Test validation of invalid types
         with self.assertRaises(ValueError):
@@ -149,4 +160,4 @@ class SettingsStoreTests(unittest.TestCase):
         # Test override
         self.save({'git.user_name': 'ProjectUser'}, self.project, operation='project')
         result_project = self.store.view(self.project)
-        self.assertEqual(result_project['values']['git'], {'user_name': 'ProjectUser', 'user_email': 'new@mail.com'})
+        self.assertEqual(result_project['values']['git'], {'user_name': 'ProjectUser', 'user_email': 'new@mail.com', 'workflow': 'local', 'remote': 'origin'})

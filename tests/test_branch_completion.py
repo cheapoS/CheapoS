@@ -67,6 +67,20 @@ class BranchCompletionTests(unittest.TestCase):
         self.assertEqual(page['diff'],preview['diff'])
         self.assertEqual((len(self.requests),len(self.task['checks'])),(calls,checks))
         self.assertEqual(git(self.source,'rev-parse','HEAD'),before)
+        # The same reviewed branch can be published without preparing a local
+        # merge, including when the target has another checkout and local files.
+        from unittest.mock import patch
+        from cheapos import git_workflow, branch_merge
+        self.saved_task['settings_snapshot']={'values':{'git':{'workflow':'pull_request'}}}
+        with patch.object(branch_merge,'prepare',side_effect=AssertionError('PR must not prepare local merge')):
+            pr_view=completion.preview(self.controller,'task')
+        self.assertEqual(pr_view['diff'],preview['diff'])
+        candidate=git_workflow._candidate(self.engine,self.saved_task)
+        self.assertEqual(candidate['base'],'main')
+        self.assertEqual(candidate['head'],self.run['expected_feature_tip'])
+        with self.assertRaisesRegex(ValueError,'pull requests'):
+            completion.merge(self.controller,'task',{'approved':True})
+        self.saved_task.pop('settings_snapshot')
         with self.assertRaises(ValueError):completion.merge(self.controller,'task',{'preview_id':preview['preview_id'],'approved':False})
         decision={'preview_id':preview['preview_id'],'approved':True}
         # Reuse this Git fixture for the HTTP-style background approval path.

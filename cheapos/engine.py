@@ -732,6 +732,9 @@ class Engine:
     def settings_apply_snapshot(self, task, snapshot):
         policy = self.settings_policy(snapshot)
         task['settings_snapshot'] = copy.deepcopy(snapshot)
+        from .git_workflow import enabled as pull_request_workflow
+        if pull_request_workflow(task) and not task.get('git_target'):
+            task['git_target'] = commits.source_state(task['source'])
         task['limits'] = copy.deepcopy(snapshot['values']['limits'])
         task['providers'] = copy.deepcopy(policy['providers'])
         task['gateway_connections'] = copy.deepcopy(policy.get('gateway_connections', []))
@@ -1666,6 +1669,8 @@ class Engine:
                         stream=None, check_stream=None, pending_approval=None, web_read=None,
                         error_code="project_reconciled", error="The current project and saved edits are together in this task copy. Continue to resolve overlaps, run the relevant checks, and request a new review.",
                         answer_pending=False, action_pending=False, request_worker_turns=0)
+            if task.get('git_target'):
+                task['git_target'] = {'source': task['source'], 'head': info['source_head'], 'branch': info['branch']}
             for key in ("human_decision", "pending_review", "pending_checkpoint", "output_recovery", "compact_edits", "steer_guidance"):
                 task.pop(key, None)
             task["loop_guidance"] = reconciliation.guidance(task)
@@ -1725,6 +1730,9 @@ class Engine:
                     "retry": bool(pending)}
 
     def apply_commit(self, task_id, values):
+        from .git_workflow import enabled as pull_request_workflow
+        if pull_request_workflow(self.store.get(task_id)):
+            raise ValueError('This chat uses pull requests. Publish the reviewed branch from Changes.')
         source = self.store.get(task_id)["source"]
         with self.admission.integration(task_id, source):
             self.require_active_task(task_id)
