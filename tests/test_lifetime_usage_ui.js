@@ -10,8 +10,9 @@ test('open is immediately pending; filters reject stale replies and close leaves
 test('failure offers retry, no raw server error, and successful retry enables export',async()=>{const c=controls();let count=0;ui.open({dialog:()=>c.d,header:()=>'',api:async()=>{if(!count++)throw Error('SECRET path');return fixture();}});await tick();assert.match(c.q('[data-usage-body]').innerHTML,/Retry/);assert.doesNotMatch(c.q('[data-usage-body]').innerHTML,/SECRET/);await c.q('[data-retry]').onclick();assert.equal(c.q('[data-export]').disabled,false);});
 test('club renders unlinked, preview, and active states with extended models',async()=>{
   const unlinkedData = fixture();
-  assert.match(ui.render(unlinkedData), /The Cheapskate Club/);
-  assert.match(ui.render(unlinkedData), /Connect to Club/);
+  assert.doesNotMatch(ui.render(unlinkedData), /data-club-connect|data-tab-panel="club"/);
+  assert.match(ui.renderClub(), /The Cheapskate Club/);
+  assert.match(ui.renderClub(), /Connect to Club/);
 
   const linkedData = fixture();
   linkedData.models = {'deepseek-chat': {tokens: 80, requests: 2, category: 'included'}};
@@ -20,7 +21,7 @@ test('club renders unlinked, preview, and active states with extended models',as
     is_linked: true, sync_enabled: false,
     x_identity: {handle: 'carlosa8c', name: 'Carlos Cabrera'}
   };
-  const linkedHtml = ui.render(linkedData);
+  const linkedHtml = ui.renderClub(linkedData.club);
   assert.match(linkedHtml, /@carlosa8c/);
   assert.match(linkedHtml, /Only new settled request counts/);
   assert.match(linkedHtml, /Enable sharing for new usage/);
@@ -32,7 +33,7 @@ test('club renders unlinked, preview, and active states with extended models',as
     installation_id: 'inst-1', is_linked: true, sync_enabled: true,
     x_identity: {handle: 'carlosa8c'}, last_synced_at: '2026-09-15T12:00:00Z'
   };
-  const activeHtml = ui.render(activeData);
+  const activeHtml = ui.renderClub(activeData.club);
   assert.match(activeHtml, /Sharing enabled/);
   assert.match(activeHtml, /Sync now/);
   assert.match(activeHtml, /Pause sharing/);
@@ -42,26 +43,30 @@ test('club renders unlinked, preview, and active states with extended models',as
   assert.equal(exported.extended_profile.models_used['deepseek-chat'].tokens, 80);
 });
 
-test('sync updates only Club panel without collapsing usage or export preview',async()=>{
- const c=controls(),calls=[];let finish;
+test('Club sync keeps the page open, prevents duplicate actions and refreshes connection status',async()=>{
+ const c=controls(),calls=[],updates=[];let finish;
  const data=fixture();data.club={is_linked:true,sync_enabled:true,x_identity:{handle:'alice'}};
- ui.open({dialog:()=>c.d,header:()=>'',api:async(path)=>{calls.push(path);if(path==='/club/sync')return new Promise(resolve=>finish=resolve);return data;}});
- await tick();const content=c.q('[data-usage-body]').innerHTML;
- c.d.scrollTop=210;c.q('[data-export]').onclick();
+ ui.openClub({dialog:()=>c.d,header:()=>'',onUpdated:data=>updates.push(data),api:async(path)=>{calls.push(path);if(path==='/club/sync')return new Promise(resolve=>finish=resolve);return data;}});
+ await tick();const content=c.q('[data-club-body]').innerHTML;
+ c.d.scrollTop=210;
  const click=c.q('[data-club-sync]').onclick();
  assert.equal(c.q('[data-club-sync]').textContent,'Syncing…');
- assert.equal(c.q('[data-usage-body]').innerHTML,content);
+ assert.equal(c.q('[data-club-body]').innerHTML,content);
+ await c.q('[data-club-sync]').onclick();
+ assert.equal(calls.length,2);
  finish({...data.club,sync_message:'Up to date.'});await click;
- assert.equal(c.q('[data-usage-body]').innerHTML,content);
+ assert.equal(c.q('[data-club-body]').innerHTML,content);
  assert.match(c.q('.club-panel').outerHTML,/Up to date/);
- assert.equal(c.d.scrollTop,210);assert.equal(c.q('[data-preview]').hidden,false);
+ assert.equal(c.d.scrollTop,210);
+ assert.match(c.q('[data-club-footer-status]').textContent,/@alice.*Sharing enabled/);
+ assert.equal(updates.length,1);assert.equal(updates[0].club.sync_message,'Up to date.');
  assert.deepEqual(calls,['/lifetime-usage?days=all','/club/sync']);
 });
 
 test('model preference checkbox saves and updates state',async()=>{
   const c=controls(),calls=[];
   const data=fixture();data.club={is_linked:true,sync_enabled:true,share_models:false,x_identity:{handle:'alice'}};
-  ui.open({dialog:()=>c.d,header:()=>'',api:async(path,payload)=>{calls.push({path,payload});if(path==='/club/sync')return {...data.club,share_models:payload?.share_models??true};return data;}});
+  ui.openClub({dialog:()=>c.d,header:()=>'',api:async(path,payload)=>{calls.push({path,payload});if(path==='/club/sync')return {...data.club,share_models:payload?.share_models??true};return data;}});
   await tick();
   c.q('[data-club-models]').checked=true;
   await c.q('[data-club-models]').onchange();
@@ -69,6 +74,39 @@ test('model preference checkbox saves and updates state',async()=>{
   assert.equal(calls[1].path,'/club/sync');
   assert.equal(calls[1].payload.share_models,true);
   assert.equal(calls[1].payload.enabled,true);
+});
+
+test('leaving Club while a connection request is pending ignores the late result',async()=>{
+  const c=controls(),updates=[];let finish;
+  ui.openClub({dialog:()=>c.d,header:()=>'',onUpdated:data=>updates.push(data),api:async(path)=>{
+    if(path==='/club/pair')return new Promise(resolve=>finish=resolve);
+    return fixture();
+  }});
+  await tick();
+  const pending=c.q('[data-club-connect]').onclick();
+  c.listeners.close();
+  finish({is_linked:true,x_identity:{handle:'alice'}});await pending;
+  assert.equal(updates.length,0);
+  assert.equal(c.q('[data-club-footer-status]').textContent,'Not connected');
+});
+
+test('automatic approval polling cannot overwrite a later disconnect',async(t)=>{
+  const c=controls(),updates=[];let poll,finish;
+  t.mock.method(globalThis,'setTimeout',fn=>{poll=fn;return {unref(){}};});
+  t.mock.method(globalThis,'clearTimeout',()=>{});
+  const data=fixture();data.club={is_linked:false,pairing_pending:true};
+  ui.openClub({dialog:()=>c.d,header:()=>'',onUpdated:data=>updates.push(data),api:async(path)=>{
+    if(path==='/club/check')return new Promise(resolve=>finish=resolve);
+    if(path==='/club/disconnect')return {is_linked:false,pairing_pending:false};
+    return data;
+  }});
+  await tick();assert.equal(typeof poll,'function');
+  const pending=poll();
+  await c.q('[data-club-disconnect]').onclick();
+  finish({is_linked:true,pairing_pending:false,x_identity:{handle:'alice'}});await pending;
+  assert.equal(c.q('[data-club-footer-status]').textContent,'Not connected');
+  assert.equal(updates.length,1);
+  c.listeners.close();
 });
 
 test('sidebar zero-cost tokens card formats lifetime percentage and token count',()=>{
@@ -118,5 +156,6 @@ test('reconciliation switches between local installation and remote club scorebo
   assert.match(remoteHtml,/Completed tasks/);
   assert.match(remoteHtml,/72/);
   assert.match(remoteHtml,/91\.1%/);
-  assert.match(remoteHtml,/Apply view to sidebar/);
+  assert.doesNotMatch(remoteHtml,/Apply view to sidebar/);
+  assert.match(ui.renderClub(data.club,'remote'),/Apply view to sidebar/);
 });

@@ -107,8 +107,7 @@ const CheapOSLifetimeUsage = (() => {
     const s=safeSummary(data);
     const rp=s.club?.remote_profile;
     const isRemote=viewMode==='remote'&&Boolean(rp);
-    const club=s.club||{},isLinked=Boolean(club.is_linked),isSyncing=Boolean(club.sync_enabled),op=club.x_identity||{};
-    const clubSection=renderClub(club, viewMode);
+    const club=s.club||{};
 
     const remoteCats = isRemote ? {
       public_free: { tokens: rp.categories?.public_free || 0, requests: null },
@@ -331,12 +330,9 @@ const CheapOSLifetimeUsage = (() => {
       </div>
     </div>
 
-    <!-- TAB 3: CHEAPSKATE CLUB -->
-    <div class="usage-tab-panel" data-tab-panel="club" hidden>
-      ${clubSection}
-    </div>`;
+    `;
   }
-  function open({dialog,api,header}){
+  function open({dialog,api,header,onClub}){
     const d=dialog(`${header('LOCAL INSTALLATION','Usage & savings')}
     <div class="lifetime-top-bar">
       <div class="settings-tabs usage-tabs" role="tablist">
@@ -345,9 +341,6 @@ const CheapOSLifetimeUsage = (() => {
         </button>
         <button type="button" class="settings-tab-btn" data-tab="breakdown" role="tab" aria-selected="false">
           <span>📋 Breakdown &amp; History</span>
-        </button>
-        <button type="button" class="settings-tab-btn" data-tab="club" role="tab" aria-selected="false">
-          <span>🏆 Cheapskate Club</span>
         </button>
         <button type="button" class="settings-tab-btn" data-tab="export" role="tab" aria-selected="false">
           <span>💾 Export</span>
@@ -370,6 +363,7 @@ const CheapOSLifetimeUsage = (() => {
         </div>
       </div>
     </div>
+    <p class="small" ${onClub?'':'hidden'}>Account, sharing and sync: <button type="button" class="text-link" data-open-club>The Cheapskate Club →</button></p>
     <div data-usage-body aria-live="polite"></div>
     <section class="usage-export-section" data-tab-panel="export" hidden>
       <div class="export-banner">
@@ -396,9 +390,10 @@ const CheapOSLifetimeUsage = (() => {
       <button type="button" class="primary-button" data-close>Done</button>
     </div>`,'lifetime-modal');
 
-    const q=s=>d.querySelector(s),body=q('[data-usage-body]');let request=0,current=null,pairTimer=null,pairChecking=false,closed=false,activeTab='overview';
-    const storage=(typeof localStorage!=='undefined'?localStorage:null);
-    let viewMode=(storage?.getItem?.('cheapos_usage_view'))||'local';
+    const q=s=>d.querySelector(s),body=q('[data-usage-body]');let request=0,current=null,closed=false,activeTab='overview';
+    let storage=null,savedView=null;
+    try{storage=typeof localStorage!=='undefined'?localStorage:null;savedView=storage?.getItem('cheapos_usage_view');}catch{}
+    let viewMode=savedView==='remote'?'remote':'local';
     const $$=(sel,el=d)=>(typeof el.querySelectorAll==='function'?Array.from(el.querySelectorAll(sel)):[]);
 
     function switchTab(tabName){
@@ -421,14 +416,12 @@ const CheapOSLifetimeUsage = (() => {
 
     function switchView(mode){
       viewMode=mode;
+      savedView=mode;
       try{storage?.setItem?.('cheapos_usage_view',mode);}catch{}
       $$('.usage-view-btn',d).forEach(btn=>{
         const active=btn.dataset.view===mode;
         btn.classList.toggle('active',active);
         btn.setAttribute('aria-checked',String(active));
-      });
-      $$('input[name="club_usage_view_pref"]',d).forEach(r=>{
-        r.checked=(r.value===mode);
       });
       const periodWrapper=q('.lifetime-period-wrapper');
       if(periodWrapper){
@@ -439,7 +432,6 @@ const CheapOSLifetimeUsage = (() => {
       if(current){
         body.innerHTML=render(current,viewMode);
         switchTab(activeTab);
-        bindClubActions();
         bindReconcileActions();
       }
       if(typeof renderLifetimeSavingsBadge==='function'&&current){
@@ -456,108 +448,12 @@ const CheapOSLifetimeUsage = (() => {
     }
 
     function bindReconcileActions(){
-      $$('.usage-view-btn',d).forEach(btn=>{
-        btn.onclick=()=>switchView(btn.dataset.view);
-      });
-      $$('input[name="club_usage_view_pref"]',d).forEach(radio=>{
-        radio.onchange=()=>{if(radio.checked)switchView(radio.value);};
-      });
-      const applyBtn=q('[data-apply-view]');
-      if(applyBtn){
-        applyBtn.onclick=()=>{
-          const checked=q('input[name="club_usage_view_pref"]:checked');
-          if(checked)switchView(checked.value);
-          const status=q('[data-apply-status]');
-          if(status){
-            status.style.display='inline';
-            status.textContent='✓ Applied to sidebar';
-            setTimeout(()=>{if(status)status.style.display='none';},2500);
-          }
-        };
-      }
+      $$('.usage-view-btn',d).forEach(btn=>{btn.onclick=()=>switchView(btn.dataset.view);});
     }
 
     $$('.usage-tabs .settings-tab-btn',d).forEach(btn=>{
       btn.onclick=()=>switchTab(btn.dataset.tab);
     });
-
-    async function checkPending(){if(closed||pairChecking||!d.isConnected||!current?.club?.pairing_pending)return;pairChecking=true;try{const status=await api('/club/check',{});if(status.is_linked)updateClub(status);}catch(error){const output=q('[data-club-error]');if(output)output.textContent=error.message||'Unable to check approval; retry shortly.';}finally{pairChecking=false;schedulePairCheck();}}
-    function schedulePairCheck(){clearTimeout(pairTimer);if(!closed&&d.isConnected&&current?.club?.pairing_pending)pairTimer=setTimeout(checkPending,3000);}
-
-    function updateClub(status){
-      if(closed||!d.isConnected||!current)return;
-      current.club=safeSummary({...current,club:status}).club;
-      const hasRemote=Boolean(current.club?.remote_profile);
-      const switchEl=q('[data-usage-view-switch]');
-      if(switchEl){
-        if(switchEl.style)switchEl.style.display=(hasRemote?'':'none');
-        switchEl.hidden=!hasRemote;
-      }
-      const scroll=d.scrollTop,panel=q('.club-panel');
-      if(panel)panel.outerHTML=renderClub(current.club||{}, viewMode);
-      bindClubActions();
-      bindReconcileActions();
-      schedulePairCheck();
-      d.scrollTop=scroll;
-    }
-    function bindClubActions(){
-      const actions=[['connect','/club/pair',{}],['check','/club/check',{}],['share','/club/sync',{enabled:true}],['sync','/club/sync',{}],['pause','/club/sync',{enabled:false}],['disconnect','/club/disconnect',{}],['preferences','/club/sync',{}]];
-      for(const [name,path,values] of actions){
-        const button=q('[data-club-'+name+']');
-        if(button)button.onclick=async()=>{
-          const label=button.textContent;
-          button.disabled=true;
-          if(name==='sync')button.textContent='Syncing…';
-          if(name==='preferences'){
-            button.textContent='Saving…';
-            const feedback=q('[data-club-pref-feedback]');
-            if(feedback)feedback.textContent='Saving…';
-            const chk=q('[data-club-models]');
-            if(chk)chk.disabled=true;
-          }
-          try{
-            const payload=['preferences','share'].includes(name)?{enabled:name==='share'||Boolean(current?.club?.sync_enabled),share_models:Boolean(q('[data-club-models]')?.checked)}:values;
-            let status=await api(path,payload);
-            if(status.is_linked===undefined)status=await api('/club/status');
-            updateClub(status);
-            if(name==='connect'&&status.pairing_pending&&status.connect_url){
-              try { window.open(status.connect_url, '_blank'); } catch(e){}
-            }
-            if(name==='preferences'){
-              const updatedBtn=q('[data-club-preferences]');
-              const feedback=q('[data-club-pref-feedback]');
-              if(updatedBtn)updatedBtn.textContent='Saved ✓';
-              if(feedback)feedback.textContent='Saved ✓';
-              const t=setTimeout(()=>{
-                if(updatedBtn&&updatedBtn.isConnected)updatedBtn.textContent='Save model preference';
-                if(feedback&&feedback.isConnected)feedback.textContent='';
-              },2000);
-              if(t&&typeof t.unref==='function')t.unref();
-            }
-          }catch(error){
-            if(closed||!d.isConnected)return;
-            const errEl=q('[data-club-error]');
-            if(errEl)errEl.textContent=error.message||'Club request failed. Local work is unaffected.';
-            const feedback=q('[data-club-pref-feedback]');
-            if(feedback)feedback.textContent='';
-            button.disabled=false;
-            button.textContent=label;
-            const chk=q('[data-club-models]');
-            if(chk)chk.disabled=false;
-          }
-        };
-      }
-      const modelCheckbox=q('[data-club-models]');
-      if(modelCheckbox){
-        modelCheckbox.onchange=()=>{
-          const prefBtn=q('[data-club-preferences]');
-          if(prefBtn){
-            if(typeof prefBtn.onclick==='function')prefBtn.onclick();
-            else if(typeof prefBtn.click==='function')prefBtn.click();
-          }
-        };
-      }
-    }
 
     async function load(){
       const seq=++request;current=null;
@@ -566,7 +462,7 @@ const CheapOSLifetimeUsage = (() => {
       body.innerHTML='<p role="status">Loading usage…</p>';
       try{
         const data=await api('/lifetime-usage?days='+q('[data-period]').value);
-        if(seq!==request||!d.isConnected)return;
+        if(closed||seq!==request||!d.isConnected)return;
         current=safeSummary(data);
         const hasRemote=Boolean(current?.club?.remote_profile);
         const switchEl=q('[data-usage-view-switch]');
@@ -574,7 +470,7 @@ const CheapOSLifetimeUsage = (() => {
           if(switchEl.style)switchEl.style.display=(hasRemote?'':'none');
           switchEl.hidden=!hasRemote;
         }
-        if(!storage?.getItem?.('cheapos_usage_view')&&hasRemote&&current?.club?.is_linked){
+        if(!savedView&&hasRemote&&current?.club?.is_linked){
           viewMode='remote';
         }
         const effectiveView=(viewMode==='remote'&&hasRemote)?'remote':'local';
@@ -590,17 +486,14 @@ const CheapOSLifetimeUsage = (() => {
         });
         body.innerHTML=render(current,effectiveView);
         switchTab(activeTab);
-        bindClubActions();
         bindReconcileActions();
         updateFooterStatus(effectiveView);
-        $$('[data-close]',d).forEach(b=>b.onclick=()=>d.close());
         if(typeof renderLifetimeSavingsBadge==='function'&&current){
           renderLifetimeSavingsBadge(current);
         }
-        schedulePairCheck();
         if(expBtn)expBtn.disabled=false;
       }catch(e){
-        if(seq!==request||!d.isConnected)return;
+        if(closed||seq!==request||!d.isConnected)return;
         body.innerHTML=(e.status===404?'<p role="alert">Usage &amp; savings will be available after a later app restart. Your current work can continue.</p>':'<p role="alert">Usage could not be loaded. Your chat is unchanged.</p>')+'<button class="outline-button" data-retry>Retry</button>';
         const retry=q('[data-retry]');if(retry)retry.onclick=load;
       }
@@ -612,10 +505,145 @@ const CheapOSLifetimeUsage = (() => {
     const fmt=q('[data-format]');if(fmt)fmt.onchange=preview;
     const dl=q('[data-download]');
     if(dl)dl.onclick=()=>{if(!current)return;const format=q('[data-format]').value,url=URL.createObjectURL(new Blob([exported()],{type:format==='md'?'text/markdown':'application/json'})),a=document.createElement('a');a.href=url;a.download='cheapoS-usage-summary.'+(format==='md'?'md':'json');a.click();setTimeout(()=>URL.revokeObjectURL(url),0);};
+    $$('[data-close]',d).forEach(b=>b.onclick=()=>d.close());
+    const clubLink=q('[data-open-club]');if(clubLink){clubLink.hidden=!onClub;clubLink.onclick=()=>onClub?.();}
+    d.addEventListener('close',()=>{closed=true;request++;});
+    load();
+    return d;
+  }
+  function openClub({dialog,api,header,onUpdated}){
+    const d=dialog(`${header('THIS INSTALLATION','The Cheapskate Club')}
+    <p>Connect this installation to your Club account. Sharing is optional and applies across its projects and chats.</p>
+    <div data-club-body aria-live="polite"><p role="status">Loading Club status…</p></div>
+    <div class="modal-footer" data-club-footer>
+      <span data-club-footer-status></span>
+      <button type="button" class="primary-button" data-close>Done</button>
+    </div>`,'lifetime-modal');
+    const q=s=>d.querySelector(s),clubBody=q('[data-club-body]');let current=null,pairTimer=null,pairChecking=false,closed=false,busy=false,request=0;
+    let storage=null,savedView=null;
+    try{storage=typeof localStorage!=='undefined'?localStorage:null;savedView=storage?.getItem('cheapos_usage_view');}catch{}
+    let viewMode=savedView==='remote'?'remote':'local';
+    const $$=(sel,el=d)=>(typeof el.querySelectorAll==='function'?Array.from(el.querySelectorAll(sel)):[]);
+    const active=()=>!closed&&d.isConnected;
+    function notify(){if(onUpdated)onUpdated(current);else if(typeof renderLifetimeSavingsBadge==='function')renderLifetimeSavingsBadge(current);}
+    function footer(){
+      const output=q('[data-club-footer-status]'),club=current?.club;
+      if(output)output.textContent=club?.is_linked?`Connected as @${club.x_identity?.handle||'unknown'} · Sharing ${club.sync_enabled?'enabled':'paused'}`:club?.pairing_pending?'Waiting for browser approval':'Not connected';
+    }
+    function updateClub(status){
+      if(closed||!d.isConnected||!current)return;
+      current.club=safeSummary({...current,club:status}).club;
+      const scroll=d.scrollTop,panel=q('.club-panel');
+      if(panel)panel.outerHTML=renderClub(current.club||{}, viewMode);
+      bindClubActions();bindReconcileActions();schedulePairCheck();
+      footer();notify();
+      d.scrollTop=scroll;
+    }
+    function bindReconcileActions(){
+      $$('input[name="club_usage_view_pref"]',d).forEach(radio=>{
+        radio.onchange=()=>{if(radio.checked)viewMode=radio.value;};
+      });
+      const applyBtn=q('[data-apply-view]');
+      if(applyBtn){
+        applyBtn.onclick=()=>{
+          const checked=q('input[name="club_usage_view_pref"]:checked');
+          if(checked){viewMode=checked.value;try{storage?.setItem?.('cheapos_usage_view',viewMode);}catch{}}
+          if(current)notify();
+          const status=q('[data-apply-status]');
+          if(status){status.style.display='inline';status.textContent='✓ Applied to sidebar';}
+        };
+      }
+    }
+    function bindClubActions(){
+      const actions=[['connect','/club/pair',{}],['check','/club/check',{}],['share','/club/sync',{enabled:true}],['sync','/club/sync',{}],['pause','/club/sync',{enabled:false}],['disconnect','/club/disconnect',{}],['preferences','/club/sync',{}]];
+      for(const [name,path,values] of actions){
+        const button=q('[data-club-'+name+']');
+        if(button)button.onclick=async()=>{
+          if(busy||!active())return;
+          busy=true;request++;clearTimeout(pairTimer);
+          const controls=$$('.club-panel button, .club-panel input');
+          controls.forEach(control=>control.disabled=true);
+          const label=button.textContent;
+          button.disabled=true;
+          if(name==='sync')button.textContent='Syncing…';
+          if(name==='preferences'){
+            button.textContent='Saving…';
+            const feedback=q('[data-club-pref-feedback]');
+            if(feedback)feedback.textContent='Saving…';
+            const chk=q('[data-club-models]');
+            if(chk)chk.disabled=true;
+          }
+          try{
+            const payload=['preferences','share'].includes(name)?{enabled:name==='share'||Boolean(current?.club?.sync_enabled),share_models:Boolean(q('[data-club-models]')?.checked)}:values;
+            let status=await api(path,payload);
+            if(status.is_linked===undefined)status=await api('/club/status');
+            if(!active())return;
+            updateClub(status);
+            if(name==='connect'&&status.pairing_pending&&status.connect_url){
+              try { window.open(status.connect_url, '_blank', 'noopener,noreferrer'); } catch(e){}
+            }
+            if(name==='preferences'){
+              const updatedBtn=q('[data-club-preferences]');
+              const feedback=q('[data-club-pref-feedback]');
+              if(updatedBtn)updatedBtn.textContent='Saved ✓';
+              if(feedback)feedback.textContent='Saved ✓';
+            }
+          }catch(error){
+            if(closed||!d.isConnected)return;
+            const errEl=q('[data-club-error]');
+            if(errEl)errEl.textContent=error.message||'Club request failed. Local work is unaffected.';
+            const feedback=q('[data-club-pref-feedback]');
+            if(feedback)feedback.textContent='';
+            button.disabled=false;
+            button.textContent=label;
+            const chk=q('[data-club-models]');
+            if(chk)chk.disabled=false;
+          }finally{
+            busy=false;
+            if(active()){controls.forEach(control=>control.disabled=false);schedulePairCheck();}
+          }
+        };
+      }
+      const modelCheckbox=q('[data-club-models]');
+      if(modelCheckbox){
+        modelCheckbox.onchange=()=>{
+          const prefBtn=q('[data-club-preferences]');
+          if(prefBtn){
+            if(typeof prefBtn.onclick==='function')return prefBtn.onclick();
+            else if(typeof prefBtn.click==='function')return prefBtn.click();
+          }
+        };
+      }
+    }
+    async function checkPending(){
+      if(!active()||busy||pairChecking||!current?.club?.pairing_pending)return;
+      const seq=request;pairChecking=true;
+      try{const status=await api('/club/check',{});if(active()&&seq===request)updateClub(status);}
+      catch(error){if(active()&&seq===request){const output=q('[data-club-error]');if(output)output.textContent=error.message||'Unable to check approval; retry shortly.';}}
+      finally{pairChecking=false;schedulePairCheck();}
+    }
+    function schedulePairCheck(){clearTimeout(pairTimer);if(active()&&!busy&&!pairChecking&&current?.club?.pairing_pending){pairTimer=setTimeout(checkPending,3000);pairTimer?.unref?.();}}
+    async function load(){
+      clubBody.innerHTML='<p role="status">Loading Club status…</p>';
+      try{
+        const data=await api('/lifetime-usage?days=all');
+        if(closed||!d.isConnected)return;
+        current=safeSummary(data);
+        if(!savedView&&current?.club?.is_linked&&current?.club?.remote_profile)viewMode='remote';
+        clubBody.innerHTML=renderClub(current.club||{}, viewMode);
+        bindClubActions();bindReconcileActions();schedulePairCheck();
+        footer();
+      }catch(e){
+        if(closed||!d.isConnected)return;
+        clubBody.innerHTML='<p role="alert">Club status could not be loaded.</p><button class="outline-button" data-retry>Retry</button>';
+        const retry=q('[data-retry]');if(retry)retry.onclick=load;
+      }
+    }
+    $$('[data-close]',d).forEach(b=>b.onclick=()=>d.close());
     d.addEventListener('close',()=>{closed=true;request++;clearTimeout(pairTimer);});
     load();
     return d;
   }
-  return {render,safeSummary,markdown,open,leaderboard};
+  return {render,renderClub,safeSummary,markdown,open,openClub,leaderboard};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSLifetimeUsage;

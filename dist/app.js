@@ -1640,7 +1640,7 @@ function appearanceSettings(host){
 async function scopedSettings(scope,section='agents',project){
  const capturedTask=state.task,repository=project||state.project?.path||capturedTask?.source;
  const options={api,scope:scope||(capturedTask?'task':'draft'),task:capturedTask?{id:capturedTask.id,title:capturedTask.title||capturedTask.prompt}:null,project:repository,section,models:state.gatewayModels||[],connectionsList:state.gateway.connections||[],
- connections:host=>openConnections(undefined,null,host),appearance:appearanceSettings,usage:host=>CheapOSLifetimeUsage.open({dialog:host.dialog,api,header:modalHeader}),
+ connections:host=>openConnections(undefined,null,host),appearance:appearanceSettings,usage:host=>CheapOSLifetimeUsage.open({dialog:host.dialog,api,header:modalHeader,onClub:()=>host.navigate('club')}),club:host=>CheapOSLifetimeUsage.openClub({dialog:host.dialog,api,header:modalHeader,onUpdated:data=>{lifetimeUsageData=data;lifetimeUsageLoadedAt=Date.now();renderLifetimeSavingsBadge(data);}}),
  permissions:id=>{if(id&&state.task?.id!==id)selectTask(id);else setView('activity');},pause:id=>api('/tasks/'+id+'/stop',{}),onSaved:async()=>{await refreshContext();if(state.task?.id===capturedTask?.id)await refresh();}};
  try{if(options.scope==='draft'){if(!repository){openProject(()=>scopedSettings('draft',section));return;}const draft=await setupDraft(repository);options.draft=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>{setupDrafts.set(repository,next);renderComposer();},()=>api('/projects/settings?project='+encodeURIComponent(repository)));}
  CheapOSSettings.open(options);}catch(error){toast(error.message);}
@@ -2134,7 +2134,7 @@ $('#composer-permissions').onclick=sessionPermissions;
   if(restartBoth)restartBoth.onclick=()=>restartAction({refresh:true});
   if(restartOmniroute)restartOmniroute.onclick=()=>restartAction({refresh:true,restart:false});
 })();
-if($('#lifetime-usage-trigger')) $('#lifetime-usage-trigger').onclick=()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader});
+if($('#lifetime-usage-trigger')) $('#lifetime-usage-trigger').onclick=()=>scopedSettings('usage');
 let lifetimeUsageData=null, lifetimeUsageLoadedAt=0;
 function renderLifetimeSavingsBadge(data){
   if(!data)return;
@@ -2169,7 +2169,7 @@ async function updateLifetimeSavingsBadge(force=false){
 }
 const sidebarZeroTokens=$('#sidebar-zero-tokens');
 if(sidebarZeroTokens){
-  const openUsage=()=>CheapOSLifetimeUsage.open({dialog,api,header:modalHeader});
+  const openUsage=()=>scopedSettings('usage');
   sidebarZeroTokens.onclick=openUsage;
   sidebarZeroTokens.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openUsage();}};
 }
@@ -2186,7 +2186,7 @@ try {
           });
         } catch {}
       }
-      CheapOSLifetimeUsage.open({dialog, api, header: modalHeader});
+      scopedSettings('club');
     })();
   }
 } catch {}

@@ -7,9 +7,11 @@ never a JSON file. Unsupported/locked secure storage disables Club connection,
 not local work. The old manual HMAC link is deliberately rejected.
 
 Website setup is documented in the Club repository's `web/CONNECTION_SETUP.md`.
-After both feature branches are deployed, open Usage & savings → Connect to Club,
-follow the approval link, verify **Connect to @handle**, then return and click
-Check connection. Review the displayed fields and Enable sharing for new usage.
+Open **Settings → The Cheapskate Club → Connect to Club**, follow the approval
+link, and verify **Connect to @handle**. The Club tab checks approval automatically
+while open; **Check connection** also refreshes it. Review the displayed fields
+and Enable sharing for new usage. Connection and sharing apply to this installation,
+across its projects and chats. Charts and local exports remain in **Usage & savings**.
 This also opts your Club profile into public rankings. Existing usage is excluded.
 Use Sync now after a new task; background sync checks every minute and backs off
 on failures (up to 15 minutes). No models are called by syncing.

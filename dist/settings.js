@@ -39,7 +39,7 @@ function open(options){
  const d=document.createElement('dialog');d.className='scoped-settings';d.setAttribute('aria-label','Work settings');
  d.innerHTML='<div class="scoped-settings-shell"><nav aria-label="Settings scope"></nav><form><header><div data-eyebrow></div><h2></h2><p data-description></p><div data-notices role="status"></div><button type="button" data-close aria-label="Close settings">×</button></header><div class="scoped-settings-tabs" aria-label="Work setting sections"></div><div class="scoped-settings-content"></div><footer><p data-summary></p><p role="status"></p><p role="alert"></p><button type="button" data-newer hidden>Review newer settings</button><div data-actions></div></footer></form><section class="scoped-settings-page" hidden></section></div>';
  document.body.append(d);const q=s=>d.querySelector(s);d.showModal();
- function clearPage(){if(embedded){embedded.close();embedded=null;}}
+ function clearPage(){if(embedded){embedded.dispose();embedded=null;}}
  function close(){pageGeneration++;clearPage();d.close();d.remove();opener?.focus();}
  const labels={task:'This chat',draft:'This new chat',project:'Project overrides',defaults:'App defaults'};
  async function leave(action){if(busy)return;if(!session?.dirty){await action();return;}
@@ -47,15 +47,17 @@ function open(options){
   panel.querySelector('[data-save]').onclick=async()=>{if(await save('apply')){panel.remove();await action();}};panel.querySelector('[data-discard]').onclick=()=>{panel.remove();action();};panel.querySelector('[data-keep]').onclick=()=>{panel.remove();q('[data-close]').focus();};panel.querySelector('[data-keep]').focus();
  }
  q('[data-close]').onclick=()=>leave(close);d.addEventListener('cancel',e=>{e.preventDefault();leave(close);});
- function nav(){q('nav').innerHTML='<strong>Settings</strong>'+scopes.map((s,i)=>'<button type="button" data-scope="'+i+'" '+(s===scope?'aria-current="page"':'')+'>'+labels[s.kind]+(s.kind==='project'?'<small>'+esc(s.title)+'</small>':'')+'</button>').join('')+['connections','appearance','usage'].map(k=>'<button type="button" data-external="'+k+'" '+(scope?.kind===k?'aria-current="page"':'')+'>'+({connections:'Connections',appearance:'Appearance',usage:'Usage & sharing'}[k])+'<small>'+({connections:'Shared connections',appearance:'This browser',usage:'This installation'}[k])+'</small></button>').join('');
+ function nav(){q('nav').innerHTML='<strong>Settings</strong>'+scopes.map((s,i)=>'<button type="button" data-scope="'+i+'" '+(s===scope?'aria-current="page"':'')+'>'+labels[s.kind]+(s.kind==='project'?'<small>'+esc(s.title)+'</small>':'')+
+'</button>').join('')+['connections','appearance','usage','club'].map(k=>'<button type="button" data-external="'+k+'" '+(scope?.kind===k?'aria-current="page"':'')+'>'+({connections:'Connections',appearance:'Appearance',usage:'Usage & savings',club:'The Cheapskate Club'}[k])+'<small>'+({connections:'Shared connections',appearance:'This browser',usage:'This installation',club:'Leaderboard & sync'}[k])+'</small></button>').join('');
   q('nav').querySelectorAll('[data-scope]').forEach(b=>b.onclick=()=>leave(()=>load(scopes[Number(b.dataset.scope)])));q('nav').querySelectorAll('[data-external]').forEach(b=>b.onclick=()=>leave(()=>openPage(b.dataset.external)));
  }
  function openPage(kind){
   const generation=++pageGeneration;clearPage();session=null;scope={kind};nav();q('form').hidden=true;
   const page=q('.scoped-settings-page');page.hidden=false;page.replaceChildren();
-  const host={navigate:kind=>leave(()=>load(scopes.find(s=>s.kind===kind)||scopes[0])),dialog(html,cls=''){
+  const host={navigate:kind=>leave(()=>['connections','appearance','usage','club'].includes(kind)?openPage(kind):load(scopes.find(s=>s.kind===kind)||scopes[0])),dialog(html,cls=''){
    const panel=document.createElement('div');panel.className='settings-embedded '+cls;panel.innerHTML=html;panel.open=true;
-   panel.close=()=>{if(!panel.open)return;panel.open=false;panel.dispatchEvent(new Event('close'));panel.remove();};
+   panel.dispose=()=>{if(!panel.open)return;panel.open=false;panel.dispatchEvent(new Event('close'));panel.remove();};
+   panel.close=()=>leave(close);
    panel.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>leave(close));
    if(generation===pageGeneration&&d.open){clearPage();embedded=panel;page.replaceChildren(panel);}else panel.open=false;
    return panel;
@@ -98,7 +100,8 @@ function open(options){
  async function load(s){pageGeneration++;clearPage();q('.scoped-settings-page').hidden=true;q('form').hidden=false;scope=s;busy=true;q('[role=alert]').textContent='';q('[role=status]').textContent='Loading saved settings…';try{session=createSession(api,s);if(s.kind==='draft')session=options.draft;else await session.load();render();q('[role=status]').textContent='';}catch(e){q('[role=alert]').textContent=e.message;}finally{busy=false;}}
  async function save(intent){if(busy)return false;busy=true;const buttons=d.querySelectorAll('button');buttons.forEach(b=>b.disabled=true);q('[role=alert]').textContent='';q('[role=status]').textContent='Saving…';try{const result=await session.save(intent);q('[role=status]').textContent=result.message||(result.pending?'Setup saved; waiting for the current operation.':result.continuing?'Setup saved. Continuing saved work…':'Saved for '+(scope.kind==='task'?'this chat':scope.kind==='project'?'new chats in '+scope.title:'future chats')+'.');options.onSaved?.(result,scope);summary();return true;}catch(e){q('[role=alert]').textContent=e.message+' Your unsaved changes are kept.';q('[data-newer]').hidden=false;q('[role=status]').textContent='';return false;}finally{busy=false;buttons.forEach(b=>b.disabled=false);q('[data-no-work-caps]')?.toggleAttribute('disabled',locked('limits.work_policy_version'));d.querySelectorAll('[data-field],[data-budget],[data-operation]').forEach(el=>el.disabled=locked(el.dataset.field||el.dataset.budget||el.dataset.operation));}}
  q('form').onsubmit=async e=>{e.preventDefault();if(session.record.active||session.record.capabilities?.active){if(!options.pause){q('[role=alert]').textContent='Pause this chat before applying. Your settings draft is kept.';return;}busy=true;try{await options.pause(scope.id);await session.refreshState();render();q('[role=status]').textContent='Pause requested. Your edits are kept. Refresh chat status after the current operation stops.';}catch(error){q('[role=alert]').textContent=error.message;}finally{busy=false;}return;}await save(scope.kind==='task'&&(session.record.paused||session.record.capabilities?.apply_and_continue)?'apply-and-continue':'apply');};
- load(scopes.find(s=>s.kind===(options.scope||'task'))||scopes[0]);return d;
+ if(['connections','appearance','usage','club'].includes(options.scope))openPage(options.scope);
+ else load(scopes.find(s=>s.kind===(options.scope||'task'))||scopes[0]);return d;
 }
 const exported={open,createSession,createDraftSession,changes,endpoint,sourceLabel};if(typeof module!=='undefined')module.exports=exported;else root.CheapOSSettings=exported;
 })(typeof globalThis!=='undefined'?globalThis:this);

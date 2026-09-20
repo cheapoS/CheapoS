@@ -1,7 +1,10 @@
 # Lifetime Usage & savings
 
-The bottom-left **Usage & savings** entry opens local installation statistics
-without leaving the selected chat. All time is the default; seven-day and
+The bottom-left **Usage & savings** entry opens that page in Settings
+without leaving the selected chat. **The Cheapskate Club** has its own Settings
+page for account connection, sharing preferences, and sync across this installation.
+Usage charts and local exports remain in **Usage & savings**.
+All time is the default; seven-day and
 30-day filters use UTC dates. Only recorded dates appear in history; missing
 history is not a zero-usage day. Daily display is bounded to 366 recorded days.
 
