@@ -28,7 +28,7 @@ independent-review success.
 
 ## Coordinated rollout
 
-Deploy the Club signed-health migration and endpoint from cheapskate-club PR #2
+The Club service must support signed request-health ingestion and publication
 before enabling this client version's reporting. Older Club servers ignore these
 new fields; they cannot publish the new measurements. Existing accepted events
 are amended by the normal fingerprint/reconciliation mechanism after upgrade;
@@ -68,8 +68,9 @@ Lost acknowledgments retain the exact signed envelope for replay. Unknown routes
 are not inferred from model prefixes. Each normal sync tick can process one
 metadata batch; discovery failures retry later without blocking normal usage.
 
-Roll out Club migration `202609200003_route_metadata_backfill.sql` and its API/UI
-first, then this client. The existing app restart/save ingest recovers locally
+The Club service must support signed route-history lookup and metadata corrections
+before this client can backfill records. Service deployment is coordinated
+separately. The existing app restart/save ingest recovers locally
 retained connection evidence; the background Club sync performs the backfill.
 It needs no new model calls. Older servers cannot provide the lookup and receive
 no metadata mutation. Inspect `route_backfill_error` in local connection state
