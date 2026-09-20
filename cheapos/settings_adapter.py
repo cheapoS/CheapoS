@@ -10,6 +10,36 @@ from .providers import validate_provider
 from . import access_policy
 
 
+
+def _load_legacy_preferences(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        preferences = json.loads(path.read_text())
+    except ValueError as error:
+        raise ValueError('Saved preferences.json is invalid; repair it before migrating settings') from error
+    if not isinstance(preferences, dict):
+        raise ValueError('Saved preferences.json must contain an object')
+    return preferences
+
+
+def _normalize_section(group, section, validator, initial, notices):
+    if not isinstance(section, dict):
+        notices.append({'field': group, 'message': f'Legacy {group} were invalid; review the migrated defaults.'})
+        section = {}
+    valid = dict(initial)
+    for key, value in section.items():
+        try:
+            allowed = set(validator(initial)) | ({'uncapped_work'} if group == 'limits' else set())
+            if key not in allowed:
+                raise ValueError('Unknown field')
+            validator({**valid, key: value})
+            valid[key] = value
+        except (ValueError, TypeError):
+            notices.append({'field': f'{group}.{key}', 'message': f'Legacy {group}.{key} needs review; its invalid value was not applied.'})
+    return validator(valid)
+
+
 def initialize(engine):
     from .engine import limits_from
     from .role_mappings import load
@@ -17,39 +47,19 @@ def initialize(engine):
         execution_validator=execution_from, provider_validator=validate_provider, lock=engine.lock)
     if not store.path.exists():
         path = engine.store.root / 'preferences.json'
-        try:
-            preferences = json.loads(path.read_text()) if path.exists() else {}
-        except ValueError as error:
-            raise ValueError('Saved preferences.json is invalid; repair it before migrating settings') from error
-        if not isinstance(preferences, dict):
-            raise ValueError('Saved preferences.json must contain an object')
+        preferences = _load_legacy_preferences(path)
         fresh_install = (not path.exists() and not (engine.store.root / 'config.json').exists()
                          and not (engine.store.root / 'role-mappings.json').exists() and not any(engine.config.values()))
         notices = []
         normalized = {}
         for group, validator, initial in (('execution', execution_from, {}), ('limits', limits_from, {'dollars': 0})):
-            section = preferences.get(group, {})
-            if not isinstance(section, dict):
-                notices.append({'field': group, 'message': f'Legacy {group} were invalid; review the migrated defaults.'})
-                section = {}
-            valid = dict(initial)
-            for key, value in section.items():
-                try:
-                    allowed = set(validator(initial)) | ({'uncapped_work'} if group == 'limits' else set())
-                    if key not in allowed:
-                        raise ValueError('Unknown field')
-                    validator({**valid, key: value})
-                    valid[key] = value
-                except (ValueError, TypeError):
-                    notices.append({'field': f'{group}.{key}', 'message': f'Legacy {group}.{key} needs review; its invalid value was not applied.'})
-            normalized[group] = validator(valid)
+            normalized[group] = _normalize_section(group, preferences.get(group, {}), validator, initial, notices)
         if fresh_install:
             normalized['execution']['mode'] = 'remote'
             from .work_budgets import FIELDS
             normalized['limits'].update(work_policy_version=2, **{key:None for key in FIELDS}, response_tokens='automatic', verification_seconds='automatic', request_seconds='automatic')
         store.initialize(normalized, load(engine.store.root / 'role-mappings.json'), engine.config, notices=notices, fresh_install=fresh_install)
     engine.settings_store = store
-
 
 def project_key(engine, project):
     key = canonical_project(project)
