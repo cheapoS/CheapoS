@@ -9,7 +9,7 @@ function merged(task){
  return Boolean(p?.head&&p.ci?.state==='merged'&&(!p.ci.head||p.ci.head===p.head));
 }
 function laterEdits(task){
- if(!merged(task))return false;
+ if(!merged(task)||task.workspace_cleanup?.state==='reclaimed')return false;
  const p=task.pull_request;
  return task.branch_run?task.branch_run.expected_feature_tip!==p.head||Boolean(task.patch):typeof p.patch==='string'&&task.patch!==p.patch;
 }

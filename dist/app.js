@@ -288,7 +288,7 @@ function compactMenu(anchor,label,actions) {
 }
 function historyMenu(anchor) {
   const actions=[['active','Active chats'],['archived','Archived chats'],['trash','Trash']].map(([view,label])=>({label,checked:(state.historyView||'active')===view,run:async()=>{const previous=state.historyView;state.historyView=view;try{await loadTasks();renderSidebar()}catch(error){state.historyView=previous;renderSidebar();throw error}}}));
-  if(state.historyView==='trash') actions.push({label:'Empty Trash',danger:true,run:async()=>{await api('/trash/empty',{});state.historyView='active';await loadTasks();renderSidebar();toast('Trash emptied.');}});
+  if(state.historyView==='trash') actions.push({label:'Empty Trash',danger:true,run:async()=>{const result=await api('/trash/empty',{});await loadTasks();renderSidebar();toast(result.errors?.length||result.retained?'Some tasks were retained. Open Settings → Storage for details.':'Trash emptied.');}});
   compactMenu(anchor,'Show chats',actions);
 }
 async function copyTaskJson(task) {
@@ -1686,7 +1686,7 @@ function appearanceSettings(host){
 async function scopedSettings(scope,section='agents',project){
  const capturedTask=state.task,repository=project||state.project?.path||capturedTask?.source;
  const options={api,scope:scope||(capturedTask?'task':'draft'),task:capturedTask?{id:capturedTask.id,title:capturedTask.title||capturedTask.prompt}:null,project:repository,section,models:state.gatewayModels||[],connectionsList:state.gateway.connections||[],
- connections:host=>openConnections(undefined,null,host),appearance:appearanceSettings,usage:host=>CheapOSLifetimeUsage.open({dialog:host.dialog,api,header:modalHeader,onClub:()=>host.navigate('club')}),club:host=>CheapOSLifetimeUsage.openClub({dialog:host.dialog,api,header:modalHeader,onUpdated:data=>{lifetimeUsageData=data;lifetimeUsageLoadedAt=Date.now();renderLifetimeSavingsBadge(data);}}),
+ connections:host=>openConnections(undefined,null,host),appearance:appearanceSettings,storage:host=>CheapOSStorage.open({dialog:host.dialog,api,header:modalHeader}),usage:host=>CheapOSLifetimeUsage.open({dialog:host.dialog,api,header:modalHeader,onClub:()=>host.navigate('club')}),club:host=>CheapOSLifetimeUsage.openClub({dialog:host.dialog,api,header:modalHeader,onUpdated:data=>{lifetimeUsageData=data;lifetimeUsageLoadedAt=Date.now();renderLifetimeSavingsBadge(data);}}),
  permissions:id=>{if(id&&state.task?.id!==id)selectTask(id);else setView('activity');},pause:id=>api('/tasks/'+id+'/stop',{}),onSaved:async()=>{await refreshContext();if(state.task?.id===capturedTask?.id)await refresh();}};
  try{if(options.scope==='draft'){if(!repository){openProject(()=>scopedSettings('draft',section));return;}const draft=await setupDraft(repository);options.draft=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>{setupDrafts.set(repository,next);renderComposer();},()=>api('/projects/settings?project='+encodeURIComponent(repository)));}
  CheapOSSettings.open(options);}catch(error){toast(error.message);}

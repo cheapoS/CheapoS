@@ -29,3 +29,11 @@ test('failed creation preserves the original draft and a late result never hijac
  const retry=f.c.continueMergedTask(f.button);f.state.selection=2;f.state.task={id:'elsewhere'};
  f.calls[1].resolve({id:'child'});await retry;assert.deepEqual(f.selected,[]);
 });
+
+// Reclamation proved there were no later files; the saved diff is history.
+test('reclaimed task offers a fresh follow-up without claiming later edits',()=>{
+ const task={pull_request:{head:'tip',ci:{state:'merged'},patch:'old'},patch:'saved history',workspace_cleanup:{state:'reclaimed'}};
+ const ui=require('../dist/git_workflow.js');
+ assert.equal(ui.laterEdits(task),false);
+ assert.match(ui.followupButton(task),/Continue in new task/);
+});

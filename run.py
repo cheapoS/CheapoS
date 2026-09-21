@@ -78,6 +78,7 @@ def main():
         server.engine.gateway.startup()
         server.engine.startup.start(automatic=True)
         server.engine.restore_route_waits()
+        server.engine.storage_maintenance.start()
         print(f'cheapoS startup: saved work loaded in {loaded-started:.2f}s; '
               f'continuations restored in {time.monotonic()-loaded:.2f}s.', flush=True)
     except (OSError, ValueError) as error:

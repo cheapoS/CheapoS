@@ -104,6 +104,11 @@ class BranchCompletionTests(unittest.TestCase):
         self.assertEqual(git(self.source,'write-tree'),index)
         self.assertEqual((self.source/'operator.txt').read_text(),'unrelated work')
         self.assertEqual(completion.merge(self.controller,'task',decision),result)
+        from cheapos.storage_maintenance import merge_identity, unchanged
+        from pathlib import Path
+        merged = merge_identity(result)
+        self.assertIsNotNone(merged)
+        unchanged(result, Path(result['workspace']), merged)
 
     def test_left_branch_keeps_read_only_diff_without_restoring_authority(self):
         self.finalize()

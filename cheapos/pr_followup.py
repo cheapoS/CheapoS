@@ -107,6 +107,11 @@ def later_patch(task):
     from either snapshot never become inferred deletions (secrets, links, sizes).
     """
     p = task['pull_request']
+    from .storage_maintenance import reclaimed, merge_identity
+    if reclaimed(task) and task['workspace_cleanup'].get('merge') == merge_identity(task):
+        if Path(task['workspace']).exists() or Path(task['workspace']).is_symlink():
+            raise ValueError('Files appeared after cleanup; inspect them before continuing')
+        return ''
     with tempfile.TemporaryDirectory(prefix='cheapos-followup-delta-') as directory:
         root = Path(directory)
         current, metadata = Workspace.snapshot(task['workspace'], root / 'current')

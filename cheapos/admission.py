@@ -72,6 +72,8 @@ class Admission:
             finally:
                 with self.engine.lock:
                     self.operations.pop(task_id, None)
+                if maintenance := getattr(self.engine, 'storage_maintenance', None):
+                    maintenance.wake.set()
 
     @contextmanager
     def resource(self, name, runtime, timeout=None):

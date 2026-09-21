@@ -18,7 +18,7 @@ class TaskPollingTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         # Exercise the real store without starting lifetime/club background jobs.
         self.store = Store.__new__(Store)
-        self.store.root = Path(temp.name)
+        self.store.root = Path(temp.name).resolve()
         self.store.lock = threading.RLock()
         self.store.tasks = {}
         self.store._view_versions = {}
@@ -84,6 +84,7 @@ class TaskPollingTests(unittest.TestCase):
         self.store.save({**self.task, 'id': 'two'})
         self.assertIsNotNone(self.store.poll('two', etag)[0])
         self.assertEqual(self.store.poll('one', etag), (None, etag))
+        self.store.set_trashed('one', True)
         self.store.delete_task('one')
         with self.assertRaisesRegex(ValueError, 'Task not found'):
             self.store.poll('one', etag)

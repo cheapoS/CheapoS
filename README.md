@@ -306,3 +306,15 @@ and per-request capacity. Choose this chat, optional project overrides, or app
 defaults for future chats. Existing saved limits stay intact. See the
 [limits guide](docs/development/limits-and-recovery-user-guide.md) for No cap,
 Automatic, and applying a budget change without resetting usage.
+
+### Storage and task cleanup
+
+**Settings → Storage** shows saved-task size and explains which task copies can
+be reclaimed. By default, confirmed merges release their task copy only after
+cheapoS verifies there are no unpublished edits. Chat history, saved diffs,
+reviews, checks and merge details remain available. Open PRs and unfinished work
+keep their copies.
+
+Trash stays restorable until you empty it or choose an automatic retention period
+in Storage. Permanent deletion removes the chat and its saved files/evidence;
+lifetime aggregate usage remains. See the [storage guide](docs/STORAGE.md).

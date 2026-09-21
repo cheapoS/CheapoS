@@ -15,7 +15,9 @@ class PreviewTests(unittest.TestCase):
         self.root = Path(self.tmp.name).resolve()
         self.task = {'source':str(self.root), 'workspace':str(self.root), 'id':'task'}
         self.engine = SimpleNamespace(store=SimpleNamespace(root=self.root,get=lambda _: self.task),
-                                      projects=lambda **_: [{'path':str(self.root)}])
+                                      projects=lambda **_: [{'path':str(self.root)}], lock=threading.RLock(), runtimes={})
+        from cheapos.admission import Admission
+        self.engine.admission=Admission(self.engine)
         self.manager = Previews(self.engine)
         self.addCleanup(self.manager.shutdown)
 
@@ -36,6 +38,16 @@ class PreviewTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,message):
                     self.manager.action('task','preview-start',dict(values,config={'command':'python3 app.py'}))
                 thread.assert_not_called()
+                self.assertFalse(self.engine.admission.operations)
+
+    def test_cleanup_and_reclaimed_tasks_cannot_start_previews(self):
+        self.engine.admission.operations['task'] = -1
+        with self.assertRaisesRegex(ValueError, 'repository operation'):
+            self.manager.action('task','preview-start',{})
+        self.engine.admission.operations.clear()
+        self.task['workspace_cleanup'] = {'state':'reclaimed'}
+        with self.assertRaisesRegex(ValueError, 'reclaimed'):
+            self.manager.action('task','preview-start',{})
 
     def test_status_reports_outdated_without_launching(self):
         self.manager.runs['task']=dict(status='exited',tip='old',branch='feature/task',root='/tmp/copy',url='',logs='output',config={},stop=threading.Event(),process=None,thread=Mock(is_alive=lambda:False,join=lambda **_:None))
