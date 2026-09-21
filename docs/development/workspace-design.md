@@ -1,10 +1,10 @@
-# Calm workspace prototype
+# Workspace design
 
-This is a local UI experiment, not a replacement for the execution or review
-system. It borrows the compact workspace hierarchy of tools such as ZCode while
-keeping cheapoS's own controls and visual identity.
+The cheapoS workspace puts conversation first, with compact navigation and a
+Session panel for task status and supporting details. These guidelines describe
+the adopted design and keep future UI changes consistent with it.
 
-## Direction
+## Interaction principles
 
 - Make conversation the main reading surface. Use restrained user bubbles and
   compact, expandable activity rows instead of cards inside cards.
@@ -20,9 +20,10 @@ keeping cheapoS's own controls and visual identity.
 
 ## Visual rules
 
-The experiment is scoped by the `calm-workspace` body class. Its shared tokens
-live together at the end of `dist/styles.css` so this direction can be evaluated
-and revised before integrating it into the existing styles.
+The workspace styles use the `calm-workspace` body class. Shared color,
+typography and reading-width tokens live in the workspace section of
+`dist/styles.css`. Reuse these tokens and existing components when extending
+the interface.
 
 Use a 14px reading size, 12px supporting text and 11px metadata. Keep conversation
 width at most 900px. Use dark neutral surfaces, muted mint for actions and
@@ -30,7 +31,7 @@ success, and the existing warning/error colors for attention. Prefer a subtle
 line or spacing to another enclosing panel. Keep keyboard focus and native
 disclosures usable; respect reduced motion.
 
-## Local preview
+## Local development preview
 
 From this checkout:
 
@@ -46,12 +47,15 @@ its temporary data. It is for local inspection, not a public deployment.
 
 Try the Session toggle, expand the activity and accounting rows, open Changes,
 and use Checks in Session. Check both a desktop window and a narrow window.
-The completed fixture does not exercise a live provider stream or an actual
-GitHub pull request; those still need a later real-task trial before shipping.
+The completed fixture covers saved task presentation. Live provider streaming
+and GitHub pull-request creation are outside this fixture's coverage; do not
+report those flows as verified by the preview.
 
 ## Validation
 
 Run `python3 -B scripts/check.py --plan`, then the selected frontend checks.
-The new summary cases are in-memory Node tests: latest check versus historical
-failures, stale approval during active work, and a conversation with no edits.
-No Python workflow tests or live-provider tests are added by this prototype.
+The session summary has in-memory Node tests for latest checks versus historical
+failures, stale approval during active work, and conversations with no edits.
+Use the affected browser flow to verify presentation changes. Run backend or
+live-provider checks when the implementation changes require them, following
+the change-scoped policy in `CONTRIBUTING.md`.

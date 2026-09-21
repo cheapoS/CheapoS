@@ -1575,7 +1575,7 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 .workflow-step.phase-review.has-live-output[open]>summary .workflow-last-action{display:block}
 .workflow-thinking-note{display:block;margin-top:4px;font-size:13px;line-height:1.5;color:var(--muted)}
 
-/* Calm workspace prototype. Shared scale and surfaces; task state stays in JS. */
+/* Workspace visual system. Shared scale and surfaces; task state stays in JS. */
 .calm-workspace {
   --bg: #181b1b;
   --sidebar: #121515;
