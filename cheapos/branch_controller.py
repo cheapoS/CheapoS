@@ -215,6 +215,9 @@ class BranchController:
             from .work_budgets import KEYS
             task['limits'].update({k:v for k,v in limits.items() if k in KEYS})
             task['branch_run']=run
+            if planning_task:
+                for key in ('coding_job_id', 'coding_job_observed_at', 'coding_job_complete'):
+                    if key in planning_task: task[key] = planning_task[key]
             if git_sync or (planning_task or {}).get('git_sync'):
                 task['git_sync'] = git_sync or copy.deepcopy(planning_task['git_sync'])
                 self.engine.event(task, 'git_sync', task['git_sync']['message'], task['git_sync'])
@@ -228,7 +231,7 @@ class BranchController:
             if planning_task:
                 from .metrics import initialize_actions
                 initialize_actions(planning_task)
-                for key in ('planning_work_policy','planning_strategy','strategy_episodes','strategy_continuation','context_evidence','context_recovery','session_actions','usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
+                for key in ('coding_job_id','coding_job_observed_at','coding_job_complete','planning_work_policy','planning_strategy','strategy_episodes','strategy_continuation','context_evidence','context_recovery','session_actions','usage','request_metrics','events','worker_turns','tool_actions','requests','created_at','planning_request','planning_limits','planning_policy','planning_assumptions','planning_task_limits','transport_retries','transport_json_routes'):
                     if key in planning_task: task[key]=copy.deepcopy(planning_task[key])
                 from .discussion import preserve
                 preserve(planning_task, task)
@@ -830,7 +833,7 @@ class BranchController:
             return {'stopped':True}
 
     @pr_followup.work_entry
-    def resume(self, task_id, values):
+    def resume(self, task_id, values, *, source_actor=None):
         from .engine import Runtime
         with self.engine.lock:
             self.engine.require_active_task(task_id)
@@ -844,6 +847,8 @@ class BranchController:
             run=state.require_supported(task['branch_run'])
             from .continuation_policy import record
             record(task, 'operator_continue')
+            if source_actor == 'api':
+                self.engine.event(task, 'job_resume', 'Continuation requested through the API', {'evidence_actor': 'api'})
             self.engine.store.save(task)
             if (run.get('target_update') or {}).get('origin')=='conflict_resolution':
                 from .branch_conflicts import complete

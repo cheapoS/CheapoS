@@ -14,6 +14,11 @@ def record_usage(record,usage,known):
     record['reasoning_tokens']=number(completion.get('reasoning_tokens')) if isinstance(completion,dict) else None
     record['cached_tokens']=number(prompt.get('cached_tokens')) if isinstance(prompt,dict) else None
     record['reported_cost']=number(usage.get('cost'))
+    # Preserve sub-cent decimal representation separately from float accounting.
+    if record['reported_cost'] is not None:
+        from decimal import Decimal
+        record['reported_cost_exact'] = format(Decimal(getattr(usage['cost'], 'decimal_text', str(usage['cost']))), 'f')
+        record['reported_currency'] = usage.get('currency', 'USD')
     record['cost_provenance']='provider_reported' if known and record['reported_cost'] is not None else 'estimated' if known else 'uncertain_reservation'
 
 
@@ -187,3 +192,11 @@ def tool_action(task, *, discussion=False):
     if discussion:
         replies = task.setdefault('discussion_requests', {})
         replies['tools'] = replies.get('tools', 0) + 1
+
+
+class ExactFloat(float):
+    """Keep the provider JSON decimal spelling alongside compatible float math."""
+    def __new__(cls, text):
+        value = super().__new__(cls, text)
+        value.decimal_text = str(text)
+        return value

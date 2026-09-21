@@ -112,6 +112,8 @@ class Store:
 
     def save(self, task):
         with self.lock:
+            from .job_evidence import prepare
+            prepare(task, self.tasks.get(task["id"]))
             saved = _snapshot(task)
             write_json(self.root / "tasks" / saved["id"] / "task.json", saved, compact=True)
             self.tasks[saved["id"]] = saved

@@ -1349,6 +1349,8 @@ class Engine:
                     self.branch.scopes.consent(runtime.task, branch_scope, exact=True)
                 else:
                     self.command_permissions.setdefault(task_id, set()).add((pending["directory"], tuple(pending["command"])))
+            if runtime.task.get("coding_job_id") and approved:
+                self.event(runtime.task, "job_approval", "Verification approved")
             self.event(runtime.task, "permission", "Project tests allowed for this session" if scope == "project_tests_session" else "Command allowed for this session" if remember else "Command allowed once" if approved else "Command declined", {"command": pending["command"], "directory": pending["directory"], "scope": scope or ("task_exact" if remember else "once")})
             runtime.approved = approved is True
             runtime.approval.set()
@@ -2628,6 +2630,8 @@ class Engine:
             guard_work(task, additions={'work_requests':1, 'work_turns':int(role == 'worker')})
         reservation = reserve(account, config, messages, tools, role)
         record=task['request_metrics'][-1]
+        if task.get('coding_job_id') and purpose not in {'probe', 'chat_reply'} and not getattr(runtime, 'answering_chat', False):
+            record['job_id'] = task['coding_job_id']
         reservation['metric_id']=record['id']
         record['reservation'] = {k: reservation[k] for k in ('tokens', 'cost', 'prompt_tokens', 'completion_tokens', 'basis', 'prompt_bytes', 'buffer_tokens')}
         record.update(reservation_tokens=reservation['tokens'],reservation_cost=reservation['cost'])

@@ -176,6 +176,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply({"app": "CheapOS", "token": self.server.token})
             elif path == "/api/bootstrap":
                 self.reply({"app": "CheapOS", "version": __version__, "token": self.server.token, "config": engine.configuration(), "gateway": engine.connections.snapshot(), "startup":engine.startup.snapshot(), "tasks": engine.store.visible(), "projects": engine.projects(), "hidden_projects": [p for p in engine.projects(include_hidden=True) if p["path"] in engine.hidden_project_paths()], "preferences": engine.preferences()})
+            elif path == "/api/job-evidence":
+                self.reply({"version": 1, "cohort": "unattended_coding", "jobs": engine.store.lifetime.job_export()})
             elif path == "/api/lifetime-usage":
                 period=parse_qs(urlsplit(self.path).query).get("days", ["all"])[0]
                 if period not in {"all","7","30"}:return self.reply({"error":"Usage period must be all, 7 or 30 days"},400)
@@ -498,7 +500,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
             elif path == "/api/club/sync":
                 self.trusted(mutation=True)
                 if "enabled" in values:
-                    result = engine.store.club.set_sync(values["enabled"],values.get("share_models"))
+                    result = engine.store.club.set_sync(values["enabled"],values.get("share_models"),values.get("share_jobs"))
                 else:
                     result = engine.store.club.sync_now(engine.store.lifetime, values.get("period", "all"))
             elif path == "/api/club/disconnect":
@@ -617,7 +619,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 elif action == "branch-message":
                     result = public_task(engine.branch.message(task_id, values))
                 elif action == "branch-resume":
-                    result = engine.branch.resume(task_id, values)
+                    result = engine.branch.resume(task_id, values, source_actor='api')
                 elif action == "branch-leave":
                     if values: raise ValueError("Leave accepts no fields")
                     result = public_task(engine.branch.revoke(task_id))

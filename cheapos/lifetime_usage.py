@@ -59,6 +59,8 @@ def clean(record):
     result = {key: number(record.get(key)) for key in (
         'input_tokens', 'output_tokens', 'reasoning_tokens', 'cached_tokens', 'reported_cost',
         'accounted_cost', 'accounted_tokens', 'reservation_tokens', 'reservation_cost', 'input_rate', 'output_rate')}
+    for key in ('job_id', 'reported_cost_exact', 'reported_currency', 'cost_provenance'):
+        if record.get(key) is not None: result[key] = record[key]
     reservation = record.get('reservation') or {}
     for field, source in [('reservation_tokens', 'tokens'), ('reservation_cost', 'cost')]:
         if result[field] is None:
@@ -122,10 +124,22 @@ class LifetimeUsage:
             stamp = now()
             self.state = dict(schema_version=1, recorded_since=stamp, updated_at=stamp, tasks={})
 
+        for job in self.state.get('jobs', {}).values():
+            if job.get('state') not in {'accepted', 'stopped'}:
+                job['timing_complete'] = False
+
+    def job_export(self):
+        from .job_evidence import export
+        with self.lock:
+            return export(copy.deepcopy(self.state.get('jobs', {})), self.raw_requests())
+
     def ingest(self, task):
         if task.get('demo') or task.get('synthetic'):
             return
         with self.lock:
+            from .job_evidence import observe
+            jobs = copy.deepcopy(self.state.get('jobs', {}))
+            job_changed = observe(jobs, task)
             key = digest(task['id'])
             previous = self.state['tasks'].get(key, {})
             entry = copy.deepcopy(previous) or {'requests': {}, 'residual': {}, 'partial': False}
@@ -205,9 +219,10 @@ class LifetimeUsage:
                 'implementation': is_completed,
                 'coordination': has_coord
             }
-            if entry == previous:
+            if entry == previous and not job_changed:
                 return
             state = copy.deepcopy(self.state)
+            state['jobs'] = jobs
             state['tasks'][key] = entry
             state['updated_at'] = now()
             self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)

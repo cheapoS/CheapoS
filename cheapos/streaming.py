@@ -1,4 +1,5 @@
 """Bounded OpenAI-compatible SSE assembly. Partial tool calls never execute."""
+from .metrics import ExactFloat
 import json
 import re
 import time
@@ -98,7 +99,7 @@ def read_chat_stream(response, emit, stopped, error_type, max_seconds=STREAM_MAX
             done = True
             return
         try:
-            data = json.loads(payload)
+            data = json.loads(payload, parse_float=ExactFloat)
         except json.JSONDecodeError as error:
             raise error_type(f'The provider sent malformed JSON in a stream event ({error.msg}, line {error.lineno}, column {error.colno}). No tool calls from this response were executed.', code='invalid_stream_json') from None
         if isinstance(data, dict) and isinstance(data.get('usage'), dict):

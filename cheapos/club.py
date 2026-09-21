@@ -249,7 +249,7 @@ class ClubManager:
         remote=self.get_remote_profile() if include_remote and self.state.get('identity') else self._remote_profile_cache
         with self.lock:
             s=self.state
-            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],share_models=s.get('share_models',False),last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']),remote_profile=remote)
+            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],share_models=s.get('share_models',False),share_jobs=s.get('share_jobs',False),jobs_since=s.get('jobs_since'),jobs_message=s.get('jobs_message'),last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']),remote_profile=remote)
 
     def start_pairing(self,lifetime):
         with self.lock:
@@ -298,6 +298,10 @@ class ClubManager:
         accepted_attempts = result.get('request_attempts_accepted')
         if message.get('request_attempts') and (type(accepted_attempts) is not int or accepted_attempts != len(message['request_attempts'])):
             raise ValueError('Club did not acknowledge the request attempts. The signed upload is retained for retry.')
+        if message.get('job_page') and (type(result.get('job_pages_accepted')) is not int or result.get('job_pages_accepted') != 1):
+            raise ValueError('Club did not acknowledge finished-work evidence. The upload is retained.')
+        from .club_jobs import acknowledge
+        acknowledge(self.state, message)
         self.state.update(sequence=message['sequence'],previous_hash=expected,pending=None,error=None)
         if result.get('handle') and self.state.get('identity'):
             self.state['identity']['handle'] = result['handle']
@@ -308,6 +312,9 @@ class ClubManager:
             self.state.setdefault('attempts_sent', {}).update(pending.get('attempt_fingerprints', {}))
             self.state.setdefault('route_backfill_processed', {}).update(pending.get('route_fingerprints', {}))
         else:
+            if 'share_jobs' in message:
+                self.state['share_jobs'] = message['share_jobs']
+                self.state['jobs_since'] = message.get('jobs_since')
             self.state['sync_enabled']=message['enabled']
             if message.get('share_models') is not None and message['share_models'] != self.state.get('share_models', False):
                 self.state.pop('route_backfill_processed', None)
@@ -318,10 +325,14 @@ class ClubManager:
         self.state['pending']={'envelope':self._signed(self._message(action,sequence=self.state['sequence']+1,previous_hash=self.state['previous_hash'],**fields)), 'fingerprints':_fingerprints or {}, 'route_fingerprints':_route_fingerprints or {}, 'attempt_fingerprints':_attempt_fingerprints or {}}
         self._save()
 
-    def set_sync(self,enabled,share_models=None):
+    def set_sync(self,enabled,share_models=None,share_jobs=None):
         with self.lock:
             if not isinstance(enabled,bool): raise ValueError('Sharing must be true or false.')
             if share_models is not None and not isinstance(share_models,bool): raise ValueError('Model sharing must be true or false.')
+            if share_jobs is not None and not isinstance(share_jobs, bool): raise ValueError('Finished-work sharing must be true or false.')
+            if share_jobs:
+                if 'accepted_jobs_v1' not in (self._call('status').get('capabilities') or []):
+                    raise ValueError('Finished-work sharing needs the Club server update first. Your choice has not been enabled.')
             was_enabled=self.state['sync_enabled']
             if not self.state['identity'] or self.state.get('revoking'): raise ValueError('Connect a Club account first.')
             self.state['sync_enabled']=False;self._save()
@@ -333,6 +344,10 @@ class ClubManager:
                 expected=hashlib.sha256(pending['envelope']['payload'].encode()).hexdigest()
                 if remote.get('sequence')==message['sequence'] and remote.get('previous_hash')==expected:
                     if message['action']=='sync':
+                        from .club_jobs import acknowledge
+                        if message.get('job_page') and 'accepted_jobs_v1' not in (remote.get('capabilities') or []):
+                            raise ValueError('Club cannot confirm finished-work support. Sharing remains paused.')
+                        acknowledge(self.state, message)
                         self.state['sent'].update(pending['fingerprints'])
                         self.state.setdefault('attempts_sent', {}).update(pending.get('attempt_fingerprints', {}))
                         self.state.setdefault('route_backfill_processed', {}).update(pending.get('route_fingerprints', {}))
@@ -345,6 +360,13 @@ class ClubManager:
                 shared = set(self.state['sent']) | set(self.state.get('attempts_sent', {}))
                 self.state['baseline']=list(set(self.state['baseline']) | {row['request_id'] for row in self.lifetime.raw_requests() if row['request_id'] not in shared})
             fields={'enabled':enabled}
+            if share_jobs is not None:
+                fields.update(share_jobs=share_jobs, jobs_since=(self.state.get('jobs_since') if self.state.get('share_jobs') else now()) if share_jobs else None)
+                if not share_jobs:
+                    self.state.update(share_jobs=False, job_upload=None)
+            elif not enabled and self.state.get('share_jobs'):
+                fields.update(share_jobs=False, jobs_since=None)
+                self.state.update(share_jobs=False, job_upload=None)
             if share_models is not None: fields['share_models']=share_models
             self._queue('consent',**fields);self._flush()
             if share_models is not None:
@@ -450,6 +472,8 @@ class ClubManager:
                         self.state['last_synced_telemetry'] = queue_kwargs['telemetry']
                     uploaded += len(queue_kwargs.get('events', []))
                     uploaded_attempts += len(queue_kwargs.get('request_attempts', []))
+                from .club_jobs import sync_jobs
+                sync_jobs(self, lifetime)
                 corrected = backfill_routes(self, lifetime)
                 self.state['sync_message']=(f'Uploaded {uploaded} usage records. Additional queued usage syncs automatically.' if uploaded else f'Updated provider details for {corrected} previously shared records. Token totals are unchanged.' if corrected else 'No new usage yet. Only requests made after sharing was enabled are uploaded.' if not new_requests else 'Waiting for complete token usage before uploading.' if waiting else 'Up to date. All eligible usage has already been uploaded.')
                 if uploaded_attempts:
@@ -466,7 +490,7 @@ class ClubManager:
             if self.state['pairing_id']:
                 result=self._call('disconnect')
                 if result.get('status')!='disconnected': raise ValueError('Club did not confirm disconnection. Sharing remains stopped.')
-            self.state.update(identity=None,pairing_id=None,pending=None,sent={},attempts_sent={},baseline=[],revoking=False,error=None,share_models=False)
+            self.state.update(identity=None,pairing_id=None,pending=None,sent={},attempts_sent={},baseline=[],revoking=False,error=None,share_models=False,share_jobs=False,jobs_since=None,job_upload=None,jobs_sent={},job_revisions={})
             self._save()
             with self._remote_profile_lock:
                 self._remote_profile_cache=None

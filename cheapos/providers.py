@@ -1,4 +1,5 @@
 """OpenAI-compatible chat completions, with explicit accounting before dispatch."""
+from .metrics import ExactFloat
 
 import json
 from .measurement import enabled as measuring
@@ -80,7 +81,7 @@ def http_failure(error, config):
     if config.get("gateway") == "omniroute":
         try:
             raw = error.read(16385)
-            data = json.loads(raw) if len(raw) <= 16384 else {}
+            data = json.loads(raw, parse_float=ExactFloat) if len(raw) <= 16384 else {}
             metadata = data.get("error", {}) if isinstance(data, dict) else {}
             code = metadata.get('code') if isinstance(metadata, dict) else None
         except (ValueError, OSError):
@@ -332,7 +333,7 @@ class ChatProvider:
                         if len(raw) > 4_000_000:
                             raise ProviderError("Provider response exceeded 4 MB", code="response_too_large")
                         try:
-                            data = json.loads(raw)
+                            data = json.loads(raw, parse_float=ExactFloat)
                         except (json.JSONDecodeError, UnicodeDecodeError) as error:
                             detail = f'{error.msg}, line {error.lineno}, column {error.colno}' if isinstance(error, json.JSONDecodeError) else 'invalid text encoding'
                             raise ProviderError(f'Provider returned malformed response JSON ({detail}). No tool calls from this response were executed.', code='invalid_response_json') from None
