@@ -6,6 +6,7 @@ approval is never implementation evidence on its own. No new execution authority
 import copy
 import hashlib
 import json
+import re
 
 VERSION = 1
 INSTRUCTION = '''Approval needs review_assessment, not just passing checks. For every criterion explain how the requested behavior follows from actual code/document evidence. Cite exact nonempty excerpts using source IDs from review_evidence or evidence_id returned by a read tool. Review regressions and verification separately: examine changed/removed handlers, callers, styles, imports, tests and assertions as relevant. Examine whether assertions would fail if the requested behavior were missing, and whether changed tests weaken expectations, remove coverage, or replace behavior with permissive mocks. Explain what the checks establish and what they miss; a green command or the worker's description alone cannot establish correctness. For UI changes inspect related styles, icons and interactions; source inspection is not a rendered visual check. List remaining verification limitations honestly. Missing evidence means use the read tools or request focused tests within existing authority, not guess, approve, or invent a defect. Do not manufacture findings on correct work. Earlier approvals are claims, not source evidence. The original request is context for detecting omissions; the approved scope and latest explicit amendments remain authoritative.'''
@@ -31,23 +32,24 @@ def original_request(task):
             'retrieve': 'Read the captured request and directions with read_context_evidence; this excerpt is incomplete.'}
 
 
-def add(state, source, kind, content):
+def add(state, source, kind, content, **metadata):
     if not isinstance(content, str) or not content.strip():
         return None
-    state['sources'][source] = {'kind': kind, 'content': content, 'digest': digest(content)}
+    state['sources'][source] = {'kind': kind, 'content': content, 'digest': digest(content), **metadata}
     return source
 
 
 def prepare(scope, packet, criteria, *, partial=False):
     state = {'version': VERSION, 'scope': scope, 'criteria': list(criteria) or ['packet'],
              'partial': partial, 'sources': {}}
-    add(state, 'diff', 'code', packet.get('diff'))
+    add(state, 'diff', 'code', packet.get('diff'), format='diff')
     checks = packet.get('checks') or packet.get('review_context', {}).get('final_checks')
     if checks:
         add(state, 'checks', 'check', json.dumps(checks, ensure_ascii=False, sort_keys=True))
     chunk = packet.get('chunk')
     if isinstance(chunk, dict):
-        add(state, 'packet', 'code' if chunk.get('kind') == 'diff' else 'packet', chunk.get('content'))
+        add(state, 'packet', 'code' if chunk.get('kind') == 'diff' else 'packet', chunk.get('content'),
+            format='diff' if chunk.get('kind') == 'diff' else 'text')
     if 'page_index' in packet:
         add(state, 'packet', 'packet', packet.get('content'))
     # Synthesis receives exact excerpts from approved chunks, not just verdicts.
@@ -64,11 +66,12 @@ def display(state):
     sources = []
     for source, value in state['sources'].items():
         row = {'id': source, 'kind': value['kind'], 'digest': value['digest']}
+        row.update({key: value[key] for key in ('path', 'format') if key in value})
         if source.startswith('chunk:'):
             row['content'] = value['content']  # The synthesizer must see the cited code.
         sources.append(row)
     return {'version': VERSION, 'scope': state['scope'], 'criteria': state['criteria'], 'sources': sources,
-            'instruction': 'Cite literal excerpts from delivered evidence, not these descriptors. Read missing code with the available tools. Checks alone do not prove requested behavior.'}
+            'instruction': 'Use an exact source id below (not a file path). Quote a short literal excerpt from that delivered source. Display line numbers and diff gutters may be omitted; code indentation and wording must stay exact. Reuse delivered evidence; read only missing context. Checks alone do not prove requested behavior.'}
 
 
 def packet_for_model(packet):
@@ -85,11 +88,13 @@ def packet_for_model(packet):
 
 
 def schema(state):
-    citation = {'type': 'object', 'properties': {'source': {'type': 'string'}, 'quote': {'type': 'string'}},
+    citation = {'type': 'object', 'properties': {
+        'source': {'type': 'string', 'minLength': 1, 'description': 'Exact review_evidence source id or read tool evidence_id; not a file path.'},
+        'quote': {'type': 'string', 'minLength': 1, 'description': 'Short literal excerpt from this source. Preserve code whitespace; display line numbers/diff gutters are optional.'}},
                 'required': ['source', 'quote'], 'additionalProperties': False}
-    claim = {'type': 'object', 'properties': {'reason': {'type': 'string'},
-             'citations': {'type': 'array', 'items': citation}}, 'required': ['reason', 'citations'], 'additionalProperties': False}
-    return {'type': 'object', 'properties': {
+    claim = {'type': 'object', 'properties': {'reason': {'type': 'string', 'minLength': 1},
+             'citations': {'type': 'array', 'minItems': 1, 'items': citation}}, 'required': ['reason', 'citations'], 'additionalProperties': False}
+    return {'type': 'object', 'description': 'Required for APPROVE. Supply all four fields; each claim needs a nonempty reason and citations. Use [] for no verification limitations.', 'properties': {
         'criteria': {'type': 'object', 'properties': {key: copy.deepcopy(claim) for key in state['criteria']},
                      'required': state['criteria'], 'additionalProperties': False},
         'regressions': copy.deepcopy(claim), 'verification': copy.deepcopy(claim),
@@ -121,7 +126,12 @@ def observation(state, name, args, result):
     if not kind or not content:
         return result
     source = 'read:' + digest({'scope': state['scope'], 'tool': name, 'arguments': args, 'content': content})[:20]
-    add(state, source, kind, content)
+    metadata = {}
+    if name in {'read_file', 'read_final_context'}:
+        metadata = {'format': 'numbered', 'path': result.get('path') or args.get('path', '')}
+    elif name == 'get_diff':
+        metadata = {'format': 'diff'}
+    add(state, source, kind, content, **metadata)
     return {**result, 'evidence_id': source}
 
 
@@ -149,55 +159,122 @@ def check_quote(content, quote):
     return quote if contains(value) else None
 
 
+def code_segments(source_id, source):
+    """Remove only controller display gutters, never code whitespace or words.
+
+    Older saved reviews lack format metadata. Recognize their complete numbered
+    read windows and unified diffs conservatively so Resume can reuse evidence.
+    Hunk/file boundaries stay separate; old and new sides are never spliced.
+    """
+    content = source['content']
+    format_ = source.get('format')
+    if format_ == 'numbered' or (not format_ and source_id.startswith('read:')):
+        lines = content.splitlines(keepends=True)
+        matches = [re.match(r'([1-9][0-9]*): ', line) for line in lines]
+        if lines and all(matches):
+            numbers = [int(match[1]) for match in matches]
+            if numbers == list(range(numbers[0], numbers[0] + len(numbers))):
+                yield ''.join(line[match.end():] for line, match in zip(lines, matches))
+                return
+    if format_ == 'diff' or (not format_ and (
+            source_id == 'diff' or content.startswith('diff --git '))):
+        old, new, in_hunk = [], [], False
+        for line in content.splitlines(keepends=True):
+            if re.match(r'^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@', line):
+                yield ''.join(old); yield ''.join(new)
+                old, new, in_hunk = [], [], True
+            elif in_hunk and line[:1] in {' ', '+', '-'}:
+                if line[0] != '+': old.append(line[1:])
+                if line[0] != '-': new.append(line[1:])
+            else:
+                yield ''.join(old); yield ''.join(new)
+                old, new, in_hunk = [], [], False
+        yield ''.join(old); yield ''.join(new)
+
+
+def matched_quote(source_id, source, quote):
+    if not source or not isinstance(quote, str) or not quote.strip():
+        return None
+    if quote in source['content']:
+        return quote
+    if source['kind'] == 'check':
+        return check_quote(source['content'], quote)
+    if source['kind'] == 'code' and any(quote in segment for segment in code_segments(source_id, source)):
+        return quote
+    return None
+
+
+class EvidenceError(ValueError):
+    """All actionable corrections from one response, grounded in saved sources."""
+    def __init__(self, issues, state):
+        super().__init__('; '.join(issue['error'] for issue in issues))
+        self.correction = {
+            'code': 'review_evidence_missing', 'issues': issues,
+            'next_action': 'Correct every listed response field and resubmit the complete review decision. Reuse the delivered evidence IDs; read only genuinely missing context. A formatting error is not a code defect or a reason to rerun passing checks. Do not approve unsupported claims.',
+            'review_evidence': display(state)}
+
+
 def validate(state, result):
     """Reject unsupported positive claims, never manufacture review evidence."""
     from .branch_disagreement import decision
+    result.pop('_review_evidence', None)
     if decision(result, takeover=True) != 'APPROVE':
-        result.pop('_review_evidence', None)
         return
+    issues = []
+    def issue(field, error, **details):
+        issues.append({'field': field, 'error': error, **details})
     if not isinstance(result.get('feedback'), str) or not result['feedback'].strip():
-        raise ValueError('Approval needs a nonempty explanation of the actual change.')
+        issue('feedback', 'Approval needs a nonempty explanation of the actual change.')
     assessment = result.get('review_assessment')
     if not isinstance(assessment, dict) or set(assessment) != {'criteria', 'regressions', 'verification', 'limitations'}:
-        raise ValueError('Supply review_assessment with criteria, regressions, verification and limitations. Inspect missing evidence before approving.')
-    claims = assessment['criteria']
+        issue('review_assessment', 'Supply review_assessment with criteria, regressions, verification and limitations.')
+    assessment = assessment if isinstance(assessment, dict) else {}
+    claims = assessment.get('criteria')
     if not isinstance(claims, dict) or set(claims) != set(state['criteria']):
-        raise ValueError('Assess every exact criterion: ' + json.dumps(state['criteria']))
+        issue('review_assessment.criteria', 'Assess every exact criterion: ' + json.dumps(state['criteria']))
+    claims = claims if isinstance(claims, dict) else {}
     excerpts = {}
-    def claim(value, label, implementation=False, verification=False):
+    def claim(value, label, field, implementation=False, verification=False):
         if not isinstance(value, dict) or not isinstance(value.get('reason'), str) or not value['reason'].strip():
-            raise ValueError(label + ' needs a reason grounded in the cited evidence.')
+            issue(field + '.reason', label + ' needs a reason grounded in the cited evidence.')
+        if not isinstance(value, dict):
+            return
         citations = value.get('citations')
         if not isinstance(citations, list) or not citations:
-            raise ValueError(label + ' needs exact evidence citations. Use the read tools for missing evidence.')
+            issue(field + '.citations', label + ' needs exact evidence citations. Reuse delivered sources; read only missing evidence.')
+            return
         kinds = set()
-        for ref in citations:
+        for index, ref in enumerate(citations):
+            location = field + f'.citations[{index}]'
             if not isinstance(ref, dict) or not isinstance(ref.get('source'), str):
-                raise ValueError('Each citation needs a source ID and literal quote.')
+                issue(location, 'Each citation needs a source ID and literal quote.')
+                continue
             source = state['sources'].get(ref['source'])
-            quote = ref.get('quote')
-            matched_check = False
-            if source and source['kind'] == 'check' and isinstance(quote, str) and quote not in source['content']:
-                canonical = check_quote(source['content'], quote)
-                if canonical is not None:
-                    quote, matched_check = canonical, True
-            if not source or not isinstance(quote, str) or not quote.strip() or (not matched_check and quote not in source['content']):
-                raise ValueError('Citation not found in delivered current-candidate evidence: ' + ref['source'])
+            quote = matched_quote(ref['source'], source, ref.get('quote'))
+            if quote is None:
+                matches = [key for key, value in state['sources'].items()
+                           if matched_quote(key, value, ref.get('quote')) is not None]
+                issue(location, 'Citation not found in delivered current-candidate evidence: ' + ref['source'],
+                      matching_source_ids=matches,
+                      instruction='Use a matching source ID only if it supports your claim; otherwise quote the actual source or inspect missing context.')
+                continue
             kinds.add(source['kind'])
             entry = excerpts.setdefault(ref['source'], {'kind': source['kind'], 'content': '', 'source_digest': source['digest']})
             if quote not in entry['content']:
                 entry['content'] += ('\n' if entry['content'] else '') + quote
         if implementation and not state['partial'] and not kinds.intersection({'code', 'image'}):
-            raise ValueError(label + ' needs code/document or visual evidence; passing checks and prior approvals alone are insufficient.')
+            issue(field + '.citations', label + ' needs code/document or visual evidence; passing checks and prior approvals alone are insufficient.')
         if verification and not state['partial'] and any(s['kind'] == 'check' for s in state['sources'].values()) and 'check' not in kinds:
-            raise ValueError('Verification assessment must cite the actual check evidence and explain its coverage/limitations.')
-    for key, value in claims.items():
-        claim(value, key, implementation=True)
-    claim(assessment['regressions'], 'Regression assessment', implementation=True)
-    claim(assessment['verification'], 'Verification assessment', verification=True)
-    limitations = assessment['limitations']
+            issue(field + '.citations', 'Verification assessment must cite the actual check evidence and explain its coverage/limitations.')
+    for key in state['criteria']:
+        claim(claims.get(key), key, 'review_assessment.criteria.' + key, implementation=True)
+    claim(assessment.get('regressions'), 'Regression assessment', 'review_assessment.regressions', implementation=True)
+    claim(assessment.get('verification'), 'Verification assessment', 'review_assessment.verification', verification=True)
+    limitations = assessment.get('limitations')
     if not isinstance(limitations, list) or any(not isinstance(v, str) or not v.strip() for v in limitations):
-        raise ValueError('limitations must be an array of concrete verification limitations; use [] when none remain.')
+        issue('review_assessment.limitations', 'limitations must be an array of concrete verification limitations; use [] when none remain.')
+    if issues:
+        raise EvidenceError(issues, state)
     # Model-supplied receipts cannot survive this assignment.
     result['_review_evidence'] = {'version': VERSION, 'scope': state['scope'],
         'assessment_digest': digest(assessment), 'excerpts': excerpts}
@@ -223,8 +300,8 @@ def visible_feedback(result):
 
 def feedback(error, state):
     return {'error': str(error), 'code': 'review_evidence_missing',
-            'next_action': 'Inspect the missing source/check evidence with read tools, then reassess. Do not change code or claim a defect merely to satisfy this response contract.',
-            'review_evidence': display(state)}
+            'next_action': 'Correct the response using delivered evidence. Read only missing context. Do not change code or claim a defect merely to satisfy this response contract.',
+            'review_evidence': display(state), **getattr(error, 'correction', {})}
 
 
 def handoff(engine, runtime, checkpoint, *, rejected=True):

@@ -49,6 +49,19 @@ remain in force. Manual reviewer choices do not authorize silently using a
 different model. The existing REQUEST_TESTS and supported-defect paths remain
 available; a formatting problem is not a reason to invent a code defect.
 
+Citation matching accepts literal code with controller-added line-number or
+unified-diff gutters omitted. It preserves code indentation, wording, diff sides,
+and hunk/file boundaries. It does not accept paraphrases or combine disconnected
+excerpts. Older saved read windows can use the same matching without resetting
+the candidate or review history. Receipts retain the original source digest.
+
+A rejected assessment reports its field errors together. If a quote occurs in
+another already-delivered source, feedback lists that source ID as a correction
+hint. The reviewer must still reassess the claim and submit the corrected ID;
+the controller does not assign evidence or approve on its behalf. Source paths
+are displayed alongside new read IDs, and the schema calls out required reasons
+and citations. Ordinary formatting repair should reuse saved reads and checks.
+
 ## UI and independence
 
 `inspect_image` now works in both checkpoint dispatchers and final review. It uses

@@ -71,6 +71,42 @@ class ItemReviewRecoveryTests(unittest.TestCase):
                 engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
                 branch_review.evidence.ready_receipt.assert_called_once()
 
+    def test_evidence_correction_completes_without_rereads_or_operator_rescue(self):
+        from tests.test_review_assessment import assessment
+        task, engine, runtime = self.automatic_fixture()
+        task['review_contract_version'] = 1
+        engine.parse_call = Engine.parse_call
+        before = copy.deepcopy(task)
+        engine.file_tool.return_value = {'path': 'report.py', 'content': '10: def report():\n11:     return 42'}
+        quote = 'def report():\n    return 42'
+        def respond(rt, messages, tools, role):
+            if engine.request.call_count == 1:
+                return {'tool_calls': [self.wire_call('read_file', '{"path":"report.py"}') ]}
+            result = self.approval()['tool_calls'][0]['result']
+            if engine.request.call_count == 2:
+                self.assertIn('evidence_id', json.loads(messages[-1]['content']))
+                result['review_assessment'] = assessment(['exact values'], source='report.py:10-11', quote=quote, checks=False)
+                result['review_assessment']['regressions']['reason'] = ''
+            else:
+                self.assertEqual(engine.request.call_count, 3)
+                feedback = json.loads(messages[-1]['content'])
+                self.assertEqual(feedback['code'], 'review_evidence_missing')
+                issues = feedback['issues']
+                self.assertTrue(any(i['field'] == 'review_assessment.regressions.reason' for i in issues))
+                source = next(i['matching_source_ids'][0] for i in issues if i.get('matching_source_ids'))
+                self.assertNotIn('ready_receipt', task['branch_run']['items'][0])
+                result['review_assessment'] = assessment(['exact values'], source=source, quote=quote, checks=False)
+            return {'tool_calls': [self.wire_call('review_decision', json.dumps(result))]}
+        engine.request.side_effect = respond
+        with patch.object(routing, 'select_remote') as select:
+            self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 3)
+        engine.file_tool.assert_called_once(); engine.checks.assert_not_called(); select.assert_not_called()
+        branch_review.evidence.ready_receipt.assert_called_once()
+        for key in ('checks', 'usage', 'limits'):
+            self.assertEqual(task[key], before[key])
+        self.assertEqual(task['branch_run']['plan'], before['branch_run']['plan'])
+
     def test_malformed_decisions_survive_restart_and_handoff_to_supported_review(self):
         task, engine, runtime = self.automatic_fixture()
         task['review_contract_version'] = 1

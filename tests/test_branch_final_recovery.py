@@ -74,13 +74,24 @@ class FinalRecoveryTests(unittest.TestCase):
             result = {'decision': 'APPROVE', 'manifest_id': 'm', 'chunk_ids': [], 'criteria_ids': ['one:1'], 'feedback': 'Both bounds are preserved.'}
             if len(observed) == 3:
                 excerpt = json.loads(messages[-1]['content'])
-                result['review_assessment'] = assessment(['one:1'], source=excerpt['evidence_id'])
+                self.assertIn('evidence_id', excerpt)
+                result['review_assessment'] = assessment(['one:1'], source='bounds.py:1-2',
+                    quote='def clamp(value):\n    return max(lower, min(value, upper))')
+                result['review_assessment']['regressions']['reason'] = ''
+            if len(observed) == 4:
+                correction = json.loads(messages[-1]['content'])
+                self.assertEqual(correction['code'], 'review_evidence_missing')
+                self.assertTrue(any(i['field'] == 'review_assessment.regressions.reason' for i in correction['issues']))
+                source = next(i['matching_source_ids'][0] for i in correction['issues'] if i.get('matching_source_ids'))
+                result['review_assessment'] = assessment(['one:1'], source=source,
+                    quote='def clamp(value):\n    return max(lower, min(value, upper))')
             return self.call('final_review_decision', result)
         engine.request.side_effect = respond
         result = final._review(engine, runtime, manifest, packet, [], ['one:1'],
-                               context_reader=lambda args: {'content': 'return max(lower, min(value, upper))'})
+                               context_reader=lambda args: {'path': 'bounds.py',
+                                   'content': '1: def clamp(value):\n2:     return max(lower, min(value, upper))'})
         self.assertEqual(result['decision'], 'APPROVE')
-        self.assertEqual(len(observed), 3)
+        self.assertEqual(len(observed), 4)
         engine.checks.assert_not_called()
 
     def test_final_image_inspection_uses_independent_reviewer_and_records_evidence(self):
