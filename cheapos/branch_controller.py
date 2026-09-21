@@ -1,5 +1,7 @@
 from . import branch_pause
 """Operator-facing branch-run proposals. Models cannot call this service."""
+from . import pr_followup
+
 import copy
 import hashlib
 import json
@@ -826,6 +828,7 @@ class BranchController:
             if record['runtime']:record['runtime'].stop.set()
             return {'stopped':True}
 
+    @pr_followup.work_entry
     def resume(self, task_id, values):
         from .engine import Runtime
         with self.engine.lock:
@@ -894,6 +897,7 @@ class BranchController:
                 raise ValueError('Only an unstarted proposal can be refreshed')
             return {'task_id':task_id,**self.proposals.prepare(task_id,self.contract(task)),'readiness':self.readiness(task),**self.test_disclosure(task)}
 
+    @pr_followup.work_entry
     def message(self, task_id, values):
         message = values.get('message', '')
         attachments = values.get('attachments', [])

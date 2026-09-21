@@ -438,7 +438,7 @@ bypass it. Missing CI results are shown as pending, never as a pass.
 commit to the displayed repository. An interrupted publication retains its
 intent so retrying can find the existing branch/PR instead of duplicating it.
 Further task edits must pass checks and independent review before **Approve &
-update pull request** can publish them to the same PR. An externally changed
+update pull request** can publish them to the same **open** PR. An externally changed
 remote task branch is never overwritten. If GitHub checks fail, request a repair
 in the task with the failure details; automatic remote-CI repair is not included.
 
@@ -455,8 +455,22 @@ The project sidebar’s **⋯ → Sync project** also fetches and safely fast-fo
 the currently checked-out branch using that project’s saved PR settings. It
 shows progress and the outcome; it never resets or stashes local work.
 **View merged PR** opens the existing PR; the saved diff remains available as
-history without another approval prompt. You can archive the task or keep chatting;
-start a new task for further development from the updated project.
+history without another approval prompt. A merged PR finishes that task: its
+conversation stays readable, and **Continue in new task** replaces the composer.
+The linked follow-up starts as an Interactive chat from the fetched destination
+commit, retaining relevant prior conversation. Enter the next direction there.
+Creating the follow-up does not dispatch agents or publish a PR. It keeps the
+original chat's model/spending setup but requires its own checks, permissions,
+independent review and publication approval.
+
+If an older task already contains edits made after publication, choose
+**Recover changes into a new task**. Only the delta after the published version
+is carried forward, including new/deleted files; other merged changes and local
+drafts are not overwritten. If that delta overlaps newer code, it is retained
+in the new agent's context for reconciliation. The original task copy remains
+intact. Retrying creation returns the same follow-up rather than duplicating it.
+The server also checks GitHub before accepting new work in a published task,
+so a stale browser cannot continue editing against an already merged PR.
 New PR-mode Interactive and Unattended tasks also sync their selected starting
 branch before capturing the snapshot or planning inputs. Local workflow remains
 offline, and already captured tasks keep their original code and review evidence.

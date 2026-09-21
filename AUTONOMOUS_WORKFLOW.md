@@ -50,7 +50,8 @@ policy, provider pacing, cooldowns and spending limits continue to apply. This
 avoids unnecessary setup; it does not guarantee a remote provider's latency.
 
 Existing chats accept questions and discussion while work is running, paused,
-awaiting review, or merged. Explicit questions, explanations, examples and social
+awaiting review, or locally integrated. A confirmed merged GitHub PR closes the
+task to new messages and edits; its linked follow-up carries conversation context. Explicit questions, explanations, examples and social
 replies use a read-only conversation turn; ambiguous or implementation requests
 keep the existing execution path. Mixed questions and requested edits remain
 worker instructions. Code examples are allowed in chat and do not count as edits.
@@ -75,11 +76,28 @@ review evidence. Sending a message no longer implicitly approves an uncapped
 takeover. Tests, review, command consent and final integration approval remain
 required on their existing work paths.
 
-The same chat remains open for discussion after integration; starting a new
+The same chat remains open for discussion after local integration; starting a new
 authorized job after a merged unattended run still uses the existing new-job
 flow. Restarted incomplete replies are labeled interrupted, never left spinning
 or replayed as work. Deterministic tests cover questions during review, paused
 work, example snippets, denied mutation tools, accounting and spending refusal.
+
+## Implemented: follow-up after a merged pull request
+
+GitHub publication completion is independent of later edits in the saved task.
+Both work modes keep the original record readable and offer a linked follow-up.
+A new snapshot uses the fetched destination commit rather than copying the old
+workspace or uncommitted source drafts. Post-publication edits are retained as
+a delta; non-overlapping edits apply directly, while overlapping deltas remain
+available to the worker for reconciliation in the new task. The operator supplies
+the next direction in that new Interactive chat; creation itself runs no models.
+
+The original model/spending settings carry forward; verification, task command grants,
+independent review and publication approval do not. Server-side work admission
+refreshes the published PR before accepting more implementation. A known merge
+stops an active worker at its next operation boundary and retains any later edits.
+Lost creation responses return the same follow-up. Local drafts and the original
+task's files, review evidence and accounting are preserved.
 
 ## What went wrong
 

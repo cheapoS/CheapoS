@@ -193,6 +193,7 @@ class DiscussionTests(unittest.TestCase):
     def test_existing_task_question_does_not_call_start_steer_or_recovery(self):
         engine = Engine.__new__(Engine)
         engine.start = Mock(); engine.steer = Mock(); engine.branch = Mock()
+        engine.store = SimpleNamespace(get=lambda _: {'id': 'task'})
         with patch.object(discussion, 'enqueue', return_value={'id': 'task'}) as enqueue:
             result = engine.chat_message('task', {'message': 'Why did the reviewer reject this?'})
         self.assertEqual(result, {'id': 'task'})

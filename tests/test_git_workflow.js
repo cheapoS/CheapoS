@@ -35,14 +35,15 @@ test('merged work shows the recorded pull without asking for another approval',(
   assert.match(html,/View merged PR #7/);
   assert.doesNotMatch(html,/data-pr-publish|Open pull request|Ready for|Preparing your reviewed|data-pr-refresh/);
  }
- assert.equal(workflow.merged({...t,patch:'new edits'}),false);
- assert.doesNotMatch(workflow.markup({...t,patch:'new edits'}),/Merged ·/);
- assert.equal(workflow.completionMarkup({...t,patch:'new edits'}),'');
- assert.equal(workflow.merged({...t,pull_request:{...t.pull_request,merged_head:'other'}}),false);
+ assert.equal(workflow.merged({...t,patch:'new edits'}),true);
+ assert.match(workflow.completionMarkup({...t,patch:'new edits'}),/Recover changes into a new task/);
+ assert.match(workflow.completionMarkup(t),/Continue in new task/);
+ assert.equal(workflow.merged({...t,pull_request:{...t.pull_request,ci:{state:'merged',head:'other'}}}),false);
  assert.equal(workflow.merged({...t,pull_request:{...t.pull_request,ci:{state:'passed'}}}),false);
  const branch={...t,branch_run:{status:'merged',expected_feature_tip:t.pull_request.head}};
  assert.equal(workflow.merged(branch),true);
- assert.equal(workflow.merged({...branch,branch_run:{...branch.branch_run,expected_feature_tip:'new head'}}),false);
+ assert.equal(workflow.merged({...branch,branch_run:{...branch.branch_run,expected_feature_tip:'new head'}}),true);
+ assert.equal(workflow.laterEdits({...branch,branch_run:{...branch.branch_run,expected_feature_tip:'new head'}}),true);
 });
 test('local sync copy does not claim a pull or an up-to-date branch without evidence',()=>{
  const p=mergedTask().pull_request;

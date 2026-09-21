@@ -1,5 +1,7 @@
 """Durable worker → checks → sparse review loop."""
 
+from . import pr_followup
+
 import copy
 import hashlib
 import json
@@ -443,6 +445,8 @@ class Runtime:
     def guard(self):
         if getattr(self, 'answering_chat', False):
             return  # Chat has normal request/spending limits, not a work deadline.
+        if pr_followup.merged(self.task):
+            raise InterruptedError('The pull request is merged. Later edits are saved for a new follow-up task.')
         from .work_budgets import guard
         if not hasattr(self, 'branch_ledger'):
             if not hasattr(self, 'work_seconds_base'): self.work_seconds_base=self.task.get('active_work_seconds',0)
@@ -747,7 +751,7 @@ class Engine:
             task['route']['ready'] = bool(task['providers'].get('worker'))
         return task
 
-    def create(self, values, demo=False, snapshot_override=None, task_id=None, settings_snapshot=None):
+    def create(self, values, demo=False, snapshot_override=None, task_id=None, settings_snapshot=None, initial_fields=None):
         prompt = values.get("prompt", "")
         conversational = values.get("conversational", False)
         if not isinstance(conversational, bool):
@@ -789,12 +793,14 @@ class Engine:
         git_sync = before_task(values.get('repository', ''), settings_snapshot) if not demo and snapshot_override is None else None
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
         task = {"served_identity_version":1, "id": task_id, "prompt": augmented_prompt, "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "planner": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
-        if keep_up_to_date:
+        if keep_up_to_date and not (initial_fields or {}).get('integration_policy'):
             from . import branch_workspace
             source = task["source"]
             target_ref = branch_workspace.source_git(source, "symbolic-ref", "--quiet", "HEAD")
             task["integration_policy"] = {"keep_up_to_date": True, "target_ref": target_ref,
                                           "target_tip": branch_workspace._tip(source, target_ref)}
+        if initial_fields:
+            task.update(copy.deepcopy(initial_fields))
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
         metrics.initialize_actions(task, fresh=True)
@@ -911,6 +917,7 @@ class Engine:
             self.store.save(task)
             return self.store.get(task_id)
 
+    @pr_followup.work_entry
     def start(self, task_id, changes=None):
         with self.lock:
             finish_review = (changes or {}).get('finish_review', False)
@@ -1240,6 +1247,7 @@ class Engine:
             self.event(task, "state", "Chat limits updated")
             return task
 
+    @pr_followup.work_entry
     def chat_message(self, task_id, values):
         """Discussion does not authorize or restart implementation."""
         from .discussion import is_discussion, enqueue
@@ -1382,6 +1390,7 @@ class Engine:
             self.store.save(task)
             return task
 
+    @pr_followup.work_entry
     def steer(self, task_id, message, attachments=None):
         if attachments is not None and not isinstance(attachments, list):
             raise ValueError("Attachments must be a list")
@@ -1489,6 +1498,8 @@ class Engine:
             self.event(task,'operator_control','Direction applied',task['operator_continue'])
 
     def operator_recovery(self, task_id, values=None):
+        if values is not None:
+            pr_followup.check_before_work(self, task_id)
         from . import operator_controls
         return operator_controls.interactive(self, task_id, values)
 
@@ -1541,6 +1552,8 @@ class Engine:
         summary = {"original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "latest_message": task.get("requests", [task["prompt"]])[-1], "files": workspace.list_files()[:500], "current_diff": workspace.patch(validate="branch_run" in task)[:30000], "last_review_feedback": previous, "check_command": task["check_command"], "check_directory":task.get("check_directory", "."), "web_urls": sorted(allowed_urls(task))[:80]}
         if task.get("attachments"):
             summary["attachments"] = [{"id": a.get("id"), "filename": a.get("filename"), "mime_type": a.get("mime_type"), "path": a.get("path"), "is_image": a.get("is_image", False)} for a in task["attachments"]]
+        if task.get('follow_up'):
+            summary['follow_up'] = pr_followup.context(task)
         summary.update(project_brief=project_context.brief(task), continuation_record=project_context.continuation(task))
         carto = self.carto.context(task["source"], task["workspace"])
         if carto["status"] != "disabled": summary["carto"] = carto
@@ -1838,6 +1851,8 @@ class Engine:
                    "last_check": {k: (excerpt(check[k], 4000) if k == "output" else check[k])
                                   for k in ("command", "passed", "exit_code", "output") if k in check},
                    "last_review_feedback": (task.get("checkpoints") or [{}])[-1].get("feedback", "")[:2000]}
+        if task.get('follow_up'):
+            summary['follow_up'] = pr_followup.context(task)
         summary.update(project_brief=project_context.brief(task), continuation_record=project_context.continuation(task))
         carto = self.carto.context(task["source"], task["workspace"])
         if carto["status"] != "disabled": summary["carto"] = carto
@@ -3283,6 +3298,9 @@ class Engine:
             self.event(task, "complete", "Frontier takeover finished; ready for your review", args)
             return {"decision": "COMPLETE", "feedback": "Takeover finished; human review required."}
         checkpoint = saved_review or {"number": len(task["checkpoints"]) + 1, "original_task": task["prompt"], "user_messages": task.get("requests", [task["prompt"]]), "files_changed": [f["path"] for f in task["changes"]], "diff": task["patch"], "checks": checks, "worker_summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000], "decision": "PENDING", "feedback": ""}
+        if task.get('follow_up'):
+            checkpoint['follow_up_history'] = copy.deepcopy(task['follow_up']['context'])
+            checkpoint['follow_up_note'] = 'Earlier conversation is context; judge the current user direction and current patch. Earlier approvals do not apply.'
         checkpoint["generation"] = task.get("workspace_generation", 0)
         checkpoint["verification_identity"] = checks.get("verification_identity")
         if not saved_review:

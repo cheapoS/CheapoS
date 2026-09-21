@@ -69,7 +69,19 @@ class HTTPTests(unittest.TestCase):
     def post(self, path, body):
         return self.request('POST', path, body, {'Content-Type':'application/json', 'X-CheapOS-Token': self.server.token})
 
+    def test_merged_followup_requires_local_request_authority(self):
+        with patch('cheapos.pr_followup.create', return_value={'id':'new','status':'awaiting_reply'}) as create:
+            path = '/api/tasks/old/pull-request-follow-up'
+            self.assertEqual(self.request('POST', path, {})[0], 403)
+            self.assertEqual(self.request('POST', path, {}, {'X-CheapOS-Token':self.server.token,'Origin':'https://evil.test'})[0], 403)
+            create.assert_not_called()
+            status, _, body = self.post(path, {})
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body)['id'], 'new')
+            create.assert_called_once_with(self.engine, 'old', {})
+
     def test_integration_preparation_routes_keep_read_and_write_authority_separate(self):
+        self.engine.store.save({'id':'saved'})
         with patch('cheapos.integration_preparation.readiness', return_value={'code':'target_advanced'}) as inspect, patch('cheapos.integration_preparation.start', return_value={'id':'saved','status':'paused'}) as start:
             status, _, body = self.request('GET','/api/tasks/saved/integration-readiness')
             self.assertEqual(status, 200)
