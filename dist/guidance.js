@@ -1,6 +1,7 @@
 /* Translate saved execution evidence into a clear next step. No model calls. */
 const CheapOSGuide = (() => {
   const active = new Set(['running', 'reviewing', 'waiting_approval', 'waiting_retry', 'stopping']);
+  const prWorkflow=()=>typeof module!=='undefined'?require('./git_workflow.js'):globalThis.CheapOSGitWorkflow;
   function coordinatorStatus(task) {
     const enabled=task?.execution?.coordinator_assistance===true;
     return {
@@ -67,6 +68,7 @@ const CheapOSGuide = (() => {
       you:['approved','completed'].includes(task.status)?'Review and apply':'Review comes last'
     };
     const result={facts,tone:'neutral',eyebrow:'NEXT STEP',title:'Your task is saved.',description:'Open the activity log to see the saved work.',primary:'activity',primaryLabel:'View activity',secondary:hasPatch?'changes':null,secondaryLabel:'Inspect saved changes',retry:false};
+    if(!active.has(task.status)&&prWorkflow()?.merged(task))return {...result,...prWorkflow().mergeSummary(task.pull_request),eyebrow:'MERGED',facts:{...facts,you:'Merged on GitHub'},primary:'changes',primaryLabel:'View merged changes',secondary:'chat',secondaryLabel:'Back to chat'};
     if(task.status==='paused'&&task.planning_request&&task.branch_run&&!task.branch_run.authorization_ref&&/handoffs were tried/.test(task.error||'')) return {...result,tone:'attention',title:'Planning stopped before a proposal was ready.',description:'Automatic model recovery was exhausted. Resume cannot retry this saved attempt. Start a new planning chat with the same request; this attempt and its usage remain saved.',primary:'new-planning',primaryLabel:'New planning chat'};
     if(task.status==='paused'&&task.recovery_blocked!=null&&task.pause_summary){
       const coordinator=task.coordinator_recovery?.at(-1);
@@ -245,6 +247,7 @@ const CheapOSGuide = (() => {
   }
   function canCommit(task) {
     if(task?.branch_run)return false;
+    if(prWorkflow()?.merged(task))return false;
     if(task.commit_pending)return true;
     const check=task.checks?.at(-1),review=task.checkpoints?.at(-1);
     return Boolean(task.changes?.length&&['approved','completed','awaiting_reply'].includes(task.status)&&check?.passed&&check.digest===task.patch_digest&&(check.generation||0)===(task.workspace_generation||0)&&(task.status==='completed'||review?.decision==='APPROVE'&&review.diff===task.patch&&(review.generation||0)===(task.workspace_generation||0)));
@@ -832,6 +835,7 @@ const CheapOSConversation = (() => {
       else if (latest && task.pending_approval) intro = 'I need your permission to run this check.';
       else if (latest && task.status==='stopping') intro = 'I’m pausing work after the current operation.';
       else if (latest && ['paused','budget_paused','interrupted','error','takeover_requested'].includes(task.status)) intro = 'I’ve saved the work so far. I need your attention before continuing.';
+      else if (latest && !live && guide.taskGuide(task).eyebrow==='MERGED') intro = guide.taskGuide(task).description;
       else if (latest && guide.canCommit(task)) intro = task.status === 'completed' ? 'Checks have passed. The changes are ready for your review.' : 'The changes have passed checks and review. They’re ready for your decision.';
       else if (steps.at(-1).phase === 'commit' && steps.at(-1).events.some(e => e.detail?.commit)) intro = 'Your approved changes are committed to the project.';
     }

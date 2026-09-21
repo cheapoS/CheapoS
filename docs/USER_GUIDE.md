@@ -446,6 +446,12 @@ GitHub status refreshes while the PR panel is open. After GitHub confirms the
 current reviewed commit was merged, cheapoS records completion and fetches the
 selected remote branch. It fast-forwards the local target, including its linked
 worktree if checked out there, and refreshes the matching remote-tracking ref.
+Chat and Changes show **Merged · local branch up to date** once sync succeeds.
+The message distinguishes a pull performed by cheapoS from a branch that was
+already current. Pending local sync is shown separately from the completed merge.
+**View merged PR** opens the existing PR; the saved diff remains available as
+history without another approval prompt. You can archive the task or keep chatting;
+start a new task for further development from the updated project.
 New PR-mode Interactive and Unattended tasks also sync their selected starting
 branch before capturing the snapshot or planning inputs. Local workflow remains
 offline, and already captured tasks keep their original code and review evidence.

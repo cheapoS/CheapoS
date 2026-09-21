@@ -171,7 +171,7 @@ test('actual startup renderer covers pending, accepted-stale, running and paused
  const snippet=source.slice(source.indexOf(' function render(task)'),source.indexOf(' function renderPlan(task)'));
  let record={status:'pending',started_at:'2026-09-14T12:00:00Z'};const panel={innerHTML:'',querySelector:()=>null};
  const branchResumeStatus=new Map();
- const context={sync:()=>{},getState:()=>({branchResumeStatus}),document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,pauseMarkup:ui.pauseMarkup,reviewAction:ui.reviewAction,mergeProgressMarkup:ui.mergeProgressMarkup,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
+ const context={workflow:require('../dist/git_workflow.js'),sync:()=>{},getState:()=>({branchResumeStatus}),document:{querySelector:()=>({querySelector:s=>s==='#branch-run-summary'?panel:{}})},projectRun:ui.projectRun,pausePresentation:ui.pausePresentation,pauseMarkup:ui.pauseMarkup,reviewAction:ui.reviewAction,mergeProgressMarkup:ui.mergeProgressMarkup,starts:{get:()=>record},escape:ui.escape,summaryHTML:'',detailStates:new Map(),options:{}};
  vm.createContext(context);vm.runInContext(snippet,context);
  const t={id:'a',status:'awaiting_reply',branch_run:{id:'run1',status:'awaiting_authorization',items:[]}};
  context.render(t);assert.match(panel.innerHTML,/Starting your approved plan/);assert.match(panel.innerHTML,/data-start-time/);assert.doesNotMatch(panel.innerHTML,/data-proposal/);
@@ -194,4 +194,14 @@ test('component check editor roundtrips directory and shell quoting without chan
  assert.equal(ui.checkText({command:['npm','run','build'],directory:'/task/workspace/cloudflare',check_directory:'cloudflare'}),'[cloudflare] npm run build');
  const task={branch_run:{status:'awaiting_authorization',plan:{items:[{id:'one',title:'One',required_checks:[checks[1]]}],final_checks:[checks[1]]}}};
  assert.match(ui.planMarkup(task),/\[cloudflare\] npm run build/);
+});
+
+test('GitHub merge receipts show completion instead of pending local integration',()=>{
+ const task=fixture();task.settings_snapshot={values:{git:{workflow:'pull_request'}}};
+ task.pull_request={head:'sha',merged_head:'sha',ci:{state:'merged'}};
+ Object.assign(task.branch_run,{status:'merged',expected_feature_tip:'sha',merge_receipt:{kind:'github_pull_request'},readiness:{manifest:{files:[{path:'a.py'}]}}});
+ assert.equal(ui.projectRun(task).label,'Merged on GitHub');
+ assert.equal(ui.projectRun(task).merged,true);
+ assert.equal(ui.projectRun(task).canRecheck,false);
+ assert.equal(ui.reviewAction(task).label,'View merged changes');
 });

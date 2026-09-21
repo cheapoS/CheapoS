@@ -44,7 +44,7 @@ test('paused completed items resume without an empty review CTA; ready evidence 
  let resumed=0,reviewed=0;const nodes=new Map();
  const panel={innerHTML:'',querySelector(selector){if(!this.innerHTML.includes(selector.slice(1,-1)))return null;if(!nodes.has(selector))nodes.set(selector,{});return nodes.get(selector);}};
  const view={querySelector:s=>s==='#branch-run-summary'?panel:{}};
- const context={...ui,sync(){},document:{querySelector:()=>view},starts:{get:()=>null},getState:()=>({}),detailStates:new Map(),summaryHTML:'',options:{resume:async saved=>{assert.equal(saved,t);resumed++;}},guarded:async(button,fn)=>fn(),showFinal:saved=>{assert.equal(saved,t);reviewed++;}};
+ const context={...ui,workflow:require('../dist/git_workflow.js'),sync(){},document:{querySelector:()=>view},starts:{get:()=>null},getState:()=>({}),detailStates:new Map(),summaryHTML:'',options:{resume:async saved=>{assert.equal(saved,t);resumed++;}},guarded:async(button,fn)=>fn(),showFinal:saved=>{assert.equal(saved,t);reviewed++;}};
  vm.createContext(context);vm.runInContext(source.slice(source.indexOf(' function render(task)'),source.indexOf(' function renderPlan(task)')),context);
  context.render(t);assert.equal(ui.projectRun(t).canRecheck,true);assert.equal(panel.querySelector('[data-preview]'),null);
  await panel.querySelector('[data-pause-action]').onclick();assert.equal(resumed,1);
