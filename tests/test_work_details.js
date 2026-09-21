@@ -174,6 +174,65 @@ test('live output opens immediately and has an escaped preview for collapsed ste
  const waiting=render([],{live:true,stream:{phase:'waiting'}});
  assert.doesNotMatch(waiting,/workflow-preview|Waiting for the next chunk|<pre/);assert.match(waiting,/Waiting for the worker’s response/);
 });
+test('thinking availability follows each live response and yields to actual thinking',()=>{
+ for(const role of ['worker','reviewer','planner','coordinator']){
+  const phase={worker:'work',reviewer:'review',planner:'plan',coordinator:'coordinator'}[role];
+  const t={status:role==='reviewer'?'reviewing':'running',active_role:role,prompt:'Improve the button',changes:[],events:[event('r1','model',`Requesting ${role}: example/model`)],
+   stream:{request_id:'r1',role,model:'example/model',phase:'waiting'}};
+  const markup=()=>ctx.CheapOSGuide.conversation.build(t).filter(e=>e.kind==='assistant').map(e=>ctx.view.message(e,t)).join('');
+  let html=markup();assert.match(html,/No thinking text received yet\. Some responses return actions or answers directly/);
+  assert.doesNotMatch(html,/No thinking text was shared/);
+  t.stream.phase='tool';t.stream.tool='read_file';
+  html=markup();assert.match(html,/No thinking text received for this response so far/);assert.match(html,/Preparing read file/);
+  t.stream.phase='thinking';t.stream.thinking='Inspecting the click handler.';
+  html=markup();assert.doesNotMatch(html,/data-thinking-notice/);assert.match(html,/Inspecting the click handler/);
+  // Switching routes resets the notice, while retaining prior real thinking.
+  t.events.push(event('g1','generation','Model thinking',{request_id:'r1',role,thinking:t.stream.thinking}),event('r2','model',`Requesting ${role}: example/other`));
+  t.stream={request_id:'r2',role,model:'example/other',phase:'tool',tool:'read_file'};
+  html=markup();assert.match(html,/No thinking text received for this response so far/);assert.match(html,/Inspecting the click handler/);
+  assert.match(html,/example\/other/);
+  // The renderer also handles an answer without separate reasoning.
+  html=render(t.events,{live:true,phase,stream:{...t.stream,phase:'answer',content:'I found the handler.'},task:t});
+  assert.match(html,/No thinking text received for this response so far/);assert.match(html,/I found the handler/);
+ }
+});
+test('completed responses explain missing thinking without affecting recorded actions or review decisions',()=>{
+ const t={status:'reviewing',active_role:'reviewer',prompt:'Review the change',events:[
+  event('r1','model','Requesting reviewer: first-model'),event('g1','generation','Model thinking',{request_id:'r1',role:'reviewer',thinking:'Earlier source inspection.'}),
+  event('r2','model','Requesting reviewer: second-model'),event('read','review_context','Read source',{path:'app.js',available:true,start_line:1,end_line:20})]};
+ const markup=()=>ctx.CheapOSGuide.conversation.build(t).filter(e=>e.kind==='assistant').map(e=>ctx.view.message(e,t)).join('');
+ const original=JSON.stringify(t);let html=markup();
+ assert.match(html,/No thinking text was shared with the latest response/);assert.match(html,/Inspected app.js/);assert.match(html,/Earlier source inspection/);
+ assert.equal(JSON.stringify(t),original);
+ for(const decision of ['APPROVE','REQUEST_CHANGES']){
+  t.status='paused';t.events.push(event('decision','review','Review decision',{decision,feedback:'Check recorded.'}));
+  html=markup();assert.match(html,/No thinking text was shared with the latest response/);
+  assert.match(html,decision==='APPROVE'?/Independent review passed/:/Review requested changes/);t.events.pop();
+ }
+ t.events.push(event('g2','generation','Model thinking',{request_id:'r2',role:'reviewer',thinking:'Current response thinking.'}));
+ assert.doesNotMatch(markup(),/data-thinking-notice/);assert.match(markup(),/Current response thinking/);
+});
+test('thinking notices never mislabel probes, checks, pauses or cooldowns as active model work',()=>{
+ const events=[event('request','model','Requesting worker: model')],stream={request_id:'request',phase:'waiting',role:'worker'};
+ for(const task of [{status:'waiting_retry'},{status:'stopping'},{pending_approval:{command:['test']}},{check_stream:{command:['test'],output:'Checking'}}]){
+  assert.doesNotMatch(render(events,{live:true,stream,task}),/data-thinking-notice/);
+ }
+ assert.doesNotMatch(render(events,{live:true,stream:{...stream,purpose:'probe'}}),/data-thinking-notice/);
+ assert.doesNotMatch(render([event('probe','model','Requesting worker',{purpose:'probe'}),tool('read','read file','a.js')]),/data-thinking-notice/);
+ for(const phase of ['checks','commit'])assert.doesNotMatch(render(events,{live:true,stream,phase}),/data-thinking-notice/);
+ assert.doesNotMatch(render(events,{task:{status:'paused'}}),/data-thinking-notice/);
+});
+test('collapsed review summary explains missing thinking even before the live stream snapshot arrives',()=>{
+ const t={status:'reviewing',active_role:'reviewer',prompt:'Review the change',branch_run:{id:'run',authorization_ref:'auth',status:'finalizing',current_item_id:null,items:[]},events:[
+  event('r1','model','Requesting reviewer: reviewer-model'),event('read','review_context','Read source',{path:'dist/app.js',available:true,start_line:1500,end_line:1588}),
+  event('r2','model','Requesting reviewer: reviewer-model')].map(e=>({...e,branch_run_id:'run',item_id:null}))};
+ const reply=ctx.CheapOSGuide.conversation.build(t).findLast(e=>e.kind==='assistant');
+ const html=ctx.view.message(reply,t),summary=html.slice(html.indexOf('<summary>'),html.indexOf('</summary>'));
+ assert.match(summary,/Waiting for the reviewer’s response/);
+ assert.match(summary,/No thinking text received yet/);assert.match(summary,/data-thinking-notice/);
+ assert.match(summary,/Latest: Inspected dist\/app.js · lines 1500–1588/);
+ assert.doesNotMatch(summary,/Waiting for the model to respond/);
+});
 test('review progress is visible in the step summary before opening Details',()=>{
  const t={status:'reviewing',active_role:'reviewer',prompt:'Review saved work',events:[
   event('paging','review_paging','Reviewing the large item',{packets:39}),

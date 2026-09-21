@@ -41,6 +41,24 @@ const CheapOSChatView = (() => {
     const history=task.events||events;
     return events.filter(e=>!['model','checkpoint','permission','review_request','planning_repair'].includes(e.kind)&&!(e.kind==='routing'&&!e.detail?.error)&&!(e.kind==='generation'&&isProbe(e.detail,history)));
   }
+  function thinkingNotice(step,task,stream) {
+    if(!['worker','reviewer','planner','coordinator'].includes(step.role)||['checks','commit'].includes(step.phase))return '';
+    if(step.live&&(task.check_stream||task.pending_approval||['stopping','waiting_retry'].includes(task.status)))return '';
+    const events=step.events||[],history=task.events||events;
+    if(step.live&&stream){
+      if(isProbe(stream,history)||modelText(stream.thinking,true).trim())return '';
+      if(!modelText(stream.content,true).trim()&&!['tool','answer'].includes(stream.phase))return 'No thinking text received yet. Some responses return actions or answers directly.';
+      return 'No thinking text received for this response so far. Actions and results appear below.';
+    }
+    // Scope the notice to the latest request in this step, including model
+    // handoffs. Earlier thinking must not describe a different response.
+    const index=events.findLastIndex(e=>e.kind==='model'),request=events[index];
+    if(!request||isProbe(request.detail,history))return '';
+    const response=events.slice(index+1);
+    if(response.some(e=>e.kind==='generation'&&(!e.detail?.request_id||e.detail.request_id===request.id)&&modelText(e.detail?.thinking).trim()))return '';
+    if(!response.some(e=>['tool','tool_error','assistant','review_context','review','planning_inspection'].includes(e.kind)))return step.live?'No thinking text received yet. Some responses return actions or answers directly.':'';
+    return 'No thinking text was shared with the latest response. Recorded actions and results are shown below.';
+  }
   function formatWorkflowMessage(roleLabel, text) {
     let cleaned = modelText(text).trim();
     if (cleaned.startsWith(`${roleLabel}:`)) {
@@ -96,6 +114,7 @@ const CheapOSChatView = (() => {
     const live=step.live;
     const symbol=live&&task.status==='waiting_retry'?icon('clock'):step.outcome==='live'?'<span class="spinner"></span>':icon(['failed','revision','pending'].includes(step.outcome)?'clock':'check');
     const role={worker:'Worker',reviewer:'Reviewer',coordinator:step.phase==='coordinator'?'Coordinator':'Chat model',planner:'Planner',controller:'cheapoS'}[step.role]||'cheapoS';
+    const thinkingStatus=thinkingNotice(step,task,stream);
     const events=operatorEvents(step.events,task);
     const probe=isProbe(stream,task.events||step.events);
     if(probe)stream={...stream,thinking:'',content:'',phase:'waiting'};
@@ -108,7 +127,7 @@ const CheapOSChatView = (() => {
     const title=live&&task.check_stream?.kind==='command'?'Running task command':live&&probe?'Checking model connection':liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
     const status=live&&probe?'Verifying tool support before starting the request':step.detail;
     return `<details class="workflow-step phase-${step.phase} ${live?'is-live':''} ${liveOutput?'has-live-output':''} outcome-${step.outcome}" data-event="workflow-${esc(step.id)}" data-step="${esc(step.id)}" ${live||['failed','revision'].includes(step.outcome)?'open':''}>
-      <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong>${step.reviewProgress?`<small class="workflow-review-progress" data-review-progress>${esc(step.reviewProgress)}</small>`:''}${step.reviewStats?`<small class="workflow-review-stats">${esc(step.reviewStats)}</small>`:''}<span class="workflow-status" ${live?'data-live-status':''}>${esc(status)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
+      <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong>${step.reviewProgress?`<small class="workflow-review-progress" data-review-progress>${esc(step.reviewProgress)}</small>`:''}${step.reviewStats?`<small class="workflow-review-stats">${esc(step.reviewStats)}</small>`:''}${!thinkingStatus||!live?`<span class="workflow-status" ${live?'data-live-status':''}>${esc(status)}</span>`:''}${thinkingStatus?`<small class="workflow-thinking-note" data-thinking-notice>${esc(thinkingStatus)}</small>`:''}${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
       <div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||(task.demo?'Scripted local model':live?'Model selection pending':'Model identity unavailable'))}</strong></div>
         ${events.length>80?'<p class="small muted">Showing the latest 80 progress events. Earlier events remain in Technical logs.</p>':''}
         <div class="workflow-events">${eventsMarkup(events.slice(-80),entryReply,Boolean(live&&stream))||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div>
