@@ -9,6 +9,7 @@ import json
 from .verification import evidence_identity
 from .workspace import Workspace, git
 from .check_specs import specifications as check_specs, same
+from .check_output import complete_output
 
 
 def _json(value):
@@ -59,7 +60,7 @@ def bind_check(current, command, record, directory="."):
     require_verification(command)
     spec = {'command': command, 'directory': directory}
     expected = next((c for c in current['checks'] if same(c, spec)), None)
-    if not expected or not same(record, spec) or record.get('passed') is not True or record.get('exit_code') != 0 or record.get('reason') or record.get('truncated') or record.get('outcome', 'passed') != 'passed':
+    if not expected or not same(record, spec) or record.get('passed') is not True or record.get('exit_code') != 0 or record.get('reason') or not complete_output(record) or record.get('outcome', 'passed') != 'passed':
         raise ValueError('Required verification did not complete successfully')
     if record.get('verification_identity') != expected['verification_identity'] or record.get('input_identity') != expected['verification_identity']:
         raise ValueError('Verification is stale or its inputs changed')

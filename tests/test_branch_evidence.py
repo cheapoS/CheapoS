@@ -59,6 +59,15 @@ class BranchEvidenceTests(unittest.TestCase):
         for change in ({'passed': False}, {'exit_code': 1}, {'truncated': True}, {'reason': 'timed out'}, {'input_identity': 'stale'}, {'verification_identity': 'stale'}, {'outcome': 'inputs_changed'}):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 self.receipt(current, [{**records[0], **change}, records[1]])
+        preview = {**records[0], 'truncated': True, 'run_id': 'a' * 32,
+                   'raw_output': {'bytes': 34000, 'truncated': False}}
+        self.receipt(current, [preview, records[1]])
+        for change in ({'passed': False}, {'exit_code': 1}, {'reason': 'cancelled'},
+                       {'input_identity': 'stale'}, {'verification_identity': 'stale'},
+                       {'outcome': 'inputs_changed'}, {'raw_output': {'bytes': 34000, 'truncated': True}},
+                       {'raw_output': {}}, {'run_id': None}):
+            with self.subTest(preview_change=change), self.assertRaises(ValueError):
+                self.receipt(current, [{**preview, **change}, records[1]])
         with self.assertRaises(ValueError): self.receipt(current, records + [failed])
 
     def test_requires_independent_bound_review_and_every_criterion(self):

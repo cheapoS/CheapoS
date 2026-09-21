@@ -5,6 +5,7 @@ from pathlib import Path
 from .test_profiles import executable_identity
 from .workspace import Workspace, git
 from .project_permissions import config_identity
+from .check_output import complete_output
 
 
 def normalize_unittest(argv):
@@ -39,7 +40,7 @@ def reusable_check(task, argv, directory=None):
     directory = task.get('check_directory', '.') if directory is None else directory
     record = (task.get('checks') or [{}])[-1]
     if (record.get('command') != argv or record.get('directory', '.') != directory or record.get('passed') is not True
-            or record.get('exit_code') != 0 or record.get('reason') or record.get('truncated')
+            or record.get('exit_code') != 0 or record.get('reason') or not complete_output(record)
             or record.get('outcome', 'passed') != 'passed'
             or not record.get('input_identity')
             or record.get('input_identity') != record.get('verification_identity')):

@@ -12,6 +12,24 @@ PASS_LINE = re.compile(r'^test\S* \([^\n]+\) \.\.\. ok\s*$')
 RUN_SUMMARY = re.compile(r'^Ran \d+ tests? in [\d.]+s$', re.M)
 
 
+def complete_output(record):
+    """A shortened preview is complete evidence only with a full capture receipt.
+
+    These fields come from the command runner, not the worker. Legacy truncated
+    records without a retained-log receipt remain incomplete. Command success,
+    cancellation and input identity must still be checked by the caller.
+    """
+    raw = record.get('raw_output')
+    if isinstance(raw, dict) and raw.get('truncated'):
+        return False
+    if not record.get('truncated'):
+        return True
+    return (isinstance(raw, dict) and raw.get('truncated') is False
+            and type(raw.get('bytes')) is int and raw['bytes'] > 0
+            and isinstance(record.get('run_id'), str)
+            and re.fullmatch(r'[a-f0-9]{32}', record['run_id']) is not None)
+
+
 def retain(root, task_id, run_id, data, truncated):
     if not re.fullmatch(r'[a-f0-9]{32}', run_id):
         raise ValueError('Invalid check run ID')

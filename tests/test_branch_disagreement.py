@@ -137,7 +137,10 @@ class DisagreementTests(unittest.TestCase):
             with self.assertRaises(ValueError): disagreement.before_write(task, 'report.py')
             record.update(passed=False, outcome='test_failure', exit_code=1, input_identity='stale')
             with self.assertRaises(ValueError): disagreement.before_write(task, 'report.py')
-            record['input_identity'] = 'current'
+            record.update(input_identity='current', truncated=True, run_id='a' * 32,
+                          raw_output={'bytes':34000, 'truncated':True})
+            with self.assertRaises(ValueError): disagreement.before_write(task, 'report.py')
+            record['raw_output']['truncated'] = False
             disagreement.before_write(task, 'report.py')
         self.assertEqual(item['review_repair']['probe_observed']['input_identity'], 'current')
         self.assertIn('Preserve original assertions', item['review_repair']['repair_instruction'])

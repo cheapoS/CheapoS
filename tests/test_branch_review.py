@@ -33,7 +33,7 @@ class BranchReviewTests(LocalCase):
         task['settings_snapshot'] = {'values': {'git': {'workflow': 'pull_request'}}}
         draft = {'title':'Clamp both bounds', 'description':'Enforce the lower and upper limits.'}
         component=Path(task['workspace'])/'component';component.mkdir()
-        (component/'check.py').write_text("from pathlib import Path\nassert Path.cwd().name == 'component'\nprint('component verified')\n")
+        (component/'check.py').write_text("from pathlib import Path\nassert Path.cwd().name == 'component'\nprint('passing check detail\\n' * 1700)\nprint('component verified')\n")
         command=[sys.executable,'-B','check.py']
         spec={'command':command,'directory':'component'}
         run=task['branch_run'];run['items'][0]['required_checks']=[spec];run['plan']['items'][0]['required_checks']=[spec]
@@ -45,6 +45,11 @@ class BranchReviewTests(LocalCase):
             self.assertEqual(packet['original_request']['request'], task['prompt'])
             self.assertEqual(packet['checks'][0]['directory'], 'component')
             self.assertEqual(packet['checks'][0]['record']['directory'], 'component')
+            record = packet['checks'][0]['record']
+            self.assertTrue(record['truncated'])  # Only the chat preview is shortened.
+            self.assertFalse(record['raw_output']['truncated'])
+            from cheapos.check_output import raw
+            self.assertTrue(raw(self.engine.store, task['id'], record['run_id']).endswith(b'component verified\n'))
             if self.engine.request.call_count == 1:
                 self.assertEqual(packet['pull_request_draft'], draft)
                 return call('inspect_image', {'path':'missing.png'})
