@@ -427,6 +427,7 @@ details.workflow-stream[open] .stream-label svg:last-child { transform: rotate(9
 .workflow-history > summary { display: flex; gap: 8px; align-items: center; padding: 12px 16px; font-size: 13px; color: #a5b5ab; cursor: pointer; list-style: none; }
 .workflow-history > summary svg { width: 14px; height: 14px; }
 .workflow-history > summary svg:last-child { margin-left: auto; }
+.workflow-history[open] > summary svg:last-child { transform: rotate(90deg); }
 .workflow-history[open] > summary { border-bottom: 1px solid #303a34; }
 #chat-view .chat-decision, #chat-view .chat-result, #chat-view .chat-checkpoint-card { margin: 16px 0 0; padding: 18px; border: 1px solid #394b3f; border-radius: 10px; box-shadow: none; background: #1d2720; }
 #chat-view .chat-decision p, #chat-view .chat-result p { font-size: 14px; }
@@ -1573,3 +1574,186 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 .workflow-step.phase-review.has-live-output[open]>summary .workflow-status,
 .workflow-step.phase-review.has-live-output[open]>summary .workflow-last-action{display:block}
 .workflow-thinking-note{display:block;margin-top:4px;font-size:13px;line-height:1.5;color:var(--muted)}
+
+/* Workspace visual system. Shared scale and surfaces; task state stays in JS. */
+.calm-workspace {
+  --bg: #181b1b;
+  --sidebar: #121515;
+  --panel: #151919;
+  --surface: #202525;
+  --hover: #272e2c;
+  --border: #303837;
+  --line: #29312f;
+  --text: #e8eeeb;
+  --secondary: #c4ceca;
+  --muted: #9caea6;
+  --mint: #a1dfbe;
+  --ui-body: 14px;
+  --ui-small: 12px;
+  --ui-caption: 11px;
+  --reading-width: 900px;
+  font-size: var(--ui-body);
+}
+.calm-workspace select { color-scheme: dark; }
+.calm-workspace select option, .calm-workspace select optgroup { background-color: var(--surface); color: var(--text); }
+.calm-workspace .desktop-shell { min-height: 0; }
+.calm-workspace .sidebar { padding: 0 12px; }
+.calm-workspace .brand-row { min-height: 68px; height: 68px; padding-inline: 9px; }
+.calm-workspace .brand-mark { width: 28px; height: 28px; }
+.calm-workspace .brand-wordmark { font-size: 21px; letter-spacing: -.6px; }
+.calm-workspace .sidebar-zero-tokens-card { background: var(--panel); box-shadow: none; transform: none; margin: 0 5px 12px; padding: 9px 10px; border-color: var(--line); }
+.calm-workspace .zero-tokens-val { font-size: 17px; font-weight: 500; color: var(--text); }
+.calm-workspace .zero-tokens-pct { border: 0; background: transparent; font-weight: 500; padding: 0; }
+.calm-workspace .new-task { height: 36px; margin: 3px 0; border: 1px solid #3a5045; background: #20332a; color: var(--mint); border-radius: 7px; font-size: var(--ui-body); }
+.calm-workspace .new-task:hover { background: #294434; }
+.calm-workspace .search-trigger, .calm-workspace .settings-trigger { min-height: 34px; height: 34px; padding: 7px 10px; gap: 9px; font-size: 13px; }
+.calm-workspace .search-trigger { margin: 1px 0 12px; }
+.calm-workspace .settings-trigger svg, .calm-workspace .search-trigger svg, .calm-workspace .new-task svg { width: 16px; height: 16px; }
+.calm-workspace .settings-trigger > span, .calm-workspace kbd { font-size: var(--ui-caption); }
+.calm-workspace .section-label { padding: 10px 10px 8px; margin: 0; font-size: 10px; letter-spacing: .1em; }
+.calm-workspace .project-group { margin-bottom: 12px; }
+.calm-workspace .project-group-heading { padding: 2px 0; }
+.calm-workspace .project-label { font-size: var(--ui-small); font-weight: 500; color: var(--secondary); }
+.calm-workspace .project-group .task-row { padding-left: 17px; }
+.calm-workspace .task { font-size: 13px; min-height: 34px; padding: 8px; border-radius: 6px; gap: 8px; }
+.calm-workspace .task.active { background: var(--hover); color: var(--text); }
+.calm-workspace .task-menu-button { font-size: 17px; padding: 6px; }
+.calm-workspace .sidebar-bottom { padding-top: 8px; border-top: 1px solid var(--line); }
+.calm-workspace .philosophy { display: none; }
+.calm-workspace .profile { height: 55px; font-size: var(--ui-small); margin-top: 8px; }
+.calm-workspace .profile > div:nth-child(2) > span { font-size: var(--ui-caption); }
+.calm-workspace .topbar { min-height: 64px; height: 64px; padding: 0 22px; background: var(--bg); }
+.calm-workspace .header-title-row h1 { font-size: 15px; font-weight: 550; letter-spacing: -.2px; }
+.calm-workspace .header-title-row { gap: 12px; }
+.calm-workspace .header-title-row .text-link { font-size: var(--ui-caption); }
+.calm-workspace .header-project { font-size: var(--ui-caption); margin-top: 1px; }
+.calm-workspace .topbar-right { gap: 12px; }
+.calm-workspace .prototype-label { font-size: 9px; letter-spacing: .08em; border: 0; }
+.calm-workspace .topbar-right .branch { font-size: var(--ui-caption); }
+.calm-workspace .task-heading { padding: 12px 24px 0; max-width: 100% !important; }
+.calm-workspace .task-heading .eyebrow { margin: 0; font-size: var(--ui-caption); }
+.calm-workspace .task-subtitle { margin: 6px 0 0; font-size: var(--ui-small); }
+.calm-workspace .task-subtitle:empty { display: none; }
+.calm-workspace .tabs { margin: 8px 24px 0; gap: 22px; min-height: 38px; }
+.calm-workspace .tabs .tab { height: 38px; font-size: var(--ui-small); gap: 6px; }
+.calm-workspace .tabs .tab svg { width: 14px; height: 14px; }
+.calm-workspace .compute-savings-pill { background: transparent; border: 0; padding: 0; color: var(--muted); font-size: var(--ui-caption); }
+.calm-workspace .diff-tally { font-size: var(--ui-caption); }
+.calm-workspace .view#chat-view { max-width: var(--reading-width) !important; padding: 28px 32px 16px; }
+.calm-workspace #chat-view .chat-message { margin-bottom: 28px; }
+.calm-workspace #chat-view .from-user { margin-left: auto; max-width: 88%; padding: 12px 16px; border-radius: 12px 12px 3px 12px; background: #232d28; border: 1px solid #344138; }
+.calm-workspace #chat-view .chat-author { font-size: var(--ui-small); gap: 8px; margin-bottom: 6px; }
+.calm-workspace #chat-view .from-user .chat-author { color: #adbfaf; }
+.calm-workspace #chat-view .chat-message-body p { font-size: var(--ui-body); line-height: 1.75; margin: 6px 0 12px; }
+.calm-workspace #chat-view .chat-message-body p:last-child { margin-bottom: 0; }
+.calm-workspace #chat-view .cheapos-avatar { width: 24px; height: 24px; background: transparent; }
+.calm-workspace #chat-view .cheapos-response .chat-message-body { padding-left: 32px; }
+.calm-workspace #chat-view .orchestration-intro { color: var(--secondary); }
+.calm-workspace .workflow { background: transparent; border: 0; border-radius: 0; margin: 12px 0 16px; overflow: visible; }
+.calm-workspace .workflow-step { border-left: 1px solid #3a4941; }
+.calm-workspace .workflow-step + .workflow-step, .calm-workspace .workflow-history + .workflow-step { border-top: 0; margin-top: 6px; }
+.calm-workspace .workflow-step > summary { padding: 9px 12px; gap: 10px; border-radius: 5px; }
+.calm-workspace .workflow-step > summary:hover { background: var(--surface); }
+.calm-workspace .workflow-heading { gap: 3px; }
+.calm-workspace .workflow-heading strong { font-size: 13px; font-weight: 500; }
+.calm-workspace .workflow-status, .calm-workspace .workflow-review-progress, .calm-workspace .workflow-review-stats, .calm-workspace .workflow-last-action, .calm-workspace .workflow-thinking-note { font-size: var(--ui-small); line-height: 1.5; }
+.calm-workspace .workflow-thinking-note { color: var(--muted); }
+.calm-workspace .workflow-toggle { font-size: var(--ui-caption); gap: 4px; color: var(--muted); }
+.calm-workspace .workflow-elapsed { font-size: var(--ui-caption); }
+.calm-workspace .workflow-details { background: transparent; border: 0; padding: 6px 12px 10px 40px; }
+.calm-workspace .workflow-model { font-size: var(--ui-caption); padding-bottom: 5px; }
+.calm-workspace .workflow-exploration { background: transparent; margin: 4px 0; border: 0; padding: 0; }
+.calm-workspace .workflow-exploration > summary { font-size: var(--ui-small); padding: 8px 0; gap: 8px; }
+.calm-workspace .workflow-event > summary { padding-block: 8px; font-size: var(--ui-small); }
+.calm-workspace .workflow-event { border-bottom-color: var(--line); }
+.calm-workspace .workflow-event.needs-reading { padding-left: 10px; margin: 8px 0; }
+.calm-workspace .workflow-log-link { margin-top: 10px; font-size: var(--ui-caption); color: var(--muted); }
+.calm-workspace .workflow-stream, .calm-workspace .thinking-panel { box-shadow: none; border-radius: 7px; }
+.calm-workspace .workflow-stream { background: var(--panel); border-color: var(--border); }
+.calm-workspace .workflow-stream[data-phase="thinking"] { background: #202125; border-color: #3b3745; }
+.calm-workspace .thinking-panel summary, .calm-workspace .stream-label { font-size: var(--ui-small); padding: 9px 12px; }
+.calm-workspace .terminal-window { box-shadow: none; }
+.calm-workspace .demo-banner { font-size: var(--ui-caption); border: 1px dashed var(--border); background: transparent; color: var(--muted); margin-bottom: 22px; padding: 8px 10px; }
+.calm-workspace #chat-view .chat-decision, .calm-workspace #chat-view .chat-result, .calm-workspace #chat-view .chat-checkpoint-card { padding: 16px; border-radius: 8px; background: #1e2823; }
+.calm-workspace .composer-area { max-width: var(--reading-width) !important; padding: 10px 28px 14px; }
+.calm-workspace .composer { border-radius: 12px; border-color: #3c4943; background: #202724; box-shadow: 0 3px 14px #0002; }
+.calm-workspace .composer:focus-within { border-color: #739883; box-shadow: 0 0 0 1px #73988333; }
+.calm-workspace .composer textarea { min-height: 68px; padding: 14px 16px 8px; font-size: var(--ui-body); line-height: 1.65; }
+.calm-workspace .composer-controls { padding: 7px 10px 10px; gap: 5px; }
+.calm-workspace .composer-project, .calm-workspace .composer-budget, .calm-workspace .composer-attach { padding: 5px 7px; font-size: var(--ui-small); border-color: transparent; background: transparent; border-radius: 5px; margin-left: 0; }
+.calm-workspace .composer-project:hover, .calm-workspace .composer-budget:hover, .calm-workspace .composer-attach:hover { background: var(--hover); border-color: var(--border); }
+.calm-workspace .composer-actions { gap: 5px; }
+.calm-workspace .send-chat { height: 32px; width: 32px; border-radius: 7px; }
+.calm-workspace .pause-chat, .calm-workspace .steer-chat { font-size: var(--ui-small); min-height: 32px; padding: 6px 10px; }
+.calm-workspace .composer-note { font-size: var(--ui-caption); line-height: 1.5; margin-top: 8px; }
+.calm-workspace .branch-mode-choice { font-size: var(--ui-small); }
+.calm-workspace .inspector { background: var(--panel); }
+.calm-workspace .inspector-header { height: 44px; min-height: 44px; padding: 0 18px; font-size: 10px; letter-spacing: .1em; }
+.calm-workspace .inspector-scroll { padding: 0 18px 18px; }
+.calm-workspace .inspector-footer { min-height: 40px; padding: 12px; font-size: 10px; }
+.calm-workspace .session-overview { padding: 20px 0 16px; }
+.calm-workspace .session-status { display: flex; align-items: center; gap: 8px; }
+.calm-workspace .session-status { margin-bottom: 20px; }
+.calm-workspace .session-status .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.calm-workspace .session-status.success .status-dot, .calm-workspace .session-status.active .status-dot { background: var(--mint); }
+.calm-workspace .session-status.attention .status-dot { background: var(--amber); }
+.calm-workspace .session-status strong { font-size: 14px; font-weight: 500; }
+.calm-workspace .session-overview > p { color: var(--muted); font-size: var(--ui-small); line-height: 1.6; margin: 10px 0 16px; }
+.calm-workspace .session-facts { margin: 0; display: grid; gap: 10px; }
+.calm-workspace .session-facts > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: var(--ui-small); }
+.calm-workspace .session-facts dt { color: var(--muted); }
+.calm-workspace .session-facts dd { margin: 0; text-align: right; color: var(--secondary); }
+.calm-workspace .session-overview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+.calm-workspace .session-overview-actions button { font-size: var(--ui-small); }
+.calm-workspace .session-section { border-top: 1px solid var(--line); }
+.calm-workspace .session-section > summary { display: flex; align-items: center; gap: 7px; padding: 15px 0; font-size: var(--ui-small); color: var(--secondary); }
+.calm-workspace .session-section > summary::before { display: none !important; }
+.calm-workspace .session-section > summary > span { flex: 1; display: flex; justify-content: space-between; gap: 8px; }
+.calm-workspace .session-section > summary small { color: var(--muted); font: var(--ui-small) var(--font-mono); }
+.calm-workspace .session-section > summary svg { width: 12px; height: 12px; color: var(--muted); transition: transform .15s; }
+.calm-workspace .session-section[open] > summary svg { transform: rotate(90deg); }
+.calm-workspace .session-section-body { padding-bottom: 16px; }
+.calm-workspace .role-row { gap: 9px; padding: 6px 0; }
+.calm-workspace .role-label { font-size: 10px; letter-spacing: .04em; margin-bottom: 2px; }
+.calm-workspace .role-row strong { font-size: var(--ui-small); font-weight: 400; color: var(--secondary); }
+.calm-workspace .role-icon { width: 25px; height: 25px; background: var(--surface); color: var(--muted); }
+.calm-workspace .role-connection { display: none; }
+.calm-workspace .session-section .model-roles { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.calm-workspace .session-section .usage, .calm-workspace .session-section .journey { margin: 0; padding: 0; border: 0; }
+.calm-workspace .session-section .section-title { font-size: var(--ui-small); color: var(--secondary); }
+.calm-workspace .session-section .cost-total { margin-top: 10px; gap: 8px; }
+.calm-workspace .session-section .cost-total strong { font-size: 24px; letter-spacing: -.6px; }
+.calm-workspace .session-section .journey-list { margin-top: 10px; }
+.calm-workspace .session-section .journey-list li { min-height: 28px; font-size: var(--ui-small); }
+.calm-workspace .journey-dot, .calm-workspace .journey-list li:before { display: none; }
+.calm-workspace .session-tools { display: grid; gap: 8px; margin-top: 12px; }
+.calm-workspace .session-tools button { text-align: left; font-size: var(--ui-small); }
+.calm-workspace .session-tools #open-activity { margin: 0; }
+.calm-workspace .session-section .small, .calm-workspace .workspace-info { font-size: var(--ui-small); line-height: 1.65; }
+.calm-workspace .new-conversation .chat-welcome h1 { font-size: 27px; letter-spacing: -.7px; }
+.calm-workspace .new-conversation .chat-welcome p { font-size: 14px; }
+@media (max-width: 1100px) {
+  .calm-workspace .topbar-right .prototype-label { display: none; }
+  .calm-workspace .tabs { gap: 16px; }
+  .calm-workspace .view#chat-view { padding-inline: 24px; }
+  .calm-workspace .composer-area { padding-inline: 20px; }
+}
+@media (max-width: 700px) {
+  .calm-workspace .topbar { padding-inline: 12px; min-height: 60px; height: 60px; }
+  .calm-workspace .task-heading { padding-inline: 16px; }
+  .calm-workspace .tabs { margin-inline: 16px; }
+  .calm-workspace .view#chat-view { padding: 22px 16px 12px; }
+  .calm-workspace #chat-view .from-user { max-width: 94%; }
+  .calm-workspace #chat-view .cheapos-response .chat-message-body { padding-left: 0; }
+  .calm-workspace .workflow-details { padding-left: 14px; }
+  .calm-workspace .workflow-toggle { font-size: 11px; }
+  .calm-workspace .composer-area { padding: 8px 12px 12px; }
+  .calm-workspace .composer-controls { gap: 4px; }
+  .calm-workspace .composer-actions { flex-basis: auto; margin-left: auto; }
+  .calm-workspace .composer-project { max-width: 45%; }
+  .calm-workspace .header-title-row h1 { font-size: 14px; }
+  .calm-workspace .session-facts > div { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .calm-workspace *, .calm-workspace *:before, .calm-workspace *:after { scroll-behavior: auto; transition: none; }
+}

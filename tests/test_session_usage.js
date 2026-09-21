@@ -45,3 +45,35 @@ test('session action headline is additive, formatted and identifies partial hist
   }
   assert.ok(ctx.sessionJourney({metrics:{actions:{total:2,counts:{tools:2},coverage:'partial',details:'Older history incomplete'}}}).includes('2 actions · known'));
 });
+
+function overviewTask(overrides={}){
+  ctx.CheapOSBranchUI=require('../dist/branch_ui.js');
+  ctx.CheapOSGitWorkflow={merged:t=>t.merged===true};
+  ctx.taskBusy=t=>['running','reviewing','waiting_approval'].includes(t.status);
+  ctx.labels={approved:'Reviewer approved',running:'Working',reviewing:'Reviewing',paused:'Paused'};
+  return {status:'approved',changes:[{path:'example.js'}],checks:[{passed:false},{passed:true}],checkpoints:[{decision:'APPROVE'}],...overrides};
+}
+test('session overview shows latest check outcome without treating historical failures as current',()=>{
+  const html=ctx.sessionOverview(overviewTask());
+  assert.match(html,/<dt>Latest check<\/dt><dd>Passed/);
+  assert.doesNotMatch(html,/1\/2 passed/);
+  assert.match(html,/<dt>Independent review<\/dt><dd>Approved/);
+  assert.match(html,/id="session-changes">Review changes/);
+  const failed=ctx.sessionOverview(overviewTask({checks:[{passed:true},{passed:false}]}));
+  assert.match(failed,/<dt>Latest check<\/dt><dd>Failed/);
+});
+test('session overview does not advertise previous approval while new work or review is running',()=>{
+  for(const [status,review] of [['running','Pending'],['reviewing','In progress']]){
+    const html=ctx.sessionOverview(overviewTask({status,branch_run:{status:'running',readiness:{review:{decision:'APPROVE'}}}}));
+    assert.match(html,new RegExp('<dt>Independent review</dt><dd>'+review));
+    assert.match(html,/<dt>Changed files<\/dt><dd>1/);
+    assert.match(html,/id="session-changes">View changes/);
+  }
+  assert.match(ctx.sessionOverview(overviewTask({merged:true,status:'completed'})),/id="session-changes">View changes/);
+});
+test('plain conversation has no empty review or check actions',()=>{
+  const html=ctx.sessionOverview(overviewTask({status:'paused',changes:[],checks:[],checkpoints:[]}));
+  assert.doesNotMatch(html,/id="session-changes"|id="session-tests"/);
+  assert.match(html,/<dt>Independent review<\/dt><dd>Not requested/);
+  assert.match(html,/session-status attention/);
+});
