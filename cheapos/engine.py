@@ -3485,7 +3485,7 @@ class Engine:
                   "executed": False, "changed": False}
         self.event(runtime.task, "tool_error", "Model needs to correct tool arguments", result)
         if (automatic(runtime.task, runtime.task["active_role"]) and runtime.task["active_role"] == "worker"
-                and runtime.task["status"] != "reviewing" and error.name in {"write_file", "replace_text", "replace_lines", "apply_merge_version", "append_text", "delete_file"}):
+                and runtime.task["status"] != "reviewing" and error.name in MUTATIONS):
             self.prepare_compact_edits(runtime.task)
             runtime.compact_context_ready = False
         if runtime.argument_failures >= 3:
