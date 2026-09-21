@@ -1594,6 +1594,8 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
   --reading-width: 900px;
   font-size: var(--ui-body);
 }
+.calm-workspace select { color-scheme: dark; }
+.calm-workspace select option, .calm-workspace select optgroup { background-color: var(--surface); color: var(--text); }
 .calm-workspace .desktop-shell { min-height: 0; }
 .calm-workspace .sidebar { padding: 0 12px; }
 .calm-workspace .brand-row { min-height: 68px; height: 68px; padding-inline: 9px; }
