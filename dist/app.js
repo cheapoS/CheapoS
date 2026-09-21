@@ -256,7 +256,7 @@ function compactMenu(anchor,label,actions) {
   if(sidebarMenu?.key===key){sidebarMenu.close();return;}
   sidebarMenu?.close(false);
   const menu=document.createElement('div');menu.className='sidebar-menu';menu.setAttribute('role','menu');menu.setAttribute('aria-label',label);
-  menu.innerHTML=actions.map((a,i)=>`<button role="${a.checked===undefined?'menuitem':'menuitemradio'}" ${a.checked===undefined?'':`aria-checked="${a.checked}"`} data-option="${i}" class="${a.danger?'danger':''}">${a.checked===undefined?'':`<span class="menu-check">${a.checked?'✓':''}</span>`}${esc(a.label)}</button>`).join('');
+  menu.innerHTML=actions.map((a,i)=> a.isHeader?`<div class="menu-header">${esc(a.label)}</div>`:`<button role="${a.checked===undefined?'menuitem':'menuitemradio'}" ${a.checked===undefined?'':`aria-checked="${a.checked}"`} data-action-index="${i}" class="${a.danger?'danger':''}">${a.checked===undefined?'':`<span class="menu-check">${a.checked?'✓':''}</span>`}${esc(a.label)}</button>`).join('');
   $('#overlay-root').append(menu);anchor.setAttribute('aria-expanded','true');
   const rect=anchor.getBoundingClientRect(),box=menu.getBoundingClientRect();
   menu.style.left=Math.max(8,Math.min(rect.right-box.width,innerWidth-box.width-8))+'px';
@@ -266,7 +266,7 @@ function compactMenu(anchor,label,actions) {
   const dismiss=()=>close(false),scroll=e=>{if(!menu.contains(e.target))close(false)};
   document.addEventListener('pointerdown',outside,true);window.addEventListener('resize',dismiss);document.addEventListener('scroll',scroll,true);
   menu.onkeydown=e=>{const buttons=$$('button',menu),i=buttons.indexOf(document.activeElement);if(e.key==='Escape'){e.preventDefault();close()}else if(e.key==='Tab'){close()}else if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();buttons[e.key==='Home'?0:e.key==='End'?buttons.length-1:(i+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length].focus()}};
-  $$('button',menu).forEach((button,i)=>button.onclick=async()=>{close();try{await actions[i].run()}catch(error){toast(error.message)}});
+  $$('button',menu).forEach(button=>button.onclick=async()=>{close();try{await actions[Number(button.dataset.actionIndex)].run()}catch(error){toast(error.message)}});
   sidebarMenu={key,menu,close};$('button',menu)?.focus();
 }
 function historyMenu(anchor) {
@@ -338,18 +338,23 @@ async function shareToWorkbench(task) {
 function taskMenu(task,anchor) {
   if(!task)return;
   const actions=task.trashed_at?[
+    {isHeader:true,label:'Saved chat'},
     {label:'Inspect saved chat',run:()=>selectTask(task.id)},
     {label:'Restore chat',run:()=>restoreTrash(task)},
+    {isHeader:true,label:'Data'},
     {label:'Copy task JSON',run:()=>copyTaskJson(task)},
     {label:'Export task JSON…',run:()=>exportTaskJson(task)}
   ]:[
-    {label:'Rename…',run:()=>renameTask(task)},
-    {label:task.pinned?'Unpin':'Pin',run:async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()}},
-    {label:task.archived_at?'Restore to active chats':taskBusy(task)?'Pause & archive':'Archive',run:()=>archiveTask(task,!task.archived_at)},
-    {label:'Share to Community Workbench ↗',run:()=>shareToWorkbench(task)},
-    {label:'Copy task JSON',run:()=>copyTaskJson(task)},
-    {label:'Export task JSON…',run:()=>exportTaskJson(task)},
-    {label:taskBusy(task)?'Pause & move to trash':'Move to trash',danger:true,run:()=>moveToTrash(task)}
+    {isHeader:true,label:'Organization'},
+    {label:'✎ Rename…',run:()=>renameTask(task)},
+    {label:task.pinned?'📌 Unpin':'📌 Pin',run:async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()}},
+    {label:task.archived_at?'📦 Restore to active chats':taskBusy(task)?'⏸ Pause & archive':'📦 Archive',run:()=>archiveTask(task,!task.archived_at)},
+    {isHeader:true,label:'Data'},
+    {label:'🔗 Share to Community Workbench ↗',run:()=>shareToWorkbench(task)},
+    {label:'📋 Copy task JSON',run:()=>copyTaskJson(task)},
+    {label:'📋 Export task JSON…',run:()=>exportTaskJson(task)},
+    {isHeader:true,label:'Danger Zone'},
+    {label:taskBusy(task)?'⏸ & 🗑️ Pause & move to trash':'🗑️ Move to trash',danger:true,run:()=>moveToTrash(task)}
   ];
   compactMenu(anchor,'Chat options',actions);
 }
