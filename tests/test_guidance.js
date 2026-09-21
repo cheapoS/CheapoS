@@ -49,8 +49,8 @@ test('discussion after a confirmed PR merge does not reopen the saved patch deci
   assert.match(taskGuide(t).description,/cheapoS pulled/);
   assert.equal(taskGuide(t).primaryLabel,'View merged changes');
   const newer={...t,patch:'new patch',checkpoints:[{decision:'APPROVE',diff:'new patch'}]};
-  assert.equal(canCommit(newer),true);
-  assert.notEqual(taskGuide(newer).eyebrow,'MERGED');
+  assert.equal(canCommit(newer),false);
+  assert.equal(taskGuide(newer).eyebrow,'MERGED');
 });
 
 test('declining keeps the exact patch deferred while a changed patch gets a new decision',()=>{

@@ -23,7 +23,7 @@ function fixture(initial = []) {
     $$: () => (buttons = state.composerAttachments.map((_, index) => ({dataset: {removeIdx: index}}))),
     branchUI: {restoreDraft() {}}, renderComposer() {},
     api: () => new Promise(resolve => uploads.push(resolve))};
-  vm.createContext(c);
+  c.CheapOSGitWorkflow=require('../dist/git_workflow.js');vm.createContext(c);
   vm.runInContext(source.slice(source.indexOf('const draftKey='), source.indexOf('function home()')), c);
   vm.runInContext(source.slice(source.indexOf('function clearOwnedDraft('), source.indexOf('function pendingMessageMarkup(')), c);
   vm.runInContext(source.slice(source.indexOf('function renderComposerAttachments()'), source.indexOf('function renderComposer()')), c);
@@ -84,7 +84,7 @@ test('folder-only creation completes without attempting to open a Git project', 
     projectManagerError: text => {if(text)assert.fail(text);}, toast: text => notices.push(text),
     formAction: (_, action) => {pending = action();},
     api: async (path, body) => { calls.push({path, body}); return {git: false, name: 'folder-only', path: '/fixture/folder-only'}; }};
-  vm.createContext(c);
+  c.CheapOSGitWorkflow=require('../dist/git_workflow.js');vm.createContext(c);
   vm.runInContext(source.slice(source.indexOf('function bindProjectManagerControls()'), source.indexOf('bindProjectManagerControls();')), c);
   c.bindProjectManagerControls();
   form.onsubmit({preventDefault() {}});
@@ -110,7 +110,7 @@ test('task tab bindings and keyboard navigation leave project manager tabs indep
   const c = {$: selector => nodes[selector],
     $$: selector => selector === '.tabs .tab' ? taskTabs : [...taskTabs, ...modalTabs],
     projectManager: {currentPath: '/fixture'}, setView: view => selected.push(view)};
-  vm.createContext(c);
+  c.CheapOSGitWorkflow=require('../dist/git_workflow.js');vm.createContext(c);
   vm.runInContext(source.slice(source.indexOf('function showProjectView('), source.indexOf('function closeProjectManager(')), c);
   vm.runInContext(source.slice(source.indexOf('function bindProjectManagerControls()'), source.indexOf('bindProjectManagerControls();')), c);
   c.bindProjectManagerControls();
@@ -172,7 +172,7 @@ test('choosing a project while sending carries attachments without replacing its
 });
 test('user message text hides attachment metadata notes from the chat body', () => {
   const c = {};
-  vm.createContext(c);
+  c.CheapOSGitWorkflow=require('../dist/git_workflow.js');vm.createContext(c);
   vm.runInContext(source.slice(source.indexOf('function stripAttachmentNotes('), source.indexOf('function messageText(')), c);
   assert.equal(typeof c.stripAttachmentNotes, 'function');
 
@@ -276,7 +276,7 @@ test('project manager opens on an empty first launch, not an existing or hidden 
   let opened = 0;
   const state = {projects: [], hiddenProjects: []};
   const c = {state, openProject: () => opened++};
-  vm.createContext(c);
+  c.CheapOSGitWorkflow=require('../dist/git_workflow.js');vm.createContext(c);
   vm.runInContext(source.slice(source.indexOf('function openInitialProjectManager()'), source.indexOf('function closeProjectManager()')), c);
   c.openInitialProjectManager();
   assert.equal(opened, 1);
@@ -295,7 +295,7 @@ test('project creation failures stay visible in the open manager', async () => {
   const c = {$: selector => nodes[selector], projectManager: {currentPath: '/fixture'},
     closeProjectManager: () => closed++, projectManagerError: text => errors.push(text),
     formAction: (_, action) => {pending = action();}, api: async () => {throw Error('Invalid project name');}};
-  vm.createContext(c);
+  c.CheapOSGitWorkflow=require('../dist/git_workflow.js');vm.createContext(c);
   vm.runInContext(source.slice(source.indexOf('function bindProjectManagerControls()'), source.indexOf('bindProjectManagerControls();')), c);
   c.bindProjectManagerControls();
   form.onsubmit({preventDefault() {}});

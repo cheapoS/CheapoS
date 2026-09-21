@@ -86,6 +86,8 @@ def public_task(task, summary=False, store=None):
         if "branch_run" in task:
             result["branch_run"] = branch_runs.summary(task["branch_run"])
         return result
+    if task.get('follow_up'):
+        task = {**task, 'follow_up': {k: v for k, v in task['follow_up'].items() if k not in {'context', 'retained_patch'}}}
     from .coordinator_dispatch import reassessment_availability
     return {**{key: value for key, value in task.items() if key not in {"messages", "worker_sessions", "conversation_state", "context_evidence", "edit_history", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending", "request_metrics", "run_metrics"}}, "working_state":working_state(task), "coordinator_reassessment":reassessment_availability(task), "metrics":metrics.aggregate(task), "token_accounting":metrics.token_accounting(task), "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
 
@@ -559,6 +561,10 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 if len(parts) != 4:
                     raise ValueError("Unknown task action")
                 task_id, action = parts[2:]
+                if action in {'branch-start', 'branch-revise', 'branch-final-recheck', 'branch-update',
+                              'branch-resolve-conflicts', 'branch-operator-control', 'integration-prepare', 'reconcile', 'operator-recovery'}:
+                    from .pr_followup import check_before_work
+                    check_before_work(engine, task_id)
                 if action in {"preview-start", "preview-stop", "preview-status"}:
                     result = engine.previews.action(task_id, action, values)
                 elif action in {"trash", "restore"}:
@@ -640,6 +646,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
                         raise ValueError("Choose a grant to revoke or clear task commands")
                 elif action == "commit-preview":
                     result = engine.prepare_commit(task_id)
+                elif action == "pull-request-follow-up":
+                    from . import pr_followup
+                    result = public_task(pr_followup.create(engine, task_id, values))
                 elif action in {"pull-request-preview", "pull-request-publish", "pull-request-status"}:
                     from . import git_workflow
                     if action == "pull-request-publish":

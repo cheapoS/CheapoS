@@ -158,7 +158,7 @@ class GitWorkflowTests(unittest.TestCase):
             self.saved['pull_request']['local_sync'] = receipt.copy()
             self.saved['pull_request']['merged_head'] = 'a'*40
             return {'state':'merged', 'merged_commit':'merge'}
-        self.engine.runtimes = {'task':SimpleNamespace(thread=SimpleNamespace(is_alive=lambda:True))}
+        self.engine.runtimes = {'task':SimpleNamespace(task=copy.deepcopy(self.saved),thread=SimpleNamespace(is_alive=lambda:True))}
         with patch.object(github, 'checks', side_effect=checks):
             result = flow.status(self.engine, 'task')
         self.assertEqual(self.saved['pull_request']['local_sync'], receipt)
@@ -169,8 +169,9 @@ class GitWorkflowTests(unittest.TestCase):
         self.approve(flow.preview(self.engine, 'task'))
         for state in ('open','changed','failed'):
             with patch.object(github,'checks',return_value={'state':state}):flow.status(self.engine,'task')
-        self.engine.runtimes = {'task':SimpleNamespace(thread=SimpleNamespace(is_alive=lambda:True))}
+        self.engine.runtimes = {'task':SimpleNamespace(task=copy.deepcopy(self.saved),thread=SimpleNamespace(is_alive=lambda:True))}
         with patch.object(github,'checks',return_value={'state':'merged','merged_commit':'merge'}):flow.status(self.engine,'task')
+        self.assertEqual(self.engine.runtimes['task'].task['pull_request']['ci']['state'], 'merged')
         self.sync.assert_not_called()
 
 

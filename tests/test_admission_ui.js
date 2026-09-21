@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8');
-function fixture(){const input={value:'original'},state={task:{id:'b',status:'ready'},tasks:[{id:'a',title:'Unattended job'}],startup:{},admission:{interactive:{allowed:true},unattended:{allowed:false,reason:'Unattended slot full.'},active:[{task_id:'a',mode:'unattended'}]},pendingSends:new Set(),startErrors:new Map(),drafts:new Map()};let renders=0;const c={state,branchUI:{getMode:()=> 'interactive'},taskBusy:t=>t.status==='running',draftKey:()=>state.task?.id||'new',$:()=>input,renderComposer:()=>{},renderTask:()=>renders++,refresh:async()=>{},api:async()=>{},document:{}};vm.createContext(c);vm.runInContext(source.slice(source.indexOf('function submissionAvailability'),source.indexOf('function renderComposer')),c);vm.runInContext(source.slice(source.indexOf('async function startTask('),source.indexOf('async function resumeTask')),c);return {c,state,input,renders:()=>renders};}
+function fixture(){const input={value:'original'},state={task:{id:'b',status:'ready'},tasks:[{id:'a',title:'Unattended job'}],startup:{},admission:{interactive:{allowed:true},unattended:{allowed:false,reason:'Unattended slot full.'},active:[{task_id:'a',mode:'unattended'}]},pendingSends:new Set(),startErrors:new Map(),drafts:new Map()};let renders=0;const c={state,branchUI:{getMode:()=> 'interactive'},taskBusy:t=>t.status==='running',draftKey:()=>state.task?.id||'new',$:()=>input,renderComposer:()=>{},renderTask:()=>renders++,refresh:async()=>{},api:async()=>{},document:{}};c.CheapOSGitWorkflow=require('../dist/git_workflow.js');vm.createContext(c);vm.runInContext(source.slice(source.indexOf('function submissionAvailability'),source.indexOf('function renderComposer')),c);vm.runInContext(source.slice(source.indexOf('async function startTask('),source.indexOf('async function resumeTask')),c);return {c,state,input,renders:()=>renders};}
 test('server admission allows independent Interactive but blocks occupied Unattended and never guidance',()=>{const {c,state}=fixture();assert.equal(c.submissionAvailability().allowed,true);assert.equal(c.submissionAvailability(null,'unattended').allowed,false);assert.match(c.submissionAvailability(null,'unattended').reason,/Unattended job/);state.task.status='running';assert.equal(c.submissionAvailability(state.task,'unattended').allowed,true);state.admission=null;state.task.status='ready';assert.equal(c.submissionAvailability().allowed,true);assert.equal(c.submissionAvailability(null).allowed,false);});
 test('owned draft clearing cannot change another selected chat or newer text',()=>{const {c,state,input}=fixture();state.drafts.set('a','original');c.clearOwnedDraft('a','original');assert.equal(input.value,'original');assert.equal(state.drafts.has('a'),false);state.drafts.set('b','newer');input.value='newer';c.clearOwnedDraft('b','original');assert.equal(input.value,'newer');assert.equal(state.drafts.get('b'),'newer');});
 test('rejected start persists specific same-task explanation; lost response reconciles without new task',async()=>{const {c,state}=fixture();let calls=[];c.api=async(path,body)=>{calls.push(path);if(body)throw Error('Capacity occupied');return {...state.task,start_error:'Capacity occupied'};};assert.equal(await c.startTask('b'),false);assert.equal(state.startErrors.get('b'),'Capacity occupied');assert.deepEqual(calls,['/tasks/b/start','/tasks/b']);calls=[];c.api=async(path,body)=>{calls.push(path);if(body)throw Error('Response lost');return {id:'b',status:'running'};};assert.equal(await c.startTask('b'),true);assert.equal(state.task.status,'running');assert.deepEqual(calls,['/tasks/b/start','/tasks/b']);});
@@ -94,8 +94,8 @@ test('renewing test permissions closes the modal before the server responds and 
 
 function permissionFixture(){
  const state={task:{id:'b',pending_approval:{id:'check-1',command:['python3','-m','unittest']}}};
- const c={state,api:async()=>{},renderChat:()=>{},toast:()=>{},loadTaskPermissions:()=>new Promise(()=>{}),refresh:async()=>{},esc:String,CheapOSGuide:{permissionChoice:()=>({scope:'once',label:'Run once'})}};
- vm.createContext(c);vm.runInContext(source.slice(source.indexOf('function permissionMarkup('),source.indexOf('function bindPermissions(')),c);return c;
+ const c={state,api:async()=>{},renderChat:()=>{},toast:()=>{},loadTaskPermissions:()=>new Promise(()=>{}),refresh:async()=>{},esc:String,CheapOSGitWorkflow:require('../dist/git_workflow.js'),CheapOSGuide:{permissionChoice:()=>({scope:'once',label:'Run once'})}};
+ c.CheapOSGitWorkflow=require('../dist/git_workflow.js');vm.createContext(c);vm.runInContext(source.slice(source.indexOf('function permissionMarkup('),source.indexOf('function bindPermissions(')),c);return c;
 }
 test('command approval renders immediately, survives polling, and does not await permissions refresh',async()=>{
  const c=permissionFixture();let accept,calls=0;c.api=()=>{calls++;return new Promise(r=>accept=r);};
@@ -115,7 +115,7 @@ test('rejected command approval is actionable and a late response cannot replace
 });
 
 function workLimitFixture(){
- const c={CheapOSGuide:require('../dist/guidance.js')};vm.createContext(c);
+ const c={CheapOSGuide:require('../dist/guidance.js')};c.CheapOSGitWorkflow=require('../dist/git_workflow.js');vm.createContext(c);
  vm.runInContext(source.slice(source.indexOf('const numberField='),source.indexOf('function newTask(')),c);return c;
 }
 test('work limits expose explicit infinity and remove the 200-turn HTML maximum',()=>{

@@ -195,6 +195,7 @@ def context(task):
     run = task.get('branch_run') or {}
     return {
         'request': task.get('prompt'), 'directions': task.get('requests', []),
+        'earlier_task_context': task.get('follow_up', {}).get('context'),
         'status': task.get('status'), 'error': task.get('error'),
         'branch_status': run.get('status'), 'current_item': run.get('current_item_id'),
         'items': [{k: i.get(k) for k in ('id', 'title', 'status', 'acceptance_criteria')}

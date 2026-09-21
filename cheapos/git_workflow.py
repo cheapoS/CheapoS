@@ -61,7 +61,20 @@ def _candidate(engine, task):
     review = (task.get('checkpoints') or [{}])[-1]
     if review.get('decision') != 'APPROVE' or review.get('diff') != task['patch'] or not current_evidence(task, review):
         raise ValueError('Finish independent review before publishing this patch')
-    source = task['source']; state = commits.source_state(source)
+    source = task['source']
+    if task.get('follow_up'):
+        # Follow-ups snapshot the captured destination's committed tree, even
+        # when the operator has another branch checked out or local drafts.
+        ref = task['git_target']['branch']
+        work._local_ref(source, ref)
+        # Its base was fetched and captured without copying the operator's
+        # checkout. Local drafts/commits must not block publishing this separate
+        # reviewed branch. GitHub still checks the current remote merge target.
+        state = {'branch': ref, 'head': task['git_target']['head']}
+        if work.source_git(source, 'cat-file', '-t', state['head']) != 'commit':
+            raise ValueError('The captured follow-up base is unavailable; saved work is intact.')
+    else:
+        state = commits.source_state(source)
     target = task.get('git_target') or state
     if state['branch'] != target['branch'] or state['head'] != target['head']:
         raise ValueError('The project branch changed since this chat started. Reconcile and review the updated task before publishing.')
@@ -213,8 +226,15 @@ def status(engine, task_id):
                 if key in current['pull_request']:
                     result[key] = copy.deepcopy(current['pull_request'][key])
             current['pull_request'] = copy.deepcopy(result)
+            if result['ci']['state'] == 'merged':
+                # Completion of a publication is independent of later edits.
+                # Those edits remain saved and are carried into a follow-up.
+                result['merged_head'] = operation['head']
+                current['pull_request']['merged_head'] = operation['head']
             runtime = getattr(engine, 'runtimes', {}).get(task_id)
             busy = bool(runtime and runtime.thread and runtime.thread.is_alive())
+            if busy and result['ci']['state'] == 'merged':
+                runtime.task['pull_request'] = copy.deepcopy(current['pull_request'])
             try:
                 same = result['ci']['state'] == 'merged' and not busy and _candidate(engine, current)['evidence'] == operation['evidence']
             except (ValueError, OSError):

@@ -1,5 +1,22 @@
 /* The conversation owns its execution details, streams, and approval controls. */
 'use strict';
+const followupRequests=new Map();
+async function continueMergedTask(button) {
+  const task=state.task;if(!task||!CheapOSGitWorkflow.merged(task)||followupRequests.has(task.id))return;
+  saveDraft();const owner=draftKey(),selection=state.selection,message=$('#chat-input').value,attachments=[...(state.composerAttachments||[])];
+  followupRequests.set(task.id,true);button.disabled=true;button.textContent='Preparing your follow-up…';
+  const notice=document.createElement('p');notice.setAttribute('role','status');notice.textContent='Fetching the latest destination and preserving any later edits. Your original task stays intact.';button.after(notice);
+  try {
+    const child=await api('/tasks/'+task.id+'/pull-request-follow-up',{});await loadTasks();
+    if(state.selection===selection&&state.task?.id===task.id){
+      await selectTask(child.id);
+      if(message||attachments.length){$('#chat-input').value=message;state.composerAttachments=attachments;saveDraft();clearOwnedDraft(owner,message,attachments);}
+      renderComposer();$('#chat-input').focus();
+    }
+  }catch(error){notice.textContent=error.message;button.textContent='Retry preparing follow-up';button.disabled=false;}
+  finally{followupRequests.delete(task.id);}
+}
+
 const CheapOSChatView = (() => {
   const inspectionTools=new Set(['read file','outline file','list files','search','get diff']);
   function modelText(value,live=false) {
@@ -256,7 +273,7 @@ function compactMenu(anchor,label,actions) {
   if(sidebarMenu?.key===key){sidebarMenu.close();return;}
   sidebarMenu?.close(false);
   const menu=document.createElement('div');menu.className='sidebar-menu';menu.setAttribute('role','menu');menu.setAttribute('aria-label',label);
-  menu.innerHTML=actions.map((a,i)=> a.isHeader?`<div class="menu-header">${esc(a.label)}</div>`:`<button role="${a.checked===undefined?'menuitem':'menuitemradio'}" ${a.checked===undefined?'':`aria-checked="${a.checked}"`} data-action-index="${i}" class="${a.danger?'danger':''}">${a.checked===undefined?'':`<span class="menu-check">${a.checked?'✓':''}</span>`}${esc(a.label)}</button>`).join('');
+  menu.innerHTML=actions.map((a,i)=> a.isDivider ? `<div class="menu-divider" role="separator"></div>` : a.isHeader?`<div class="menu-header">${esc(a.label)}</div>`:`<button role="${a.checked===undefined?'menuitem':'menuitemradio'}" ${a.checked===undefined?'':`aria-checked="${a.checked}"`} data-action-index="${i}" class="${a.danger?'danger':''}">${a.checked===undefined?'':`<span class="menu-check">${a.checked?'✓':''}</span>`}${a.icon?icon(a.icon):''}<span>${esc(a.label)}</span></button>`).join('');
   $('#overlay-root').append(menu);anchor.setAttribute('aria-expanded','true');
   const rect=anchor.getBoundingClientRect(),box=menu.getBoundingClientRect();
   menu.style.left=Math.max(8,Math.min(rect.right-box.width,innerWidth-box.width-8))+'px';
@@ -339,22 +356,22 @@ function taskMenu(task,anchor) {
   if(!task)return;
   const actions=task.trashed_at?[
     {isHeader:true,label:'Saved chat'},
-    {label:'Inspect saved chat',run:()=>selectTask(task.id)},
-    {label:'Restore chat',run:()=>restoreTrash(task)},
-    {isHeader:true,label:'Data'},
-    {label:'Copy task JSON',run:()=>copyTaskJson(task)},
-    {label:'Export task JSON…',run:()=>exportTaskJson(task)}
+    {label:'Inspect saved chat',icon:'chat',run:()=>selectTask(task.id)},
+    {label:'Restore chat',icon:'folder',run:()=>restoreTrash(task)},
+    {isDivider:true},
+    {label:'Copy task JSON',icon:'copy',run:()=>copyTaskJson(task)},
+    {label:'Export task JSON…',icon:'file',run:()=>exportTaskJson(task)}
   ]:[
     {isHeader:true,label:'Organization'},
-    {label:'✎ Rename…',run:()=>renameTask(task)},
-    {label:task.pinned?'📌 Unpin':'📌 Pin',run:async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()}},
-    {label:task.archived_at?'📦 Restore to active chats':taskBusy(task)?'⏸ Pause & archive':'📦 Archive',run:()=>archiveTask(task,!task.archived_at)},
-    {isHeader:true,label:'Data'},
-    {label:'🔗 Share to Community Workbench ↗',run:()=>shareToWorkbench(task)},
-    {label:'📋 Copy task JSON',run:()=>copyTaskJson(task)},
-    {label:'📋 Export task JSON…',run:()=>exportTaskJson(task)},
-    {isHeader:true,label:'Danger Zone'},
-    {label:taskBusy(task)?'⏸ & 🗑️ Pause & move to trash':'🗑️ Move to trash',danger:true,run:()=>moveToTrash(task)}
+    {label:'Rename…',icon:'edit',run:()=>renameTask(task)},
+    {label:task.pinned?'Unpin':'Pin',icon:'pin',run:async()=>{await api('/tasks/'+task.id+'/metadata',{pinned:!task.pinned});await refresh()}},
+    {label:task.archived_at?'Restore to active chats':taskBusy(task)?'Pause & archive':'Archive',icon:'archive',run:()=>archiveTask(task,!task.archived_at)},
+    {isDivider:true},
+    {label:'Share to Community',icon:'branch',run:()=>shareToWorkbench(task)},
+    {label:'Copy task JSON',icon:'copy',run:()=>copyTaskJson(task)},
+    {label:'Export task JSON…',icon:'file',run:()=>exportTaskJson(task)},
+    {isDivider:true},
+    {label:taskBusy(task)?'Pause & move to trash':'Move to trash',icon:'trash',danger:true,run:()=>moveToTrash(task)}
   ];
   compactMenu(anchor,'Chat options',actions);
 }
@@ -664,7 +681,7 @@ function renderComposer() {
   $('#chat-budget').textContent=`${chosenLimits.dollars===0?'Free only':money(chosenLimits.dollars)+' cap'} · ${(task?.execution||state.preferences.execution)?.development_mode?'Development ∞':chosenLimits.uncapped_work?'Uncapped work ∞':`${preset==='custom'?'Custom':preset==='extended'?'Extended':'Standard'} ${chosenLimits.run_minutes??15} min`}`;
   $('#chat-budget').title=task?'Limits for this chat':'Setup for this new chat';
   const pausing=Boolean(task&&(task.status==='stopping'||state.pausingTask===task.id));
-  $('#composer-area').hidden=Boolean(task?.demo||task?.archived_at||task?.trashed_at)||state.view!=='chat';
+  $('#composer-area').hidden=Boolean(task?.demo||task?.archived_at||task?.trashed_at||CheapOSGitWorkflow.merged(task))||state.view!=='chat';
   $('#composer-project span').textContent=task?CheapOSGuide.projectName(task):state.project?CheapOSGuide.projectName({source:state.project.path}):'Open project';
   $('#composer-project').disabled=Boolean(task);
   $('#chat-input').disabled=sendingHere();
@@ -1139,7 +1156,7 @@ function recoveryActionAvailable(task) {
   return !waitingForTarget;
 }
 function recoveryOptionsMarkup(task) {
-  if(!recoveryActionAvailable(task))return '';
+  if(CheapOSGitWorkflow.merged(task)||!recoveryActionAvailable(task))return '';
   return '<details class="chat-recovery-options" data-event="manual-recovery"><summary>Advanced options</summary><p>Manually change models or revise this task’s instructions and checks.</p><button type="button" class="outline-button" data-manual-recovery>Open recovery settings</button></details>';
 }
 function renderChat() {
@@ -1168,6 +1185,7 @@ function renderChat() {
   else if(!taskBusy(task)&&task.status!=='awaiting_reply')decision=(`<section class="chat-decision"><strong>${esc(failure?.title||guide.title)}</strong><p>${esc(failure?.description||guide.description)}</p>${errorDetails}<div class="button-row">${button(guide.primary==='retry-wait'?'retry-wait':guide.primary==='clarify'?'clarify':task.status==='error'?'start':'resume',guide.primary==='retry-wait'?'Retry when available':guide.primary==='clarify'?guide.primaryLabel||'Continue in chat':task.status==='error'?'Retry':task.status==='takeover_requested'?'Review takeover request':task.status==='budget_paused'?guide.primaryLabel:'Resume',true)}${task.status==='error'||task.error_code==='routing_unavailable'?button('connections','Model settings'):''}${task.changes.length?button('changes','View changes'):''}</div></section>`);
   if(task.archived_at||task.trashed_at||task.branch_run)decision=task.branch_run&&task.pending_approval?permissionMarkup(task):'';
   if(CheapOSGuide.integrationPreparation(task))decision='';
+  if(!task.branch_run&&!taskBusy(task)&&CheapOSGitWorkflow.merged(task))decision=CheapOSGitWorkflow.completionMarkup(task);
   const lastWorkReply=conversation.findLast(entry=>entry.kind==='assistant'&&!entry.discussion);
   $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastWorkReply?decision+recoveryOptionsMarkup(task):'')).join('')+pendingMessageMarkup();
   $('#chat-view').insertAdjacentHTML('afterbegin',CheapOSGitWorkflow.freshnessMarkup(task));
@@ -1197,6 +1215,11 @@ function renderChat() {
   const continuation=operatorContinuationMarkup(task);if(continuation){const notice=document.createElement('div');notice.innerHTML=continuation;workBody.append(notice);}
   if(task.error&&!task.branch_run){const logs=document.createElement('button');logs.className='text-link';logs.textContent='View technical logs';logs.onclick=()=>setView('logs');workBody.append(logs);}
   $$('[data-workflow-logs]').forEach(b=>b.onclick=()=>{setView('logs');const routing=$('#routing-diagnostics');if(routing){routing.open=true;routing.scrollIntoView({block:'start',behavior:'instant'});$('summary',routing)?.focus({preventScroll:true});}});
+  if(task.follow_up){
+    const f=task.follow_up,banner=document.createElement('section');banner.className='chat-result';
+    banner.innerHTML=`<div><strong>Follow-up to PR #${Number(f.number)}</strong><p>${f.recovered?(f.applied?'Later edits are restored on the updated destination.':'Later edits are retained for the agent to reconcile with the updated destination.'):'This task starts from the updated destination and keeps the earlier conversation as context.'} New checks and independent review are required.</p><button class="text-link" data-followup-parent="${esc(f.parent_id)}">View original task</button></div>`;
+    $('#chat-view').prepend(banner);
+  }
   CheapOSGitWorkflow.bindSync($('#chat-view'),task,api,()=>refresh());
   updateProgressClock();bindCommitDecision(task);bindTerminalCopy();bindPermissions(task);
   $$('#chat-view [data-chat-action]').forEach(b=>b.onclick=async()=>{
@@ -1368,6 +1391,7 @@ function renderChanges() {
   if(!files.length){
     const last=task.commits?.at(-1);
     $('#changes-view').innerHTML=last?`<section class="commit-success">${icon('check')}<h2>Committed to your project.</h2><p>${esc(last.message)}</p><p><code>${esc(last.commit.slice(0,8))}</code> on <strong>${esc(last.branch)}</strong></p><p class="muted">Your next edits in this chat will build on this commit.</p><details class="patch-help"><summary>View committed patch (${last.files.length} files)</summary><pre>${esc(last.patch)}</pre></details></section>`:'<div class="empty-state">'+icon('code')+'<h2>No changes yet.</h2><p>File edits will appear here as the worker makes them.</p></div>';
+    if(mergedPR){$('#changes-view').insertAdjacentHTML('afterbegin',CheapOSGitWorkflow.completionMarkup(task));return;}
     $('#changes-view').insertAdjacentHTML('afterbegin',CheapOSIntegration.markup(task));
     CheapOSIntegration.bind($('#changes-view'),task,null,api,async()=>refresh());
     return;
@@ -1687,7 +1711,7 @@ async function sendChat(){
 }
 async function dispatchChat() {
   const task=state.task,busy=task&&taskBusy(task);
-  if(sendingHere())return;
+  if(sendingHere()||CheapOSGitWorkflow.merged(task))return;
   if(!busy&&!submissionAvailability(task).allowed){renderComposer();return;}
   if(await branchUI.interceptSubmit())return;
   if(state.task!==task)return;
@@ -1732,7 +1756,7 @@ async function dispatchChat() {
       try{const started=await startTask(created.id);if(started)clearOwnedDraft(key,message,attachments);}finally{state.pendingSends.delete(created.id);}
     }
     if(state.selection===selection)$('#view-container').scrollTop=$('#view-container').scrollHeight;
-  }catch(e){if(!delivered)state.sendErrors.set(key,e.message);toast(e.message);}
+  }catch(e){if(!delivered)state.sendErrors.set(key,e.message);toast(e.message);if(task?.pull_request)await refresh();}
   finally{state.pendingMessages.delete(key);state.pendingSends.delete(key);if(draftKey()===key){if(state.task)renderChat();else renderHome();}renderComposer();if(state.selection===selection)$('#chat-input').focus();}
 }
 async function steerTask(text) {
@@ -2219,3 +2243,8 @@ try {
     })();
   }
 } catch {}
+
+document.addEventListener('click',event=>{
+  const button=event.target.closest('[data-pr-followup]');if(button){void continueMergedTask(button);return;}
+  const parent=event.target.closest('[data-followup-parent]');if(parent)void selectTask(parent.dataset.followupParent);
+});
