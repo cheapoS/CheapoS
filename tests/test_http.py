@@ -413,11 +413,14 @@ class HTTPTests(unittest.TestCase):
         path = '/api/tasks/' + task['id']
         from cheapos import git_workflow
         for action, method in [('preview','preview'),('publish','publish'),('status','status')]:
-            with patch.object(git_workflow,method,return_value={'fixture':True}) as handler:
+            publication = {'id':'publication-not-task-id', 'title':'Reviewed PR title', 'description':'Reviewed changes'}
+            with patch.object(git_workflow,method,return_value=publication) as handler:
                 route=path+'/pull-request-'+action
                 self.assertEqual(self.request('POST',route,{})[0],403)
                 handler.assert_not_called()
-                self.assertEqual(self.post(route,{})[0],200)
+                response = self.post(route,{})
+                self.assertEqual(response[0],200)
+                self.assertEqual(json.loads(response[2]),publication)
                 self.assertEqual(handler.call_count,1)
         self.assertEqual(self.request('POST', path + '/commit-preview', {}, {'Content-Type': 'application/json'})[0], 403)
         status, _, body = self.post(path + '/commit-preview', {})

@@ -688,7 +688,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
             else:
                 self.reply({"error": "Route not found"}, 404)
                 return
-            if isinstance(result, dict) and "id" in result and "title" in result:
+            if isinstance(result, dict) and all(key in result for key in ("id", "title", "workspace")):
                 result = engine.store.present(result)
             if isinstance(result, dict) and isinstance(result.get("task"), dict):
                 result["task"] = engine.store.present(result["task"])

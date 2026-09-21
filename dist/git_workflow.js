@@ -55,13 +55,19 @@ function freshnessMarkup(task){
  if(!sync||sync.retryable!==true||task.archived_at||task.trashed_at)return '';
  return `<details class="small muted"><summary>Started from local ${esc(sync.branch||'code')} · remote sync was pending</summary><p>${esc(sync.message)}</p><p>This task keeps its original snapshot. New tasks check again before starting.</p></details>`;
 }
+const descriptionDrafts=new Map();
+function descriptionKey(p){return [p.repo,p.branch,p.evidence].join(':');}
+function descriptionMarkup(p){
+ const draft=(!p.retry&&descriptionDrafts.get(descriptionKey(p)))||p;
+ return `<div class="pr-description"><label>PR title<input type="text" data-pr-title maxlength="200" value="${esc(draft.title||p.message||'')}" ${p.retry?'readonly':''}></label><label>Description<textarea data-pr-description maxlength="6000" rows="7" ${p.retry?'readonly':''}>${esc(draft.description||'')}</textarea></label><p class="small muted">${p.retry?'Publication will retry with the text you already approved.':p.description_source==='reviewer'?'Drafted with the agents and confirmed by review. You can edit it before publishing.':'Review and edit this description before publishing.'}</p><details><summary>Recorded validation · added automatically</summary><pre>${esc(p.validation||'Individual check details are unavailable for this older publication.')}</pre></details></div>`;
+}
 function content(p,task){
  if(p.url&&p.ci?.state==='merged'){
   const summary=mergeSummary(p);
   return `<h3>${esc(summary.title)}</h3><p role="status">${esc(summary.description)}</p><a class="subtle-button" href="${esc(safeURL(p.url)||'#')}" target="_blank" rel="noopener noreferrer">View merged PR #${Number(p.number)}</a>${needsSync(p)||!p.local_sync?'<button type="button" data-pr-refresh>Retry sync</button>':''}${laterEdits(task)?'<p>Later edits are saved after this PR. Recover them into a new task for verification, review and publication.</p>':''}${followupButton(task)}<p class="small muted">This is the saved record of the merged PR. Further edits need a new task and a new review.</p>`;
  }
  if(p.url)return `<h3>Pull request opened.</h3><p><a class="primary-button" href="${esc(safeURL(p.url)||'#')}" target="_blank" rel="noopener noreferrer">Open pull request #${Number(p.number)}</a></p><p role="status">${esc(p.ci?.message||'Your local destination branch is unchanged. Check GitHub CI and review before merging.')}</p>${p.local_sync?'<p role="status">'+esc(p.local_sync.message)+'</p>':''}${p.ci?.checks?.length?'<ul>'+p.ci.checks.map(c=>`<li>${esc(c.name)} · ${esc(c.state)}</li>`).join('')+'</ul>':''}${p.ci?`<p>${p.ci.protected===true?'GitHub branch protection is enabled.':p.ci.protected===false?'This destination has no GitHub branch protection. Configure required checks and PR rules in GitHub settings.':'Branch protection status is unavailable.'}</p>`:''}<button type="button" data-pr-refresh>Refresh GitHub status</button><p class="small muted">GitHub enforces this repository’s required checks, reviews and branch rules. Green local checks alone do not approve a remote merge.</p>`;
- return `<h3>${p.retry?'Finish publishing your reviewed branch.':p.update?'Ready to update your pull request.':'Ready to open a pull request.'}</h3><p><strong>${esc(p.repo)}</strong> · ${esc(p.branch)} → ${esc(p.base)}</p><p>${p.update?'Publishes the newly reviewed commit to the same pull request.':'Publishes the reviewed commit and opens a GitHub pull request.'} Your destination checkout stays unchanged. GitHub checks and your final merge decision follow.</p><button type="button" class="primary-button" data-pr-publish>${p.retry?'Finish publishing':p.update?'Approve & update pull request':'Approve & open pull request'}</button>`;
+ return `<h3>${p.retry?'Finish publishing your reviewed branch.':p.update?'Ready to update your pull request.':'Ready to open a pull request.'}</h3><p><strong>${esc(p.repo)}</strong> · ${esc(p.branch)} → ${esc(p.base)}</p><p>${p.update?'Publishes the newly reviewed commit to the same pull request.':'Publishes the reviewed commit and opens a GitHub pull request.'} Your destination checkout stays unchanged. GitHub checks and your final merge decision follow.</p>${descriptionMarkup(p)}<button type="button" class="primary-button" data-pr-publish>${p.retry?'Finish publishing':p.update?'Approve & update pull request':'Approve & open pull request'}</button>`;
 }
 function mount(container,task,api,onPublished=()=>{}){
  const panel=container.querySelector('[data-pull-request]');if(!panel)return;
@@ -78,11 +84,13 @@ function mount(container,task,api,onPublished=()=>{}){
   finally{busy=false;panel.removeAttribute('aria-busy');}
  }
  function bind(){
+  const fields=()=>({title:panel.querySelector('[data-pr-title]')?.value||'',description:panel.querySelector('[data-pr-description]')?.value||''});
+  panel.querySelectorAll('[data-pr-title],[data-pr-description]').forEach(input=>input.addEventListener('input',()=>descriptionDrafts.set(descriptionKey(current),fields())));
   panel.querySelector('[data-pr-refresh]')?.addEventListener('click',()=>load(true));
   panel.querySelector('[data-pr-publish]')?.addEventListener('click',async e=>{
    if(busy)return;busy=true;e.currentTarget.disabled=true;e.currentTarget.textContent='Publishing reviewed branch…';
    panel.insertAdjacentHTML('beforeend','<p role="status">Sending your approved branch to GitHub. This can take a moment.</p>');
-   try{current=await api('/tasks/'+task.id+'/pull-request-publish',{approved:true,id:current.id});if(panel.isConnected){panel.innerHTML=content(current,task);bind();}onPublished(current);}
+   try{current=await api('/tasks/'+task.id+'/pull-request-publish',{approved:true,id:current.id,...(!current.retry?fields():{})});descriptionDrafts.delete(descriptionKey(current));if(panel.isConnected){panel.innerHTML=content(current,task);bind();}onPublished(current);}
    catch(error){if(panel.isConnected){panel.innerHTML='<p role="alert">'+esc(error.message)+'</p><button type="button" data-pr-retry>Retry saved publication</button>';panel.querySelector('[data-pr-retry]').onclick=()=>load();}}
    finally{busy=false;}
   });

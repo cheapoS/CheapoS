@@ -501,6 +501,7 @@ class BranchController:
             result = checkpoint(self.engine, runtime, {
                 'summary': saved.get('worker_summary', 'Continuing the interrupted item review.'),
                 'uncertainties': saved.get('uncertainties', ''),
+                'pull_request': saved.get('pull_request'),
                 'repair_dispositions': saved.get('repair_dispositions', item.get('review_repair', {}).get('dispositions', []))})
             if result['decision'] not in {'REQUEST_CHANGES', 'REQUEST_TESTS'}:
                 return

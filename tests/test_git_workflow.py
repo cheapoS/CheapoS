@@ -81,6 +81,31 @@ class GitWorkflowTests(unittest.TestCase):
         self.assertFalse(any(c.args[1]=='push' for c in self.git.call_args_list))
         self.create.assert_not_called()
 
+    def test_operator_text_is_saved_before_publication_and_retries_keep_it(self):
+        self.saved['checkpoints'] = [{'decision': 'APPROVE', 'pull_request': {'title': 'Agent title', 'description': 'Reviewed behavior.'}}]
+        preview = flow.preview(self.engine, 'task')
+        self.assertEqual(preview['title'], 'Agent title')
+        values = {'approved': True, 'id': preview['id'], 'title': 'Operator title', 'description': 'Adjusted description.'}
+        self.create.side_effect = ValueError('response lost')
+        with self.assertRaisesRegex(ValueError, 'response lost'):
+            flow.publish(self.engine, 'task', values)
+        self.assertEqual(self.saved['pull_request']['description'], values['description'])
+        self.assertEqual(self.create.call_args.args[2]['title'], values['title'])
+        self.assertIn(values['description'], self.create.call_args.args[2]['body'])
+        with self.assertRaisesRegex(ValueError, 'already started'):
+            flow.publish(self.engine, 'task', {**values, 'title': 'Changed after push'})
+        self.find.return_value = {'number':7, 'head':{'sha':'a'*40}, 'base':{'ref':'production'}}
+        self.git.return_value = 'a'*40 + '\tref'
+        self.assertEqual(self.approve(self.saved['pull_request'])['title'], 'Operator title')
+
+    def test_invalid_operator_text_does_not_create_publication_intent(self):
+        preview = flow.preview(self.engine, 'task')
+        for edited in ({'title': ''}, {'title': 'a\nb', 'description': ''}, {'title':'x', 'description': 2}):
+            with self.assertRaises(ValueError):
+                flow.publish(self.engine, 'task', {'approved':True, 'id':preview['id'], **edited})
+        self.git.assert_not_called(); self.create.assert_not_called()
+        self.assertNotIn('pull_request', self.saved)
+
     def test_reviewed_update_advances_same_pr_with_expected_head_lease(self):
         first = self.approve(flow.preview(self.engine, 'task'))
         self.candidate_mock.return_value = {**self.candidate, 'head':'d'*40, 'tree':'e'*40, 'evidence':'new review'}
@@ -99,6 +124,8 @@ class GitWorkflowTests(unittest.TestCase):
         self.assertIn('--force-with-lease=refs/heads/'+first['branch']+':'+first['head'], push)
         self.assertEqual(len(self.saved['pull_request_history']),1)
         self.assertEqual(self.create.call_args.args[1], 'pulls/7')
+        self.assertEqual(self.create.call_args.kwargs['method'], 'PATCH')
+        self.assertIn('Recorded validation', self.create.call_args.args[2]['body'])
 
     def test_status_preserves_work_and_only_completes_the_current_merged_candidate(self):
         operation = self.approve(flow.preview(self.engine, 'task'))

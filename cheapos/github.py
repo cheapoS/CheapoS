@@ -23,9 +23,9 @@ def repository(source, remote):
     return destination(source, remote)[0]
 
 
-def api(repo, endpoint, data=None):
+def api(repo, endpoint, data=None, *, method=None):
     env = {**os.environ, 'GH_PROMPT_DISABLED': '1', 'GH_PAGER': 'cat', 'GH_HOST': 'github.com'}
-    argv = ['gh', 'api', '--hostname', 'github.com', '--method', 'GET' if data is None else 'POST',
+    argv = ['gh', 'api', '--hostname', 'github.com', '--method', method or ('GET' if data is None else 'POST'),
             'repos/' + repo + '/' + endpoint]
     if data is not None:
         argv += ['--input', '-']

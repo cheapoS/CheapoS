@@ -36,6 +36,8 @@ class ItemReviewRecoveryTests(unittest.TestCase):
 
     def test_invalid_approvals_handoff_without_worker_or_check_replay(self):
         task, engine, runtime = self.automatic_fixture()
+        task['settings_snapshot'] = {'values': {'git': {'workflow': 'pull_request'}}}
+        draft = {'title': 'Preserve exact values', 'description': 'Retain the requested values without rounding.'}
         task['branch_run']['guidance'] = [{'item_id': 'one', 'message': 'Keep exact values.'}]
         before = copy.deepcopy(task)
         seen = []
@@ -45,12 +47,14 @@ class ItemReviewRecoveryTests(unittest.TestCase):
             return self.approval(task['providers']['reviewer']['model'] == 'reviewer')
         engine.request.side_effect = respond
         with patch.object(routing, 'select_remote', side_effect=self.selector(task)) as select:
-            self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+            self.assertEqual(branch_review.checkpoint(engine, runtime, {'pull_request': draft})['decision'], 'APPROVE')
         self.assertEqual(engine.request.call_count, 4);select.assert_called_once()
         self.assertIn('Keep exact values.', json.dumps(seen[-1]))
+        self.assertEqual(json.loads(seen[-1][1]['content'])['pull_request_draft'], draft)
         self.assertNotIn('cheapoS automatic review reassessment', json.dumps(seen[-1]))
         history = task['branch_run']['review_recovery']['candidate']['history']
         self.assertEqual(history[0]['review']['review_requests'], 3)
+        self.assertEqual(history[0]['review']['pull_request'], draft)
         self.assertEqual(task['branch_run']['review_disagreements']['candidate']['unsupported_attempts'], 3)
         self.assertEqual(task['review_count'], 4)
         for key in ('checks', 'usage', 'limits'):

@@ -28,6 +28,8 @@ class BranchReviewTests(LocalCase):
 
     def test_real_checks_independent_review_receipt_and_reuse(self):
         task=self.task();runtime=Runtime(task)
+        task['settings_snapshot'] = {'values': {'git': {'workflow': 'pull_request'}}}
+        draft = {'title':'Clamp both bounds', 'description':'Enforce the lower and upper limits.'}
         component=Path(task['workspace'])/'component';component.mkdir()
         (component/'check.py').write_text("from pathlib import Path\nassert Path.cwd().name == 'component'\nprint('component verified')\n")
         command=[sys.executable,'-B','check.py']
@@ -40,12 +42,15 @@ class BranchReviewTests(LocalCase):
             packet=json.loads(messages[1]['content'])
             self.assertEqual(packet['checks'][0]['directory'], 'component')
             self.assertEqual(packet['checks'][0]['record']['directory'], 'component')
-            return call('review_decision',{'decision':'APPROVE','feedback':'Inspected both bounds','candidate_id':packet['candidate_id'], 'criteria_outcomes':{'Both bounds work':{'passed':True,'evidence':'Tests and code cover lower and upper bounds'}}})
+            if self.engine.request.call_count == 1:
+                self.assertEqual(packet['pull_request_draft'], draft)
+            return call('review_decision',{'decision':'APPROVE','feedback':'Inspected both bounds','candidate_id':packet['candidate_id'], 'pull_request':draft, 'criteria_outcomes':{'Both bounds work':{'passed':True,'evidence':'Tests and code cover lower and upper bounds'}}})
         self.engine.request=Mock(side_effect=review)
-        result=checkpoint(self.engine,runtime,{})
+        result=checkpoint(self.engine,runtime,{'pull_request':draft})
         self.assertEqual(result['decision'],'APPROVE')
         item=task['branch_run']['items'][0]
         self.assertEqual(json.loads(item['ready_receipt'])['outcome'],'ready')
+        self.assertEqual(json.loads(item['ready_receipt'])['review']['pull_request'], draft)
         self.assertEqual(len(task['checks']),1)
         item['status']='working';task['status']='running'
         result=self.engine.worker_checks(runtime,{'command':shlex.join(task['check_command'])})

@@ -434,6 +434,20 @@ GitHub's repository rules. Set required checks, required PR reviews, and branch
 protection on GitHub. cheapoS reports protection status but does not configure or
 bypass it. Missing CI results are shown as pending, never as a pass.
 
+The worker drafts a useful PR title and description at its normal checkpoint.
+The independent reviewer confirms or corrects the wording against the actual
+change. For Unattended runs, final review combines the item summaries into one
+description of the completed work. This uses the existing model turns; missing
+or invalid optional wording falls back to a basic description without blocking
+completion. Older saved tasks can use that fallback too.
+
+Before publication, edit **PR title** and **Description** in Changes. cheapoS
+adds a separate **Recorded validation** section from the checks attached to the
+current approved candidate; model-written claims and raw check output do not
+populate that section. Further reviewed changes get a fresh draft, and approving
+an update replaces the open PR's title and description as well as its code.
+An interrupted publication retries the exact text you already approved.
+
 **Approve & open pull request** is explicit permission to push that reviewed
 commit to the displayed repository. An interrupted publication retains its
 intent so retrying can find the existing branch/PR instead of duplicating it.

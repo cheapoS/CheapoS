@@ -12,7 +12,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import github, commits, branch_final, branch_workspace as work
+from . import github, commits, branch_final, branch_workspace as work, pr_description
 from .branch_authorization import digest
 
 
@@ -120,6 +120,8 @@ def preview(engine, task_id):
         message = re.sub(r'\s+', ' ', task.get('title') or 'cheapoS changes')[:200]
         operation = {**candidate, 'repo': repo, 'branch': head_branch, 'message': message,
                      'remote': policy(task)['remote'], 'push_url': push_url, 'id': uuid.uuid4().hex, 'created': time.time()}
+        operation.update(pr_description.preview(task, candidate))
+        operation['message'] = operation['title']
         if saved:
             if any(saved[k] != operation[k] for k in ('repo','push_url','branch','base')):
                 raise ValueError('A pull request update must keep its approved repository and branches')
@@ -131,8 +133,13 @@ def preview(engine, task_id):
 
 
 def publish(engine, task_id, values):
-    if set(values) != {'approved', 'id'} or values['approved'] is not True:
+    if not {'approved', 'id'} <= set(values) or set(values) - {'approved', 'id', 'title', 'description'} or values['approved'] is not True:
         raise ValueError('Approve the displayed branch and GitHub destination before publishing')
+    edited = None
+    if 'title' in values or 'description' in values:
+        edited = pr_description.clean({k: values.get(k) for k in ('title', 'description')})
+        if edited is None:
+            raise ValueError('Use a single-line PR title (1–200 characters) and description (up to 6,000 characters).')
     source = engine.store.get(task_id)['source']
     with engine.admission.integration(task_id, source):
         engine.require_active_task(task_id)
@@ -146,6 +153,8 @@ def publish(engine, task_id, values):
             if saved['id'] != values['id']:
                 raise ValueError('This approval belongs to a different pull request')
             operation = copy.deepcopy(saved)
+            if edited and edited != {k: operation.get(k) for k in ('title', 'description')}:
+                raise ValueError('Publication already started with saved text. Finish that publication before editing it on GitHub.')
         else:
             operation = copy.deepcopy(getattr(engine, 'pull_request_previews', {}).get(task_id))
             if not operation or operation['id'] != values['id'] or time.time() - operation['created'] > 600:
@@ -155,6 +164,10 @@ def publish(engine, task_id, values):
                 raise ValueError('The reviewed work changed. Refresh the pull request preview')
             if github.destination(source, operation['remote']) != (operation['repo'], operation['push_url']):
                 raise ValueError('The Git remote changed after preview')
+            if edited:
+                operation.update(edited)
+                operation['message'] = edited['title']
+                operation['description_source'] = 'operator'
             if not operation.get('head'):
                 operation['head'] = commits.commit_object({'source': source, 'tree': operation['tree'], 'head': operation.get('expected_remote') or operation['parent'],
                     'git_settings': task.get('settings_snapshot', {}).get('values', {}).get('git')}, operation['message'])
@@ -189,15 +202,17 @@ def publish(engine, task_id, values):
             work.source_git(source, 'push', '--porcelain', '--force-with-lease=' + ref + ':' + expected, destination, operation['head'] + ':' + ref)
         if pull is None:
             pull = github.api(operation['repo'], 'pulls', {
-                'title': operation['message'], 'head': operation['branch'], 'base': operation['base'],
-                'body': '## Changes\n\n' + operation['message'] + '\n\n## Validation\n\n'
-                        'Local checks and independent cheapoS review passed for commit `' + operation['head'] + '`.\n'
-                        'Review the diff and GitHub CI results before merging.\n\n'
-                        'Created by cheapoS; local destination branch was not modified.'})
+                'title': operation.get('title', operation['message']), 'head': operation['branch'], 'base': operation['base'],
+                'body': pr_description.body(operation)})
         elif pull.get('head', {}).get('sha') != operation['head']:
             pull = github.api(operation['repo'], 'pulls/' + str(int(pull['number'])))
         if pull.get('head', {}).get('sha') != operation['head'] or pull.get('base', {}).get('ref') != operation['base']:
             raise ValueError('GitHub returned a different pull request candidate; inspect the saved branch')
+        if operation.get('update'):
+            # Idempotent on a lost PATCH response; the saved text is part of the
+            # operator-approved publication intent and changes with this review.
+            github.api(operation['repo'], 'pulls/' + str(int(pull['number'])),
+                {'title': operation.get('title', operation['message']), 'body': pr_description.body(operation)}, method='PATCH')
         operation.update(number=pull['number'], url=f"https://github.com/{operation['repo']}/pull/{int(pull['number'])}", state='open')
         task['pull_request'] = operation
         engine.event(task, 'pull_request', 'Pull request updated. GitHub checks and your merge decision come next.' if operation.get('update') else 'Pull request opened. GitHub checks and your merge decision come next.',

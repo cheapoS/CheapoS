@@ -68,7 +68,7 @@ def recover(engine, runtime, diagnostic):
     recovery['history'].append({'from': selection['from'], 'to': current,
                                 'reason': selection['reason'], 'review': copy.deepcopy(pending)})
     fresh = {key: copy.deepcopy(pending[key]) for key in
-             ('branch_candidate_id', 'identity_scope', 'worker_summary', 'uncertainties', 'repair_dispositions') if key in pending}
+             ('branch_candidate_id', 'identity_scope', 'worker_summary', 'uncertainties', 'repair_dispositions', 'pull_request') if key in pending}
     fresh.update(reviewer_model=current, review_requests=pending.get('review_requests', 0),
                  review_turn_baseline=review_turns(task, pending) + pending.get('review_turn_baseline', 0),
                  unsupported_baseline=run.get('review_disagreements', {}).get(candidate, {}).get('unsupported_attempts', 0),
