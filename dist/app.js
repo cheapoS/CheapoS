@@ -72,6 +72,7 @@ const CheapOSChatView = (() => {
     if(event.kind==='tool_error') return `<section class="workflow-failure"><strong>${esc(event.title||'Action could not finish')}</strong><p>${esc(d.error||'The action did not finish. See Technical logs for the retained diagnostic.')}</p></section>`;
     const action=CheapOSGuide.activityItem(event);
     const title=action?.title||event.title||'Action';
+    if(event.kind==='review_context')return `<details class="workflow-event ${action?.failed?'needs-reading':''}" data-event="work-event-${esc(event.id)}" ${action?.failed?'open':''}><summary>${icon('search')}<span>${esc(title)}</span>${event.time?`<time>${new Date(event.time).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</time>`:''}</summary><p>${esc(action?.note||'')}</p></details>`;
     const important=['review','review_coaching'].includes(event.kind)||Boolean(d.error||d.result?.error||d.result?.syntax_warning);
     return `<details class="workflow-event ${important?'needs-reading':''}" data-event="work-event-${esc(event.id)}" ${important?'open':''}><summary>${icon('chevron')}<span>${esc(title)}</span>${event.time?`<time>${new Date(event.time).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</time>`:''}</summary>${d.result?.syntax_warning?`<p class="error">${esc(d.result.syntax_warning)}</p>`:''}${d.result?.error?`<p class="error">${esc(d.result.error)}</p>`:eventDetail(event)}</details>`;
   }
@@ -80,12 +81,13 @@ const CheapOSChatView = (() => {
     const blocks=[];let inspections=[];
     function flush() {
       if(!inspections.length)return;
-      const names=[...new Set(inspections.map(e=>e.detail?.arguments?.path||e.detail?.arguments?.query).filter(Boolean))];
-      blocks.push(`<details class="workflow-exploration" data-event="explore-${esc(inspections[0].id)}"><summary>${icon('search')}<span>Explored the project · ${inspections.length} action${inspections.length===1?'':'s'}${names.length?`<small>${esc(names.slice(-2).join(' · '))}</small>`:''}</span>${icon('chevron')}</summary>${inspections.map(e=>detailEvent(e)).join('')}</details>`);
+      const names=[...new Set(inspections.map(e=>e.detail?.path||e.detail?.arguments?.path||e.detail?.arguments?.query).filter(Boolean))];
+      const reviewReads=inspections.every(e=>e.kind==='review_context');
+      blocks.push(`<details class="workflow-exploration" data-event="explore-${esc(inspections[0].id)}"><summary>${icon('search')}<span>${reviewReads?'Inspected review evidence':'Explored the project'} · ${inspections.length} ${reviewReads?'read':'action'}${inspections.length===1?'':'s'}${names.length?`<small>${esc(names.slice(-2).join(' · '))}</small>`:''}</span>${icon('chevron')}</summary>${inspections.map(e=>detailEvent(e)).join('')}</details>`);
       inspections=[];
     }
     for(const event of events) {
-      if(event.kind==='tool'&&inspectionTools.has(event.title)&&!event.detail?.result?.error&&!event.detail?.result?.syntax_warning)inspections.push(event);
+      if(event.kind==='review_context'&&event.detail?.available!==false||event.kind==='tool'&&inspectionTools.has(event.title)&&!event.detail?.result?.error&&!event.detail?.result?.syntax_warning)inspections.push(event);
       else {flush();blocks.push(detailEvent(event,event===latestThinking,entryReply));}
     }
     flush();return blocks.join('');
@@ -105,8 +107,8 @@ const CheapOSChatView = (() => {
     const preview=liveText?`<span class="workflow-preview">${esc((liveText.length>240?'…':'')+liveText.slice(-240))}</span>`:'';
     const title=live&&task.check_stream?.kind==='command'?'Running task command':live&&probe?'Checking model connection':liveOutput&&step.outcome==='live'?({review:'Independent review in progress',work:'Working on your request',plan:'Preparing the next step',coordinator:'Coordinator helping',checks:'Running checks'}[step.phase]||step.title):step.title;
     const status=live&&probe?'Verifying tool support before starting the request':step.detail;
-    return `<details class="workflow-step ${live?'is-live':''} ${liveOutput?'has-live-output':''} outcome-${step.outcome}" data-event="workflow-${esc(step.id)}" data-step="${esc(step.id)}" ${live||['failed','revision'].includes(step.outcome)?'open':''}>
-      <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong>${step.reviewProgress?`<small class="workflow-review-progress" data-review-progress>${esc(step.reviewProgress)}</small>`:''}<span class="workflow-status" ${live?'data-live-status':''}>${esc(status)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
+    return `<details class="workflow-step phase-${step.phase} ${live?'is-live':''} ${liveOutput?'has-live-output':''} outcome-${step.outcome}" data-event="workflow-${esc(step.id)}" data-step="${esc(step.id)}" ${live||['failed','revision'].includes(step.outcome)?'open':''}>
+      <summary><span class="workflow-symbol">${symbol}</span><span class="workflow-heading"><strong>${esc(title)}</strong>${step.reviewProgress?`<small class="workflow-review-progress" data-review-progress>${esc(step.reviewProgress)}</small>`:''}${step.reviewStats?`<small class="workflow-review-stats">${esc(step.reviewStats)}</small>`:''}<span class="workflow-status" ${live?'data-live-status':''}>${esc(status)}</span>${preview}${live&&step.activity?`<small class="workflow-last-action">Latest: ${esc(step.activity)}</small>`:''}</span>${live?`<span class="workflow-elapsed" data-work-elapsed>${step.elapsed}</span>`:''}<span class="workflow-toggle">Details ${icon('chevron')}</span></summary>
       <div class="workflow-details"><div class="workflow-model"><span>${role}</span><strong>${esc(step.model||(task.demo?'Scripted local model':live?'Model selection pending':'Model identity unavailable'))}</strong></div>
         ${events.length>80?'<p class="small muted">Showing the latest 80 progress events. Earlier events remain in Technical logs.</p>':''}
         <div class="workflow-events">${eventsMarkup(events.slice(-80),entryReply,Boolean(live&&stream))||(!liveOutput?`<p class="small muted">${live?'Waiting for the first action…':'No additional actions were recorded.'}</p>`:'')}</div>

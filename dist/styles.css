@@ -1567,3 +1567,8 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 .pr-description label{display:grid;gap:6px}
 .pr-description input,.pr-description textarea{width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);padding:10px 12px}
 .pr-description pre{white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Keep controller-observed review progress visible beside streamed output. */
+.workflow-review-stats{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+.workflow-step.phase-review.has-live-output[open]>summary .workflow-status,
+.workflow-step.phase-review.has-live-output[open]>summary .workflow-last-action{display:block}

@@ -210,8 +210,15 @@ function mountFinalDiff(d,task,preview,api){
  d.querySelector('[data-file-search]').oninput=navigation;
  d.querySelector('[data-viewed]').onclick=()=>{const top=viewport.scrollTop;viewed.has(selected)?viewed.delete(selected):viewed.add(selected);navigation();content();viewport.scrollTop=top;};
  d.querySelector('[data-raw]').onclick=e=>{raw=!raw;e.currentTarget.setAttribute('aria-pressed',String(raw));content();};
- const expand=d.querySelector('[data-expand]');
- if(expand)expand.onclick=()=>{const active=d.classList.toggle('review-expanded');expand.textContent=active?'Exit expanded review':'Expand review';expand.setAttribute('aria-pressed',String(active));};
+ const expandButtons=[...d.querySelectorAll('[data-expand]')];let expandOrigin=null;
+ function expandReview(active){
+  d.classList.toggle('review-expanded',active);
+  for(const button of expandButtons){button.textContent=active?'Exit expanded review':'Expand review';button.setAttribute('aria-pressed',String(active));button.disabled=false;}
+  if(active){d.querySelector('[data-back-diff]').click();expandButtons[0]?.focus({preventScroll:true});}
+  else expandOrigin?.focus({preventScroll:true});
+ }
+ for(const button of expandButtons){button.disabled=false;button.onclick=()=>{const active=!d.classList.contains('review-expanded');if(active)expandOrigin=button;expandReview(active);};}
+ d.addEventListener('keydown',event=>{if(event.key==='Escape'&&d.classList.contains('review-expanded')){event.preventDefault();event.stopPropagation();expandReview(false);}});
  d.querySelector('[data-wrap]').onclick=e=>{const wrap=viewport.classList.toggle('wraps');e.currentTarget.setAttribute('aria-pressed',String(wrap));};
  const evidence=d.querySelector('.review-evidence'),workspace=d.querySelector('.review-workspace');
  d.querySelector('[data-evidence]').onclick=e=>{workspace.hidden=true;evidence.hidden=false;e.currentTarget.setAttribute('aria-expanded','true');evidence.focus();};
@@ -518,7 +525,7 @@ function mount(options){
  async function loadFinal(task,slot){
   // Render before awaiting the expensive, server-owned readiness validation.
   const d=document.createElement('section');d.className='final-review';d.setAttribute('aria-label','Review branch changes');d.setAttribute('aria-busy','true');
-  d.innerHTML=`<div class="review-heading"><div><h2>${workflow.merged(task)?'Merged changes.':'Review the work.'}</h2><p>${workflow.merged(task)?'Saved branch changes and verification history.':'Cumulative branch changes, verification, and your merge decision.'}</p></div><button type="button" data-back-plan>View plan</button></div><div data-final-content class="review-loading" role="status"><span class="spinner" aria-hidden="true"></span>${workflow.merged(task)?'<h3>Loading merged changes…</h3><p>The completed merge and verification history are saved.</p>':'<h3>Preparing your review…</h3><p>Loading the saved changes and checking whether the target branch can accept them.</p><p>You can keep using the other tabs. No merge has started.</p>'}</div><p class="branch-error" role="alert"></p>`;
+  d.innerHTML=`<div class="review-heading"><div><h2>${workflow.merged(task)?'Merged changes.':'Review the work.'}</h2><p>${workflow.merged(task)?'Saved branch changes and verification history.':'Cumulative branch changes, verification, and your merge decision.'}</p></div><div class="review-heading-actions"><button type="button" data-expand aria-pressed="false" disabled>Expand review</button><button type="button" data-back-plan>View plan</button></div></div><div data-final-content class="review-loading" role="status"><span class="spinner" aria-hidden="true"></span>${workflow.merged(task)?'<h3>Loading merged changes…</h3><p>The completed merge and verification history are saved.</p>':'<h3>Preparing your review…</h3><p>Loading the saved changes and checking whether the target branch can accept them.</p><p>You can keep using the other tabs. No merge has started.</p>'}</div><p class="branch-error" role="alert"></p>`;
   slot.replaceChildren(d);d.querySelector('[data-back-plan]').onclick=()=>options.showPlan?.();let preview;
   try{preview=await api('/tasks/'+task.id+'/branch-final-preview',{});}
   catch(e){if(d.isConnected){d.removeAttribute('aria-busy');d.querySelector('[data-final-content]').innerHTML='<h3>Could not load the saved changes</h3><p>'+(workflow.merged(task)?'The PR is already merged. Your saved history is retained.':'The saved branch has not been merged.')+'</p><button type="button" data-retry-preview>Try again</button>';error(d,e);d.querySelector('[data-retry-preview]').onclick=()=>loadFinal(task,slot);}return;}

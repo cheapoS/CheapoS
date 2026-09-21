@@ -181,10 +181,32 @@ function diffElements(){
  const nodes=new Map();
  const node=()=>({value:'',innerHTML:'',textContent:'',hidden:false,disabled:false,scrollTop:0,
   classList:{toggle(){return true;}},setAttribute(){},focus(){},scrollIntoView(){},querySelectorAll(){return [];},querySelector(){return null;}});
- return {isConnected:true,classList:{toggle(){return true;}},querySelector(s){if(!nodes.has(s))nodes.set(s,node());return nodes.get(s);}};
+ const classes=new Set(),listeners={};
+ const root={isConnected:true,listeners,classList:{toggle(name,active){if(active)classes.add(name);else classes.delete(name);},contains:name=>classes.has(name)},
+  addEventListener(name,fn){listeners[name]=fn;},querySelectorAll:s=>s==='[data-expand]'?[root.querySelector('heading-expand'),root.querySelector('toolbar-expand')]:[],
+  querySelector(s){if(!nodes.has(s))nodes.set(s,node());return nodes.get(s);}};
+ root.querySelector('[data-back-diff]').click=()=>root.querySelector('[data-back-diff]').onclick();
+ return root;
 }
 const reviewTask={id:'task',branch_run:{status:'ready_for_merge'}};
 const reviewPreview={preview_id:'inspected',merge_available:true,manifest:{id:'manifest',files:[{path:'main.py',status:'M'}]},diff:patch,next_cursor:null,diff_length:Array.from(patch).length};
+test('both expand controls open the diff and Escape restores the originating control',()=>{
+ const d=diffElements();ui.mountFinalDiff(d,reviewTask,reviewPreview,()=>{throw Error('Unexpected request');});
+ const [heading,toolbar]=d.querySelectorAll('[data-expand]');let focused=null;
+ for(const button of [heading,toolbar]){button.focus=()=>focused=button;button.setAttribute=(key,value)=>button[key]=value;}
+ d.querySelector('[data-evidence]').onclick({currentTarget:{setAttribute(){}}});
+ toolbar.onclick();
+ assert.equal(d.classList.contains('review-expanded'),true);
+ assert.equal(d.querySelector('.review-workspace').hidden,false);
+ assert.equal(d.querySelector('.review-evidence').hidden,true);
+ assert.equal(focused,heading);
+ for(const button of [heading,toolbar]){assert.equal(button['aria-pressed'],'true');assert.equal(button.textContent,'Exit expanded review');}
+ let prevented=false;d.listeners.keydown({key:'Escape',preventDefault(){prevented=true;},stopPropagation(){}});
+ assert.equal(prevented,true);assert.equal(d.classList.contains('review-expanded'),false);assert.equal(focused,toolbar);
+ for(const button of [heading,toolbar])assert.equal(button['aria-pressed'],'false');
+ heading.onclick();heading.onclick();assert.equal(d.classList.contains('review-expanded'),false);
+ assert.equal(d.querySelector('[data-merge]').disabled,false);
+});
 test('Changes mounts a complete first-response diff without requiring another page',()=>{
  const d=diffElements();let calls=0;
  const mounted=ui.mountFinalDiff(d,reviewTask,reviewPreview,()=>{calls++;throw Error('No page should be fetched');});

@@ -215,6 +215,11 @@ const CheapOSGuide = (() => {
       if(event.title==='undo edit')note='Previous version restored; verification and review still required.';
       if(event.title==='read url')note=`${result?.source_url||args.url} · lines ${result?.start_line}–${result?.end_line}${result?.has_more?' · more available':''}`;
       if(d.model)note=[d.model,note].filter(Boolean).join(' · ');
+    }else if(event.kind==='review_context'){
+      path=d.path||null;icon='search';
+      const range=Number.isInteger(d.start_line)&&Number.isInteger(d.end_line)&&d.start_line>0&&d.end_line>=d.start_line?` · lines ${d.start_line}–${d.end_line}`:'';
+      title=d.available===false?`Could not inspect ${path||'review context'}`:path?`Inspected ${path}${range}`:'Read saved review context';
+      note=d.available===false?(d.reason||'The requested source was unavailable.'):d.historical?'Earlier review evidence; the current changes still need review.':'Source evidence for this review; a read is not an approval.';
     }else if(event.kind==='check_reused'){icon='tests';note='The same patch and command already passed; no test rerun.'}
     else if(event.kind==='human_decision'){icon='shield';note=d.decision==='defer'?'Edits remain saved. Continue chatting or reopen your decision.':'The reviewed patch is ready for your decision again.'}
     else if(event.kind==='checks'){icon='tests';note=(d.command||[]).join(' ')}
@@ -230,7 +235,7 @@ const CheapOSGuide = (() => {
     else if(event.kind==='commit'){icon='branch';note=d.commit?`${d.commit.slice(0,8)} · ${d.branch} · ${d.message}`:d.error||d.branch||''}
     else if(event.kind==='steer'){icon='compass';title='User course correction';note=typeof d==='string'?d:(d.message||d.detail||'')}
     else return null;
-    return {event,title,icon,note,path,failed:event.kind==='tool_error'||event.kind==='checks'&&!d.passed};
+    return {event,title,icon,note,path,failed:event.kind==='tool_error'||event.kind==='checks'&&!d.passed||event.kind==='review_context'&&d.available===false};
   }
   function activity(task) {
     const events=task.events||[],boundary=events.reduce((n,e,i)=>e.kind==='user'?i:n,-1),recent=events.slice(boundary+1);
@@ -675,7 +680,7 @@ const CheapOSConversation = (() => {
     if(event.title?.startsWith('Requesting coordinator:')&&previous==='coordinator')return 'coordinator';
     if(event.kind==='command'||event.detail?.kind==='command'||event.title==='Running task command')return 'work';
     if (event.kind === 'checks' || event.kind === 'check_reused' || event.kind === 'permission' || event.title === 'Running verification') return 'checks';
-    if (event.kind === 'review' || event.kind === 'review_request' || event.kind === 'checkpoint' || event.detail?.role === 'reviewer' || event.title?.startsWith('Requesting reviewer:')) return 'review';
+    if (event.kind === 'review' || event.kind === 'review_request' || event.kind === 'review_context' || event.kind === 'checkpoint' || event.detail?.role === 'reviewer' || event.title?.startsWith('Requesting reviewer:')) return 'review';
     if (event.kind === 'commit') return 'commit';
     if (event.kind === 'planning_inspection' || event.actor?.role === 'planner' || event.detail?.role === 'planner' || event.title?.startsWith('Requesting planner:') || event.detail?.role === 'coordinator' || event.title?.startsWith('Requesting coordinator:')) return 'plan';
     if (event.kind === 'tool' || event.title?.startsWith('Requesting worker:') || event.kind === 'handoff' && event.detail?.role === 'worker') return 'work';
@@ -692,7 +697,8 @@ const CheapOSConversation = (() => {
   function reviewProgress(events, history) {
     const event=events.findLast(e=>['review_request','review'].includes(e.kind));
     const d=event?.detail||{};
-    if(!d.chunk_ids?.length||d.stage==='synthesis')return '';
+    if(d.stage==='synthesis')return 'Combining review findings';
+    if(!d.chunk_ids?.length)return '';
     let index=d.chunk_index,total=d.chunk_total;
     // Older, already-running item reviews saved the total at the start of
     // paging. Use only that earlier batch, never reviewer prose or a newer run.
@@ -758,11 +764,14 @@ const CheapOSConversation = (() => {
     if(phase==='coordinator'){const intervention=last(events,'coordinator_recovery')?.detail||{};title=live?'Coordinator helping':'Coordinator consultation';detail=intervention.summary||'Checking saved evidence to help the worker choose its next step.';if(live&&task.resource_wait)detail=task.resource_wait.reason||'Waiting for the shared local inference slot.';else if(live&&task.stream?.phase==='thinking')detail='Thinking through the saved evidence';else if(live&&task.stream?.phase==='answer')detail='Writing recovery guidance';else if(live)detail='Waiting for the local coordinator to respond';outcome=live?'live':intervention.state==='applied'?'done':'pending';if(!live&&intervention.state==='applied')title='Guidance sent to the worker';if(!live&&intervention.state==='failed'){const unavailable=intervention.failure_kind==='unavailable'||['model_connection','model_timeout','resource_busy'].includes(intervention.error_code);title=unavailable?'Coordinator unavailable':'Coordinator reply could not be used';detail=unavailable?(intervention.summary||'The local coordinator could not respond. Returning to worker recovery.'):(intervention.diagnostic||detail);outcome='failed';}}
     if(phase==='work'&&!live&&!toolEvents.length&&events.some(e=>e.kind==='model')&&task.coordinator_recovery?.length){title='Worker continuation stopped';detail='No further action was recorded in this step.';outcome='pending';}
     const observed=events.findLast(e=>e.kind==='coordinator_recovery'&&e.detail?.state==='result')?.detail;if(observed){detail=observed.summary||detail;if(!live){title=phase==='checks'?(observed.result?.passed?'Check passed after guidance':'Check did not pass after guidance'):'Worker saved an edit after guidance';outcome=phase==='checks'?(observed.result?.passed?'passed':'failed'):'done';}}
-    const lastAction = toolEvents.at(-1);
+    const lastAction = events.findLast(e=>e.kind==='review_context'||e.kind==='tool'&&e.detail?.arguments);
     const activity = lastAction ? guide.activityItem(lastAction)?.title || lastAction.title : '';
     const controller = ['checks','commit'].includes(phase);
+    const reviewRequests=events.filter(e=>e.kind==='model'&&e.detail?.purpose!=='probe'&&(e.detail?.role==='reviewer'||e.title?.startsWith('Requesting reviewer:'))).length;
+    const contextReads=events.filter(e=>e.kind==='review_context'&&e.detail?.available!==false).length;
+    const reviewStats=phase==='review'&&Boolean(reviewRequests||contextReads)?`${reviewRequests} model request${reviewRequests===1?'':'s'} · ${contextReads} context read${contextReads===1?'':'s'} in this review`:'';
     return {...step, title, detail, outcome, model:controller?(phase==='checks'?'Local verification':'Local Git'):model, role:controller?'controller':role, elapsed, activity,
-      reviewProgress:phase==='review'?reviewProgress(events,task.events||events):''};
+      reviewStats,reviewProgress:phase==='review'?reviewProgress(events,task.events||events):''};
   }
   function response(events, key, task, latest, at) {
     const steps = [];
@@ -777,7 +786,7 @@ const CheapOSConversation = (() => {
         if (steps.length && event !== final) steps.at(-1).events.push(event);
         continue;
       }
-      if (!['tool','model','checks','check_reused','checkpoint','review','review_request','review_coaching','coordinator_recovery','handoff','routing','tool_error','guard','permission','commit','web','planning_inspection'].includes(event.kind)) continue;
+      if (!['tool','model','checks','check_reused','checkpoint','review','review_request','review_context','review_coaching','coordinator_recovery','handoff','routing','tool_error','guard','permission','commit','web','planning_inspection'].includes(event.kind)) continue;
       if (event.kind === 'guard' && event.title === 'Applied User Guidance') continue;
       phase = eventPhase(event, phase);
       if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-${event.id ?? events.indexOf(event)}`,phase,events:[],live:false});
@@ -791,8 +800,8 @@ const CheapOSConversation = (() => {
     // used. Thinking and recovered routing attempts are not completed work.
     const plainReply = task.conversational && !task.branch_run && !live && final?.kind==='assistant' &&
       (!latest || task.status==='awaiting_reply' && !task.pending_approval && !task.pending_review && !task.commit_pending && !task.error) &&
-      !events.some(e=>['tool','checks','check_reused','checkpoint','review','review_request','review_coaching','coordinator_recovery','tool_error','permission','commit','web','planning_inspection'].includes(e.kind));
-    const onlyChat = plainReply || openingChat || stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','review_request','review_coaching','coordinator_recovery','tool_error'].includes(e.kind));
+      !events.some(e=>['tool','checks','check_reused','checkpoint','review','review_request','review_context','review_coaching','coordinator_recovery','tool_error','permission','commit','web','planning_inspection'].includes(e.kind));
+    const onlyChat = plainReply || openingChat || stream?.phase === 'answer' && !events.some(e => ['tool','checks','handoff','review','review_request','review_context','review_coaching','coordinator_recovery','tool_error'].includes(e.kind));
     if (live && !onlyChat) {
       phase = currentPhase(task, steps.at(-1)?.phase);
       if (steps.at(-1)?.phase !== phase) steps.push({id:`${key}-live-${phase}`,phase,events:[],live:false});
@@ -825,7 +834,7 @@ const CheapOSConversation = (() => {
         reply = trimmedReply.slice(trimmedThinking.length).trim();
       }
     }
-    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_request','review_coaching','coordinator_recovery','handoff','tool_error','commit','planning_inspection'].includes(e.kind) || (e.kind === 'generation' && e.detail?.thinking))) steps.length = 0;
+    if (onlyChat || !live && !events.some(e => ['tool','checks','check_reused','review','review_request','review_context','review_coaching','coordinator_recovery','handoff','tool_error','commit','planning_inspection'].includes(e.kind) || (e.kind === 'generation' && e.detail?.thinking))) steps.length = 0;
     let intro = '';
     if (steps.length) {
       intro = live ? {coordinator:"The worker got stuck. I'm checking the saved work to help it choose the next step.",work:'I’m working through your request.',checks:'I’m checking the changes before sending them for review.',review:'I’m getting a second opinion on the changes and test results.',plan:'I’m choosing the next step for your request.',commit:'I’m committing your approved changes.'}[phase] : 'Here’s what I worked through.';
