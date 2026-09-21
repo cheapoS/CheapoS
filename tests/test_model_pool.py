@@ -140,11 +140,12 @@ class PoolTests(unittest.TestCase):
             self.assertEqual(ordered_ids[-1], 'nvidia/nemotron-parse')
             top3_providers = [m['id'].split('/')[0] for m in ordered[:3]]
             self.assertEqual(len(set(top3_providers)), 3)
-            # A fresh probe on one provider must not crowd out other providers
+            # Proven compatibility leads; provider diversity applies within ties.
             pool.record(endpoint, 'nvidia/starcoder2-15b', 'worker', probe=True,
                         probe_identity=route_health.probe_identity(endpoint, {'id': 'nvidia/starcoder2-15b'}, None))
             ordered_probed = pool.interleave(endpoint, models, 'worker')
-            self.assertEqual(len(set(m['id'].split('/')[0] for m in ordered_probed[:3])), 3)
+            self.assertEqual(ordered_probed[0]['id'], 'nvidia/starcoder2-15b')
+            self.assertEqual(len(set(m['id'].split('/')[0] for m in ordered_probed[1:4])), 3)
             pinned = pool.interleave(endpoint, models, 'worker', preferred='openrouter/cohere/north-mini-code:free')
             self.assertEqual(pinned[0]['id'], 'openrouter/cohere/north-mini-code:free')
 
@@ -222,7 +223,11 @@ class FailoverTests(LocalCase):
         from cheapos.routing import select_remote
         from cheapos.engine import Runtime
         task=self.chat('remote');url=task['route']['base_url'];pool=self.engine.gateway.pool
-        self.engine.gateway.catalog.return_value['models']=[model('a',free=False),model('b'),model('c')]
+        scores = {'source':'Artificial Analysis','coding':99,'agentic':99}
+        self.engine.gateway.catalog.return_value['models']=[model('a',free=False,benchmarks=scores),model('b'),model('c'),
+            model('no-tools',tool_calling=False,benchmarks=scores),model('cooling',benchmarks=scores)]
+        pool.record(url,'cooling','worker',error=ProviderError('Cooling',code='gateway_cooldown',scope='model',retry_after=60),
+                    connection_revision=task['route']['access_policy']['connection_revision'])
         for name in ('a','b','c','retired'):
             pool.record(url,name,'worker',probe=True,connection_revision=task['route']['access_policy']['connection_revision'],probe_identity=probe_identity(url,model(name),task['route']['access_policy']['connection_revision']))
             for i in range(3):pool.record_outcome(url,name,'worker',str(i),'fixture',{'checkpoints':1},task['route']['access_policy']['connection_revision'])

@@ -1118,6 +1118,8 @@ details.advanced > p.small.muted {
 .pool-model:last-child {
   border-bottom: 0;
 }
+.model-pool-sort { margin: 14px 0; }
+.pool-model .model-benchmark-scores { color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* 8. Technical Logs Activity Cards */
 #logs-view .activity-card {

@@ -11,13 +11,45 @@ stored. Worker checkpoint submissions and reviewer completed decisions are
 protocol outcomes, not proof of correctness. Successful file/web calls, edits,
 checks and explicit operator commit acceptance remain separate counters.
 
-At least three run samples are needed to change a ranking tier. Three or more
-checkpoint/review completions with no invalid outputs promote a role; three or
-more invalid outputs exceeding completions demote it. Otherwise the tier is
-neutral. Ties use configured preference, capped human acceptance, observed
-response/tool compatibility, reviewer capability metadata, observed response
-latency, then model ID. Model size/name is not a quality score. Latency is the
-existing role response moving average, not end-to-end task time.
+Configured preferences lead automatic ranking. Independently validated and
+disproved completions, recorded completions, role outcome tiers and human
+acceptance precede response/tool compatibility and catalog hints. At least three
+run samples are needed to change an outcome tier; repeated invalid outputs can
+demote a model. Worker checkpoints and accepted plans can inform those tiers;
+reviewer approval by itself is not independently validated correctness.
+Provider interleaving operates within equal evidence/prior tiers and cannot
+move a benchmark above observed results. Provider/account cooldown and recovery
+diversity still govern availability before dispatch.
+
+### Catalog benchmarks
+
+The existing [OpenRouter model catalog](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties)
+can supply Artificial Analysis coding, agentic and intelligence indices. cheapoS
+retains recognized finite, nonnegative numeric scores, their source, catalog and
+UTC refresh timestamp. No new service or inference request is needed. OmniRoute's
+existing OpenRouter free-catalog refresh carries this metadata onto the exact
+`openrouter/` route ID. Other gateways may supply the same benchmark fields.
+There is no model-name matching or transfer of scores between aliases/routes.
+
+After operator preferences, observed outcomes and compatibility, automatic
+workers and reviewers prefer the coding index; planners prefer the agentic
+index. The intelligence index is displayed only. This is an initial prior, not
+proof of task quality. Missing or malformed scores remain unknown; zero is a
+real reported value. Scored candidates lead unscored candidates within otherwise
+equal evidence tiers, but no model is excluded for lacking scores. Stale metadata
+does not contribute a benchmark preference. Name/capability hints, observed
+response latency and model ID resolve remaining ties. Name and size are not
+measured quality; latency is not end-to-end task time. Conversation-only routing
+continues to use observed responsiveness rather than coding benchmarks.
+
+Settings → Connections → Authorized remote model pool shows these scores alongside
+local outcome evidence. Optional coding/agentic sorting changes the view only, never saved
+agent choices or authorization. Its default remains catalog order, and unknown
+scores sort last without disappearing. The refresh date is when cheapoS fetched
+the catalog, **not** the date the benchmark was run. A refresh replaces missing
+scores rather than silently retaining old ones, and never resets local failures.
+Catalog benchmarks are not signed cheapoS request/completion evidence and are
+not exported as public task statistics.
 
 Outages only affect availability cooldown, and cancelled runs do not contribute
 quality samples. Provider cooldown remains shared availability state. Legacy
