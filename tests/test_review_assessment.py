@@ -215,6 +215,84 @@ class ReviewAssessmentTests(unittest.TestCase):
         with self.assertRaisesRegex(branch_planner.PlanningResponseError, 'acceptance_criteria'):
             branch_planner._parse(message, {})
 
+    def test_numbered_code_quotes_preserve_content_and_survive_saved_review(self):
+        state = self.state()
+        observed = review.observation(state, 'read_file', {'path': 'bounds.py'}, {
+            'path': 'bounds.py', 'content': '116: def clamp(value):\n117:     return max(lower, min(value, upper))'})
+        source = observed['evidence_id']
+        code = 'def clamp(value):\n    return max(lower, min(value, upper))'
+        for legacy in (False, True):
+            with self.subTest(legacy=legacy):
+                saved = json.loads(json.dumps(state))
+                if legacy:
+                    saved['sources'][source].pop('format'); saved['sources'][source].pop('path')
+                result = self.approval(); result['review_assessment'] = assessment(source=source, quote=code)
+                review.validate(saved, result)
+                review.retained(result, 'candidate')
+                self.assertEqual(result['_review_evidence']['excerpts'][source]['content'], code)
+                self.assertEqual(result['_review_evidence']['excerpts'][source]['source_digest'], state['sources'][source]['digest'])
+                for fake in (code.replace('    return', 'return'), code.replace('max', 'min')):
+                    result['review_assessment']['criteria']['requested_change']['citations'][0]['quote'] = fake
+                    with self.assertRaises(review.EvidenceError): review.validate(saved, result)
+                    self.assertNotIn('_review_evidence', result)
+
+    def test_diff_quotes_keep_sides_hunks_and_files_separate(self):
+        state = self.state()
+        diff = ('diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,2 +1,3 @@\n'
+                ' def clamp(value):\n-    return value\n+    value = max(lower, value)\n+    return min(value, upper)\n'
+                '@@ -10 +11 @@\n tail()\ndiff --git a/b.py b/b.py\n--- a/b.py\n+++ b/b.py\n@@ -1 +1 @@\n other()\n')
+        review.add(state, 'diff', 'code', diff, format='diff')
+        quote = 'def clamp(value):\n    value = max(lower, value)\n    return min(value, upper)'
+        for legacy in (False, True):
+            if legacy: state['sources']['diff'].pop('format')
+            result = self.approval(); result['review_assessment'] = assessment(quote=quote)
+            review.validate(state, result)
+            for fake in ('return value\n    value = max', 'return min(value, upper)\ntail()', 'tail()\nother()',
+                         'value = max(lower, value)\nreturn min(value, upper)'):
+                result['review_assessment']['criteria']['requested_change']['citations'][0]['quote'] = fake
+                with self.subTest(legacy=legacy, fake=fake), self.assertRaises(review.EvidenceError):
+                    review.validate(state, result)
+        # Arbitrary source text cannot have a '-' operator or a discontinuous
+        # line range silently removed just because a quote would then match.
+        for content in ('-one\n-two', '1: one\n3: two'):
+            self.assertIsNone(review.matched_quote('read:test', {'kind': 'code', 'content': content}, 'one\ntwo'))
+
+    def test_all_response_errors_reported_with_matching_delivered_sources(self):
+        state = self.state()
+        observed = review.observation(state, 'read_file', {'path': 'bounds.py'}, {
+            'content': '1: def clamp(value):\n2:     return max(lower, min(value, upper))'})
+        source = observed['evidence_id']
+        result = self.approval(); result['feedback'] = ''
+        result['review_assessment']['criteria']['requested_change']['citations'][0].update(
+            source='bounds.py:1-2', quote='def clamp(value):\n    return max(lower, min(value, upper))')
+        result['review_assessment']['regressions']['reason'] = ''
+        result['review_assessment']['verification']['citations'] = [{'source': 'checks', 'quote': 'not delivered'}]
+        result['review_assessment']['limitations'] = 'none'
+        with self.assertRaises(review.EvidenceError) as caught:
+            review.validate(state, result)
+        correction = review.feedback(caught.exception, state)
+        fields = {issue['field'] for issue in correction['issues']}
+        self.assertTrue({'feedback', 'review_assessment.regressions.reason', 'review_assessment.limitations',
+                         'review_assessment.verification.citations[0]'}.issubset(fields))
+        citation = next(i for i in correction['issues'] if i['field'].endswith('requested_change.citations[0]'))
+        self.assertEqual(citation['matching_source_ids'], [source])
+        self.assertIn('read only genuinely missing context', correction['next_action'])
+        self.assertNotIn('_review_evidence', result)
+        # Suggestions are not evidence assignment: the reviewer must correct
+        # its claims and cite the current source before a receipt can be issued.
+        result = self.approval(); result['review_assessment'] = assessment(source=source,
+            quote='def clamp(value):\n    return max(lower, min(value, upper))')
+        review.validate(state, result)
+
+    def test_diagnostics_do_not_turn_check_matches_into_implementation_evidence(self):
+        state = self.state(); result = self.approval()
+        result['review_assessment'] = assessment(source='missing', quote='"passed": true')
+        with self.assertRaises(review.EvidenceError) as caught: review.validate(state, result)
+        self.assertIn(['checks'], [i.get('matching_source_ids') for i in caught.exception.correction['issues']])
+        result['review_assessment'] = assessment(source='checks', quote='"passed": true')
+        with self.assertRaisesRegex(review.EvidenceError, 'code/document'): review.validate(state, result)
+        self.assertNotIn('_review_evidence', result)
+
     def test_reviewer_completion_alone_does_not_improve_quality_ranking(self):
         from cheapos.model_pool import FreeModelPool
         pool = FreeModelPool.__new__(FreeModelPool)

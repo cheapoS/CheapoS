@@ -633,6 +633,12 @@ Check citations can quote literal text within a delivered JSON check record,
 including decoded newlines and quoted output. This removes transport-escaping
 failures without accepting paraphrases, combining separate fields or relaxing
 literal source-code citations. Candidate and source digests remain required.
+Code citations may omit controller-added line numbers and diff gutters while
+preserving literal code and separate diff sides, hunks and files. Invalid
+assessments return all field corrections together, with exact matching source
+IDs when the quote is already in delivered evidence. The reviewer must correct
+its own assessment; hints never become approval or new evidence. Saved reviews
+can reuse their existing reads, checks and attempt history after an update.
 Small in-memory tests cover correction, handoff, restart and denied authority;
 they do not use live models, Git workflows or real-time waits.
 

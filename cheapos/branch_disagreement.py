@@ -125,7 +125,8 @@ def unsupported(engine, task, key, result, error):
     saved = task['branch_run'].setdefault('review_disagreements', {}).setdefault(key, {})
     saved['unsupported_attempts'] = saved.get('unsupported_attempts', 0) + 1
     saved['last_unsupported'] = copy.deepcopy(result)
-    feedback = {'error': str(error), 'supported': False, 'attempt': saved['unsupported_attempts']}
+    feedback = {'error': str(error), 'supported': False, 'attempt': saved['unsupported_attempts'],
+                **getattr(error, 'correction', {})}
     engine.event(task, 'review_feedback', 'Review disagreement needs concrete evidence', feedback)
     engine.store.save(task)
     return feedback

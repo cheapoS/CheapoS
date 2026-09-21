@@ -337,7 +337,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         except (ValueError, ToolArgumentsError) as error:
             if getattr(error,'pause_cause',None):raise
             attempts[key] = attempts.get(key,0) + 1
-            feedback = {'error':str(error),'attempt':attempts[key]}
+            feedback = {'error':str(error),'attempt':attempts[key], **getattr(error, 'correction', {})}
             engine.event(runtime.task,'review_feedback','Final review response needs correction',feedback)
             engine.store.save(runtime.task)
             if calls and all(isinstance(call,dict) and isinstance(call.get('id'),str) and call['id'] for call in calls):
