@@ -44,6 +44,23 @@ class CheckpointAllowanceTests(unittest.TestCase):
         self.assertTrue(any('Avoid repeating' in m.get('content', '') for m in engine.request.call_args.args[1]))
         self.assertTrue(runtime.task['checkpoints'][0]['messages'])
 
+    def test_pr_draft_is_confirmed_in_existing_review_and_replaced_after_repair(self):
+        engine, runtime = self.setup_run(True)
+        runtime.task['settings_snapshot'] = {'values': {'git': {'workflow': 'pull_request'}}}
+        draft = {'title':'Worker draft', 'description':'Initial description.'}
+        confirmed = {'title':'Hide sample cards', 'description':'Hide sample cards when real projects exist.'}
+        engine.request = Mock(return_value={'role':'assistant', 'tool_calls':[{'id':'review', 'function':{
+            'name':'review_decision', 'arguments':json.dumps({'decision':'APPROVE', 'feedback':'Verified', 'pull_request':confirmed})}}]})
+        with patch('cheapos.engine.current_evidence', return_value=False), patch('cheapos.engine.progress.state', return_value={'revision':0}), patch('cheapos.engine.reconciliation.ensure_resolved'):
+            engine.checkpoint(runtime, {'summary':'Hide samples', 'pull_request':draft})
+            self.assertEqual(json.loads(engine.request.call_args.args[1][1]['content'])['pull_request_draft'], draft)
+            self.assertEqual(runtime.task['checkpoints'][-1]['pull_request'], confirmed)
+            self.assertEqual(engine.request.call_count, 1)
+            runtime.task['patch'] = 'new patch'
+            engine.request.return_value['tool_calls'][0]['function']['arguments'] = json.dumps({'decision':'APPROVE','feedback':'New patch checked'})
+            engine.checkpoint(runtime, {'summary':'Repaired without metadata'})
+            self.assertNotIn('pull_request', runtime.task['checkpoints'][-1])
+
     def test_bounded_review_retains_limit_and_saved_exchanges(self):
         engine, runtime = self.setup_run(False)
         with self.assertRaises(BudgetError):

@@ -55,9 +55,14 @@ class BranchFinalTests(unittest.TestCase):
             result['defects'] = [{'criterion': 'one:1', 'location': 'code:1', 'kind': 'static',
                                   'expected': 'Required content', 'observed': 'Missing edge handling',
                                   'support': 'The code path has no edge guard.', 'reproduction': ''}]
+        if packet['criteria_ids'] and getattr(self, 'publication', None):
+            self.assertIn('publication_drafts', packet)
+            result['pull_request'] = self.publication
         return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
 
     def test_cumulative_diff_clean_private_copy_and_actual_final_check(self):
+        self.task['settings_snapshot'] = {'values': {'git': {'workflow': 'pull_request'}}}
+        self.publication = {'title':'Complete the content update', 'description':'Update the final content consistently.'}
         specs=self.run['plan']['final_checks']
         # Reuse existing .git-free component: create and commit a fixture directory
         # before candidate construction, so final review covers the actual file too.
@@ -70,6 +75,8 @@ class BranchFinalTests(unittest.TestCase):
             return original(*args,**kwargs)
         self.engine.request=request
         result = final.final_check_review(self.engine, self.runtime)
+        self.assertEqual(result['readiness']['review']['pull_request'], self.publication)
+        self.assertTrue(all('pull_request' not in r for r in result['readiness']['reviews']))
         self.assertEqual(result['readiness']['reviewer_model'],'replacement')
         self.assertTrue(all(r['reviewer_model']=='replacement' for r in result['readiness']['reviews']))
         manifest = result['readiness']['manifest']

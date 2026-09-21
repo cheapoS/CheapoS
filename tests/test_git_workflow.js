@@ -11,6 +11,14 @@ test('PR review names the destination and keeps remote merge separate',()=>{
  assert.match(html,/destination checkout stays unchanged/);
  assert.doesNotMatch(html,/Approve &amp; merge locally/);
 });
+test('PR copy is editable and escaped while recorded validation stays separate',()=>{
+ const p={repo:'org/repo',base:'main',branch:'task',title:'Fix <bounds>',description:'Safe </textarea><script>bad</script>',validation:'Passed: node --check app.js',description_source:'reviewer'};
+ const html=workflow.content(p);
+ assert.match(html,/data-pr-title.*Fix &lt;bounds&gt;/);
+ assert.match(html,/data-pr-description/);assert.match(html,/confirmed by review/);
+ assert.doesNotMatch(html,/<script>bad/);assert.match(html,/Recorded validation/);
+ assert.match(workflow.content({...p,retry:true}),/readonly/);
+});
 test('CI presentation does not claim unprotected branches are protected',()=>{
  const html=workflow.content({url:'https://github.com/org/repo/pull/7',number:7,ci:{state:'pending',message:'No results yet',protected:false,checks:[]}});
  assert.match(html,/No results yet/);assert.match(html,/no GitHub branch protection/);

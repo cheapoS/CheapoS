@@ -201,6 +201,10 @@ def _checkpoint(engine, runtime, args):
         plan_for_review['items'] = trimmed_items
     item_for_review = {k: v for k, v in item.items() if k != 'review_repair'}
     packet = evidence.review_packet(current, item_for_review, plan_for_review, checks, str(args.get('uncertainties', ''))[:2000])
+    from . import pr_description
+    if pr_description.enabled(task):
+        packet['pull_request_draft'] = pr_description.clean(args.get('pull_request'))
+        REVIEW_SYSTEM += pr_description.REVIEW
     if item.get('review_repair'):
         repair_brief = review_disputes.brief(item['review_repair'])
         repair_brief.pop('checks', None)
@@ -230,6 +234,7 @@ def _checkpoint(engine, runtime, args):
         saved = task.setdefault('pending_review', {})
         saved['worker_summary'] = str(args.get('summary', ''))[:4000]
         saved['uncertainties'] = str(args.get('uncertainties', ''))[:2000]
+        saved['pull_request'] = packet.get('pull_request_draft')
         if item.get('review_repair'):
             saved['repair_dispositions'] = copy.deepcopy(item['review_repair'].get('dispositions', []))
         packet, packet_coverage, finding = prepare(engine, runtime, current, packet)
@@ -294,7 +299,7 @@ def _checkpoint(engine, runtime, args):
                                'messages':messages_restored,
                                'observations':recovered.get('observations', {}),
                                'reviewer_model':current_reviewer}
-        for field in ('history_partial', 'worker_summary', 'uncertainties', 'repair_dispositions'):
+        for field in ('history_partial', 'worker_summary', 'uncertainties', 'repair_dispositions', 'pull_request'):
             if field in recovered:
                 task['pending_review'][field] = recovered[field]
     pending = task['pending_review']
@@ -311,6 +316,7 @@ def _checkpoint(engine, runtime, args):
         pending['guidance_count'] = len(guidance)
     pending['worker_summary'] = str(args.get('summary', ''))[:4000]
     pending['uncertainties'] = str(args.get('uncertainties', ''))[:2000]
+    pending['pull_request'] = packet.get('pull_request_draft')
     if item.get('review_repair'):
         # These dispositions were validated above; preserve them for a resumed
         # review without asking the worker to recreate its counterevidence.
@@ -392,6 +398,9 @@ def _checkpoint(engine, runtime, args):
                     messages.append({'role':'tool','tool_call_id':call['id'],'content':json.dumps(result)})
                     continue
                 if choice == 'APPROVE':
+                    draft = pr_description.clean(params.pop('pull_request', None))
+                    if draft and pr_description.enabled(task):
+                        params['pull_request'] = draft
                     try:
                         # Coverage is controller-owned, never supplied by a model.
                         params.pop('packet_coverage', None)

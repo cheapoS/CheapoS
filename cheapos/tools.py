@@ -5,6 +5,7 @@ from .workspace import Workspace, MAX_CREATE_FILE_BYTES, MAX_EDIT_BYTES, edit_si
 from .edit_history import MUTATIONS
 from . import edit_history, metrics, check_output
 from .instructions import EDIT_RECOVERY_GUIDANCE
+from . import pr_description
 
 
 def tool(name, description, properties=None, required=None):
@@ -217,6 +218,7 @@ WORKER_TOOLS = READ_TOOLS + [
         {
             "summary": TEXT,
             "uncertainties": TEXT,
+            "pull_request": pr_description.SCHEMA,
             "repair_dispositions": {
                 "type": "array",
                 "maxItems": 8,
@@ -258,7 +260,7 @@ REVIEW_TOOLS = READ_TOOLS + [
     tool(
         "review_decision",
         "Return the checkpoint decision. Read relevant source before deciding.",
-        {"decision": {"type": "string", "enum": ["APPROVE", "REQUEST_CHANGES", "REQUEST_TESTS", "TAKE_OVER"]}, "feedback": TEXT},
+        {"decision": {"type": "string", "enum": ["APPROVE", "REQUEST_CHANGES", "REQUEST_TESTS", "TAKE_OVER"]}, "feedback": TEXT, "pull_request": pr_description.SCHEMA},
         ["decision", "feedback"],
     )
 ]

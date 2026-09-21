@@ -78,7 +78,8 @@ from .instructions import (
 )
 def worker_system(task):
     from .task_commands import POLICY, allowed
-    return _worker_system(task) + "\n" + POLICY + "\nTask command permission: " + ('enabled' if allowed(task) else 'not granted; existing check permissions still apply')
+    from . import pr_description
+    return _worker_system(task) + "\n" + POLICY + "\nTask command permission: " + ('enabled' if allowed(task) else 'not granted; existing check permissions still apply') + ('\n' + pr_description.WORKER if pr_description.enabled(task) else '')
 
 
 def _worker_system(task):
@@ -3262,6 +3263,7 @@ class Engine:
         if len(task["patch"]) > 30000:
             raise BudgetError("Checkpoint exceeds 30,000 characters. Split the change before requesting review.")
         saved_review = task.get("pending_review")
+        from . import pr_description
         if saved_review and (not current_evidence(task, saved_review) or saved_review["diff"] != task["patch"] or saved_review["checks"]["command"] != task["check_command"]):
             saved_review = None
             task.pop("pending_review", None)
@@ -3271,7 +3273,7 @@ class Engine:
             from .work_budgets import guard as guard_work
             guard_work(task, additions={'work_iterations':1})
         if task.get("route") and not task["providers"].get("reviewer"):
-            task["pending_checkpoint"] = {"summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000]}
+            task["pending_checkpoint"] = {"summary": str(args.get("summary", ""))[:4000], "uncertainties": str(args.get("uncertainties", ""))[:2000], "pull_request": pr_description.clean(args.get('pull_request'))}
             self.store.save(task)
             select_remote(self, runtime, "reviewer")
         task.pop("pending_checkpoint", None)
@@ -3302,15 +3304,17 @@ class Engine:
             checkpoint['follow_up_history'] = copy.deepcopy(task['follow_up']['context'])
             checkpoint['follow_up_note'] = 'Earlier conversation is context; judge the current user direction and current patch. Earlier approvals do not apply.'
         checkpoint["generation"] = task.get("workspace_generation", 0)
+        if not saved_review and pr_description.enabled(task):
+            checkpoint['pull_request_draft'] = pr_description.clean(args.get('pull_request'))
         checkpoint["verification_identity"] = checks.get("verification_identity")
         if not saved_review:
             task["checkpoints"].append(checkpoint)
         task["pending_review"] = checkpoint
-        task["pending_checkpoint"] = {"summary": checkpoint["worker_summary"], "uncertainties": checkpoint["uncertainties"]}
+        task["pending_checkpoint"] = {"summary": checkpoint["worker_summary"], "uncertainties": checkpoint["uncertainties"], "pull_request": checkpoint.get('pull_request_draft')}
         task["status"] = "reviewing"
         self.event(task, "handoff", "Sending changes for review", {"from": task["providers"].get("worker", {}).get("model", "Scripted worker"), "to": task["providers"].get("reviewer", {}).get("model", "Scripted reviewer"), "role": "reviewer", "summary": "The controller collected verification output. The reviewer will inspect the patch and evidence."})
         self.event(task, "checkpoint", f"Checkpoint #{checkpoint['number']} ready for review", checkpoint)
-        messages = [{"role": "system", "content": REVIEW_SYSTEM}, {"role": "user", "content": json.dumps({k: v for k, v in checkpoint.items() if k != "messages"})}]
+        messages = [{"role": "system", "content": REVIEW_SYSTEM + (pr_description.REVIEW if pr_description.enabled(task) else '')}, {"role": "user", "content": json.dumps({k: v for k, v in checkpoint.items() if k != "messages"})}]
         messages.extend(checkpoint.get("messages", []))
         from .branch_review import save_history
         runtime.review_requests = checkpoint.get("review_requests", 0)
@@ -3358,6 +3362,9 @@ class Engine:
                         result = {"error": "Return a valid decision and feedback"}
                     else:
                         checkpoint.update({"decision": decision, "feedback": params["feedback"][:8000]})
+                        checkpoint.pop('pull_request', None)
+                        if decision == 'APPROVE' and pr_description.enabled(task) and pr_description.clean(params.get('pull_request')):
+                            checkpoint['pull_request'] = pr_description.clean(params['pull_request'])
                         if saved_review:
                             task["checkpoints"][checkpoint["number"] - 1] = checkpoint
                         task.pop("pending_review", None)
