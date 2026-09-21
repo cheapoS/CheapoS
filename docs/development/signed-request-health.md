@@ -86,13 +86,54 @@ The Club publishes metrics derived from accepted event rows joined to ingestion
 receipts. Legacy client aggregate snapshots are not sufficient proof of request
 membership. Completion/model-pair/stage claims need their own validated receipts.
 
+## Terminal attempts independent of accounting
+
+Services advertising `request_attempts_v1` in responses to signed status requests
+also accept `request_attempts` in sequenced `sync` envelopes. Status requests are
+signed; capability responses use the existing HTTPS connection. The client checks
+this capability before queuing attempts, so older services cannot silently ignore
+them. Ordinary usage sync continues if capability discovery is unavailable.
+
+Each attempt contains `event_id`, `requested_at` (UTC day precision retained by the
+journal), `request_health`, and optional `role` and consented `model_name`. The
+health shape is unchanged, but attempts require a recorded terminal outcome:
+`responded`, `failed`, or `cancelled`. Pending, synthetic and undispatched requests
+are excluded. Missing duration is omitted. A failed call without complete usage
+is eligible; reservations and invented zero token counts are never sent as usage.
+No attempt field carries token totals, costs, prompts, source, paths, raw errors,
+task identities or completion claims.
+
+The attempt uses the same installation-scoped event ID as later usage for that
+request. Separate local fingerprints track accepted attempts and usage. Up to 40
+records total can travel in a signed sync, shared between both ledgers to avoid
+starvation or oversized envelopes; attempts require an explicit accepted count
+in the acknowledgment. Lost acknowledgments retain the exact envelope. Corrections
+update the same event, and the public health aggregate selects the newest accepted
+facts once per request. Token statistics continue to use only the usage ledger.
+
+Existing sharing consent and the pre-consent baseline apply to both ledgers.
+Resuming sharing excludes requests first recorded while paused; previously shared
+attempts remain eligible for corrections and later reconciled usage. Model-sharing
+revocation removes model and route detail at the service boundary, and old replays
+cannot restore it. Disconnecting resets the attempt sync state alongside usage.
+
+Deploy the service migration and signature/schema validation before releasing
+the client. The service must enforce paired ownership, consent, sequence/hash
+checks, receipt membership, same-ID ownership across both ledgers, and model
+privacy before publication. The migration exposes readiness only after ingestion
+and aggregation are installed. No production migration runs as part of client
+startup. Validate rejection, correction, replay, missing acknowledgment, old-server
+compatibility and privacy using deterministic local fixtures.
+
 ## Coverage limit
 
-This version describes the **reconciled signed usage sample**, not every attempted
-provider call. In particular, a 429 or connection failure with no token usage may
-remain excluded. Do not market this sample as provider uptime or a complete error
-rate. A future signed attempt ledger can include failed calls without inventing
-zero token usage; it should remain separate from billable usage accounting.
+Health combines accepted terminal attempt records with legacy usage-only records,
+deduplicated by request identity. It reports each coverage count separately. Older
+installations and unshared/pre-consent history can still omit failed calls; do not
+market this as provider uptime or a complete error rate. Success is the app's
+recorded response outcome, not independent review or task completion. Signatures
+authenticate the installation reporting a fact, not upstream truth. Attempt counts
+and token totals have different coverage and should not be expected to match.
 
 Validation: focused Club, journal, metrics, lifetime integration and startup tests;
 no live model calls, service restarts or historical data edits.

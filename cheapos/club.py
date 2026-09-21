@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from .credentials import CredentialStore
 from .lifetime_usage import safe_model
 from .club_routes import backfill_routes
+from .club_attempts import collect_attempts
 
 DEFAULT_LEADERBOARD_URL = "https://cheapos.lol"
 
@@ -262,7 +263,7 @@ class ClubManager:
                 except ValueError as error:
                     if 'approval link expired' not in str(error): raise
             previous=copy.deepcopy(self.state)
-            self.state.update(pairing_id=str(uuid.uuid4()),baseline=[r['request_id'] for r in lifetime.raw_requests()],sent={},pending=None,error=None)
+            self.state.update(pairing_id=str(uuid.uuid4()),baseline=[r['request_id'] for r in lifetime.raw_requests()],sent={},attempts_sent={},pending=None,error=None)
             try:
                 result=self._call('pair')
                 if result.get('status')!='pending': raise ValueError('Unexpected Club pairing response.')
@@ -294,6 +295,9 @@ class ClubManager:
         expected=hashlib.sha256(payload.encode()).hexdigest()
         if result.get('status')!='accepted' or result.get('sequence')!=message['sequence'] or result.get('hash')!=expected:
             raise ValueError('Club acknowledgment did not match the saved upload. Nothing was marked synced.')
+        accepted_attempts = result.get('request_attempts_accepted')
+        if message.get('request_attempts') and (type(accepted_attempts) is not int or accepted_attempts != len(message['request_attempts'])):
+            raise ValueError('Club did not acknowledge the request attempts. The signed upload is retained for retry.')
         self.state.update(sequence=message['sequence'],previous_hash=expected,pending=None,error=None)
         if result.get('handle') and self.state.get('identity'):
             self.state['identity']['handle'] = result['handle']
@@ -301,6 +305,7 @@ class ClubManager:
                 self.state['identity']['name'] = result['name']
         if message['action']=='sync':
             self.state['sent'].update(pending['fingerprints']);self.state['last_synced_at']=now()
+            self.state.setdefault('attempts_sent', {}).update(pending.get('attempt_fingerprints', {}))
             self.state.setdefault('route_backfill_processed', {}).update(pending.get('route_fingerprints', {}))
         else:
             self.state['sync_enabled']=message['enabled']
@@ -309,8 +314,8 @@ class ClubManager:
             self.state['share_models']=message.get('share_models',self.state.get('share_models',False))
         self._save()
 
-    def _queue(self,action,_fingerprints=None,_route_fingerprints=None,**fields):
-        self.state['pending']={'envelope':self._signed(self._message(action,sequence=self.state['sequence']+1,previous_hash=self.state['previous_hash'],**fields)), 'fingerprints':_fingerprints or {}, 'route_fingerprints':_route_fingerprints or {}}
+    def _queue(self,action,_fingerprints=None,_route_fingerprints=None,_attempt_fingerprints=None,**fields):
+        self.state['pending']={'envelope':self._signed(self._message(action,sequence=self.state['sequence']+1,previous_hash=self.state['previous_hash'],**fields)), 'fingerprints':_fingerprints or {}, 'route_fingerprints':_route_fingerprints or {}, 'attempt_fingerprints':_attempt_fingerprints or {}}
         self._save()
 
     def set_sync(self,enabled,share_models=None):
@@ -329,6 +334,7 @@ class ClubManager:
                 if remote.get('sequence')==message['sequence'] and remote.get('previous_hash')==expected:
                     if message['action']=='sync':
                         self.state['sent'].update(pending['fingerprints'])
+                        self.state.setdefault('attempts_sent', {}).update(pending.get('attempt_fingerprints', {}))
                         self.state.setdefault('route_backfill_processed', {}).update(pending.get('route_fingerprints', {}))
                     self.state.update(sequence=remote['sequence'],previous_hash=expected)
                 elif remote.get('sequence')!=self.state['sequence'] or remote.get('previous_hash')!=self.state['previous_hash']:
@@ -336,7 +342,8 @@ class ClubManager:
                 self.state['pending']=None;self._save()
             if enabled and not was_enabled and self.lifetime:
                 # Requests begun before enabling/resuming sharing remain private.
-                self.state['baseline']=list(set(self.state['baseline']) | {row['request_id'] for row in self.lifetime.raw_requests() if row['request_id'] not in self.state['sent']})
+                shared = set(self.state['sent']) | set(self.state.get('attempts_sent', {}))
+                self.state['baseline']=list(set(self.state['baseline']) | {row['request_id'] for row in self.lifetime.raw_requests() if row['request_id'] not in shared})
             fields={'enabled':enabled}
             if share_models is not None: fields['share_models']=share_models
             self._queue('consent',**fields);self._flush()
@@ -351,10 +358,12 @@ class ClubManager:
             if not self.state['sync_enabled'] or self.state.get('revoking'): raise ValueError('Sharing is paused.')
             try:
                 uploaded=len((self.state.get('pending') or {}).get('fingerprints',{}))
+                uploaded_attempts=len((self.state.get('pending') or {}).get('attempt_fingerprints',{}))
                 self._flush()
                 new_requests=0;waiting=0
                 events=[];fingerprints={};baseline=set(self.state['baseline'])
-                for row in lifetime.raw_requests():
+                rows = lifetime.raw_requests()
+                for row in rows:
                     rid=row['request_id']
                     if rid in baseline: continue
                     new_requests+=1
@@ -388,6 +397,21 @@ class ClubManager:
                 queue_kwargs = None
                 if events:
                     queue_kwargs = dict(_fingerprints=fingerprints, events=events)
+                attempts, attempt_fingerprints = collect_attempts(self, rows)
+                if attempts:
+                    # Share the existing envelope budget fairly between both
+                    # ledgers, including when long model/route names are shared.
+                    if len(events) > 20:
+                        events = events[:20]
+                        fingerprints = dict(list(fingerprints.items())[:20])
+                        queue_kwargs = dict(_fingerprints=fingerprints, events=events)
+                        verified_rids = set(self.state.get('sent', {})) | set(fingerprints)
+                    remaining = 40 - len(events)
+                    attempts = attempts[:remaining]
+                    attempt_fingerprints = dict(list(attempt_fingerprints.items())[:remaining])
+                    if queue_kwargs is None:
+                        queue_kwargs = dict(_fingerprints={}, events=[])
+                    queue_kwargs.update(request_attempts=attempts, _attempt_fingerprints=attempt_fingerprints)
 
                 if lifetime and hasattr(lifetime, 'summary'):
                     try:
@@ -425,8 +449,11 @@ class ClubManager:
                     if queue_kwargs.get('telemetry'):
                         self.state['last_synced_telemetry'] = queue_kwargs['telemetry']
                     uploaded += len(queue_kwargs.get('events', []))
+                    uploaded_attempts += len(queue_kwargs.get('request_attempts', []))
                 corrected = backfill_routes(self, lifetime)
                 self.state['sync_message']=(f'Uploaded {uploaded} usage records. Additional queued usage syncs automatically.' if uploaded else f'Updated provider details for {corrected} previously shared records. Token totals are unchanged.' if corrected else 'No new usage yet. Only requests made after sharing was enabled are uploaded.' if not new_requests else 'Waiting for complete token usage before uploading.' if waiting else 'Up to date. All eligible usage has already been uploaded.')
+                if uploaded_attempts:
+                    self.state['sync_message'] = f'Uploaded {uploaded} usage records and {uploaded_attempts} request outcomes. Outcomes do not add tokens; additional queued records sync automatically.'
                 self.state['error']=None
                 self._save()
                 return self.get_status()
@@ -439,7 +466,7 @@ class ClubManager:
             if self.state['pairing_id']:
                 result=self._call('disconnect')
                 if result.get('status')!='disconnected': raise ValueError('Club did not confirm disconnection. Sharing remains stopped.')
-            self.state.update(identity=None,pairing_id=None,pending=None,sent={},baseline=[],revoking=False,error=None,share_models=False)
+            self.state.update(identity=None,pairing_id=None,pending=None,sent={},attempts_sent={},baseline=[],revoking=False,error=None,share_models=False)
             self._save()
             with self._remote_profile_lock:
                 self._remote_profile_cache=None
