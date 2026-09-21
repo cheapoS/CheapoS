@@ -765,7 +765,9 @@ const CheapOSConversation = (() => {
     const steps = [];
     let phase = 'work';
 
-    const substantive = events.filter(e => !['generation','state','model','context'].includes(e.kind));
+    // Publishing and branch sync append status receipts after the model answers.
+    // They must not replace that answer or move it into the execution details.
+    const substantive = events.filter(e => !['generation','state','model','context','pull_request','git_sync'].includes(e.kind));
     const final = substantive.at(-1);
     for (const event of events) {
       if (event.kind === 'assistant' || event.kind === 'generation') {

@@ -6,6 +6,38 @@ const event=(id,kind,title,detail)=>({id,kind,title,detail,time:stamp});
 const task=overrides=>({prompt:'Fix the script.',status:'awaiting_reply',active_role:'worker',changes:[],checks:[],checkpoints:[],events:[],providers:{worker:{model:'worker-model'},reviewer:{model:'reviewer-model'}},...overrides});
 const replies=t=>build(t).filter(e=>e.kind==='assistant');
 
+test('PR and local sync receipts preserve the preceding answer in its original turn',()=>{
+ for(const inspected of [false,true]){
+  const events=[event(1,'model','Requesting worker: worker-model',{})];
+  if(inspected)events.push(event(2,'tool','read file',{arguments:{path:'app.js'}}));
+  events.push(event(3,'assistant','Worker','Suggested title: Improve the task menu.'));
+  const t=task({prompt:'Suggest a PR title.',conversational:true,events});
+  const before=build(t);
+  assert.equal(before.at(-1).reply,'Suggested title: Improve the task menu.');
+  for(const receipt of [event(4,'pull_request','Pull request opened.',{url:'https://github.com/example/project/pull/1'}),event(5,'git_sync','Local branch updated.',{state:'updated'})]){
+   t.events.push(receipt);
+   assert.deepEqual(build(t),before,'Bookkeeping must not replace or reorder a saved answer');
+  }
+  t.events.push(event(6,'user','You','What should I do next?'),event(7,'model','Requesting worker: worker-model',{}));
+  t.status='running';t.stream={request_id:7,role:'worker',phase:'answer',content:'Review the pull request.'};
+  const entries=build(t);
+  assert.deepEqual(entries.map(e=>e.kind),['user','assistant','user','assistant']);
+  assert.equal(entries[1].reply,'Suggested title: Improve the task menu.');
+  assert.equal(entries[2].text,'What should I do next?');
+  assert.equal(entries[3].reply,'Review the pull request.');
+  assert.equal(entries[1].live,false);assert.equal(entries[3].live,true);
+ }
+});
+
+test('publication receipts do not turn unfinished checks or review into a chat answer',()=>{
+ for(const outcome of [event(3,'checks','Verification failed',{passed:false,exit_code:1}),event(3,'review','Review decision',{decision:'REQUEST_CHANGES',feedback:'Fix the click handler.'})]){
+  const t=task({status:'paused',conversational:true,events:[event(1,'model','Requesting worker: worker-model',{}),event(2,'assistant','Worker','Ready for review.'),outcome,event(4,'pull_request','Pull request opened.',{})]});
+  const reply=replies(t).at(-1);
+  assert.equal(reply.reply,'');
+  assert.ok(['failed','revision'].includes(reply.steps.at(-1).outcome));
+ }
+});
+
 test('questions have their own replies while work keeps its review controls',()=>{
  for(const status of ['running','reviewing','paused','approved']){
   const t=task({status,discussion:[{id:'q',message:'Why that approach?',status:'answered',answer:'Here is why.'}],
