@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from .storage import write_json
-from . import route_health, route_schedule
+from . import model_benchmarks, route_health, route_schedule
 
 
 RECOVERABLE_CODES = {"stream_error", "stream_interrupted", "stream_timeout", "model_timeout",
@@ -238,7 +238,7 @@ class FreeModelPool:
         successes=evidence.get('checkpoints',0) if role=='worker' else evidence.get('accepted',0) if role=='planner' else evidence.get('independently_validated',0)
         invalid=evidence.get('invalid_output',0)
         tier=1 if enough and invalid>=3 and invalid>successes else -1 if enough and successes>=3 and invalid==0 else 0
-        # Observed compatibility first. Metadata only breaks ties; it is not a quality rating.
+        # Catalog scores are only priors, behind observed outcomes and compatibility.
         mid = model["id"].lower()
         is_non_code = any(k in mid for k in ("embed", "reward", "guard", "safety", "parse", "content-safety"))
         is_auto = mid.startswith("auto/")
@@ -249,8 +249,7 @@ class FreeModelPool:
         is_solid_coder = not is_non_code and not is_auto and any(k in mid for k in ("haiku", "flash", "gemma", "qwen", "starcoder", "code", "coder", "coding", "llama", "gpt-oss"))
 
         if role in {"planner", "reviewer"}:
-            # Planning and Reviewing require higher tier models (strong reasoning + robust coding understanding).
-            # Low workers can do good work with a good plan, but planning and reviewing cannot use low-tier models.
+            # Legacy name hints remain a fallback, never an eligibility requirement.
             role_tier = (5 if is_auto
                          else -3 if is_flagship
                          else -2 if is_solid_coder and not is_small
@@ -268,7 +267,7 @@ class FreeModelPool:
         return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3) if role != 'reviewer' else 0, min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0,
                 -min(health.get(role + "_responses", 0), 1) if connection_revision is None else 0,
                 -passed_probe,
-                role_tier,
+                (*model_benchmarks.preference(model, role), role_tier),
                 reasoning_bonus,
                 -min(model.get("context_length") or 0, context_cap),
                 health.get(role + "_seconds", float("inf")) if connection_revision is None else float("inf"), model["id"])
@@ -282,7 +281,8 @@ class FreeModelPool:
         by_tier = {}
         for m in sorted_models:
             k = key_fn(m)
-            tier = (k[0], k[1], k[2], k[3], k[4], k[5], k[8])
+            # Provider diversity must not move metadata ahead of actual evidence.
+            tier = k[:9]
             raw_id = m["id"].lower().removeprefix("no-think/")
             p = raw_id.split("/")[0] if "/" in raw_id else "other"
             by_tier.setdefault(tier, {}).setdefault(p, []).append(m)

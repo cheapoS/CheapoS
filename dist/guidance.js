@@ -278,6 +278,30 @@ const CheapOSGuide = (() => {
     const changes=Array.isArray(e.changes)?e.changes.slice(0,8).map(x=>String(x).slice(0,80)).join(', '):'';
     return `${e.stale?'Stale metadata':'Observed metadata'} · ${String(e.source||'source unavailable').slice(0,80)} · ${stamp}${changes?' · Changed: '+changes:''}. Catalog metadata does not verify current availability.`;
   }
+  function benchmarkScore(model,metric) {
+    const b=model.benchmarks, value=b?.[metric];
+    return b?.source==='Artificial Analysis'&&['coding','agentic','intelligence'].includes(metric)&&Number.isFinite(value)&&value>=0?value:null;
+  }
+  function modelBenchmarks(model) {
+    const b=model.benchmarks;
+    const scores=['coding','agentic','intelligence'].map(metric=>{
+      const score=benchmarkScore(model,metric);
+      return `${metric[0].toUpperCase()+metric.slice(1)}: ${score===null?'Unknown':score}`;
+    }).join(' · ');
+    if(!b||b.source!=='Artificial Analysis')return {scores,source:'No benchmark scores reported'};
+    const at=typeof b.refreshed_at==='string'?new Date(b.refreshed_at):new Date(NaN);
+    const stamp=Number.isFinite(at.getTime())?at.toLocaleString():'unknown';
+    return {scores,source:`Artificial Analysis · via ${String(b.catalog||'catalog unknown').slice(0,80)} · Catalog refreshed: ${stamp}${model.metadata_evidence?.stale?' · Stale metadata':''}`};
+  }
+  function sortModelCatalog(models,by='catalog') {
+    const copy=[...models];
+    if(!['coding','agentic'].includes(by))return copy;
+    return copy.sort((a,b)=>{
+      const x=benchmarkScore(a,by),y=benchmarkScore(b,by);
+      if(x===null||y===null)return x===y?0:x===null?1:-1;
+      return y-x;
+    });
+  }
   function routingTraceView(task={}) {
     const traces=Array.isArray(task.routing_traces)?task.routing_traces.slice(-32):[];
     const reason=value=>String(value||'reason unavailable').replaceAll('_',' ').slice(0,120);
@@ -608,7 +632,7 @@ const CheapOSGuide = (() => {
   }
   function sidebarOrder(tasks){return [...tasks].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id))}
   function permissionChoice(pending){return pending?.profile?{scope:"project_tests_session",label:"Allow project tests for this session"}:{scope:"task_exact",label:"Allow this command for this session"}}
-  return {coordinatorStatus,connectionNotice,metadataEvidence,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,liveStream,integrationPreparation,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
+  return {coordinatorStatus,connectionNotice,metadataEvidence,modelBenchmarks,sortModelCatalog,routingTraceView,modelAccess,includedScope,includedChoice,costProvenance,sampleOutcome,setupGuide,workPreset,presetLimits,workPresets,permissionChoice,sidebarOrder,modelHealth,commitDeferred,taskGuide,projectName,workLabel,progress,liveStream,integrationPreparation,failure,duration,activity,activityItem,canCommit,isActive:status=>active.has(status),friendlyModel,groupActivityItems,turns,formatTerminalOutput};
 })();
 if(typeof module!=='undefined')module.exports=CheapOSGuide;
 

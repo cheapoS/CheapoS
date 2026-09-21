@@ -2,11 +2,13 @@
 
 import json
 import math
+from datetime import datetime, timezone
 from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
 from .providers import ChatProvider, NoRedirects, ProviderError
+from . import model_benchmarks
 
 
 class ModelGateway(Protocol):
@@ -19,6 +21,7 @@ def normalize_models(data, openrouter=False, infer_access=True):
     if not isinstance(data, dict) or not isinstance(data.get("data"), list):
         raise ProviderError("The gateway did not return a model catalog")
     models, seen = [], set()
+    refreshed_at = datetime.now(timezone.utc).isoformat()
     for item in data["data"][:5000]:
         if not isinstance(item, dict):
             continue
@@ -92,6 +95,7 @@ def normalize_models(data, openrouter=False, infer_access=True):
                        "provider": provider_name,
                        "context_length": context if isinstance(context, int) and not isinstance(context, bool) and context > 0 else None,
                        "max_output_tokens": output_limit, "tool_calling": tools, "reasoning": reasoning, "recovery_reasoning": recovery_reasoning,
+                       "benchmarks": model_benchmarks.normalize(item.get('benchmarks'), 'OpenRouter' if openrouter else 'Gateway catalog', refreshed_at),
                        "input_rate": input_rate, "output_rate": output_rate,
                        "free": input_rate == 0 and output_rate == 0 and not is_auto})
     return sorted(models, key=lambda m: m["id"])
@@ -163,7 +167,7 @@ class OmniRouteGateway(OpenAICompatibleGateway):
 
 def refresh_openrouter_free_models(models, upstream):
     # Explicit current prices are required here, rather than :free name inference.
-    fresh = normalize_models(upstream)
+    fresh = normalize_models(upstream, openrouter=True, infer_access=False)
     eligible = {m.get("id") for m in upstream.get("data", []) if isinstance(m, dict) and isinstance(m.get("id"), str)
                 and isinstance(m.get("pricing"), dict) and {"prompt", "completion"} <= m["pricing"].keys()}
     kept = {m["id"]: m for m in models

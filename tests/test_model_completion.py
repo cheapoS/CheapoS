@@ -66,7 +66,10 @@ class CompletionTests(unittest.TestCase):
             pool=FreeModelPool(root);observe_completions(pool,saved_task())
             for i in range(3):pool.record_outcome(URL,'fast','worker',str(i),'other',{'checkpoints':1,'invalid_output':1},'revision')
             pool.record(URL,'fast','worker',seconds=.001)
-            rank=lambda model,pin=None,revision='revision':pool.rank(URL,{'id':model},'worker',pin,revision)
+            # A high catalog score cannot outrank recorded completion evidence.
+            models = {'worker': {'id':'worker'}, 'fast': {'id':'fast', 'benchmarks': {
+                'source':'Artificial Analysis', 'coding':99}}}
+            rank=lambda model,pin=None,revision='revision':pool.rank(URL,models[model],'worker',pin,revision)
             self.assertLess(rank('worker'),rank('fast'))
             self.assertLess(rank('fast','fast'),rank('worker','fast'))
             self.assertEqual(pool.observation(URL,'worker','missing')['role_evidence']['worker']['completion_samples'],0)
