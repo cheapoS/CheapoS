@@ -21,14 +21,20 @@ def assessment(criteria=('requested_change',), *, source='diff', quote='return m
 def fixture_review_call(message, messages):
     """Upgrade successful scripted fixture replies to the current wire contract.
 
-    This supplies known fixture evidence, not a model-quality oracle. Negative
-    approval tests construct their responses explicitly and never use this helper.
+    This supplies known fixture evidence, not a model-quality oracle. Explicit
+    assessments and mixed batches pass through without rewriting their meaning.
     """
-    for call in message.get('tool_calls', []):
+    message = copy.deepcopy(message)
+    calls = message.get('tool_calls', [])
+    # Mixed batches may deliberately exercise cancellation or invalid decisions.
+    # Do not turn them into successful review fixtures before dispatch can run.
+    if len(calls) != 1:
+        return message
+    for call in calls:
         if call['function']['name'] not in {'review_decision', 'final_review_decision'}:
             continue
         result = json.loads(call['function']['arguments'])
-        if result.get('decision') != 'APPROVE':
+        if result.get('decision') != 'APPROVE' or 'review_assessment' in result:
             continue
         packet = json.loads(messages[1]['content'])
         contract = packet.get('review_evidence')
@@ -65,6 +71,29 @@ class ReviewAssessmentTests(unittest.TestCase):
     def approval(self):
         return {'decision': 'APPROVE', 'feedback': 'The implementation preserves both bounds.',
                 'review_assessment': assessment()}
+
+    def test_fixture_adapter_preserves_mixed_batches_and_explicit_assessments(self):
+        def call(name, args):
+            return {'id': name, 'function': {'name': name, 'arguments': json.dumps(args)}}
+        approval = call('review_decision', {'decision': 'APPROVE', 'feedback': 'Ignore cancellation'})
+        messages = [{'role': 'system', 'content': 'Review'},
+                    {'role': 'user', 'content': json.dumps({'review_evidence': {'criteria': ['requested_change'], 'sources': []}})}]
+        batch = {'tool_calls': [call('read_url', {'url': 'https://example.org/docs'}), approval]}
+        before = copy.deepcopy(batch)
+        self.assertEqual(fixture_review_call(batch, messages), before)
+        explicit = {'tool_calls': [call('review_decision', {
+            'decision': 'APPROVE', 'feedback': 'Unsupported', 'review_assessment': {}})]}
+        before = copy.deepcopy(explicit)
+        self.assertEqual(fixture_review_call(explicit, messages), before)
+        state = self.state()
+        packet = {'diff': state['sources']['diff']['content'], 'checks': [{'passed': True}],
+                  'review_evidence': review.display(state)}
+        single = {'tool_calls': [approval]}
+        before = copy.deepcopy(single)
+        upgraded = fixture_review_call(single, [{'role': 'system', 'content': 'Review'},
+                                               {'role': 'user', 'content': json.dumps(packet)}])
+        self.assertEqual(single, before)  # Reused fixture responses remain independent.
+        review.validate(state, json.loads(upgraded['tool_calls'][0]['function']['arguments']))
 
     def test_real_citations_are_bound_to_candidate_and_assessment(self):
         state = self.state(); result = self.approval()
