@@ -289,7 +289,7 @@ test('failed verification and requested revisions never look approved',()=>{
  assert.equal(reply.steps[0].outcome,'failed');assert.equal(reply.steps[1].outcome,'revision');
  assert.doesNotMatch(reply.intro,/passed/);
 });
-test('review chunk progress uses controller totals and clears for synthesis',()=>{
+test('review chunk progress uses controller totals and names the synthesis stage',()=>{
  const t=task({status:'reviewing',active_role:'reviewer',events:[
   event(1,'review_request','Requesting final packet review',{chunk_ids:['diff:2'],stage:'chunk',chunk_index:8,chunk_total:12}),
   event(2,'model','Requesting reviewer: reviewer-model',{})]});
@@ -300,11 +300,49 @@ test('review chunk progress uses controller totals and clears for synthesis',()=
  t.events.push(event(3,'review','Final packet review completed',{chunk_ids:['diff:2'],chunk_index:8,chunk_total:12,decision:'REQUEST_CHANGES',feedback:'Fix this defect.'}));
  t.status='paused';assert.equal(step().reviewProgress,'Chunk 8 of 12');assert.equal(step().outcome,'revision');
  t.events.push(event(4,'review_request','Requesting final packet review',{chunk_ids:['diff:1','diff:2'],stage:'synthesis'}));
- assert.equal(step().reviewProgress,'');
+ assert.equal(step().reviewProgress,'Combining review findings');
  for(const pair of [[0,12],[13,12],[8,undefined],['8',12]]){
   t.events.push(event(t.events.length+1,'review_request','Requesting review',{chunk_ids:['diff:2'],stage:'chunk',chunk_index:pair[0],chunk_total:pair[1]}));
   assert.equal(step().reviewProgress,'');
  }
+});
+test('review progress retains actual source reads, excludes probes and does not imply approval',()=>{
+ const t=task({status:'reviewing',active_role:'reviewer',stream:{role:'reviewer',phase:'thinking',thinking:'Checking the handler.'},events:[
+  event(1,'review_request','Requesting final packet review',{chunk_ids:['diff:1'],stage:'chunk',chunk_index:1,chunk_total:2}),
+  event(2,'model','Requesting reviewer: reviewer-model',{purpose:'probe'}),
+  event(3,'model','Requesting reviewer: reviewer-model',{}),
+  {...event(4,'review_context','Read exact final candidate context',{path:'dist/app.js',available:true,start_line:100,end_line:199}),actor:{role:'worker'}},
+  event(5,'review_context','Read saved review context',{historical:true,reference:'prior-findings'}),
+  event(6,'review_context','Read exact final candidate context',{path:'missing.js',available:false,reason:'File not found'})]});
+ let step=replies(t).at(-1).steps.at(-1);
+ assert.equal(step.phase,'review');assert.equal(step.reviewProgress,'Chunk 1 of 2');
+ assert.equal(step.reviewStats,'1 model request · 2 context reads in this review');
+ assert.equal(step.activity,'Could not inspect missing.js');assert.equal(step.outcome,'live');
+ assert.equal(step.events.filter(e=>e.kind==='review_context').length,3);
+ t.events.push(event(7,'review_context','Read exact final candidate context',{path:'dist/styles.css',available:true,start_line:20,end_line:50}));
+ step=replies(t).at(-1).steps.at(-1);assert.equal(step.activity,'Inspected dist/styles.css · lines 20–50');
+ t.status='paused';t.stream=null;
+ assert.equal(replies(t).at(-1).steps.at(-1).outcome,'pending');
+ const guide=require('../dist/guidance.js');
+ assert.equal(guide.activityItem(t.events[5]).failed,true);
+ assert.doesNotMatch(guide.activityItem(event(8,'review_context','Read',{path:'empty.js',available:true,start_line:1,end_line:0})).title,/lines/);
+ // A later user turn gets its own counts, not the earlier review's total.
+ t.events.push(event(8,'user','You','Review the new edit.'),event(9,'model','Requesting reviewer: reviewer-model',{}));t.status='reviewing';
+ assert.equal(replies(t).at(-1).steps.at(-1).reviewStats,'1 model request · 0 context reads in this review');
+});
+test('review source details render safely beside live output without raw diagnostic data',()=>{
+ const vm=require('node:vm'),fs=require('node:fs');
+ const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8').split("\n'use strict';\nconst $ =")[0];
+ const context={CheapOSGuide:require('../dist/guidance.js'),esc:x=>String(x??'').replaceAll('<','&lt;'),icon:()=>'',messageText:x=>x,thinkingMarkup:()=>'',eventDetail:()=>{throw Error('Review context should have readable details');}};
+ vm.createContext(context);vm.runInContext(source+'\nthis.view=CheapOSChatView;',context);
+ const t=task({status:'reviewing',active_role:'reviewer',stream:{role:'reviewer',phase:'thinking',thinking:'Checking the handler.'},events:[
+  event(1,'model','Requesting reviewer: reviewer-model',{}),
+  event(2,'review_context','Read exact final candidate context',{path:'<img src=x>.js',available:true,start_line:20,end_line:40,digest:'hidden-diagnostic'})]});
+ const html=context.view.message(replies(t).at(-1),t,'',true);
+ assert.match(html,/phase-review/);assert.match(html,/1 model request · 1 context read/);
+ assert.match(html,/Inspected review evidence · 1 read/);assert.match(html,/lines 20–40/);
+ assert.match(html,/Latest: Inspected &lt;img/);assert.doesNotMatch(html,/<img src=x>|hidden-diagnostic/);
+ assert.match(html,/Checking the handler/);
 });
 test('saved item chunk progress uses its earlier paging batch',()=>{
  const t=task({status:'reviewing',events:[
