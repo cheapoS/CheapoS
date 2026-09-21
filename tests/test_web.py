@@ -201,9 +201,11 @@ class WebChatTests(LocalCase):
         def cancel(*args):
             self.engine.runtimes[t['id']].stop.set()
             raise InterruptedError('Stopped while reading')
-        with patch('cheapos.web.fetch',side_effect=cancel):
+        with patch('cheapos.web.fetch',side_effect=cancel) as fetch:
             self.engine.start(t['id'])
             result=self.finish(t)
+        fetch.assert_called_once()
+        self.assertTrue(self.engine.runtimes[t['id']].stop.is_set())
         self.assertEqual(result['status'],'paused')
         self.assertEqual(result['checkpoints'][-1]['decision'],'PENDING')
         self.assertFalse(any(e['kind']=='review' for e in result['events']))

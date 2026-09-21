@@ -12,6 +12,7 @@ from cheapos import branch_integration_review
 from cheapos.engine import Engine, ProgressPause
 from cheapos.providers import BudgetError
 from tests.test_branch_disagreement import defect
+from tests.test_review_assessment import assessment
 
 
 class ItemPageTests(unittest.TestCase):
@@ -30,7 +31,8 @@ class ItemPageTests(unittest.TestCase):
             'patch': 'diff --git a/report.py b/report.py\n' + '+preserve both branches\n' * 6000,
             'checks': [{'command': command, 'verification_identity': 'inputs'}]}
         current['id'] = evidence._digest(current)
-        task = {'id': 'task', 'workspace': '/fixture', 'branch_run': run, 'active_role': 'worker',
+        # Retain coverage for saved pre-evidence-contract review/allowance state.
+        task = {'review_contract_version': 0, 'id': 'task', 'workspace': '/fixture', 'branch_run': run, 'active_role': 'worker',
             'checks': [record], 'review_count': 0, 'checkpoints': [], 'events': [],
             'providers': {'worker': {'model': 'worker'}, 'reviewer': {'model': 'reviewer'}},
             'execution': {'mode': 'remote'}, 'route': {'base_url': 'gateway'},
@@ -50,16 +52,23 @@ class ItemPageTests(unittest.TestCase):
         packet = json.loads(messages[1]['content'])
         self.assertLess(len(messages[1]['content']), 60000)
         if 'chunk' in packet:
-            return self.call('final_review_decision', {'decision': 'APPROVE', 'feedback': 'Inspected this part.',
-                'manifest_id': packet['manifest_id'], 'chunk_ids': packet['chunk_ids'], 'criteria_ids': []})
+            result = {'decision': 'APPROVE', 'feedback': 'Inspected this part.',
+                'manifest_id': packet['manifest_id'], 'chunk_ids': packet['chunk_ids'], 'criteria_ids': []}
+            if runtime.task.get('review_contract_version') == 1:
+                result['review_assessment'] = assessment(['packet'], source='packet', quote=packet['chunk']['content'], checks=False)
+            return self.call('final_review_decision', result)
         self.assertIn('packet_coverage', packet)
         self.assertNotIn('If packet diff is empty', messages[0]['content'])
-        return self.call('review_decision', {'decision': 'APPROVE', 'feedback': 'Both branches preserved.',
+        result = {'decision': 'APPROVE', 'feedback': 'Both branches preserved.',
             'candidate_id': packet['candidate_id'],
-            'criteria_outcomes': {'exact values': {'passed': True, 'evidence': 'Combined source and checks.'}}})
+            'criteria_outcomes': {'exact values': {'passed': True, 'evidence': 'Combined source and checks.'}}}
+        if runtime.task.get('review_contract_version') == 1:
+            result['review_assessment'] = assessment(['exact values'], quote='+preserve both branches')
+        return self.call('review_decision', result)
 
     def test_large_patch_reaches_real_receipt_without_losing_evidence_or_rechecking(self):
         task, engine, runtime, current = self.fixture()
+        task['review_contract_version'] = 1
         before = copy.deepcopy({k: task[k] for k in ('checks', 'limits', 'usage')})
         self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
         receipt = json.loads(task['branch_run']['items'][0]['ready_receipt'])

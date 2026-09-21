@@ -16,6 +16,8 @@ from cheapos.omniroute import OmniRouteManager
 from cheapos.providers import ProviderError
 from cheapos.routing import PROBE_MESSAGES
 from test_engine import LocalCase, call
+from tests.test_review_assessment import assessment
+import json
 import test_routing as routing_fixture
 from test_routing import model
 
@@ -288,6 +290,12 @@ class FailoverTests(LocalCase):
                 if messages==PROBE_MESSAGES:return call('routing_ready', {'marker': PROBE_MARKER}),{'prompt_tokens':3,'completion_tokens':1,'cost':0}
                 reply=next(queue)
                 if isinstance(reply,Exception):raise reply
+                for tool_call in reply.get('tool_calls', []):
+                    if tool_call['function']['name'] == 'review_decision':
+                        arguments = json.loads(tool_call['function']['arguments'])
+                        if arguments.get('decision') == 'APPROVE':
+                            arguments['review_assessment'] = assessment()
+                            tool_call['function']['arguments'] = json.dumps(arguments)
                 return reply,{'prompt_tokens':10,'completion_tokens':5,'cost':0}
         self.engine.provider_factory=lambda role,cfg:Provider(role,cfg)
         return requests

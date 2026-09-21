@@ -1,3 +1,4 @@
+from tests.test_review_assessment import fixture_review_call
 from cheapos.routing import PROBE_MARKER
 """Coherent edits stay versioned; smaller-edit guidance is temporary recovery."""
 import copy
@@ -90,7 +91,7 @@ class CompactRecoveryTests(LocalCase):
                 reply = next(queue)
                 if isinstance(reply, Exception): raise reply
                 if callable(reply): reply = reply(request)
-                return reply, {'prompt_tokens': 10, 'completion_tokens': 5, 'cost': 0}
+                return fixture_review_call(reply, messages), {'prompt_tokens': 10, 'completion_tokens': 5, 'cost': 0}
         self.engine.provider_factory = lambda role, config: Provider(role, config)
         return requests
 

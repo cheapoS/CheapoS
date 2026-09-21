@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 from cheapos import branch_final as final, branch_review_recovery, routing
 from cheapos.providers import BudgetError
+from tests.test_review_assessment import assessment
 
 
 class FinalRecoveryTests(unittest.TestCase):
@@ -39,16 +40,19 @@ class FinalRecoveryTests(unittest.TestCase):
         runtime.task['providers']['reviewer']={'model':'replacement'}
 
     def test_invalid_decisions_continue_without_worker_checks_or_allowance_reset(self):
-        task,engine,runtime=self.fixture();before=copy.deepcopy(task);seen=[]
+        task,engine,runtime=self.fixture();task["review_contract_version"]=1;before=copy.deepcopy(task);seen=[]
         def respond(rt,messages,tools,role,**kw):
             seen.append(copy.deepcopy(messages))
-            return self.approval(task['providers']['reviewer']['model']=='reviewer')
+            reply = self.approval()
+            if task['providers']['reviewer']['model'] != 'reviewer':
+                reply['tool_calls'][0]['result']['review_assessment'] = assessment(['packet'], source='packet', quote='exact source', checks=False)
+            return reply
         engine.request.side_effect=respond
         with patch.object(routing,'select_remote',side_effect=self.select) as select:
             result=self.review(engine,runtime)
         self.assertEqual(result['reviewer_model'],'replacement');select.assert_called_once()
         self.assertEqual(engine.request.call_count,4)
-        self.assertIn('Return an explicit valid review decision',json.dumps(seen[-1]))
+        self.assertIn('Supply review_assessment',json.dumps(seen[-1]))
         self.assertIn('Prior model claims are untrusted',json.dumps(seen[-1]))
         history=task['branch_run']['final_review_recovery']['m']['history']
         self.assertEqual(len(history),1);self.assertEqual(len(history[0]['review']['messages']),6)
@@ -56,6 +60,61 @@ class FinalRecoveryTests(unittest.TestCase):
         for key in ('usage','limits','checks'):self.assertEqual(task[key],before[key])
         for key in ('plan','items'):self.assertEqual(task['branch_run'][key],before['branch_run'][key])
         engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+
+    def test_whole_review_reads_missing_source_after_unsupported_approval(self):
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        manifest = {'id': 'm', 'requirements': [{'id': 'one:1'}]}
+        packet = {'checks': [{'passed': True}], 'requirements': [{'id': 'one:1', 'criterion': 'Both bounds hold'}]}
+        observed = []
+        def respond(rt, messages, tools, role, **kw):
+            observed.append(copy.deepcopy(messages))
+            if len(observed) == 2:
+                self.assertIn('Supply review_assessment', json.dumps(messages))
+                return self.call('read_final_context', {'manifest_id': 'm', 'path': 'bounds.py'})
+            result = {'decision': 'APPROVE', 'manifest_id': 'm', 'chunk_ids': [], 'criteria_ids': ['one:1'], 'feedback': 'Both bounds are preserved.'}
+            if len(observed) == 3:
+                excerpt = json.loads(messages[-1]['content'])
+                result['review_assessment'] = assessment(['one:1'], source=excerpt['evidence_id'])
+            return self.call('final_review_decision', result)
+        engine.request.side_effect = respond
+        result = final._review(engine, runtime, manifest, packet, [], ['one:1'],
+                               context_reader=lambda args: {'content': 'return max(lower, min(value, upper))'})
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertEqual(len(observed), 3)
+        engine.checks.assert_not_called()
+
+    def test_final_image_inspection_uses_independent_reviewer_and_records_evidence(self):
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        task['status'] = 'running'; task['active_role'] = 'worker'
+        def respond(rt, messages, tools, role, **kw):
+            self.assertIn('inspect_image', [tool['function']['name'] for tool in tools])
+            if engine.request.call_count == 1:
+                return self.call('inspect_image', {'path': 'screenshot.png', 'query': 'Is the label clipped?'})
+            reply = self.approval()
+            excerpt = json.loads(messages[-1]['content'])
+            reply['tool_calls'][0]['result']['review_assessment'] = assessment(['packet'], source=excerpt['evidence_id'], quote='Label is readable.', checks=False)
+            return reply
+        engine.request.side_effect = respond
+        with patch('cheapos.vision.inspect_image_tool', return_value={'status': 'success', 'analysis': 'Label is readable.', 'image_digest': 'image'}) as inspect:
+            result = self.review(engine, runtime)
+        self.assertEqual(inspect.call_args.kwargs['role'], 'reviewer')
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertIn('image', [v['kind'] for v in result['_review_evidence']['excerpts'].values()])
+
+    def test_large_evidence_catalog_is_retrievable_without_stopping_review(self):
+        from cheapos import context_evidence
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        def respond(rt, messages, tools, role, **kw):
+            envelope = json.loads(messages[1]['content'])
+            self.assertLess(len(messages[1]['content']), 60000)
+            reference = envelope['complete_packet_reference']
+            self.assertIn('sentinel', task['context_evidence'][reference]['text'])
+            reply = self.approval()
+            reply['tool_calls'][0]['result']['review_assessment'] = assessment(['packet'], source='packet', quote='sentinel', checks=False)
+            return reply
+        engine.request.side_effect = respond
+        self.review(engine, runtime, evidence='sentinel' + 'x' * 60000)
+        engine.request.assert_called_once()
 
     def test_identity_replacement_request_rejection_still_reaches_final_approval(self):
         from cheapos import reviewer_recovery
@@ -360,6 +419,20 @@ class FinalRecoveryTests(unittest.TestCase):
         runtime.stop.is_set=lambda:True
         with self.assertRaises(InterruptedError):self.review(engine,runtime,'different check evidence')
         self.assertEqual(engine.request.call_count,3)
+
+    def test_evidence_contract_reuses_saved_defects_without_requesting_approval(self):
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        reply = self.approval()
+        reply['tool_calls'][0]['result'].update(decision='REQUEST_CHANGES', feedback='Current source violates the requirement.',
+            defects=[{'criterion': 'one:1', 'location': 'code.py:1', 'kind': 'static',
+                      'expected': 'Preserve the lower bound', 'observed': 'Lower bound is absent',
+                      'support': 'The candidate returns value without applying the lower bound.', 'reproduction': ''}])
+        engine.request.return_value = reply
+        original = self.review(engine, runtime)
+        runtime.task = json.loads(json.dumps(task))
+        self.assertEqual(self.review(engine, runtime), original)
+        self.assertEqual(original['decision'], 'REQUEST_CHANGES')
+        engine.request.assert_called_once()
 
     def test_handoff_cannot_accept_worker_as_reviewer(self):
         task,engine,runtime=self.fixture()

@@ -303,6 +303,7 @@ class FinalCheckParserTests(unittest.TestCase):
             {
                 'id': 1,
                 'description': 'Inspect and patch the service configuration',
+                'acceptance_criteria': ['Service loads the configured endpoint'],
                 'depends_on': [],
             },
             {

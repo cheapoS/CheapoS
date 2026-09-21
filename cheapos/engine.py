@@ -795,7 +795,7 @@ class Engine:
         from .git_sync import before_task
         git_sync = before_task(values.get('repository', ''), settings_snapshot) if not demo and snapshot_override is None else None
         workspace, snapshot = snapshot_override or Workspace.snapshot(values.get("repository", ""), directory / "workspace")
-        task = {"served_identity_version":1, "id": task_id, "prompt": augmented_prompt, "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "planner": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
+        task = {"served_identity_version":1, "review_contract_version": 0 if demo else 1, "id": task_id, "prompt": augmented_prompt, "title": prompt.strip()[:90], "source": snapshot["source"], "workspace": str(workspace.root), "snapshot": snapshot, "status": "ready", "created_at": now(), "updated_at": now(), "demo": demo, "providers": copy.deepcopy(self.config) if not demo else {}, "limits": limits, "check_command": argv, "auto_approve_checks": bool(values.get("auto_approve_checks", False)), "active_role": "worker", "worker_turns": 0, "iterations": 0, "tool_actions": 0, "review_count": 0, "events": [], "checkpoints": [], "checks": [], "changes": [], "patch": "", "messages": [], "error": None, "pending_approval": None, "in_flight": None, "usage": {"worker": {"tokens": 0, "cost": 0}, "reviewer": {"tokens": 0, "cost": 0}, "planner": {"tokens": 0, "cost": 0}, "cost": 0, "uncertain_requests": 0, "estimated_requests": 0}, "fixture_phase": 0}
         if keep_up_to_date and not (initial_fields or {}).get('integration_policy'):
             from . import branch_workspace
             source = task["source"]
@@ -1669,6 +1669,9 @@ class Engine:
             review = (task.get("checkpoints") or [{}])[-1]
             if not current_evidence(task, review, identity=ident) or review.get("decision") != "APPROVE" or review.get("diff") != task["patch"]:
                 raise ValueError("This patch has changed since review. Request a new checkpoint first.")
+            if review.get('review_contract_version') == 1:
+                from .review_assessment import retained
+                retained(review, review['review_scope'])
 
     def reconcile_project(self, task_id, values):
         with self.lock:
@@ -3253,6 +3256,7 @@ class Engine:
             return result
 
     def checkpoint(self, runtime, args):
+        from . import review_assessment
         if "branch_run" in runtime.task:
             from .branch_review import checkpoint
             return checkpoint(self, runtime, args)
@@ -3317,7 +3321,24 @@ class Engine:
         self.event(task, "handoff", "Sending changes for review", {"from": task["providers"].get("worker", {}).get("model", "Scripted worker"), "to": task["providers"].get("reviewer", {}).get("model", "Scripted reviewer"), "role": "reviewer", "summary": "The controller collected verification output. The reviewer will inspect the patch and evidence."})
         self.event(task, "checkpoint", f"Checkpoint #{checkpoint['number']} ready for review", checkpoint)
         messages = [{"role": "system", "content": REVIEW_SYSTEM + (pr_description.REVIEW if pr_description.enabled(task) else '')}, {"role": "user", "content": json.dumps({k: v for k, v in checkpoint.items() if k != "messages"})}]
+        review_tools = REVIEW_TOOLS
+        proof = None
+        if review_assessment.enabled(task):
+            scope = review_assessment.digest({k: checkpoint.get(k) for k in ('diff', 'generation', 'verification_identity', 'user_messages')})
+            checkpoint['review_scope'] = scope
+            if checkpoint.get('evidence_review', {}).get('scope') != scope:
+                checkpoint.pop('evidence_review', None)
+            proof = checkpoint.setdefault('evidence_review', review_assessment.prepare(scope, checkpoint, ['requested_change']))
+            checkpoint['review_contract_version'] = 1
+            packet = {k: v for k, v in checkpoint.items() if k not in ('messages', 'evidence_review')}
+            packet['original_request'] = review_assessment.original_request(task)
+            packet['review_evidence'] = review_assessment.display(proof)
+            messages[0]['content'] += '\n' + review_assessment.INSTRUCTION
+            messages[1]['content'] = json.dumps(packet)
+            review_tools = review_assessment.tools_with_contract(REVIEW_TOOLS, proof)
         messages.extend(checkpoint.get("messages", []))
+        if proof is not None and review_assessment.handoff(self, runtime, checkpoint, rejected=False):
+            messages[:] = messages[:2]
         from .branch_review import save_history
         runtime.review_requests = checkpoint.get("review_requests", 0)
         turns = 0
@@ -3332,9 +3353,9 @@ class Engine:
             if turns and turns % 4 == 0:
                 messages.append({"role": "user", "content": "Use the evidence already inspected to reach review_decision. Identify a concrete defect or approve with specific evidence. Avoid repeating unchanged searches; read further only to resolve a specific unanswered question."})
             turns += 1
-            message = self.request(runtime, messages, REVIEW_TOOLS, "reviewer")
+            message = self.request(runtime, messages, review_tools, "reviewer")
             if not message.get("tool_calls"):
-                fallback_calls, cleaned = extract_fallback_tool_calls(message.get("content"), {t["function"]["name"] for t in REVIEW_TOOLS}, task=task)
+                fallback_calls, cleaned = extract_fallback_tool_calls(message.get("content"), {t["function"]["name"] for t in review_tools}, task=task)
                 if fallback_calls:
                     message["tool_calls"] = fallback_calls
                     message["content"] = cleaned
@@ -3360,10 +3381,25 @@ class Engine:
                     metrics.tool_action(task)
                 if name == "review_decision":
                     decision = params.get("decision")
+                    if proof is not None:
+                        try:
+                            review_assessment.validate(proof, params)
+                        except ValueError as error:
+                            result = review_assessment.feedback(error, proof)
+                            messages.append({"role": "tool", "tool_call_id": call['id'], "content": json.dumps(result)})
+                            self.event(task, 'review_feedback', 'Gathering evidence for review', result)
+                            save_history(checkpoint, messages)
+                            if review_assessment.handoff(self, runtime, checkpoint):
+                                messages[:] = messages[:2]
+                                break
+                            continue
                     if decision not in {"APPROVE", "REQUEST_CHANGES", "REQUEST_TESTS", "TAKE_OVER"} or not isinstance(params.get("feedback"), str):
                         result = {"error": "Return a valid decision and feedback"}
                     else:
                         checkpoint.update({"decision": decision, "feedback": params["feedback"][:8000]})
+                        if proof is not None and decision == 'APPROVE':
+                            checkpoint.update({k: copy.deepcopy(params[k]) for k in ('review_assessment', '_review_evidence')})
+                            checkpoint.pop('evidence_review', None)
                         checkpoint.pop('pull_request', None)
                         if decision == 'APPROVE' and pr_description.enabled(task) and pr_description.clean(params.get('pull_request')):
                             checkpoint['pull_request'] = pr_description.clean(params['pull_request'])
@@ -3374,9 +3410,9 @@ class Engine:
                         task["status"] = {"APPROVE": "approved", "REQUEST_CHANGES": "running", "REQUEST_TESTS": "running", "TAKE_OVER": "takeover_requested"}[decision]
                         if decision == 'APPROVE':
                             task.pop('finish_review', None)
-                        self.event(task, "review", f"Reviewer: {decision.replace('_', ' ').lower()}", {"checkpoint": checkpoint["number"], "decision": decision, "feedback": checkpoint["feedback"]})
+                        self.event(task, "review", f"Reviewer: {decision.replace('_', ' ').lower()}", {"checkpoint": checkpoint["number"], "decision": decision, "feedback": review_assessment.visible_feedback(checkpoint)})
                         return {"decision": decision, "feedback": checkpoint["feedback"]}
-                elif name in {"read_file", "outline_file", "get_project_context", "search", "list_files", "get_diff", "read_url", "read_check_output", "read_merge_context", "read_context_evidence", "read_edit_history"}:
+                elif name in {"read_file", "outline_file", "get_project_context", "search", "list_files", "get_diff", "read_url", "read_check_output", "read_merge_context", "read_context_evidence", "read_edit_history", "inspect_image"}:
                     try:
                         result = self.read_url(runtime, params) if name == "read_url" else self.file_tool(task, name, params, runtime=runtime)
                     except InterruptedError:
@@ -3385,6 +3421,8 @@ class Engine:
                         result = {"error": str(error)[:1000]}
                 else:
                     result = {"error": "Reviewer tools are read-only"}
+                if proof is not None:
+                    result = review_assessment.observation(proof, name, params, result)
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)})
         save_history(checkpoint, messages)
         raise BudgetError("Reviewer reached the eight-turn checkpoint limit without deciding. Inspect the saved checkpoint before resuming.")

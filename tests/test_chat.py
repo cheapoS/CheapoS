@@ -1,3 +1,4 @@
+from tests.test_review_assessment import fixture_review_call
 """Conversation routing, continuity, command approval, and local project setup."""
 import json
 import sys
@@ -23,7 +24,7 @@ class ChatTests(LocalCase):
         class Provider:
             def complete(self, messages, tools, maximum):
                 requests.append((json.loads(json.dumps(messages)), tools))
-                return next(queue), {'prompt_tokens':10,'completion_tokens':5,'cost':0}
+                return fixture_review_call(next(queue), messages), {'prompt_tokens':10,'completion_tokens':5,'cost':0}
         self.engine.provider_factory=lambda role, config: Provider()
         return requests
 

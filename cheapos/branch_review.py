@@ -130,6 +130,7 @@ def checkpoint(engine, runtime, args):
 
 def _checkpoint(engine, runtime, args):
     from .engine import REVIEW_TOOLS, REVIEW_SYSTEM, ProgressPause
+    from . import review_assessment
     task = runtime.task
     if not task.get('pending_review'):
         from .work_budgets import guard
@@ -202,6 +203,8 @@ def _checkpoint(engine, runtime, args):
     item_for_review = {k: v for k, v in item.items() if k != 'review_repair'}
     packet = evidence.review_packet(current, item_for_review, plan_for_review, checks, str(args.get('uncertainties', ''))[:2000])
     from . import pr_description
+    if review_assessment.enabled(task):
+        packet['original_request'] = review_assessment.original_request(task)
     if pr_description.enabled(task):
         packet['pull_request_draft'] = pr_description.clean(args.get('pull_request'))
         REVIEW_SYSTEM += pr_description.REVIEW
@@ -305,6 +308,13 @@ def _checkpoint(engine, runtime, args):
     pending = task['pending_review']
     pending['identity_scope']={'candidate_id':current['id'],'item_id':item['id'],
                                'no_change':current['patch']=='','feature_parent':ctx['feature_parent']}
+    proof = None
+    if review_assessment.enabled(task):
+        proof = pending.setdefault('evidence_review', review_assessment.prepare(current['id'], review_basis_packet, criteria))
+        packet['review_evidence'] = review_assessment.display(proof)
+        messages[0]['content'] += '\n' + review_assessment.INSTRUCTION
+        messages[1]['content'] = json.dumps(packet)
+        tools = review_assessment.tools_with_contract(tools, proof)
     messages.extend(copy.deepcopy(pending.get('messages', [])))
     if pending.get('history_partial'):
         messages.append({'role':'user','content':'Older review exchanges were omitted from this bounded history. The current candidate and checks above are authoritative. Read only context still needed for a decision.'})
@@ -379,7 +389,8 @@ def _checkpoint(engine, runtime, args):
             raise ProgressPause('Reviewer exceeded the bounded tool-call allowance.')
         if not calls:
             pending['require_decision'] = True
-            messages.append({'role':'user','content':f'Call review_decision now with candidate_id "{current["id"]}" and criteria_outcomes for every criterion in the review packet. Do not output conversational text or repeat file reads; invoke review_decision.'})
+            assessment_field = 'review_assessment' if proof is not None else 'criteria_outcomes'
+            messages.append({'role':'user','content':f'Use review_decision with candidate_id "{current["id"]}" and {assessment_field} for every criterion when approving. Inspect evidence still needed for the decision; do not repeat unchanged reads or substitute conversational text for a decision.'})
         else:
             pending.pop('require_decision', None)
         observations = []
@@ -402,6 +413,11 @@ def _checkpoint(engine, runtime, args):
                     if draft and pr_description.enabled(task):
                         params['pull_request'] = draft
                     try:
+                        if proof is not None:
+                            review_assessment.validate(proof, params)
+                            params.setdefault('criteria_outcomes', {
+                                key: {'passed': True, 'evidence': value['reason']}
+                                for key, value in params['review_assessment']['criteria'].items()})
                         # Coverage is controller-owned, never supplied by a model.
                         params.pop('packet_coverage', None)
                         if packet_coverage is not None:
@@ -418,7 +434,7 @@ def _checkpoint(engine, runtime, args):
                         item['outcome_summary'] = str(params.get('feedback',''))[:2000]
                         task['status'] = 'approved'
                         task['checkpoints'].append({'number':len(task['checkpoints'])+1,'decision':'APPROVE','feedback':item['outcome_summary'], 'diff':current['patch'],'branch_candidate_id':current['id']})
-                        engine.event(task,'review','Independent item review passed',{'item_id':item['id'],'candidate_id':current['id'],'decision':'APPROVE','feedback':item['outcome_summary']})
+                        engine.event(task,'review','Independent item review passed',{'item_id':item['id'],'candidate_id':current['id'],'decision':'APPROVE','feedback':review_assessment.visible_feedback(params)})
                         return {'decision':'APPROVE','feedback':item['outcome_summary']}
                 elif choice in {'REQUEST_CHANGES', 'REQUEST_TESTS', 'TAKE_OVER'} and isinstance(params.get('feedback'),str):
                     try:
@@ -451,11 +467,13 @@ def _checkpoint(engine, runtime, args):
                         engine.store.save(task)
                         return result
                 else: result = {'error':'Return a valid independent review decision.'}
-            elif name in {'read_file','outline_file','get_project_context','search','list_files','get_diff','read_check_output','read_merge_context','read_context_evidence','read_edit_history'}:
-                try: result = engine.file_tool(task,name,params)
+            elif name in {'read_file','outline_file','get_project_context','search','list_files','get_diff','read_check_output','read_merge_context','read_context_evidence','read_edit_history','inspect_image'}:
+                try: result = engine.file_tool(task,name,params,runtime=runtime)
                 except (ValueError,OSError,TypeError,UnicodeError) as error: result = {'error':str(error)[:1000]}
             elif name == 'read_url': result = engine.read_url(runtime,params)
             else: result = {'error':'Review tools are read-only.'}
+            if proof is not None:
+                result = review_assessment.observation(proof, name, params, result)
             messages.append({'role':'tool','tool_call_id':call['id'],'content':json.dumps(result)})
             observations.append({'name':name,'parameters':params,'result':result})
         # Measurement removes cumulative request caps, not endless identical

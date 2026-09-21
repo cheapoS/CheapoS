@@ -309,6 +309,7 @@ Only inspect_project_file and propose_branch_plan are available. Prefer one call
 Proposal contract:
 - Return status, plan, clarification, and optional assumptions. For status plan, plan is an object and clarification is empty. For clarification, plan is null and clarification is the question.
 - plan contains items, limits and final_checks. Copy displayed_limits exactly. Each item has id, title, instructions, dependencies, acceptance_criteria and required_checks. Dependencies reference earlier item IDs. Include the entire request in 1–50 ordered items; honor explicit item counts. Put extra constraints in instructions/acceptance_criteria, not invented fields. Do not split read/test/review/checkpoint steps into separate implementation items.
+- acceptance_criteria must describe concrete observable behavior from the request, including relevant existing behavior that must remain intact. "Tests pass", "implemented" or "committed" alone do not describe completion. required_checks provide verification evidence; they do not replace acceptance criteria.
 - proposal_format_example demonstrates JSON structure only. Replace its angle-bracket placeholders with request-specific content and discovered commands/paths; placeholders are not project evidence.
 - Use {"command":"an exact discovered check","directory":"component/path"} for component checks, consistently in item and final checks. String checks run at repository root. Acceptance text cannot set the directory; never add wrapper files to compensate. Run one program directly, without shell chaining/redirection. No prose commands, invented runners, Git commands or selection-only previews. Follow change-scoped validation; a full suite requires an explicit request. New checks must have implementation tests and a project-declared runner. Inspect runner declarations and setup guidance before claiming a missing environment prerequisite. Missing task-copy dependencies can be prepared by the worker after Start grants command permission.
 
@@ -406,7 +407,10 @@ def _parse(message, limits, source=None, assumptions=None, check_evidence=()):
                     inst = it.get('instructions') or ''
                     it['title'] = inst.strip().split('\n')[0][:100] or f"Item {it['id']}"
                 if not it.get('acceptance_criteria'):
-                    it['acceptance_criteria'] = ['Changes are implemented, verified by tests, and ready for controller commit.']
+                    raise PlanningResponseError('Item ' + str(it['id']) + ' is missing acceptance_criteria. Use retained request and project evidence to state concrete observable outcomes; do not substitute generic completion or passing tests.')
+                from .test_policy import is_git_commit_criterion
+                if isinstance(it['acceptance_criteria'], list) and all(is_git_commit_criterion(c) for c in it['acceptance_criteria']):
+                    raise PlanningResponseError('Item ' + str(it['id']) + ' needs observable acceptance criteria beyond committing code; the controller handles commits.')
         if not proposed.get('final_checks'):
             item_checks = [c for it in proposed.get('items', []) if isinstance(it, dict) for c in it.get('required_checks', []) if isinstance(c, (str, dict))]
             if item_checks:

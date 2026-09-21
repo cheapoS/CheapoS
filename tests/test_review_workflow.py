@@ -6,12 +6,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from cheapos.engine import Runtime, REVIEW_TOOLS
 from test_engine import LocalCase, call
+from tests.test_review_assessment import assessment
 
 
 class ReviewWorkflowTests(LocalCase):
     def chat(self):
         task = self.fixture(paid=True)
         task['conversational'] = True
+        task['providers']['reviewer']['model'] = 'independent-reviewer'
         self.engine.store.save(task)
         return task
     def responses(self, replies):
@@ -22,20 +24,28 @@ class ReviewWorkflowTests(LocalCase):
 
     def test_finished_edit_automatically_reaches_review_and_followups_remain_open(self):
         task = self.chat()
+        task['review_contract_version'] = 1
+        self.engine.store.save(task)
         self.responses([
             call('replace_text', {'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
             call('run_checks'), {'content':'The lower-bound fix is complete.'},
-            call('review_decision', {'decision':'APPROVE','feedback':'Both bounds are covered.'}),
+            call('inspect_image', {'path':'missing.png'}),
+            call('review_decision', {'decision':'APPROVE','feedback':'Tests pass.'}),
+            call('review_decision', {'decision':'APPROVE','feedback':'Both bounds are covered.', 'review_assessment': assessment()}),
             {'content':'The max expression enforces the lower bound.'},
             call('write_file', {'path':'notes.txt','content':'Follow-up notes\n'}),
             {'content':'Added the requested notes.'},
-            call('review_decision', {'decision':'APPROVE','feedback':'The notes satisfy the follow-up.'}),
+            call('review_decision', {'decision':'APPROVE','feedback':'The notes satisfy the follow-up.', 'review_assessment': assessment(quote='Follow-up notes')}),
         ])
         self.engine.start(task['id'])
         first = self.finish(task)
         self.assertEqual(first['status'], 'approved', first['error'])
         self.assertEqual(len(first['checks']), 1)
-        self.assertEqual(first['review_count'], 1)
+        self.assertEqual(first['review_count'], 3)
+        results = [m['content'] for m in first['checkpoints'][0]['messages'] if m['role'] == 'tool']
+        self.assertTrue(any('Image file not found' in value for value in results))
+        self.assertIn('_review_evidence', first['checkpoints'][0])
+        self.assertTrue(any(e['kind'] == 'review_feedback' for e in first['events']))
         self.assertTrue(any(e['kind']=='check_reused' for e in first['events']))
         self.engine.start(task['id'], {'message':'Explain the fix without editing.'})
         answer = self.finish(task)
@@ -47,7 +57,7 @@ class ReviewWorkflowTests(LocalCase):
         revised = self.finish(task)
         self.assertEqual(revised['status'], 'approved', revised['error'])
         self.assertEqual(len(revised['checks']), 2)
-        self.assertEqual(revised['review_count'], 2)
+        self.assertEqual(revised['review_count'], 4)
         self.assertNotEqual(revised['patch'], first['patch'])
         self.assertEqual(revised['checkpoints'][-1]['diff'], revised['patch'])
 

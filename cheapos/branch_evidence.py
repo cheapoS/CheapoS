@@ -47,6 +47,8 @@ def candidate(task, context, required_checks, criteria=None):
              'private_baseline': git(workspace.root, 'rev-parse', 'HEAD').strip(),
              'patch': patch, 'patch_digest': hashlib.sha256(patch.encode()).hexdigest(),
              'check_specifications': copy.deepcopy(required_checks), 'checks': checks}
+    if task.get('review_contract_version') == 1:
+        value['review_contract_version'] = 1
     value['id'] = _digest(value)
     return value
 
@@ -106,6 +108,9 @@ def ready_receipt(current, checks, review, worker_model, reviewer_model, criteri
     decision(review)
     if review.get('candidate_id') != current['id'] or review.get('decision') != 'APPROVE' or not isinstance(review.get('feedback'), str):
         raise ValueError('Independent APPROVE for this candidate is required')
+    if current.get('review_contract_version') == 1:
+        from .review_assessment import retained
+        retained(review, current['id'])
     basis = review.get('integration_review')
     if basis is not None and (not isinstance(basis, dict) or basis.get('candidate_id') != current['id']
             or basis.get('task_tip') != current['context']['feature_parent']
