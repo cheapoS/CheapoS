@@ -442,13 +442,18 @@ update pull request** can publish them to the same PR. An externally changed
 remote task branch is never overwritten. If GitHub checks fail, request a repair
 in the task with the failure details; automatic remote-CI repair is not included.
 
-GitHub status refreshes while the PR panel is open. After GitHub confirms the
+GitHub status refreshes about once a minute while the task is selected, including
+in Chat. You do not need to keep Changes open. After GitHub confirms the
 current reviewed commit was merged, cheapoS records completion and fetches the
 selected remote branch. It fast-forwards the local target, including its linked
 worktree if checked out there, and refreshes the matching remote-tracking ref.
 Chat and Changes show **Merged · local branch up to date** once sync succeeds.
 The message distinguishes a pull performed by cheapoS from a branch that was
-already current. Pending local sync is shown separately from the completed merge.
+already current. Pending local sync is shown separately from the completed merge and retries
+automatically, including after a reload. **Retry sync** checks immediately.
+The project sidebar’s **⋯ → Sync project** also fetches and safely fast-forwards
+the currently checked-out branch using that project’s saved PR settings. It
+shows progress and the outcome; it never resets or stashes local work.
 **View merged PR** opens the existing PR; the saved diff remains available as
 history without another approval prompt. You can archive the task or keep chatting;
 start a new task for further development from the updated project.
@@ -461,7 +466,7 @@ or creates an automatic merge commit. Unrelated staged and unstaged edits are
 preserved. Overlapping drafts, an existing Git operation, changed destinations,
 or diverged history defer the local update; an unavailable remote also leaves
 local work usable. The PR remains completed and the panel explains whether local
-sync is complete or pending. Pending sync retries while that panel is open, and
+sync is complete or pending. Pending sync retries while that task is selected in any tab, and
 the next new task checks again. Until sync succeeds, new work uses the current
 local branch; the task records that freshness limitation. A local branch ahead
 of the remote retains its extra commits. Squash/rebase PR merges use GitHub's

@@ -56,3 +56,50 @@ test('local sync copy does not claim a pull or an up-to-date branch without evid
  }
  assert.match(workflow.content({...p,local_sync:{state:'destination_changed',retryable:false}}),/local sync needs attention/);
 });
+test('missing sync receipt remains eligible in Chat and after reload',()=>{
+ const task=mergedTask();task.id='missing';task.pull_request.id='receipt';delete task.pull_request.local_sync;
+ assert.equal(workflow.needsSync(task.pull_request),true);
+ assert.equal(workflow.needsStatus(task),true);
+ assert.match(workflow.completionMarkup(task),/data-pr-sync>Retry sync/);
+ assert.equal(workflow.needsStatus({...task,archived_at:'saved'}),false);
+ assert.equal(workflow.needsStatus({...task,trashed_at:'saved'}),false);
+ assert.equal(workflow.needsStatus({...task,settings_snapshot:{}}),false);
+});
+test('automatic checks coalesce with clicks, back off failures, and stop after sync',async()=>{
+ const task=mergedTask();task.id='polling';task.pull_request.id='op';delete task.pull_request.local_sync;
+ let clock=1000,calls=0,resolve;
+ const original=Date.now;Date.now=()=>clock;
+ const api=async path=>{assert.equal(path,'/tasks/polling/pull-request-status');calls++;return new Promise(r=>{resolve=r;});};
+ try{
+  const first=workflow.checkStatus(task,api);await Promise.resolve();
+  // Routine refreshes do not accumulate callbacks while a fetch is in flight.
+  assert.equal(await workflow.checkStatus(task,api),null);
+  const clicked=workflow.checkStatus(task,api,{force:true});
+  resolve({local_sync:{state:'deferred',retryable:true}});
+  assert.deepEqual(await first,await clicked);assert.equal(calls,1);
+  assert.equal(await workflow.checkStatus(task,api),null);
+  clock+=60001;
+  await assert.rejects(workflow.checkStatus(task,async()=>{calls++;throw Error('offline');}),/offline/);
+  assert.equal(await workflow.checkStatus(task,api),null);assert.equal(calls,2);
+  clock+=60001;
+  const current={...task.pull_request,local_sync:{state:'current',retryable:false}};
+  const resumed=await workflow.checkStatus(task,async()=>{calls++;return current;});
+  task.pull_request=resumed;
+  clock+=60001;
+  assert.equal(await workflow.checkStatus(task,api),null);assert.equal(calls,3);
+ }finally{Date.now=original;}
+});
+test('manual retry acknowledges the click before the network finishes',async()=>{
+ const task=mergedTask();task.id='button';task.pull_request.id='op';delete task.pull_request.local_sync;
+ const button={textContent:'Retry sync',disabled:false};let resolve,refreshed=false;
+ workflow.bindSync({querySelectorAll:()=>[button]},task,()=>new Promise(r=>{resolve=r;}),()=>{refreshed=true;});
+ const click=button.onclick();assert.equal(button.disabled,true);assert.match(button.textContent,/Checking GitHub & syncing/);
+ await Promise.resolve();resolve({});await click;
+ assert.equal(refreshed,true);assert.equal(button.disabled,false);
+});
+test('new-chat snapshot warning distinguishes pending sync from completed work',()=>{
+ assert.equal(workflow.freshnessMarkup({git_sync:{state:'current',retryable:false}}),'');
+ const html=workflow.freshnessMarkup({git_sync:{state:'deferred',retryable:true,branch:'production',message:'Draft <preserved>'}});
+ assert.match(html,/Started from local production/);assert.match(html,/remote sync was pending/);
+ assert.match(html,/original snapshot/);assert.match(html,/Draft &lt;preserved&gt;/);
+});

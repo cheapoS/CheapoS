@@ -116,6 +116,28 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request('GET', '/settings.js')[0], 200)
         self.assertEqual(self.request('GET', '/settings.css')[0], 200)
 
+    def test_project_sync_uses_registered_project_settings_and_requires_token(self):
+        from contextlib import nullcontext
+        source = str(Path(self.temp.name).resolve())
+        request = {'repository': source}
+        snapshot = {'values': {'git': {'workflow': 'pull_request', 'remote': 'upstream'}}}
+        with patch.object(self.engine, 'projects', return_value=[{'path':source}]), patch.object(self.engine.settings_store, 'view', return_value=snapshot), patch.object(self.engine.admission, 'repository', return_value=nullcontext()), patch('cheapos.git_sync.synchronize', return_value={'state':'current','retryable':False,'message':'Already current.'}) as sync:
+            self.assertEqual(self.request('POST','/api/projects/git-sync',request)[0],403)
+            self.assertEqual(self.request('POST','/api/projects/git-sync',request,{'X-CheapOS-Token':self.server.token,'Origin':'https://evil.test'})[0],403)
+            sync.assert_not_called()
+            status, _, body = self.post('/api/projects/git-sync',request)
+            self.assertEqual(status,200,body)
+            self.assertEqual(json.loads(body)['state'],'current')
+            sync.assert_called_once_with(source,'upstream',None)
+            sync.reset_mock()
+            for invalid in ({}, {'repository':''}, {'repository':'/not/registered'}, {**request,'remote':'other'}, {**request,'ref':'main'}):
+                self.assertEqual(self.post('/api/projects/git-sync',invalid)[0],400)
+            snapshot['values']['git']['workflow']='local'
+            status, _, body = self.post('/api/projects/git-sync',request)
+            self.assertEqual(status,200)
+            self.assertEqual(json.loads(body)['state'],'disabled')
+            sync.assert_not_called()
+
     def test_carto_settings_require_token_and_registered_project(self):
         source = str(Path(self.temp.name).resolve())
         with patch('cheapos.workspace.Workspace.project_root', return_value=Path(source)), patch.object(self.engine, 'projects', return_value=[{'path':source}]), patch.object(self.engine.carto, 'context', return_value={'status':'indexing'}):

@@ -135,6 +135,36 @@ class GitWorkflowTests(unittest.TestCase):
         self.sync.assert_called_with('/project','origin','refs/heads/production',
             expected_destination=('org/repo','https://github.com/org/repo.git'), merged_commit='merge')
 
+    def test_busy_repository_persists_sync_retry_and_resumes_without_operator_repair(self):
+        self.approve(flow.preview(self.engine, 'task'))
+        self.saved.update(status='approved', patch='saved edits')
+        self.engine.admission.integration = Mock(side_effect=ValueError('repository operation'))
+        with patch.object(github, 'checks', return_value={'state':'merged', 'merged_commit':'merge'}):
+            result = flow.status(self.engine, 'task')
+            self.assertEqual(self.saved['status'], 'completed')
+            self.assertEqual(self.saved['pull_request']['local_sync'], result['local_sync'])
+            self.assertTrue(result['local_sync']['retryable'])
+            self.sync.assert_not_called()
+            self.engine.admission.integration = lambda *_: nullcontext()
+            result = flow.status(self.engine, 'task')
+        self.assertEqual(result['local_sync']['state'], 'updated')
+        self.assertEqual(self.saved['pull_request']['local_sync'], result['local_sync'])
+        self.assertEqual(self.saved['patch'], 'saved edits')
+
+    def test_status_does_not_erase_a_receipt_saved_during_github_read(self):
+        self.approve(flow.preview(self.engine, 'task'))
+        receipt = {'state':'current', 'retryable':False, 'message':'Already current.'}
+        def checks(*_):
+            self.saved['pull_request']['local_sync'] = receipt.copy()
+            self.saved['pull_request']['merged_head'] = 'a'*40
+            return {'state':'merged', 'merged_commit':'merge'}
+        self.engine.runtimes = {'task':SimpleNamespace(thread=SimpleNamespace(is_alive=lambda:True))}
+        with patch.object(github, 'checks', side_effect=checks):
+            result = flow.status(self.engine, 'task')
+        self.assertEqual(self.saved['pull_request']['local_sync'], receipt)
+        self.assertEqual(result['merged_head'], 'a'*40)
+        self.sync.assert_not_called()
+
     def test_open_changed_and_busy_tasks_do_not_sync(self):
         self.approve(flow.preview(self.engine, 'task'))
         for state in ('open','changed','failed'):
