@@ -3,11 +3,31 @@ import json
 import os
 import sys
 import threading
+import unittest
 
 from cheapos.engine import Runtime
 from cheapos.storage import Store
 from cheapos.workspace import Workspace
 from test_engine import LocalCase, wait_for
+
+
+class CheckOutputCompletenessTests(unittest.TestCase):
+    def test_preview_clipping_requires_controller_capture_receipt(self):
+        from cheapos.check_output import complete_output
+        preview = {'truncated': True, 'run_id': 'a' * 32,
+                   'raw_output': {'bytes': 34000, 'truncated': False}}
+        self.assertTrue(complete_output(preview))
+        self.assertTrue(complete_output({'truncated': False}))
+        for changes in ({'raw_output': None}, {'raw_output': {}},
+                        {'raw_output': {'bytes': 34000, 'truncated': True}},
+                        {'raw_output': {'bytes': 34000}},
+                        {'raw_output': {'bytes': 0, 'truncated': False}},
+                        {'raw_output': {'bytes': True, 'truncated': False}},
+                        {'run_id': None}, {'run_id': '../outside'}):
+            with self.subTest(changes=changes):
+                self.assertFalse(complete_output({**preview, **changes}))
+        self.assertFalse(complete_output({'truncated': False,
+                                         'raw_output': {'bytes': 34000, 'truncated': True}}))
 
 
 class CheckOutputTests(LocalCase):

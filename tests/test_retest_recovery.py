@@ -56,6 +56,11 @@ class RetestRecoveryTests(unittest.TestCase):
         record=self.record();task={'checks':[record]};argv=record['command']
         with patch.object(verification,'evidence_identity',return_value='inputs') as identity:
             self.assertIs(verification.reusable_check(task,argv),record)
+            preview = {**record, 'truncated': True, 'run_id': 'a' * 32,
+                       'raw_output': {'bytes': 34000, 'truncated': False}}
+            self.assertIs(verification.reusable_check({'checks': [preview]}, argv), preview)
+            self.assertIsNone(verification.reusable_check({'checks': [{**preview,
+                'raw_output': {'bytes': 34000, 'truncated': True}}]}, argv))
             for changes in ({'passed':False},{'exit_code':1},{'reason':'cancelled'},
                             {'truncated':True},{'outcome':'inputs_changed'},
                             {'input_identity':'old'},{'verification_identity':None}):

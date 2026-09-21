@@ -197,6 +197,7 @@ def before_write(task, path):
     its assertion describes the claim; independent review still judges that.
     """
     from .verification import evidence_identity
+    from .check_output import complete_output
     run = task.get('branch_run', {})
     item = next((i for i in run.get('items', []) if i['id'] == run.get('current_item_id')), {})
     repair = item.get('review_repair', {})
@@ -209,7 +210,7 @@ def before_write(task, path):
         return
     for record in task.get('checks', [])[repair.get('check_start', len(task.get('checks', []))) :]:
         if (record.get('passed') is False and record.get('outcome') == 'test_failure'
-                and not record.get('reason') and not record.get('truncated')
+                and not record.get('reason') and complete_output(record)
                 and isinstance(record.get('exit_code'), int) and record['exit_code'] != 0
                 and record.get('input_identity')
                 and record['input_identity'] == evidence_identity({**task, 'check_command': record['command'], 'check_directory': record.get('directory', '.')})):

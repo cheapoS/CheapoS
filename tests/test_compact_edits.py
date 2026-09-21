@@ -120,7 +120,7 @@ class CompactRecoveryTests(LocalCase):
         self.engine.store.save(task)
         requests = self.responses([
             call('read_file', {'path': 'math_utils.py'}),
-            malformed('replace_text', '{"path":"math_utils.py","old_text":"MALFORMED_SENTINEL'),
+            call('replace_content', {'target': 'MALFORMED_SENTINEL', 'replacement': 'not executed'}),
             self.edit(1, 'def clamp(value, lower, upper):  # bounds'),
             ProviderError('Stream stopped', code='stream_error'),
             self.edit(2, '    return max(lower, min(value, upper))\n'),
@@ -129,6 +129,12 @@ class CompactRecoveryTests(LocalCase):
         ])
         self.engine.start(task['id']); result = self.finish(task)
         self.assertEqual(result['status'], 'approved', result['error'])
+        errors = [e['detail'] for e in result['events'] if e['kind'] == 'tool_error']
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]['tool'], 'replace_content')
+        self.assertIn('missing required fields: path', errors[0]['error'])
+        self.assertFalse(errors[0]['executed'])
+        self.assertFalse(errors[0]['changed'])
         self.assertFalse(result.get('compact_edits'))
         self.assertEqual([r['config']['model'] for r in requests], ['a', 'a', 'a', 'a', 'b', 'b', 'c'])
         for request in requests[2:-1]:

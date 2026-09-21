@@ -1,5 +1,6 @@
 """Small deterministic worker policy; no model-name or reasoning heuristics."""
 import hashlib
+from .edit_history import MUTATIONS
 
 
 # These are the welcome screen's operator-selected requests, not a classifier
@@ -54,9 +55,9 @@ def attempted_edit(task):
     for event in task.get('events', []):
         if event.get('kind') in {'tool', 'tool_error'}:
             detail = event.get('detail') if isinstance(event.get('detail'), dict) else {}
-            if detail.get('tool') in {'write_file', 'replace_text', 'replace_lines', 'append_text', 'apply_merge_version', 'delete_file', 'undo_edit'}:
+            if detail.get('tool') in MUTATIONS:
                 return True
-            if event.get('title') in {'write file', 'replace text', 'replace lines', 'append text', 'apply merge version', 'delete file', 'undo edit'}:
+            if str(event.get('title', '')).replace(' ', '_') in MUTATIONS:
                 return True
     return False
 
