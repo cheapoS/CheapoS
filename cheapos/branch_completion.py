@@ -146,6 +146,19 @@ def finalize(engine, runtime):
     return True
 
 
+def saved_preview(task):
+    """A reclaimed copy still has its complete, read-only review packet."""
+    run = task['branch_run']; manifest = run['readiness']['manifest']
+    return {'proposal_id': None, 'preview_id': None,
+            'manifest': {k:v for k,v in manifest.items() if k not in {'diff','chunks','requirements'}},
+            'diff': manifest['diff'][:20000], 'next_cursor': 20000 if len(manifest['diff']) > 20000 else None,
+            'merge_available': False, 'blocker': None, 'files': manifest['files'], 'commits': manifest['commits'],
+            'diff_length': len(manifest['diff']), **{k: manifest[k] for k in ('target_ref','base_sha','feature_tip','target_tip')},
+            'destination': None, 'integration_readiness': {'code': 'merged', 'actions': [],
+                'message': 'Merged. Task copy reclaimed; saved review and checks remain available.'},
+            'update_available': False, 'resolve_available': False, 'update_token': None}
+
+
 def preview(controller, task_id, values=None):
     if values: raise ValueError('Final preview accepts no fields')
     with controller.engine.lock:
@@ -154,6 +167,9 @@ def preview(controller, task_id, values=None):
         observe_completions(controller.engine.gateway.pool,task)
         readiness = run.get('readiness')
         if not readiness: raise ValueError('Run final verification before opening the merge preview')
+        from .storage_maintenance import reclaimed
+        if reclaimed(task):
+            return saved_preview(task)
         blocker = None
         operation = None
         proposal = {'proposal_id':None}
@@ -195,7 +211,8 @@ def diff(controller, task_id, values=None):
         task = _task(controller, task_id); run = task['branch_run']
         manifest = run.get('readiness', {}).get('manifest') or final.build_manifest(run)
         blocker = None
-        if run.get('readiness'):
+        from .storage_maintenance import reclaimed
+        if run.get('readiness') and not reclaimed(task):
             try: final.validate(run['readiness'], task)
             except (ValueError,OSError) as error: blocker = str(error)
         if token is not None:

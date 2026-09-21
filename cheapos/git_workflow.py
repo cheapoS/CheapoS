@@ -283,6 +283,8 @@ def status(engine, task_id):
             local = {'state': 'deferred', 'retryable': True,
                 'message': 'The PR is merged. Local sync will retry after the current repository operation finishes.'}
             _save_sync(engine, task_id, operation, result, local)
+    if result['ci']['state'] == 'merged' and getattr(engine, 'storage_maintenance', None):
+        engine.storage_maintenance.wake.set()
     return result
 
 

@@ -527,7 +527,7 @@ function mount(options){
   d.insertAdjacentHTML('beforeend',finalReviewMarkup(task,preview));
   mountFinalDiff(d,task,preview,api);
   if(workflow.enabled(task)){d.querySelector('[data-merge]').hidden=true;workflow.mount(d,task,api,()=>{slot.dataset.signature='';void refresh();});}
-  if(typeof CheapOSPreview!=='undefined')CheapOSPreview.mount(d.querySelector('.review-overview'),task,api,preview.feature_tip);
+  if(!task.workspace_cleanup&&typeof CheapOSPreview!=='undefined')CheapOSPreview.mount(d.querySelector('.review-overview'),task,api,preview.feature_tip);
   const merge=d.querySelector('[data-merge]');const readOnly=terminalRun(task)||Boolean(task.archived_at||task.trashed_at);if(readOnly)merge.disabled=true;
   for(const selector of ['[data-revise]','[data-recheck]','[data-leave]'])d.querySelector(selector).hidden=readOnly;
   merge.onclick=()=>guarded(merge,async()=>{

@@ -96,3 +96,6 @@ def complete(controller, task_id):
     finally:
         with engine.lock:
             engine.admission.operations.pop(task_id, None)
+
+        if maintenance := getattr(engine, 'storage_maintenance', None):
+            maintenance.wake.set()

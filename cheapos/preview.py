@@ -68,8 +68,23 @@ class Previews:
             return config(saved.get(source, suggestion))
 
     def action(self, task_id, action, values):
-        task = self.engine.store.get(task_id)
+        if action != 'preview-start':
+            return self._action(task_id, action, values)
+        with self.engine.lock:
+            self.engine.admission.require_mutable(task_id)
+            self.engine.admission.operations[task_id] = threading.get_ident()
+        try:
+            return self._action(task_id, action, values)
+        finally:
+            with self.engine.lock:
+                self.engine.admission.operations.pop(task_id, None)
+
+    def _action(self, task_id, action, values):
         with self.lock:
+            task = self.engine.store.get(task_id)
+            if action == 'preview-start':
+                if task.get('workspace_cleanup', {}).get('state') in {'reclaiming', 'reclaimed'}:
+                    raise ValueError('This merged task copy has been reclaimed. Preview the merged project or continue in a new task.')
             run = self.runs.get(task_id)
             if action == 'preview-start':
                 if run and run['thread'].is_alive():

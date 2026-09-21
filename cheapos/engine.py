@@ -497,6 +497,8 @@ class Engine:
         self.readiness = ReadinessManager(self)
         from .branch_controller import BranchController
         self.branch = BranchController(self)
+        from .storage_maintenance import Maintenance
+        self.storage_maintenance = Maintenance(self)
 
     def restore_route_waits(self):
         """Only resume saved automatic route waits, never arbitrary interrupted work."""
@@ -812,6 +814,8 @@ class Engine:
             task["request_worker_turns"] = 0
         if len(self.connections.managers) > 1 or any(p and p.get("connection_id") for p in task["providers"].values()):
             task["gateway_connections"] = self.connections.capture()
+        from .storage_maintenance import register
+        register(self.store, task)
         if settings_snapshot:
             self.settings_apply_snapshot(task, settings_snapshot)
             task['limits'] = limits
@@ -899,11 +903,7 @@ class Engine:
             self.store.set_trashed(task_id, False)
             return self.store.present(task)
     def empty_trash(self):
-        with self.lock:
-            result = self.store.empty_trash()
-            for project in self.projects(include_hidden=True):
-                self.store._cleanup_worktrees(project["path"])
-            return result
+        return self.storage_maintenance.sweep(empty_trash=True)
 
     def update_branch_run(self, task_id, operation):
         """Controller-only state mutation; never take a replacement record from HTTP."""
@@ -1524,7 +1524,7 @@ class Engine:
             return task
 
     def shutdown(self):
-        for name, comp in [('club', getattr(self.store, 'club', None)), ('previews', self.previews), ('readiness', self.readiness), ('startup', self.startup)]:
+        for name, comp in [('storage', getattr(self, 'storage_maintenance', None)), ('club', getattr(self.store, 'club', None)), ('previews', self.previews), ('readiness', self.readiness), ('startup', self.startup)]:
             if comp and hasattr(comp, 'shutdown'):
                 try: comp.shutdown()
                 except Exception as e: print(f"cheapoS shutdown error in {name}: {e}", file=sys.stderr)
@@ -1632,6 +1632,8 @@ class Engine:
         return messages
 
     def refresh_changes(self, task):
+        if task.get("workspace_cleanup", {}).get("state") == "reclaimed":
+            return  # Completed history uses its retained patch, never a missing copy.
         workspace = Workspace(task["workspace"])
         task["changes"] = workspace.changes()
         task["patch"] = workspace.patch(validate="branch_run" in task)

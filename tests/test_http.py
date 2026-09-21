@@ -126,6 +126,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(json.loads(body)['current']['revision'], saved['revision'])
         self.assertEqual(self.post('/api/projects/settings', {**request, 'project': '/not/registered'})[0], 400)
         self.assertEqual(self.request('GET', '/settings.js')[0], 200)
+        self.assertEqual(self.request('GET', '/storage.js')[0], 200)
         self.assertEqual(self.request('GET', '/settings.css')[0], 200)
 
     def test_project_sync_uses_registered_project_settings_and_requires_token(self):
@@ -344,6 +345,14 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.post(path+'/restore',{})[0],200)
         self.assertEqual(json.loads(self.request('GET',path)[2])['status'],'ready')
         self.assertEqual(self.post('/api/tasks/missing/trash',{})[0],400)
+        self.assertEqual(self.request('GET','/api/storage')[0],200)
+        values={'reclaim_merged':False,'trash_days':None}
+        self.assertEqual(self.request('POST','/api/storage/settings',values,{'Content-Type':'application/json'})[0],403)
+        self.assertEqual(self.post('/api/storage/settings',values)[0],200)
+        self.assertEqual(self.post('/api/storage/settings',{'trash_days':0})[0],400)
+        self.assertEqual(self.request('POST','/api/storage/cleanup',{}, {'Content-Type':'application/json'})[0],403)
+        self.assertEqual(self.post('/api/storage/cleanup',{})[0],200)
+        self.assertEqual(json.loads(self.request('GET','/api/storage')[2])['settings'],values)
 
     def test_project_hide_and_reopen_are_token_protected_and_nondestructive(self):
         task=self.engine.create_demo();task['demo']=False;self.engine.store.save(task)

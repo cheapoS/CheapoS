@@ -160,7 +160,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js", "integration.js", "settings.js", "settings.css", "git_workflow.js"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js", "integration.js", "settings.js", "settings.css", "storage.js", "git_workflow.js"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():
@@ -187,6 +187,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 period=parse_qs(urlsplit(self.path).query).get("days", ["all"])[0]
                 summary = engine.store.lifetime.summary(days=int(period) if period != "all" else "all")
                 self.reply(engine.store.club.get_status(summary, include_remote=True))
+            elif path == "/api/storage":
+                self.reply(engine.storage_maintenance.view())
             elif path in {"/api/settings/defaults", "/api/projects/settings"}:
                 project = engine.settings_project(parse_qs(urlsplit(self.path).query).get('project', [None])[0]) if path == '/api/projects/settings' else None
                 self.reply(engine.settings_store.view(project))
@@ -547,11 +549,15 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.branch.prepare(values)
             elif path == "/api/tasks":
                 result = public_task(engine.create(values))
+            elif path == "/api/storage/settings":
+                result = engine.storage_maintenance.configure(values)
+            elif path == "/api/storage/cleanup":
+                if values: raise ValueError('Storage cleanup accepts no fields')
+                result = engine.storage_maintenance.sweep()
             elif path == "/api/trash/empty":
                 if values:
                     raise ValueError("This action does not accept fields")
-                engine.empty_trash()
-                result = {"status": "ok"}
+                result = engine.empty_trash()
             elif path == "/api/demo":
                 result = public_task(engine.create_demo())
             elif path == "/api/sample":
