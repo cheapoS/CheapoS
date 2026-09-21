@@ -18,10 +18,14 @@ class ClubTests(unittest.TestCase):
         self.rows=[];self.ledger=Mock();self.ledger.raw_requests.side_effect=lambda:self.rows
         self.club.lifetime=self.ledger
         self.sent=[]
+        self.attempts_supported=False
         def accept(envelope):
-            self.sent.append(envelope)
             message=json.loads(envelope['payload'])
-            return {'status':'accepted','sequence':message['sequence'],'hash':hashlib.sha256(envelope['payload'].encode()).hexdigest()}
+            if message['action']=='status':
+                return {'status':'connected','capabilities':['request_attempts_v1'] if self.attempts_supported else []}
+            self.sent.append(envelope)
+            return {'status':'accepted','sequence':message['sequence'],'hash':hashlib.sha256(envelope['payload'].encode()).hexdigest(),
+                    'request_attempts_accepted':len(message.get('request_attempts', []))}
         self.accept=accept;self.club._request=accept
 
     def row(self,id='new',tokens=12,role='worker'):
@@ -447,3 +451,131 @@ class ClubTests(unittest.TestCase):
         self.assertEqual(self.club.state['sent'], {})
         self.assertIn('previously-shared', self.club.state['route_backfill_processed'])
         self.assertEqual(json.loads(self.sent[-1]['payload'])['action'], 'consent')
+
+    def attempt_row(self, rid='failed', status='failed'):
+        return {**self.row(rid), 'status':status, 'reconciled':False, 'input_tokens':None, 'output_tokens':None,
+                'requested_model':'test/model', 'request_gateway':'omniroute', 'request_provider':'test',
+                'seconds':0.5, 'failure_category':'rate_limit_quota', 'prompt':'private text', 'error':'private error'}
+
+    def test_attempts_without_tokens_are_signed_separately_and_later_usage_keeps_identity(self):
+        self.attempts_supported=True
+        self.club.set_sync(True, True)
+        row=self.attempt_row();self.rows.append(row)
+        self.club.sync_now(self.ledger)
+        payload=json.loads(self.sent[-1]['payload'])
+        self.assertEqual(payload['events'], [])
+        attempt=payload['request_attempts'][0]
+        self.assertEqual(attempt['request_health']['failure_category'], 'rate_limit_quota')
+        self.assertEqual(attempt['request_health']['duration_ms'], 500)
+        self.assertNotIn('private', self.sent[-1]['payload'])
+        self.assertFalse({'input_tokens','output_tokens','accounted_tokens','task_id'} & set(attempt))
+        self.assertEqual(self.club.state['sent'], {})
+        self.assertIn('failed', self.club.state['attempts_sent'])
+        before=len(self.sent);self.club.sync_now(self.ledger);self.assertEqual(len(self.sent), before)
+        row.update(reconciled=True,input_tokens=9,output_tokens=2)
+        self.club.sync_now(self.ledger)
+        later=json.loads(self.sent[-1]['payload'])
+        self.assertEqual(later['events'][0]['event_id'], attempt['event_id'])
+        self.assertNotIn('request_attempts', later)
+        self.assertEqual(later['events'][0]['input_tokens'], 9)
+
+    def test_attempts_honor_consent_terminal_status_and_older_servers(self):
+        self.rows.append(self.attempt_row('private-before-consent'))
+        self.club.set_sync(True)
+        self.rows.extend([self.attempt_row(), self.attempt_row('pending','pending'), self.attempt_row('cancelled','cancelled')])
+        before=len(self.sent);self.club.sync_now(self.ledger);self.assertEqual(len(self.sent), before)
+        self.attempts_supported=True
+        self.club.sync_now(self.ledger)
+        attempts=json.loads(self.sent[-1]['payload'])['request_attempts']
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual({a['request_health']['outcome'] for a in attempts}, {'failed','cancelled'})
+        self.assertTrue(all('model_name' not in a and 'provider' not in a['request_health'] for a in attempts))
+        self.assertNotIn('private-before-consent', self.club.state['attempts_sent'])
+        self.club.set_sync(False)
+        self.rows.append(self.attempt_row('private-while-paused'))
+        self.club.set_sync(True)
+        self.assertIn('private-while-paused', self.club.state['baseline'])
+        self.assertNotIn('failed', self.club.state['baseline'])
+
+    def test_attempt_outbox_replays_exactly_and_requires_explicit_acknowledgment(self):
+        self.attempts_supported=True;self.club.set_sync(True)
+        self.rows.append(self.attempt_row())
+        def missing_ack(envelope):
+            response=self.accept(envelope)
+            response.pop('request_attempts_accepted', None)
+            return response
+        self.club._request=missing_ack
+        with self.assertRaisesRegex(ValueError, 'did not acknowledge'): self.club.sync_now(self.ledger)
+        saved=self.club.state['pending']['envelope']
+        self.assertFalse(self.club.state.get('attempts_sent'))
+        self.club._request=self.accept;self.club.sync_now(self.ledger)
+        self.assertEqual(self.sent[-1], saved)
+        self.assertIn('failed', self.club.state['attempts_sent'])
+
+    def test_attempt_corrections_privacy_and_bounded_batches(self):
+        self.attempts_supported=True;self.club.set_sync(True, True)
+        self.rows.extend(self.attempt_row(str(i)) for i in range(41))
+        self.club.sync_now(self.ledger)
+        first=json.loads(self.sent[-1]['payload'])['request_attempts']
+        self.assertEqual(len(first), 40)
+        self.club.sync_now(self.ledger)
+        self.assertEqual(len(json.loads(self.sent[-1]['payload'])['request_attempts']), 1)
+        self.rows[0].update(status='responded',seconds=1)
+        self.club.sync_now(self.ledger)
+        correction=json.loads(self.sent[-1]['payload'])['request_attempts'][0]
+        self.assertEqual(correction['event_id'], first[0]['event_id'])
+        self.assertEqual(correction['request_health']['outcome'], 'responded')
+        self.assertNotIn('failure_category', correction['request_health'])
+        self.club.set_sync(True, False);self.club.sync_now(self.ledger)
+        self.assertTrue(all('model_name' not in a and 'provider' not in a['request_health']
+                            for a in json.loads(self.sent[-1]['payload'])['request_attempts']))
+
+    def test_lifetime_journal_only_exports_dispatched_non_synthetic_attempts(self):
+        from cheapos.lifetime_usage import LifetimeUsage
+        journal=LifetimeUsage(self.temp.name)
+        self.attempts_supported=True;self.club.set_sync(True)
+        record=dict(id='real',dispatched=True,requested_at='2026-09-20T12:00:00Z',status='failed',
+                    failure_category='rate_limit_quota',reservation={'tokens':1000},usage_reconciled=False)
+        journal.ingest(dict(id='fixture',request_metrics=[record,{**record,'id':'not-dispatched','dispatched':False},
+                                                              {**record,'id':'synthetic','synthetic':True}]))
+        self.club.sync_now(journal)
+        payload=json.loads(self.sent[-1]['payload'])
+        self.assertEqual(payload['events'], [])
+        self.assertEqual(len(payload['request_attempts']), 1)
+        self.assertNotIn('duration_ms', payload['request_attempts'][0]['request_health'])
+
+    def test_usage_and_attempts_share_envelope_capacity_without_starvation(self):
+        self.attempts_supported=True;self.club.set_sync(True, True)
+        self.rows.extend({**self.attempt_row(str(i)), 'reconciled':True, 'input_tokens':1000000000,
+                          'output_tokens':1000000000, 'requested_model':'m'*160, 'request_provider':'p'*64,
+                          'request_gateway':'g'*64, 'failure_category':'f'*64} for i in range(41))
+        self.club.sync_now(self.ledger)
+        envelope=self.sent[-1];payload=json.loads(envelope['payload'])
+        self.assertEqual(len(payload['events']),20)
+        self.assertEqual(len(payload['request_attempts']),20)
+        self.assertLess(len(envelope['payload']),50000)
+        self.assertLess(len(json.dumps(envelope)),60000)
+        self.assertEqual(len(self.club.state['sent']),20)
+        self.assertEqual(len(self.club.state['attempts_sent']),20)
+        self.club.sync_now(self.ledger);self.club.sync_now(self.ledger)
+        self.assertEqual(len(self.club.state['sent']),41)
+        self.assertEqual(len(self.club.state['attempts_sent']),41)
+
+    def test_pause_reconciles_attempt_ack_and_later_usage_remains_eligible(self):
+        self.attempts_supported=True;self.club.set_sync(True)
+        self.rows.append(self.attempt_row())
+        def lost_ack(envelope):
+            response=self.accept(envelope)
+            if json.loads(envelope['payload'])['action']=='sync': raise ValueError('offline')
+            return response
+        self.club._request=lost_ack
+        with self.assertRaises(ValueError): self.club.sync_now(self.ledger)
+        envelope=self.club.state['pending']['envelope'];message=json.loads(envelope['payload'])
+        self.club._call=Mock(return_value={'sequence':message['sequence'],'previous_hash':hashlib.sha256(envelope['payload'].encode()).hexdigest()})
+        self.club._request=self.accept;self.club.set_sync(False)
+        self.assertIn('failed',self.club.state['attempts_sent'])
+        self.club.set_sync(True)
+        self.assertNotIn('failed',self.club.state['baseline'])
+        self.rows[0].update(reconciled=True,input_tokens=10,output_tokens=1)
+        self.club.sync_now(self.ledger)
+        self.assertEqual(json.loads(self.sent[-1]['payload'])['events'][0]['input_tokens'],10)
