@@ -1,3 +1,4 @@
+from tests.test_review_assessment import fixture_review_call
 from test_engine import legacy_limits
 from cheapos.routing import PROBE_MARKER
 """Placement, tool isolation, free selection, and bounded progress without inference."""
@@ -146,7 +147,7 @@ class RoutingTests(LocalCase):
                     if probe_fail and self.config['model'] in probe_fail:
                         return {'content':'No tools.'},{'prompt_tokens':3,'completion_tokens':1,'cost':0}
                     return call('routing_ready', {'marker': PROBE_MARKER}),{'prompt_tokens':3,'completion_tokens':1,'cost':0}
-                return next(queue),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
+                return fixture_review_call(next(queue), messages),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
         self.engine.provider_factory=lambda role,cfg:Provider(role,cfg)
         return requests
 

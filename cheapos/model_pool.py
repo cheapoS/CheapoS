@@ -235,7 +235,7 @@ class FreeModelPool:
         health = self.observation(endpoint, model["id"], connection_revision)
         evidence=health['role_evidence'].get(role,{})
         enough=evidence.get('samples',0)>=3
-        successes=evidence.get('checkpoints',0) if role=='worker' else evidence.get('accepted',0) if role=='planner' else evidence.get('reviews_completed',0)
+        successes=evidence.get('checkpoints',0) if role=='worker' else evidence.get('accepted',0) if role=='planner' else evidence.get('independently_validated',0)
         invalid=evidence.get('invalid_output',0)
         tier=1 if enough and invalid>=3 and invalid>successes else -1 if enough and successes>=3 and invalid==0 else 0
         # Observed compatibility first. Metadata only breaks ties; it is not a quality rating.
@@ -265,7 +265,7 @@ class FreeModelPool:
         context_cap = 131072 if role in {"reviewer", "planner"} else 65536
         reasoning_bonus = -(model.get("reasoning") is True) if role in {"reviewer", "planner"} and not is_auto else 0
         passed_probe = 2 if self.fresh_probe(endpoint, model["id"], connection_revision, route_health.probe_identity(endpoint,model,connection_revision)) else 1 if (health.get("tool_check_passed") and not health.get("cooling_down") and health.get("failures", 0) == 0) else 0
-        return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3), min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0,
+        return (model["id"] != preferred if preferred else False, -min(evidence.get("independently_validated",0),3), -min(evidence.get("completed",0),3) if role != 'reviewer' else 0, min(evidence.get("independently_disproved",0),3), tier, -min(evidence.get('accepted',0),3) if enough else 0,
                 -min(health.get(role + "_responses", 0), 1) if connection_revision is None else 0,
                 -passed_probe,
                 role_tier,

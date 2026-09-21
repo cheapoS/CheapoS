@@ -217,10 +217,16 @@ class VisionToolTests(LocalCase):
                 captured_calls.append({"messages": copy.deepcopy(messages), "tools": tools})
                 return {"role": "assistant", "content": "Dialog analysis: OK button is green"}, {"prompt_tokens": 120, "completion_tokens": 40, "cost": 0.01}
 
-        self.engine.provider_factory = lambda role, config: CapturingVisionProvider()
+        selected_roles = []
+        def provider(role, config):
+            selected_roles.append(role)
+            return CapturingVisionProvider()
+        self.engine.provider_factory = provider
 
         task = self.fixture(paid=True)
         task["attachments"] = [record]
+        task["status"] = "reviewing"
+        task["active_role"] = "worker"
         task["branch_run"] = {
             "id": "branch-run-1",
             "authorization_ref": "auth-unattended-trial-123",
@@ -237,6 +243,9 @@ class VisionToolTests(LocalCase):
 
         # Verify the actual provider-bound messages preserved the multimodal payload
         self.assertEqual(len(captured_calls), 1)
+        self.assertEqual(selected_roles, ["reviewer"])
+        self.assertEqual(res["role"], "reviewer")
+        self.assertEqual(len(res["image_digest"]), 64)
         sent_messages = captured_calls[0]["messages"]
         self.assertEqual(len(sent_messages), 1)
         user_msg = sent_messages[0]

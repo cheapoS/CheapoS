@@ -1,3 +1,4 @@
+from tests.test_review_assessment import fixture_review_call
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -25,7 +26,7 @@ class SampleTests(LocalCase):
                     if failure=='review':raise ProviderError('Fixture reviewer unavailable')
                     response=call('review_decision',{'decision':'APPROVE','feedback':'Actual four tests pass and bounds are correct.'})
                 else: response=next(responses,{'content':'Unable to finish the sample.'})
-                return response,{'prompt_tokens':10,'completion_tokens':5,'cost':0}
+                return fixture_review_call(response, messages),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
         self.engine.provider_factory=lambda role,config:Provider(role,config)
         return task,requests
 

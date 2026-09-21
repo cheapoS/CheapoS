@@ -1,4 +1,5 @@
 """Pinned deterministic controller fixtures, not a live-model quality benchmark."""
+import copy
 import hashlib
 import json
 import shlex
@@ -64,7 +65,21 @@ def run(output_filter=False, retrieve=False, verbose=False, only=None):
                             if run_id:
                                 retrieved.add(run_id)
                                 return call('read_check_output',run_id=run_id),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
-                    return next(queue),{'prompt_tokens':10,'completion_tokens':5,'cost':0,'prompt_tokens_details':{'cached_tokens':2},'completion_tokens_details':{'reasoning_tokens':1}}
+                    reply = copy.deepcopy(next(queue))
+                    # Pinned scripted fixture, not a live review-quality benchmark.
+                    for tool_call in reply.get('tool_calls', []):
+                        if tool_call['function']['name'] != 'review_decision': continue
+                        args = json.loads(tool_call['function']['arguments'])
+                        if args.get('decision') != 'APPROVE': continue
+                        packet = json.loads(messages[1]['content'])
+                        if not packet.get('review_evidence'): continue
+                        claim = {'reason': args['feedback'], 'citations': [{'source': 'diff', 'quote': packet['diff']}]}
+                        args['review_assessment'] = {'criteria': {'requested_change': copy.deepcopy(claim)},
+                            'regressions': copy.deepcopy(claim),
+                            'verification': {'reason': 'The fixture exercises the expected behavior with its actual assertions.',
+                                'citations': [{'source': 'checks', 'quote': '\"passed\": true'}]}, 'limitations': []}
+                        tool_call['function']['arguments'] = json.dumps(args)
+                    return reply,{'prompt_tokens':10,'completion_tokens':5,'cost':0,'prompt_tokens_details':{'cached_tokens':2},'completion_tokens_details':{'reasoning_tokens':1}}
             engine.provider_factory=lambda *args:Provider()
             try:
                 task=engine.create({'repository':str(source),'prompt':prompt,'conversational':True,'check_command':shlex.join([sys.executable,'-m','unittest','discover','-v']),'auto_approve_checks':True})

@@ -1,3 +1,4 @@
+from tests.test_review_assessment import fixture_review_call
 from cheapos.routing import PROBE_MARKER
 import copy,json,threading,unittest
 from pathlib import Path
@@ -101,7 +102,10 @@ class RecoveryExecutionTests(unittest.TestCase):
       result=call('write_file',{'path':'test_work.py','content':'import unittest\nimport work\nclass Check(unittest.TestCase):\n def test_value(self): self.assertEqual(work.value,1)\n'})
      else:result=call('checkpoint',{'summary':'Complete item with real regression','uncertainties':''})
     return result,{'prompt_tokens':10,'completion_tokens':10,'cost':0}
-   return SimpleNamespace(complete=complete)
+   def respond(messages, tools, maximum):
+    response, usage = complete(messages, tools, maximum)
+    return fixture_review_call(response, messages), usage
+   return SimpleNamespace(complete=respond)
   self.engine.provider_factory=factory
   self.values['plan']['items'][0]['instructions']='Implement work.py and create test_work.py to verify the requested value.'
   self.values['plan']['measurement']=True

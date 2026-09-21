@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from cheapos import branch_final as final, branch_evidence as evidence
+from cheapos import branch_final as final, branch_evidence as evidence, review_assessment
+from tests.test_review_assessment import assessment
 from cheapos.verification import evidence_identity
 from cheapos.workspace import git
 import test_branch_commits as fixtures
@@ -51,6 +52,14 @@ class BranchFinalTests(unittest.TestCase):
         packet = json.loads(messages[1]['content']); self.requests.append(packet)
         result = {'decision':'REQUEST_CHANGES' if self.request_changes else 'APPROVE', 'manifest_id':packet['manifest_id'],
                   'chunk_ids':[] if self.omit_coverage else packet['chunk_ids'], 'criteria_ids':packet['criteria_ids'], 'feedback':'Read all supplied contents and checked the evidence.'}
+        if runtime.task.get('review_contract_version') == 1 and not self.request_changes:
+            state = review_assessment.prepare('fixture', packet, packet['criteria_ids'], partial=not packet['criteria_ids'])
+            for value in packet['review_evidence']['sources']:
+                if value.get('content'):
+                    review_assessment.add(state, value['id'], value['kind'], value['content'])
+            source, content = next((s, v['content']) for s, v in state['sources'].items() if v['kind'] == 'code') if packet['criteria_ids'] else ('packet', state['sources']['packet']['content'])
+            quote = '+two' if '+two' in content else content
+            result['review_assessment'] = assessment(state['criteria'], source=source, quote=quote)
         if self.request_changes:
             result['defects'] = [{'criterion': 'one:1', 'location': 'code:1', 'kind': 'static',
                                   'expected': 'Required content', 'observed': 'Missing edge handling',
@@ -61,6 +70,7 @@ class BranchFinalTests(unittest.TestCase):
         return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
 
     def test_cumulative_diff_clean_private_copy_and_actual_final_check(self):
+        self.task['review_contract_version'] = 1
         self.task['settings_snapshot'] = {'values': {'git': {'workflow': 'pull_request'}}}
         self.publication = {'title':'Complete the content update', 'description':'Update the final content consistently.'}
         specs=self.run['plan']['final_checks']
@@ -99,6 +109,12 @@ class BranchFinalTests(unittest.TestCase):
         self.assertTrue(final.validate(result['readiness'], self.task))
         self.assertEqual(len(self.requests),count)
         self.assertIsNone(result['readiness']['integration_blocker'])
+        # Even a recomputed outer receipt cannot omit the controller's review proof.
+        tampered = copy.deepcopy(result['readiness'])
+        tampered['review'].pop('_review_evidence')
+        tampered.pop('id'); tampered['id'] = final._hash(tampered)
+        with self.assertRaisesRegex(ValueError, 'Review evidence'):
+            final.validate(tampered, self.task)
 
     def test_chunk_context_contains_bound_checks_and_still_allows_rejection(self):
         result = final.final_check_review(self.engine, self.runtime)

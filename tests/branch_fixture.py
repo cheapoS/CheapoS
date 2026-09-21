@@ -1,3 +1,4 @@
+from tests.test_review_assessment import fixture_review_call
 """Disposable, deterministic CSV → Markdown CLI job for UI/controller proof.
 
 This provider is synthetic. It executes actual tools/checks and never calls a
@@ -149,7 +150,7 @@ class ScriptedProvider:
             else:
                 result=call('write_file',{'path':action[0],'content':action[1]}) if action else call('checkpoint',{'summary':'Implemented the item and its behavioral coverage','uncertainties':''})
         self.calls.append(names)
-        return result,{'prompt_tokens':25,'completion_tokens':15,'cost':0}
+        return fixture_review_call(result, messages),{'prompt_tokens':25,'completion_tokens':15,'cost':0}
 
 class Fixture:
     def __init__(self,delay=0):

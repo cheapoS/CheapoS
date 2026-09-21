@@ -1,3 +1,4 @@
+from tests.test_review_assessment import fixture_review_call
 from cheapos.routing import PROBE_MARKER
 """Bounded smaller-action recovery, without executing truncated responses."""
 import copy
@@ -31,7 +32,7 @@ class OutputRecoveryTests(LocalCase):
                                  'messages': copy.deepcopy(messages), 'maximum': maximum})
                 reply = next(queue)
                 if isinstance(reply, Exception): raise reply
-                return reply, {'prompt_tokens': 10, 'completion_tokens': 5, 'cost': 0}
+                return fixture_review_call(reply, messages), {'prompt_tokens': 10, 'completion_tokens': 5, 'cost': 0}
         self.engine.provider_factory = lambda role, config: Provider(role, config)
         return requests
 

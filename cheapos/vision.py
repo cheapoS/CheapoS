@@ -1,6 +1,7 @@
 """Vision sidecar and image inspection for CheapOS."""
 
 import base64
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -65,7 +66,7 @@ def resolve_image_path(task: Dict[str, Any], path_str: str, store_root: Path) ->
     return None
 
 
-def inspect_image_tool(engine: Any, task: Dict[str, Any], args: Dict[str, Any], runtime: Optional[Any] = None) -> Dict[str, Any]:
+def inspect_image_tool(engine: Any, task: Dict[str, Any], args: Dict[str, Any], runtime: Optional[Any] = None, *, role: Optional[str] = None) -> Dict[str, Any]:
     """Execute inspect_image tool call for the worker or reviewer, properly metered and accounted."""
     path_arg = args.get("path", "")
     query = args.get("query") or "Describe this image in detail, including layout, components, text, styling, and any visible defects or errors."
@@ -96,6 +97,7 @@ def inspect_image_tool(engine: Any, task: Dict[str, Any], args: Dict[str, Any], 
             "mime_type": mime,
             "size_bytes": len(data),
             "format": "svg",
+            "image_digest": hashlib.sha256(data).hexdigest(),
             "analysis": f"SVG Vector Graphics ({len(data)} bytes):\n```xml\n{svg_text}\n```",
             "query": query,
             "status": "success",
@@ -106,8 +108,10 @@ def inspect_image_tool(engine: Any, task: Dict[str, Any], args: Dict[str, Any], 
     data_uri = f"data:{mime};base64,{b64}"
 
     # Check if a model/provider is available
-    role = task.get("active_role", "worker")
-    config = (task.get("providers") or {}).get(role) or (task.get("providers") or {}).get("worker")
+    role = role or ("reviewer" if task.get("status") == "reviewing" else task.get("active_role", "worker"))
+    config = (task.get("providers") or {}).get(role)
+    if role == 'reviewer' and not config and not task.get('demo'):
+        return {'error': 'Independent reviewer is unavailable for image inspection.'}
 
     active_runtime = runtime
     if active_runtime is None and hasattr(engine, "runtimes"):
@@ -155,7 +159,9 @@ def inspect_image_tool(engine: Any, task: Dict[str, Any], args: Dict[str, Any], 
             "image": image_path.name,
             "mime_type": mime,
             "size_bytes": len(data),
-            "analysis": content.strip() if content else "Vision model returned an empty response.",
+            "analysis": content.strip() if content else "",
+            "image_digest": hashlib.sha256(data).hexdigest(),
+            "role": role,
             "query": query,
             "status": "success",
         }

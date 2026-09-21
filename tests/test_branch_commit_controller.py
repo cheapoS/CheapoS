@@ -1,3 +1,4 @@
+from tests.test_review_assessment import fixture_review_call
 import json
 import unittest
 from pathlib import Path
@@ -21,7 +22,7 @@ class BranchCommitControllerTests(unittest.TestCase):
         task['status']='running';runtime=Runtime(task)
         def review(rt,messages,tools,role):
             packet=json.loads(messages[1]['content'])
-            return call('review_decision',{'decision':'APPROVE','feedback':'Read value=2','candidate_id':packet['candidate_id'],'criteria_outcomes':{'Works':{'passed':True,'evidence':'Read hello.py value=2'}}})
+            return fixture_review_call(call('review_decision',{'decision':'APPROVE','feedback':'Read value=2','candidate_id':packet['candidate_id'],'criteria_outcomes':{'Works':{'passed':True,'evidence':'Read hello.py value=2'}}}), messages)
         self.engine.request=Mock(side_effect=review)
         self.engine.checkpoint(runtime,{})
         return runtime,run['items'][0]

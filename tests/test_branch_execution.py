@@ -1,3 +1,4 @@
+from tests.test_review_assessment import fixture_review_call
 import json
 import unittest
 from pathlib import Path
@@ -32,7 +33,7 @@ class ScriptedRun:
                 args={'summary':'Item implemented','uncertainties':''}
                 if repair:args['repair_dispositions']=[{'finding_id':f['finding_id'],'candidate_id':repair['candidate_id'],'disposition':'reproduced_and_corrected','evidence':'notes_two.txt:1 now explains the utility; required checks pass','broader_edit_reason':'Existing utility and test files remain part of the original item patch.'} for f in repair['defects']]
                 message=call('checkpoint',args)
-        return message,{'prompt_tokens':10,'completion_tokens':5,'cost':0}
+        return fixture_review_call(message, messages),{'prompt_tokens':10,'completion_tokens':5,'cost':0}
 
 
 class BranchExecutionTests(unittest.TestCase):

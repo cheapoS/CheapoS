@@ -182,7 +182,13 @@ class BranchRecoveryTests(unittest.TestCase):
         (Path(task['workspace']) / 'hello.py').write_text('value=2\n')
         self.engine.checks(Runtime(task))
         current = branch_evidence.candidate(task, branch_commits.context(run, item), item['required_checks'], item['acceptance_criteria'])
-        item['ready_receipt'] = branch_evidence.ready_receipt(current, branch_evidence.current_checks(current, task['checks']), {'candidate_id': current['id'], 'decision': 'APPROVE', 'feedback': 'Verified changed value'}, 'worker', 'reviewer', {'Works': {'passed': True, 'evidence': 'Read hello.py and ran required check'}})
+        from cheapos import review_assessment
+        from tests.test_review_assessment import assessment
+        bound = branch_evidence.current_checks(current, task['checks'])
+        review = {'candidate_id': current['id'], 'decision': 'APPROVE', 'feedback': 'Verified changed value',
+                  'review_assessment': assessment(['Works'], quote='value=2')}
+        review_assessment.validate(review_assessment.prepare(current['id'], {'diff': current['patch'], 'checks': bound}, ['Works']), review)
+        item['ready_receipt'] = branch_evidence.ready_receipt(current, bound, review, 'worker', 'reviewer', {'Works': {'passed': True, 'evidence': 'Read hello.py and ran required check'}})
         operation = branch_commits.prepare(task, run, item, item['ready_receipt'], self.engine.branch.validate_authority)
         run['pending_operations'] = [operation]
         def interrupted_save(value):
