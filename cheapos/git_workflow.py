@@ -207,6 +207,11 @@ def status(engine, task_id):
         current = engine.store.get(task_id)
         if current.get('pull_request', {}).get('id') == operation['id']:
             before = copy.deepcopy(current)
+            # A concurrent status check may have saved a sync receipt while
+            # this request was waiting for GitHub. Do not erase that result.
+            for key in ('local_sync', 'merged_head'):
+                if key in current['pull_request']:
+                    result[key] = copy.deepcopy(current['pull_request'][key])
             current['pull_request'] = copy.deepcopy(result)
             runtime = getattr(engine, 'runtimes', {}).get(task_id)
             busy = bool(runtime and runtime.thread and runtime.thread.is_alive())
@@ -238,16 +243,21 @@ def status(engine, task_id):
                 local = synchronize(operation['source'], operation['remote'], 'refs/heads/' + operation['base'],
                     expected_destination=(operation['repo'], operation['push_url']),
                     merged_commit=result['ci'].get('merged_commit'))
-                with engine.lock:
-                    current = engine.store.get(task_id)
-                    if current.get('pull_request', {}).get('id') == operation['id']:
-                        previous = current['pull_request'].get('local_sync')
-                        current['pull_request']['local_sync'] = copy.deepcopy(local)
-                        if local != previous:
-                            engine.event(current, 'git_sync', local['message'], local)
-                        engine.store.save(current)
-                result['local_sync'] = local
+                _save_sync(engine, task_id, operation, result, local)
         except ValueError:
-            result['local_sync'] = {'state': 'deferred', 'retryable': True,
+            local = {'state': 'deferred', 'retryable': True,
                 'message': 'The PR is merged. Local sync will retry after the current repository operation finishes.'}
+            _save_sync(engine, task_id, operation, result, local)
     return result
+
+
+def _save_sync(engine, task_id, operation, result, local):
+    with engine.lock:
+        current = engine.store.get(task_id)
+        if current.get('pull_request', {}).get('id') == operation['id']:
+            previous = current['pull_request'].get('local_sync')
+            current['pull_request']['local_sync'] = copy.deepcopy(local)
+            if local != previous:
+                engine.event(current, 'git_sync', local['message'], local)
+                engine.store.save(current)
+    result['local_sync'] = local

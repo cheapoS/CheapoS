@@ -717,10 +717,22 @@ function renderComposer() {
 function projectMenu(path,anchor) {
   compactMenu(anchor,'Project options',[
     {label:'New chat',run:()=>chooseProject(state.projects.find(p=>p.path===path))},
+    {label:'Sync project',run:()=>syncProject(path)},
     {label:'Project settings…',run:()=>scopedSettings('project','agents',path)},
     {label:'Project management…',run:()=>editProject(path)},
     {label:'Project context…',run:()=>CheapOSCarto.settings(api,path)}
   ]);
+}
+function syncProject(path) {
+  const d=dialog(`${modalHeader('PROJECT','Sync project')}<p>${esc(path)}</p><p role="status" data-sync-status>Checking the remote branch and safely updating your local checkout…</p><p class="small muted">Local edits and active task copies are preserved. New tasks check for updates automatically in PR mode.</p><div class="modal-footer"><button type="button" data-sync-retry disabled>Syncing…</button><button type="button" data-close>Close</button></div>`);
+  const status=$('[data-sync-status]',d),button=$('[data-sync-retry]',d);
+  button.onclick=async()=>{
+    button.disabled=true;button.textContent='Syncing…';status.textContent='Checking the remote branch and safely updating your local checkout…';
+    try{const result=await api('/projects/git-sync',{repository:path});status.textContent=result.message;button.hidden=result.state==='disabled';button.textContent=result.retryable?'Retry sync':'Check again';}
+    catch(error){status.textContent=error.message;button.textContent='Retry sync';}
+    finally{button.disabled=false;}
+  };
+  void button.onclick();
 }
 function editProject(path) {
   const d=dialog(`<form>${modalHeader('PROJECT','Project settings')}<button type="button" data-preview-settings>Preview settings</button><p>Removing this project hides its sidebar shortcut. Repository files and chats are kept; you can reopen it from Hidden projects.</p><p class="small">${esc(path)}</p><p class="form-error" role="alert"></p><div class="modal-footer"><button type="button" data-close>Cancel</button><button type="submit">Remove from sidebar</button></div></form>`);
@@ -1158,6 +1170,7 @@ function renderChat() {
   if(CheapOSGuide.integrationPreparation(task))decision='';
   const lastWorkReply=conversation.findLast(entry=>entry.kind==='assistant'&&!entry.discussion);
   $('#chat-view').innerHTML=(task.demo?'<div class="demo-banner">Local demo · scripted models, real edits and checks</div>':task.sample?`<div class="demo-banner">${esc(CheapOSGuide.sampleOutcome(task))}<button class="text-link" data-sample-diagnostics>Connection diagnostics</button></div>`:'')+conversation.map(entry=>CheapOSChatView.message(entry,task,entry===lastWorkReply?decision+recoveryOptionsMarkup(task):'')).join('')+pendingMessageMarkup();
+  $('#chat-view').insertAdjacentHTML('afterbegin',CheapOSGitWorkflow.freshnessMarkup(task));
   if($('[data-sample-diagnostics]'))$('[data-sample-diagnostics]').onclick=()=>openConnections();
   $$('[data-environment]').forEach(b=>b.onclick=async()=>{try{if(b.dataset.environment==='recheck'){b.disabled=true;await api('/tasks/'+task.id+'/environment-recheck',{});await refresh()}else{await navigator.clipboard.writeText(b.dataset.environment==='path'?task.workspace:task.environment_setup.setup_commands[Number(b.dataset.environment)]);toast('Copied')}}catch(e){toast(e.message)}finally{b.disabled=false}});
   for(const d of $$('#chat-view details[data-event]')){
@@ -1184,6 +1197,7 @@ function renderChat() {
   const continuation=operatorContinuationMarkup(task);if(continuation){const notice=document.createElement('div');notice.innerHTML=continuation;workBody.append(notice);}
   if(task.error&&!task.branch_run){const logs=document.createElement('button');logs.className='text-link';logs.textContent='View technical logs';logs.onclick=()=>setView('logs');workBody.append(logs);}
   $$('[data-workflow-logs]').forEach(b=>b.onclick=()=>{setView('logs');const routing=$('#routing-diagnostics');if(routing){routing.open=true;routing.scrollIntoView({block:'start',behavior:'instant'});$('summary',routing)?.focus({preventScroll:true});}});
+  CheapOSGitWorkflow.bindSync($('#chat-view'),task,api,()=>refresh());
   updateProgressClock();bindCommitDecision(task);bindTerminalCopy();bindPermissions(task);
   $$('#chat-view [data-chat-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.chatAction;
@@ -1971,6 +1985,13 @@ async function refresh({background=false}={}) {
     if(task&&state.selection===selection&&state.task?.id===selected&&!(state.task!==previous&&Date.parse(task.updated_at)<=Date.parse(state.task.updated_at))){
       if(state.renderFailed||['poll_etag','updated_at','status','title','custom_title','pinned','archived_at','trashed_at'].some(key=>task[key]!==state.task[key])){state.task=task;renderTask();state.renderFailed=false}
     }
+  }
+  // PR checks belong to the selected conversation, not a particular tab.
+  // The shared request gate coalesces manual clicks and caps automatic checks.
+  if(state.selection===selection&&state.task?.id===selected){
+    void CheapOSGitWorkflow.checkStatus(state.task,api).then(result=>{
+      if(result&&state.selection===selection&&state.task?.id===selected)return refresh({background:true});
+    }).catch(error=>console.debug('PR status will retry',error.message));
   }
   if(!background)await context;
 }

@@ -103,3 +103,16 @@ def before_task(source, snapshot, ref=None):
     if not enabled(task):
         return None
     return synchronize(source, policy(task)['remote'], ref)
+
+
+def project_sync(engine, values):
+    """Explicit project refresh uses saved settings, never caller-supplied Git refs."""
+    if set(values) != {'repository'} or not isinstance(values['repository'], str) or not values['repository'].strip():
+        raise ValueError('Choose a registered project to sync')
+    source = engine.settings_project(values['repository'])
+    with engine.admission.repository(source):
+        result = before_task(source, engine.settings_store.view(source))
+    if result is None:
+        return {'state': 'disabled', 'retryable': False,
+                'message': 'This project uses local merges. Choose the GitHub pull request workflow in Project settings → Git to enable remote sync.'}
+    return result

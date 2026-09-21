@@ -18,7 +18,10 @@ checked out in another linked worktree. New PR-mode tasks check their starting
 branch before capturing code or planning inputs. Local mode does not fetch.
 Already captured work, verification and authorization stay pinned. Local commits
 and overlapping drafts are never reset or stashed; a deferred sync records its
-freshness limitation and retries on PR refresh or the next new task. No worker
+freshness limitation and retries while the PR task is selected (in any tab),
+on explicit sync, or before the next new task. Missing receipts are pending,
+not success. New tasks show when they started from local code because remote
+sync could not be confirmed. No worker
 Git tool, remote auto-merge or renewed execution authority is introduced.
 
 Unattended branch integration compares destination edits with the exact incoming

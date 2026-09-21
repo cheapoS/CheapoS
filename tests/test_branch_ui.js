@@ -120,7 +120,7 @@ function refreshFixture(){
  const snippet=source.slice(source.indexOf('let contextRefresh=null;'),source.indexOf('async function resumeBranchRun'));
  const state={task:{id:'a',status:'awaiting_reply',updated_at:'2026-09-14T12:00:00Z'},selection:1};let renderCount=0,gatewayCalls=0,releaseGateway,resolveTask;
  const gateway=new Promise(r=>releaseGateway=r);const replies=[],requests=[];
- const context={state,console,toast:()=>{},loadStartup:async()=>{},loadReadiness:async()=>{},loadTasks:async()=>{},loadAdmission:async()=>{},loadGateway:()=>{gatewayCalls++;return gateway;},api:(...args)=>{requests.push(args);return replies.length?Promise.resolve(replies.shift()):new Promise(r=>resolveTask=r)},renderTask:()=>renderCount++};
+ const context={state,console,CheapOSGitWorkflow:require('../dist/git_workflow.js'),toast:()=>{},loadStartup:async()=>{},loadReadiness:async()=>{},loadTasks:async()=>{},loadAdmission:async()=>{},loadGateway:()=>{gatewayCalls++;return gateway;},api:(...args)=>{requests.push(args);return replies.length?Promise.resolve(replies.shift()):new Promise(r=>resolveTask=r)},renderTask:()=>renderCount++};
  vm.createContext(context);vm.runInContext(snippet,context);
  return {state,context,replies,requests,releaseGateway,resolveTask:t=>resolveTask(t),renderCount:()=>renderCount,gatewayCalls:()=>gatewayCalls};
 }

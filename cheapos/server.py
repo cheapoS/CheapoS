@@ -424,6 +424,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
                     raise ValueError("Provide upload data")
                 mime_type = values.get("mime_type")
                 result = save_upload(engine.store.root, filename, raw_data, mime_type=mime_type)
+            elif path == "/api/projects/git-sync":
+                from .git_sync import project_sync
+                result = project_sync(engine, values)
             elif path == "/api/projects/carto":
                 from .workspace import Workspace
                 source = str(Workspace.project_root(values.get('repository', '')))
