@@ -187,6 +187,28 @@ class ReviewAssessmentTests(unittest.TestCase):
         result['review_assessment']['verification']['citations'][0]['quote'] = '{"exit_code":1,"passed":true}'
         with self.assertRaises(ValueError): review.validate(state, result)
 
+    def test_check_output_citations_match_decoded_json_values(self):
+        output = 'Ran 11 tests in 0.020s\n\nOK\nquoted "value" and \\path'
+        state = review.prepare('candidate', {'diff': '+return max(lower, min(value, upper))',
+            'checks': [{'record': {'output': output, 'exit_code': 0, 'passed': True}}]}, ['requested_change'])
+        result = self.approval()
+        for quote in ('Ran 11 tests in 0.020s\n\nOK', 'quoted "value" and \\path'):
+            with self.subTest(quote=quote):
+                result['review_assessment']['verification']['citations'][0]['quote'] = quote
+                review.validate(state, result)
+                review.retained(result, 'candidate')
+                excerpt = result['_review_evidence']['excerpts']['checks']
+                self.assertEqual(excerpt['content'], quote)
+                self.assertEqual(excerpt['source_digest'], state['sources']['checks']['digest'])
+        # Formatting tolerance cannot invent output, splice fields or strip diff markers.
+        for quote in ('Ran 12 tests in 0.020s\n\nOK', 'OK\nexit_code 0', '"exit_code": 1'):
+            result['review_assessment']['verification']['citations'][0]['quote'] = quote
+            with self.subTest(quote=quote), self.assertRaises(ValueError): review.validate(state, result)
+        result['review_assessment']['verification']['citations'][0]['quote'] = 'Ran 11 tests in 0.020s\n\nOK'
+        result['review_assessment']['criteria']['requested_change']['citations'][0].update(
+            source='diff', quote='return max(lower,\nmin(value, upper))')
+        with self.assertRaises(ValueError): review.validate(state, result)
+
     def test_planner_must_supply_observable_acceptance_criteria(self):
         value = {'status': 'plan', 'plan': {'items': [{'id': 'one', 'title': 'Fix', 'instructions': 'Fix', 'required_checks': []}], 'limits': {}}, 'clarification': ''}
         message = {'tool_calls': [{'function': {'name': 'propose_branch_plan', 'arguments': json.dumps(value)}}]}

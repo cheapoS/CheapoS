@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from cheapos import branch_review, branch_review_recovery as recovery, branch_pause, routing
-from cheapos.engine import ProgressPause
+from cheapos.engine import Engine, ProgressPause
 from cheapos.providers import BudgetError
 from cheapos.provider_recovery import review_turns
 from tests import test_branch_disagreement as fixtures
@@ -33,6 +33,89 @@ class ItemReviewRecoveryTests(unittest.TestCase):
             self.assertIn(task['providers']['reviewer']['model'], recovery.failed_models(task))
             task['providers']['reviewer'] = {'model': model}
         return select
+
+    def wire_call(self, name, arguments, call_id='response'):
+        return {'id': call_id, 'type': 'function', 'function': {'name': name, 'arguments': arguments}}
+
+    def wire_approval(self):
+        from tests.test_review_assessment import assessment
+        result = self.approval()['tool_calls'][0]['result']
+        result['review_assessment'] = assessment(['exact values'], quote='saved diff', checks=False)
+        return {'role': 'assistant', 'tool_calls': [self.wire_call('review_decision', json.dumps(result))]}
+
+    def test_malformed_batch_corrects_without_accepting_adjacent_approval(self):
+        for approval_first in (True, False):
+            with self.subTest(approval_first=approval_first):
+                task, engine, runtime = self.automatic_fixture()
+                task['review_contract_version'] = 1
+                engine.parse_call = Engine.parse_call
+                before = copy.deepcopy(task)
+                valid = self.wire_approval()['tool_calls'][0]
+                invalid = self.wire_call('read_file', '{"path": "report.py"} trailing', 'broken-read')
+                def respond(rt, messages, tools, role):
+                    if engine.request.call_count == 1:
+                        return {'role': 'assistant', 'tool_calls': [valid, invalid] if approval_first else [invalid, valid]}
+                    replies = [json.loads(m['content']) for m in messages[-2:]]
+                    self.assertTrue(all(r['code'] == 'invalid_tool_arguments' and r['executed'] is False for r in replies))
+                    self.assertFalse(task['checkpoints'])
+                    self.assertNotIn('ready_receipt', task['branch_run']['items'][0])
+                    return self.wire_approval()
+                engine.request.side_effect = respond
+                with patch.object(routing, 'select_remote') as select:
+                    self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+                select.assert_not_called()
+                self.assertEqual(engine.request.call_count, 2)
+                self.assertEqual(task['branch_run']['review_disagreements']['candidate']['unsupported_attempts'], 1)
+                for key in ('checks', 'usage', 'limits'):
+                    self.assertEqual(task[key], before[key])
+                engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+                branch_review.evidence.ready_receipt.assert_called_once()
+
+    def test_malformed_decisions_survive_restart_and_handoff_to_supported_review(self):
+        task, engine, runtime = self.automatic_fixture()
+        task['review_contract_version'] = 1
+        engine.parse_call = Engine.parse_call
+        before = copy.deepcopy(task)
+        malformed = {'role': 'assistant', 'tool_calls': [self.wire_call('review_decision', '{"decision":"APPROVE"} extra')]}
+        engine.request.side_effect = [malformed, InterruptedError('Restart')]
+        with self.assertRaises(InterruptedError):
+            branch_review.checkpoint(engine, runtime, {})
+        runtime.task = task = json.loads(json.dumps(task))
+        self.assertEqual(task['branch_run']['review_disagreements']['candidate']['unsupported_attempts'], 1)
+        def respond(rt, messages, tools, role):
+            pending = task['pending_review']; pending['review_requests'] = pending.get('review_requests', 0) + 1
+            return malformed if task['providers']['reviewer']['model'] == 'reviewer' else self.wire_approval()
+        engine.request.side_effect = respond
+        with patch.object(routing, 'select_remote', side_effect=self.selector(task)) as select:
+            self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+        select.assert_called_once()
+        self.assertEqual(task['branch_run']['review_disagreements']['candidate']['unsupported_attempts'], 3)
+        history = task['branch_run']['review_recovery']['candidate']['history'][0]['review']
+        feedback = [json.loads(m['content']) for m in history['messages'] if m['role'] == 'tool']
+        self.assertEqual(len([r for r in feedback if r.get('code') == 'invalid_tool_arguments']), 3)
+        for key in ('checks', 'usage', 'limits'):
+            self.assertEqual(task[key], before[key])
+        self.assertEqual(task['branch_run']['plan'], before['branch_run']['plan'])
+        engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+        branch_review.evidence.ready_receipt.assert_called_once()
+
+    def test_malformed_review_cannot_override_pin_pause_or_budget(self):
+        for boundary in ('pin', 'stop', 'budget'):
+            with self.subTest(boundary=boundary):
+                task, engine, runtime = self.automatic_fixture()
+                engine.parse_call = Engine.parse_call
+                if boundary == 'pin': task['operator_reviewer_model'] = 'reviewer'
+                def respond(rt, messages, tools, role):
+                    if boundary == 'stop': runtime.stop = SimpleNamespace(is_set=lambda: True)
+                    if boundary == 'budget': runtime.guard.side_effect = BudgetError('Authorized spending exhausted')
+                    return {'role': 'assistant', 'tool_calls': [self.wire_call('review_decision', '{')]}
+                engine.request.side_effect = respond
+                error = ProgressPause if boundary == 'pin' else InterruptedError if boundary == 'stop' else BudgetError
+                with patch.object(routing, 'select_remote') as select, self.assertRaises(error):
+                    branch_review.checkpoint(engine, runtime, {})
+                select.assert_not_called(); branch_review.evidence.ready_receipt.assert_not_called()
+                self.assertFalse(task['checkpoints'])
+                engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
 
     def test_invalid_approvals_handoff_without_worker_or_check_replay(self):
         task, engine, runtime = self.automatic_fixture()
