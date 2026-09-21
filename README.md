@@ -3,6 +3,7 @@
   <br><br>
   <a href="#quick-start"><strong>Get started</strong></a> &nbsp; · &nbsp;
   <a href="#the-workspace">See the workspace</a> &nbsp; · &nbsp;
+  <a href="#agent-roles">Agent roles</a> &nbsp; · &nbsp;
   <a href="#work-modes">Work modes</a> &nbsp; · &nbsp;
   <a href="#why-cheapos-exists">The idea</a> &nbsp; · &nbsp;
   <a href="docs/USER_GUIDE.md">Documentation</a> &nbsp; · &nbsp;
@@ -105,6 +106,20 @@ Make expensive compute the exception. Keep the work visible and the decisions yo
 [Read the complete user guide →](docs/USER_GUIDE.md)
 
 </details>
+
+
+## Agent roles
+
+CheapoS uses distinct roles to distribute responsibility and verify work.
+
+| Role | Responsibility |
+| --- | --- |
+| **Worker** | Implements code changes, runs tests, and interacts with the project files. |
+| **Planner** | Defines the scope and steps for complex tasks to ensure structured progress. |
+| **Reviewer** | Evaluates the worker's changes at checkpoints, verifying correctness before final approval. |
+| **Coordinator** | Manages orchestration, specialized tasks (e.g., vision-based inspection via `inspect_image`), and helper injections. |
+
+*Roles can be mapped to different model providers to optimize for capability (e.g., a smart model for the Reviewer, an efficient model for the Worker).*
 
 ## Work modes
 
