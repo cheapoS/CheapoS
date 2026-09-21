@@ -621,6 +621,21 @@ through verification and independent approval without artificial chunk retries.
 
 ## Implemented: final-review path guidance and replacement-route recovery
 
+Item review also keeps malformed JSON tool arguments inside its saved review
+conversation. No calls in that batch execute, including an approval paired with
+a malformed read. The reviewer receives the parse diagnostic and can correct its
+call; repeated failures use the existing candidate-bound reviewer handoff.
+Restart retains failed exchanges and attempts. Passing checks, edits, review
+requirements, model pins and spending authority are preserved. An operator does
+not need to supply a correction for ordinary response-format failures.
+
+Check citations can quote literal text within a delivered JSON check record,
+including decoded newlines and quoted output. This removes transport-escaping
+failures without accepting paraphrases, combining separate fields or relaxing
+literal source-code citations. Candidate and source digests remain required.
+Small in-memory tests cover correction, handoff, restart and denied authority;
+they do not use live models, Git workflows or real-time waits.
+
 Final reviewers use exact repository-relative paths from the change manifest.
 An unavailable read retains its exact requested path and offers matching manifest
 paths as hints; it never silently redirects the read or establishes approval.

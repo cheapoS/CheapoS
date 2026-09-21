@@ -129,7 +129,7 @@ def checkpoint(engine, runtime, args):
 
 
 def _checkpoint(engine, runtime, args):
-    from .engine import REVIEW_TOOLS, REVIEW_SYSTEM, ProgressPause
+    from .engine import REVIEW_TOOLS, REVIEW_SYSTEM, ProgressPause, ToolArgumentsError
     from . import review_assessment
     task = runtime.task
     if not task.get('pending_review'):
@@ -393,10 +393,25 @@ def _checkpoint(engine, runtime, args):
             messages.append({'role':'user','content':f'Use review_decision with candidate_id "{current["id"]}" and {assessment_field} for every criterion when approving. Inspect evidence still needed for the decision; do not repeat unchanged reads or substitute conversational text for a decision.'})
         else:
             pending.pop('require_decision', None)
+        # Validate the entire batch before accepting a decision or performing a
+        # read. Malformed JSON is reviewer feedback, not an operator correction.
+        # In particular, a valid approval beside a broken read cannot bypass it.
+        try:
+            parsed_calls = [engine.parse_call(call) for call in calls]
+        except ToolArgumentsError as error:
+            result = disagreement.unsupported(engine, task, current['id'],
+                {'tool': error.name, 'executed': False}, error)
+            result.update(code=error.code, executed=False,
+                next_action='No calls in this batch were executed. Correct the JSON arguments using the offered tool schema, '
+                            'then continue this review with the saved evidence. Do not edit code to repair a response format error.')
+            for call in calls:
+                messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result)})
+            save_history(pending, messages)
+            engine.store.save(task)
+            continue  # Existing durable invalid-attempt recovery chooses the next strategy.
         observations = []
-        for call in calls:
+        for call, (name, params) in zip(calls, parsed_calls):
             if runtime.stop.is_set(): raise InterruptedError('Task stopped')
-            name, params = engine.parse_call(call)
             from .metrics import tool_action
             if name == 'review_decision':
                 tool_action(task)

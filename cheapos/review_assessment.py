@@ -125,6 +125,30 @@ def observation(state, name, args, result):
     return {**result, 'evidence_id': source}
 
 
+def check_quote(content, quote):
+    """Match check text inside a JSON value without depending on wire escaping."""
+    try:
+        value = json.loads(content)
+    except (ValueError, TypeError):
+        return None
+    try:
+        if json.loads(quote) == value:
+            return content  # Same complete record, different JSON formatting.
+    except (ValueError, TypeError):
+        pass
+    def contains(value):
+        if isinstance(value, str):
+            return quote in value
+        if isinstance(value, list):
+            return any(contains(item) for item in value)
+        if isinstance(value, dict):
+            return any(contains(item) for item in value.values())
+        return False
+    # Do not join fields, interpret arbitrary escapes in quotes, or normalize
+    # source code. The excerpt must occur literally in one delivered check value.
+    return quote if contains(value) else None
+
+
 def validate(state, result):
     """Reject unsupported positive claims, never manufacture review evidence."""
     from .branch_disagreement import decision
@@ -152,15 +176,12 @@ def validate(state, result):
                 raise ValueError('Each citation needs a source ID and literal quote.')
             source = state['sources'].get(ref['source'])
             quote = ref.get('quote')
+            matched_check = False
             if source and source['kind'] == 'check' and isinstance(quote, str) and quote not in source['content']:
-                # JSON key ordering/spacing on the wire is not a changed fact.
-                # Code and plain text quotations still require literal matches.
-                try:
-                    if json.loads(quote) == json.loads(source['content']):
-                        quote = source['content']
-                except (ValueError, TypeError):
-                    pass
-            if not source or not isinstance(quote, str) or not quote.strip() or quote not in source['content']:
+                canonical = check_quote(source['content'], quote)
+                if canonical is not None:
+                    quote, matched_check = canonical, True
+            if not source or not isinstance(quote, str) or not quote.strip() or (not matched_check and quote not in source['content']):
                 raise ValueError('Citation not found in delivered current-candidate evidence: ' + ref['source'])
             kinds.add(source['kind'])
             entry = excerpts.setdefault(ref['source'], {'kind': source['kind'], 'content': '', 'source_digest': source['digest']})
