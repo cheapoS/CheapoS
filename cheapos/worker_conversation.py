@@ -17,15 +17,13 @@ def append_direction(messages, prefix, text):
         messages.append({'role': 'user', 'content': content})
 
 
-def refresh(messages, snapshot, task=None):
+def repair_history(messages, task=None, allowed_tools=None):
     """Keep complete exchanges and explicitly close ambiguous interrupted calls.
 
     Closing an exchange is a transport repair, not evidence of tool execution.
-    The fresh snapshot records current files/checks; historical results retain
-    their original versions and must not authorize stale edits.
+    Historical results retain their original versions and must not authorize
+    stale edits. Rejected calls stay diagnostics, never native call examples.
     """
-    if not messages:
-        return list(snapshot)
     result = []
     pending = set()
     omitted = set()
@@ -81,7 +79,8 @@ def refresh(messages, snapshot, task=None):
                 legacy = (LEGACY_ARGUMENT_NOTICE in (message.get('content') or '')
                           and function.get('name') in MUTATIONS
                           and isinstance(raw, str) and raw.strip() == '{}')
-                if valid and not rejected and not legacy:
+                offered = allowed_tools is None or function.get('name') in allowed_tools
+                if valid and not rejected and not legacy and offered:
                     kept.append(call)
                     continue
                 omitted.add(call.get('id'))
@@ -112,6 +111,14 @@ def refresh(messages, snapshot, task=None):
         elif message.get('role') == 'tool':
             pending.discard(message.get('tool_call_id'))
     close()
+    return result
+
+
+def refresh(messages, snapshot, task=None):
+    """Repair worker history and attach the current saved state."""
+    if not messages:
+        return list(snapshot)
+    result = repair_history(messages, task=task)
     if snapshot and snapshot[0].get('role') == 'system':
         if result and result[0].get('role') == 'system':
             result[0] = snapshot[0]

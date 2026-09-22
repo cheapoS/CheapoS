@@ -777,3 +777,21 @@ attempt numbers and diagnostics. Chat shows the automatic planner handoff and
 keeps useful findings, actual failures and operator decisions visible. Small
 deterministic replays cover malformed proposals and failed inspections through
 automatic handoff to a valid proposal, including restart with retained history.
+
+Before each planning request, malformed or rejected argument envelopes and
+unoffered historical tool calls become diagnostics. Their original exchanges
+remain retained locally; successful sibling reads stay paired and available.
+This also repairs older saved planning histories on Resume without resetting
+attempts, handoffs, usage, permissions or inspected evidence. Provider tool
+validation feedback names both available planning tools and their distinct
+argument shapes. Rejected calls never execute or become placeholder examples.
+
+Catalog discovery excludes known non-chat task types and models whose declared
+outputs cannot include text from automatic routing before ranking or probing, even when a
+gateway advertises generic tool support. Declared task/output metadata takes
+precedence; a narrow embedding/reranking identifier hint covers catalogs that
+omit task types. Unknown models still use existing eligibility and capability
+checks, and text-capable multimodal models remain eligible. These are capability
+checks, not provider/model allowlists or new work limits. Small offline cases
+cover valid proposal completion, saved-history repair and routing to a qualified
+model without probing image, speech or embedding entries.

@@ -586,6 +586,11 @@ def plan(engine, runtime, inputs):
         runtime.failed_models.update(runtime.task['failed_planners'])
         runtime.task['providers']['planner'] = None
     while True:
+        # A rejected inspection/proposal must not poison every replacement
+        # planner with an invalid native tool envelope. Also repairs old saves.
+        from .worker_conversation import repair_history
+        messages[:] = repair_history(messages, task=runtime.task,
+                                     allowed_tools={tool['function']['name'] for tool in TOOLS})
         saved.update(attempt=attempt, discovery=discovery, handoffs=handoffs)
         if hasattr(engine, 'store'): engine.store.save(runtime.task)
         if runtime.stop.is_set(): raise InterruptedError('Planning cancelled')
@@ -612,7 +617,9 @@ def plan(engine, runtime, inputs):
         try:
             if rejected_call:
                 raise PlanningResponseError(
-                    'Tool arguments were rejected. Use status, plan, clarification, and optional assumptions only. '
+                    'The provider rejected a tool call. Only inspect_project_file and propose_branch_plan are available. '
+                    'For inspection, use inspect_project_file with path and optional read coordinates/query. '
+                    'For a proposal, use propose_branch_plan with status, plan, clarification, and optional assumptions only. '
                     'Put items in plan.items, keep displayed limits unchanged, and supply final_checks. '
                     'Preserve constraints in item instructions/acceptance_criteria.') from rejected_call
             calls = response.get('tool_calls') or []
@@ -655,6 +662,8 @@ def plan(engine, runtime, inputs):
                         result = {'error': str(error)[:500], 'path': arguments.get('path') if isinstance(arguments, dict) and isinstance(arguments.get('path'), str) else None}
                         if read_key is not None:
                             failed_reads[read_key] = result.copy()
+                        else:
+                            result.update(code='invalid_tool_arguments', executed=False)
                     if result.get('error'):
                         failed_discovery = True
                         result.update(_inspection_recovery(context, arguments, evidence))

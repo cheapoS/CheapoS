@@ -15,6 +15,45 @@ from cheapos.providers import ProviderError
 
 
 class CatalogTests(unittest.TestCase):
+    def test_non_chat_task_metadata_overrides_generic_tool_flags(self):
+        entries = [
+            {'id': 'vendor/picture', 'type': 'image'},
+            {'id': 'vendor/speech', 'type': 'audio'},
+            {'id': 'vendor/vector', 'task': 'embedding'},
+            {'id': 'vendor/search', 'pipeline_tag': 'feature-extraction'},
+            {'id': 'vendor/rank', 'type': 'reranking'},
+            {'id': 'vendor/visual', 'architecture': {'input_modalities': ['text'], 'output_modalities': ['image']}},
+            {'id': 'vendor/movie', 'output_modalities': ['video']},
+            {'id': 'vendor/draw', 'architecture': {'modality': 'text->image'}},
+        ]
+        for entry in entries:
+            entry['capabilities'] = {'tool_calling': True, 'reasoning': True}
+        models = normalize_models({'data': entries})
+        self.assertEqual(len(models), len(entries))
+        for model in models:
+            self.assertFalse(model['chat_completion'], model['id'])
+            self.assertFalse(model['tool_calling'], model['id'])
+            self.assertIn(model['chat_support_source'], {'catalog_task', 'catalog_output'})
+
+    def test_task_name_fallback_is_narrow_and_explicit_chat_metadata_takes_precedence(self):
+        excluded = ['vendor/new-embed-1b', 'vendor/nv-embedqa-e5', 'vendor/embedding', 'vendor/new-reranker-v2']
+        allowed = ['vendor/novel-coder', 'vendor/embedded-coder', 'vendor/ranking-chat', 'vendor/new-guard']
+        entries = [{'id': name, 'capabilities': {'tool_calling': True}} for name in excluded + allowed]
+        entries += [
+            {'id': 'vendor/embed-tutor', 'task': 'text-generation', 'supported_parameters': ['tools']},
+            {'id': 'vendor/multimodal', 'architecture': {'input_modalities': ['image', 'audio', 'text'],
+                                                      'output_modalities': ['text', 'audio']}, 'supported_parameters': ['tools']},
+            {'id': 'vendor/unknown'},
+        ]
+        models = {m['id']: m for m in normalize_models({'data': entries})}
+        for name in excluded:
+            self.assertFalse(models[name]['tool_calling'])
+            self.assertEqual(models[name]['chat_support_source'], 'identifier_task')
+        for name in allowed + ['vendor/embed-tutor', 'vendor/multimodal']:
+            self.assertTrue(models[name]['tool_calling'])
+            self.assertIsNot(models[name].get('chat_completion'), False)
+        self.assertIsNone(models['vendor/unknown']['tool_calling'])
+
     def test_output_recovery_uses_only_advertised_reasoning_controls(self):
         data={'data':[{'id':str(i),'supported_parameters':['reasoning'],'reasoning':meta} for i,meta in enumerate([
             {'mandatory':False}, {'mandatory':True,'supported_efforts':['high','low']},

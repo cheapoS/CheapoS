@@ -2,6 +2,7 @@
 
 import json
 import math
+import re
 from datetime import datetime, timezone
 from typing import Protocol
 from urllib.error import HTTPError, URLError
@@ -15,6 +16,39 @@ class ModelGateway(Protocol):
     def health(self): ...
     def list_models(self): ...
     def chat(self, messages, tools, max_tokens, tool_choice=None): ...
+
+
+def _chat_capability(item, model_id):
+    """Task/output metadata outranks gateways' generic tool-support defaults.
+
+    Unknown chat models remain eligible for the usual capability probe. Some
+    catalogs omit task metadata on embeddings; narrowly recognize task tokens
+    in those identifiers, without maintaining provider/model allowlists.
+    """
+    architecture = item.get('architecture')
+    architecture = architecture if isinstance(architecture, dict) else {}
+    outputs = item.get('output_modalities', architecture.get('output_modalities'))
+    outputs = [m.lower() for m in outputs if isinstance(m, str)] if isinstance(outputs, list) else []
+    modality = architecture.get('modality')
+    if not outputs and isinstance(modality, str) and '->' in modality:
+        outputs = modality.split('->', 1)[1].lower().split('+')
+    task_types = [item.get(key) for key in ('type', 'task', 'pipeline_tag')]
+    task_types = [value.lower().replace('_', '-') for value in task_types if isinstance(value, str)]
+    non_chat = {'image', 'audio', 'video', 'embedding', 'embeddings', 'embed',
+                'feature-extraction', 'rerank', 'reranker', 'reranking',
+                'text-to-image', 'image-to-image', 'text-to-video', 'image-to-video',
+                'text-to-speech', 'speech', 'automatic-speech-recognition',
+                'object-detection', 'image-classification'}
+    task = next((value for value in task_types if value in non_chat), None)
+    if task:
+        return {'chat_completion': False, 'chat_support_source': 'catalog_task', 'model_task': task}
+    if outputs and 'text' not in outputs:
+        return {'chat_completion': False, 'chat_support_source': 'catalog_output', 'output_modalities': outputs}
+    if any(value in {'chat', 'chat-completion', 'chat-completions', 'text-generation'} for value in task_types):
+        return {'chat_completion': True, 'chat_support_source': 'catalog_task'}
+    if re.search(r'(?:^|[/_-])(?:embed(?:ding|dings|qa)?|rerank(?:er|ing)?)(?:$|[/_:.-])', model_id.lower()):
+        return {'chat_completion': False, 'chat_support_source': 'identifier_task'}
+    return {}
 
 
 def normalize_models(data, openrouter=False, infer_access=True):
@@ -62,6 +96,9 @@ def normalize_models(data, openrouter=False, infer_access=True):
         if not isinstance(tools, bool):
             supported = item.get("supported_parameters")
             tools = "tools" in supported if isinstance(supported, list) else None
+        chat_capability = _chat_capability(item, model_id)
+        if chat_capability.get('chat_completion') is False:
+            tools = False
         reasoning = capabilities.get("reasoning", capabilities.get("thinking")) if isinstance(capabilities, dict) else None
         if not isinstance(reasoning, bool):
             supported = item.get("supported_parameters")
@@ -92,6 +129,7 @@ def normalize_models(data, openrouter=False, infer_access=True):
         if local and input_rate is None and output_rate is None:
             input_rate = output_rate = 0.0
         models.append({"id": model_id, "name": str(item.get("name") or model_id)[:240], "local":local,
+                       **chat_capability,
                        "provider": provider_name,
                        "context_length": context if isinstance(context, int) and not isinstance(context, bool) and context > 0 else None,
                        "max_output_tokens": output_limit, "tool_calling": tools, "reasoning": reasoning, "recovery_reasoning": recovery_reasoning,

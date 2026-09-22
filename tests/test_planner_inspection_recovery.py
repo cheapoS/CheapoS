@@ -215,6 +215,77 @@ class InspectionRecoveryTests(unittest.TestCase):
         self.assert_paired(self.requests[-1]['messages'])
         self.assertIn('app/src/main.ts', self.task['planning_strategy']['evidence'])
 
+    def test_malformed_inspection_is_not_sent_back_as_a_native_call(self):
+        self.assert_repaired_inspection('{"path": ')
+
+    def test_missing_path_is_not_sent_back_as_a_native_call(self):
+        self.assert_repaired_inspection('{"filename":"app/src/main.ts"}')
+
+    def assert_repaired_inspection(self, arguments):
+        batch = self.read('app/src/main.ts')
+        batch['tool_calls'].append({'id': 'bad', 'function': {
+            'name': 'inspect_project_file', 'arguments': arguments}})
+        result, inspected, selected = self.run_plan([batch, self.finish()])
+        self.assertEqual(result, self.proposal)
+        inspected.assert_called_once()
+        selected.assert_not_called()
+        messages = self.requests[-1]['messages']
+        self.assert_paired(messages)
+        self.assertEqual([c['id'] for m in messages for c in m.get('tool_calls', [])], ['1'])
+        self.assertIn('retained source for app/src/main.ts', str(messages))
+        diagnostic = next(m for m in messages if (m.get('content') or '').startswith('Tool argument diagnostic:'))
+        info = json.loads(diagnostic['content'].split(': ', 1)[1])
+        self.assertEqual(info['outcome'], 'Rejected before execution.')
+        self.assertEqual(info['feedback'][0]['code'], 'invalid_tool_arguments')
+        raw = json.loads(self.task['context_evidence'][info['context_reference']]['text'])
+        self.assertEqual(raw['assistant']['tool_calls'][-1]['function']['arguments'], arguments)
+        self.assertEqual(self.task['usage']['tokens'], 120)
+
+    def test_resume_repairs_legacy_history_without_resetting_attempts_or_reads(self):
+        with self.assertRaises(InterruptedError):
+            self.run_plan([self.read('app/src/main.ts'), InterruptedError('stopped')])
+        saved = self.task['planning_strategy']
+        saved['messages'].extend([
+            {'role': 'assistant', 'tool_calls': [{'id': 'old-bad', 'function': {
+                'name': 'inspect_project_file', 'arguments': '{"path": '}}]},
+            {'role': 'tool', 'tool_call_id': 'old-bad', 'content': '{"error":"Expecting value","path":null}'}])
+        saved.update(attempt=2, handoffs=3)
+        before = copy.deepcopy(saved)
+        result, inspected, selected = self.run_plan([self.finish()])
+        self.assertEqual(result, self.proposal)
+        inspected.assert_not_called()
+        selected.assert_not_called()
+        for field in ('attempt', 'handoffs', 'discovery', 'evidence', 'failed_reads', 'observed_inspections'):
+            self.assertEqual(saved[field], before[field])
+        self.assert_paired(self.requests[-1]['messages'])
+        self.assertIn('retained source for app/src/main.ts', str(self.requests[-1]['messages']))
+        self.assertNotIn('old-bad', [c['id'] for m in self.requests[-1]['messages'] for c in m.get('tool_calls', [])])
+        self.assertEqual(self.task['planning_limits'], self.limits)
+        self.assertNotIn('authorization_ref', self.task)
+
+    def test_unoffered_call_becomes_diagnostic_and_valid_proposal_finishes(self):
+        result, inspected, selected = self.run_plan([self.call('reponse', {'answer': 'Done'}), self.finish()])
+        self.assertEqual(result, self.proposal)
+        inspected.assert_not_called()
+        selected.assert_not_called()
+        messages = self.requests[-1]['messages']
+        self.assert_paired(messages)
+        self.assertFalse(any(m.get('tool_calls') for m in messages))
+        self.assertIn('reponse', str(messages))
+        self.assertIn('Tool argument diagnostic:', str(messages))
+
+    def test_provider_tool_rejection_explains_both_offered_tools(self):
+        from cheapos.providers import ToolCallValidationError
+        result, inspected, selected = self.run_plan([
+            ToolCallValidationError(), self.read('app/src/main.ts'), self.finish()])
+        self.assertEqual(result, self.proposal)
+        inspected.assert_called_once()
+        selected.assert_not_called()
+        feedback = self.requests[1]['messages'][-2]['content']
+        self.assertIn('Only inspect_project_file and propose_branch_plan are available', feedback)
+        self.assertIn('For inspection', feedback)
+        self.assertIn('For a proposal', feedback)
+
     def test_resume_preserves_failed_inspections_and_switches_without_replaying_them(self):
         with self.assertRaises(InterruptedError):
             self.run_plan([self.read('bad1'), self.read('bad2'), InterruptedError('server stopped')])
