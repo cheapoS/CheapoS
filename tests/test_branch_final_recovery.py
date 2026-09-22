@@ -71,6 +71,43 @@ class FinalRecoveryTests(unittest.TestCase):
         return final._review(engine,runtime,{'id':'m','requirements':[{'id':'one:1'}]},
                              {'evidence':evidence},['diff:1'],[])
 
+    def test_new_direction_discards_inflight_approval_and_rebinds_retained_review(self):
+        from cheapos.engine import OperatorRedirect
+        task, engine, runtime = self.fixture()
+        before = copy.deepcopy(task)
+        interrupted = False
+        def guard():
+            if interrupted: raise OperatorRedirect('New guidance')
+        runtime.guard.side_effect = guard
+        def stale_response(*args, **kwargs):
+            nonlocal interrupted
+            task['steer_guidance'] = 'lets make sure css changes needed are also included'
+            interrupted = True
+            return self.approval()
+        engine.request.side_effect = stale_response
+        with self.assertRaises(OperatorRedirect): self.review(engine, runtime)
+        old_packet = copy.deepcopy(next(iter(task['branch_run']['final_review_packets'].values())))
+        self.assertNotIn('result', old_packet)
+        self.assertFalse(any(c.args[1] == 'review' for c in engine.event.call_args_list))
+        interrupted = False
+        engine.request.side_effect = None
+        decision = self.approval()['tool_calls'][0]['result']
+        decision.update(decision='REQUEST_CHANGES', defects=[{
+            'criterion': 'one:1', 'location': 'styles.css:1', 'kind': 'static',
+            'expected': 'The new menu headings have matching styles.',
+            'observed': 'The headings use an undefined class.',
+            'support': 'The supplied stylesheet has no menu-header rule.', 'reproduction': ''}])
+        engine.request.return_value = self.call('final_review_decision', decision)
+        result = self.review(engine, runtime)
+        self.assertEqual(result['decision'], 'REQUEST_CHANGES')
+        self.assertEqual(result['defects'][0]['location'], 'styles.css:1')
+        messages = engine.request.call_args.args[1]
+        self.assertTrue(any(task['steer_guidance'] in m.get('content', '') for m in messages))
+        self.assertIn(old_packet, task['branch_run']['final_review_packet_history'])
+        self.assertEqual(engine.request.call_count, 2)
+        for key in ('checks', 'limits', 'usage'): self.assertEqual(task[key], before[key])
+        engine.checks.assert_not_called()
+
     def select(self, engine, runtime, role, replace):
         self.assertEqual((role,replace),('reviewer',True))
         self.assertIn('reviewer',branch_review_recovery.failed_models(runtime.task))

@@ -1,4 +1,5 @@
 import copy
+import threading
 import json
 import subprocess
 import sys
@@ -31,7 +32,7 @@ class BranchFinalTests(unittest.TestCase):
         self.omit_coverage = False
         self.request_changes = False
         self.events = []
-        self.engine = SimpleNamespace(store=SimpleNamespace(save=lambda task:None), event=lambda *args:self.events.append(args), checks=self.checks, request=self.request, parse_call=lambda call: (call['function']['name'], json.loads(call['function']['arguments'])))
+        self.engine = SimpleNamespace(lock=threading.RLock(), store=SimpleNamespace(save=lambda task:None), event=lambda *args:self.events.append(args), checks=self.checks, request=self.request, parse_call=lambda call: (call['function']['name'], json.loads(call['function']['arguments'])))
 
     authorize = fixtures.BranchCommitTests.authorize
     receipt = fixtures.BranchCommitTests.receipt
