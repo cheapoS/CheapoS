@@ -12,7 +12,8 @@ OUTAGES = TRANSIENT | {'upstream_access_denied', 'gateway_cooldown', 'http_429'}
 
 def provider(model):
     # These transport aliases share the underlying provider's outage scope.
-    return model.removeprefix('no-think/').split('/', 1)[0]
+    prefix = model.removeprefix('no-think/').split('/', 1)[0]
+    return {'oc': 'opencode', 'kr': 'kiro'}.get(prefix, prefix)
 
 
 def outage(task, role, recovery):

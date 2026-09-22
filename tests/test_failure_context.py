@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 from cheapos.context_evidence import read
 from cheapos.failure_context import project
+from cheapos.instructions.runtime import with_tools
 
 
 def failed(identity, **changes):
@@ -122,7 +123,10 @@ class FailureContextTests(unittest.TestCase):
         self.assertEqual(task['messages'], original)
         engine._request_attempt(runtime, task['messages'], [], 'reviewer')
         self.assertNotIn('failure_history', task['request_metrics'][-1])
-        self.assertEqual(engine._perform_request.call_args.args[1], original)
+        reviewed = engine._perform_request.call_args.args[1]
+        self.assertEqual(reviewed, with_tools(original, []))
+        self.assertEqual(reviewed[1:], original)
+        self.assertEqual(task['messages'], original)
 
     def test_unknown_capacity_still_folds_failures_before_budget_estimation(self):
         from cheapos.engine import Engine

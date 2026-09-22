@@ -12,6 +12,37 @@ from cheapos.instructions.runtime import (
 
 
 class RuntimeInstructionTests(unittest.TestCase):
+    def test_reviewer_provider_contract_carries_command_evidence_through_correction(self):
+        from tests.test_transport import TransportTests
+        from cheapos import review_assessment as review
+        criterion = 'npm run check passes with zero diagnostics'
+        packet = {'checks': [{'command': ['npm', 'run', 'check'], 'passed': True, 'exit_code': 0}]}
+        state = review.prepare('candidate', packet, [criterion])
+        offered = review.tools_with_contract(tools.REVIEW_TOOLS, state)
+        decision = next(t for t in offered if t['function']['name'] == 'review_decision')
+        for phase, available in (('reviewer', offered), ('review_decision_coaching', [decision])):
+            app, runtime, _ = TransportTests().harness()
+            runtime.task['providers']['reviewer'] = dict(runtime.task['providers']['worker'])
+            runtime.task['limits']['reviewer_tokens'] = 50000  # two full schema dispatches
+            messages = [{'role': 'system', 'content': prompt(phase) + '\n' + review.INSTRUCTION},
+                        {'role': 'user', 'content': json.dumps({'review_evidence': review.display(state)})}]
+            original = copy.deepcopy(messages)
+            received = []
+            class Provider:
+                def complete(self, sent, actual, maximum):
+                    received.append((sent, actual))
+                    return {'content': 'Reply'}, {'prompt_tokens': 2, 'completion_tokens': 3, 'cost': 0}
+            app.provider_factory = lambda *args: Provider()
+            for _ in range(2): app._request_attempt(runtime, messages, available, 'reviewer')
+            sent, actual = received[-1]
+            self.assertEqual(sent[0]['content'].count(review.INSTRUCTION), 1)
+            self.assertIn('command-result-only', sent[0]['content'])
+            contract = json.loads(sent[1]['content'])['review_evidence']
+            source, = contract['criterion_checks'][criterion]
+            schema = next(t for t in actual if t['function']['name'] == 'review_decision')['function']['parameters']
+            self.assertIn(source, schema['properties']['review_assessment']['properties']['criteria']['properties'][criterion]['description'])
+            self.assertEqual(messages, original)
+
     def test_entry_points_use_registered_current_profiles(self):
         for profile, delivered in (
             ('worker', tools.WORKER_SYSTEM), ('interactive', tools.CHAT_SYSTEM),
@@ -63,6 +94,16 @@ class RuntimeInstructionTests(unittest.TestCase):
         self.assertEqual(messages, before)
         self.assertEqual(len(second), len(messages))
         self.assertEqual(with_tools(second, [], 'auto')[0]['content'].count(TOOL_CONTRACT), 1)
+
+    def test_contract_only_system_message_is_idempotent_after_restart_and_handoff(self):
+        messages = [{'role': 'user', 'content': 'Retained candidate evidence'}]
+        first = with_tools(messages, tools.REVIEW_TOOLS)
+        current = json.loads(json.dumps(first))
+        for _ in range(3):
+            current = with_tools(current, tools.REVIEW_TOOLS)
+            self.assertEqual(current, first)
+        self.assertEqual(current[1:], messages)
+        self.assertEqual(current[0]['content'].count(TOOL_CONTRACT.lstrip()), 1)
 
     def test_final_provider_receives_fresh_worker_policy_and_actual_tools_once(self):
         from tests.test_transport import TransportTests

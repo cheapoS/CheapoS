@@ -440,7 +440,7 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         # work, but repeating selection here cannot repair credentials/access.
         scope = 'connection' if any(h.get('cooldown_scope') in {'connection', 'account'} for h in access_blocked) else 'provider'
         raise RoutingPause('No authorized route can proceed because access was denied. Inspect access in Models; saved files, checks and usage are retained.', scope=scope)
-    waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") in {"provider", "model", "account", "connection"} and h.get("retry_known") and h["cooling_down"]]
+    waits = [h["retry_at"] for h in provider_waits if h.get("cooldown_scope") in {"provider", "model", "account", "connection"} and (h.get("retry_known") or h.get('retry_scheduled')) and h["cooling_down"]]
     if round_state['probes'] >= route_schedule.BATCH_SIZE and candidates:
         raise RoutingPause('Checking more authorized routes automatically after a short backoff.', retry_at=route_schedule.retry_at(round_state), scope='probe_capacity')
     if waits:

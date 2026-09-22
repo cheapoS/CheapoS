@@ -11,6 +11,43 @@ from tests.test_review_assessment import assessment
 
 
 class FinalRecoveryTests(unittest.TestCase):
+    def test_paged_synthesis_resumes_command_claim_with_retained_receipt_and_code(self):
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        bound = self.bound_check(task)
+        original = {'checks': [bound], 'requirements': [{'id': 'one:1', 'criterion': 'python -m unittest passes'}]}
+        summary = {'diff': '+return max(lower, min(value, upper))',
+                   'check_output_sources': final.check_sources(original)}
+        manifest = {'id': 'm', 'requirements': original['requirements']}
+        def initial(rt, messages, tools, role, **kw):
+            if engine.request.call_count == 2:
+                raise InterruptedError('Saved review interrupted')
+            contract = json.loads(messages[1]['content'])['review_evidence']
+            source, = contract['criterion_checks']['one:1']
+            schema = tools[0]['function']['parameters']['properties']['review_assessment']
+            self.assertIn(source, schema['properties']['criteria']['properties']['one:1']['description'])
+            return self.call('read_review_evidence', {'source': source})
+        engine.request.side_effect = initial
+        with self.assertRaises(InterruptedError):
+            final._review(engine, runtime, manifest, summary, ['diff:1'], ['one:1'], check_packet=original)
+        saved = next(iter(task['branch_run']['final_review_packets'].values()))
+        saved['evidence_review'].pop('criterion_checks')  # older saved contract
+        runtime.task = json.loads(json.dumps(task))
+        def finish(rt, messages, tools, role, **kw):
+            excerpt = json.loads(messages[-1]['content'])
+            claim = {'reason': 'The exact captured command passed.', 'citations': [excerpt['citation']]}
+            result = self.approval()['tool_calls'][0]['result']
+            result.update(criteria_ids=['one:1'], review_assessment=assessment(['one:1'], checks=False))
+            result['review_assessment']['criteria']['one:1'] = claim
+            result['review_assessment']['verification'] = copy.deepcopy(claim)
+            return self.call('final_review_decision', result)
+        engine.request.reset_mock(side_effect=True); engine.request.side_effect = finish
+        result = final._review(engine, runtime, manifest, summary, ['diff:1'], ['one:1'], check_packet=original)
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 1)
+        self.assertEqual(runtime.task['checks'], task['checks'])
+        self.assertEqual(runtime.task['usage'], task['usage'])
+        engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+
     def fixture(self):
         task={'branch_run':{'current_item_id':None,'plan':{'uncapped_work':True},
                             'items':[{'id':'one','status':'committed','commit':'saved'}]},

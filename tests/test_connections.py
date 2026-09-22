@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 from cheapos import access_policy
 from cheapos.connections import Connections
+from cheapos.instructions.runtime import with_tools
 from cheapos.omniroute import OmniRouteManager
 from cheapos.providers import ProviderError
 from cheapos.routing import _select_connections, RoutingPause, PROBE_MARKER
@@ -102,7 +103,7 @@ class ConnectionTests(unittest.TestCase):
 
     def test_work_request_fails_over_with_usage_and_original_messages(self):
         from tests.test_transport import TransportTests
-        from cheapos.engine import Engine
+        from cheapos.engine import worker_system
         engine,runtime,_=TransportTests().harness()
         engine.connections=self.registry;engine.gateway=self.default
         engine.count_recovery_turn=Mock()
@@ -130,7 +131,12 @@ class ConnectionTests(unittest.TestCase):
         result=engine._request_routed(runtime,messages,[],'worker')
         self.assertEqual(result['content'],'done')
         self.assertEqual([identity for identity,_ in calls],['default',self.other_id])
-        self.assertTrue(all(history==messages for _,history in calls))
+        expected=with_tools([{'role':'system','content':worker_system(task)}]+messages,[])
+        for identity,history in calls:
+            with self.subTest(connection=identity):
+                self.assertEqual(history,expected)
+                self.assertEqual(history[1:],messages)
+        self.assertEqual(messages,[{'role':'user','content':'Keep these instructions'}])
         self.assertEqual(task['providers']['worker']['connection_id'],self.other_id)
         self.assertGreaterEqual(len(task['request_metrics']),3)
         self.assertEqual(task['request_metrics'][0]['status'],'failed')

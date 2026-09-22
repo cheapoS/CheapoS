@@ -171,7 +171,10 @@ class UpstreamAccessTests(unittest.TestCase):
                 result = engine.request(runtime, messages, [{'function': {'name': 'review_decision'}}], 'reviewer')
                 self.assertEqual(result, decision)
                 self.assertEqual([name for name, _ in calls], ['groq/qwen'] if cached else ['oc/ling', 'groq/qwen'])
-                self.assertTrue(all(history == messages for _, history in calls))
+                from cheapos.instructions.runtime import with_tools
+                expected = with_tools(messages, [{'function': {'name': 'review_decision'}}])
+                self.assertTrue(all(history == expected for _, history in calls))
+                self.assertEqual(expected[1:], messages)  # current tool contract precedes intact evidence
                 self.assertEqual(runtime.handoffs, 2)
                 self.assertEqual(runtime.failed_models, set())
                 self.assertEqual({k: task[k] for k in saved}, saved)

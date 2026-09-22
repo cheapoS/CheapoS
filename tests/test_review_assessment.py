@@ -64,6 +64,65 @@ def fixture_review_call(message, messages):
 
 
 class ReviewAssessmentTests(unittest.TestCase):
+    def command_packet(self):
+        criteria = ['npm run check passes with zero diagnostics', 'npm run build completes without errors',
+                    'npm run verify outputs result PASS with all assertions satisfied']
+        packet = {'diff': '+return max(lower, min(value, upper))',
+                  'checks': [{'candidate_id': 'candidate', 'command': ['npm', 'run', name], 'record': {
+                      'command': ['npm', 'run', name], 'directory': '.', 'passed': True, 'exit_code': 0,
+                      'output': 'PASS' if name == 'verify' else '0 diagnostics'}} for name in ('check', 'build', 'verify')]}
+        return criteria, packet
+
+    def test_command_results_approve_from_exact_receipts_while_regressions_still_need_code(self):
+        criteria, packet = self.command_packet()
+        state = review.prepare('candidate', packet, criteria)
+        result = self.approval(); result['review_assessment'] = assessment(criteria)
+        for key in criteria:
+            source, = state['criterion_checks'][key]
+            result['review_assessment']['criteria'][key] = {
+                'reason': 'The captured command completed successfully with the specified result.',
+                'citations': [review.read(state, source)['citation']]}
+        review.validate(state, result)
+        review.retained(result, 'candidate')
+        result['review_assessment']['regressions']['citations'] = [review.read(state, 'checks')['citation']]
+        with self.assertRaisesRegex(review.EvidenceError, 'Regression assessment needs code'):
+            review.validate(state, result)
+
+    def test_command_claim_rejects_unrelated_check_stale_excerpt_and_mixed_behavior(self):
+        criteria, packet = self.command_packet()
+        state = review.prepare('candidate', packet, criteria)
+        result = self.approval(); result['review_assessment'] = assessment(criteria)
+        for key in criteria:
+            result['review_assessment']['criteria'][key]['citations'] = [review.read(state, state['criterion_checks'][key][0])['citation']]
+        wrong = copy.deepcopy(result)
+        wrong['review_assessment']['criteria'][criteria[0]] = wrong['review_assessment']['criteria'][criteria[1]]
+        with self.assertRaisesRegex(review.EvidenceError, 'matching current check receipt'):
+            review.validate(state, wrong)
+        newer = review.prepare('new-candidate', packet, criteria)
+        with self.assertRaises(review.EvidenceError):
+            review.validate(newer, result)
+        for key in ('npm run check passes and the menu looks correct', 'Menu works when npm run build completes without errors',
+                    'npm run check passes with no security vulnerabilities', 'npm run other passes'):
+            self.assertFalse(review.prepare('candidate', packet, [key])['criterion_checks'])
+        for field, value in (('passed', False), ('exit_code', 1), ('reason', 'cancelled')):
+            changed = copy.deepcopy(packet)
+            for row in changed['checks']: row['record'][field] = value
+            self.assertFalse(review.prepare('candidate', changed, criteria)['criterion_checks'])
+
+    def test_command_contract_refresh_preserves_old_reads_and_maps_final_requirement_ids(self):
+        criteria, packet = self.command_packet()
+        state = review.prepare('candidate', packet, criteria)
+        citation = review.read(state, 'diff')['citation']
+        state.pop('criterion_checks')  # older saved review, including a handoff
+        review.refresh_check_claims(state, packet)
+        before = copy.deepcopy(state)
+        review.refresh_check_claims(state, packet)
+        self.assertEqual(state, before)
+        self.assertIsNotNone(review.cited_excerpt(state, citation))
+        packet['requirements'] = [{'id': 'SEo-7:1', 'criterion': criteria[0]}]
+        final = review.prepare('final', packet, ['SEo-7:1'])
+        self.assertEqual(list(final['criterion_checks']), ['SEo-7:1'])
+
     def state(self):
         return review.prepare('candidate', {'diff': '+return max(lower, min(value, upper))',
                                             'checks': [{'passed': True}]}, ['requested_change'])

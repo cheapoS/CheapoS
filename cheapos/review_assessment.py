@@ -8,6 +8,7 @@ import copy
 import hashlib
 import json
 import re
+import shlex
 
 VERSION = 1
 INSTRUCTION = instruction('reviewer.assessment')
@@ -60,7 +61,39 @@ def prepare(scope, packet, criteria, *, partial=False):
             add(state, f'chunk:{index + 1}:{source}', value['kind'], value['content'])
     if partial and not state['sources']:
         add(state, 'packet', 'packet', json.dumps(packet, ensure_ascii=False))
+    refresh_check_claims(state, packet)
     return state
+
+
+def refresh_check_claims(state, packet):
+    """Bind narrowly stated command-result claims to controller check receipts.
+
+    This is deliberately a full match, not a keyword classifier: behavioral or
+    mixed claims retain the code/visual requirement. The reviewer cannot choose
+    the evidence type. Existing same-candidate reads and attempts are retained.
+    """
+    texts = {key: key for key in state['criteria']}
+    texts.update({row['id']: row['criterion'] for row in packet.get('requirements', []) if row['id'] in texts})
+    bindings = {}
+    checks = packet.get('checks') or []
+    if isinstance(checks, dict):
+        checks = [checks]  # Interactive checkpoints carry one result.
+    for bound in checks:
+        record = bound.get('record', bound)
+        command = record.get('command', bound.get('command'))
+        if (record.get('passed') is not True or record.get('exit_code') != 0 or record.get('reason')
+                or not isinstance(command, list) or not command or any(not isinstance(arg, str) for arg in command)):
+            continue
+        # A result-only sentence cannot silently acquire extra behavioral claims.
+        suffix = r'(?:passes(?: with zero diagnostics)?|completes without errors|outputs result PASS(?: with all assertions satisfied)?)\.?'
+        pattern = r'`?' + re.escape(shlex.join(command)) + r'`?\s+' + suffix
+        for key, criterion in texts.items():
+            if not isinstance(criterion, str) or not re.fullmatch(pattern, criterion.strip()):
+                continue
+            source = 'check:' + digest(bound)[:20]
+            add(state, source, 'check', json.dumps(bound, ensure_ascii=False, sort_keys=True))
+            bindings.setdefault(key, []).append(source)
+    state['criterion_checks'] = bindings
 
 
 def display(state):
@@ -72,6 +105,7 @@ def display(state):
             row['content'] = value['content']  # The synthesizer must see the cited code.
         sources.append(row)
     return {'version': VERSION, 'scope': state['scope'], 'criteria': state['criteria'], 'sources': sources,
+            'criterion_checks': state.get('criterion_checks', {}),
             'instruction': instruction('reviewer.evidence_catalog')}
 
 
@@ -147,8 +181,11 @@ def schema(state):
                 'required': ['source'], 'additionalProperties': False}
     claim = {'type': 'object', 'properties': {'reason': {'type': 'string', 'minLength': 1},
              'citations': {'type': 'array', 'minItems': 1, 'items': citation}}, 'required': ['reason', 'citations'], 'additionalProperties': False}
+    criteria = {key: copy.deepcopy(claim) for key in state['criteria']}
+    for key, sources in state.get('criterion_checks', {}).items():
+        criteria[key]['description'] = 'Command-result-only claim. Cite its current check receipt: ' + ', '.join(sources)
     return {'type': 'object', 'description': 'Required for APPROVE. Supply all four fields; each claim needs a nonempty reason and citations. Use [] for no verification limitations.', 'properties': {
-        'criteria': {'type': 'object', 'properties': {key: copy.deepcopy(claim) for key in state['criteria']},
+        'criteria': {'type': 'object', 'properties': criteria,
                      'required': state['criteria'], 'additionalProperties': False},
         'regressions': copy.deepcopy(claim), 'verification': copy.deepcopy(claim),
         'limitations': {'type': 'array', 'items': {'type': 'string'}}},
@@ -294,7 +331,7 @@ def validate(state, result):
         issue('review_assessment.criteria', 'Assess every exact criterion: ' + json.dumps(state['criteria']))
     claims = claims if isinstance(claims, dict) else {}
     excerpts = {}
-    def claim(value, label, field, implementation=False, verification=False):
+    def claim(value, label, field, implementation=False, verification=False, required_sources=None):
         if not isinstance(value, dict) or not isinstance(value.get('reason'), str) or not value['reason'].strip():
             issue(field + '.reason', label + ' needs a reason grounded in the cited evidence.')
         if not isinstance(value, dict):
@@ -304,6 +341,7 @@ def validate(state, result):
             issue(field + '.citations', label + ' needs exact evidence citations. Reuse delivered sources; read only missing evidence.')
             return
         kinds = set()
+        matched_sources = set()
         for index, ref in enumerate(citations):
             location = field + f'.citations[{index}]'
             if not isinstance(ref, dict) or not isinstance(ref.get('source'), str):
@@ -319,6 +357,7 @@ def validate(state, result):
                       instruction=instruction('reviewer.correct_citation'))
                 continue
             kinds.add(source['kind'])
+            matched_sources.add(ref['source'])
             entry = excerpts.setdefault(ref['source'], {'kind': source['kind'], 'content': '', 'source_digest': source['digest']})
             if quote not in entry['content']:
                 entry['content'] += ('\n' if entry['content'] else '') + quote
@@ -326,8 +365,11 @@ def validate(state, result):
             issue(field + '.citations', label + ' needs code/document or visual evidence; passing checks and prior approvals alone are insufficient.')
         if verification and not state['partial'] and any(s['kind'] == 'check' for s in state['sources'].values()) and 'check' not in kinds:
             issue(field + '.citations', 'Verification assessment must cite the actual check evidence and explain its coverage/limitations.')
+        if required_sources and not matched_sources.intersection(required_sources):
+            issue(field + '.citations', 'Command-result claim must cite its matching current check receipt.', matching_source_ids=required_sources)
     for key in state['criteria']:
-        claim(claims.get(key), key, 'review_assessment.criteria.' + key, implementation=True)
+        sources = state.get('criterion_checks', {}).get(key)
+        claim(claims.get(key), key, 'review_assessment.criteria.' + key, implementation=not sources, required_sources=sources)
     claim(assessment.get('regressions'), 'Regression assessment', 'review_assessment.regressions', implementation=True)
     claim(assessment.get('verification'), 'Verification assessment', 'review_assessment.verification', verification=True)
     limitations = assessment.get('limitations')

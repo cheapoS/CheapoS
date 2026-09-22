@@ -12,6 +12,102 @@ MODEL={'id':'provider/model','tool_calling':True,'context_length':10000}
 
 
 class RouteHealthTests(unittest.TestCase):
+    def test_shared_work_outage_routes_or_waits_then_finishes_review_without_rescue(self):
+        import copy
+        import threading
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from cheapos.engine import Engine
+        from cheapos import review_assessment as review
+        from tests.test_review_assessment import assessment
+        for has_alternative in (True, False):
+            with self.subTest(has_alternative=has_alternative), tempfile.TemporaryDirectory() as directory, \
+                    patch('cheapos.model_pool.time.time', return_value=1000) as clock:
+                pool = FreeModelPool(directory)
+                for name in ('down/a', 'down/b'):
+                    pool.record(URL, name, 'reviewer', error=ProviderError('', code='stream_error'))
+                    pool.record(URL, name, 'reviewer', probe=True)
+                models = [dict(MODEL, id=name, free=True) for name in ('down/a', 'down/b', 'down/c', 'author/code')]
+                if has_alternative: models.append(dict(MODEL, id='healthy/reviewer', free=True))
+                models += [dict(MODEL, id='paid/reviewer', free=False)]
+                proof = review.prepare('candidate', {'diff': '+return max(lower, min(value, upper))', 'checks': [{'passed': True}]}, ['requested_change'])
+                task = {'id': 'fixture', 'status': 'reviewing', 'execution': {'mode': 'remote'}, 'events': [],
+                        'providers': {'worker': {'model': 'author/code'}, 'reviewer': {'model': 'down/c', 'base_url': URL}},
+                        'usage': {'uncertain_requests': 2, 'cost': 0}, 'pending_review': {'evidence_review': proof, 'review_requests': 2},
+                        'route': {'base_url': URL, 'preferred': {'reviewer': 'down/c'}}}
+                before = copy.deepcopy(task['pending_review'])
+                runtime = SimpleNamespace(task=task, stop=threading.Event(), guard=Mock(), failed_models=set(), handoffs=2, route_autorecover=True)
+                gateway = SimpleNamespace(settings={}, pool=pool, matches=lambda url: True, catalog=lambda **kw: {'status': 'ready', 'models': models})
+                app = Engine.__new__(Engine); app.gateway = gateway; app.store = Mock(); app.event = Mock()
+                app.connection_for = Mock(return_value=gateway)
+                calls = []
+                decision = {'decision': 'APPROVE', 'feedback': 'Both bounds retained.', 'review_assessment': assessment()}
+                def request(rt, messages, tools, role, config_override=None, purpose=None, **kw):
+                    cfg = config_override or task['providers'][role]
+                    calls.append((purpose, cfg['model']))
+                    name, args = ('routing_ready', {'marker': health.PROBE_MARKER}) if purpose == 'probe' else ('review_decision', decision)
+                    return {'tool_calls': [{'id': 'response', 'function': {'name': name, 'arguments': json.dumps(args)}}]}
+                app._request = request
+                app.route_wait_info = lambda rt, error: {'can_wait': True, 'retry_at': error.retry_at}
+                def wait(rt): clock.return_value = task['route_unavailable']['retry_at'] + 1
+                app.wait_for_route = Mock(side_effect=wait)
+                from cheapos.tools import REVIEW_TOOLS
+                message = app.request(runtime, [{'role': 'user', 'content': 'Saved candidate evidence'}], REVIEW_TOOLS, 'reviewer')
+                result = json.loads(message['tool_calls'][0]['function']['arguments'])
+                review.validate(proof, result); review.retained(result, 'candidate')
+                self.assertEqual(task['pending_review'], before)
+                self.assertEqual(task['usage']['uncertain_requests'], 2)
+                self.assertEqual(runtime.handoffs, 2)
+                self.assertFalse(runtime.failed_models)
+                expected = 'healthy/reviewer' if has_alternative else 'down/c'
+                self.assertEqual(calls, [('probe', expected), (None, expected)])
+                self.assertEqual(app.wait_for_route.call_count, 0 if has_alternative else 1)
+
+    def test_real_failures_across_models_back_off_provider_despite_passing_probes(self):
+        with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time', return_value=1000) as clock:
+            pool = FreeModelPool(directory)
+            error = ProviderError('private detail', code='stream_error')
+            pool.record(URL, 'down/a', 'reviewer', error=error, connection_revision='saved')
+            pool.record(URL, 'down/a', 'reviewer', probe=True, connection_revision='saved')
+            self.assertTrue(pool.observation(URL, 'down/a', 'saved')['cooling_down'])
+            self.assertFalse(pool.observation(URL, 'down/b', 'saved')['cooling_down'])
+            pool.record(URL, 'down/b', 'reviewer', error=error, connection_revision='saved')
+            pool.record(URL, 'down/b', 'reviewer', probe=True, connection_revision='saved')
+            pool = FreeModelPool(directory)  # restart does not replenish attempts
+            observed = pool.observation(URL, 'down/c', 'saved')
+            self.assertEqual(observed['cooldown_scope'], 'provider')
+            self.assertEqual(observed['retry_at'], 1120)
+            self.assertTrue(observed['retry_scheduled'])
+            self.assertFalse(observed['retry_known'])  # inferred delay, not upstream reset
+            self.assertEqual(observed.get('failures', 0), 0)
+            self.assertNotIn('private detail', json.dumps(pool.records))
+            for url, name, revision in ((URL, 'other/a', 'saved'), (URL, 'down/a', 'changed'), (URL+'other', 'down/a', 'saved')):
+                self.assertFalse(pool.observation(url, name, revision)['cooling_down'])
+            clock.return_value = 1121
+            self.assertFalse(pool.observation(URL, 'down/c', 'saved')['cooling_down'])
+            pool.record(URL, 'down/a', 'reviewer', probe=True, connection_revision='saved')
+            self.assertEqual(pool.observation(URL, 'down/a', 'saved')['failure']['category'], 'transient_provider')
+            pool.record(URL, 'down/a', 'reviewer', error=error, connection_revision='saved')
+            self.assertEqual(pool.observation(URL, 'down/c', 'saved')['retry_at'], 1361)
+            # A real response (including one already in flight) clears the inferred outage.
+            pool.record(URL, 'down/b', 'reviewer', seconds=1, connection_revision='saved')
+            self.assertFalse(pool.observation(URL, 'down/c', 'saved')['cooling_down'])
+            self.assertEqual(pool.observation(URL, 'down/b', 'saved')['availability_failures'], 0)
+
+    def test_probes_request_errors_and_single_model_cannot_establish_shared_outage(self):
+        with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time', return_value=1000):
+            for code, probe in (('http_400', False), ('invalid_response_json', False), ('http_503', True)):
+                pool = FreeModelPool(directory); pool.records.clear()
+                for name in ('down/a', 'down/b'):
+                    pool.record(URL, name, 'worker', error=ProviderError('', code=code), probe=probe)
+                self.assertFalse(pool.observation(URL, 'down/c')['cooling_down'])
+            pool.records.clear()
+            for name in ('oc/a', 'no-think/oc/a', 'opencode/a'):
+                pool.record(URL, name, 'planner', error=ProviderError('', code='http_503'))
+            self.assertFalse(pool.observation(URL, 'opencode/b')['cooling_down'])
+            pool.record(URL, 'opencode/b', 'planner', error=ProviderError('', code='http_503'))
+            self.assertTrue(pool.observation(URL, 'oc/c')['cooling_down'])
+
     def test_local_budget_is_not_a_bad_model_response_or_retryable_outage(self):
         from cheapos.providers import BudgetError
         result = health.classify(BudgetError('Not enough task allowance'))

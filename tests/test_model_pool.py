@@ -86,15 +86,15 @@ class PoolTests(unittest.TestCase):
                 self.assertFalse(pool.observation(endpoint,'openrouter/a')['cooling_down'])
 
     def test_cooldowns_survive_restart_expire_and_remain_endpoint_scoped(self):
-        with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time', return_value=1000):
+        with tempfile.TemporaryDirectory() as directory, patch('cheapos.model_pool.time.time', return_value=1000) as clock:
             pool=FreeModelPool(directory)
             pool.record('http://localhost:20128/v1','a','worker',error='Broken stream')
             pool=FreeModelPool(directory)
             self.assertTrue(pool.observation('http://127.0.0.1:20128/v1','a')['cooling_down'])
             self.assertFalse(pool.observation('http://127.0.0.1:2222/v1','a')['cooling_down'])
-            with patch('cheapos.model_pool.time.time',return_value=1901):
-                self.assertFalse(pool.observation('http://localhost:20128/v1','a')['cooling_down'])
             pool.record('http://localhost:20128/v1','a','worker',probe=True)
+            self.assertTrue(pool.observation('http://localhost:20128/v1','a')['cooling_down'])
+            clock.return_value = 1901
             self.assertFalse(pool.observation('http://localhost:20128/v1','a')['cooling_down'])
 
     def test_selection_uses_role_observations_then_metadata_without_size_scores(self):
