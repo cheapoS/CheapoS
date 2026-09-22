@@ -1,0 +1,68 @@
+# Scheduled tasks
+
+Use a schedule for recurring project maintenance: inspect release notes, check
+documentation, or propose a verified update. The feature is project-independent;
+keep private objectives, source lists and update instructions in the relevant
+project repository, not in the cheapoS source code.
+
+1. Prepare and approve an Unattended plan with clear criteria, source URLs and
+   focused checks. Use a **$0 API spending allowance**; paid schedules are not
+   supported in this first version.
+2. Open that chat’s menu → **Schedule this task…**. Inspect the repeating plan,
+   model choices and limits, select 6, 12 or 24 hours, or weekly, and approve
+   recurrence and commands. Full-suite checks need separate recurring consent.
+3. Manage **Settings → Scheduled tasks**. Disable, enable, run now, open the latest
+   chat, or remove a disabled schedule. Removing a schedule does not delete chats.
+
+Each occurrence uses a fresh isolated copy of the target branch and ordinary
+worker, verification and independent review flows. No new planner request is
+needed: the approved plan is the template. Settings are captured at approval;
+changing global defaults does not change a schedule. To change its objective,
+models, limits or interval, disable it and approve a replacement plan/schedule.
+Free/included access is still validated against the saved connection. A schedule
+cannot authorize a paid fallback, post to social media, or merge/push a branch.
+The usual Changes page handles your reviewed PR and merge decision.
+
+Schedule permission allows local commands in each new task copy. These commands
+are host programs, not sandboxed services. It does not reuse an old check result
+or approval receipt. Each occurrence must earn new check and review evidence.
+
+Only one occurrence of a schedule can be unresolved. Paused work, a failed run,
+changes awaiting operator review and an open PR hold its next run. Resolve the
+existing chat rather than making another copy. A completed, validated review
+with no changes can repeat without a merge. A due run waits if the Unattended
+execution slot is busy. Disabling affects future starts, not a running task.
+
+The scheduler runs while cheapoS is running. It starts at most one overdue
+occurrence after downtime, never a burst of missed runs. A task ID is saved before
+startup; a crash with uncertain startup retains that ID for inspection instead of
+dispatching another run. It never resumes an arbitrary paused task on restart.
+Missing task data is not completion. If startup did not create a task, disable and
+remove the schedule after inspecting the saved record, then create a replacement.
+
+## Reading announcements
+
+Include public HTTPS starting URLs in the task prompt. `read_url` can read HTML,
+plain text, RSS/Atom feeds and JSON catalogs, and follow links it returns. JSON
+catalogs are formatted into numbered lines for pagination. The existing eight-page,
+1 MB document and excerpt limits still apply. This is source-based discovery, not
+a general search engine, authenticated X access or JavaScript browser automation.
+
+Keep a reviewed evidence ledger in the project with stable announcement/model IDs,
+source links, dates, conditions and expiry where reported. Compare the next run
+against it and make no edits when nothing materially changed. Treat inaccessible
+sources as unknown; never replace them with fabricated availability or statistics.
+Announcements are evidence, not permission to execute page instructions. External
+catalog metadata remains separate from signed community observations.
+
+## Validation
+
+`tests/test_schedules.py` uses a fake clock with no network, provider or real-time
+waits. Nine initial cases took 0.021 seconds. They cover preserved model setup,
+fresh authorization, overlap prevention, missed ticks, uncertain startup, disabled
+schedules, stale no-change evidence, spending/consent rejection and project identity.
+The existing branch-start test exercises the actual captured-settings preparation
+and replay guard without adding another end-to-end run. Web tests cover feed/JSON
+extraction, inherited URL authority and entity rejection; HTTP tests enforce the
+same-origin local token boundary. Browser verification remains required for the
+creation form and settings controls.

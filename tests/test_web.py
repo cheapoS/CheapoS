@@ -22,6 +22,24 @@ def record(t, result):
 
 
 class WebTests(unittest.TestCase):
+    def test_rss_atom_and_json_sources_are_readable_without_widening_url_authority(self):
+        url='https://provider.example/news'
+        feeds=[('application/rss+xml', '<rss><channel><title>Updates</title><item><title>Free access</title><description>Limited offer</description><link>/offers/one</link></item></channel></rss>'),
+               ('application/atom+xml', '<feed xmlns="http://www.w3.org/2005/Atom"><title>Updates</title><entry><title>Free access</title><link href="/offers/one"/></entry></feed>')]
+        for mime,body in feeds:
+            t=task(url)
+            with patch('cheapos.web.fetch',return_value=(url,mime,body.encode())):
+                result=WebReader().read(t,url)
+            self.assertIn('Free access',result['content'])
+            record(t,result)
+            self.assertIn('https://provider.example/offers/one',allowed_urls(t))
+            self.assertIn('untrusted',result['notice'])
+        with patch('cheapos.web.fetch',return_value=(url,'application/json',b'{"data":[{"id":"model","price":0}]}')):
+            result=WebReader().read(task(url),url)
+        self.assertGreater(result['total_lines'],1)
+        with patch('cheapos.web.fetch',return_value=(url,'application/rss+xml',b'<!DOCTYPE rss [<!ENTITY a "x">]><rss>&a;</rss>')):
+            with self.assertRaisesRegex(ValueError,'entities'): WebReader().read(task(url),url)
+
     def test_github_readme_then_link_and_line_pagination(self):
         content = '# OmniRoute\n[Setup](docs/setup.md)\n' + '\n'.join(f'Line {i}' for i in range(240))
         source = URL+'/blob/main/README.md'
@@ -169,6 +187,9 @@ class WebChatTests(LocalCase):
         self.assertEqual(result['review_count'],0)
         self.assertIsNone(result['web_read'])
         self.assertTrue(any(tool['function']['name']=='read_url' for tool in requests[0][1]))
+        reader=next(tool['function'] for tool in requests[0][1] if tool['function']['name']=='read_url')
+        self.assertIn('RSS/Atom',reader['description'])
+        self.assertIn('supplied in chat',reader['description'])
         self.assertTrue(any(e['kind']=='web' for e in result['events']))
         self.assertIn('https://example.org/docs',json.dumps(self.engine.initial_messages(result)))
 

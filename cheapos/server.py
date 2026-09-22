@@ -163,7 +163,7 @@ class LocalHandler(SimpleHTTPRequestHandler):
         # The app's own assets are the entire public filesystem surface.
         relative = unquote(urlsplit(self.path).path).lstrip("/") or "index.html"
         target = self.server.directory / relative
-        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js", "integration.js", "settings.js", "settings.css", "storage.js", "git_workflow.js"} and not target.is_symlink() and target.is_file()
+        return relative in {"index.html", "app.js", "guidance.js", "panels.js", "styles.css", "brand-icon.svg", "branch_ui.js", "branch_ui.css", "lifetime_usage.js", "lifetime_usage.css", "preview.js", "carto.js", "integration.js", "settings.js", "settings.css", "storage.js", "schedules.js", "git_workflow.js"} and not target.is_symlink() and target.is_file()
 
     def do_GET(self):
         if not self.trusted():
@@ -194,6 +194,8 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 self.reply(engine.store.club.get_status(summary, include_remote=True))
             elif path == "/api/storage":
                 self.reply(engine.storage_maintenance.view())
+            elif path == "/api/schedules":
+                self.reply(engine.schedules.view())
             elif path in {"/api/settings/defaults", "/api/projects/settings"}:
                 project = engine.settings_project(parse_qs(urlsplit(self.path).query).get('project', [None])[0]) if path == '/api/projects/settings' else None
                 self.reply(engine.settings_store.view(project))
@@ -564,6 +566,23 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 result = engine.branch.prepare(values)
             elif path == "/api/tasks":
                 result = public_task(engine.create(values))
+            elif path == "/api/schedules/preview":
+                if set(values) != {'task_id'}: raise ValueError('Choose one approved task')
+                result = engine.schedules.preview(values['task_id'])
+            elif path == "/api/schedules":
+                result = engine.schedules.create(values)
+            elif path.startswith('/api/schedules/'):
+                parts = path.strip('/').split('/')
+                if len(parts) != 4: raise ValueError('Unknown schedule action')
+                if parts[3] == 'enabled':
+                    result = engine.schedules.update(parts[2], values)
+                elif parts[3] == 'run':
+                    if values: raise ValueError('Run now accepts no fields')
+                    result = engine.schedules.run_now(parts[2])
+                elif parts[3] == 'remove':
+                    if values: raise ValueError('Remove accepts no fields')
+                    result = engine.schedules.remove(parts[2])
+                else: raise ValueError('Unknown schedule action')
             elif path == "/api/storage/settings":
                 result = engine.storage_maintenance.configure(values)
             elif path == "/api/storage/cleanup":

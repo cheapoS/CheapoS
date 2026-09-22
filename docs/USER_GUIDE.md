@@ -208,7 +208,7 @@ The reviewer can approve, request revisions, or request takeover. Takeover requi
 
 ### Read a public link
 
-Paste an HTTPS link into Chat and ask about it. The worker and reviewer can use `read_url` to read public text pages; GitHub repository links open the repository's README through [GitHub's contents API](https://docs.github.com/en/rest/repos/contents#get-a-repository-readme). Chat shows the page being opened, the source, and the lines read. Longer documents can be read in sections. **Search project** searches local files only.
+Paste an HTTPS link into Chat and ask about it. The worker and reviewer can use `read_url` to read public text pages, RSS/Atom feeds and JSON catalogs; GitHub repository links open the repository's README through [GitHub's contents API](https://docs.github.com/en/rest/repos/contents#get-a-repository-readme). Chat shows the page being opened, the source, and the lines read. Longer documents can be read in sections. **Search project** searches local files only. For recurring source checks, see [Scheduled tasks](scheduled-tasks.md).
 
 The reader can follow links returned by a page. It makes GET requests without cookies, credentials, or project contents, and blocks private/local addresses and redirects to them. Each run can fetch up to eight documents, with a 1 MB response limit and bounded text excerpts; repeated sections use an in-memory cache. It does not provide search-engine results, sign-in, JavaScript interaction, or PDF reading. If a page cannot be read, the worker should explain the error or ask for the relevant text. Retrieved text is untrusted source material, not permission to run commands.
 

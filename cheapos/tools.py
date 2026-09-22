@@ -134,7 +134,7 @@ READ_TOOLS = [
     ),
     tool(
         "read_url",
-        "Read a public HTTPS page supplied in chat, or a link returned by this tool. GitHub repository links open the README. Returns numbered lines and links. To continue, set start_line to the previous end_line + 1; omitting end_line reads the next 120 lines. No internet search, sign-in, or JavaScript. If unavailable, explain the limitation rather than repeatedly searching local files.",
+        "Read a public HTTPS page, RSS/Atom feed, or JSON catalog supplied in chat, or a link returned by this tool. GitHub repository links open the README. Returns numbered lines and links. To continue, set start_line to the previous end_line + 1; omitting end_line reads the next 120 lines. No internet search, sign-in, or JavaScript. If unavailable, explain the limitation rather than repeatedly searching local files.",
         {"url": TEXT, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 1}},
         ["url"],
     ),

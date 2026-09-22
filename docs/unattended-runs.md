@@ -90,7 +90,7 @@ The review offers **Request changes**, **Leave on branch**, and **Approve & merg
 
 Integration supports local fast-forward only. A checked-out target must be clean and in the selected source checkout. External branch movement, another worktree holding the target, or divergence prevents integration; cheapoS does not force-update, rebase, resolve conflicts, push, or open a pull request. After success, it reports the target and SHA and asks what to work on next.
 
-Unattended does not schedule wakeups or keep executing after the server stops. Deterministic fixtures test controller behavior and interruption recovery; they do not establish real-model quality, reliability, or savings. A subsequent live trial is a separate operator action with selected models and a known budget.
+Unattended runs can be repeated through the optional [Scheduled tasks feature](scheduled-tasks.md). This local scheduler runs only while the server is running; it does not wake a sleeping computer. Deterministic fixtures test controller behavior and interruption recovery; they do not establish real-model quality, reliability, or savings. A subsequent live trial is a separate operator action with selected models and a known budget.
 
 ## Measurement runs for live trials
 

@@ -80,6 +80,14 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(json.loads(body)['id'], 'new')
             create.assert_called_once_with(self.engine, 'old', {})
 
+    def test_schedule_mutations_require_local_operator_authority(self):
+        with patch.object(self.engine.schedules, 'create', return_value={'schedules': []}) as create:
+            self.assertEqual(self.request('POST', '/api/schedules', {})[0], 403)
+            self.assertEqual(self.request('POST', '/api/schedules', {}, {'X-CheapOS-Token':self.server.token,'Origin':'https://evil.test'})[0], 403)
+            create.assert_not_called()
+            self.assertEqual(self.post('/api/schedules', {})[0], 200)
+            create.assert_called_once_with({})
+
     def test_integration_preparation_routes_keep_read_and_write_authority_separate(self):
         self.engine.store.save({'id':'saved'})
         with patch('cheapos.integration_preparation.readiness', return_value={'code':'target_advanced'}) as inspect, patch('cheapos.integration_preparation.start', return_value={'id':'saved','status':'paused'}) as start:

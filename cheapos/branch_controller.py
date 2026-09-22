@@ -145,11 +145,13 @@ class BranchController:
             result['gateway_connections'] = self.engine.connections.capture()
         return result
 
-    def prepare(self, values, planning_task=None):
-        fresh_settings = None
+    def prepare(self, values, planning_task=None, *, captured_settings=None, reserved_task_id=None):
+        # Recurrence is controller-owned standing authority, never model input.
+        fresh_settings = copy.deepcopy(captured_settings)
         git_sync = None
         if not planning_task and hasattr(self.engine, 'settings_capture'):
-            fresh_settings = self.engine.settings_capture(values, values.get('repository'))
+            if fresh_settings is None:
+                fresh_settings = self.engine.settings_capture(values, values.get('repository'))
             from .git_sync import before_task
             git_sync = before_task(values.get('repository', ''), fresh_settings, values.get('base_ref'))
         with self.engine.lock:
@@ -175,7 +177,9 @@ class BranchController:
                     raise ValueError('Choose a worker and an independent reviewer in Models')
                 if evidence.model_identity(policy['providers']['worker'])==evidence.model_identity(policy['providers']['reviewer']):
                     raise ValueError('Unattended work requires two distinct named models')
-            task_id=planning_task['id'] if planning_task else uuid.uuid4().hex
+            task_id=planning_task['id'] if planning_task else reserved_task_id or uuid.uuid4().hex
+            if reserved_task_id and (task_id in self.engine.store.tasks or (self.engine.store.root/'tasks'/task_id).exists()):
+                raise ValueError('Scheduled occurrence already has saved work; inspect it before continuing')
             if planning_task and planning_task['planning_policy']!=policy_for_saved(policy, planning_task['planning_policy']): raise ValueError('Model policy changed during planning; inspect a fresh proposal')
             previous=(planning_task or {}).get('branch_run',{}).get('workspace_mapping')
             if previous:
