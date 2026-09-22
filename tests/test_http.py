@@ -3,6 +3,7 @@ import http.client
 from html.parser import HTMLParser
 import io
 import json
+import socket
 import sys
 import tempfile
 import threading
@@ -10,6 +11,8 @@ import unittest
 from unittest.mock import Mock, patch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
+from contextlib import ExitStack
 
 from cheapos.engine import Engine, Runtime
 from cheapos.providers import ChatProvider, ProviderError
@@ -17,7 +20,7 @@ from cheapos.providers import http_failure
 from urllib.error import HTTPError
 from cheapos.gateways import OmniRouteGateway
 from cheapos.startup import GREETING
-from cheapos.server import LocalServer
+from cheapos.server import LocalHandler, LocalServer
 from cheapos.workspace import Workspace
 
 
@@ -41,6 +44,104 @@ class CooldownErrorTests(unittest.TestCase):
         self.assertEqual(http_failure(self.error(),{'gateway':'openai'}).code,'http_404')
         for retry in ('','NaN','-2','invalid'):
             self.assertEqual(http_failure(self.error(retry=retry),{'gateway':'omniroute'}).code,'http_404')
+
+
+class HTTPConnectionQueueTests(unittest.TestCase):
+    def test_polling_burst_can_queue_before_handlers_accept_connections(self):
+        # Two tabs can each issue six concurrent requests. Hold off accepting
+        # until the burst is queued, without scheduler timing or real waits.
+        with LocalServer(('127.0.0.1', 0), Path('.'), object()) as server, ExitStack() as stack:
+            server.socket.settimeout(1)
+            clients = []
+            for _ in range(12):
+                client = stack.enter_context(socket.create_connection(server.server_address, timeout=1))
+                client.sendall((f'GET /api/connection HTTP/1.0\r\n'
+                                f'Host: 127.0.0.1:{server.server_port}\r\n\r\n').encode())
+                clients.append(client)
+            for client in clients:
+                connection, address = server.get_request()
+                with connection:
+                    server.finish_request(connection, address)
+                response = http.client.HTTPResponse(client)
+                response.begin()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(response.read())['app'], 'CheapOS')
+                response.close()
+
+
+class JSONDisconnectTests(unittest.TestCase):
+    """Exercise real response writes without sockets, tasks or background threads."""
+
+    def request(self, method='GET', fail_at=None, error=None, token='fixture-token', engine_error=None):
+        engine = SimpleNamespace(projects=Mock(return_value=[], side_effect=engine_error),
+                                 save_preferences=Mock(return_value={'saved': True}))
+        path = '/api/projects' if method == 'GET' else '/api/preferences'
+        request = (f'{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:5173\r\n'
+                   f'X-CheapOS-Token: {token}\r\nContent-Type: application/json\r\n'
+                   'Content-Length: 2\r\n\r\n{}').encode()
+        connection = SimpleNamespace(makefile=Mock(return_value=io.BytesIO(request)), sendall=Mock())
+        if fail_at is not None:
+            connection.sendall.side_effect = [None] * fail_at + [error]
+        server = SimpleNamespace(directory=Path(__file__).resolve().parent.parent / 'dist',
+                                 server_port=5173, token='fixture-token', engine=engine)
+        stderr = io.StringIO()
+        with patch('sys.stderr', stderr):
+            handler = LocalHandler(connection, ('127.0.0.1', 1234), server)
+        return engine, connection.sendall, handler, stderr.getvalue()
+
+    def test_get_disconnect_during_headers_or_body_does_not_send_a_second_response(self):
+        for error in (BrokenPipeError, ConnectionResetError):
+            for fail_at in (0, 1):
+                with self.subTest(error=error, fail_at=fail_at):
+                    engine, writes, handler, stderr = self.request(fail_at=fail_at, error=error())
+                    engine.projects.assert_called_once_with()
+                    self.assertEqual(writes.call_count, fail_at + 1)
+                    self.assertIn(b' 200 OK\r\n', writes.call_args_list[0].args[0])
+                    self.assertTrue(handler.close_connection)
+                    self.assertEqual(stderr, '')
+
+    def test_post_disconnect_preserves_the_completed_action_without_error_response(self):
+        for error in (BrokenPipeError, ConnectionResetError):
+            for fail_at in (0, 1):
+                with self.subTest(error=error, fail_at=fail_at):
+                    engine, writes, handler, stderr = self.request('POST', fail_at, error())
+                    engine.save_preferences.assert_called_once_with({})
+                    self.assertEqual(writes.call_count, fail_at + 1)
+                    self.assertIn(b' 200 OK\r\n', writes.call_args_list[0].args[0])
+                    self.assertTrue(handler.close_connection)
+                    self.assertEqual(stderr, '')
+
+    def test_disconnected_rejection_still_prevents_unauthorized_mutation(self):
+        engine, writes, handler, stderr = self.request('POST', 0, BrokenPipeError(), token='expired')
+        engine.save_preferences.assert_not_called()
+        self.assertEqual(writes.call_count, 1)
+        self.assertIn(b' 403 Forbidden\r\n', writes.call_args.args[0])
+        self.assertTrue(handler.close_connection)
+        self.assertEqual(stderr, '')
+
+    def test_application_failure_still_logs_and_returns_500(self):
+        # An upstream connection failure is not a browser disconnect.
+        for error in (RuntimeError, ConnectionResetError):
+            with self.subTest(error=error):
+                engine, writes, _, stderr = self.request(engine_error=error('backend failed'))
+                engine.projects.assert_called_once_with()
+                self.assertEqual(writes.call_count, 2)
+                self.assertIn(b' 500 Internal Server Error\r\n', writes.call_args_list[0].args[0])
+                self.assertIn('error', json.loads(writes.call_args_list[1].args[0]))
+                self.assertIn(f'{error.__name__}: backend failed', stderr)
+
+    def test_reply_does_not_hide_unrelated_io_or_serialization_failures(self):
+        handler = LocalHandler.__new__(LocalHandler)
+        handler.send_response = Mock()
+        handler.send_header = Mock()
+        handler.end_headers = Mock()
+        handler.wfile = SimpleNamespace(write=Mock(side_effect=OSError('unexpected write failure')))
+        with self.assertRaisesRegex(OSError, 'unexpected write failure'):
+            handler.reply({'ok': True})
+        handler.send_response.reset_mock()
+        with self.assertRaises(ValueError):
+            handler.reply({'invalid': float('nan')})
+        handler.send_response.assert_not_called()
 
 
 class HTTPTests(unittest.TestCase):
