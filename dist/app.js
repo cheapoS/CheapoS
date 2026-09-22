@@ -315,29 +315,10 @@ function historyMenu(anchor) {
 async function copyTaskJson(task) {
   try {
     toast('Fetching task record…');
-    const fullTask=(state.task?.id===task.id)?state.task:await api('/tasks/'+task.id);
-    const events=Array.isArray(fullTask.events)?fullTask.events:[];
-    const resumes=events.filter(e=>e&&(e.kind==='resume'||e.kind==='operator_resume')).length;
-    const clubPayload={
-      id:fullTask.id,
-      title:fullTask.title,
-      prompt:fullTask.prompt,
-      created_at:fullTask.created_at,
-      status:fullTask.status,
-      source:fullTask.source,
-      usage:fullTask.usage,
-      run_metrics:fullTask.run_metrics,
-      session_actions:fullTask.session_actions,
-      checkpoints:fullTask.checkpoints,
-      checks:fullTask.checks,
-      request_metrics:fullTask.request_metrics,
-      routing_traces:fullTask.routing_traces,
-      snapshot:fullTask.snapshot,
-      resumes
-    };
-    const jsonStr=JSON.stringify(clubPayload,null,2);
+    const summary=await api('/tasks/'+task.id+'/export');
+    const jsonStr=JSON.stringify(summary,null,2);
     await navigator.clipboard.writeText(jsonStr);
-    toast('Task JSON copied to clipboard! Ready to paste on cheapos.lol/community/new');
+    toast('Task summary copied. Check for private task text before sharing.');
   } catch(e) {
     toast('Failed to copy task JSON: '+e.message);
   }
@@ -345,7 +326,7 @@ async function copyTaskJson(task) {
 async function exportTaskJson(task) {
   try {
     toast('Preparing task export…');
-    const fullTask=(state.task?.id===task.id)?state.task:await api('/tasks/'+task.id);
+    const fullTask=await api('/tasks/'+task.id+'/export');
     const jsonStr=JSON.stringify(fullTask,null,2);
     const blob=new Blob([jsonStr],{type:'application/json'});
     const url=URL.createObjectURL(blob);
@@ -357,7 +338,7 @@ async function exportTaskJson(task) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast('Task JSON exported.');
+    toast('Task summary exported. Diagnostics are available in Technical logs.');
   } catch(e) {
     toast('Failed to export task JSON: '+e.message);
   }
@@ -1291,11 +1272,39 @@ function renderActivity() {
   if($('#activity-models'))$('#activity-models').onclick=openConnections;
   updateProgressClock();
 }
+async function loadTaskDiagnostics(task,offset=0,force=false){
+ const revision=task.diagnostics?.revision||task.updated_at,previous=state.diagnosticView;
+ if(!force&&previous?.id===task.id&&previous.revision===revision&&previous.offset===offset)return;
+ const entry={id:task.id,revision,offset,pending:true,data:null,error:null};state.diagnosticView=entry;
+ try{entry.data=await api('/tasks/'+task.id+'/diagnostics?offset='+offset);}
+ catch(error){entry.error=error.message||'Could not load local diagnostics.';}
+ finally{
+   entry.pending=false;
+   if(state.diagnosticView===entry&&state.task?.id===task.id&&state.view==='logs')renderTask();
+ }
+}
+async function downloadTaskDiagnostics(task){
+ try{
+   const data=await api('/tasks/'+task.id+'/diagnostics?export=1');
+   const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+   const link=document.createElement('a');link.href=url;link.download='cheapos-diagnostics-'+task.id.slice(0,8)+'.json';
+   document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+   toast('Local diagnostics exported.');
+ }catch(error){toast(error.message);}
+}
 function renderTechnicalLogs(){
  state.logPages ||= new Map();
- const view=$('#logs-view');view.innerHTML=CheapOSBranchUI.technicalMarkup(state.task,state.logPages.get(state.task.id))+CheapOSChatView.routingDetails(state.task);const back=$('[data-log-chat]',view);if(back)back.onclick=()=>setView('chat');
+ const task=state.task,offset=state.diagnosticView?.id===task.id?state.diagnosticView.offset:0;
+ void loadTaskDiagnostics(task,offset);
+ const entry=state.diagnosticView,data=entry?.id===task.id?entry.data:null;
+ const controls=`<section class="diagnostic-controls" aria-label="Local diagnostics"><div class="button-row"><button class="outline-button" data-download-diagnostics>Download diagnostics</button>${offset?'<button class="outline-button" data-diagnostics-offset="0">Latest diagnostics</button>':''}${data?.next_offset!=null?`<button class="outline-button" data-diagnostics-offset="${data.next_offset}">Older diagnostics</button>`:''}${entry?.error?'<button class="outline-button" data-retry-diagnostics>Retry loading diagnostics</button>':''}</div><p class="small muted" role="status">${esc(entry?.pending?'Loading local diagnostics…':entry?.error||data?.notice||(data?.total?`Showing routing selections ${offset+1}–${Math.min(offset+8,data.total)} of ${data.total}.`:'No routing diagnostics recorded.'))}</p><p class="small muted">Troubleshooting details load here separately. Task history and request accounting remain saved.</p></section>`;
+ const view=$('#logs-view');view.innerHTML=CheapOSBranchUI.technicalMarkup(task,state.logPages.get(task.id))+controls+(data?CheapOSChatView.routingDetails({...task,...data}):'');
+ const back=$('[data-log-chat]',view);if(back)back.onclick=()=>setView('chat');
+ $('[data-download-diagnostics]',view).onclick=()=>downloadTaskDiagnostics(task);
+ $$('[data-diagnostics-offset]',view).forEach(button=>button.onclick=()=>{void loadTaskDiagnostics(task,Number(button.dataset.diagnosticsOffset));renderTask();});
+ const retry=$('[data-retry-diagnostics]',view);if(retry)retry.onclick=()=>{void loadTaskDiagnostics(task,offset,true);renderTask();};
  $$('[data-log-page]',view).forEach(button=>button.onclick=()=>{
-   state.logPages.set(state.task.id,button.dataset.logPage);setView('logs');$('#view-container').scrollTo({top:0,behavior:'instant'});
+   state.logPages.set(task.id,button.dataset.logPage);setView('logs');$('#view-container').scrollTo({top:0,behavior:'instant'});
  });
 }
 function checkpointDialog(number) {
@@ -1593,10 +1602,11 @@ function sessionJourney(t){
   const actions=t.metrics?.actions,counts=actions?.counts||{},known=actions?.coverage!=='complete';
   const number=n=>typeof n==='number'?n.toLocaleString():'Unknown';
   const total=actions?.total;
-  const rows=[['Worker calls',counts.worker],['Tool actions',counts.tools],['Reviewer calls',counts.reviewer],['Planner calls',counts.planner],['Coordinator calls',counts.coordinator]];
+  const rows=[['Worker calls',counts.worker,'worker'],['Tool actions',counts.tools],['Reviewer calls',counts.reviewer,'reviewer'],['Planner calls',counts.planner,'planner'],['Coordinator calls',counts.coordinator,'coordinator']];
+  const breakdown=role=>{const b=t.metrics?.request_breakdown?.[role];return b&&(b.probes||b.unclassified)?`<small class="journey-call-breakdown muted">${number(b.requests)} task requests · ${number(b.probes)} connection checks${b.unclassified?` · ${number(b.unclassified)} unclassified`:''}</small>`:'';};
   if(counts.other)rows.push(['Other model calls',counts.other]);
   rows.push(['Checkpoints',t.checkpoints?.length||0],['Latest check',t.checks?.length?(t.checks.at(-1).passed?'Passed':'Failed'):'Not run']);
-  return `<section class="journey"><div class="section-title">This session · ${number(total)} ${total===1?'action':'actions'}${known?' · known':''}</div><ol class="journey-list">${rows.map(([label,value])=>`<li><span class="journey-dot">${icon('check')}</span><span>${label}</span><strong>${typeof value==='string'?esc(value):number(value)}</strong></li>`).join('')}</ol><details><summary>Details</summary><p class="small muted">${esc(actions?.details||'Action accounting is unavailable for this saved chat.')}</p></details></section>`;
+  return `<section class="journey"><div class="section-title">This session · ${number(total)} ${total===1?'action':'actions'}${known?' · known':''}</div><ol class="journey-list">${rows.map(([label,value,role])=>`<li><span class="journey-dot">${icon('check')}</span><span>${label}${breakdown(role)}</span><strong>${typeof value==='string'?esc(value):number(value)}</strong></li>`).join('')}</ol><details><summary>Details</summary><p class="small muted">${esc(actions?.details||'Action accounting is unavailable for this saved chat.')}</p></details></section>`;
 }
 function sessionOverview(task) {
   const run=task.branch_run,busy=taskBusy(task),merged=CheapOSGitWorkflow.merged(task)&&!busy;

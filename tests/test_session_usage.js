@@ -77,3 +77,15 @@ test('plain conversation has no empty review or check actions',()=>{
   assert.match(html,/<dt>Independent review<\/dt><dd>Not requested/);
   assert.match(html,/session-status attention/);
 });
+
+test('session calls separate planning from connection checks without inflating actions',()=>{
+  ctx.icon=()=>'';
+  const html=ctx.sessionJourney({metrics:{actions:{total:141,counts:{planner:130,tools:11},coverage:'complete'},
+    request_breakdown:{planner:{requests:22,probes:108,unclassified:0}}}});
+  assert.match(html,/141 actions/);
+  assert.match(html,/22 task requests · 108 connection checks/);
+  assert.match(html,/<strong>130<\/strong>/);
+  const partial=ctx.sessionJourney({metrics:{actions:{total:3,counts:{planner:3},coverage:'partial'},
+    request_breakdown:{planner:{requests:1,probes:1,unclassified:1}}}});
+  assert.match(partial,/1 unclassified/);
+});
