@@ -364,7 +364,12 @@ def recheck(controller, task_id, values=None):
         if run['status'] not in {'ready_for_merge','paused','blocked'} or run.get('merge_operation') or run.get('target_update'):
             raise ValueError('This run cannot restart final checks')
         if any(i['status'] not in state.DONE for i in run['items']): raise ValueError('Finish current items before final recheck')
-        run.pop('readiness', None); run['final_evidence'] = {}; run['status'] = 'paused'; task['status'] = 'paused'
+        if run.get('readiness'):
+            previous = run.setdefault('previous_readiness', [])
+            ready = run.pop('readiness')
+            if not previous or previous[-1] != ready:
+                previous.append(ready)
+        run['final_evidence'] = {}; run['status'] = 'paused'; task['status'] = 'paused'
         controller.engine.store.save(task)
     return controller.resume(task_id, {})
 

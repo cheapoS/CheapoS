@@ -19,6 +19,23 @@ class UpdateControllerTests(unittest.TestCase):
         controller=SimpleNamespace(engine=engine,validate_authority=Mock(),resume=Mock(return_value={'task':task}))
         return controller,task
 
+    def test_recheck_retains_prior_approval_and_deduplicates_unchanged_receipt(self):
+        controller, task = self.fixture()
+        before = copy.deepcopy(task)
+        with patch.object(completion, '_task', return_value=task):
+            completion.recheck(controller, 'task')
+            task['branch_run']['readiness'] = copy.deepcopy(before['branch_run']['readiness'])
+            completion.recheck(controller, 'task')
+        run = task['branch_run']
+        self.assertEqual(run['previous_readiness'], [before['branch_run']['readiness']])
+        self.assertNotIn('readiness', run)
+        self.assertEqual(run['final_evidence'], {})
+        self.assertEqual(run['items'], before['branch_run']['items'])
+        self.assertEqual(task['checks'], before['checks'])
+        self.assertEqual(controller.validate_authority.call_count, 2)
+        self.assertEqual(controller.resume.call_count, 2)
+        controller.resume.assert_called_with('task', {})
+
     def test_update_invalidates_approval_preserves_work_and_rechecks(self):
         controller,task=self.fixture();before=copy.deepcopy(task)
         finished={'new_tip':'new','private_new':'private','target_tip':'target'}
