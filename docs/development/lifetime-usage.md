@@ -1,7 +1,7 @@
 # Lifetime Usage & savings
 
 The bottom-left **Usage & savings** entry opens that page in Settings
-without leaving the selected chat. **The Cheapskate Club** has its own Settings
+without leaving the selected chat. **The cheapos Club** has its own Settings
 page for account connection, sharing preferences, and sync across this installation.
 Usage charts and local exports remain in **Usage & savings**.
 All time is the default; seven-day and

@@ -6,8 +6,8 @@ require it. Private Ed25519 keys go into the existing OS credential-store adapte
 never a JSON file. Unsupported/locked secure storage disables Club connection,
 not local work. The old manual HMAC link is deliberately rejected.
 
-Website setup is documented in the Club repository's `web/CONNECTION_SETUP.md`.
-Open **Settings → The Cheapskate Club → Connect to Club**, follow the approval
+Manage your account and installations at [The cheapos Club](https://cheapos.lol/account).
+Open **Settings → The cheapos Club → Connect to Club**, follow the approval
 link, and verify **Connect to @handle**. The Club tab checks approval automatically
 while open; **Check connection** also refreshes it. Review the displayed fields
 and Enable sharing for new usage. Connection and sharing apply to this installation,
@@ -42,6 +42,10 @@ bytes; hash input is the exact payload bytes. This explicitly avoids claiming a
 home-grown serializer implements all of RFC 8785. The client emits compact sorted
 ASCII JSON with integers. The service verifies before parsing, validates fields,
 and retains the digest for exact-retry checks. A Python→Node fixture covers this.
+
+The site is branded **The cheapos Club** at **cheapos.lol**. The existing
+`cheapskate-club-v1` signature prefix is a protocol identifier, not display text;
+keep it unchanged so existing installations remain compatible.
 
 This detects changed signed submissions and duplicate delivery, not fabricated
 usage from a modified client. It is app-reported accounting, not verified inference.

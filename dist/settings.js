@@ -48,7 +48,7 @@ function open(options){
  }
  q('[data-close]').onclick=()=>leave(close);d.addEventListener('cancel',e=>{e.preventDefault();leave(close);});
  function nav(){q('nav').innerHTML='<strong>Settings</strong>'+scopes.map((s,i)=>'<button type="button" data-scope="'+i+'" '+(s===scope?'aria-current="page"':'')+'>'+labels[s.kind]+(s.kind==='project'?'<small>'+esc(s.title)+'</small>':'')+
-'</button>').join('')+['connections','appearance','usage','storage','schedules','club'].map(k=>'<button type="button" data-external="'+k+'" '+(scope?.kind===k?'aria-current="page"':'')+'>'+({connections:'Connections',appearance:'Appearance',usage:'Usage & savings',storage:'Storage',schedules:'Scheduled tasks',club:'The Cheapskate Club'}[k])+'<small>'+({connections:'Shared connections',appearance:'This browser',usage:'This installation',storage:'This installation',schedules:'This installation',club:'Leaderboard & sync'}[k])+'</small></button>').join('');
+'</button>').join('')+['connections','appearance','usage','storage','schedules','club'].map(k=>'<button type="button" data-external="'+k+'" '+(scope?.kind===k?'aria-current="page"':'')+'>'+({connections:'Connections',appearance:'Appearance',usage:'Usage & savings',storage:'Storage',schedules:'Scheduled tasks',club:'The cheapos Club'}[k])+'<small>'+({connections:'Shared connections',appearance:'This browser',usage:'This installation',storage:'This installation',schedules:'This installation',club:'Leaderboard & sync'}[k])+'</small></button>').join('');
   q('nav').querySelectorAll('[data-scope]').forEach(b=>b.onclick=()=>leave(()=>load(scopes[Number(b.dataset.scope)])));q('nav').querySelectorAll('[data-external]').forEach(b=>b.onclick=()=>leave(()=>openPage(b.dataset.external)));
  }
  function openPage(kind){
