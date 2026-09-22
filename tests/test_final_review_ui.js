@@ -232,12 +232,16 @@ test('paged review keeps merge disabled through failure and a blocker in the rec
 test('Plan never fetches or mounts a diff; every review entry uses Changes and reuses its current preview',()=>{
  const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../dist/branch_ui.js'),'utf8');
  const snippet=source.slice(source.indexOf(' function renderPlan(task)'),source.indexOf(' async function loadFinal(task,slot)'));
- const content={},link={},plan={dataset:{},querySelector:s=>s==='[data-plan-content]'?content:link},changes={dataset:{},classList:{remove(){}}};
+ const content={},link={},schedule={},plan={dataset:{},querySelector:s=>s==='[data-plan-content]'?content:s==='[data-schedule-task]'?schedule:link},changes={dataset:{},classList:{remove(){}}};
  let loaded=0,navigated=0;const context={document:{querySelector:s=>s==='#plan-view'?plan:changes},planMarkup:()=>'<article>Approved scope</article>',options:{showChanges:()=>navigated++},loadFinal:(t,p)=>{assert.equal(p,changes);loaded++;}};
  context.reviewAction=ui.reviewAction;
  vm.runInNewContext(snippet,context);
  const t={id:'a',branch_run:{status:'ready_for_merge',authorization_ref:'auth',readiness:{id:'r1'},expected_feature_tip:'tip'}};
  context.renderPlan(t);assert.equal(loaded,0);assert.doesNotMatch(plan.innerHTML,/data-review-slot|Jump to results/);
+ assert.equal(schedule.hidden,true);
+ let scheduled;context.options.scheduleTask=task=>scheduled=task;context.renderPlan(t);
+ assert.equal(schedule.hidden,false);schedule.onclick();assert.equal(scheduled,t);assert.equal(loaded,0);
+ t.trashed_at='now';context.renderPlan(t);assert.equal(schedule.hidden,true);delete t.trashed_at;
  link.onclick();assert.equal(navigated,1);
  context.renderChanges(t);context.renderPlan(t);context.renderChanges(t);assert.equal(loaded,1);
  t.branch_run.readiness.id='r2';context.renderChanges(t);assert.equal(loaded,2);

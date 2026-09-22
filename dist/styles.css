@@ -1763,3 +1763,7 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 .diagnostic-controls { margin: 16px 0; padding: 12px 0; border-block: 1px solid var(--border); }
 .diagnostic-controls .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .journey-call-breakdown { display: block; margin: 3px 0 6px; font-size: 11px; line-height: 1.4; font-weight: 400; }
+
+/* Scheduling stays beside New chat on every project and saved-chat view. */
+.new-schedule-trigger{flex-shrink:0;gap:10px;margin:3px 0 8px;text-align:left}
+.new-schedule-trigger svg{flex:none}

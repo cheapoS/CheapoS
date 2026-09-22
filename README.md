@@ -144,7 +144,8 @@ Work mode is separate from your model choices, command permissions, and work/spe
 
 For recurring maintenance, an approved Unattended chat can become a
 [scheduled task](docs/scheduled-tasks.md). Choose **Schedule this task…** in its
-menu, then manage recurrence in **Settings → Scheduled tasks**. The first version
+menu or Plan page, then manage recurrence in **Settings → Scheduled tasks**.
+To start from scratch, choose **New scheduled task** beneath **New chat**. The first version
 requires $0 API spending, retains checks and independent review, and runs only
 while cheapoS is open.
 
