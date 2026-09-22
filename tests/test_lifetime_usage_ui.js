@@ -159,3 +159,83 @@ test('reconciliation switches between local installation and remote club scorebo
   assert.doesNotMatch(remoteHtml,/Apply view to sidebar/);
   assert.match(ui.renderClub(data.club,'remote'),/Apply view to sidebar/);
 });
+
+function viewControls(t, saved='local'){
+  const c=controls(),values=new Map(saved?[['cheapos_usage_view',saved]]:[]);
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v)}});
+  t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
+  const buttons=['local','remote'].map(view=>({dataset:{view},classList:{toggle(){}},attributes:{},setAttribute(k,v){this.attributes[k]=v;}}));
+  c.d.querySelectorAll=selector=>selector==='.usage-view-btn'?buttons:[];
+  return {...c,buttons,values};
+}
+const connectedFixture=()=>({...fixture(),club:{is_linked:true,x_identity:{handle:'alice'},remote_profile_fetched_at:'2026-09-22T15:00:00Z',remote_profile:{handle:'alice',tokens:70,categories:{local:70},roles:[],models:[]}}});
+
+test('visible view buttons compare totals, persist choice and keep local period separate',async(t)=>{
+  const c=viewControls(t),calls=[];let shell;
+  ui.open({dialog:html=>(shell=html,c.d),header:()=>'',api:async path=>{
+    calls.push(path);const data=connectedFixture();
+    if(path.endsWith('=7')){data.period='7';data.tokens.reported=25;}
+    return data;
+  }});
+  await tick();
+  assert.doesNotMatch(shell,/data-usage-view-switch style="display:none"/);
+  assert.match(c.buttons[0].innerHTML,/100 tokens/);assert.match(c.buttons[1].innerHTML,/70 tokens/);
+  assert.match(c.q('[data-usage-scope]').textContent,/before sharing was enabled/);
+  assert.equal(c.buttons[0].attributes['aria-pressed'],'true');
+  c.buttons[1].onclick();
+  assert.equal(c.values.get('cheapos_usage_view'),'remote');
+  assert.equal(c.buttons[1].attributes['aria-pressed'],'true');
+  assert.equal(c.q('.lifetime-period-wrapper').hidden,true);
+  assert.match(c.q('[data-usage-body]').innerHTML,/Accepted by the Club/);
+  assert.doesNotMatch(c.q('[data-usage-body]').innerHTML,/worker<\/th>/);
+  // Exports retain their documented local scope even when viewing the Club.
+  c.q('[data-export]').onclick();
+  assert.match(c.q('[data-export-text]').textContent,/Reported tokens: 100/);
+  c.buttons[0].onclick();
+  c.q('[data-period]').value='7';await c.q('[data-period]').onchange();
+  assert.match(c.buttons[0].innerHTML,/25 tokens.*Last 7 days/);
+  assert.match(c.buttons[1].innerHTML,/70 tokens.*Accepted · all time/);
+  assert.match(c.q('[data-usage-footer-status]').innerHTML,/25 reported tokens/);
+  c.buttons[1].onclick();c.buttons[0].onclick();
+  assert.equal(c.q('[data-period]').value,'7');
+  assert.equal(c.q('.lifetime-period-wrapper').hidden,false);
+  assert.deepEqual(calls,['/lifetime-usage?days=all','/lifetime-usage?days=7']);
+});
+
+test('unavailable Club keeps the choice visible and refresh restores the saved remote view',async(t)=>{
+  const c=viewControls(t,'remote');let count=0;
+  ui.open({dialog:()=>c.d,header:()=>'',api:async()=>{
+    const data=connectedFixture();if(!count++)data.club.remote_profile=null;return data;
+  }});
+  await tick();
+  assert.equal(c.buttons[1].disabled,true);
+  assert.match(c.buttons[1].innerHTML,/Unavailable/);
+  assert.match(c.q('[data-usage-scope]').textContent,/showing local usage/);
+  assert.equal(c.buttons[0].attributes['aria-pressed'],'true');
+  c.buttons[1].onclick(); // Guard stale/programmatic clicks as well.
+  assert.equal(c.q('.lifetime-period-wrapper').hidden,false);
+  assert.equal(c.values.get('cheapos_usage_view'),'remote');
+  await c.q('[data-refresh-usage]').onclick();
+  assert.equal(c.buttons[1].disabled,false);
+  assert.equal(c.buttons[1].attributes['aria-pressed'],'true');
+  assert.equal(c.q('.lifetime-period-wrapper').hidden,true);
+  assert.match(c.q('[data-usage-body]').innerHTML,/Profile retrieved/);
+  assert.equal(c.q('[data-refresh-usage]').disabled,false);
+});
+
+test('missing Club totals remain unavailable, while a reported zero is valid',async(t)=>{
+  for(const tokens of [undefined,null,NaN,-1,'70']){
+    const data=connectedFixture();data.club.remote_profile.tokens=tokens;
+    const s=ui.safeSummary(data);assert.equal(s.club.remote_profile,null);
+    const html=ui.renderClub(s.club,'remote');
+    assert.match(html,/Usage display/);assert.match(html,/Temporarily unavailable/);
+    assert.match(html,/value="remote"[^>]*disabled/);
+  }
+  const zero=connectedFixture();zero.club.remote_profile.tokens=0;
+  assert.equal(ui.safeSummary(zero).club.remote_profile.tokens,0);
+  const c=viewControls(t);
+  ui.open({dialog:()=>c.d,header:()=>'',api:async()=>fixture()});await tick();
+  assert.equal(c.buttons[1].disabled,true);
+  assert.match(c.q('[data-usage-scope]').textContent,/Connect your Club account/);
+});

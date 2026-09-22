@@ -158,10 +158,12 @@ class ClubTests(unittest.TestCase):
 
     def test_remote_profile_caching_and_fallback(self):
         from unittest.mock import patch, MagicMock
-        fake_profile={'handle':'alice','tokens':5000,'categories':{'local':5000},'models':[],'roles':[]}
+        fake_profile={'handle':'alice','tokens':5000,'categories':{'local':5000},'models':[],'roles':[],
+                      'telemetry':{'padding':'x'*70000}}
         mock_response=MagicMock()
         mock_response.status=200
-        mock_response.read.return_value=json.dumps(fake_profile).encode('utf-8')
+        raw=json.dumps(fake_profile).encode('utf-8')
+        mock_response.read.side_effect=lambda size: raw[:size]
         mock_response.__enter__.return_value=mock_response
 
         with patch('urllib.request.urlopen',return_value=mock_response) as mock_urlopen:
@@ -180,6 +182,24 @@ class ClubTests(unittest.TestCase):
 
         status=self.club.get_status(include_remote=False)
         self.assertEqual(status['remote_profile']['tokens'],5000)
+        self.assertIsNotNone(status['remote_profile_fetched_at'])
+
+    def test_invalid_or_oversized_profile_never_replaces_accepted_total(self):
+        from unittest.mock import patch, MagicMock
+        from cheapos.club import MAX_PUBLIC_PROFILE_BYTES
+        response=MagicMock(status=200)
+        response.__enter__.return_value=response
+        for raw in (b'{'*(MAX_PUBLIC_PROFILE_BYTES+1), b'{', b'[]', b'{"handle":"alice"}',
+                    b'{"handle":"alice","tokens":false}', b'{"handle":"alice","tokens":-1}'):
+            with self.subTest(sample=raw[:40]):
+                response.read.side_effect=lambda size: raw[:size]
+                for cached in (None, {'handle':'alice','tokens':5000}):
+                    self.club._remote_profile_cache=cached
+                    self.club._remote_profile_cache_time=12345 if cached else 0
+                    with patch('urllib.request.urlopen',return_value=response):
+                        self.assertEqual(self.club.get_remote_profile(force=True),cached)
+                    response.read.assert_called_with(MAX_PUBLIC_PROFILE_BYTES+1)
+                    self.assertEqual(self.club._remote_profile_cache_time,12345 if cached else 0)
 
     def test_remote_profile_cleared_on_disconnect(self):
         self.club._remote_profile_cache={'handle':'alice','tokens':5000}
@@ -201,7 +221,8 @@ class ClubTests(unittest.TestCase):
             if 'cheaposnumero1' in req.full_url:
                 resp=MagicMock()
                 resp.status=200
-                resp.read.return_value=json.dumps({'handle':'cheaposnumero1','tokens':12345}).encode('utf-8')
+                raw=json.dumps({'handle':'cheaposnumero1','tokens':12345,'telemetry':{'padding':'x'*70000}}).encode('utf-8')
+                resp.read.side_effect=lambda size: raw[:size]
                 resp.__enter__.return_value=resp
                 return resp
             raise ValueError('Unexpected URL')

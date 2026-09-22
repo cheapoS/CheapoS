@@ -35,6 +35,7 @@ const CheapOSLifetimeUsage = (() => {
         sync_enabled:Boolean(data.club.sync_enabled),
         share_models:Boolean(data.club.share_models),share_jobs:Boolean(data.club.share_jobs),jobs_message:data.club.jobs_message,
         last_synced_at:data.club.last_synced_at,
+        remote_profile_fetched_at:data.club.remote_profile_fetched_at,
         leaderboard_url:data.club.leaderboard_url,
         connect_url:data.club.connect_url,
         x_identity:data.club.x_identity?{
@@ -42,10 +43,10 @@ const CheapOSLifetimeUsage = (() => {
           name:data.club.x_identity.name,
           avatar_url:data.club.x_identity.avatar_url
         }:null,
-        remote_profile:data.club.remote_profile && typeof data.club.remote_profile==='object'?{
+        remote_profile:data.club.remote_profile && typeof data.club.remote_profile==='object' && Number.isFinite(data.club.remote_profile.tokens) && data.club.remote_profile.tokens>=0?{
           handle:String(data.club.remote_profile.handle||''),
           display_name:String(data.club.remote_profile.display_name||''),
-          tokens:Number(data.club.remote_profile.tokens)||0,
+          tokens:data.club.remote_profile.tokens,
           categories:typeof data.club.remote_profile.categories==='object'&&data.club.remote_profile.categories!==null?data.club.remote_profile.categories:{},
           share_models:Boolean(data.club.remote_profile.share_models),
           models:Array.isArray(data.club.remote_profile.models)?data.club.remote_profile.models:[],
@@ -100,7 +101,7 @@ const CheapOSLifetimeUsage = (() => {
     const isLinked=Boolean(club.is_linked),isSyncing=Boolean(club.sync_enabled),op=club.x_identity||{},rp=club.remote_profile;
     return `<section class="club-panel"><div class="club-card-content"><h3>The Cheapskate Club</h3>
       ${isLinked?`<p>Connected to <strong>@${escape(op.handle)}</strong>. One installation connects to one Club account at a time.</p><p>Sharing ${isSyncing?'enabled':'paused'} · Last confirmed upload: ${club.last_synced_at?escape(date(club.last_synced_at)):'None yet'}</p><p>Only new settled request counts, usage category, accounting date, and anonymous event/installation IDs are sent. No prompts, code, paths or provider keys. Existing usage stays with its original account when you disconnect.</p><p><label><input type="checkbox" data-club-jobs ${club.share_jobs?'checked':''}/> Share finished-work metrics for new unattended jobs</label></p><p>Includes all linked planning, failed attempts and recovery charges, job timing, recorded rescue actions and approvals. Starts with new jobs after enabling; no prompts, paths, code or model names. Turning this off removes these reports from public statistics.</p><p>${escape(club.jobs_message||'')}</p><div class="club-pref-row"><label><input type="checkbox" data-club-models ${club.share_models?'checked':''}/> Share model names for my Club profile</label><button type="button" data-club-preferences>Save sharing preferences</button><span class="club-pref-feedback" data-club-pref-feedback aria-live="polite"></span></div><div class="club-actions-row">${isSyncing?'<button type="button" data-club-sync>Sync now</button><button type="button" data-club-pause>Pause sharing</button>':'<button type="button" data-club-share>Enable sharing for new usage</button>'}<button type="button" data-club-disconnect>Disconnect</button></div>
-      ${rp?`<div class="club-reconcile-settings-box"><h4>Usage View Reconciliation</h4><p>Choose whether cheapoS displays machine-local activity or reconciles with your official Cheapskate Club scoreboard.</p><div class="club-view-options"><label><input type="radio" name="club_usage_view_pref" value="local" ${viewMode==='local'?'checked':''}/> <strong>Local installation</strong> (Machine-local activity)</label><label><input type="radio" name="club_usage_view_pref" value="remote" ${viewMode==='remote'?'checked':''}/> <strong>Club scoreboard</strong> (Reconciled with @${escape(rp.handle)}: ${number(rp.tokens)} zero-cost tokens)</label></div><div class="club-reconcile-actions"><button type="button" class="club-apply-btn primary-button" data-apply-view>Apply view to sidebar</button><span class="small" data-apply-status style="color:var(--mint);font-size:0.8125rem;display:none;">✓ Applied to sidebar</span></div></div>`:''}`:`<p>Connect your Club account, then choose whether to share new usage. Your local work never depends on the Club.</p>${club.pairing_pending?'':'<button class="primary-button" type="button" data-club-connect>Connect to Club →</button>'}${club.pairing_pending?`<div class="club-pairing-prompt" style="margin-top:12px;padding:14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.28);border-radius:8px;"><p style="margin:0 0 8px;font-weight:600;color:var(--text-primary);font-size:0.9375rem;">👉 Step 2: Finish connection on cheapos.lol</p><p style="margin:0 0 12px;font-size:0.875rem;color:var(--text-secondary);line-height:1.4;">Your local session is ready! Click the button below to open <strong>cheapos.lol</strong> in your browser and approve this device:</p><div style="display:flex;flex-direction:column;gap:10px;"><a href="${escape(club.connect_url)}" target="_blank" rel="noopener noreferrer" class="primary-button" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none;padding:10px 16px;font-weight:600;text-align:center;">Finish connection on cheapos.lol ↗</a><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button type="button" data-club-check>Check connection</button><button type="button" data-club-connect>Refresh approval link</button><span class="small" style="color:var(--text-muted);font-size:0.8125rem;">Waiting for browser approval. Updates automatically.</span></div></div></div>`:''}`}
+      <div class="club-reconcile-settings-box"><h4>Usage display</h4><p>Choose which total appears in the sidebar. Local usage and accepted Club reports cover different requests.</p><div class="club-view-options"><label><input type="radio" name="club_usage_view_pref" value="local" ${viewMode==='local'||!rp?'checked':''}/> <strong>Local installation</strong> (Recorded on this installation)</label><label><input type="radio" name="club_usage_view_pref" value="remote" ${viewMode==='remote'&&rp?'checked':''} ${rp?'':'disabled'}/> <strong>Club scoreboard</strong> (${rp?`Accepted for @${escape(rp.handle)}: ${number(rp.tokens)} zero-cost tokens`:'Temporarily unavailable; local usage remains available'})</label></div><div class="club-reconcile-actions"><button type="button" class="club-apply-btn primary-button" data-apply-view>Apply view to sidebar</button><span class="small" data-apply-status style="color:var(--mint);font-size:0.8125rem;display:none;">✓ Applied to sidebar</span></div></div>`:`<p>Connect your Club account, then choose whether to share new usage. Your local work never depends on the Club.</p>${club.pairing_pending?'':'<button class="primary-button" type="button" data-club-connect>Connect to Club →</button>'}${club.pairing_pending?`<div class="club-pairing-prompt" style="margin-top:12px;padding:14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.28);border-radius:8px;"><p style="margin:0 0 8px;font-weight:600;color:var(--text-primary);font-size:0.9375rem;">👉 Step 2: Finish connection on cheapos.lol</p><p style="margin:0 0 12px;font-size:0.875rem;color:var(--text-secondary);line-height:1.4;">Your local session is ready! Click the button below to open <strong>cheapos.lol</strong> in your browser and approve this device:</p><div style="display:flex;flex-direction:column;gap:10px;"><a href="${escape(club.connect_url)}" target="_blank" rel="noopener noreferrer" class="primary-button" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none;padding:10px 16px;font-weight:600;text-align:center;">Finish connection on cheapos.lol ↗</a><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button type="button" data-club-check>Check connection</button><button type="button" data-club-connect>Refresh approval link</button><span class="small" style="color:var(--text-muted);font-size:0.8125rem;">Waiting for browser approval. Updates automatically.</span></div></div></div>`:''}`}
       ${club.sync_message?`<p role="status">${escape(club.sync_message)}</p>`:''}${club.error?`<p role="status">${escape(club.error)}</p>`:''}<p><a href="${escape(club.leaderboard_url||'https://cheapos.lol')}/account" target="_blank" rel="noopener noreferrer">My Club account ↗</a></p><p data-club-error role="alert"></p></div></section>`;
   }
   function render(data, viewMode='local'){
@@ -128,11 +129,11 @@ const CheapOSLifetimeUsage = (() => {
       ? '$'+(Math.round(zeroCostTokens*0.000003*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
       : (s.estimated_savings!=null?'$'+Number(s.estimated_savings).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):money(zeroCostTokens*0.000003));
 
-    const rolesEntries = isRemote && rp.roles && rp.roles.length
+    const rolesEntries = isRemote
       ? rp.roles.map(r => [r.name, { tokens: r.tokens, requests: null }])
       : Object.entries(s.roles);
 
-    const modelsList = isRemote && rp.models && rp.models.length
+    const modelsList = isRemote
       ? rp.models.map(m => ({ name: m.name, tokens: m.tokens, requests: null }))
       : Object.entries(s.models).map(([name, obj]) => ({ name, tokens: obj.tokens, requests: obj.requests }));
 
@@ -143,7 +144,7 @@ const CheapOSLifetimeUsage = (() => {
           <span>Official leaderboard score for <strong>@${escape(rp.handle)}</strong>${rp.display_name ? ` (${escape(rp.display_name)})` : ''}</span>
         </div>
         <div class="scoreboard-banner-right">
-          <a href="${escape(club.leaderboard_url || 'https://cheapos.lol')}/${escape(rp.handle)}" target="_blank" rel="noopener noreferrer" class="scoreboard-link">
+          <a href="${escape(club.leaderboard_url || 'https://cheapos.lol')}/@${escape(rp.handle)}" target="_blank" rel="noopener noreferrer" class="scoreboard-link">
             View on cheapos.lol ↗
           </a>
         </div>
@@ -155,14 +156,14 @@ const CheapOSLifetimeUsage = (() => {
       ${bannerHtml}
       <div class="usage-meta-bar">
         <span>${isRemote ? `Official verified score for <strong>@${escape(rp.handle)}</strong>` : `Recorded since <strong>${escape(date(s.recorded_since))}</strong> ${s.partial_earlier_history?'· <span class="history-badge">partial earlier history</span>':''}`}</span>
-        <span>${isRemote ? `Last synced <strong>${club.last_synced_at?escape(date(club.last_synced_at)):'Live'}</strong>` : `Updated <strong>${escape(date(s.updated_at))}</strong> · <strong>${s.period==='all'?'All time':s.period+' days (UTC)'}</strong>`}</span>
+        <span>${isRemote ? `Profile retrieved <strong>${escape(date(club.remote_profile_fetched_at))}</strong>` : `Updated <strong>${escape(date(s.updated_at))}</strong> · <strong>${s.period==='all'?'All time':s.period+' days (UTC)'}</strong>`}</span>
       </div>
 
       <div class="lifetime-figures">
         <div class="figure-card">
           <span class="figure-label">${isRemote ? 'Verified zero-cost tokens' : 'Reported model tokens'}</span>
           <strong class="figure-val">${number(reportedTokens)}</strong>
-          <span class="figure-sub">${isRemote ? 'Live leaderboard score' : 'Total recorded compute'}</span>
+          <span class="figure-sub">${isRemote ? 'Accepted by the Club · all time' : 'This installation · selected period'}</span>
         </div>
         <div class="figure-card highlight-zero">
           <div class="figure-label-row">
@@ -333,7 +334,7 @@ const CheapOSLifetimeUsage = (() => {
     `;
   }
   function open({dialog,api,header,onClub}){
-    const d=dialog(`${header('LOCAL INSTALLATION','Usage & savings')}
+    const d=dialog(`${header('USAGE','Usage & savings')}
     <div class="lifetime-top-bar">
       <div class="settings-tabs usage-tabs" role="tablist">
         <button type="button" class="settings-tab-btn active" data-tab="overview" role="tab" aria-selected="true">
@@ -347,11 +348,10 @@ const CheapOSLifetimeUsage = (() => {
         </button>
       </div>
       <div class="lifetime-controls-wrapper">
-        <div class="usage-view-switch" data-usage-view-switch style="display:none">
-          <span class="usage-view-label">Show:</span>
-          <div class="usage-view-toggle-group" role="radiogroup" aria-label="Usage view mode">
-            <button type="button" class="usage-view-btn active" data-view="local" role="radio" aria-checked="true">💻 Local</button>
-            <button type="button" class="usage-view-btn" data-view="remote" role="radio" aria-checked="false">🌐 Club Scoreboard</button>
+        <div class="usage-view-switch" data-usage-view-switch>
+          <div class="usage-view-toggle-group" role="group" aria-label="Usage view">
+            <button type="button" class="usage-view-btn active" data-view="local" aria-pressed="true" disabled>Local usage</button>
+            <button type="button" class="usage-view-btn" data-view="remote" aria-pressed="false" disabled>Club scoreboard</button>
           </div>
         </div>
         <div class="lifetime-period-wrapper">
@@ -363,6 +363,8 @@ const CheapOSLifetimeUsage = (() => {
         </div>
       </div>
     </div>
+    <p class="small usage-scope-note" data-usage-scope aria-live="polite">Local usage and Club reporting cover different requests.</p>
+    <button type="button" class="text-link" data-refresh-usage>Refresh totals</button>
     <p class="small" ${onClub?'':'hidden'}>Account, sharing and sync: <button type="button" class="text-link" data-open-club>The Cheapskate Club →</button></p>
     <div data-usage-body aria-live="polite"></div>
     <section class="usage-export-section" data-tab-panel="export" hidden>
@@ -415,13 +417,14 @@ const CheapOSLifetimeUsage = (() => {
     }
 
     function switchView(mode){
+      if(!current||(mode==='remote'&&!current.club?.remote_profile))return;
       viewMode=mode;
       savedView=mode;
       try{storage?.setItem?.('cheapos_usage_view',mode);}catch{}
       $$('.usage-view-btn',d).forEach(btn=>{
         const active=btn.dataset.view===mode;
         btn.classList.toggle('active',active);
-        btn.setAttribute('aria-checked',String(active));
+        btn.setAttribute('aria-pressed',String(active));
       });
       const periodWrapper=q('.lifetime-period-wrapper');
       if(periodWrapper){
@@ -434,8 +437,10 @@ const CheapOSLifetimeUsage = (() => {
         switchTab(activeTab);
         bindReconcileActions();
       }
-      if(typeof renderLifetimeSavingsBadge==='function'&&current){
+      if(current?.period==='all'&&typeof renderLifetimeSavingsBadge==='function'){
         renderLifetimeSavingsBadge(current);
+      }else if(typeof updateLifetimeSavingsBadge==='function'){
+        updateLifetimeSavingsBadge(true);
       }
     }
 
@@ -443,7 +448,7 @@ const CheapOSLifetimeUsage = (() => {
       const footerStatus=q('[data-usage-footer-status]');
       if(footerStatus){
         const rp=current?.club?.remote_profile;
-        footerStatus.innerHTML=mode==='remote'&&rp?`Active view: 🌐 <strong>Club scoreboard</strong> (@${escape(rp.handle)} · ${number(rp.tokens)} tokens)`:`Active view: 💻 <strong>Local installation</strong> (${number(current?.total_free_tokens||0)} tokens)`;
+        footerStatus.innerHTML=mode==='remote'&&rp?`Active view: 🌐 <strong>Club scoreboard</strong> (@${escape(rp.handle)} · ${number(rp.tokens)} tokens)`:`Active view: 💻 <strong>Local installation</strong> (${number(current?.tokens.reported)} reported tokens)`;
       }
     }
 
@@ -457,6 +462,8 @@ const CheapOSLifetimeUsage = (() => {
 
     async function load(){
       const seq=++request;current=null;
+      $$('.usage-view-btn',d).forEach(btn=>btn.disabled=true);
+      const refresh=q('[data-refresh-usage]');if(refresh)refresh.disabled=true;
       const expBtn=q('[data-export]');if(expBtn)expBtn.disabled=true;
       const prevSec=q('[data-preview]');if(prevSec)prevSec.hidden=true;
       body.innerHTML='<p role="status">Loading usage…</p>';
@@ -465,11 +472,16 @@ const CheapOSLifetimeUsage = (() => {
         if(closed||seq!==request||!d.isConnected)return;
         current=safeSummary(data);
         const hasRemote=Boolean(current?.club?.remote_profile);
-        const switchEl=q('[data-usage-view-switch]');
-        if(switchEl){
-          if(switchEl.style)switchEl.style.display=(hasRemote?'':'none');
-          switchEl.hidden=!hasRemote;
-        }
+        const localPeriod=current.period==='all'?'All time':`Last ${current.period} days`;
+        $$('.usage-view-btn',d).forEach(btn=>{
+          const remote=btn.dataset.view==='remote';
+          btn.disabled=remote&&!hasRemote;
+          const total=remote?(hasRemote?number(current.club.remote_profile.tokens)+' tokens':'Unavailable'):number(current.tokens.reported)+' tokens';
+          btn.innerHTML=`<span>${remote?'Club scoreboard':'Local usage'}</span><strong>${total}</strong><small>${remote?'Accepted · all time':localPeriod+' · reported'}</small>`;
+        });
+        const scope=q('[data-usage-scope]');
+        if(scope)scope.textContent='Local usage includes recorded requests from before sharing was enabled, plus paid and unknown access. The Club counts accepted, eligible reports across your linked installations. These totals can differ.'+
+          (!hasRemote?(current.club?.is_linked?' The Club total is unavailable right now; showing local usage. Refresh totals to try again.':' Connect your Club account in The Cheapskate Club settings to compare totals.'):'');
         if(!savedView&&hasRemote&&current?.club?.is_linked){
           viewMode='remote';
         }
@@ -482,13 +494,13 @@ const CheapOSLifetimeUsage = (() => {
         $$('.usage-view-btn',d).forEach(btn=>{
           const active=btn.dataset.view===effectiveView;
           btn.classList.toggle('active',active);
-          btn.setAttribute('aria-checked',String(active));
+          btn.setAttribute('aria-pressed',String(active));
         });
         body.innerHTML=render(current,effectiveView);
         switchTab(activeTab);
         bindReconcileActions();
         updateFooterStatus(effectiveView);
-        if(typeof renderLifetimeSavingsBadge==='function'&&current){
+        if(current?.period==='all'&&typeof renderLifetimeSavingsBadge==='function'){
           renderLifetimeSavingsBadge(current);
         }
         if(expBtn)expBtn.disabled=false;
@@ -496,11 +508,14 @@ const CheapOSLifetimeUsage = (() => {
         if(closed||seq!==request||!d.isConnected)return;
         body.innerHTML=(e.status===404?'<p role="alert">Usage &amp; savings will be available after a later app restart. Your current work can continue.</p>':'<p role="alert">Usage could not be loaded. Your chat is unchanged.</p>')+'<button class="outline-button" data-retry>Retry</button>';
         const retry=q('[data-retry]');if(retry)retry.onclick=load;
+      }finally{
+        if(!closed&&seq===request&&refresh)refresh.disabled=false;
       }
     }
     const exported=()=>{if(!current)return '';const fmt=q('[data-format]').value;return fmt==='leaderboard'?leaderboard(current):fmt==='json'?JSON.stringify(current,null,2):markdown(current);};
     function preview(){const p=q('[data-preview]');if(p)p.hidden=false;const t=q('[data-export-text]');if(t)t.textContent=exported();}
     q('[data-period]').onchange=load;
+    const refresh=q('[data-refresh-usage]');if(refresh)refresh.onclick=load;
     const exp=q('[data-export]');if(exp)exp.onclick=preview;
     const fmt=q('[data-format]');if(fmt)fmt.onchange=preview;
     const dl=q('[data-download]');
