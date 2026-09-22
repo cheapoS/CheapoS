@@ -5,6 +5,7 @@ import hashlib
 import secrets
 import os
 import shutil
+import socket
 import sys
 import threading
 import time
@@ -97,6 +98,9 @@ def public_task(task, summary=False, store=None):
 
 class LocalServer(ThreadingHTTPServer):
     daemon_threads = True
+    # Each browser refresh fans out into several API requests. Python's older
+    # five-connection default can reset that burst before a handler accepts it.
+    request_queue_size = socket.SOMAXCONN
 
     def __init__(self, address, directory, engine):
         self.directory = Path(directory).resolve()
@@ -148,8 +152,14 @@ class LocalHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         if etag:
             self.send_header("ETag", etag)
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            # Refreshing or cancelling a browser request can close its socket.
+            # The action already ran; do not retry or send a 500 on that socket.
+            # Catch only response writes, so backend failures stay visible.
+            self.close_connection = True
 
     def do_HEAD(self):
         if not self.trusted():
