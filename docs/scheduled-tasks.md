@@ -8,7 +8,7 @@ project repository, not in the cheapoS source code.
 1. Click **New scheduled task** beneath **New chat**, on the project home screen,
    or in **Settings → Scheduled tasks**. Choose a project, describe the work and
    select **Every 6, 12 or 24 hours**, or **Every week**.
-2. Choose **Continue in Unattended chat**, then send the request to prepare a plan.
+2. Choose **Prepare plan** to open the chat and start planning immediately.
    The chat shows **Every 6 hours · Awaiting approval** (or your chosen interval).
    Frequency is saved with the draft and planning chat; selecting it starts no
    recurring work. The draft uses **$0 API spending** and other project settings.

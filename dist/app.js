@@ -1693,7 +1693,7 @@ function newScheduledTask(){
       const setup=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>setupDrafts.set(repository,next));
       setup.edit('limits.dollars',0);await setup.save();if(!isOpen())return;
       close();newTask(prompt,{repository,mode:'unattended',schedule_request});
-      toast('Frequency saved. Send to prepare the plan, then approve the schedule.');
+      await sendChat();
     },
     onExisting:async(task,isOpen,close)=>{
       const saved=await api('/tasks/'+task.id);if(!isOpen())return;

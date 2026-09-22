@@ -22,11 +22,12 @@ function setupDialog(){
  const d={open:true,close(){this.open=false;},querySelector:s=>({'[data-new-schedule]':form,'[data-existing-schedule]':existing,'[role=alert]':error}[s])};
  return {d,form,existing,button,error};
 }
-test('new schedule setup explains the approval steps and submits only one draft',async()=>{
+test('new schedule setup explains planning and approval and submits only once',async()=>{
  const c=setupDialog();let html,finish,calls=0;
  schedules.setup({project:{path:'/repo',name:'<Project>'},tasks:[],dialog:s=>(html=s,c.d),header:()=>'',onNew:async values=>{calls++;assert.equal(values.repository,'/repo');assert.equal(values.prompt,'Check release notes');assert.deepEqual(values.schedule_request,{interval_hours:12});await new Promise(r=>finish=r);values.close();}});
  assert.match(html,/&lt;Project&gt;/);assert.match(html,/Approve &amp; start schedule/);assert.match(html,/<select name="interval">/);
  assert.match(html,/recurring runs wait for your approval/);assert.match(html,/\$0 API spending allowance/);
+ assert.match(html,/>Prepare plan<\/button>/);assert.doesNotMatch(html,/Continue in Unattended chat|Send it to prepare/);
  const first=c.form.onsubmit({preventDefault(){}});await c.form.onsubmit({preventDefault(){}});
  assert.equal(calls,1);assert.equal(c.button.disabled,true);finish();await first;assert.equal(c.d.open,false);
 });
@@ -45,15 +46,15 @@ function entryContext(){
  const entry=app.match(/function newScheduledTask\(\)\{[\s\S]*?\n\}(?=\nconst executionLabel)/)[0];
  let setup,projectPicker=0;const calls=[],drafts=new Map();
  const context={state:{projects:[{path:'/repo',name:'Repo'}],project:{path:'/other'},task:{source:'/repo'},tasks:[]},basename:s=>s.split('/').at(-1),openProject:()=>projectPicker++,CheapOSSchedules:{setup:options=>setup=options},dialog(){},modalHeader(){},
-  setupDraft:async()=>({record:{values:{limits:{dollars:4},roles:{worker:{strategy:'only',model:'chosen'}}}},overrides:{'limits.work_requests':50}}),setupDrafts:drafts,CheapOSSettings:settings,newTask:(...args)=>calls.push(['draft',...args]),toast(){},api:async path=>{calls.push(['read',path]);return {id:'saved',title:'Saved'};},scheduleTask:task=>calls.push(['schedule',task])};
+  setupDraft:async()=>({record:{values:{limits:{dollars:4},roles:{worker:{strategy:'only',model:'chosen'}}}},overrides:{'limits.work_requests':50}}),setupDrafts:drafts,CheapOSSettings:settings,newTask:(...args)=>calls.push(['draft',...args]),sendChat:async()=>calls.push(['send']),toast(){},api:async path=>{calls.push(['read',path]);return {id:'saved',title:'Saved'};},scheduleTask:task=>calls.push(['schedule',task])};
  vm.createContext(context);vm.runInContext(entry+';this.start=newScheduledTask;',context);
  return {context,calls,drafts,getSetup:()=>setup,getPickers:()=>projectPicker};
 }
-test('sidebar/home setup uses captured project and a zero-spend draft without dispatch',async()=>{
+test('sidebar/home setup captures project and zero-spend settings before sending for planning',async()=>{
  const c=entryContext();c.context.start();const setup=c.getSetup();
  assert.equal(setup.project.path,'/repo');let closed=0;
  await setup.onNew({repository:'/repo',prompt:'Repeat this',schedule_request:{interval_hours:12},isOpen:()=>true,close:()=>closed++});
- assert.equal(closed,1);assert.equal(c.calls.length,1);assert.equal(c.calls[0][0],'draft');
+ assert.equal(closed,1);assert.equal(c.calls.length,2);assert.equal(c.calls[0][0],'draft');assert.deepEqual(c.calls[1],['send']);
  assert.equal(c.calls[0][2].mode,'unattended');assert.equal(c.calls[0][2].repository,'/repo');assert.equal(c.calls[0][2].schedule_request.interval_hours,12);
  assert.equal(c.drafts.get('/repo').values.limits.dollars,0);
  assert.equal(c.drafts.get('/repo').values.roles.worker.model,'chosen');
