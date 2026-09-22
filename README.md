@@ -14,9 +14,11 @@
 
 # CheapoS
 
-**Your ideas should matter more than your budget.**
+**Good software shouldn’t require expensive AI.**
 
-CheapoS is an open-source coding workspace that lets an inexpensive model implement a change, runs real checks, and brings in a reviewer at checkpoints. Work on local Git projects, choose your models, set your limits, and inspect the result before it lands.
+cheapoS gives free and affordable models the guidance, tools, and review process to tackle real coding tasks. You choose the models and approve the results.
+
+Models keep improving. Our goal stays the same: make the most of the intelligence everyone can afford.
 
 No CheapoS account. No hosted project. No required package installation to launch the app. Just Python, Git, and your browser. (CheapoS itself needs no install. We recommend [OmniRoute](docs/USER_GUIDE.md#omniroute-companion) as the main app for connecting and managing model providers.)
 
