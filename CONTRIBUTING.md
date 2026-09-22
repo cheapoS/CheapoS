@@ -116,6 +116,12 @@ Preserve these properties:
 
 Include what changed, why it helps, and relevant verification in your pull request. Do not commit `.cheapos/`, credentials, local task output, or unrelated generated assets. Code contributions are made under the repository's MIT license.
 
+For agent prompt or tool changes, follow the instruction-change rules in
+`AGENTS.md` and update the [runtime instruction audit](docs/development/runtime-instruction-audit.md).
+Shared policy comes from the catalog. Validate the assembled provider request
+and actual tool schemas across the affected modes, recovery and Resume paths;
+catalog lint alone is insufficient.
+
 The app's verification tool rejects `check.py --plan`: a successful selection
 preview is not a passing check, including when it appears in saved evidence.
 Use the preview to choose executable, scoped checks. Uncapped Interactive work

@@ -3,6 +3,7 @@
 This is a host process permission, not a sandbox. Only trusted controller entry
 points may grant it; model arguments and project files cannot create grants.
 """
+from .instructions.runtime import text as instruction
 from pathlib import Path
 import hashlib
 
@@ -56,4 +57,4 @@ def directory(workspace, value):
     return target
 
 
-POLICY = """Use run_command for task-local setup, dependency installation, and diagnostics when task command permission is enabled. Inspect the project's actual files and command output to choose the next step; there is no package-manager recipe catalog. Commands run as direct argument vectors, without shell operators; make separate calls for separate commands. A successful setup command is NOT verification: run_checks and independent checkpoint review are still required. Do not change required checks or package scripts merely to hide missing dependencies. Do not deploy, push, commit, access credentials, or modify other checkouts. Dependency scripts execute with the host user's permissions; the task copy is not a security sandbox."""
+POLICY = instruction('workflow.task_commands')

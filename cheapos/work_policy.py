@@ -126,12 +126,8 @@ def stage(task):
 
 
 def instruction(value):
-    focus={'explanation':'This is a read-only explanation or suggestion request. Read relevant files, then answer the latest question in plain text. If a README is absent, explain the files that exist. Describe suspected bugs as source observations, not executed test results. Do not edit, run tests, or submit a checkpoint. Suggestions wait for the operator to request implementation.',
-           'orientation':'Use the project brief and targeted reads to answer the latest request. For questions or suggestions, give a plain-text answer without edits or checks. Only implement when the operator has requested changes.',
-           'implementation':'Make the smallest sufficient complete edit, using existing project structures.',
-           'verification':'Call run_checks directly when the requested implementation is complete; the controller presents any required command permission. Do not ask for that permission in prose or ask_user. Otherwise finish the remaining edits.',
-           'review':'Submit the completed requested patch for review. Passing checks alone do not establish completion.'}[value]
-    return f'Current stage: {value}. {focus} Preserve every active requirement. Avoid speculative abstractions and full-file prose. Read missing context with the offered tools; do not guess. Report actual evidence.'
+    from .instructions.runtime import text
+    return f'Current stage: {value}. ' + text('stage.' + value) + ' ' + text('stage.common')
 
 
 def prioritize(tools,value):

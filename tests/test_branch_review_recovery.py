@@ -186,6 +186,9 @@ class ItemReviewRecoveryTests(unittest.TestCase):
         def respond(rt, messages, tools, role):
             if engine.request.call_count == 1:
                 self.assertEqual({t['function']['name'] for t in tools}, {'review_decision', 'read_review_evidence'})
+                from cheapos.instructions.runtime import audit_tools, prompt
+                self.assertEqual(audit_tools('review_decision_coaching', tools), [])
+                self.assertEqual(messages[-1]['content'], prompt('review_decision_coaching'))
                 return {'tool_calls': [self.wire_call('read_review_evidence', '{"source":"diff"}')]}
             result = self.approval()['tool_calls'][0]['result']
             result['review_assessment'] = assessment(['exact values'], checks=False)

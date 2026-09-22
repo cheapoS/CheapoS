@@ -1026,14 +1026,15 @@ class PromptParityTests(unittest.TestCase):
             self.assertEqual(delivered_compact[-1]["content"], COMPACT_GUIDANCE)
 
     def test_representative_delivered_worker_system_prompts(self):
-        """worker_system delivered prompts maintain exact string parity across interactive and unattended modes."""
+        """Delivered worker systems select catalog profiles and scoped validation across modes."""
         from cheapos import engine, unattended_setup, task_commands
+        from cheapos.instructions.runtime import prompt, validation
         command_policy = task_commands.POLICY + "\nTask command permission: not granted; existing check permissions still apply"
 
         # 1. Interactive mode without finish_review
         task_interactive = {"conversational": True}
         prompt_interactive = engine.worker_system(task_interactive)
-        expected_interactive = engine.CHAT_SYSTEM + "\n" + command_policy
+        expected_interactive = engine.CHAT_SYSTEM + "\n" + validation(task_interactive) + "\n" + command_policy
         self.assertEqual(prompt_interactive, expected_interactive)
 
         # 2. Interactive mode with finish_review: complete string comparison
@@ -1043,7 +1044,7 @@ class PromptParityTests(unittest.TestCase):
             engine.CHAT_SYSTEM
             + "\nThe operator selected Finish review for the saved patch. Complete verification and independent checkpoint review even if you make no new edits. Keep the implementation unchanged unless checks or review require a fix. Call run_checks to select a missing verification command and present any required permission. A prose description of next steps does not finish this request. Ask only for a genuinely missing requirement. The operator will approve the final commit separately."
         )
-        expected_finish += "\n" + command_policy
+        expected_finish += "\n" + validation(task_finish) + "\n" + command_policy
         self.assertEqual(prompt_finish, expected_finish)
 
         # 3. Unattended mode with authorization: complete string comparison
@@ -1051,16 +1052,9 @@ class PromptParityTests(unittest.TestCase):
             "branch_run": {"authorization_ref": {"id": "auth-123"}},
         }
         prompt_unattended = engine.worker_system(task_unattended)
-        expected_unattended = (
-            engine.WORKER_SYSTEM.replace(
-                "Commits are handled by the app after the user clicks Approve & commit on the final reviewed diff. Never use verification commands to apply patches, commit, or push. If asked to commit, explain that approval step.",
-                "The controller owns branch commits after verified independent approval. Never use verification commands or run_checks to commit, push, stage, or apply patches (do not call git add or git commit). Text alone cannot complete an item."
-            )
-            + "\n"
-            + unattended_setup.WORKER_POLICY
-            + " Use report_blocker for a genuine essential decision, including inspected evidence and why it cannot be resolved within scope."
-        )
-        expected_unattended += "\n" + command_policy
+        expected_unattended = prompt('unattended') + "\n" + validation(task_unattended) + "\n" + command_policy
+        self.assertNotIn("Approve & commit", prompt_unattended)
+        self.assertIn("report_blocker", prompt_unattended)
         self.assertEqual(prompt_unattended, expected_unattended)
 
         # 4. In-memory fault injection: verify that appending unexpected text fails exact parity

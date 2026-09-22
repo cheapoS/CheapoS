@@ -54,6 +54,11 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(result['decision'],'APPROVE');self.assertEqual(engine.request.call_count,2)
         self.assertEqual(task['branch_run']['items'],before['branch_run']['items'])
         self.assertNotIn('amendments',task['branch_run']);engine.checks.assert_not_called();engine.file_tool.assert_not_called()
+        from cheapos.instructions.runtime import audit_tools, prompt
+        self.assertIn(prompt('final_review'), engine.request.call_args.args[1][0]['content'])
+        self.assertEqual(audit_tools('final_review', engine.request.call_args.args[2]), [])
+        self.assertNotIn('REQUEST_TESTS', engine.request.call_args.args[1][0]['content'])
+        self.assertNotIn('TAKE_OVER', engine.request.call_args.args[1][0]['content'])
         tool=engine.request.call_args.args[2][0]['function']['parameters']['properties']['defects']
         self.assertEqual(tool['items']['properties']['criterion']['enum'],['core:1'])
         self.assertEqual(final._review(engine,runtime,manifest,{'current_candidate':'unchanged'},['diff:1'],[]),result)

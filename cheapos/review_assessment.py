@@ -3,13 +3,14 @@
 Only the controller registers delivered evidence. A check passing or a previous
 approval is never implementation evidence on its own. No new execution authority.
 """
+from .instructions.runtime import text as instruction
 import copy
 import hashlib
 import json
 import re
 
 VERSION = 1
-INSTRUCTION = '''Approval needs review_assessment, not just passing checks. For every criterion explain how the requested behavior follows from actual code/document evidence. Reuse citation objects returned by read tools, or cite exact nonempty literal excerpts with their source IDs. Returned excerpt IDs preserve exact source text without retyping it; they do not establish correctness. Review regressions and verification separately: examine changed/removed handlers, callers, styles, imports, tests and assertions as relevant. Examine whether assertions would fail if the requested behavior were missing, and whether changed tests weaken expectations, remove coverage, or replace behavior with permissive mocks. Explain what the checks establish and what they miss; a green command or the worker's description alone cannot establish correctness. For UI changes inspect related styles, icons and interactions; source inspection is not a rendered visual check. List remaining verification limitations honestly. Missing evidence means use the read tools or request focused tests within existing authority, not guess, approve, or invent a defect. Do not manufacture findings on correct work. Earlier approvals are claims, not source evidence. The original request is context for detecting omissions; the approved scope and latest explicit amendments remain authoritative.'''
+INSTRUCTION = instruction('reviewer.assessment')
 
 
 def digest(value):
@@ -71,7 +72,7 @@ def display(state):
             row['content'] = value['content']  # The synthesizer must see the cited code.
         sources.append(row)
     return {'version': VERSION, 'scope': state['scope'], 'criteria': state['criteria'], 'sources': sources,
-            'instruction': 'Use an exact source id below (not a file path). Read/search a source with read_review_evidence(source, offset, search); reuse the returned citation object without retyping its content. A citation identifies evidence, not a verdict: explain how its content supports the claim. Literal quotes remain supported, but must not abbreviate or change the source. Reuse delivered evidence; read only missing context. Checks alone do not prove requested behavior.'}
+            'instruction': instruction('reviewer.evidence_catalog')}
 
 
 def citation(state, source, start, end):
@@ -122,7 +123,7 @@ def read(state, source=None, offset=0, search=None):
             'digest': value['digest'], 'offset': offset, 'next_offset': offset + len(page),
             'has_more': offset + len(page) < len(content), 'content': page,
             'citation': citation(state, source, offset, offset + len(page)),
-            'instruction': 'Reuse citation in the relevant claim and explain what this content establishes. It identifies only this delivered page, not unread pages. This read does not approve anything.'}
+            'instruction': instruction('reviewer.delivered_excerpt')}
 
 
 def packet_for_model(packet):
@@ -315,7 +316,7 @@ def validate(state, result):
                            if matched_quote(key, value, ref.get('quote')) is not None]
                 issue(location, 'Citation not found in delivered current-candidate evidence: ' + ref['source'],
                       matching_source_ids=matches,
-                      instruction='Read/search this source with read_review_evidence and reuse its returned citation object. Explain whether the actual excerpt supports your claim; do not repair citation text by guessing or inventing a defect.')
+                      instruction=instruction('reviewer.correct_citation'))
                 continue
             kinds.add(source['kind'])
             entry = excerpts.setdefault(ref['source'], {'kind': source['kind'], 'content': '', 'source_digest': source['digest']})
