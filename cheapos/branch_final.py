@@ -371,7 +371,9 @@ def _independent(task, reviewer):
 
 
 def final_check_review(engine, runtime):
+    from . import branch_review_reuse
     task = runtime.task; run = task['branch_run']; manifest = build_manifest(run)
+    review_inputs = branch_review_reuse.input_digest(task)
     worker = evidence.model_identity(task['providers']['worker']); reviewer = evidence.model_identity(task['providers']['reviewer'])
     if worker == reviewer:
         raise ValueError('Final review requires an independent model')
@@ -397,6 +399,9 @@ def final_check_review(engine, runtime):
             if not result.get('passed'):
                 return {'decision': 'REQUEST_CHANGES', 'feedback': 'Repair the failing final integration check.', 'checks': result}
     checks = evidence.current_checks(current, task['checks'])
+    reused = branch_review_reuse.finalize(engine, runtime, manifest, current, checks)
+    if reused is not None:
+        return reused
     from .context_evidence import retain
     history=retain(task,{'role':'historical_evidence_not_requirements',
         'original_item_evidence':manifest['requirements'],
@@ -451,23 +456,36 @@ def final_check_review(engine, runtime):
             from .branch_pause import PauseError
             raise PauseError('branch_drift', stage='finalizing')
         return disagreement.repair({**overall,'source_patch':manifest['diff']}, current['id'], checks)
-    if not manifest_match or evidence.candidate(task, context, specifications, criteria) != current:
+    if (not manifest_match or evidence.candidate(task, context, specifications, criteria) != current
+            or branch_review_reuse.input_digest(task) != review_inputs):
         from .branch_pause import PauseError
         raise PauseError('branch_drift', stage='finalizing')
     blocker = None
     try: work.source_git(run['workspace_mapping']['source'], 'merge-base', '--is-ancestor', current_manifest['target_tip'], manifest['feature_tip'])
     except ValueError: blocker = 'The target branch has new commits. Choose Update branch & recheck to combine them with the saved task before merging.'
     readiness = {'version': 1, 'manifest': current_manifest, 'candidate': current, 'checks': checks, 'reviews': reviews,
-                 'review': overall, 'worker_model': worker, 'reviewer_model': overall.get('reviewer_model',recovery.model(task)), 'integration_blocker': blocker}
+                 'review': overall, 'worker_model': worker, 'reviewer_model': overall.get('reviewer_model',recovery.model(task)), 'integration_blocker': blocker,
+                 'review_input_digest': review_inputs}
     readiness['id'] = _hash(readiness)
     return {'decision': 'APPROVE', 'readiness': readiness}
 
 
-def validate(readiness, task):
+def validate_record(readiness, task, seen=None):
+    """Validate immutable approval/check receipts without requiring an old checkout."""
     saved = copy.deepcopy(readiness); identity = saved.pop('id', None)
     if identity != _hash(saved): raise ValueError('Final readiness receipt changed')
-    if build_manifest(task['branch_run'],version=saved['manifest'].get('version',1)) != saved['manifest']:
-        raise ValueError('Final branch, target, plan or evidence changed; revalidate final readiness')
+    current = saved['candidate']
+    if len(current['checks']) != len(saved['checks']): raise ValueError('Final check evidence is incomplete')
+    for expected, bound in zip(current['checks'], saved['checks']):
+        if current.get('id') and bound.get('candidate_id') != current['id']:
+            raise ValueError('Final check belongs to a different candidate')
+        evidence.bind_check(current, expected['command'], bound['record'], expected.get('directory', '.'))
+    if saved.get('version') == 2:
+        from . import branch_review_reuse
+        branch_review_reuse.validate(readiness, task, seen)
+        return True
+    if saved.get('version', 1) != 1:
+        raise ValueError('Unsupported final readiness version')
     manifest = saved['manifest']
     chunks = [c['id'] for c in manifest['chunks']]
     criteria = [r['id'] for r in manifest['requirements']]
@@ -484,15 +502,26 @@ def validate(readiness, task):
         raise ValueError('Final requirement coverage is incomplete')
     if evidence.model_identity(saved['worker_model']) == evidence.model_identity(saved['reviewer_model']):
         raise ValueError('Final reviewer is not independent')
-    current = saved['candidate']
     if current.get('review_contract_version') == 1:
         from .review_assessment import retained
         for review in [*reviews, overall]:
             retained(review, _hash({'manifest_id': manifest['id'], 'chunk_ids': review['chunk_ids'],
                                     'criteria_ids': review['criteria_ids'], 'page': None}))
+    return True
+
+
+def validate(readiness, task):
+    validate_record(readiness, task)
+    if readiness.get('review_input_digest'):
+        from . import branch_review_reuse
+        if readiness['review_input_digest'] != branch_review_reuse.input_digest(task):
+            raise ValueError('Operator review directions changed')
+    if build_manifest(task['branch_run'],version=readiness['manifest'].get('version',1)) != readiness['manifest']:
+        raise ValueError('Final branch, target, plan or evidence changed; revalidate final readiness')
+    current = readiness['candidate']
     if evidence.candidate(task, current['context'], current['check_specifications'], current['criteria']) != current:
         raise ValueError('Final verification environment or workspace changed')
-    for expected, bound in zip(current['checks'], saved['checks']):
-        evidence.bind_check(current, expected['command'], bound['record'], expected.get('directory', '.'))
-    if len(current['checks']) != len(saved['checks']): raise ValueError('Final check evidence is incomplete')
+    if readiness.get('reuse', {}).get('mode') == 'integration':
+        from . import branch_review_reuse
+        branch_review_reuse.validate_diff(readiness, task)
     return True

@@ -106,7 +106,14 @@ class BranchFinalTests(unittest.TestCase):
         packet=next(p for p in self.requests if 'chunk' in p)
         self.assertEqual(packet['review_context']['final_checks'][1]['directory'],'component')
         count = len(self.requests)
-        self.assertTrue(final.validate(result['readiness'], self.task))
+        # Exercise composed readiness against this existing real Git fixture,
+        # without another workspace, command or model request.
+        from cheapos import branch_review_reuse
+        self.run['previous_readiness'] = [result['readiness']]
+        reused = branch_review_reuse.prepare(self.task, manifest,
+            result['readiness']['candidate'], result['readiness']['checks'])
+        self.assertIsNotNone(reused)
+        self.assertTrue(final.validate(reused, self.task))
         self.assertEqual(len(self.requests),count)
         self.assertIsNone(result['readiness']['integration_blocker'])
         # Even a recomputed outer receipt cannot omit the controller's review proof.

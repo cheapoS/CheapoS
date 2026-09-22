@@ -9,6 +9,39 @@ This is the development direction for the next iteration. The item-review and
 final-review handoffs described below are implemented; the broader changes are milestones,
 not claims about current behavior.
 
+## Implemented: preserve approved work during branch integration
+
+Resolve & recheck retains earlier approval receipts instead of reviewing the
+whole task again by default. An unchanged candidate, requirements, operator
+directions, check commands and verification environment reuse the existing
+approval and passing checks without a model request.
+
+A clean target update runs the required checks against the combined code, then
+requests a focused independent review of the complete update delta and its
+effect on every original criterion. Different files do not imply independence:
+reviewers inspect relevant dependencies, callers, configuration, styles and tests.
+The full current task diff and earlier approval remain available by reference.
+Large integration packets retain the existing paging and recovery behavior.
+
+A conflict resolution already reviewed against the frozen incoming target can
+carry that approval into final readiness when its exact reviewed tree is the
+integrated tree, original scope is unchanged, and fresh final checks pass. It
+does not receive another full final-review loop. No approval is relabeled as
+evidence about different code: readiness binds the old approval, controller
+update receipt, and new review or resolution evidence together.
+
+Missing provenance, changed scope or extra work falls back to ordinary full
+review. Older receipts without recorded operator-direction provenance therefore
+need one normal review before reuse is available. A failed check or concrete
+integration defect follows the existing repair workflow. New target commits
+still prevent merge until incorporated, but destination movement alone does not
+erase a completed integration review of unchanged code. Cancellation, saved
+attempts, command grants, model choices and spending authority remain enforced.
+
+Small in-memory cases cover unchanged rechecks, clean updates, reviewed
+resolutions, restart reuse, rejection, drift and missing evidence. The existing
+Git fixture also validates composed readiness against actual repository state.
+
 ## Implemented: merge around unrelated local drafts
 
 In the GitHub PR workflow, confirmed remote merges retain a completion receipt
