@@ -107,7 +107,9 @@ def with_tools(messages, tools, tool_choice=None):
     content = TOOL_CONTRACT + text('runtime.tool_contract') + '\n' + json.dumps(contract)
     result = copy.deepcopy(messages)
     if result and result[0].get('role') == 'system':
-        result[0]['content'] = result[0].get('content', '').split(TOOL_CONTRACT, 1)[0] + content
+        previous = result[0].get('content', '')
+        base = '' if previous.startswith(TOOL_CONTRACT.lstrip()) else previous.split(TOOL_CONTRACT, 1)[0]
+        result[0]['content'] = base + content if base else content.lstrip()
     else:
         result.insert(0, {'role': 'system', 'content': content.lstrip()})
     return result

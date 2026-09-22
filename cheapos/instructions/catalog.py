@@ -642,7 +642,9 @@ RULES: List[InstructionRule] = [
         state_triggers=("runtime_profile",),
         text=(
             'Approval needs review_assessment, not just passing checks. For every criterion explain how '
-            'the requested behavior follows from actual code/document evidence. Reuse citation objects '
+            'the requested behavior follows from actual code/document evidence. For command-result-only '
+            'criteria listed in review_evidence.criterion_checks, cite the listed matching check receipt; '
+            'code is still required for behavioral claims and regression assessment. Reuse citation objects '
             'returned by read tools, or cite exact nonempty literal excerpts with their source IDs. '
             'Returned excerpt IDs preserve exact source text without retyping it; they do not establish '
             'correctness. Review regressions and verification separately: examine changed/removed '

@@ -94,6 +94,12 @@ class FreeModelPool:
             record = copy.deepcopy(self.records.get(self.key(endpoint, model, connection_revision), {}))
             connection = self.records.get(self.key(endpoint, '\0connection', connection_revision), {})
             provider = self.records.get(self.key(endpoint, self.provider_key(model), connection_revision), {})
+            outage = provider.get('work_outage', {})
+            if outage.get('retry_at', 0) > max(time.time(), record.get('retry_at', 0)):
+                record.update(retry_at=outage['retry_at'], cooldown_scope='provider', retry_known=False,
+                              retry_scheduled=True, last_error='Real requests failed across multiple models on this provider; retrying after backoff.',
+                              failure={'category': 'transient_provider', 'scope': 'provider', 'retry': True,
+                                       'quality_impact': False})
             if provider.get("retry_at", 0) > time.time():
                 record.update(retry_at=max(record.get("retry_at", 0), provider["retry_at"]),
                               cooldown_scope="provider", retry_known=provider.get("retry_known", False), last_error=provider.get("last_error", ""), failure=provider.get("failure"))
@@ -137,6 +143,10 @@ class FreeModelPool:
             record = self.records.setdefault(key, {})
             record["updated_at"] = time.time()
             if failure: record['failure'] = failure
+            if failure and not probe:
+                record['actual_failure'] = True
+                if failure['category'] == 'transient_provider':
+                    self._record_work_outage(endpoint, model, connection_revision)
             if cooldown:
                 # A tiny tool probe can succeed while the real payload still
                 # exceeds quota. Keep the streak until actual work responds.
@@ -162,7 +172,8 @@ class FreeModelPool:
                 record.update(retry_at=time.time() + delay, last_error=failure['action'], retry_known=False)
                 if scope in {'connection', 'account', 'provider'}: record['cooldown_scope'] = scope
             else:
-                if not probe or not record.get('cooldown_scope') or record.get('retry_at', 0) <= time.time():
+                if not probe or (not record.get('actual_failure') and
+                                 (not record.get('cooldown_scope') or record.get('retry_at', 0) <= time.time())):
                     record.update(retry_at=0, last_error="")
                     record.pop('failure', None)
                     record.pop("cooldown_scope", None)
@@ -176,10 +187,13 @@ class FreeModelPool:
                     record['tool_check_at'] = time.time()
                     if connection_revision is not None: record['tool_connection_revision'] = connection_revision
                 else:
+                    record.pop('actual_failure', None)
+                    record['availability_failures'] = 0
                     record.pop('cooldown_failures', None)
                     record.pop('cooldown_delay_seconds', None)
                     for shared in (self.provider_key(model), '\0connection'):
                         shared_record = self.records.get(self.key(endpoint, shared, connection_revision), {})
+                        shared_record.pop('work_outage', None)
                         if shared_record.get('retry_at', 0) <= time.time():
                             shared_record.pop('cooldown_failures', None)
                             shared_record.pop('cooldown_delay_seconds', None)
@@ -196,6 +210,29 @@ class FreeModelPool:
                 self.records = dict(sorted(self.records.items(), key=lambda item: item[1].get("updated_at", 0))[-2000:])
             write_json(self.path, self.records)
             self.revision += 1
+
+    def _record_work_outage(self, endpoint, model, connection_revision):
+        """Corroborated real-request failures temporarily defer sibling routes.
+
+        Probes, malformed payloads and quality failures cannot establish an
+        outage. Keep only bounded timestamps, scoped to this saved connection.
+        Two distinct models corroborate a shared problem; this changes routing,
+        never stops a task or grants permission to use a different connection.
+        """
+        now = time.time()
+        model = model.removeprefix('no-think/')
+        from .provider_recovery import provider
+        if '/' in model:
+            model = provider(model) + '/' + model.split('/', 1)[1]
+        shared = self.records.setdefault(self.key(endpoint, self.provider_key(model), connection_revision), {})
+        outage = shared.setdefault('work_outage', {})
+        recent = {name: stamp for name, stamp in outage.get('models', {}).items() if now - stamp < 900}
+        streak = outage.get('streak', 0) + 1 if recent else 1
+        recent[model] = now
+        outage.update(models=dict(sorted(recent.items(), key=lambda row: row[1])[-16:]), streak=streak)
+        shared['updated_at'] = now
+        if len(recent) >= 2:
+            outage['retry_at'] = max(outage.get('retry_at', 0), now + min(900, 120 * 2 ** min(streak - 2, 3)))
 
     def fresh_probe(self, endpoint, model, connection_revision, identity, now=None):
         health = self.observation(endpoint, model, connection_revision)

@@ -301,6 +301,7 @@ def _checkpoint(engine, runtime, args):
     proof = None
     if review_assessment.enabled(task):
         proof = pending.setdefault('evidence_review', review_assessment.prepare(current['id'], review_basis_packet, criteria))
+        review_assessment.refresh_check_claims(proof, review_basis_packet)
         packet['review_evidence'] = review_assessment.display(proof)
         messages[0]['content'] += '\n' + review_assessment.INSTRUCTION
         messages[1]['content'] = json.dumps(packet)

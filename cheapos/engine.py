@@ -2322,6 +2322,12 @@ class Engine:
                         'reason': health['last_error'], 'error_code': 'upstream_access_denied'}
                     self.store.save(task)
                     continue
+                if (health.get('cooldown_scope') == 'provider'
+                        and (health.get('failure') or {}).get('category') == 'transient_provider'):
+                    task['route'].setdefault('recovery', {})[role] = {'from': cfg['model'],
+                        'reason': health['last_error'], 'error_code': 'model_connection'}
+                    self.store.save(task)
+                    continue
                 if health.get("cooldown_scope") in {'account', 'connection'} or (health.get('cooldown_scope') == 'provider' and (health.get('failure') or {}).get('category') != 'rate_limit_quota'):
                     if task.get("gateway_connections"):
                         select_remote(self, runtime, role, replace=True)

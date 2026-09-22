@@ -195,10 +195,10 @@ def review_paged(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
                'page_coverage':[{k:v for k,v in row.items() if k != 'review'} for row in coverage], 'coverage':coverage,
                'chunk_ids':chunk_ids,'criteria_ids':criterion_ids,
                'instruction':'Every ordered evidence page above has an independent approval saved against this candidate. Synthesize their complete coverage; never treat missing or rejected pages as approval.'}
-    return _review(engine, runtime, manifest, summary, chunk_ids, criterion_ids)
+    return _review(engine, runtime, manifest, summary, chunk_ids, criterion_ids, check_packet=packet)
 
 
-def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None, progress=None):
+def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None, progress=None, check_packet=None):
     from .engine import tool, ToolArgumentsError
     from . import pr_description, review_assessment
     packet = copy.deepcopy(packet)
@@ -207,6 +207,8 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     if review_assessment.enabled(runtime.task):
         scope = _hash({'manifest_id': manifest['id'], 'chunk_ids': chunk_ids, 'criteria_ids': criterion_ids, 'page': packet.get('page_index')})
         proof = review_assessment.prepare(scope, packet, criterion_ids, partial=not criterion_ids)
+        if check_packet is not None:
+            review_assessment.refresh_check_claims(proof, check_packet)
         packet = copy.deepcopy(packet)
         packet['original_request'] = review_assessment.original_request(runtime.task)
         packet['review_evidence'] = review_assessment.display(proof)
@@ -267,6 +269,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     state=recovery.begin(runtime.task,manifest,key,packet,messages)
     if proof is not None:
         proof = state.setdefault('evidence_review', proof)
+        review_assessment.refresh_check_claims(proof, check_packet if check_packet is not None else packet)
     recovery.guard(runtime)
     cached=state.get('result')
     if cached and state.get('result_digest')==_hash(cached):

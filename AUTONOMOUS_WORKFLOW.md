@@ -9,6 +9,37 @@ This is the development direction for the next iteration. The item-review and
 final-review handoffs described below are implemented; the broader changes are milestones,
 not claims about current behavior.
 
+## Implemented: preserve real-request failures across successful probes
+
+Capability probes confirm a small tool contract, not the provider's ability to
+handle a task request. Their success cannot clear a real-request cooldown.
+Transient failures on two distinct models within fifteen minutes temporarily
+defer their provider on that saved connection. The initial two-minute backoff
+grows to at most fifteen minutes if real requests keep failing. These are local
+retry schedules, not claims about an upstream reset time or model quality.
+Transport aliases for the same model do not count as distinct models.
+
+Automatic routing tries another authorized provider, or waits and retries when
+none is ready. Actual successful work clears this inferred provider backoff;
+explicit quota/access cooldowns keep their own scope and expiry. Malformed
+requests, response-quality failures, cancellations and failed probes do not
+establish shared outages. Restart preserves the local observations. No public
+statistics, limits, model pins or spending authority change.
+
+## Implemented: review command results using check evidence
+
+The controller recognizes narrowly stated command-result-only criteria that
+exactly name a captured check, such as `npm run check passes with zero
+diagnostics`. It supplies matching candidate-bound receipts in the review
+evidence catalog and decision schema. The reviewer cites those results rather
+than inventing a code location for an exit status. Mixed or behavioral claims
+retain the source/visual requirement, and regression assessment remains separate.
+
+Saved item reviews refresh this evidence mapping without discarding earlier
+reads or attempts. Final synthesis retains access to matching receipts even
+when the larger packet needed paging. A matching citation identifies evidence;
+it does not judge assertions, grant approval or prove that the software works.
+
 ## Implemented: preserve approved work during branch integration
 
 Resolve & recheck retains earlier approval receipts instead of reviewing the

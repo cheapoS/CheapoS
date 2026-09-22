@@ -24,6 +24,18 @@ the operator's spending/model/command authority. Treat non-progress thresholds
 as signals to change strategy; do not add arbitrary stop counters. Verify the
 path to completion without operator rescue using small deterministic cases.
 
+Keep tiny capability probes separate from actual task responses. Probe success
+must not erase a real-request outage or reset its backoff. Shared provider
+backoff requires explicit provider evidence or recent failures across distinct
+models; malformed requests and model-quality failures are not provider outages.
+Cover saved-connection scoping, restart, authorized failover and automatic retry
+through a completed decision with a fake clock, preserving model pins and usage.
+
+Review evidence must match the claim. Command-result-only criteria can use the
+exact captured check receipt; behavioral criteria and regression assessment
+still require source/document or visual evidence. Do not force code citations
+for a command exit result, or treat passing commands as proof of UI correctness.
+
 # Validation while iterating
 
 ## Agent instruction changes
