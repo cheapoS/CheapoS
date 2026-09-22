@@ -11,13 +11,13 @@ from .resolver import is_full_suite_authorized, resolve_rules
 
 
 PROFILES = {
-    'worker': ('workflow.worker_base', 'git.internal.interactive_commit_guidance', 'recovery.edit_guidance'),
-    'unattended': ('workflow.worker_base', 'git.internal.controller_owns_commits',
+    'worker': ('workflow.worker_base', 'workflow.ui_completeness', 'git.internal.interactive_commit_guidance', 'recovery.edit_guidance'),
+    'unattended': ('workflow.worker_base', 'workflow.ui_completeness', 'git.internal.controller_owns_commits',
                    'workflow.unattended_policy', 'workflow.unattended_blocker', 'recovery.edit_guidance'),
-    'interactive': ('workflow.chat_base', 'recovery.edit_guidance'),
+    'interactive': ('workflow.chat_base', 'workflow.ui_completeness', 'recovery.edit_guidance'),
     'planner': ('planner.base',),
-    'reviewer': ('reviewer.base', 'reviewer.decisions'),
-    'final_review': ('reviewer.final',),
+    'reviewer': ('reviewer.base', 'workflow.ui_completeness', 'reviewer.decisions'),
+    'final_review': ('reviewer.final', 'workflow.ui_completeness'),
     'review_reassessment': ('reviewer.reassessment',),
     'review_decision_coaching': ('reviewer.decision_coaching',),
     'coordinator_recovery': ('coordinator.base',),

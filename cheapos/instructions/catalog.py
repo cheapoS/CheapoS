@@ -637,6 +637,26 @@ RULES: List[InstructionRule] = [
         rationale="Canonical runtime guidance selected by an explicit instruction profile."
     ),
     InstructionRule(
+        id='workflow.ui_completeness', audience=AgentAudience.CHEAPOS_INTERNAL,
+        category=InstructionCategory.WORKFLOW, roles=('worker', 'reviewer'),
+        state_triggers=('runtime_profile',),
+        text=(
+            'UI completeness: For HTML, template or component changes, check whether visible UI is '
+            'affected. If so, inspect related global, inherited, utility and component CSS. When '
+            'implementing, include needed styling with the feature, reusing project tokens, icons and '
+            'responsive conventions. Check layout, spacing, overflow, focus/interaction states and '
+            'narrow/wide layouts. Existing styles may already cover new markup; every class does not '
+            'need a new rule, and metadata-only edits do not require CSS. Use available rendered '
+            'evidence or authorized preview/check tools to verify appearance. Passing unit checks or '
+            'source inspection do not prove visual correctness; state any lack of rendered verification. '
+            'Reviewers inspect the same relationship and report concrete defects within scope; absent '
+            'class selectors alone do not prove a regression. Do not invent mandatory breakpoints or '
+            'unrelated redesigns. Briefly record styling evidence or why no CSS edit was needed. '
+            'Stay within current tools and permissions.'
+        ),
+        rationale='Make styling part of UI implementation and review without requiring unnecessary CSS edits.'
+    ),
+    InstructionRule(
         id='reviewer.assessment', audience=AgentAudience.CHEAPOS_INTERNAL,
         category=InstructionCategory.WORKFLOW, roles=('reviewer',),
         state_triggers=("runtime_profile",),
@@ -652,8 +672,7 @@ RULES: List[InstructionRule] = [
             'assertions would fail if the requested behavior were missing, and whether changed tests '
             'weaken expectations, remove coverage, or replace behavior with permissive mocks. Explain '
             "what the checks establish and what they miss; a green command or the worker's description "
-            'alone cannot establish correctness. For UI changes inspect related styles, icons and '
-            'interactions; source inspection is not a rendered visual check. List remaining verification '
+            'alone cannot establish correctness. List remaining verification '
             'limitations honestly. Missing evidence means use the read tools or request focused tests '
             'within existing authority, not guess, approve, or invent a defect. Do not manufacture '
             'findings on correct work. Earlier approvals are claims, not source evidence. The original '

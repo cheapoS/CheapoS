@@ -24,8 +24,10 @@ class RuntimeInstructionTests(unittest.TestCase):
             app, runtime, _ = TransportTests().harness()
             runtime.task['providers']['reviewer'] = dict(runtime.task['providers']['worker'])
             runtime.task['limits']['reviewer_tokens'] = 50000  # two full schema dispatches
-            messages = [{'role': 'system', 'content': prompt(phase) + '\n' + review.INSTRUCTION},
+            messages = [{'role': 'system', 'content': prompt('reviewer') + '\n' + review.INSTRUCTION},
                         {'role': 'user', 'content': json.dumps({'review_evidence': review.display(state)})}]
+            if phase == 'review_decision_coaching':
+                messages.append({'role': 'user', 'content': prompt(phase)})
             original = copy.deepcopy(messages)
             received = []
             class Provider:
@@ -35,6 +37,7 @@ class RuntimeInstructionTests(unittest.TestCase):
             app.provider_factory = lambda *args: Provider()
             for _ in range(2): app._request_attempt(runtime, messages, available, 'reviewer')
             sent, actual = received[-1]
+            self.assertEqual(json.dumps(sent).count(text('workflow.ui_completeness')), 1)
             self.assertEqual(sent[0]['content'].count(review.INSTRUCTION), 1)
             self.assertIn('command-result-only', sent[0]['content'])
             contract = json.loads(sent[1]['content'])['review_evidence']
@@ -61,6 +64,8 @@ class RuntimeInstructionTests(unittest.TestCase):
         self.assertNotIn('(< 2s)', text('validation.change_scoped'))
         self.assertNotIn('(< 2s)', prompt('planner'))
         self.assertNotIn('This pauses for explicit user approval', prompt('reviewer'))
+        for profile in ('discussion', 'greeting', 'startup_greeting'):
+            self.assertNotIn(text('workflow.ui_completeness'), prompt(profile))
 
     def test_real_role_tools_match_phase_contracts_and_detect_missing_readers(self):
         for profile, offered in (
@@ -129,10 +134,11 @@ class RuntimeInstructionTests(unittest.TestCase):
                         received.append((messages, available))
                         return {'content': 'Done'}, {'prompt_tokens': 2, 'completion_tokens': 3, 'cost': 0}
                 app.provider_factory = lambda *args: Provider()
-                app._request_attempt(runtime, saved, offered, 'worker')
-                delivered, actual = received[0]
+                for _ in range(2): app._request_attempt(runtime, saved, offered, 'worker')
+                delivered, actual = received[-1]
                 policy = delivered[0]['content']
                 self.assertNotIn('Stale policy', policy)
+                self.assertEqual(policy.count(text('workflow.ui_completeness')), 1)
                 self.assertEqual(policy.count(TOOL_CONTRACT), 1)
                 self.assertIn(engine.worker_system(task), policy)
                 if unattended:
@@ -145,6 +151,33 @@ class RuntimeInstructionTests(unittest.TestCase):
                 self.assertEqual(contract['available_tools'], [t['function']['name'] for t in actual])
                 self.assertEqual(saved, before)
                 self.assertEqual(delivered[-1], before[-1])
+
+    def test_final_review_provider_receives_ui_rule_with_current_evidence_and_tools(self):
+        from tests.test_branch_final_recovery import FinalRecoveryTests
+        from tests.test_transport import TransportTests
+        fixture = FinalRecoveryTests()
+        task, controller, runtime = fixture.fixture()
+        app, transport_runtime, _ = TransportTests().harness()
+        transport_runtime.task['providers']['reviewer'] = dict(transport_runtime.task['providers']['worker'])
+        transport_runtime.task['limits']['reviewer_tokens'] = 50000  # final-review schema reservation
+        received = []
+        class Provider:
+            def complete(self, messages, available, maximum):
+                received.append((copy.deepcopy(messages), available))
+                return fixture.approval(), {'prompt_tokens': 2, 'completion_tokens': 3, 'cost': 0}
+        app.provider_factory = lambda *args: Provider()
+        controller.request.side_effect = lambda rt, messages, available, role, **kw: app._request_attempt(
+            transport_runtime, messages, available, role, **kw)
+        result = fixture.review(controller, runtime)
+        self.assertEqual(result['decision'], 'APPROVE')
+        sent, available = received[0]
+        self.assertEqual(sent[0]['content'].count(text('workflow.ui_completeness')), 1)
+        self.assertEqual(audit_tools('final_review', available), [])
+        self.assertIn('exact source', sent[1]['content'])
+        before = copy.deepcopy(task)
+        self.assertEqual(fixture.review(controller, runtime), result)
+        self.assertEqual(len(received), 1)
+        self.assertEqual(task, before)
 
     def test_validation_text_follows_authority_not_elapsed_seconds(self):
         self.assertEqual(validation({}), text('validation.change_scoped'))

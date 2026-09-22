@@ -33,9 +33,15 @@ class BranchEndToEndTests(unittest.TestCase):
             return task
 
         baseline = source_state()
-        proposal = engine.branch.prepare(fixture.values())
+        values = fixture.values()
+        # This proof measures run/review/revision/merge correctness, not work
+        # caps. Keep prompt/schema growth from censoring its scripted baseline;
+        # budget tests cover cap enforcement, and spending/permissions stay on.
+        values['plan']['measurement'] = True
+        proposal = engine.branch.prepare(values)
         task = engine.branch.authorize(proposal['task_id'], {'proposal_id': proposal['proposal_id'], 'approved': True, 'full_suite_approved': True})
         task = finished(task['id']); task_id = task['id']; run = task['branch_run']
+        self.assertTrue(run['authorization']['contract']['plan']['measurement'])
         self.assertEqual([item['id'] for item in run['items']], ['csv', 'markdown', 'cli'])
         self.assertEqual([item['status'] for item in run['items']], ['committed'] * 3)
         self.assertEqual(len(run['completed_operations']), 3)
@@ -81,6 +87,7 @@ class BranchEndToEndTests(unittest.TestCase):
         self.assertEqual(engine.store.get(task_id)['branch_run']['expected_feature_tip'], old_tip)
         completion.revise(engine.branch, task_id, {'proposal_id': correction['revision_proposal']['proposal_id'], 'approved': True})
         task = finished(task_id); run = task['branch_run']
+        self.assertTrue(run['plan']['measurement'])
         self.assertEqual(len(run['items']), 4)
         self.assertEqual(run['items'][-1]['id'], 'revision-1')
         self.assertEqual([item['status'] for item in run['items']], ['committed'] * 4)

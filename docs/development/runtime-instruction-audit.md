@@ -21,6 +21,7 @@ consistency.
 | Tests mainly established catalog consistency or constant parity. | Small regressions exercise real provider-boundary assembly, saved planning Resume, role tool sets and review correction/final-review requests. A source check rejects new inline primary prompts. |
 | Every criterion required implementation evidence, including criteria solely about a captured command result. | `reviewer.assessment` distinguishes the controller-listed command-result criteria. Their schemas and evidence catalog name exact current check receipts; behavioral and regression claims still need source/visual evidence. Item Resume refreshes the mapping without resetting reads/attempts; paged final synthesis keeps receipts available through the evidence reader. |
 | Requests without an initial system message duplicated the tool contract when assembled again for transport. | Refresh recognizes both appended and standalone contracts. Provider-boundary failover coverage requires one current contract plus the unchanged saved evidence. |
+| Styling reminders depended on operator prompts and reviewer-only prose. | Shared `workflow.ui_completeness` reaches Interactive/Unattended workers and item/final reviewers. It requires checking how markup uses existing styles, adding needed styling, and distinguishing rendered evidence from static inspection. Existing styles can justify no CSS edit; missing selector names alone cannot justify a regression. |
 
 The preceding evidence-recovery fix supplies reusable citations, preserves
 same-candidate evidence across reviewer handoffs, and keeps saved-evidence reads
@@ -56,6 +57,16 @@ already-selected tools; it never adds tools, runs checks, expands permissions,
 changes routes or approves work. Read-only turns remain read-only. Connection
 probes retain their exact small protocol rather than receiving task policies.
 The request-local contract is not appended to durable conversation history.
+
+`workflow.ui_completeness` belongs to the worker, interactive, unattended,
+reviewer and final-review profiles. Correction, decision coaching and reviewer
+handoff retain the primary review policy rather than appending another copy.
+Read-only discussion and greetings do not acquire implementation guidance or
+tools. Existing saved worker prompts refresh before dispatch; resumed review
+requests rebuild the primary profile while retaining evidence and attempts.
+Small provider-boundary and recovery tests verify this wiring, tool authority,
+non-duplication and final-review receipt reuse. They verify instruction delivery,
+not that every model will follow it or that the UI has been visually checked.
 
 ## What remains local to producers
 
