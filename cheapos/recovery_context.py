@@ -1,11 +1,8 @@
 """Bounded continuation evidence; prior model statements are not verification."""
+from .instructions.runtime import text as instruction
 import hashlib
 
-TEST_POLICY = ('Follow the repository validation policy. Choose focused checks for the actual change. '
-               'Do not broaden to full-suite discovery merely because work is in recovery or final integration. '
-               'If an accepted plan requires a broader check, identify that requirement explicitly; do not silently '
-               'skip it or claim a focused check satisfies it. Do not repair failures outside the requested scope '
-               'without establishing that they are caused by this change.')
+TEST_POLICY = instruction('validation.recovery')
 
 
 def packet(task):

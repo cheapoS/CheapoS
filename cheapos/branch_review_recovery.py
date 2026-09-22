@@ -69,6 +69,12 @@ def recover(engine, runtime, diagnostic):
                                 'reason': selection['reason'], 'review': copy.deepcopy(pending)})
     fresh = {key: copy.deepcopy(pending[key]) for key in
              ('branch_candidate_id', 'identity_scope', 'worker_summary', 'uncertainties', 'repair_dispositions', 'pull_request') if key in pending}
+    proof = pending.get('evidence_review') or {}
+    from .review_assessment import VERSION
+    if proof.get('version') == VERSION and proof.get('scope') == candidate:
+        # Read results are controller-owned facts about this unchanged candidate,
+        # not the failed reviewer's judgment. Let the successor retrieve them.
+        fresh['evidence_review'] = copy.deepcopy(proof)
     fresh.update(reviewer_model=current, review_requests=pending.get('review_requests', 0),
                  review_turn_baseline=review_turns(task, pending) + pending.get('review_turn_baseline', 0),
                  unsupported_baseline=run.get('review_disagreements', {}).get(candidate, {}).get('unsupported_attempts', 0),

@@ -26,6 +26,25 @@ path to completion without operator rescue using small deterministic cases.
 
 # Validation while iterating
 
+## Agent instruction changes
+
+Shared role, workflow and recovery guidance belongs in `cheapos/instructions/`.
+Use registered catalog rules and explicit runtime profiles; do not add independent
+copies of system prompts or reusable policy strings in controller modules.
+Keep dynamic task evidence, tool schemas and concrete validation diagnostics with
+their producers. The catalog describes behavior; it never grants capabilities,
+command permission, spending, model changes or approval.
+
+When changing instructions or offered tools, inspect the **assembled provider
+request**, not just catalog text. Cover applicable Interactive/Unattended roles,
+read-only chat, correction, handoff and Resume paths with small deterministic
+tests. Verify that named tools and decision values are offered in that phase,
+that stale saved prompts refresh without resetting evidence or attempt history,
+and that repeated assembly does not accumulate policy. Update the instruction
+audit when adding a new prompt entry point. A passing catalog conflict lint alone
+does not establish runtime coverage.
+See [the runtime instruction audit](docs/development/runtime-instruction-audit.md).
+
 ## Signed public statistics
 
 Every new metric intended for the Club site must have a documented signed-evidence

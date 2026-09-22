@@ -15,7 +15,8 @@ approval validator.
 
 An approval supplies:
 
-- A reason and literal evidence citations for each assigned criterion.
+- A reason and evidence citations for each assigned criterion, using returned
+  excerpt references or literal quotations.
 - A separate assessment of regressions and verification coverage.
 - An explicit list of verification limitations, displayed in the normal review
   message. An empty list means the reviewer reports none; it is not a controller
@@ -61,6 +62,51 @@ hint. The reviewer must still reassess the claim and submit the corrected ID;
 the controller does not assign evidence or approve on its behalf. Source paths
 are displayed alongside new read IDs, and the schema calls out required reasons
 and citations. Ordinary formatting repair should reuse saved reads and checks.
+
+## Reusable citations and review handoffs
+
+Read tools return a ready-to-use `citation` object alongside the actual content:
+
+```json
+{"source": "read:...", "excerpt_id": "excerpt:..."}
+```
+
+The reviewer can copy this object into a claim's `citations` array without
+reproducing HTML, Unicode punctuation or JSON escaping. The controller records
+the delivered span and binds its reference to the candidate scope, source ID and
+source digest. Unknown references, another candidate's references and changed
+sources are rejected. A paged read cites only the delivered page; it cannot
+stand in for unread content. Optional literal quotes still must match exactly,
+including within the referenced span when both forms are supplied.
+
+Reasons, all assigned criteria, regression assessment, verification coverage and
+limitations remain required. A check reference is still check evidence, not
+implementation evidence. Referencing real text does not prove that the reviewer's
+interpretation is correct. Accepted receipts retain the actual cited content.
+
+Unattended item handoffs preserve the evidence catalog for the same candidate.
+The replacement reviewer can retrieve earlier source and check reads with
+`read_review_evidence`; it supplies its own assessment. The previous reviewer's
+decision is not inherited. Old saved catalogs without excerpt references gain
+references when read, with no reset of checks, permissions or attempt history.
+The item's decision-coaching phase keeps this saved-evidence reader available;
+it no longer demands citation corrections while forcing a decision-only call.
+Existing allowances and repeated-non-progress recovery still apply.
+
+An explicit `list_files` directory now discovers readable generated files even
+when Git ignores them, so a reviewer can find built HTML without guessing paths.
+The root inventory still follows Git ignore rules; protected names, symlinks,
+dependencies and workspace boundaries remain excluded. Finding an artifact does
+not establish that it was produced by the current successful check; reviewers
+must assess its provenance and request missing verification through existing
+permissions.
+
+Automatic catalog eligibility also rejects explicit moderation/classification
+tasks and narrowly identified safety-classifier families despite generic gateway
+chat/tool flags. This extends the non-chat filter; it does not blacklist a
+provider or treat a general model's name containing `safe` or `guard` as proof
+of incompatibility. Unknown general assistants retain the usual qualification
+path. No new cumulative review cap is introduced.
 
 ## UI and independence
 
@@ -119,6 +165,6 @@ Remaining work needs evaluation rather than claims based on a green suite:
    size boundaries; synthesis citations improve their evidence, but do not prove
    that every dependency or interaction has been inspected.
 
-Literal citations establish provenance. A reviewer can still misunderstand a real
+Evidence citations establish provenance. A reviewer can still misunderstand a real
 excerpt or miss a dependency. The contract makes unsupported approvals detectable
 and inspectable; behavioral and visual checks are still necessary where relevant.

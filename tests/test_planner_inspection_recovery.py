@@ -162,6 +162,20 @@ class InspectionRecoveryTests(unittest.TestCase):
         self.assertNotIn('contents', recent)
         self.assertIn('retained source for app/src/main.ts', messages[-2]['content'])
 
+    def test_resume_refreshes_catalog_text_even_when_contract_version_is_unchanged(self):
+        with self.assertRaises(InterruptedError):
+            self.run_plan([self.read('app/src/main.ts'), InterruptedError('restart')])
+        saved = self.task['planning_strategy']
+        saved['messages'][0]['content'] = 'Obsolete planner instructions'
+        before = copy.deepcopy(saved)
+        result, inspected, selected = self.run_plan([self.finish()])
+        self.assertEqual(result, self.proposal)
+        inspected.assert_not_called(); selected.assert_not_called()
+        self.assertEqual(saved['messages'][0]['content'], planner.SYSTEM)
+        self.assertEqual(saved['messages'][1:], before['messages'][1:])
+        for field in ('attempt', 'discovery', 'handoffs', 'evidence', 'failed_reads', 'contract_version'):
+            self.assertEqual(saved[field], before[field])
+
     def test_contract_upgrade_retains_pending_proposal_and_recovery_history(self):
         with self.assertRaises(InterruptedError):
             self.run_plan([self.read('app/src/main.ts'), self.read('app/src/main.ts'), InterruptedError('restart')])

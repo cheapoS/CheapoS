@@ -1,16 +1,11 @@
 """Bounded immutable final-review context; never reads the live working tree."""
+from .instructions.runtime import text as instruction
 import hashlib
 from pathlib import PurePosixPath
 from . import branch_workspace as work
 from .workspace import allowed_name
 
-PATH_GUIDANCE = (
-    'All candidate paths, including location_index paths, are relative to the repository root. '
-    'Copy the exact path from location_index; do not prepend the project or example directory. '
-    'A missing file at a guessed path does not establish that a listed file is absent. '
-    'added_lines is diff metadata, not an additional acceptance requirement. '
-    'Check the exact candidate path and approved criterion before reporting a missing-file defect.'
-)
+PATH_GUIDANCE = instruction('reviewer.paths')
 
 
 def missing_path(manifest, path):

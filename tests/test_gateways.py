@@ -22,6 +22,8 @@ class CatalogTests(unittest.TestCase):
             {'id': 'vendor/vector', 'task': 'embedding'},
             {'id': 'vendor/search', 'pipeline_tag': 'feature-extraction'},
             {'id': 'vendor/rank', 'type': 'reranking'},
+            {'id': 'vendor/policy', 'pipeline_tag': 'text-classification'},
+            {'id': 'vendor/abuse', 'task': 'moderation'},
             {'id': 'vendor/visual', 'architecture': {'input_modalities': ['text'], 'output_modalities': ['image']}},
             {'id': 'vendor/movie', 'output_modalities': ['video']},
             {'id': 'vendor/draw', 'architecture': {'modality': 'text->image'}},
@@ -63,6 +65,16 @@ class CatalogTests(unittest.TestCase):
         models=normalize_models(data)
         self.assertEqual([m['recovery_reasoning'] for m in models],
                          [{'enabled':False},{'effort':'low'},None,None,{'effort':'low'},None])
+
+    def test_classifier_task_names_override_gateway_chat_and_tool_defaults(self):
+        names = ['gateway/vendor/llama-3.1-nemotron-safety-guard-8b-v3', 'gateway/gpt-oss-safeguard-20b',
+                 'gateway/llama-3.1-nemoguard-content-safety', 'gateway/llama-guard-4', 'vendor/prompt-guard-v2']
+        models = normalize_models({'data': [{'id': name, 'type': 'chat', 'capabilities': {'tool_calling': True}}
+                                           for name in names]})
+        for model in models:
+            self.assertFalse(model['chat_completion'])
+            self.assertFalse(model['tool_calling'])
+            self.assertEqual(model['model_task'], 'safety-classification')
 
     def test_upstream_free_catalog_removes_retired_repriced_and_non_tool_routes_and_adds_new(self):
         old = normalize_models({'data': [{'id':'openrouter/retired:free'}, {'id':'openrouter/repriced:free'},
@@ -445,11 +457,13 @@ class AlternativeGatewayTests(unittest.TestCase):
         from types import SimpleNamespace
         from cheapos.routing import _select_remote, RoutingPause
         model_no_tools = {'id': 'text-model', 'local': False, 'tool_calling': False, 'context_length': 4096}
+        classifier = normalize_models({'data': [{'id': 'vendor/model-safety-guard-8b', 'type': 'chat',
+                                                'capabilities': {'tool_calling': True}}]})[0]
         engine = SimpleNamespace()
         engine.gateway = SimpleNamespace(
             settings={'base_url': 'http://127.0.0.1:20128/v1', 'name': 'OmniRoute'},
             matches=lambda url: True,
-            catalog=lambda fresh=True: {'status': 'ready', 'models': [model_no_tools]},
+            catalog=lambda fresh=True: {'status': 'ready', 'models': [model_no_tools, classifier]},
             pool=SimpleNamespace(observation=lambda *args: {'cooling_down': False, 'role_evidence': {}})
         )
         task = {
@@ -465,5 +479,6 @@ class AlternativeGatewayTests(unittest.TestCase):
                 _select_remote(engine, runtime, role=role)
             # trace candidate was recorded as capability_missing
             traces = task.get('routing_traces', [])
-            candidate_entry = next((c for c in traces[-1]['candidates'] if c['model'] == 'text-model'), None)
-            self.assertEqual(candidate_entry['reason'], 'capability_missing')
+            for model in (model_no_tools, classifier):
+                candidate_entry = next((c for c in traces[-1]['candidates'] if c['model'] == model['id']), None)
+                self.assertEqual(candidate_entry['reason'], 'capability_missing')
