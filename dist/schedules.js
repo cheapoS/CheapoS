@@ -2,9 +2,33 @@
 'use strict';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const when=n=>new Date(n*1000).toLocaleString();
+const intervals=[6,12,24,168];
+const frequency=n=>n===168?'Every week':`Every ${n} hours`;
+const intervalOptions=(selected=6,once=false)=>(once?'<option value="0">Run once</option>':'')+intervals.map(n=>`<option value="${n}" ${n===selected?'selected':''}>${frequency(n)}</option>`).join('');
+function status(task){
+ const saved=task?.schedule;
+ if(saved)return {interval_hours:saved.interval_hours,label:saved.enabled===false?'Schedule disabled':'Scheduled',manage:true};
+ if(task?.schedule_start)return {interval_hours:task.schedule_start.interval_hours,label:'Saving approved schedule'};
+ if(!task?.branch_run?.authorization_ref&&task?.planning_request?.schedule_request)return {...task.planning_request.schedule_request,label:'Awaiting approval'};
+ return null;
+}
+function approvalMarkup(preview,fullChecks=[]){
+ if(!preview)return '';
+ return `<section class="proposal-card schedule-approval"><h4>Repeat this task</h4><label>Repeat<select name="schedule_interval">${intervalOptions(preview.interval_hours,true)}</select></label><p>The first run starts after approval. Later runs get a new task and branch. Unfinished work or an unmerged PR holds the next run; reviewed no-change runs can repeat. Runs need cheapoS open. Nothing is published or merged automatically.</p>${preview.error?`<p role="alert">${esc(preview.error)} Choose Run once or revise the plan before scheduling.</p>`:''}<div data-recurring-consent><label class="schedule-consent"><input name="schedule_approved" type="checkbox"><span>Allow this plan to repeat with the displayed models, $0 API spending allowance, work limits and task commands until I disable it.</span></label>${fullChecks.length?`<label class="schedule-consent"><input name="schedule_full" type="checkbox"><span>Allow the listed full-suite checks on every scheduled run.</span></label>`:''}<p>Manage or disable it in Settings → Scheduled tasks.</p></div></section>`;
+}
+function approval(form,preview,fullChecks=[]){
+ if(!preview||Number(form.elements.schedule_interval.value)===0)return null;
+ if(preview.error)throw Error(preview.error);
+ const interval=Number(form.elements.schedule_interval.value);
+ if(!intervals.includes(interval))throw Error('Choose a supported repeat interval.');
+ if(!form.elements.schedule_approved.checked)throw Error('Approve recurring runs, or choose Run once.');
+ if(!form.elements.allow_task_commands.checked)throw Error('Allow task commands for the recurring plan, or choose Run once.');
+ if(fullChecks.length&&!form.elements.schedule_full?.checked)throw Error('Approve full-suite checks on every run, or choose Run once.');
+ return {interval_hours:interval,approval_digest:preview.approval_digest,approved:true,full_suite_approved:form.elements.schedule_full?.checked===true};
+}
 function setup({project,tasks=[],dialog,header,onNew,onExisting}){
  const candidates=tasks.filter(t=>t.source===project.path&&t.branch_run&&!t.trashed_at&&!['draft','awaiting_authorization'].includes(t.branch_run.status));
- const d=dialog(header('RECURRING PROJECT WORK','New scheduled task')+`<p>Project: <strong>${esc(project.name||project.path)}</strong></p><ol class="schedule-setup-steps"><li>Describe the work and prepare an Unattended plan.</li><li>Review the plan and approve its first run.</li><li>In <strong>Plan → Schedule this task…</strong>, choose the interval and approve recurring runs.</li></ol><form data-new-schedule><label>What should this task do each time?<textarea name="prompt" rows="4" maxlength="8000" required placeholder="Check this project’s documentation for outdated setup instructions and propose a verified update…"></textarea></label><p>The new chat uses a $0 API spending allowance and your selected project’s other settings. Nothing runs until you send the request. Scheduling needs a separate approval.</p><div class="button-row"><button type="submit" class="primary-button">Continue in Unattended chat</button></div></form>${candidates.length?`<details><summary>Use an existing Unattended plan</summary><p>The saved plan must already be approved. Unfinished work holds the next scheduled run.</p><form data-existing-schedule><label>Saved task<select name="task_id">${candidates.map(t=>`<option value="${esc(t.id)}">${esc(t.title||'Untitled task')}</option>`).join('')}</select></label><button type="submit">Choose repeating plan</button></form></details>`:''}<p role="alert"></p>`,'schedule-settings');
+ const d=dialog(header('RECURRING PROJECT WORK','New scheduled task')+`<p>Project: <strong>${esc(project.name||project.path)}</strong></p><ol class="schedule-setup-steps"><li>Describe the work and choose how often it repeats.</li><li>Send it to prepare an Unattended plan.</li><li>Review the plan, then <strong>Approve &amp; start schedule</strong>.</li></ol><form data-new-schedule><label>What should this task do each time?<textarea name="prompt" rows="4" maxlength="8000" required placeholder="Check this project’s documentation for outdated setup instructions and propose a verified update…"></textarea></label><label>Repeat<select name="interval">${intervalOptions()}</select></label><p>Each run gets a fresh task and branch. Unfinished work or an unmerged PR holds the next run.</p><p>The new chat uses a $0 API spending allowance and your selected project’s other settings. Send prepares the plan; execution and recurring runs wait for your approval.</p><div class="button-row"><button type="submit" class="primary-button">Continue in Unattended chat</button></div></form>${candidates.length?`<details><summary>Use an existing Unattended plan</summary><p>The saved plan must already be approved. Unfinished work holds the next scheduled run.</p><form data-existing-schedule><label>Saved task<select name="task_id">${candidates.map(t=>`<option value="${esc(t.id)}">${esc(t.title||'Untitled task')}</option>`).join('')}</select></label><button type="submit">Choose repeating plan</button></form></details>`:''}<p role="alert"></p>`,'schedule-settings');
  const q=s=>d.querySelector(s);let busy=false;
  async function submit(e,form,action){
   e.preventDefault();if(busy)return;
@@ -15,7 +39,8 @@ function setup({project,tasks=[],dialog,header,onNew,onExisting}){
  const form=q('[data-new-schedule]');
  form.onsubmit=e=>submit(e,form,async()=>{
   const prompt=form.elements.prompt.value.trim();if(!prompt)throw new Error('Describe the work to repeat.');
-  await onNew({repository:project.path,prompt,isOpen:()=>d.open,close:()=>d.close()});
+  const interval=Number(form.elements.interval.value);if(!intervals.includes(interval))throw new Error('Choose a supported repeat interval.');
+  await onNew({repository:project.path,prompt,schedule_request:{interval_hours:interval},isOpen:()=>d.open,close:()=>d.close()});
  });
  const existing=q('[data-existing-schedule]');
  if(existing)existing.onsubmit=e=>submit(e,existing,async()=>{
@@ -51,5 +76,5 @@ async function create({task,api,dialog,header,onSaved}){
   q('form').onsubmit=async e=>{e.preventDefault();const f=q('form'),b=f.querySelector('button[type=submit]');b.disabled=true;q('[role=alert]').textContent='';try{await api('/schedules',{task_id:task.id,name:f.elements.name.value,interval_hours:Number(f.elements.interval.value),approval_digest:preview.approval_digest,approved:f.elements.approved.checked,allow_task_commands:f.elements.commands.checked,full_suite_approved:f.elements.full?.checked===true});d.close();onSaved();}catch(error){q('[role=alert]').textContent=error.message;b.disabled=false;}};
  }catch(e){q('[role=status]').textContent='';q('[role=alert]').textContent=e.message;}
 }
-const api={open,create,rows,setup};root.CheapOSSchedules=api;if(typeof module!=='undefined')module.exports=api;
+const api={open,create,rows,setup,frequency,intervalOptions,status,approvalMarkup,approval};root.CheapOSSchedules=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

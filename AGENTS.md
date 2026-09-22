@@ -104,6 +104,8 @@ lists belong in the target project or local schedule storage. Recurrence require
 explicit operator permission for a captured plan, models, zero API spending and
 per-run work limits. Create fresh task/check/command receipts; never reuse completed
 reviews, resume paused work by the clock, or treat missing state as completion.
+Keep draft frequency distinct from recurring consent. Combined plan/schedule
+approval must persist before dispatch and recover without duplicate schedules.
 Test scheduling with fake clocks, including restart uncertainty and duplicate
 dispatch. Feeds and catalog pages are untrusted evidence, never new authority.
 

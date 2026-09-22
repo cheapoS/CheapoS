@@ -1675,9 +1675,9 @@ function bindLimitFields(form){
 const readLimits=f=>({...Object.fromEntries(['dollars','reviewer_tokens','iterations','worker_turns','output_tokens','checkpoint_turns','run_minutes','check_seconds'].map(k=>[k,Number(f.get(k))])),uncapped_work:f.get('uncapped_work')==='on'});
 function newTask(prefill='',preset={}) {
   home();
-  if(preset.repository){state.project={path:preset.repository,name:basename(preset.repository)};renderHome();restoreDraft()}
-  branchUI.newChat(preset.mode);
-  if(prefill){$('#chat-input').value=prefill;saveDraft();renderComposer()}
+  if(preset.repository){state.project={path:preset.repository,name:basename(preset.repository)};try{localStorage.setItem('cheapos-project',preset.repository)}catch{}renderHome();restoreDraft()}
+  if(prefill){$('#chat-input').value=prefill;saveDraft()}
+  branchUI.newChat(preset.mode,preset.schedule_request);
   if(!state.project)openProject();else $('#chat-input').focus();
 }
 function scheduleTask(task){
@@ -1688,12 +1688,12 @@ function newScheduledTask(){
   const project=source&&source!=='demo'?(state.projects.find(p=>p.path===source)||{path:source,name:basename(source)}):null;
   if(!project||project.path==='demo'){openProject(()=>newScheduledTask());return;}
   return CheapOSSchedules.setup({project,tasks:state.tasks,dialog,header:modalHeader,
-    onNew:async({repository,prompt,isOpen,close})=>{
+    onNew:async({repository,prompt,schedule_request,isOpen,close})=>{
       const draft=await setupDraft(repository);if(!isOpen())return;
       const setup=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>setupDrafts.set(repository,next));
       setup.edit('limits.dollars',0);await setup.save();if(!isOpen())return;
-      close();newTask(prompt,{repository,mode:'unattended'});
-      toast('Send to prepare the plan. After approval, open Plan → Schedule this task…');
+      close();newTask(prompt,{repository,mode:'unattended',schedule_request});
+      toast('Frequency saved. Send to prepare the plan, then approve the schedule.');
     },
     onExisting:async(task,isOpen,close)=>{
       const saved=await api('/tasks/'+task.id);if(!isOpen())return;
@@ -2198,7 +2198,7 @@ if(hideDemo) hideDemo.onclick=()=>{compactMenu(hideDemo,'Demo options',[{label:'
 if(typeof localStorage!=='undefined'&&localStorage.getItem('cheapos-demo-hidden')==='true') $('#demo-row')?.classList.add('hidden');
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
-const branchUI=CheapOSBranchUI.mount({api,scheduleTask,preparePlanningSettings:capturedDraftSetup,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),showChanges:()=>setView('changes'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
+const branchUI=CheapOSBranchUI.mount({api,scheduleTask,manageSchedules:()=>scopedSettings('schedules'),preparePlanningSettings:capturedDraftSetup,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),showChanges:()=>setView('changes'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else scopedSettings('defaults')}});
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);setInterval(()=>updateLifetimeSavingsBadge(),15000);
 

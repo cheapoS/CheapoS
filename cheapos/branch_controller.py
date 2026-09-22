@@ -254,7 +254,7 @@ class BranchController:
             state.transition(run,'awaiting_authorization')
             self.engine.store.save(task)
             proposal=self.proposals.prepare(task_id,self.contract(task))
-            return {'task_id':task_id,**proposal,'readiness':self.readiness(task),**self.test_disclosure(task)}
+            return {'task_id':task_id,**proposal,'readiness':self.readiness(task),**self.test_disclosure(task),**self.engine.schedules.proposal(task)}
 
     def test_disclosure(self, task):
         from .test_policy import disclosure
@@ -293,18 +293,23 @@ class BranchController:
     def authorize(self, task_id, values, *, background=False):
         with self.engine.lock:
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
-            if set(values)-{'proposal_id','approved','full_suite_approved','allow_task_commands'}: raise ValueError('Start accepts only the inspected proposal and operator decision')
+            if set(values)-{'proposal_id','approved','full_suite_approved','allow_task_commands','schedule'}: raise ValueError('Start accepts only the inspected proposal and operator decision')
             from .task_commands import grant
             if 'allow_task_commands' in values and type(values['allow_task_commands']) is not bool:
                 raise ValueError('Provide a task command permission decision')
             runtime=self.engine.runtimes.get(task_id)
             if task.get('planning_request') and not run.get('authorization_ref') and runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError('Planning is still in progress. Continue in chat until the proposal is ready.')
+            schedule_start = None
+            if values.get('schedule') is not None:
+                schedule_start = self.engine.schedules.validate_start(task, values)
             if run.get('authorization'):
                 self.validate_authority(task,run)
                 # A repeated same-proposal action returns the existing run, never starts another worker.
                 auth=self.proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),self.contract(task))
                 if auth['id']!=run['authorization']['id']: raise ValueError('A different authorization already owns this run')
+                if task.get('schedule_start'):
+                    self.engine.schedules.complete_start(task)
                 if runtime and runtime.thread and runtime.thread.is_alive():
                     return task
                 if run['status'] == 'awaiting_authorization':
@@ -319,7 +324,11 @@ class BranchController:
             auth=self.proposals.authorize(task_id,values.get('proposal_id'),values.get('approved'),self.contract(task))
             run['authorization']=auth;run['authorization_ref']=auth['id']
             grant(task, values.get('allow_task_commands', False))
+            if schedule_start:
+                task['schedule_start'] = schedule_start
             self.engine.store.save(task)
+            if task.get('schedule_start'):
+                self.engine.schedules.complete_start(task)
             if background:
                 from .branch_startup import start
                 return start(self,task)
@@ -353,6 +362,8 @@ class BranchController:
         from .task_commands import allowed
         allow_commands = allowed(task)
         run=task['branch_run'];self.validate_authority(task,run)
+        if task.get('schedule_start'):
+            self.engine.schedules.complete_start(task)
         if notify:
             notify('verifying_snapshot')
         if run['workspace_mapping']['stage']=='prepared':
@@ -655,6 +666,8 @@ class BranchController:
         from .engine import Runtime
         from .branch_budget import Ledger
         from .branch_planner import capture_inputs
+        if values.get('schedule_request') is not None:
+            self.engine.schedules.request(values['schedule_request'])
         identity=values.get('planning_id')
         if not isinstance(identity,str) or not identity or len(identity)>100:raise ValueError('Provide a planning request ID')
         with self.engine.lock:
@@ -905,7 +918,7 @@ class BranchController:
             task=self.engine.store.get(task_id);run=state.require_supported(task['branch_run'])
             if run['status']!='awaiting_authorization' or run.get('authorization'):
                 raise ValueError('Only an unstarted proposal can be refreshed')
-            return {'task_id':task_id,**self.proposals.prepare(task_id,self.contract(task)),'readiness':self.readiness(task),**self.test_disclosure(task)}
+            return {'task_id':task_id,**self.proposals.prepare(task_id,self.contract(task)),'readiness':self.readiness(task),**self.test_disclosure(task),**self.engine.schedules.proposal(task)}
 
     @pr_followup.work_entry
     def message(self, task_id, values):
@@ -1073,4 +1086,4 @@ class BranchController:
             with self.proposals.lock:
                 self.proposals.proposals={token:proposal for token,proposal in self.proposals.proposals.items() if proposal['task_id']!=task_id}
                 proposal=self.proposals.prepare(task_id,self.contract(task))
-            return {'task_id':task_id,**proposal,'readiness':self.readiness(task),**self.test_disclosure(task)}
+            return {'task_id':task_id,**proposal,'readiness':self.readiness(task),**self.test_disclosure(task),**self.engine.schedules.proposal(task)}

@@ -5,27 +5,42 @@ documentation, or propose a verified update. The feature is project-independent;
 keep private objectives, source lists and update instructions in the relevant
 project repository, not in the cheapoS source code.
 
-1. Click **New scheduled task** beneath **New chat** in the left sidebar, on
-   the project home screen, or in **Settings → Scheduled tasks**. Choose a
-   project if needed. Describe the recurring work and choose **Continue in
-   Unattended chat**, then send it to prepare a plan. This draft uses a **$0 API
-   spending allowance** and keeps the other project settings. Review the plan
-   and approve its first run. You can also reuse an existing approved plan in
-   the setup dialog.
-2. Open the chat’s **Plan** page → **Schedule this task…** (also in its menu). Inspect the repeating plan,
-   model choices and limits, select 6, 12 or 24 hours, or weekly, and approve
-   recurrence and commands. Full-suite checks need separate recurring consent.
-3. Manage **Settings → Scheduled tasks**. Disable, enable, run now, open the latest
-   chat, or remove a disabled schedule. Removing a schedule does not delete chats.
+1. Click **New scheduled task** beneath **New chat**, on the project home screen,
+   or in **Settings → Scheduled tasks**. Choose a project, describe the work and
+   select **Every 6, 12 or 24 hours**, or **Every week**.
+2. Choose **Continue in Unattended chat**, then send the request to prepare a plan.
+   The chat shows **Every 6 hours · Awaiting approval** (or your chosen interval).
+   Frequency is saved with the draft and planning chat; selecting it starts no
+   recurring work. The draft uses **$0 API spending** and other project settings.
+3. Review the plan and its captured models and limits. On **Review & Start**,
+   approve recurring runs and task commands, then **Approve & start schedule**.
+   Full-suite checks need separate recurring consent. **Run once** starts only
+   this task. Editing the plan requires fresh validation and recurrence approval.
+4. Use the chat’s **Manage schedule** shortcut or **Settings → Scheduled tasks**
+   to disable, enable, run now, open the latest chat, or remove a disabled schedule.
+   Removing a schedule does not delete chats.
+
+Existing approved Unattended chats still offer **Plan → Schedule this task…**
+and the same action in their menu. This is an extra entry point, not a required
+step after creating a new scheduled task.
 
 Each occurrence uses a fresh isolated copy of the target branch and ordinary
 worker, verification and independent review flows. No new planner request is
 needed: the approved plan is the template. Settings are captured at approval;
 changing global defaults does not change a schedule. To change its objective,
-models, limits or interval, disable it and approve a replacement plan/schedule.
+models, limits or interval, disable and remove it, then approve a replacement
+plan/schedule.
 Free/included access is still validated against the saved connection. A schedule
 cannot authorize a paid fallback, post to social media, or merge/push a branch.
 The usual Changes page handles your reviewed PR and merge decision.
+
+For example, a six-hour maintenance task finishes with checked, reviewed changes.
+You inspect them, open a PR and merge. If six hours pass before that merge, the
+next run waits; it does not append to the existing branch. After a confirmed
+merge, an overdue run can start from the updated target with its own task and
+branch. If review confirms no changes are needed, no PR is required. Multiple
+missed intervals produce one run. Repository documents can preserve findings
+between occurrences; the old chat’s conversation is not replayed as a new plan.
 
 Schedule permission allows local commands in each new task copy. These commands
 are host programs, not sandboxed services. It does not reuse an old check result
@@ -62,7 +77,8 @@ catalog metadata remains separate from signed community observations.
 ## Validation
 
 `tests/test_schedules.py` uses a fake clock with no network, provider or real-time
-waits. Nine initial cases took 0.021 seconds. They cover preserved model setup,
+waits. Fourteen cases took 0.037 seconds. They cover combined approval and failed-save
+recovery, as well as preserved model setup,
 fresh authorization, overlap prevention, missed ticks, uncertain startup, disabled
 schedules, stale no-change evidence, spending/consent rejection and project identity.
 The existing branch-start test exercises the actual captured-settings preparation

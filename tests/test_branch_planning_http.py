@@ -61,7 +61,9 @@ class BranchPlanningHTTPTests(unittest.TestCase):
         (self.source / 'tasks.md').write_text('Implement the utility and its tests. Plain prose is sufficient.\n')
         for n, (prompt, document) in enumerate([('Implement utility', None), ('', 'tasks.md'), ('Keep compatibility', 'tasks.md')]):
             with self.subTest(prompt=prompt, document=document):
-                status, proposal = self.post('/api/branch-runs/plan', self.request_values(prompt, document, str(n)))
+                request = self.request_values(prompt, document, str(n))
+                if n < 2: request['schedule_request'] = {'interval_hours': 12}
+                status, proposal = self.post('/api/branch-runs/plan', request)
                 self.assertEqual(status, 200, proposal)
                 task = self.engine.store.get(proposal['task_id'])
                 self.assertEqual(task['branch_run']['status'], 'awaiting_authorization')
@@ -72,13 +74,31 @@ class BranchPlanningHTTPTests(unittest.TestCase):
                 self.assertEqual(task['usage']['planner']['tokens'], 30)
                 self.assertIsNone(_tip(self.source, 'refs/heads/feature/' + str(n)))
                 self.assertFalse(self.engine.runtimes)
+                if n < 2:
+                    self.assertEqual(task['planning_request']['schedule_request'], {'interval_hours': 12})
+                    self.assertEqual(proposal['schedule_preview']['interval_hours'], 12)
+                    self.assertEqual(len(self.engine.schedules.records), 0 if n == 0 else 1)
                 # Ordinary draft selection/planning never authorizes a branch.
-                start_status, _ = self.post('/api/tasks/' + task['id'] + '/branch-start', {'proposal_id': proposal['proposal_id'], 'approved': True, 'full_suite_approved': True})
+                decision = {'proposal_id': proposal['proposal_id'], 'approved': True, 'full_suite_approved': True}
+                if n == 0:
+                    decision.update(allow_task_commands=True, schedule={**proposal['schedule_preview'], 'approved': True, 'full_suite_approved': True})
+                    denied, _ = self.post('/api/tasks/' + task['id'] + '/branch-start', {**decision, 'schedule': {**decision['schedule'], 'approved': False}})
+                    self.assertEqual(denied, 400)
+                    self.assertFalse(self.engine.store.get(task['id'])['branch_run'].get('authorization_ref'))
+                    self.assertFalse(self.engine.schedules.records)
+                start_status, _ = self.post('/api/tasks/' + task['id'] + '/branch-start', decision)
                 self.assertEqual(start_status, 200)
                 preparation = self.engine.runtimes[task['id']]
                 preparation.thread.join(10)
                 self.assertFalse(preparation.thread.is_alive())
                 self.assertIsNotNone(_tip(self.source, 'refs/heads/feature/' + str(n)))
+                self.assertEqual(len(self.engine.schedules.records), 1, 'Only explicit combined approval creates recurrence')
+                if n == 0:
+                    saved = self.engine.store.get(task['id'])
+                    self.assertEqual(saved['schedule']['interval_hours'], 12)
+                    replay, _ = self.post('/api/tasks/' + task['id'] + '/branch-start', decision)
+                    self.assertEqual(replay, 200)
+                    self.assertEqual(len(self.engine.schedules.records), 1)
                 self.engine.branch.revoke(task['id'])
                 self.engine.runtimes.pop(task['id'], None)
 

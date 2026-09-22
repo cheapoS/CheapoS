@@ -55,11 +55,11 @@ class Schedules:
             raise ValueError(self.error)
         write_json(self.path, {'version': 1, 'schedules': self.records})
 
-    def preview(self, task_id):
+    def preview(self, task_id, *, proposal=False):
         with self.engine.lock:
             task = self.engine.store.get(task_id)
             run = require_supported(task.get('branch_run'))
-            if not run.get('authorization_ref') or task.get('trashed_at'):
+            if (not run.get('authorization_ref') and not (proposal and run['status'] == 'awaiting_authorization')) or task.get('trashed_at'):
                 raise ValueError('Schedule an approved Unattended plan from an active or archived chat')
             snapshot = task.get('settings_snapshot')
             if not snapshot:
@@ -74,7 +74,99 @@ class Schedules:
             return {'task_id': task_id, 'template': template, 'approval_digest': digest(template),
                     'full_suite_checks': plan_commands(template['plan'])}
 
-    def create(self, values):
+    @staticmethod
+    def request(value):
+        """Operator draft metadata only; choosing a frequency grants no authority."""
+        if value is None:
+            return None
+        if (not isinstance(value, dict) or set(value) != {'interval_hours'}
+                or type(value['interval_hours']) is not int or value['interval_hours'] not in INTERVALS):
+            raise ValueError('Choose a supported repeat interval')
+        return copy.deepcopy(value)
+
+    def proposal(self, task):
+        request = self.request(task.get('planning_request', {}).get('schedule_request'))
+        if not request:
+            return {}
+        try:
+            preview = self.preview(task['id'], proposal=True)
+            return {'schedule_preview': {**request, 'approval_digest': preview['approval_digest']}}
+        except ValueError as error:
+            return {'schedule_preview': {**request, 'error': str(error)}}
+
+    def validate_start(self, task, values):
+        """Validate recurrence before saving first-run authorization."""
+        choice = values.get('schedule')
+        if choice is None:
+            return None
+        if (not isinstance(choice, dict)
+                or set(choice) - {'interval_hours', 'approval_digest', 'approved', 'full_suite_approved'}):
+            raise ValueError('Provide the displayed schedule and permission decisions')
+        self.request({'interval_hours': choice.get('interval_hours')})
+        if choice.get('approved') is not True or values.get('allow_task_commands') is not True:
+            raise ValueError('Approve recurring runs and commands in their separate task copies')
+        pending = {**copy.deepcopy(choice), 'proposal_id': values.get('proposal_id')}
+        prior = next((r for r in self.records.values() if r.get('start_proposal_id') == values.get('proposal_id')
+                      and r['template_task_id'] == task['id']), None)
+        if prior:
+            if (prior['template_digest'] != choice.get('approval_digest')
+                    or prior['interval_hours'] != choice['interval_hours']
+                    or prior['full_suite_approved'] != (choice.get('full_suite_approved') is True)):
+                raise ValueError('This start already has a different schedule approval')
+            return pending
+        if task['branch_run'].get('authorization_ref') and not task.get('schedule_start'):
+            raise ValueError('This run is already approved. Use Schedule this task to add recurrence.')
+        if task.get('schedule_start') and task['schedule_start'] != pending:
+            raise ValueError('Startup already has a different saved schedule approval')
+        if self.error:
+            raise ValueError(self.error)
+        preview = self.preview(task['id'], proposal=True)
+        if preview['approval_digest'] != choice.get('approval_digest'):
+            raise ValueError('The repeating plan changed. Inspect it again before approving.')
+        if preview['full_suite_checks'] and choice.get('full_suite_approved') is not True:
+            raise ValueError('Repeating full-suite checks needs explicit approval')
+        if any(r['template_digest'] == preview['approval_digest'] for r in self.records.values()):
+            raise ValueError('This plan already has a schedule. Manage it in Settings → Scheduled tasks.')
+        return pending
+
+    def complete_start(self, task):
+        """Finish a saved combined approval before dispatch, including after restart."""
+        with self.engine.lock:
+            choice = task.get('schedule_start')
+            if not choice:
+                return
+            prior = next((r for r in self.records.values() if r.get('start_proposal_id') == choice['proposal_id']
+                          and r['template_task_id'] == task['id']), None)
+            if prior is None:
+                self.create({'task_id': task['id'], 'name': (task.get('title') or task['prompt'])[:120],
+                             'interval_hours': choice['interval_hours'], 'approval_digest': choice['approval_digest'],
+                             'approved': True, 'allow_task_commands': True,
+                             'full_suite_approved': choice.get('full_suite_approved') is True},
+                            start_proposal_id=choice['proposal_id'])
+                prior = next(r for r in self.records.values() if r.get('start_proposal_id') == choice['proposal_id']
+                             and r['template_task_id'] == task['id'])
+            task['schedule'] = self.summary(prior)
+            task.pop('schedule_start', None)
+            self.engine.store.save(task)
+
+    @staticmethod
+    def summary(record):
+        return {key: copy.deepcopy(record[key]) for key in ('id', 'name', 'interval_hours', 'enabled', 'template_task_id')}
+
+    def sync_tasks(self, record, *, removed=False):
+        owners = {key for key, task in self.engine.store.tasks.items() if task.get('schedule', {}).get('id') == record['id']}
+        for task_id in owners | {record['template_task_id'], record['last_task_id']}:
+            if task_id not in self.engine.store.tasks:
+                continue
+            runtime = getattr(self.engine, 'runtimes', {}).get(task_id)
+            task = runtime.task if runtime and runtime.thread and runtime.thread.is_alive() else self.engine.store.get(task_id)
+            if removed:
+                task.pop('schedule', None)
+            else:
+                task['schedule'] = self.summary(record)
+            self.engine.store.save(task)
+
+    def create(self, values, *, start_proposal_id=None):
         allowed = {'task_id', 'name', 'interval_hours', 'approval_digest', 'approved', 'allow_task_commands', 'full_suite_approved'}
         if not isinstance(values, dict) or set(values) - allowed:
             raise ValueError('Provide the displayed schedule and permission decisions')
@@ -101,8 +193,16 @@ class Schedules:
                       'template_digest': preview['approval_digest'], 'allow_task_commands': True,
                       'full_suite_approved': values.get('full_suite_approved') is True,
                       'last_task_id': values['task_id'], 'history': [], 'error': None}
+            if start_proposal_id:
+                record['start_proposal_id'] = start_proposal_id
             self.records[record['id']] = record
-            self.save()
+            try:
+                self.save()
+            except Exception:
+                self.records.pop(record['id'], None)
+                raise
+            if not start_proposal_id:
+                self.sync_tasks(record)
             return self.view()
 
     def update(self, schedule_id, values):
@@ -115,6 +215,7 @@ class Schedules:
             if values['enabled']:
                 record['next_due'] = self.clock() + record['interval_hours'] * 3600
             self.save()
+            self.sync_tasks(record)
             return self.view()
 
     def waiting(self, record):
@@ -142,6 +243,7 @@ class Schedules:
                 raise ValueError('Disable this schedule and let startup finish before removing it')
             del self.records[schedule_id]
             self.save()
+            self.sync_tasks(record, removed=True)
             return self.view()
 
     def view(self):
@@ -212,7 +314,7 @@ class Schedules:
             result = self.engine.branch.prepare(values, captured_settings=snapshot, reserved_task_id=task_id)
             with self.engine.lock:
                 task = self.engine.store.get(task_id)
-                task['schedule'] = {'id': record['id'], 'name': record['name'], 'template_task_id': record['template_task_id']}
+                task['schedule'] = self.summary(record)
                 self.engine.event(task, 'schedule', 'Started by scheduled task: ' + record['name'], task['schedule'])
                 self.engine.store.save(task)
                 # Disabling during preparation cancels future dispatch too.
