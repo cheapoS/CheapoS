@@ -375,6 +375,7 @@ function taskMenu(task,anchor) {
     {isDivider:true},
     {label:taskBusy(task)?'Pause & move to trash':'Move to trash',icon:'trash',danger:true,run:()=>moveToTrash(task)}
   ];
+  if(!task.trashed_at&&task.branch_run)actions.splice(actions.length-2,0,{label:'Schedule this task…',icon:'clock',run:()=>CheapOSSchedules.create({task,api,dialog,header:modalHeader,onSaved:()=>scopedSettings('schedules')})});
   compactMenu(anchor,'Chat options',actions);
 }
 async function moveToTrash(task) {
@@ -1740,7 +1741,7 @@ function appearanceSettings(host){
 async function scopedSettings(scope,section='agents',project){
  const capturedTask=state.task,repository=project||state.project?.path||capturedTask?.source;
  const options={api,scope:scope||(capturedTask?'task':'draft'),task:capturedTask?{id:capturedTask.id,title:capturedTask.title||capturedTask.prompt}:null,project:repository,section,models:state.gatewayModels||[],connectionsList:state.gateway.connections||[],
- connections:host=>openConnections(undefined,null,host),appearance:appearanceSettings,storage:host=>CheapOSStorage.open({dialog:host.dialog,api,header:modalHeader}),usage:host=>CheapOSLifetimeUsage.open({dialog:host.dialog,api,header:modalHeader,onClub:()=>host.navigate('club')}),club:host=>CheapOSLifetimeUsage.openClub({dialog:host.dialog,api,header:modalHeader,onUpdated:data=>{lifetimeUsageData=data;lifetimeUsageLoadedAt=Date.now();renderLifetimeSavingsBadge(data);}}),
+ connections:host=>openConnections(undefined,null,host),appearance:appearanceSettings,schedules:host=>CheapOSSchedules.open({dialog:host.dialog,api,header:modalHeader,selectTask}),storage:host=>CheapOSStorage.open({dialog:host.dialog,api,header:modalHeader}),usage:host=>CheapOSLifetimeUsage.open({dialog:host.dialog,api,header:modalHeader,onClub:()=>host.navigate('club')}),club:host=>CheapOSLifetimeUsage.openClub({dialog:host.dialog,api,header:modalHeader,onUpdated:data=>{lifetimeUsageData=data;lifetimeUsageLoadedAt=Date.now();renderLifetimeSavingsBadge(data);}}),
  permissions:id=>{if(id&&state.task?.id!==id)selectTask(id);else setView('activity');},pause:id=>api('/tasks/'+id+'/stop',{}),onSaved:async()=>{await refreshContext();if(state.task?.id===capturedTask?.id)await refresh();}};
  try{if(options.scope==='draft'){if(!repository){openProject(()=>scopedSettings('draft',section));return;}const draft=await setupDraft(repository);options.draft=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>{setupDrafts.set(repository,next);renderComposer();},()=>api('/projects/settings?project='+encodeURIComponent(repository)));}
  CheapOSSettings.open(options);}catch(error){toast(error.message);}

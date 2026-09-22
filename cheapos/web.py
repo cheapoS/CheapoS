@@ -7,6 +7,7 @@ import re
 import socket
 import ssl
 import time
+from xml.etree import ElementTree
 from html.parser import HTMLParser
 from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
@@ -100,7 +101,7 @@ def fetch(url, stopped=lambda: False):
         p = urlsplit(url)
         connection = PublicHTTPSConnection(p.hostname, 443, timeout=max(.1, deadline-time.monotonic()), context=ssl.create_default_context())
         try:
-            connection.request('GET', p.path + ('?' + p.query if p.query else ''), headers={'User-Agent': 'CheapOS/0.2 document-reader', 'Accept': 'application/vnd.github+json, text/html, text/plain, text/markdown', 'Accept-Encoding': 'identity'})
+            connection.request('GET', p.path + ('?' + p.query if p.query else ''), headers={'User-Agent': 'CheapOS/0.2 document-reader', 'Accept': 'application/vnd.github+json, text/html, text/plain, text/markdown, application/rss+xml, application/atom+xml, application/json', 'Accept-Encoding': 'identity'})
             transport = connection.sock
             response = connection.getresponse()
             if response.status in (301, 302, 303, 307, 308):
@@ -112,7 +113,7 @@ def fetch(url, stopped=lambda: False):
             if response.status != 200:
                 raise ValueError(f'The page returned HTTP {response.status}. It may require sign-in or be unavailable. No automatic retry was made.')
             mime = response.getheader('Content-Type', '').split(';')[0].strip().lower()
-            if mime not in {'text/html', 'application/xhtml+xml', 'text/plain', 'text/markdown', 'application/json', 'application/vnd.github+json'}:
+            if mime not in {'text/html', 'application/xhtml+xml', 'text/plain', 'text/markdown', 'application/json', 'application/vnd.github+json', 'application/rss+xml', 'application/atom+xml', 'application/xml', 'text/xml'}:
                 raise ValueError('This link is not a supported text page. PDFs, downloads, and interactive pages are not supported yet.')
             if response.getheader('Content-Encoding', 'identity').lower() != 'identity':
                 raise ValueError('The page returned an unsupported compressed response')
@@ -143,6 +144,34 @@ def fetch(url, stopped=lambda: False):
         finally:
             connection.close()
     raise ValueError('The page redirected too many times')
+
+
+def feed_text(text):
+    # Reject DTD/entity expansion; only plain RSS/Atom announcements are useful.
+    if re.search(r'<!\s*(?:DOCTYPE|ENTITY)', text, re.I):
+        raise ValueError('Feeds with document types or entities are not supported')
+    try:
+        root = ElementTree.fromstring(text)
+    except ElementTree.ParseError:
+        raise ValueError('This feed is not valid RSS or Atom') from None
+    name = lambda node: node.tag.rsplit('}', 1)[-1]
+    if name(root) not in {'rss', 'feed'}:
+        raise ValueError('Only RSS and Atom XML feeds are supported')
+    parts, links, title = [], [], ''
+    for node in root.iter():
+        tag = name(node)
+        if tag == 'link':
+            if link := node.get('href') or node.text:
+                links.append(link.strip())
+        if tag in {'title', 'description', 'summary', 'content', 'published', 'updated', 'pubDate'}:
+            parser = PageText()
+            parser.feed(''.join(node.itertext()))
+            value = ''.join(parser.parts).strip()
+            if tag == 'title' and not title:
+                title = value
+            parts.append(tag + ': ' + value)
+            links.extend(parser.links)
+    return '\n'.join(parts), title, links
 
 
 class PageText(HTMLParser):
@@ -227,7 +256,21 @@ class WebReader:
                 parser.feed(text)
                 text, title, links = ''.join(parser.parts), parser.title.strip(), parser.links
                 source = final
+            elif mime in {'application/rss+xml', 'application/atom+xml', 'application/xml', 'text/xml'}:
+                try:
+                    text, title, links = feed_text(text)
+                except ValueError as error:
+                    self.failures[url] = str(error)
+                    raise
+                source = final
             else:
+                if mime == 'application/json' and not repo:
+                    try:
+                        # Catalogs commonly arrive as one giant, unpageable line.
+                        text = json.dumps(json.loads(text), ensure_ascii=False, indent=2)
+                    except (ValueError, RecursionError):
+                        self.failures[url] = 'The catalog did not return valid readable JSON'
+                        raise ValueError('The catalog did not return valid readable JSON') from None
                 links = re.findall(r'\[[^\]\n]*\]\(([^\s)]+)', text) + text_urls(text)
             found, link_bytes = [], 0
             for link in links:

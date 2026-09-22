@@ -30,6 +30,15 @@ not replace its provenance checks or grant an approval.
 
 ## Runtime entry points
 
+Scheduled occurrences reuse `BranchController.prepare` and its ordinary Unattended
+worker/reviewer entry points with the operator-approved plan and settings snapshot.
+There is no scheduler-authored system prompt, new role or model-callable scheduling
+tool. Their new source formats (RSS/Atom and JSON) use the existing `read_url` schema
+and URL provenance checks. `test_web` inspects the actual worker request to verify
+the updated reader description; the existing runtime profile tests still cover
+role, correction, handoff and Resume assembly. Recurrence tests check that a later
+default setting cannot replace the captured model choice.
+
 `cheapos/instructions/catalog.py` is the canonical policy registry.
 `cheapos/instructions/runtime.py` selects explicit profiles and applies the
 existing supersession/conflict resolver to their registered rules. A runtime

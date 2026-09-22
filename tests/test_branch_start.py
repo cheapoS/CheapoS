@@ -47,7 +47,13 @@ class BranchStartTests(unittest.TestCase):
     def test_prepare_start_once_and_source_unchanged(self):
         (self.source/'hello.py').write_text('dirty\n')
         before=git(self.source,'status','--porcelain'),git(self.source,'write-tree'),git(self.source,'rev-parse','HEAD')
-        proposal=self.engine.branch.prepare(self.values)
+        captured=self.engine.settings_capture(self.values,str(self.source))
+        with patch.object(self.engine,'settings_capture',side_effect=AssertionError('Must use the captured schedule settings')):
+            proposal=self.engine.branch.prepare(self.values,captured_settings=captured,reserved_task_id='scheduled-proof')
+        self.assertEqual(proposal['task_id'],'scheduled-proof')
+        self.assertEqual(self.engine.store.get('scheduled-proof')['settings_snapshot'],captured)
+        with self.assertRaisesRegex(ValueError,'already has saved work'):
+            self.engine.branch.prepare(self.values,captured_settings=captured,reserved_task_id='scheduled-proof')
         self.assertIsNone(_tip(self.source,'refs/heads/feature/job'))
         self.assertEqual(self.engine.runtimes,{})
         self.assertTrue(proposal['readiness']['ready'])

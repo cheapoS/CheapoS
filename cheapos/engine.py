@@ -491,6 +491,8 @@ class Engine:
         self.branch = BranchController(self)
         from .storage_maintenance import Maintenance
         self.storage_maintenance = Maintenance(self)
+        from .schedules import Schedules
+        self.schedules = Schedules(self)
 
     def restore_route_waits(self):
         """Only resume saved automatic route waits, never arbitrary interrupted work."""
@@ -1518,7 +1520,7 @@ class Engine:
             return task
 
     def shutdown(self):
-        for name, comp in [('storage', getattr(self, 'storage_maintenance', None)), ('club', getattr(self.store, 'club', None)), ('previews', self.previews), ('readiness', self.readiness), ('startup', self.startup)]:
+        for name, comp in [('schedules', getattr(self, 'schedules', None)), ('storage', getattr(self, 'storage_maintenance', None)), ('club', getattr(self.store, 'club', None)), ('previews', self.previews), ('readiness', self.readiness), ('startup', self.startup)]:
             if comp and hasattr(comp, 'shutdown'):
                 try: comp.shutdown()
                 except Exception as e: print(f"cheapoS shutdown error in {name}: {e}", file=sys.stderr)
