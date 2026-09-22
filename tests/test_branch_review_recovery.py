@@ -119,6 +119,8 @@ class ItemReviewRecoveryTests(unittest.TestCase):
         runtime.task = task = json.loads(json.dumps(task))
         self.assertEqual(task['branch_run']['review_disagreements']['candidate']['unsupported_attempts'], 1)
         def respond(rt, messages, tools, role):
+            from cheapos.instructions.runtime import text
+            self.assertEqual(json.dumps(messages).count(text('workflow.ui_completeness')), 1)
             pending = task['pending_review']; pending['review_requests'] = pending.get('review_requests', 0) + 1
             return malformed if task['providers']['reviewer']['model'] == 'reviewer' else self.wire_approval()
         engine.request.side_effect = respond
@@ -189,6 +191,8 @@ class ItemReviewRecoveryTests(unittest.TestCase):
                 from cheapos.instructions.runtime import audit_tools, prompt
                 self.assertEqual(audit_tools('review_decision_coaching', tools), [])
                 self.assertEqual(messages[-1]['content'], prompt('review_decision_coaching'))
+                from cheapos.instructions.runtime import text
+                self.assertEqual(json.dumps(messages).count(text('workflow.ui_completeness')), 1)
                 return {'tool_calls': [self.wire_call('read_review_evidence', '{"source":"diff"}')]}
             result = self.approval()['tool_calls'][0]['result']
             result['review_assessment'] = assessment(['exact values'], checks=False)
