@@ -274,6 +274,10 @@ Provider access, availability, and costs depend on your configuration. A free-mo
 
 ## Built in the open. Measured in the open.
 
+Explore [**The cheapos Club**](https://cheapos.lol) to find free models, see community
+observations, and share what you build. Club reporting is optional; local work
+does not require a Club account.
+
 The current evidence includes a **completed live delegation loop**: a local Gemma coordinator handed off a small Python fix to a free remote worker, tests passed, and a different free reviewer approved the patch in **30.73 seconds**. It was one small fixture, with $0.00 accounted using configured prices—not a provider billing receipt or a savings benchmark. [Read the experiment and its limits →](docs/experiments/2026-09-13-delegation.md)
 
 The implementation is documented feature by feature: [**workspace, permissions, onboarding, recovery, context, and model selection**](docs/archive/TASKS.md) · [**planning, feature-branch commits, final review, and local merge**](docs/archive/BRANCH_RUNS.md). Each card records its scope and validation. [Task metrics](docs/development/task-metrics.md) and [optimization experiments](docs/experiments/context-compression.md) make the underlying measurements inspectable.

@@ -11,7 +11,7 @@ test('failure offers retry, no raw server error, and successful retry enables ex
 test('club renders unlinked, preview, and active states with extended models',async()=>{
   const unlinkedData = fixture();
   assert.doesNotMatch(ui.render(unlinkedData), /data-club-connect|data-tab-panel="club"/);
-  assert.match(ui.renderClub(), /The Cheapskate Club/);
+  assert.match(ui.renderClub(), /The cheapos Club/);
   assert.match(ui.renderClub(), /Connect to Club/);
 
   const linkedData = fixture();

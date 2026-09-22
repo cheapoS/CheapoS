@@ -2284,7 +2284,7 @@ function renderLifetimeSavingsBadge(data){
   const badge=$('#sidebar-zero-tokens');
   if(badge){
     badge.title=isRemote
-      ?`Cheapskate Club verified score for @${s.club.remote_profile.handle}: ${zeroCostTokens.toLocaleString('en-US')} tokens. Click to view Usage & savings`
+      ?`The cheapos Club verified score for @${s.club.remote_profile.handle}: ${zeroCostTokens.toLocaleString('en-US')} tokens. Click to view Usage & savings`
       :'Lifetime zero-cost compute. Click to view Usage & savings';
   }
 }

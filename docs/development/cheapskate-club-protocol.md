@@ -1,4 +1,4 @@
-# Cheapskate Club: Cryptographic Attestation & Client Sync Protocol
+# The cheapos Club: Cryptographic Attestation & Client Sync Protocol
 
 **Document Version:** 1.0.0  
 **Scope:** CheapOS Open-Source Client Implementation
@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary & Security Model
 
-The **Cheapskate Club** is a community scoreboard celebrating developers who run AI coding workloads at near-zero cost using free-tier routes and local models.
+**The cheapos Club** is a community scoreboard celebrating developers who run AI coding workloads at near-zero cost using free-tier routes and local models.
 
 ### Open-Source Security Principles
 1. **Zero Hardcoded Secrets:** CheapOS is open source; no static private keys, master signing keys, or server API secrets exist in this repository.
