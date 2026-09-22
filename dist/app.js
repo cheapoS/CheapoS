@@ -375,7 +375,7 @@ function taskMenu(task,anchor) {
     {isDivider:true},
     {label:taskBusy(task)?'Pause & move to trash':'Move to trash',icon:'trash',danger:true,run:()=>moveToTrash(task)}
   ];
-  if(!task.trashed_at&&task.branch_run)actions.splice(actions.length-2,0,{label:'Schedule this task…',icon:'clock',run:()=>CheapOSSchedules.create({task,api,dialog,header:modalHeader,onSaved:()=>scopedSettings('schedules')})});
+  if(!task.trashed_at&&task.branch_run)actions.splice(actions.length-2,0,{label:'Schedule this task…',icon:'clock',run:()=>scheduleTask(task)});
   compactMenu(anchor,'Chat options',actions);
 }
 async function moveToTrash(task) {
@@ -511,9 +511,10 @@ function renderHome() {
   $$('.view').forEach(v=>v.classList.toggle('hidden',v.id!=='chat-view'));
   if(branchUI?.renderStart()){renderComposer();return;}
   const opened=new Map($$('#chat-view details[data-event]').map(d=>[d.dataset.event,d.open]));
-  $('#chat-view').innerHTML=`<div class="chat-welcome startup-welcome">${startupMarkup()}${state.project?`<div class="chat-suggestions"><button data-suggestion="Explain how this project works. Start by reading its README and main entry points.">Explain this project ${icon('chevron')}</button><button data-suggestion="Look through this project and suggest one small improvement. Explain it before making changes.">Find a small improvement ${icon('chevron')}</button></div>`:`<button class="primary-button" id="welcome-open">${icon('folder')}Open project</button>`}<button class="text-link startup-preferences" data-startup="preferences">Startup preferences</button></div>`+pendingMessageMarkup();
+  $('#chat-view').innerHTML=`<div class="chat-welcome startup-welcome">${startupMarkup()}${state.project?`<div class="chat-suggestions"><button data-suggestion="Explain how this project works. Start by reading its README and main entry points.">Explain this project ${icon('chevron')}</button><button data-suggestion="Look through this project and suggest one small improvement. Explain it before making changes.">Find a small improvement ${icon('chevron')}</button><button data-new-schedule>New scheduled task ${icon('clock')}</button></div>`:`<button class="primary-button" id="welcome-open">${icon('folder')}Open project</button>`}<button class="text-link startup-preferences" data-startup="preferences">Startup preferences</button></div>`+pendingMessageMarkup();
   for(const d of $$('#chat-view details[data-event]'))if(opened.has(d.dataset.event))d.open=opened.get(d.dataset.event);
   if($('#welcome-open'))$('#welcome-open').onclick=()=>openProject();
+  if($('[data-new-schedule]'))$('[data-new-schedule]').onclick=()=>newScheduledTask();
   $$('[data-suggestion]').forEach(b=>b.onclick=()=>{$('#chat-input').value=b.dataset.suggestion;saveDraft();renderComposer();$('#chat-input').focus()});
   bindStartupActions();renderComposer();
 }
@@ -1674,10 +1675,31 @@ function bindLimitFields(form){
 const readLimits=f=>({...Object.fromEntries(['dollars','reviewer_tokens','iterations','worker_turns','output_tokens','checkpoint_turns','run_minutes','check_seconds'].map(k=>[k,Number(f.get(k))])),uncapped_work:f.get('uncapped_work')==='on'});
 function newTask(prefill='',preset={}) {
   home();
-  branchUI.newChat();
   if(preset.repository){state.project={path:preset.repository,name:basename(preset.repository)};renderHome();restoreDraft()}
+  branchUI.newChat(preset.mode);
   if(prefill){$('#chat-input').value=prefill;saveDraft();renderComposer()}
   if(!state.project)openProject();else $('#chat-input').focus();
+}
+function scheduleTask(task){
+  return CheapOSSchedules.create({task,api,dialog,header:modalHeader,onSaved:()=>scopedSettings('schedules')});
+}
+function newScheduledTask(){
+  const source=state.task?.source||state.project?.path;
+  const project=source&&source!=='demo'?(state.projects.find(p=>p.path===source)||{path:source,name:basename(source)}):null;
+  if(!project||project.path==='demo'){openProject(()=>newScheduledTask());return;}
+  return CheapOSSchedules.setup({project,tasks:state.tasks,dialog,header:modalHeader,
+    onNew:async({repository,prompt,isOpen,close})=>{
+      const draft=await setupDraft(repository);if(!isOpen())return;
+      const setup=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>setupDrafts.set(repository,next));
+      setup.edit('limits.dollars',0);await setup.save();if(!isOpen())return;
+      close();newTask(prompt,{repository,mode:'unattended'});
+      toast('Send to prepare the plan. After approval, open Plan → Schedule this task…');
+    },
+    onExisting:async(task,isOpen,close)=>{
+      const saved=await api('/tasks/'+task.id);if(!isOpen())return;
+      close();scheduleTask(saved);
+    }
+  });
 }
 const executionLabel=mode=>({delegate:'Delegate heavy work',local:'All local',remote:'All remote',manual:'Manual model pair'}[mode]||'Manual model pair');
 function coordinatorTaskNotice(task,paused=false){
@@ -1741,7 +1763,7 @@ function appearanceSettings(host){
 async function scopedSettings(scope,section='agents',project){
  const capturedTask=state.task,repository=project||state.project?.path||capturedTask?.source;
  const options={api,scope:scope||(capturedTask?'task':'draft'),task:capturedTask?{id:capturedTask.id,title:capturedTask.title||capturedTask.prompt}:null,project:repository,section,models:state.gatewayModels||[],connectionsList:state.gateway.connections||[],
- connections:host=>openConnections(undefined,null,host),appearance:appearanceSettings,schedules:host=>CheapOSSchedules.open({dialog:host.dialog,api,header:modalHeader,selectTask}),storage:host=>CheapOSStorage.open({dialog:host.dialog,api,header:modalHeader}),usage:host=>CheapOSLifetimeUsage.open({dialog:host.dialog,api,header:modalHeader,onClub:()=>host.navigate('club')}),club:host=>CheapOSLifetimeUsage.openClub({dialog:host.dialog,api,header:modalHeader,onUpdated:data=>{lifetimeUsageData=data;lifetimeUsageLoadedAt=Date.now();renderLifetimeSavingsBadge(data);}}),
+ connections:host=>openConnections(undefined,null,host),appearance:appearanceSettings,schedules:host=>CheapOSSchedules.open({dialog:host.dialog,api,header:modalHeader,selectTask,onNew:newScheduledTask}),storage:host=>CheapOSStorage.open({dialog:host.dialog,api,header:modalHeader}),usage:host=>CheapOSLifetimeUsage.open({dialog:host.dialog,api,header:modalHeader,onClub:()=>host.navigate('club')}),club:host=>CheapOSLifetimeUsage.openClub({dialog:host.dialog,api,header:modalHeader,onUpdated:data=>{lifetimeUsageData=data;lifetimeUsageLoadedAt=Date.now();renderLifetimeSavingsBadge(data);}}),
  permissions:id=>{if(id&&state.task?.id!==id)selectTask(id);else setView('activity');},pause:id=>api('/tasks/'+id+'/stop',{}),onSaved:async()=>{await refreshContext();if(state.task?.id===capturedTask?.id)await refresh();}};
  try{if(options.scope==='draft'){if(!repository){openProject(()=>scopedSettings('draft',section));return;}const draft=await setupDraft(repository);options.draft=CheapOSSettings.createDraftSession(draft.record,draft.overrides,next=>{setupDrafts.set(repository,next);renderComposer();},()=>api('/projects/settings?project='+encodeURIComponent(repository)));}
  CheapOSSettings.open(options);}catch(error){toast(error.message);}
@@ -2106,6 +2128,7 @@ $$('.tabs .tab').forEach(b=>{b.onclick=()=>setView(b.dataset.view);b.onkeydown=e
 $('#home-trigger').onclick=()=>openProject();
 $('.brand').onclick=e=>{e.preventDefault();home()};
 $('#new-task').onclick=()=>newTask();
+$('#new-scheduled-task').onclick=()=>newScheduledTask();
 $('#search-trigger').onclick=openSearch;
 $('#settings-trigger').onclick=()=>scopedSettings('defaults');
 $('#session-settings').onclick=()=>scopedSettings();
@@ -2175,7 +2198,7 @@ if(hideDemo) hideDemo.onclick=()=>{compactMenu(hideDemo,'Demo options',[{label:'
 if(typeof localStorage!=='undefined'&&localStorage.getItem('cheapos-demo-hidden')==='true') $('#demo-row')?.classList.add('hidden');
 function toggleInspector(){ $('#toggle-inspector').click() }
 const panelLayout=CheapOSPanels.mount();
-const branchUI=CheapOSBranchUI.mount({api,preparePlanningSettings:capturedDraftSetup,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),showChanges:()=>setView('changes'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
+const branchUI=CheapOSBranchUI.mount({api,scheduleTask,preparePlanningSettings:capturedDraftSetup,receiveStartedTask,receiveUpdatedTask,getState:()=>state,selectTask,refresh,toast,showLogs:()=>setView('logs'),showPlan:()=>setView('plan'),showChat:()=>setView('chat'),showChanges:()=>setView('changes'),planningGuidance:id=>{if(state.task?.id===id)setView('chat');else selectTask(id);},renderCurrent:()=>renderTask(),openStartedChat:id=>{if(state.task?.id===id){setView('chat');return;}selectTask(id);},openPlanningChat:()=>{home();return state.selection;},newChat:()=>newTask(),pauseAction:async(action,task)=>{if(action==='reviewer'){await operatorRecovery(task);return;}if(action==='models'){openConnections(undefined,task);return;}if(action==='limits'){chatLimits();return;}if(['reply','correction'].includes(action)){setView('chat');$('#chat-input')?.focus();return;}if(action==='authorization'){await resumeBranchRun(task);return;}if(action==='environment'||action==='permission'){setView('chat');const selector=action==='environment'?'[data-environment]':'[data-chat-action=approve]';const control=$(selector);if(control){control.scrollIntoView({block:'center'});control.focus();return;}throw new Error('No active setup or command permission request is available. Inspect Activity.');}setView('activity');},resume:resumeBranchRun,handleResumeResult:resumeBranchRun,onDraftChange:()=>renderComposer()});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&['k','n',','].includes(e.key.toLowerCase())){e.preventDefault();if($('dialog[open]'))return;if(e.key.toLowerCase()==='k')openSearch();else if(e.key.toLowerCase()==='n')newTask();else scopedSettings('defaults')}});
 bootstrap();setTimeout(poll,1500);setInterval(updateProgressClock,1000);setInterval(()=>updateLifetimeSavingsBadge(),15000);
 

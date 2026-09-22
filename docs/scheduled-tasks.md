@@ -5,10 +5,14 @@ documentation, or propose a verified update. The feature is project-independent;
 keep private objectives, source lists and update instructions in the relevant
 project repository, not in the cheapoS source code.
 
-1. Prepare and approve an Unattended plan with clear criteria, source URLs and
-   focused checks. Use a **$0 API spending allowance**; paid schedules are not
-   supported in this first version.
-2. Open that chat’s menu → **Schedule this task…**. Inspect the repeating plan,
+1. Click **New scheduled task** beneath **New chat** in the left sidebar, on
+   the project home screen, or in **Settings → Scheduled tasks**. Choose a
+   project if needed. Describe the recurring work and choose **Continue in
+   Unattended chat**, then send it to prepare a plan. This draft uses a **$0 API
+   spending allowance** and keeps the other project settings. Review the plan
+   and approve its first run. You can also reuse an existing approved plan in
+   the setup dialog.
+2. Open the chat’s **Plan** page → **Schedule this task…** (also in its menu). Inspect the repeating plan,
    model choices and limits, select 6, 12 or 24 hours, or weekly, and approve
    recurrence and commands. Full-suite checks need separate recurring consent.
 3. Manage **Settings → Scheduled tasks**. Disable, enable, run now, open the latest
