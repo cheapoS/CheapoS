@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from cheapos.instructions.runtime import with_tools
 from cheapos.uploads import save_upload
 from cheapos.vision import inspect_image_tool, resolve_image_path
 from test_engine import LocalCase
@@ -247,8 +248,10 @@ class VisionToolTests(LocalCase):
         self.assertEqual(res["role"], "reviewer")
         self.assertEqual(len(res["image_digest"]), 64)
         sent_messages = captured_calls[0]["messages"]
-        self.assertEqual(len(sent_messages), 1)
-        user_msg = sent_messages[0]
+        self.assertEqual([m['role'] for m in sent_messages], ['system', 'user'])
+        self.assertEqual(sent_messages, with_tools(sent_messages[1:], []))
+        self.assertEqual(captured_calls[0]['tools'], [])
+        user_msg = sent_messages[1]
         self.assertEqual(user_msg["role"], "user")
         self.assertIsInstance(user_msg["content"], list)
         self.assertEqual(len(user_msg["content"]), 2)
@@ -257,6 +260,7 @@ class VisionToolTests(LocalCase):
         self.assertIn("Is the OK button green?", user_msg["content"][0]["text"])
         # Content item 1: image_url
         self.assertEqual(user_msg["content"][1]["type"], "image_url")
-        self.assertTrue(user_msg["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
+        self.assertEqual(user_msg["content"][1]["image_url"]["url"],
+                         "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii"))
         # Ensure worker_system unattended policy text did NOT replace the user message
         self.assertNotIn("Unattended work: implement ONLY", str(user_msg["content"]))

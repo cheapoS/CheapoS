@@ -99,8 +99,10 @@ class ContextTests(unittest.TestCase):
         packet={'evidence':'complete evidence\n'*70000}
         runtime=SimpleNamespace(task={})
         calls=[]
-        def reviewer(engine, runtime, manifest, page, chunks, criteria):
+        check_packets=[]
+        def reviewer(engine, runtime, manifest, page, chunks, criteria, *, check_packet=None):
             calls.append((page,chunks,criteria))
+            check_packets.append(check_packet)
             return {'decision':'APPROVE'}
         with patch.object(branch_final,'_review',side_effect=reviewer):
             result=branch_final.review_paged(None,runtime,{'id':'candidate'},packet,['diff:1'],['one:1'])
@@ -108,6 +110,8 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(''.join(c[0]['content'] for c in calls[:-1]),branch_final._json(packet))
         self.assertTrue(all(len(branch_final._json(c[0]))<60000 for c in calls))
         self.assertEqual(calls[-1][1:],(['diff:1'],['one:1']))
+        self.assertTrue(all(p is None for p in check_packets[:-1]))
+        self.assertIs(check_packets[-1],packet)
         self.assertIn(calls[-1][0]['complete_packet_reference'],runtime.task['context_evidence'])
         with patch.object(branch_final,'_review',return_value={'decision':'REQUEST_CHANGES'}) as failed:
             self.assertEqual(branch_final.review_paged(None,runtime,{'id':'candidate'},packet,[],[])['decision'],'REQUEST_CHANGES')
