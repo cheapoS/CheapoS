@@ -135,6 +135,14 @@ OmniRoute also supports Ollama, allowing a local worker and a remote reviewer th
 
 Under **Models → Startup & connection settings**, the status distinguishes saved, session-only, and environment keys. Uncheck **Remember** and save to remove the stored key while keeping it for the current session; **Forget client key** removes both the stored key and the in-memory value. Changing the gateway URL clears the old key and its included-model authorization. A locked credential store shows a recovery message: unlock it and refresh, or supply a launch-environment key. A launch-environment key takes precedence on startup and is never automatically copied into the credential store; forgetting a key does not modify your launch environment.
 
+### Provider access restrictions
+
+OpenCode's free tier is restricted to OpenCode and is not recommended as a free
+route for cheapoS through OmniRoute. This refusal was observed in cheapoS and is
+also documented in an [upstream access report](https://github.com/anomalyco/opencode/issues/49580).
+Choose a provider that permits your intended API or gateway use. A model listed
+in a gateway catalog does not grant access or override the provider's terms.
+
 ### Direct connections
 
 Only **local Ollama** is available directly: `http://127.0.0.1:11434/v1`, with an installed model supporting tool calling. Local model prices can be zero. cheapoS verifies the installed model before task inference, including Manual mode; Ollama cloud routes must use OmniRoute instead.

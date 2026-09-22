@@ -256,11 +256,13 @@ Source-install task data defaults to `.cheapos/` beside the launcher. Packaged m
 
 ### Recommended starter setup
 
-Use **OmniRoute as your remote gateway**, with several connected providers so cheapoS has alternatives when a route is unavailable or cooling down. The setup below includes **OpenRouter, OpenCode Free, Groq, NVIDIA NIM, Antigravity, and Kiro AI**. Connect the providers you have access to; you do not need every provider pictured to get started. Aim for two available, tool-capable models for the worker and independent reviewer, preferably across different providers.
+Use **OmniRoute as your remote gateway**, with several connected providers so cheapoS has alternatives when a route is unavailable or cooling down. The setup below shows **OpenRouter, Groq, NVIDIA NIM, and Antigravity**. Connect providers whose access terms support your use through a gateway; you do not need every provider pictured to get started. Aim for two available, tool-capable models for the worker and independent reviewer, preferably across different providers.
 
-![OmniRoute provider topology connecting OpenRouter, OpenCode Free, Groq, NVIDIA NIM, Antigravity, and Kiro AI.](docs/assets/recommended-starter-setup.png)
+**OpenCode Free is no longer part of this recommended setup:** its free tier is restricted to OpenCode. [Provider access notes →](docs/USER_GUIDE.md#provider-access-restrictions)
 
-*A live OmniRoute session. Kiro AI had reached its quota when this was captured—one reason to connect several providers.*
+![OmniRoute provider topology connecting OpenRouter, Groq, NVIDIA NIM, and Antigravity.](docs/assets/recommended-starter-setup.png)
+
+*An OmniRoute session showing four configured providers. Status indicators reflect the moment this screenshot was captured; availability and quota vary by provider and account.*
 
 [Connect OmniRoute and choose your models →](docs/USER_GUIDE.md#omniroute-companion)
 
