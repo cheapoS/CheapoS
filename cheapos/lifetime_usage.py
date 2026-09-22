@@ -455,7 +455,9 @@ class LifetimeUsage:
             'Completion counts are lifetime distinct jobs: merged runs separate from human-accepted interactive jobs; independent review is not human acceptance.',
             'Missing daily history is a gap, not zero. Free tokens used do not establish tokens saved or equivalent outcomes.']
         with self.lock:
-            if state['updated_at'] == self.state['updated_at']:
+            # Filtered Club/export summaries must never replace the local totals.
+            # They bypass cache reads above, and must bypass writes as well.
+            if allowed_set is None and state['updated_at'] == self.state['updated_at']:
                 self._summaries[cache_key] = copy.deepcopy(result)
         return result
 

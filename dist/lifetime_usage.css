@@ -694,15 +694,14 @@
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-  margin-bottom: 4px;
+  margin-bottom: 12px;
+  width: 100%;
 }
 
 .usage-view-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8125rem;
-  color: #a4b7ab;
+  display: flex;
+  flex: 1 1 420px;
+  min-width: 0;
 }
 
 .usage-view-label {
@@ -711,7 +710,9 @@
 }
 
 .usage-view-toggle-group {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
   background: #19221d;
   border: 1px solid #334239;
   border-radius: 6px;
@@ -720,18 +721,29 @@
 }
 
 .usage-view-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  min-width: 0;
   background: transparent;
   border: 0;
   color: #92a499;
   font-size: 0.78125rem;
   font-weight: 500;
-  padding: 4px 10px;
+  padding: 10px 12px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.usage-view-btn:hover {
+.usage-view-btn strong { font-size: 1rem; font-variant-numeric: tabular-nums; }
+.usage-view-btn small { font-weight: 400; }
+.usage-view-btn:disabled { cursor: default; opacity: 0.65; }
+.usage-scope-note { margin: 0 0 8px; }
+
+.usage-view-btn:hover:not(:disabled) {
   color: var(--text);
   background: rgba(255, 255, 255, 0.04);
 }

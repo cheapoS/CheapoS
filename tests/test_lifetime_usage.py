@@ -245,13 +245,24 @@ class LifetimeUsageTests(unittest.TestCase):
             ledger.ingest(task1)
             ledger.ingest(task2)
 
-            full_summ = ledger.summary()
-            self.assertEqual(full_summ['tokens']['reported'], 2100)
-
             synced_req = [r['request_id'] for r in ledger.raw_requests() if r['input_tokens'] == 50]
-            scoped_summ = ledger.summary(allowed_request_ids=synced_req)
-            self.assertEqual(scoped_summ['tokens']['reported'], 100)
-            self.assertEqual(scoped_summ['self_healing_index']['initial_work_tokens'], 100)
+            baseline_req = [r['request_id'] for r in ledger.raw_requests() if r['input_tokens'] == 1000]
+            saved = ledger.path.read_bytes()
+            for days in (None, 'all', 7, 30):
+                full_summ = LifetimeUsage(directory).summary(days)
+                self.assertEqual(full_summ['tokens']['reported'], 2100)
+                for warm in (False, True):
+                    with self.subTest(days=days, cached_local_summary=warm):
+                        ledger = LifetimeUsage(directory)
+                        if warm:
+                            self.assertEqual(ledger.summary(days), full_summ)
+                        for allowed, expected in ((synced_req, 100), (baseline_req, 2000), ([], 0)):
+                            scoped_summ = ledger.summary(days, allowed_request_ids=allowed)
+                            self.assertEqual(scoped_summ['tokens']['reported'], expected)
+                            self.assertEqual(scoped_summ['self_healing_index']['initial_work_tokens'], expected)
+                            # Club summaries cannot replace the local UI/export cache.
+                            self.assertEqual(ledger.summary(days), full_summ)
+            self.assertEqual(ledger.path.read_bytes(), saved)
 
     def test_request_duration_counts_failures_zero_and_missing_measurements(self):
         from cheapos.request_health import route_metadata, event_health

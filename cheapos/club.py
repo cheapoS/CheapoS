@@ -16,6 +16,7 @@ from .club_routes import backfill_routes
 from .club_attempts import collect_attempts
 
 DEFAULT_LEADERBOARD_URL = "https://cheapos.lol"
+MAX_PUBLIC_PROFILE_BYTES = 1024 * 1024
 
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -195,6 +196,19 @@ class ClubManager:
             pass
         return None
 
+    @staticmethod
+    def _read_public_profile(response):
+        # Public profiles now include per-model request health. Read the whole
+        # bounded document, rather than parsing a silently truncated prefix.
+        raw=response.read(MAX_PUBLIC_PROFILE_BYTES + 1)
+        if len(raw)>MAX_PUBLIC_PROFILE_BYTES:
+            raise ValueError('Club profile exceeds the supported response size.')
+        data=json.loads(raw.decode('utf-8'))
+        if (not isinstance(data,dict) or not isinstance(data.get('handle'),str)
+                or type(data.get('tokens')) is not int or data['tokens']<0):
+            raise ValueError('Club profile has no valid accepted token total.')
+        return data
+
     def get_remote_profile(self, force=False):
         """Fetch and cache the public member profile from the Club leaderboard."""
         with self.lock:
@@ -213,7 +227,7 @@ class ClubManager:
             req=urllib.request.Request(url,headers={'User-Agent':'cheapoS','Accept':'application/json'})
             with urllib.request.urlopen(req,timeout=4) as response:
                 if response.status==200:
-                    data=json.loads(response.read(65536).decode('utf-8'))
+                    data=self._read_public_profile(response)
                     with self._remote_profile_lock:
                         self._remote_profile_cache=data
                         self._remote_profile_cache_time=now_ts
@@ -229,7 +243,7 @@ class ClubManager:
                         req=urllib.request.Request(url,headers={'User-Agent':'cheapoS','Accept':'application/json'})
                         with urllib.request.urlopen(req,timeout=4) as response:
                             if response.status==200:
-                                data=json.loads(response.read(65536).decode('utf-8'))
+                                data=self._read_public_profile(response)
                                 with self._remote_profile_lock:
                                     self._remote_profile_cache=data
                                     self._remote_profile_cache_time=now_ts
@@ -249,7 +263,7 @@ class ClubManager:
         remote=self.get_remote_profile() if include_remote and self.state.get('identity') else self._remote_profile_cache
         with self.lock:
             s=self.state
-            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],share_models=s.get('share_models',False),share_jobs=s.get('share_jobs',False),jobs_since=s.get('jobs_since'),jobs_message=s.get('jobs_message'),last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']),remote_profile=remote)
+            return dict(installation_id=s['installation_id'],installation_name='This cheapoS installation',is_linked=bool(s['identity']),x_identity=s['identity'],sync_enabled=s['sync_enabled'],share_models=s.get('share_models',False),share_jobs=s.get('share_jobs',False),jobs_since=s.get('jobs_since'),jobs_message=s.get('jobs_message'),last_synced_at=s['last_synced_at'],leaderboard_url=self.leaderboard_url,connect_url=self.leaderboard_url+'/connect?id='+str(s['pairing_id'] or ''),pairing_pending=bool(s['pairing_id'] and not s['identity']),sync_message=s.get('sync_message'),error=s.get('error'),pending=bool(s['pending']),remote_profile=remote,remote_profile_fetched_at=datetime.fromtimestamp(self._remote_profile_cache_time,timezone.utc).isoformat() if remote and self._remote_profile_cache_time else None)
 
     def start_pairing(self,lifetime):
         with self.lock:
