@@ -137,8 +137,9 @@ class BranchFinalTests(unittest.TestCase):
                     'passed': True, 'exit_code': 0,
                     'verification_identity': bound['record']['verification_identity'],
                     'input_identity': bound['record']['input_identity'],
+                    'output': bound['record']['output'],
                     'record_digest': evidence._digest(bound['record'])})
-                self.assertNotIn('output', summary)
+                self.assertIn('final passed', summary['output'])
         self.request_changes = True
         self.task['steer_guidance']='Reassess missing edge handling against the approved requirement.'
         self.requests.clear()

@@ -72,6 +72,50 @@ class ReviewAssessmentTests(unittest.TestCase):
         return {'decision': 'APPROVE', 'feedback': 'The implementation preserves both bounds.',
                 'review_assessment': assessment()}
 
+    def test_evidence_reader_lists_pages_searches_and_preserves_citable_source(self):
+        state = self.state()
+        content = 'a' * 9000 + 'needle: exact source' + 'b' * 9000
+        review.add(state, 'long', 'code', content)
+        before = copy.deepcopy(state)
+        self.assertEqual(review.read(state), review.display(state))
+        first = review.read(state, 'long')
+        self.assertEqual(first['content'], content[:8000])
+        self.assertTrue(first['has_more'])
+        second = review.read(state, 'long', offset=first['next_offset'])
+        self.assertEqual(second['content'], content[8000:16000])
+        found = review.read(state, 'long', search='needle: exact source')
+        self.assertIn('needle: exact source', found['content'])
+        self.assertEqual(found['evidence_id'], 'long')
+        self.assertEqual(found['digest'], state['sources']['long']['digest'])
+        self.assertFalse(review.read(state, 'long', search='absent')['found'])
+        self.assertEqual(state, before)
+        result = self.approval()
+        result['review_assessment'] = assessment(source=found['evidence_id'], quote='needle: exact source')
+        review.validate(state, result)
+
+    def test_evidence_reader_cannot_resolve_other_candidates_or_bad_arguments(self):
+        state = self.state()
+        review.add(state, 'old-source', 'code', 'prior code')
+        other = review.prepare('new-candidate', {'diff': '+new code'}, ['requested_change'])
+        for source in ('old-source', '../secret', ['diff']):
+            self.assertIn('error', review.read(other, source))
+        for args in ({'offset': -1}, {'offset': True}, {'offset': 99999}, {'search': ''}, {'search': ['code']}):
+            with self.assertRaises(ValueError):
+                review.read(other, 'diff', **args)
+        self.assertNotIn('prior code', json.dumps(review.read(other)))
+        result = self.approval()
+        result['review_assessment'] = assessment(source='diff', quote='prior code', checks=False)
+        with self.assertRaises(ValueError):
+            review.validate(other, result)
+
+    def test_evidence_reader_is_only_offered_with_review_contract(self):
+        from cheapos.tools import REVIEW_TOOLS, WORKER_TOOLS
+        before = copy.deepcopy(REVIEW_TOOLS)
+        tools = review.tools_with_contract(REVIEW_TOOLS, self.state())
+        self.assertIn('read_review_evidence', [t['function']['name'] for t in tools])
+        self.assertNotIn('read_review_evidence', [t['function']['name'] for t in WORKER_TOOLS])
+        self.assertEqual(REVIEW_TOOLS, before)
+
     def test_fixture_adapter_preserves_mixed_batches_and_explicit_assessments(self):
         def call(name, args):
             return {'id': name, 'function': {'name': name, 'arguments': json.dumps(args)}}

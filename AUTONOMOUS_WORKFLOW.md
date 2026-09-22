@@ -642,6 +642,16 @@ can reuse their existing reads, checks and attempt history after an update.
 Small in-memory tests cover correction, handoff, restart and denied authority;
 they do not use live models, Git workflows or real-time waits.
 
+Reviewers can list, search and page their current candidate's delivered evidence
+with `read_review_evidence`. Returned source IDs are directly usable in citations,
+including after a reviewer handoff. Final packets include saved check output
+previews and run IDs; `read_check_output` retrieves missing retained output only
+for the packet's bound check records. Large packet pages retain the same access.
+These reads execute no commands, grant no approval and do not rerun passing
+checks. Changed or unrelated check records cannot become current verification
+evidence. Existing model selection, cancellation and repeated-read recovery still
+apply; missing or expired evidence remains a limitation, never fabricated proof.
+
 Final reviewers use exact repository-relative paths from the change manifest.
 An unavailable read retains its exact requested path and offers matching manifest
 paths as hints; it never silently redirects the read or establishes approval.

@@ -69,6 +69,7 @@ class ItemPageTests(unittest.TestCase):
     def test_large_patch_reaches_real_receipt_without_losing_evidence_or_rechecking(self):
         task, engine, runtime, current = self.fixture()
         task['review_contract_version'] = 1
+        task['checks'][0]['run_id'] = 'a' * 32
         before = copy.deepcopy({k: task[k] for k in ('checks', 'limits', 'usage')})
         self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
         receipt = json.loads(task['branch_run']['items'][0]['ready_receipt'])
@@ -80,6 +81,12 @@ class ItemPageTests(unittest.TestCase):
         self.assertEqual(''.join(parts), source)
         self.assertEqual(json.loads(source)['diff'], current['patch'])
         self.assertEqual(len(coverage['chunks']), len(parts))
+        for call in engine.request.call_args_list:
+            packet = json.loads(call.args[1][1]['content'])
+            if 'chunk' in packet:
+                self.assertEqual(packet['check_output_sources'], [{
+                    'candidate_id': current['id'], 'run_id': 'a' * 32,
+                    'record_digest': evidence._digest(task['checks'][0])}])
         requests = [c.args[3] for c in engine.event.call_args_list if c.args[1] == 'review_request'
                     and c.args[3].get('stage') == 'chunk']
         completed = [c.args[3] for c in engine.event.call_args_list if c.args[1] == 'review'

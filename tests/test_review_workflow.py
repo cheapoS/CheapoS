@@ -29,6 +29,7 @@ class ReviewWorkflowTests(LocalCase):
         self.responses([
             call('replace_text', {'path':'math_utils.py','old_text':'return min(value, upper)','new_text':'return max(lower, min(value, upper))'}),
             call('run_checks'), {'content':'The lower-bound fix is complete.'},
+            call('read_review_evidence', {'source': 'checks', 'search': 'passed'}),
             call('inspect_image', {'path':'missing.png'}),
             call('review_decision', {'decision':'APPROVE','feedback':'Tests pass.'}),
             call('review_decision', {'decision':'APPROVE','feedback':'Both bounds are covered.', 'review_assessment': assessment()}),
@@ -41,9 +42,10 @@ class ReviewWorkflowTests(LocalCase):
         first = self.finish(task)
         self.assertEqual(first['status'], 'approved', first['error'])
         self.assertEqual(len(first['checks']), 1)
-        self.assertEqual(first['review_count'], 3)
+        self.assertEqual(first['review_count'], 4)
         results = [m['content'] for m in first['checkpoints'][0]['messages'] if m['role'] == 'tool']
         self.assertTrue(any('Image file not found' in value for value in results))
+        self.assertTrue(any('"evidence_id": "checks"' in value for value in results))
         self.assertIn('_review_evidence', first['checkpoints'][0])
         self.assertTrue(any(e['kind'] == 'review_feedback' for e in first['events']))
         self.assertTrue(any(e['kind']=='check_reused' for e in first['events']))
@@ -57,7 +59,7 @@ class ReviewWorkflowTests(LocalCase):
         revised = self.finish(task)
         self.assertEqual(revised['status'], 'approved', revised['error'])
         self.assertEqual(len(revised['checks']), 2)
-        self.assertEqual(revised['review_count'], 4)
+        self.assertEqual(revised['review_count'], 5)
         self.assertNotEqual(revised['patch'], first['patch'])
         self.assertEqual(revised['checkpoints'][-1]['diff'], revised['patch'])
 

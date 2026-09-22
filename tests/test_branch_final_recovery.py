@@ -39,6 +39,112 @@ class FinalRecoveryTests(unittest.TestCase):
         self.assertIn('reviewer',branch_review_recovery.failed_models(runtime.task))
         runtime.task['providers']['reviewer']={'model':'replacement'}
 
+    def bound_check(self, task):
+        task['id'] = 'task'
+        record = {'run_id': 'a' * 32, 'command': ['python', '-m', 'unittest'],
+                  'passed': True, 'exit_code': 0, 'output': 'saved preview',
+                  'raw_output': {'bytes': 30, 'truncated': False},
+                  'verification_identity': 'current-input', 'input_identity': 'current-input'}
+        task['checks'] = [record]
+        return {'candidate_id': 'current', 'command': record['command'], 'record': copy.deepcopy(record)}
+
+    def test_final_reviewer_reads_bound_check_output_and_finishes_without_rerun(self):
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        bound = self.bound_check(task); before = copy.deepcopy(task)
+        packet = {'diff': '+return max(lower, min(value, upper))', 'checks': [bound]}
+        def respond(rt, messages, tools, role, **kw):
+            names = [t['function']['name'] for t in tools]
+            self.assertIn('read_check_output', names)
+            self.assertIn('read_review_evidence', names)
+            self.assertNotIn('run_checks', names)
+            if engine.request.call_count == 1:
+                sources = json.loads(messages[1]['content'])['check_output_sources']
+                return self.call('read_check_output', {'run_id': sources[0]['run_id']})
+            excerpt = json.loads(messages[-1]['content'])
+            self.assertEqual(excerpt['candidate_id'], 'current')
+            result = self.approval()['tool_calls'][0]['result']
+            result.update(criteria_ids=['one:1'], review_assessment=assessment(['one:1']))
+            result['review_assessment']['verification'] = {
+                'reason': 'Retained output names the passing bounds check.',
+                'citations': [{'source': excerpt['evidence_id'], 'quote': 'test_bounds ... ok'}]}
+            return self.call('final_review_decision', result)
+        engine.request.side_effect = respond
+        with patch('cheapos.check_output.read', return_value={'run_id': 'a' * 32, 'output': 'test_bounds ... ok\nOK', 'next_offset': 21, 'has_more': False}) as read:
+            result = final._review(engine, runtime, {'id': 'm', 'requirements': [{'id': 'one:1'}]}, packet, ['diff:1'], ['one:1'])
+        read.assert_called_once_with(engine.store, 'task', run_id='a' * 32)
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 2)
+        self.assertEqual(task['branch_run']['final_review_corrections'], {})
+        for key in ('checks', 'limits', 'usage'): self.assertEqual(task[key], before[key])
+        engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+        refs = next(iter(task['branch_run']['final_review_packets'].values()))['context_references']
+        self.assertTrue(all('output' not in ref for ref in refs))
+
+    def test_check_reader_rejects_changed_unrelated_and_task_command_records(self):
+        task, engine, runtime = self.fixture()
+        bound = self.bound_check(task)
+        sources = final.check_sources({'checks': [bound]})
+        with patch('cheapos.check_output.read') as read:
+            task['command_runs'] = [{'run_id': 'b' * 32, 'passed': True}]
+            task['checks'].append({'run_id': 'c' * 32, 'passed': True})
+            for run_id in ('b' * 32, 'c' * 32, '../secret', None):
+                with self.assertRaises(ValueError):
+                    final.read_check_output(engine, task, sources, {'run_id': run_id})
+            task['checks'][0]['input_identity'] = 'different-input'
+            with self.assertRaises(ValueError):
+                final.read_check_output(engine, task, sources, {'run_id': 'a' * 32})
+            read.assert_not_called()
+
+    def test_expired_output_returns_a_limitation_without_registering_evidence(self):
+        from cheapos import review_assessment
+        task, engine, runtime = self.fixture()
+        bound = self.bound_check(task)
+        packet = {'checks': [bound]}
+        proof = review_assessment.prepare('candidate', packet, ['one:1'])
+        before = copy.deepcopy(proof)
+        with patch('cheapos.check_output.read', side_effect=ValueError('Raw output expired')):
+            result = final.read_check_output(engine, task, final.check_sources(packet), {'run_id': 'a' * 32})
+        self.assertFalse(result['available'])
+        self.assertIn('saved check preview', result['guidance'])
+        review_assessment.observation(proof, 'read_check_output', {'run_id': 'a' * 32}, result)
+        self.assertEqual(proof, before)
+        engine.checks.assert_not_called()
+
+    def test_review_evidence_reader_survives_restart_and_model_handoff(self):
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        engine.request.side_effect = [self.call('read_final_context', {'manifest_id': 'm', 'path': 'code.py', 'start_line': 1}), InterruptedError('Stopped')]
+        context = Mock(return_value={'content': '1: exact retained code', 'path': 'code.py'})
+        with self.assertRaises(InterruptedError):
+            final._review(engine, runtime, {'id': 'm'}, {'evidence': 'exact source'}, ['diff:1'], [], context_reader=context)
+        runtime.task = json.loads(json.dumps(task))
+        runtime.task['providers']['reviewer'] = {'model': 'replacement'}
+        source = next(s for s in next(iter(runtime.task['branch_run']['final_review_packets'].values()))['evidence_review']['sources'] if s.startswith('read:'))
+        calls = []
+        def respond(rt, messages, tools, role, **kw):
+            calls.append(1)
+            if len(calls) == 1:
+                return self.call('read_review_evidence', {'source': source, 'search': 'exact retained code'})
+            excerpt = json.loads(messages[-1]['content'])
+            self.assertEqual(excerpt['evidence_id'], source)
+            reply = self.approval()
+            reply['tool_calls'][0]['result']['review_assessment'] = assessment(['packet'], source=source, quote='exact retained code', checks=False)
+            return reply
+        engine.request.side_effect = respond
+        result = final._review(engine, runtime, {'id': 'm'}, {'evidence': 'exact source'}, ['diff:1'], [], context_reader=context)
+        self.assertEqual(result['decision'], 'APPROVE'); self.assertEqual(result['reviewer_model'], 'replacement')
+        context.assert_called_once(); engine.checks.assert_not_called()
+        self.assertEqual(len(calls), 2)
+
+    def test_cancelled_check_output_read_cannot_reach_final_approval(self):
+        task, engine, runtime = self.fixture(); bound = self.bound_check(task)
+        engine.request.side_effect = [self.call('read_check_output', {'run_id': 'a' * 32}), self.approval()]
+        with patch('cheapos.check_output.read', side_effect=InterruptedError('Cancelled')):
+            with self.assertRaises(InterruptedError):
+                final._review(engine, runtime, {'id': 'm'}, {'checks': [bound]}, ['diff:1'], [])
+        engine.request.assert_called_once()
+        self.assertTrue(all('result' not in s for s in task['branch_run']['final_review_packets'].values()))
+        self.assertFalse(any(c.args[1] == 'review' for c in engine.event.call_args_list))
+
     def test_invalid_decisions_continue_without_worker_checks_or_allowance_reset(self):
         task,engine,runtime=self.fixture();task["review_contract_version"]=1;before=copy.deepcopy(task);seen=[]
         def respond(rt,messages,tools,role,**kw):
@@ -312,9 +418,11 @@ class FinalRecoveryTests(unittest.TestCase):
 
     def test_large_pages_resume_with_independent_saved_coverage(self):
         task,engine,runtime=self.fixture()
-        packet={'evidence':'exact evidence '*6000}
+        bound = self.bound_check(task)
+        packet={'evidence':'exact evidence '*6000, 'checks': [bound]}
         def respond(rt,messages,tools,role,**kwargs):
             sent=json.loads(messages[1]['content'])
+            self.assertEqual(sent['check_output_sources'], final.check_sources(packet))
             result=self.approval()['tool_calls'][0]['result']
             if 'page_index' in sent: result['chunk_ids']=[]
             return self.call('final_review_decision',result)
@@ -327,6 +435,19 @@ class FinalRecoveryTests(unittest.TestCase):
         runtime.task=json.loads(json.dumps(task))
         self.assertEqual(final.review_paged(engine,runtime,manifest,packet,['diff:1'],[]),result)
         self.assertEqual(engine.request.call_count,count)
+        engine.checks.assert_not_called()
+
+    def test_repeated_evidence_reads_still_handoff_and_finish(self):
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        read = self.call('read_review_evidence', {'source': 'packet'})
+        approval = self.approval()
+        approval['tool_calls'][0]['result']['review_assessment'] = assessment(['packet'], source='packet', quote='exact source', checks=False)
+        engine.request.side_effect = [read] * 4 + [approval]
+        with patch.object(routing, 'select_remote', side_effect=self.select) as select:
+            result = self.review(engine, runtime)
+        select.assert_called_once()
+        self.assertEqual(result['reviewer_model'], 'replacement')
+        self.assertEqual(engine.request.call_count, 5)
         engine.checks.assert_not_called()
 
     def test_legacy_exhaustion_selects_before_dispatch_and_keeps_real_defect(self):

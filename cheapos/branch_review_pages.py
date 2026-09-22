@@ -8,7 +8,7 @@ import hashlib
 import json
 
 from . import branch_evidence as evidence, context_evidence, review_context
-from .branch_final import _review
+from .branch_final import _review, check_sources
 from .workspace import Workspace
 
 
@@ -58,6 +58,7 @@ def prepare(engine, runtime, current, packet):
         chunk = {'id': f'item:{index}', 'digest': hashlib.sha256(content.encode()).hexdigest(),
                  'start': offset, 'end': offset + len(content), 'content': content}
         part = {'manifest_id': manifest['id'], 'chunk_ids': [chunk['id']], 'criteria_ids': [],
+                'check_output_sources': check_sources(packet),
                 'chunk': chunk, 'acceptance_criteria': current['criteria'], 'full_evidence_reference': reference,
                 'instruction': 'Review this part of the complete item evidence, including edits, checks and scope. '
                 'Serialized JSON may begin or end mid-record; all other parts are reviewed separately. '

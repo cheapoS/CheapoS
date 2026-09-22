@@ -71,7 +71,31 @@ def display(state):
             row['content'] = value['content']  # The synthesizer must see the cited code.
         sources.append(row)
     return {'version': VERSION, 'scope': state['scope'], 'criteria': state['criteria'], 'sources': sources,
-            'instruction': 'Use an exact source id below (not a file path). Quote a short literal excerpt from that delivered source. Display line numbers and diff gutters may be omitted; code indentation and wording must stay exact. Reuse delivered evidence; read only missing context. Checks alone do not prove requested behavior.'}
+            'instruction': 'Use an exact source id below (not a file path). Use read_review_evidence(source, offset, search) to retrieve or search these sources when a citation is unclear. Quote a short literal excerpt from that delivered source. Display line numbers and diff gutters may be omitted; code indentation and wording must stay exact. Reuse delivered evidence; read only missing context. Checks alone do not prove requested behavior.'}
+
+
+def read(state, source=None, offset=0, search=None):
+    """Page only this candidate's delivered evidence, including after handoff."""
+    if source is None:
+        return display(state)
+    if not isinstance(source, str) or source not in state['sources']:
+        return {'error': 'Unknown current review source. Use one of the listed IDs.', **display(state)}
+    value = state['sources'][source]
+    content = value['content']
+    if type(offset) is not int or not 0 <= offset <= len(content):
+        raise ValueError('Offset must be a character position within this review source.')
+    if search is not None:
+        if not isinstance(search, str) or not 1 <= len(search) <= 500:
+            raise ValueError('Search must be 1–500 literal characters.')
+        found = content.find(search, offset)
+        if found < 0:
+            return {'evidence_id': source, 'found': False, 'next_offset': offset}
+        offset = max(offset, found - 500)
+    page = content[offset:offset + 8000]
+    return {'evidence_id': source, 'scope': state['scope'], 'kind': value['kind'],
+            'digest': value['digest'], 'offset': offset, 'next_offset': offset + len(page),
+            'has_more': offset + len(page) < len(content), 'content': page,
+            'instruction': 'Cite this evidence_id and a literal quote from its content. This read does not approve anything.'}
 
 
 def packet_for_model(packet):
@@ -110,6 +134,13 @@ def tools_with_contract(tools, state, name='review_decision'):
     # Keep saved receipt compatibility without asking for the same assessment twice.
     decision['properties'].pop('criteria_outcomes', None)
     decision['required'] = [key for key in decision.get('required', []) if key != 'criteria_outcomes']
+    tools.append({'type': 'function', 'function': {
+        'name': 'read_review_evidence',
+        'description': 'Read/search the current review evidence by source ID, including checks, diffs and prior candidate reads. Omit source to list IDs. Returns 8000 characters with next_offset; no files are changed and no checks are executed.',
+        'parameters': {'type': 'object', 'properties': {
+            'source': {'type': 'string'}, 'offset': {'type': 'integer', 'minimum': 0},
+            'search': {'type': 'string', 'minLength': 1, 'maxLength': 500}},
+            'required': [], 'additionalProperties': False}}})
     return tools
 
 

@@ -134,7 +134,7 @@ def context_read(engine, runtime, key, state, arguments, read):
         cache.append({'key':read_key,'excerpt':copy.deepcopy(excerpt)})
         del cache[:-8]  # Cache size is not an inspection/work limit.
     refs=state.setdefault('context_references',[])
-    ref={k:v for k,v in excerpt.items() if k not in ('content','guidance')}
+    ref={k:v for k,v in excerpt.items() if k not in ('content','output','guidance','instruction','sources')}
     if ref not in refs:refs.append(ref)
     engine.event(runtime.task,'review_context','Reused exact final candidate context' if repeated else 'Read exact final candidate context',ref)
     return excerpt
