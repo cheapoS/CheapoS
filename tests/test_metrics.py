@@ -164,3 +164,16 @@ class SessionActionsTests(unittest.TestCase):
         metrics.initialize_actions(task);metrics.tool_action(task)
         self.assertEqual(metrics.action_totals(task)['total'],6)
         self.assertEqual(metrics.action_totals(task)['coverage'],'partial')
+
+class RequestBreakdownTests(unittest.TestCase):
+    def test_probes_failed_calls_and_missing_history_keep_original_totals(self):
+        task = {'session_actions': {'coverage': 'complete', 'counts': {'planner': 4, 'tools': 2}},
+                'request_metrics': [
+                    {'id': 'probe', 'role': 'planner', 'purpose': 'probe', 'dispatched': True, 'status': 'failed'},
+                    {'id': 'probe', 'role': 'planner', 'purpose': 'probe', 'dispatched': True},
+                    {'id': 'plan', 'role': 'planner', 'purpose': 'branch_planning', 'dispatched': True},
+                    {'id': 'queued', 'role': 'planner', 'purpose': 'branch_planning', 'dispatched': False}]}
+        self.assertEqual(metrics.request_breakdown(task)['planner'], {'requests': 1, 'probes': 1, 'unclassified': 2})
+        self.assertEqual(metrics.action_totals(task)['total'], 6)
+        task['request_metrics'].append({'id': 'old', 'role': 'planner', 'dispatched': True})
+        self.assertEqual(metrics.request_breakdown(task)['planner'], {'requests': 1, 'probes': 1, 'unclassified': 2})

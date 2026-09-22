@@ -1759,3 +1759,7 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 @media (prefers-reduced-motion: reduce) {
   .calm-workspace *, .calm-workspace *:before, .calm-workspace *:after { scroll-behavior: auto; transition: none; }
 }
+
+.diagnostic-controls { margin: 16px 0; padding: 12px 0; border-block: 1px solid var(--border); }
+.diagnostic-controls .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.journey-call-breakdown { display: block; margin: 3px 0 6px; font-size: 11px; line-height: 1.4; font-weight: 400; }

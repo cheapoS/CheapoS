@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .titles import automatic_title
 from . import branch_runs
+from . import task_diagnostics
 
 
 def _snapshot(value, memo=None):
@@ -103,7 +104,7 @@ class Store:
                     after = (run.get("status"), (run.get("startup") or {}).get("status"), task["status"], task.get("error"))
                     changed = changed or before != after
                 if changed:
-                    write_json(path, task, compact=True)
+                    task = self._write_task(task)
                 self.tasks[task["id"]] = task
                 self.lifetime.ingest_task(task)
             except (OSError, ValueError, KeyError):
@@ -115,16 +116,35 @@ class Store:
             from .job_evidence import prepare
             prepare(task, self.tasks.get(task["id"]))
             saved = _snapshot(task)
-            write_json(self.root / "tasks" / saved["id"] / "task.json", saved, compact=True)
+            saved = self._write_task(saved)
             self.tasks[saved["id"]] = saved
             self._view_versions[saved["id"]] = uuid.uuid4().hex
             self.lifetime.ingest_task(saved)
+
+    def _write_task(self, task):
+        directory = self.root / 'tasks' / task['id']
+        saved = task_diagnostics.persist(directory, task, write_json)
+        write_json(directory / 'task.json', saved, compact=True)
+        task_diagnostics.cleanup(directory, saved.get('diagnostics_ref'))
+        return saved
 
     def get(self, task_id):
         with self.lock:
             if task_id not in self.tasks:
                 raise ValueError("Task not found")
-            return copy.deepcopy(self.tasks[task_id])
+            return task_diagnostics.restore(self.root / 'tasks' / task_id, copy.deepcopy(self.tasks[task_id]))
+
+    def diagnostics(self, task_id, *, offset=0, limit=8, export=False):
+        with self.lock:
+            if task_id not in self.tasks:
+                raise ValueError('Task not found')
+            task = self.tasks[task_id]
+            directory = self.root / 'tasks' / task_id
+            if export:
+                details, notice = task_diagnostics.read(directory, task)
+                return {'task_id': task_id, 'kind': 'local_diagnostics', **details, 'notice': notice,
+                        'scope': 'Local troubleshooting only; not execution history or accepted public statistics.'}
+            return task_diagnostics.page(directory, task, offset, limit)
 
     def publish(self, task):
         """Publish live output without fsyncing the entire task for each token."""
@@ -154,7 +174,7 @@ class Store:
             etag = '"' + digest + '"'
             if previous == etag:
                 return None, etag
-            task = copy.deepcopy(self.tasks[task_id])
+            task = copy.deepcopy(task_diagnostics.without_details(self.tasks[task_id]))
             return self._present(task, metadata, task), etag
 
     def list(self, summary=False, *, fields=None):

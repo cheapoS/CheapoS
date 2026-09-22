@@ -89,7 +89,10 @@ def public_task(task, summary=False, store=None):
     if task.get('follow_up'):
         task = {**task, 'follow_up': {k: v for k, v in task['follow_up'].items() if k not in {'context', 'retained_patch'}}}
     from .coordinator_dispatch import reassessment_availability
-    return {**{key: value for key, value in task.items() if key not in {"messages", "worker_sessions", "conversation_state", "context_evidence", "edit_history", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending", "request_metrics", "run_metrics"}}, "working_state":working_state(task), "coordinator_reassessment":reassessment_availability(task), "metrics":metrics.aggregate(task), "token_accounting":metrics.token_accounting(task), "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
+    reference = task.get('diagnostics_ref') or {}
+    diagnostics = {'revision': task.get('updated_at') if 'routing_traces' in task else reference.get('digest'),
+                   'available': bool(reference or task.get('routing_traces'))}
+    return {**{key: value for key, value in task.items() if key not in {"messages", "worker_sessions", "conversation_state", "context_evidence", "edit_history", "fixture_phase", "in_flight", "turn_start_patch", "commit_pending", "request_metrics", "run_metrics", "routing_traces", "routing_traces_truncated", "diagnostics_ref"}}, "diagnostics": diagnostics, "working_state":working_state(task), "coordinator_reassessment":reassessment_availability(task), "metrics":metrics.aggregate(task), "token_accounting":metrics.token_accounting(task), "commit_pending": bool(task.get("commit_pending")), "patch_digest": hashlib.sha256(task.get("patch", "").encode()).hexdigest()}
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -304,6 +307,16 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 return
             elif path.startswith("/api/tasks/"):
                 parts = path.strip("/").split("/")
+                if len(parts) == 4 and parts[3] == 'diagnostics':
+                    query = parse_qs(urlsplit(self.path).query)
+                    self.reply(engine.store.diagnostics(parts[2], offset=int(query.get('offset', ['0'])[0]),
+                                                        export=query.get('export') == ['1']))
+                    return
+                if len(parts) == 4 and parts[3] == 'export':
+                    from .task_export import summary as task_summary
+                    task, _ = engine.store.poll(parts[2])
+                    self.reply(task_summary(public_task(task)))
+                    return
                 if len(parts) == 3:
                     task, etag = engine.store.poll(parts[2], self.headers.get("If-None-Match"))
                     if task is None:

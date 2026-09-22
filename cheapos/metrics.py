@@ -106,7 +106,7 @@ def aggregate(task):
     for key in ('elapsed_seconds','provider_request_seconds','provider_cooldown_seconds','operator_wait_seconds','controller_work_seconds'):
         timing[key]=sum(r[key] for r in runs) if complete and finished and runs and all(number(r.get(key)) is not None for r in runs) else None
     return {'schema_version':1,'coverage':'complete_instrumented' if complete else 'partial_historical',
-            'actions':action_totals(task),'outcome':outcome,'human_accepted_commits':len(task.get('commits',[])),
+            'actions':action_totals(task),'request_breakdown':request_breakdown(task),'outcome':outcome,'human_accepted_commits':len(task.get('commits',[])),
             'commit_conflict_observed':bool(task.get('commit_conflict_observed')) if complete else None,
             'checks':{'runs':len(checks),'passed':sum(bool(c.get('passed')) for c in checks),'outcomes':[c.get('outcome','unknown') for c in checks]},
             'reviews':{'requests':sum(r.get('role')=='reviewer' and r.get('dispatched',False) for r in records) if complete else None,
@@ -137,6 +137,24 @@ def export(tasks):
 
 
 ACTION_ROLES = ('worker', 'reviewer', 'planner', 'coordinator')
+
+
+def request_breakdown(task):
+    """Classify retained dispatched calls; never infer missing historical types."""
+    counts = action_totals(task)['counts']
+    result = {role: {'requests': 0, 'probes': 0, 'unclassified': 0} for role in ACTION_ROLES}
+    seen = set()
+    for index, record in enumerate(task.get('request_metrics', [])):
+        identity = record.get('id') or ('retained-row', index)
+        if not record.get('dispatched') or identity in seen or record.get('role') not in result:
+            continue
+        seen.add(identity)
+        bucket = result[record['role']]
+        purpose = record.get('purpose')
+        bucket['probes' if purpose == 'probe' else 'requests' if purpose else 'unclassified'] += 1
+    for role, bucket in result.items():
+        bucket['unclassified'] += max(0, counts.get(role, 0) - sum(bucket.values()))
+    return result
 
 
 def action_totals(task):
