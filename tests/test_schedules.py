@@ -49,7 +49,84 @@ class ScheduleTests(unittest.TestCase):
         values = {'task_id': 'original', 'name': 'Watch sources', 'interval_hours': 6,
                   'approval_digest': self.schedules.preview('original')['approval_digest'],
                   'approved': True, 'allow_task_commands': True, **changes}
-        return self.schedules.create(values)['schedules'][0]['id']
+        result = self.schedules.create(values)['schedules'][0]['id']
+        self.task = self.tasks['original']
+        return result
+
+    def unstarted(self):
+        self.task['branch_run'].update(status='awaiting_authorization', authorization_ref=None)
+        self.task['planning_request'] = {'schedule_request': {'interval_hours': 12}}
+        preview = self.schedules.proposal(self.task)['schedule_preview']
+        return {'proposal_id': 'first', 'approved': True, 'allow_task_commands': True,
+                'schedule': {**preview, 'approved': True}}
+
+    def test_frequency_is_only_intent_and_current_proposal_binds_recurrence(self):
+        values = self.unstarted()
+        self.assertFalse(self.schedules.records)
+        with self.assertRaises(ValueError): self.schedules.preview('original')
+        for change in ({'approved': False}, {'interval_hours': True}, {'approval_digest': 'stale'}, {'unknown': 1}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.schedules.validate_start(self.task, {**values, 'schedule': {**values['schedule'], **change}})
+        with self.assertRaises(ValueError): self.schedules.validate_start(self.task, {**values, 'allow_task_commands': False})
+        pending = self.schedules.validate_start(self.task, values)
+        self.assertEqual(pending['interval_hours'], 12)
+        self.assertFalse(self.schedules.records)
+        self.task['branch_run']['plan']['items'][0]['instructions'] = 'Changed scope'
+        with self.assertRaisesRegex(ValueError, 'changed'): self.schedules.validate_start(self.task, values)
+
+    def test_recurring_full_suite_permission_is_separate(self):
+        self.task['branch_run']['plan']['final_checks'] = ['python3 -m unittest discover']
+        values = self.unstarted()
+        with self.assertRaisesRegex(ValueError, 'full-suite'):
+            self.schedules.validate_start(self.task, {**values, 'full_suite_approved': True})
+        values['schedule']['full_suite_approved'] = True
+        self.assertTrue(self.schedules.validate_start(self.task, values)['full_suite_approved'])
+
+    def test_saved_combined_approval_recovers_failed_schedule_write_before_dispatch(self):
+        values = self.unstarted()
+        self.task['schedule_start'] = self.schedules.validate_start(self.task, values)
+        self.task['branch_run']['authorization_ref'] = 'approved'
+        self.engine.store.save(self.task)
+        with patch.object(self.schedules, 'save', side_effect=OSError('disk busy')):
+            with self.assertRaises(OSError): self.schedules.complete_start(self.task)
+        self.assertFalse(self.schedules.records)
+        self.assertIn('schedule_start', self.tasks['original'])
+        restored = Schedules(self.engine, lambda: self.now)
+        task = self.engine.store.get('original')
+        restored.complete_start(task)
+        self.assertEqual(len(restored.records), 1)
+        self.assertEqual(task['schedule']['interval_hours'], 12)
+        self.assertNotIn('schedule_start', self.tasks['original'])
+        restored.complete_start(task)
+        self.assertEqual(len(restored.records), 1)
+        self.assertEqual(restored.validate_start(task, values)['proposal_id'], 'first')
+        with self.assertRaisesRegex(ValueError, 'different'):
+            restored.validate_start(task, {**values, 'schedule': {**values['schedule'], 'interval_hours': 24}})
+
+    def test_lost_task_receipt_after_schedule_save_replays_without_duplicate(self):
+        values = self.unstarted()
+        self.task['schedule_start'] = self.schedules.validate_start(self.task, values)
+        self.task['branch_run']['authorization_ref'] = 'approved'
+        self.engine.store.save(self.task)
+        with patch.object(self.engine.store, 'save', side_effect=OSError('task write failed')):
+            with self.assertRaises(OSError): self.schedules.complete_start(self.task)
+        self.assertEqual(len(self.schedules.records), 1)
+        restored = Schedules(self.engine, lambda: self.now)
+        restored.complete_start(self.engine.store.get('original'))
+        self.assertEqual(len(restored.records), 1)
+        self.assertNotIn('schedule_start', self.tasks['original'])
+        self.now += 86400
+        restored.tick()
+        self.engine.branch.prepare.assert_not_called()
+
+    def test_saved_status_tracks_disable_and_removal_without_losing_chat(self):
+        key = self.create()
+        self.assertEqual(self.tasks['original']['schedule']['interval_hours'], 6)
+        self.schedules.update(key, {'enabled': False})
+        self.assertFalse(self.tasks['original']['schedule']['enabled'])
+        self.schedules.remove(key)
+        self.assertNotIn('schedule', self.tasks['original'])
+        self.assertEqual(self.tasks['original']['branch_run']['status'], 'merged')
 
     def test_due_run_retains_settings_and_gets_fresh_authority_without_overlap(self):
         key = self.create()

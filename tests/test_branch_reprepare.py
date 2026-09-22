@@ -11,16 +11,20 @@ class BranchReprepareTests(unittest.TestCase):
     def test_same_task_preserves_planning_accounting_and_invalidates_old_token(self):
         proposal=self.engine.branch.prepare(self.values);task_id=proposal['task_id']
         task=self.engine.store.get(task_id)
+        task['planning_request']={'schedule_request':{'interval_hours':12}}
         task['usage']['worker']['tokens']=123
         task['request_metrics']=[{'id':'planned-request'}]
         task['branch_run']['consumption'].update(requests=2,working_seconds=11)
         task['branch_run']['budget_ledger']={'version':1,'request_ids':['planned-request'],'observed':{'worker_turns':1}}
         self.engine.store.save(task)
+        schedule_digest=self.engine.schedules.proposal(task)['schedule_preview']['approval_digest']
         values=copy.deepcopy(self.values);values['plan']['items'][0]['instructions']='Implement the clarified original work'
         values['feature_ref']='refs/heads/feature/edited'
         edited=self.engine.branch.reprepare(task_id,values)
         saved=self.engine.store.get(task_id)
         self.assertEqual(edited['task_id'],task_id)
+        self.assertEqual(edited['schedule_preview']['interval_hours'],12)
+        self.assertNotEqual(edited['schedule_preview']['approval_digest'],schedule_digest)
         self.assertEqual(len(self.engine.store.list()),1)
         self.assertEqual(saved['usage'],task['usage'])
         self.assertEqual(saved['request_metrics'],task['request_metrics'])

@@ -17,16 +17,16 @@ const settings=require('../dist/settings.js');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function setupDialog(){
  const button={disabled:false},existingButton={disabled:false},error={textContent:''};
- const form={elements:{prompt:{value:' Check release notes '}},querySelector:()=>button};
+ const form={elements:{prompt:{value:' Check release notes '},interval:{value:'12'}},querySelector:()=>button};
  const existing={elements:{task_id:{value:'saved'}},querySelector:()=>existingButton};
  const d={open:true,close(){this.open=false;},querySelector:s=>({'[data-new-schedule]':form,'[data-existing-schedule]':existing,'[role=alert]':error}[s])};
  return {d,form,existing,button,error};
 }
 test('new schedule setup explains the approval steps and submits only one draft',async()=>{
  const c=setupDialog();let html,finish,calls=0;
- schedules.setup({project:{path:'/repo',name:'<Project>'},tasks:[],dialog:s=>(html=s,c.d),header:()=>'',onNew:async values=>{calls++;assert.equal(values.repository,'/repo');assert.equal(values.prompt,'Check release notes');await new Promise(r=>finish=r);values.close();}});
- assert.match(html,/&lt;Project&gt;/);assert.match(html,/Plan → Schedule this task/);
- assert.match(html,/Nothing runs until you send/);assert.match(html,/\$0 API spending allowance/);
+ schedules.setup({project:{path:'/repo',name:'<Project>'},tasks:[],dialog:s=>(html=s,c.d),header:()=>'',onNew:async values=>{calls++;assert.equal(values.repository,'/repo');assert.equal(values.prompt,'Check release notes');assert.deepEqual(values.schedule_request,{interval_hours:12});await new Promise(r=>finish=r);values.close();}});
+ assert.match(html,/&lt;Project&gt;/);assert.match(html,/Approve &amp; start schedule/);assert.match(html,/<select name="interval">/);
+ assert.match(html,/recurring runs wait for your approval/);assert.match(html,/\$0 API spending allowance/);
  const first=c.form.onsubmit({preventDefault(){}});await c.form.onsubmit({preventDefault(){}});
  assert.equal(calls,1);assert.equal(c.button.disabled,true);finish();await first;assert.equal(c.d.open,false);
 });
@@ -52,9 +52,9 @@ function entryContext(){
 test('sidebar/home setup uses captured project and a zero-spend draft without dispatch',async()=>{
  const c=entryContext();c.context.start();const setup=c.getSetup();
  assert.equal(setup.project.path,'/repo');let closed=0;
- await setup.onNew({repository:'/repo',prompt:'Repeat this',isOpen:()=>true,close:()=>closed++});
+ await setup.onNew({repository:'/repo',prompt:'Repeat this',schedule_request:{interval_hours:12},isOpen:()=>true,close:()=>closed++});
  assert.equal(closed,1);assert.equal(c.calls.length,1);assert.equal(c.calls[0][0],'draft');
- assert.equal(c.calls[0][2].mode,'unattended');assert.equal(c.calls[0][2].repository,'/repo');
+ assert.equal(c.calls[0][2].mode,'unattended');assert.equal(c.calls[0][2].repository,'/repo');assert.equal(c.calls[0][2].schedule_request.interval_hours,12);
  assert.equal(c.drafts.get('/repo').values.limits.dollars,0);
  assert.equal(c.drafts.get('/repo').values.roles.worker.model,'chosen');
  assert.equal(c.drafts.get('/repo').overrides['limits.work_requests'],50);
@@ -74,4 +74,53 @@ test('reusing a saved task fetches it before the existing schedule approval form
  open=true;c.context.api=async()=>({id:'saved'});
  await c.getSetup().onExisting({id:'saved'},()=>open,()=>{});
  assert.deepEqual(c.calls,[['schedule',{id:'saved'}]]);
+});
+
+test('schedule selection is distinct from recurrence and full-suite consent',()=>{
+ const preview={interval_hours:6,approval_digest:'snapshot'};
+ const form={elements:{schedule_interval:{value:'6'},schedule_approved:{checked:false},allow_task_commands:{checked:true},schedule_full:{checked:false}}};
+ assert.throws(()=>schedules.approval(form,preview),/Approve recurring/);
+ form.elements.schedule_approved.checked=true;
+ assert.throws(()=>schedules.approval(form,preview,['all tests']),/full-suite/);
+ form.elements.schedule_full.checked=true;
+ assert.deepEqual(schedules.approval(form,preview,['all tests']),{interval_hours:6,approval_digest:'snapshot',approved:true,full_suite_approved:true});
+ form.elements.allow_task_commands.checked=false;
+ assert.throws(()=>schedules.approval(form,preview),/Allow task commands/);
+ form.elements.schedule_interval.value='0';
+ assert.equal(schedules.approval(form,{...preview,error:'Paid plan'},['all tests']),null);
+ assert.match(schedules.approvalMarkup(preview),/unmerged PR holds/);
+ assert.match(schedules.approvalMarkup({...preview,error:'<bad>'}),/&lt;bad&gt;/);
+});
+test('chat distinguishes pending frequency from saved recurrence and one-time execution',()=>{
+ const task={planning_request:{schedule_request:{interval_hours:12}},branch_run:{}};
+ assert.deepEqual(schedules.status(task),{interval_hours:12,label:'Awaiting approval'});
+ task.branch_run.authorization_ref='approved';assert.equal(schedules.status(task),null);
+ task.schedule_start={interval_hours:12};assert.equal(schedules.status(task).label,'Saving approved schedule');
+ task.schedule={id:'recurring',interval_hours:12,enabled:false};assert.equal(schedules.status(task).label,'Schedule disabled');
+});
+test('combined Start binds schedule consent, deduplicates and reconciles a lost acknowledgement',async()=>{
+ const ui=require('../dist/branch_ui.js');let received,writes=0;
+ const task={id:'one',schedule:{id:'saved',interval_hours:6},branch_run:{status:'running',authorization_ref:'yes'}};
+ const controller=ui.startController({api:async(url,body)=>{if(body){writes++;received=body;throw Error('response lost');}return task;}});
+ const choice={interval_hours:6,approval_digest:'snapshot',approved:true};
+ await controller.start({task_id:'one',proposal_id:'plan',schedule:choice,allow_task_commands:true});
+ assert.deepEqual(received.schedule,choice);assert.equal(controller.get('one').status,'accepted');
+ await controller.start({task_id:'one',proposal_id:'plan',schedule:choice});assert.equal(writes,1);
+});
+
+test('prefilled scheduled prompt is present when the durable draft is saved',()=>{
+ const source=fs.readFileSync(require.resolve('../dist/app.js'),'utf8').match(/function newTask\(prefill='',preset=\{\}\) \{[\s\S]*?\n\}(?=\nfunction scheduleTask)/)[0];
+ const input={value:'',focus(){}},saved=[];
+ const c={home(){},state:{},basename:s=>s,renderHome(){},restoreDraft(){},saveDraft(){},localStorage:{setItem(){}},$:()=>input,branchUI:{newChat:(mode,schedule)=>saved.push({prompt:input.value,mode,schedule})}};
+ vm.createContext(c);vm.runInContext(source+';newTask("Saved description",{repository:"/repo",mode:"unattended",schedule_request:{interval_hours:24}})',c);
+ assert.equal(saved[0].prompt,'Saved description');assert.equal(saved[0].schedule.interval_hours,24);
+});
+
+test('polling retains schedule controls and displays older schedule receipts without invented intervals',()=>{
+ const source=fs.readFileSync(require.resolve('../dist/branch_ui.js'),'utf8').match(/ function syncSchedule\(\)\{[\s\S]*?\n \}(?=\n\n const documentRow)/)[0];
+ let writes=0,html='',opened=0;const manage={};
+ const row={get innerHTML(){return html.replace('data-manage-schedule','data-manage-schedule=""');},set innerHTML(value){writes++;html=value;},querySelector:s=>s==='[data-manage-schedule]'?manage:null};
+ const c={scheduleRow:row,schedules,getState:()=>({task:{schedule:{id:'legacy',name:'Saved schedule'}}}),escape:s=>s,options:{manageSchedules:()=>opened++}};
+ vm.createContext(c);vm.runInContext("let scheduleMarkup='';"+source+';syncSchedule();syncSchedule();',c);
+ assert.equal(writes,1);assert.doesNotMatch(html,/undefined/);manage.onclick();assert.equal(opened,1);
 });

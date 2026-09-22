@@ -142,10 +142,12 @@ CheapoS uses distinct roles to distribute responsibility and verify work.
 
 Work mode is separate from your model choices, command permissions, and work/spending limits. **Unattended does not mean uncapped.** Keep cheapoS and your computer running for work to continue. Both modes keep edits in a separate task copy and leave the final commit or merge decision to you; neither automatically pushes to a remote repository.
 
-For recurring maintenance, an approved Unattended chat can become a
-[scheduled task](docs/scheduled-tasks.md). Choose **Schedule this task…** in its
-menu or Plan page, then manage recurrence in **Settings → Scheduled tasks**.
-To start from scratch, choose **New scheduled task** beneath **New chat**. The first version
+For recurring maintenance, choose **New scheduled task** beneath **New chat**.
+Describe the work and choose its frequency upfront, then approve the generated
+plan and recurrence together. The chat shows its schedule and links to
+**Settings → Scheduled tasks**. Existing approved chats also offer **Schedule
+this task…** in their menu or Plan page. [Scheduled task details →](docs/scheduled-tasks.md)
+The first version
 requires $0 API spending, retains checks and independent review, and runs only
 while cheapoS is open.
 
