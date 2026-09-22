@@ -42,6 +42,8 @@ class BranchReviewTests(LocalCase):
         self.engine.branch.scopes.consent(task,scope);run['check_scope']=[scope]
         def review(runtime,messages,tools,role):
             packet=json.loads(messages[1]['content'])
+            self.assertIn('Use read-only tools to gather missing evidence', messages[0]['content'])
+            self.assertNotIn('Call review_decision directly', messages[0]['content'])
             self.assertEqual(packet['original_request']['request'], task['prompt'])
             self.assertEqual(packet['checks'][0]['directory'], 'component')
             self.assertEqual(packet['checks'][0]['record']['directory'], 'component')
@@ -55,6 +57,9 @@ class BranchReviewTests(LocalCase):
                 return call('inspect_image', {'path':'missing.png'})
             if self.engine.request.call_count == 2:
                 self.assertIn('Image file not found', messages[-1]['content'])
+                return call('read_review_evidence', {'source': 'checks', 'search': 'run_id'})
+            if self.engine.request.call_count == 3:
+                self.assertEqual(json.loads(messages[-1]['content'])['evidence_id'], 'checks')
             return call('review_decision',{'decision':'APPROVE','feedback':'Inspected both bounds','candidate_id':packet['candidate_id'], 'pull_request':draft, 'criteria_outcomes':{'Both bounds work':{'passed':True,'evidence':'Tests and code cover lower and upper bounds'}}, 'review_assessment': assessment(['Both bounds work'])})
         self.engine.request=Mock(side_effect=review)
         result=checkpoint(self.engine,runtime,{'pull_request':draft})
@@ -68,7 +73,7 @@ class BranchReviewTests(LocalCase):
         result=self.engine.worker_checks(runtime,{'command':shlex.join(task['check_command'])})
         self.assertEqual(result['decision'],'APPROVE')
         self.assertEqual(len(task['checks']),1)
-        self.assertEqual(self.engine.request.call_count,3)
+        self.assertEqual(self.engine.request.call_count,4)
         self.assertTrue(any(e['title']=='Taking verified changes to independent review' for e in task['events']))
 
     def test_checkpoint_filters_spurious_plan_preview_when_real_checks_exist(self):

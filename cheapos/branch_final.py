@@ -145,6 +145,34 @@ def build_manifest(run, *, version=2):
     return result
 
 
+def check_sources(packet):
+    """Retained-log access follows controller-bound checks, never a model's ID."""
+    sources = copy.deepcopy(packet.get('check_output_sources', []))
+    for bound in packet.get('checks') or packet.get('review_context', {}).get('final_checks', []):
+        record = bound.get('record', bound)
+        if not bound.get('candidate_id') or not record.get('run_id'):
+            continue
+        sources.append({'candidate_id': bound['candidate_id'], 'run_id': record['run_id'],
+                        'record_digest': evidence._digest(record) if 'record' in bound else bound.get('record_digest')})
+    return sources
+
+
+def read_check_output(engine, task, sources, args):
+    from . import check_output
+    if set(args) - {'run_id', 'offset'} or not isinstance(args.get('run_id'), str):
+        raise ValueError('Use run_id and optional offset from this packet\'s check evidence.')
+    grant = next((s for s in sources if s['run_id'] == args['run_id']), None)
+    record = next((r for r in reversed(task.get('checks', [])) if r.get('run_id') == args['run_id']), None)
+    if not grant or not record or evidence._digest(record) != grant['record_digest']:
+        raise ValueError('This run is not a bound check of the current review packet. Use its check_output_sources or read_review_evidence(source="checks").')
+    try:
+        result = check_output.read(engine.store, task['id'], **args)
+    except ValueError as error:
+        return {'run_id': args['run_id'], 'available': False, 'error': str(error),
+                'guidance': 'The saved check preview remains in the review evidence. Assess what it establishes and disclose any missing verification; unavailable raw output is not new proof or a reason to repeat this read.'}
+    return {**result, 'candidate_id': grant['candidate_id']}
+
+
 def review_paged(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
     encoded = _json(packet)
     if len(encoded) <= 60000:
@@ -154,6 +182,7 @@ def review_paged(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
     packet_digest = _hash(packet)
     for index, content in enumerate(pages):
         page = {'packet_digest': packet_digest, 'page_index': index, 'page_total': len(pages),
+                'check_output_sources': check_sources(packet),
                 'content': content, 'instruction': 'Review this ordered evidence page. It may begin or end mid-record. This is partial evidence, not task completion. Report concrete defects; synthesis follows only after every page is independently approved.'}
         result = _review(engine, runtime, manifest, page, [], [])
         if result['decision'] != 'APPROVE': return result
@@ -161,6 +190,7 @@ def review_paged(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
     from .context_evidence import retain
     reference = retain(runtime.task, packet, 'final_review_packet')
     summary = {'packet_digest':packet_digest, 'complete_packet_reference':reference,
+               'check_output_sources': check_sources(packet),
                'page_coverage':[{k:v for k,v in row.items() if k != 'review'} for row in coverage], 'coverage':coverage,
                'chunk_ids':chunk_ids,'criteria_ids':criterion_ids,
                'instruction':'Every ordered evidence page above has an independent approval saved against this candidate. Synthesize their complete coverage; never treat missing or rejected pages as approval.'}
@@ -170,6 +200,8 @@ def review_paged(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
 def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None, progress=None):
     from .engine import tool, ToolArgumentsError
     from . import pr_description, review_assessment
+    packet = copy.deepcopy(packet)
+    packet['check_output_sources'] = check_sources(packet)
     proof = None
     if review_assessment.enabled(runtime.task):
         scope = _hash({'manifest_id': manifest['id'], 'chunk_ids': chunk_ids, 'criteria_ids': criterion_ids, 'page': packet.get('page_index')})
@@ -201,6 +233,9 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         tools.extend(t for t in READ_TOOLS if t['function']['name']=='read_merge_context')
     from .engine import READ_TOOLS
     tools.extend(t for t in READ_TOOLS if t['function']['name'] == 'read_context_evidence')
+    tools.append(tool('read_check_output',
+        'Read retained output for a check in this packet\'s check_output_sources. Use the saved output preview first; read missing details with run_id and offset (8000 bytes per page). Read-only; does not rerun checks or approve the work.',
+        {'run_id': {'type': 'string'}, 'offset': {'type': 'integer', 'minimum': 0}}, ['run_id']))
     if proof is not None:
         tools.extend(t for t in READ_TOOLS if t['function']['name'] == 'inspect_image')
         tools = review_assessment.tools_with_contract(tools, proof, 'final_review_decision')
@@ -267,7 +302,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         calls = message.get('tool_calls', [])
         try:
             if len(calls) != 1:
-                raise ValueError('Return exactly one final_review_decision tool call.')
+                raise ValueError('Return exactly one offered tool call: read missing evidence or submit final_review_decision.')
             name, result = engine.parse_call(calls[0])
             # Some tool-capable models emit the conventional functions.
             # namespace. Accept only an exact alias of a tool offered here;
@@ -286,6 +321,26 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                     raise ValueError('Report a context blocker only after a recorded unavailable read of this exact candidate/path.')
                 from .branch_pause import PauseError
                 raise PauseError('review_context_unavailable',stage='finalizing')
+            if name == 'read_review_evidence' and proof is not None:
+                try:
+                    # The catalog grows as evidence is read; never cache a stale listing.
+                    excerpt = review_assessment.read(proof, **result)
+                except TypeError as error:
+                    raise ValueError(str(error)) from None
+                excerpt = recovery.context_read(engine, runtime, key, state,
+                    {'tool': name, 'arguments': result, 'content_digest': _hash(excerpt)}, lambda: excerpt)
+                messages.append(message); messages.append({'role': 'tool', 'tool_call_id': calls[0]['id'], 'content': _json(excerpt)})
+                recovery.persist(engine, runtime.task, state, messages)
+                continue
+            if name == 'read_check_output':
+                excerpt = read_check_output(engine, runtime.task, packet['check_output_sources'], result)
+                excerpt = recovery.context_read(engine, runtime, key, state,
+                    {'tool': name, 'arguments': result, 'content_digest': _hash(excerpt)}, lambda: excerpt)
+                if proof is not None:
+                    excerpt = review_assessment.observation(proof, name, result, excerpt)
+                messages.append(message); messages.append({'role': 'tool', 'tool_call_id': calls[0]['id'], 'content': _json(excerpt)})
+                recovery.persist(engine, runtime.task, state, messages)
+                continue
             if name == 'read_final_context':
                 excerpt=recovery.context_read(engine,runtime,key,state,result,
                     lambda:context_reader(result) if context_reader else review_context.read(runtime.task['branch_run'],manifest,result))
@@ -413,6 +468,8 @@ def final_check_review(engine, runtime):
                           'passed': bound['record']['passed'], 'exit_code': bound['record']['exit_code'],
                           'verification_identity': bound['record']['verification_identity'],
                           'input_identity': bound['record']['input_identity'],
+                          **{key: copy.deepcopy(bound['record'][key]) for key in
+                             ('run_id', 'output', 'truncated', 'raw_output') if key in bound['record']},
                           'record_digest': evidence._digest(bound['record'])} for bound in checks],
     }
     reviews = []

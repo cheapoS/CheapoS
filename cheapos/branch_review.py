@@ -267,7 +267,7 @@ def _checkpoint(engine, runtime, args):
     decision['properties']['defects'] = disagreement.schema(defect_criteria)
     decision['required'] += ['candidate_id','criteria_outcomes']
     diff_notice = ' If packet diff is empty, the change may already be present in the repository from earlier commits; if files and passing checks satisfy the criteria, call review_decision with APPROVE.' if not current.get('patch') else ''
-    direct_call = ' Do not output conversational text or preamble. Call review_decision directly as your tool call.'
+    direct_call = ' Use read-only tools to gather missing evidence, then call review_decision. Return tool calls rather than a conversational preamble.'
     messages = [{'role':'system','content':REVIEW_SYSTEM+' This is an Unattended item. Return the exact candidate_id and evidence for every acceptance criterion. APPROVE requires the whole item, not only a partial checkpoint.' + diff_notice + direct_call + disagreement.REVIEW_INSTRUCTION}, {'role':'user','content':json.dumps(packet)}]
     if task.get('pending_review',{}).get('branch_candidate_id')!=current['id']:
         recovered = {}
@@ -482,6 +482,9 @@ def _checkpoint(engine, runtime, args):
                         engine.store.save(task)
                         return result
                 else: result = {'error':'Return a valid independent review decision.'}
+            elif name == 'read_review_evidence' and proof is not None:
+                try: result = review_assessment.read(proof, **params)
+                except (ValueError, TypeError) as error: result = {'error': str(error)}
             elif name in {'read_file','outline_file','get_project_context','search','list_files','get_diff','read_check_output','read_merge_context','read_context_evidence','read_edit_history','inspect_image'}:
                 try: result = engine.file_tool(task,name,params,runtime=runtime)
                 except (ValueError,OSError,TypeError,UnicodeError) as error: result = {'error':str(error)[:1000]}

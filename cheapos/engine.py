@@ -3416,6 +3416,11 @@ class Engine:
                             task.pop('finish_review', None)
                         self.event(task, "review", f"Reviewer: {decision.replace('_', ' ').lower()}", {"checkpoint": checkpoint["number"], "decision": decision, "feedback": review_assessment.visible_feedback(checkpoint)})
                         return {"decision": decision, "feedback": checkpoint["feedback"]}
+                elif name == 'read_review_evidence' and proof is not None:
+                    try:
+                        result = review_assessment.read(proof, **params)
+                    except (ValueError, TypeError) as error:
+                        result = {'error': str(error)}
                 elif name in {"read_file", "outline_file", "get_project_context", "search", "list_files", "get_diff", "read_url", "read_check_output", "read_merge_context", "read_context_evidence", "read_edit_history", "inspect_image"}:
                     try:
                         result = self.read_url(runtime, params) if name == "read_url" else self.file_tool(task, name, params, runtime=runtime)
