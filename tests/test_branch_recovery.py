@@ -140,6 +140,9 @@ class BranchRecoveryTests(unittest.TestCase):
             waiting.stop.set(); waiting.thread.join(5)
 
     def test_restart_from_actual_blocked_review_keeps_uncertain_request_and_no_dispatch(self):
+        # Exercise interruption/restart, independently of review prompt size.
+        # Measurement retains request accounting without a cumulative token cap.
+        self.values['plan']['measurement'] = True
         task = self.started()
         entered = threading.Event()
         scripted = execution.ScriptedRun()
@@ -155,7 +158,13 @@ class BranchRecoveryTests(unittest.TestCase):
         self.launch(task['id'])
         runtime = self.engine.runtimes[task['id']]
         try:
-            self.assertTrue(entered.wait(30))
+            deadline = time.monotonic() + 30
+            while runtime.thread.is_alive() and time.monotonic() < deadline:
+                if entered.wait(.05):
+                    break
+            current = self.engine.store.get(task['id'])
+            self.assertTrue(entered.is_set(),
+                            f"Review request was not entered: {current['status']}; {current.get('error')}")
             # Snapshot the durable state at the actual interrupted request boundary.
             crash_state = self.root / 'crash-state'
             target = crash_state / 'tasks' / task['id'] / 'task.json'
