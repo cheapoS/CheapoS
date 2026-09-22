@@ -300,7 +300,9 @@ class BranchController:
             runtime=self.engine.runtimes.get(task_id)
             if task.get('planning_request') and not run.get('authorization_ref') and runtime and runtime.thread and runtime.thread.is_alive():
                 raise ValueError('Planning is still in progress. Continue in chat until the proposal is ready.')
-            schedule_start = self.engine.schedules.validate_start(task, values)
+            schedule_start = None
+            if values.get('schedule') is not None:
+                schedule_start = self.engine.schedules.validate_start(task, values)
             if run.get('authorization'):
                 self.validate_authority(task,run)
                 # A repeated same-proposal action returns the existing run, never starts another worker.
@@ -325,7 +327,8 @@ class BranchController:
             if schedule_start:
                 task['schedule_start'] = schedule_start
             self.engine.store.save(task)
-            self.engine.schedules.complete_start(task)
+            if task.get('schedule_start'):
+                self.engine.schedules.complete_start(task)
             if background:
                 from .branch_startup import start
                 return start(self,task)
