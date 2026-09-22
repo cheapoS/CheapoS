@@ -175,6 +175,22 @@ class Workspace:
         if not target.is_dir():
             raise ValueError("Directory not found. Use '.' to list the project; write_file creates parent directories for new files.")
         prefix = "" if target == self.root else target.relative_to(self.root).as_posix() + "/"
+        if prefix:
+            # A specifically requested directory may contain ignored build
+            # output. It is readable by path already; make those paths discoverable
+            # without crawling generated/dependency trees for the root inventory.
+            names = []
+            for directory, directories, files in os.walk(target, followlinks=False):
+                base = Path(directory)
+                directories[:] = sorted(name for name in directories
+                    if allowed_name((base / name).relative_to(self.root).as_posix()) and not (base / name).is_symlink())
+                for name in sorted(files):
+                    relative = (base / name).relative_to(self.root).as_posix()
+                    if allowed_name(relative) and not (base / name).is_symlink():
+                        names.append(relative)
+                        if len(names) >= MAX_FILES:
+                            return sorted(names)
+            return sorted(names)
         names = git(self.root, "ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0")
         return sorted(n for n in set(names) if n and n.startswith(prefix) and allowed_name(n) and not (self.root / n).is_symlink())[:MAX_FILES]
 

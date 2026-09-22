@@ -38,12 +38,18 @@ def _chat_capability(item, model_id):
                 'feature-extraction', 'rerank', 'reranker', 'reranking',
                 'text-to-image', 'image-to-image', 'text-to-video', 'image-to-video',
                 'text-to-speech', 'speech', 'automatic-speech-recognition',
-                'object-detection', 'image-classification'}
+                'object-detection', 'image-classification', 'text-classification',
+                'zero-shot-classification', 'moderation', 'content-safety', 'safety-classification'}
     task = next((value for value in task_types if value in non_chat), None)
     if task:
         return {'chat_completion': False, 'chat_support_source': 'catalog_task', 'model_task': task}
     if outputs and 'text' not in outputs:
         return {'chat_completion': False, 'chat_support_source': 'catalog_output', 'output_modalities': outputs}
+    # These identify specialist classification tasks even when a gateway calls
+    # every text endpoint "chat" and advertises tools by default. Do not exclude
+    # general assistants merely containing "safe", "guard", or "safety".
+    if re.search(r'(?:^|[/_-])(?:safety[-_]guard|safeguard|nemoguard|llama[-_]guard|prompt[-_]guard|content[-_]safety|topic[-_]control)(?:$|[/_:.-])', model_id.lower()):
+        return {'chat_completion': False, 'chat_support_source': 'identifier_task', 'model_task': 'safety-classification'}
     if any(value in {'chat', 'chat-completion', 'chat-completions', 'text-generation'} for value in task_types):
         return {'chat_completion': True, 'chat_support_source': 'catalog_task'}
     if re.search(r'(?:^|[/_-])(?:embed(?:ding|dings|qa)?|rerank(?:er|ing)?)(?:$|[/_:.-])', model_id.lower()):

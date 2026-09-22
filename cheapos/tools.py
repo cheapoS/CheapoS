@@ -111,7 +111,7 @@ READ_TOOLS = [
     ),
     tool(
         "list_files",
-        "Recursively list eligible files in the isolated task workspace, optionally within a directory (ignores .git, virtual environments, node_modules, and cache). Returned paths are relative to the workspace root. Use this instead of running shell commands (find, ls) or custom scripts to explore repository structure.",
+        "Recursively list eligible files in the isolated task workspace. The root inventory follows Git ignore rules; an explicit directory also lists its ignored build output. Secrets, .git, virtual environments, node_modules, caches and symlinks remain excluded. Returned paths are relative to the workspace root. Use this instead of running shell commands (find, ls) or custom scripts to explore repository structure.",
         {"path": {"type": "string", "description": "Workspace-relative directory. Omit or use '.' to list the whole project."}},
     ),
     tool(

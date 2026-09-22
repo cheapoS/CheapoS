@@ -135,6 +135,70 @@ class ItemReviewRecoveryTests(unittest.TestCase):
         engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
         branch_review.evidence.ready_receipt.assert_called_once()
 
+    def test_handoff_reuses_delivered_unicode_evidence_and_finishes_without_worker_replay(self):
+        from tests.test_review_assessment import assessment
+        task, engine, runtime = self.automatic_fixture()
+        task['review_contract_version'] = 1
+        engine.parse_call = Engine.parse_call
+        before = copy.deepcopy(task)
+        engine.file_tool.return_value = {'path': 'build/article.html', 'content': '1: <meta content="Aircraft’s fuselage">'}
+        references = []
+        def respond(rt, messages, tools, role):
+            pending = task['pending_review']
+            pending['review_requests'] = pending.get('review_requests', 0) + 1
+            if engine.request.call_count == 1:
+                return {'tool_calls': [self.wire_call('read_file', '{"path":"build/article.html"}')]}
+            result = self.approval()['tool_calls'][0]['result']
+            source = next(k for k in pending['evidence_review']['sources'] if k.startswith('read:'))
+            result['review_assessment'] = assessment(['exact values'], source=source, quote="Aircraft's fuselage", checks=False)
+            if task['providers']['reviewer']['model'] == 'reviewer':
+                return {'tool_calls': [self.wire_call('review_decision', json.dumps(result))]}
+            if engine.request.call_count == 5:
+                catalog = json.loads(messages[1]['content'])['review_evidence']['sources']
+                self.assertTrue(any(s['id'] == source and s['path'] == 'build/article.html' for s in catalog))
+                self.assertFalse(task['checkpoints'])
+                self.assertNotIn('ready_receipt', task['branch_run']['items'][0])
+                return {'tool_calls': [self.wire_call('read_review_evidence', json.dumps({'source': source}))]}
+            self.assertEqual(engine.request.call_count, 6)
+            delivered = json.loads(messages[-1]['content'])
+            self.assertIn('Aircraft’s fuselage', delivered['content'])
+            references.append(delivered['citation'])
+            for claim in [*result['review_assessment']['criteria'].values(), result['review_assessment']['regressions'], result['review_assessment']['verification']]:
+                claim['citations'] = [delivered['citation']]
+            return {'tool_calls': [self.wire_call('review_decision', json.dumps(result))]}
+        engine.request.side_effect = respond
+        with patch.object(routing, 'select_remote', side_effect=self.selector(task)) as select:
+            self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 6)
+        self.assertEqual(len(references), 1)
+        engine.file_tool.assert_called_once(); engine.checks.assert_not_called(); select.assert_called_once()
+        branch_review.evidence.ready_receipt.assert_called_once()
+        for key in ('checks', 'usage', 'limits'):
+            self.assertEqual(task[key], before[key])
+        self.assertEqual(task['branch_run']['plan'], before['branch_run']['plan'])
+
+    def test_decision_coaching_keeps_saved_evidence_retrieval_available(self):
+        from tests.test_review_assessment import assessment
+        task, engine, runtime = self.automatic_fixture()
+        task['review_contract_version'] = 1
+        task['pending_review'] = {'branch_candidate_id': 'candidate', 'require_decision': True}
+        engine.parse_call = Engine.parse_call
+        def respond(rt, messages, tools, role):
+            if engine.request.call_count == 1:
+                self.assertEqual({t['function']['name'] for t in tools}, {'review_decision', 'read_review_evidence'})
+                return {'tool_calls': [self.wire_call('read_review_evidence', '{"source":"diff"}')]}
+            result = self.approval()['tool_calls'][0]['result']
+            result['review_assessment'] = assessment(['exact values'], checks=False)
+            reference = json.loads(messages[-1]['content'])['citation']
+            for claim in [*result['review_assessment']['criteria'].values(), result['review_assessment']['regressions'], result['review_assessment']['verification']]:
+                claim['citations'] = [reference]
+            return {'tool_calls': [self.wire_call('review_decision', json.dumps(result))]}
+        engine.request.side_effect = respond
+        with patch.object(routing, 'select_remote') as select:
+            self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 2)
+        engine.file_tool.assert_not_called(); engine.checks.assert_not_called(); select.assert_not_called()
+
     def test_malformed_review_cannot_override_pin_pause_or_budget(self):
         for boundary in ('pin', 'stop', 'budget'):
             with self.subTest(boundary=boundary):

@@ -88,10 +88,53 @@ class ReviewAssessmentTests(unittest.TestCase):
         self.assertEqual(found['evidence_id'], 'long')
         self.assertEqual(found['digest'], state['sources']['long']['digest'])
         self.assertFalse(review.read(state, 'long', search='absent')['found'])
-        self.assertEqual(state, before)
+        self.assertEqual({k: v for k, v in state.items() if k != 'excerpts'}, before)
         result = self.approval()
         result['review_assessment'] = assessment(source=found['evidence_id'], quote='needle: exact source')
         review.validate(state, result)
+
+    def test_returned_citations_preserve_unicode_without_retyping_and_survive_restart(self):
+        state = self.state()
+        content = '1: <meta content="Aircraft’s fuselage — why?">\\n\\t'
+        observed = review.observation(state, 'read_file', {'path': 'build/article.html'}, {'content': content})
+        reference = observed['citation']
+        restored = json.loads(json.dumps(state))
+        result = self.approval()
+        for claim in [*result['review_assessment']['criteria'].values(), result['review_assessment']['regressions']]:
+            claim['citations'] = [reference]
+        result['review_assessment']['verification']['citations'] = [review.read(restored, 'checks')['citation']]
+        review.validate(restored, result)
+        self.assertEqual(result['_review_evidence']['excerpts'][reference['source']]['content'], content)
+        self.assertEqual(result['_review_evidence']['scope'], 'candidate')
+
+    def test_returned_citations_cannot_be_forged_moved_or_use_stale_source(self):
+        state = self.state()
+        reference = review.read(state, 'diff')['citation']
+        self.assertIsNotNone(review.cited_excerpt(state, reference))
+        for changed in ({**reference, 'excerpt_id': 'invented'}, {**reference, 'source': 'checks'},
+                        {**reference, 'quote': 'invented behavior'}):
+            self.assertIsNone(review.cited_excerpt(state, changed))
+        other = copy.deepcopy(state); other['scope'] = 'different-candidate'
+        self.assertIsNone(review.cited_excerpt(other, reference))
+        review.add(state, 'diff', 'code', 'changed code')
+        self.assertIsNone(review.cited_excerpt(state, reference))
+        result = self.approval()
+        result['review_assessment']['criteria']['requested_change']['citations'] = [reference]
+        with self.assertRaises(review.EvidenceError):
+            review.validate(state, result)
+
+    def test_returned_check_reference_cannot_stand_in_for_implementation(self):
+        state = self.state(); result = self.approval()
+        reference = review.read(state, 'checks')['citation']
+        result['review_assessment']['criteria']['requested_change']['citations'] = [reference]
+        with self.assertRaisesRegex(review.EvidenceError, 'needs code/document or visual evidence'):
+            review.validate(state, result)
+
+    def test_returned_page_reference_includes_only_delivered_content(self):
+        state = self.state(); review.add(state, 'long', 'code', 'x' * 8000 + 'unread code')
+        reference = review.read(state, 'long')['citation']
+        self.assertEqual(review.cited_excerpt(state, reference), 'x' * 8000)
+        self.assertNotIn('unread code', review.cited_excerpt(state, reference))
 
     def test_evidence_reader_cannot_resolve_other_candidates_or_bad_arguments(self):
         state = self.state()

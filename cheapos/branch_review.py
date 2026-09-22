@@ -359,15 +359,20 @@ def _checkpoint(engine, runtime, args):
             _coach(engine, task, messages, 'request_limit' if turns >= max_rounds - 1 else 'missing_decision')
         from .context_evidence import review_inventories
         messages = review_inventories(task, messages)
-        offered = [t for t in tools if t['function']['name'] == 'review_decision'] if deciding else tools
-        tool_choice = {'type': 'function', 'function': {'name': 'review_decision'}} if deciding else None
+        # Decision coaching must not revoke the tool needed to repair citations
+        # in evidence already gathered. This does not restart inspection or checks.
+        decision_tools = {'review_decision', 'read_review_evidence'} if proof is not None else {'review_decision'}
+        offered = [t for t in tools if t['function']['name'] in decision_tools] if deciding else tools
+        tool_choice = {'type': 'function', 'function': {'name': 'review_decision'}} if deciding and proof is None else None
         request_messages = messages
         if deciding:
             request_messages = messages + [{'role':'user','content':
-                'This is the final review request within the current allowance. Use the evidence already collected '
-                'and call review_decision now. APPROVE only with complete supporting evidence; otherwise provide '
+                'Focus on completing this review within the existing allowance. Use the evidence already collected '
+                'and call review_decision. If a citation needs correction, retrieve the saved source with '
+                'read_review_evidence when offered and reuse its returned citation object. '
+                'APPROVE only with complete supporting evidence; otherwise provide '
                 'a concrete supported defect, or TAKE_OVER explaining precisely which essential evidence remains '
-                'unavailable. Additional inspection tools are not offered on this request. Do not invent evidence.'}]
+                'unavailable. New workspace inspection is not offered on this request. Do not invent evidence.'}]
         save_history(pending, messages)
         engine.store.save(task)
         engine.event(task,'review_request','Requesting item review',{'item_id':item['id'],'candidate_id':current['id']})

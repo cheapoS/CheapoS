@@ -9,7 +9,7 @@ import json
 import re
 
 VERSION = 1
-INSTRUCTION = '''Approval needs review_assessment, not just passing checks. For every criterion explain how the requested behavior follows from actual code/document evidence. Cite exact nonempty excerpts using source IDs from review_evidence or evidence_id returned by a read tool. Review regressions and verification separately: examine changed/removed handlers, callers, styles, imports, tests and assertions as relevant. Examine whether assertions would fail if the requested behavior were missing, and whether changed tests weaken expectations, remove coverage, or replace behavior with permissive mocks. Explain what the checks establish and what they miss; a green command or the worker's description alone cannot establish correctness. For UI changes inspect related styles, icons and interactions; source inspection is not a rendered visual check. List remaining verification limitations honestly. Missing evidence means use the read tools or request focused tests within existing authority, not guess, approve, or invent a defect. Do not manufacture findings on correct work. Earlier approvals are claims, not source evidence. The original request is context for detecting omissions; the approved scope and latest explicit amendments remain authoritative.'''
+INSTRUCTION = '''Approval needs review_assessment, not just passing checks. For every criterion explain how the requested behavior follows from actual code/document evidence. Reuse citation objects returned by read tools, or cite exact nonempty literal excerpts with their source IDs. Returned excerpt IDs preserve exact source text without retyping it; they do not establish correctness. Review regressions and verification separately: examine changed/removed handlers, callers, styles, imports, tests and assertions as relevant. Examine whether assertions would fail if the requested behavior were missing, and whether changed tests weaken expectations, remove coverage, or replace behavior with permissive mocks. Explain what the checks establish and what they miss; a green command or the worker's description alone cannot establish correctness. For UI changes inspect related styles, icons and interactions; source inspection is not a rendered visual check. List remaining verification limitations honestly. Missing evidence means use the read tools or request focused tests within existing authority, not guess, approve, or invent a defect. Do not manufacture findings on correct work. Earlier approvals are claims, not source evidence. The original request is context for detecting omissions; the approved scope and latest explicit amendments remain authoritative.'''
 
 
 def digest(value):
@@ -71,7 +71,33 @@ def display(state):
             row['content'] = value['content']  # The synthesizer must see the cited code.
         sources.append(row)
     return {'version': VERSION, 'scope': state['scope'], 'criteria': state['criteria'], 'sources': sources,
-            'instruction': 'Use an exact source id below (not a file path). Use read_review_evidence(source, offset, search) to retrieve or search these sources when a citation is unclear. Quote a short literal excerpt from that delivered source. Display line numbers and diff gutters may be omitted; code indentation and wording must stay exact. Reuse delivered evidence; read only missing context. Checks alone do not prove requested behavior.'}
+            'instruction': 'Use an exact source id below (not a file path). Read/search a source with read_review_evidence(source, offset, search); reuse the returned citation object without retyping its content. A citation identifies evidence, not a verdict: explain how its content supports the claim. Literal quotes remain supported, but must not abbreviate or change the source. Reuse delivered evidence; read only missing context. Checks alone do not prove requested behavior.'}
+
+
+def citation(state, source, start, end):
+    """Register the exact delivered span, bound to this candidate and source."""
+    value = state['sources'][source]
+    if start >= end or not value['content'][start:end].strip():
+        return None
+    record = {'source': source, 'source_digest': value['digest'], 'start': start, 'end': end}
+    identity = 'excerpt:' + digest({'scope': state['scope'], **record})[:20]
+    state.setdefault('excerpts', {})[identity] = record
+    return {'source': source, 'excerpt_id': identity}
+
+
+def cited_excerpt(state, ref):
+    """Never accept caller-supplied offsets, content, or an old candidate's ID."""
+    record = state.get('excerpts', {}).get(ref.get('excerpt_id'))
+    source = state['sources'].get(ref.get('source'))
+    if not record or not source or record['source'] != ref['source'] or record['source_digest'] != source['digest']:
+        return None
+    expected = 'excerpt:' + digest({'scope': state['scope'], **record})[:20]
+    if ref['excerpt_id'] != expected:
+        return None
+    content = source['content'][record['start']:record['end']]
+    if 'quote' in ref:
+        return matched_quote(ref['source'], {**source, 'content': content}, ref['quote'])
+    return content
 
 
 def read(state, source=None, offset=0, search=None):
@@ -95,7 +121,8 @@ def read(state, source=None, offset=0, search=None):
     return {'evidence_id': source, 'scope': state['scope'], 'kind': value['kind'],
             'digest': value['digest'], 'offset': offset, 'next_offset': offset + len(page),
             'has_more': offset + len(page) < len(content), 'content': page,
-            'instruction': 'Cite this evidence_id and a literal quote from its content. This read does not approve anything.'}
+            'citation': citation(state, source, offset, offset + len(page)),
+            'instruction': 'Reuse citation in the relevant claim and explain what this content establishes. It identifies only this delivered page, not unread pages. This read does not approve anything.'}
 
 
 def packet_for_model(packet):
@@ -114,8 +141,9 @@ def packet_for_model(packet):
 def schema(state):
     citation = {'type': 'object', 'properties': {
         'source': {'type': 'string', 'minLength': 1, 'description': 'Exact review_evidence source id or read tool evidence_id; not a file path.'},
+        'excerpt_id': {'type': 'string', 'minLength': 1, 'description': 'Prefer the returned citation.excerpt_id from a read tool; copy its citation object unchanged. A quote is unnecessary; if supplied it must occur in that exact excerpt.'},
         'quote': {'type': 'string', 'minLength': 1, 'description': 'Short literal excerpt from this source. Preserve code whitespace; display line numbers/diff gutters are optional.'}},
-                'required': ['source', 'quote'], 'additionalProperties': False}
+                'required': ['source'], 'additionalProperties': False}
     claim = {'type': 'object', 'properties': {'reason': {'type': 'string', 'minLength': 1},
              'citations': {'type': 'array', 'minItems': 1, 'items': citation}}, 'required': ['reason', 'citations'], 'additionalProperties': False}
     return {'type': 'object', 'description': 'Required for APPROVE. Supply all four fields; each claim needs a nonempty reason and citations. Use [] for no verification limitations.', 'properties': {
@@ -163,7 +191,7 @@ def observation(state, name, args, result):
     elif name == 'get_diff':
         metadata = {'format': 'diff'}
     add(state, source, kind, content, **metadata)
-    return {**result, 'evidence_id': source}
+    return {**result, 'evidence_id': source, 'citation': citation(state, source, 0, len(content))}
 
 
 def check_quote(content, quote):
@@ -278,16 +306,16 @@ def validate(state, result):
         for index, ref in enumerate(citations):
             location = field + f'.citations[{index}]'
             if not isinstance(ref, dict) or not isinstance(ref.get('source'), str):
-                issue(location, 'Each citation needs a source ID and literal quote.')
+                issue(location, 'Each citation needs a source ID and a returned excerpt_id or literal quote.')
                 continue
             source = state['sources'].get(ref['source'])
-            quote = matched_quote(ref['source'], source, ref.get('quote'))
+            quote = cited_excerpt(state, ref) if isinstance(ref.get('excerpt_id'), str) else matched_quote(ref['source'], source, ref.get('quote'))
             if quote is None:
                 matches = [key for key, value in state['sources'].items()
                            if matched_quote(key, value, ref.get('quote')) is not None]
                 issue(location, 'Citation not found in delivered current-candidate evidence: ' + ref['source'],
                       matching_source_ids=matches,
-                      instruction='Use a matching source ID only if it supports your claim; otherwise quote the actual source or inspect missing context.')
+                      instruction='Read/search this source with read_review_evidence and reuse its returned citation object. Explain whether the actual excerpt supports your claim; do not repair citation text by guessing or inventing a defect.')
                 continue
             kinds.add(source['kind'])
             entry = excerpts.setdefault(ref['source'], {'kind': source['kind'], 'content': '', 'source_digest': source['digest']})
