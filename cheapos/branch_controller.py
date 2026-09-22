@@ -663,7 +663,8 @@ class BranchController:
         from .engine import Runtime
         from .branch_budget import Ledger
         from .branch_planner import capture_inputs
-        self.engine.schedules.request(values.get('schedule_request'))
+        if values.get('schedule_request') is not None:
+            self.engine.schedules.request(values['schedule_request'])
         identity=values.get('planning_id')
         if not isinstance(identity,str) or not identity or len(identity)>100:raise ValueError('Provide a planning request ID')
         with self.engine.lock:
