@@ -3,6 +3,45 @@ from cheapos.route_health import candidate_probe_rejection, probe_identity
 from cheapos.providers import ProviderError
 
 class ProbeRejectionTests(unittest.TestCase):
+    def test_non_chat_catalog_entries_never_reach_ranking_or_probe(self):
+        import json
+        import threading
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from cheapos.gateways import normalize_models
+        from cheapos.routing import _select_remote
+        from cheapos.route_health import PROBE_MARKER
+        entries = [
+            {'id': 'a/image', 'type': 'image', 'capabilities': {'tool_calling': True}},
+            {'id': 'b/speech', 'type': 'audio', 'capabilities': {'tool_calling': True}},
+            {'id': 'c/vector-embed-1b', 'capabilities': {'tool_calling': True}},
+            {'id': 'z/new-coder', 'capabilities': {'tool_calling': True}, 'pricing': {'prompt': '0', 'completion': '0'}},
+        ]
+        for entry in entries:
+            entry['pricing'] = {'prompt': '0', 'completion': '0'}
+        models = normalize_models({'data': entries})
+        for role in ('planner', 'worker', 'reviewer', 'coordinator'):
+            with self.subTest(role=role):
+                pool = SimpleNamespace(
+                    observation=Mock(return_value={'cooling_down': False}),
+                    interleave=Mock(side_effect=lambda endpoint, candidates, *args: candidates),
+                    fresh_probe=Mock(return_value=False), claim_probe=Mock(return_value=(True, None)),
+                    release_probe=Mock(), record=Mock())
+                gateway = SimpleNamespace(settings={'base_url': 'http://localhost:20128/v1'}, pool=pool,
+                                          matches=Mock(return_value=True), catalog=Mock(return_value={'status': 'ready', 'models': models}))
+                task = {'route': {'base_url': gateway.settings['base_url']}, 'providers': {}, 'events': []}
+                runtime = SimpleNamespace(task=task, failed_models=set(), stop=threading.Event(), guard=Mock())
+                response = {'tool_calls': [{'function': {'name': 'routing_ready', 'arguments': json.dumps({'marker': PROBE_MARKER})}}]}
+                engine = SimpleNamespace(gateway=gateway, event=Mock(), store=SimpleNamespace(save=Mock()),
+                                         request=Mock(return_value=response),
+                                         parse_call=lambda call: (call['function']['name'], json.loads(call['function']['arguments'])))
+                _select_remote(engine, runtime, role)
+                self.assertEqual([m['id'] for m in pool.interleave.call_args.args[1]], ['z/new-coder'])
+                engine.request.assert_called_once()
+                self.assertEqual(engine.request.call_args.kwargs['config_override']['model'], 'z/new-coder')
+                self.assertEqual(task['providers'][role]['model'], 'z/new-coder')
+                self.assertEqual(task['progress_state']['route_probes'][role], 1)
+
     def test_rejected_candidate_can_be_skipped_without_hiding_shared_errors(self):
         for code in ('http_400','http_422'):
             self.assertTrue(candidate_probe_rejection(ProviderError('rejected',code=code)))

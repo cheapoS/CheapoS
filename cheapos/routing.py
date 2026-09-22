@@ -293,7 +293,8 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
             fit = 'context_capacity_insufficient'
         reason = ('local_excluded' if model.get('local')
                   else 'auto_excluded' if model['id'].startswith('auto/')
-                  else 'capability_missing' if (role != 'coordinator' and model.get('tool_calling') is not True)
+                  else 'capability_missing' if (model.get('chat_completion') is False
+                                               or (role != 'coordinator' and model.get('tool_calling') is not True))
                   else 'access_excluded' if not access_policy.eligible(model, policy)
                   else 'failed_model' if model['id'] in runtime.failed_models
                   else 'prior_worker' if model['id'] in used
