@@ -295,6 +295,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         label = 'item' if manifest.get('kind') == 'item' else 'final'
         engine.event(runtime.task,'review_request',f'Requesting {label} packet review',{'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'stage':'synthesis' if criterion_ids else 'chunk',**display})
         message = engine.request(runtime, messages, tools, 'reviewer', purpose='branch_final')
+        recovery.guard(runtime)  # A reply to superseded guidance cannot approve this packet.
         state['reviewer_model']=recovery.model(runtime.task)
         calls = message.get('tool_calls', [])
         try:
@@ -510,10 +511,12 @@ def final_check_review(engine, runtime):
             from .branch_pause import PauseError
             raise PauseError('branch_drift', stage='finalizing')
         return disagreement.repair({**overall,'source_patch':manifest['diff']}, current['id'], checks)
-    if (not manifest_match or evidence.candidate(task, context, specifications, criteria) != current
-            or branch_review_reuse.input_digest(task) != review_inputs):
-        from .branch_pause import PauseError
-        raise PauseError('branch_drift', stage='finalizing')
+    with engine.lock:
+        recovery.guard(runtime)
+        if (not manifest_match or evidence.candidate(task, context, specifications, criteria) != current
+                or branch_review_reuse.input_digest(task) != review_inputs):
+            from .branch_pause import PauseError
+            raise PauseError('branch_drift', stage='finalizing')
     blocker = None
     try: work.source_git(run['workspace_mapping']['source'], 'merge-base', '--is-ancestor', current_manifest['target_tip'], manifest['feature_tip'])
     except ValueError: blocker = 'The target branch has new commits. Choose Update branch & recheck to combine them with the saved task before merging.'

@@ -945,8 +945,9 @@ class BranchController:
                         return continue_saved(self, task_id)
                 append_attachments(task, safe_attachments)
                 return self.planning_message(task,augmented_message)
-            if run['status'] not in {'running','paused','blocked'}:
+            if run['status'] not in {'running','paused','blocked','finalizing'}:
                 raise ValueError('Use Request changes to revise completed work')
+            finalizing = run['status'] == 'finalizing'
             self.validate_authority(task,run)
             from .development import enabled
             guidance=run.setdefault('guidance',[])
@@ -972,12 +973,13 @@ class BranchController:
                     'content': f"USER INSTRUCTION: {augmented_message}\nPlease acknowledge this instruction directly and prioritize it."
                 })
             self.engine.event(task,'branch_guidance','Guidance saved within the accepted plan',
+                              'Your update is saved. The final reviewer will consider it before completing review.' if finalizing else
                               'Applying your correction and continuing within the approved scope.' if development else
                               'Your update is saved for continuation from the current files. The plan and remaining limits are unchanged.' if task['status']=='paused' else 'The worker will receive this on its next turn.')
-            if development and active:
+            if (development or finalizing) and active:
                 self.engine.queue_operator_direction(runtime,augmented_message,record=False)
                 return runtime.task
-            if not development and (not continuing or active):return task
+            if not development and not finalizing and (not continuing or active):return task
             if development:self.engine.archive_operator_state(task,'Operator corrected paused work')
             self.engine.store.save(task)
         from .branch_operator import continue_saved

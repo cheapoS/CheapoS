@@ -124,26 +124,29 @@ def finalize(engine, runtime):
     from .branch_conflicts import complete
     complete(engine,task)
     result = final.final_check_review(engine, runtime)
-    if result['decision'] != 'APPROVE':
-        message = result.get('feedback', 'Repair failed final acceptance evidence.')
-        refs=repair_scope.findings_refs(run,result['defects']) if result.get('defects') else None
-        item = _repair_item(run, message, refs)
-        _append_repair(engine, task, item, 'final_review', digest(result), copy.deepcopy(result), refs)
-        engine.event(task, 'branch_revision', 'Final review requested a bounded correction', {'item_id':item['id'], 'feedback':message})
-        return False
-    readiness = result['readiness']; run['readiness'] = readiness
-    run['final_evidence'] = {'checks_passed':True, 'review_approved':True, 'acceptance_satisfied':True,
-                             'candidate_id':readiness['id'], 'review_candidate_id':readiness['id'],
-                             'worker_model':readiness['worker_model'], 'reviewer_model':readiness['reviewer_model']}
-    if readiness['integration_blocker']:
-        run['status'] = 'paused'; run['pause_reason'] = 'branch_drift'; task['status'] = 'paused'
-        task['error'] = readiness['integration_blocker']
-    else:
-        state.transition(run, 'ready_for_merge'); task['status'] = 'approved'; task['error'] = None
-    state.append_event(run, 'final_ready', {'readiness_id':readiness['id'], 'integration_blocker':readiness['integration_blocker']})
-    engine.event(task, 'branch_final', 'The completed branch is ready for your review', {'readiness_id':readiness['id']})
-    engine.store.save(task)
-    return True
+    # Serialize final publication with chat guidance; inference stays outside the lock.
+    with engine.lock:
+        final.recovery.guard(runtime)
+        if result['decision'] != 'APPROVE':
+            message = result.get('feedback', 'Repair failed final acceptance evidence.')
+            refs=repair_scope.findings_refs(run,result['defects']) if result.get('defects') else None
+            item = _repair_item(run, message, refs)
+            _append_repair(engine, task, item, 'final_review', digest(result), copy.deepcopy(result), refs)
+            engine.event(task, 'branch_revision', 'Final review requested a bounded correction', {'item_id':item['id'], 'feedback':message})
+            return False
+        readiness = result['readiness']; run['readiness'] = readiness
+        run['final_evidence'] = {'checks_passed':True, 'review_approved':True, 'acceptance_satisfied':True,
+                                 'candidate_id':readiness['id'], 'review_candidate_id':readiness['id'],
+                                 'worker_model':readiness['worker_model'], 'reviewer_model':readiness['reviewer_model']}
+        if readiness['integration_blocker']:
+            run['status'] = 'paused'; run['pause_reason'] = 'branch_drift'; task['status'] = 'paused'
+            task['error'] = readiness['integration_blocker']
+        else:
+            state.transition(run, 'ready_for_merge'); task['status'] = 'approved'; task['error'] = None
+        state.append_event(run, 'final_ready', {'readiness_id':readiness['id'], 'integration_blocker':readiness['integration_blocker']})
+        engine.event(task, 'branch_final', 'The completed branch is ready for your review', {'readiness_id':readiness['id']})
+        engine.store.save(task)
+        return True
 
 
 def saved_preview(task):

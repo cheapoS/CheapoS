@@ -66,6 +66,15 @@ shared role policy. Tool descriptions stay next to the corresponding schema.
 Captured repository guidance and operator messages retain their original text
 and authority; this change does not rewrite them into catalog rules.
 
+Unattended guidance remains admissible while the branch is `finalizing`. Chat
+uses the existing operator redirect to discard an in-flight response and
+reassemble final review with the latest direction. Changed review bindings keep
+prior packet history but cannot reuse its approval. The final handoff is
+serialized with guidance admission; a message accepted before completion is
+reviewed before publication. This does not expand the accepted plan or grant
+commands, spending or approval. `ready_for_merge` still requires an explicit
+revision for further work. Pure discussion continues through the read-only path.
+
 Generic `compose`/`rules_for_task` remain available for catalog policy audits.
 They are not a substitute for the explicit runtime profiles or provider-boundary
 tests. The linter detects declared incompatibilities; it does not understand
@@ -83,6 +92,7 @@ Focused offline checks:
 
 ```sh
 python3 -B -m unittest tests.test_runtime_instructions tests.test_instructions
+python3 -B -m unittest tests.test_branch_operator tests.test_branch_final_recovery tests.test_branch_review_reuse
 python3 -B -m unittest tests.test_planner_inspection_recovery tests.test_branch_review_recovery tests.test_final_review_history
 ```
 

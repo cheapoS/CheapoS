@@ -1,5 +1,6 @@
 """Tiny state/provider cases: no repositories, subprocesses, sleeps or inference."""
 import copy
+import threading
 from decimal import Decimal
 import json
 from types import SimpleNamespace
@@ -247,7 +248,7 @@ class ReviewCoachingTests(unittest.TestCase):
         run['items'][0]['status']='working'
         task={'branch_run':run,'active_role':'worker','checks':[],'review_count':0,'checkpoints':[],
               'events':[],'providers':{'worker':{'model':'worker'},'reviewer':{'model':'reviewer'}}}
-        engine=SimpleNamespace(store=SimpleNamespace(save=Mock()),event=lambda t,k,title,d:t['events'].append({'kind':k,'title':title,'detail':d}),
+        engine=SimpleNamespace(lock=threading.RLock(),store=SimpleNamespace(save=Mock()),event=lambda t,k,title,d:t['events'].append({'kind':k,'title':title,'detail':d}),
             checks=Mock(),file_tool=Mock(return_value={'content':'Same exact values'}),
             parse_call=lambda c:(c['name'],c.get('result',{})),request=Mock())
         runtime=SimpleNamespace(task=task,guard=Mock(),stop=SimpleNamespace(is_set=lambda:False))

@@ -1,5 +1,6 @@
 """Pure receipt/completion cases: no Git, subprocesses, waits or live models."""
 import copy
+import threading
 import json
 import unittest
 from types import SimpleNamespace
@@ -42,7 +43,7 @@ class ReviewReuseTests(unittest.TestCase):
             'worker_model': 'worker', 'reviewer_model': 'reviewer', 'integration_blocker': None,
             'review_input_digest': reuse.input_digest(task)}
         basis = sealed(basis); task['branch_run']['previous_readiness'] = [basis]
-        engine = SimpleNamespace(store=SimpleNamespace(save=Mock()), event=Mock(), request=Mock(), checks=Mock(),
+        engine = SimpleNamespace(lock=threading.RLock(), store=SimpleNamespace(save=Mock()), event=Mock(), request=Mock(), checks=Mock(),
                                  parse_call=lambda c: (c['function']['name'], json.loads(c['function']['arguments'])))
         engine.request.side_effect = self.respond
         runtime = SimpleNamespace(task=task, guard=Mock(), stop=SimpleNamespace(is_set=lambda: False))
@@ -99,6 +100,25 @@ class ReviewReuseTests(unittest.TestCase):
             if result['decision'] == 'APPROVE':
                 self.assertTrue(final.validate(result['readiness'], task))
             return result
+
+    def test_direction_after_synthesis_redirects_without_false_branch_drift(self):
+        from cheapos.engine import OperatorRedirect
+        task, engine, runtime, manifest, current, _ = self.fixture()
+        task['branch_run'].pop('previous_readiness')
+        before_checks = copy.deepcopy(task['checks'])
+        review = final.review_paged
+        def completed(*args, **kwargs):
+            result = review(*args, **kwargs)
+            if args[5]:  # Guidance arrives after the final synthesis reply.
+                task['steer_guidance'] = 'Check the required styles too.'
+                runtime.guard.side_effect = OperatorRedirect('New guidance')
+            return result
+        with patch.object(final, 'review_paged', side_effect=completed):
+            with self.assertRaises(OperatorRedirect):
+                self.run_final(task, engine, runtime, manifest, current)
+        self.assertNotIn('readiness', task['branch_run'])
+        self.assertEqual(task['checks'], before_checks)
+        engine.checks.assert_not_called()
 
     def resolution(self, task, old):
         criteria = ['Preserve both branches', 'No conflict markers remain']

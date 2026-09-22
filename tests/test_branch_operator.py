@@ -137,6 +137,86 @@ class BranchOperatorTests(unittest.TestCase):
         self.assertEqual(task['usage']['worker']['tokens'],13)
         self.engine.archive_operator_state.assert_called_once()
 
+    def test_chat_guidance_interrupts_unfinished_final_review_with_authority_intact(self):
+        from cheapos.branch_controller import BranchController
+        from cheapos.engine import Engine, Runtime, OperatorRedirect
+        initial = copy.deepcopy(self.saved)
+        message = 'lets make sure css changes needed are also included'
+        for development in (False, True):
+            with self.subTest(development=development):
+                self.saved = copy.deepcopy(initial)
+                if development:
+                    control(self.controller, 'task', {'action': 'enable', 'approved': True})
+                task = self.saved
+                task['status'] = 'approved'  # Last item approval is not final completion.
+                task['branch_run'].update(status='finalizing', current_item_id=None)
+                task['branch_run']['items'][0].update(status='committed', commit_receipt={'id': 'saved'})
+                task['checks'] = [{'passed': True, 'candidate_id': 'saved'}]
+                task['branch_run']['final_review_packets'] = {'chunk': {'messages': ['retained evidence']}}
+                runtime = Runtime(task)
+                runtime.thread = SimpleNamespace(is_alive=lambda: True)
+                runtime.branch_ledger = SimpleNamespace(guard=lambda: None)
+                before = copy.deepcopy(task)
+                self.engine.runtimes = {'task': runtime}
+                self.engine.archive_operator_state = lambda *args: Engine.archive_operator_state(self.engine, *args)
+                self.engine.queue_operator_direction = lambda *args, **kw: Engine.queue_operator_direction(self.engine, *args, **kw)
+                self.controller.message = lambda *args: BranchController.message(self.controller, *args)
+                self.engine.branch = self.controller
+                result = Engine.chat_message(self.engine, 'task', {'message': message})
+                self.assertIs(result, task)
+                self.assertEqual(self.saved['branch_run']['guidance'][-1], {'item_id': None, 'message': message})
+                self.assertEqual(task['steer_guidance'], message)
+                self.assertEqual(task['operator_continue']['status'], 'interrupting')
+                with self.assertRaises(OperatorRedirect): runtime.guard()
+                self.assertFalse(runtime.stop.is_set())
+                for key in ('checks', 'usage', 'execution', 'providers'):
+                    self.assertEqual(task[key], before[key])
+                for key in ('plan', 'authorization', 'items', 'final_review_packets'):
+                    self.assertEqual(task['branch_run'][key], before['branch_run'][key])
+                self.controller.resume.assert_not_called()
+
+    def test_inactive_final_review_guidance_attempts_authorized_continuation(self):
+        from cheapos.branch_controller import BranchController
+        self.engine.runtimes = {}
+        self.saved['branch_run'].update(status='finalizing', current_item_id=None)
+        before = copy.deepcopy(self.saved)
+        result = BranchController.message(self.controller, 'task', {'message': 'Include the required CSS.'})
+        self.controller.resume.assert_called_once_with('task', {})
+        self.assertEqual(result['branch_run']['guidance'][-1]['message'], 'Include the required CSS.')
+        self.assertEqual(result['operator_continue']['status'], 'needs_consent')
+        self.assertEqual(result['branch_run']['authorization'], before['branch_run']['authorization'])
+
+    def test_direction_before_final_publication_discards_stale_decision(self):
+        from cheapos import branch_completion
+        from cheapos.engine import OperatorRedirect
+        for decision in ('APPROVE', 'REQUEST_CHANGES'):
+            with self.subTest(decision=decision):
+                task = copy.deepcopy(self.task)
+                task['branch_run'].update(status='finalizing', current_item_id=None)
+                task['branch_run']['items'][0]['status'] = 'committed'
+                runtime = SimpleNamespace(task=task, guard=Mock())
+                self.engine.branch = self.controller
+                before = copy.deepcopy(task)
+                def reviewed(*args):
+                    runtime.guard.side_effect = OperatorRedirect('New guidance')
+                    return {'decision': decision, 'feedback': 'Missing required CSS.',
+                            'readiness': {'id': 'candidate', 'worker_model': 'worker',
+                                          'reviewer_model': 'reviewer', 'integration_blocker': None}}
+                with patch('cheapos.branch_conflicts.complete'), \
+                     patch('cheapos.branch_final.final_check_review', side_effect=reviewed):
+                    with self.assertRaises(OperatorRedirect):
+                        branch_completion.finalize(self.engine, runtime)
+                self.assertEqual(task, before)
+
+    def test_completed_branch_still_requires_explicit_revision_for_work_guidance(self):
+        from cheapos.branch_controller import BranchController
+        self.engine.runtimes = {}
+        self.saved['branch_run']['status'] = 'ready_for_merge'
+        before = copy.deepcopy(self.saved)
+        with self.assertRaisesRegex(ValueError, 'Request changes'):
+            BranchController.message(self.controller, 'task', {'message': 'lets make sure css changes needed are also included'})
+        self.assertEqual(self.saved, before)
+
     def test_takeover_explicitly_regrants_captured_commands_and_continues(self):
         self.saved['branch_run']['check_scope']=[{'command':['python3','test.py']}]
         self.controller.validate_authority=Mock()
