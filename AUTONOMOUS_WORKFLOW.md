@@ -851,6 +851,21 @@ checks, not provider/model allowlists or new work limits. Small offline cases
 cover valid proposal completion, saved-history repair and routing to a qualified
 model without probing image, speech or embedding entries.
 
+## Implemented: rejected tool arguments cannot poison continuation
+
+Some providers validate argument JSON in every historical tool call before
+accepting a new request. A rejected call could therefore make each correction
+and replacement reviewer fail before generating a response. The request boundary
+now places malformed historical arguments inside an explicit diagnostic object,
+retaining the original bytes, tool name/ID and paired error receipt. Valid calls,
+evidence and the durable task history are unchanged. Empty arguments use the
+controller's existing default only for its two default read-only tools.
+
+Projection is idempotent and happens before request reservation, across roles,
+Resume and handoff. It does not infer intended arguments, execute failed calls
+or accept a new malformed response. Small wire-level cases and the existing
+worker/reviewer correction fixture cover continued work through a valid decision.
+
 ## Implemented: retain reviewers when streamed identity is unavailable
 
 A reviewer response whose stream lacks usable model identity uses the existing
@@ -866,19 +881,3 @@ reviewer recovery can select another authorized route. Both attempts retain
 usage, current spending/request limits, cancellation and permission checks.
 Synthetic stream/JSON cases cover recovery, persistent reuse and identity
 rejection without extra live inference or expensive workflow fixtures.
-
-
-## Implemented: rejected tool arguments cannot poison continuation
-
-Some providers validate argument JSON in every historical tool call before
-accepting a new request. A rejected call could therefore make each correction
-and replacement reviewer fail before generating a response. The request boundary
-now places malformed historical arguments inside an explicit diagnostic object,
-retaining the original bytes, tool name/ID and paired error receipt. Valid calls,
-evidence and the durable task history are unchanged. Empty arguments use the
-controller's existing default only for its two default read-only tools.
-
-Projection is idempotent and happens before request reservation, across roles,
-Resume and handoff. It does not infer intended arguments, execute failed calls
-or accept a new malformed response. Small wire-level cases and the existing
-worker/reviewer correction fixture cover continued work through a valid decision.
