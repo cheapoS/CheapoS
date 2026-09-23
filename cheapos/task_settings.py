@@ -122,7 +122,11 @@ def reviewer_config(engine, task, selection):
     model = next((m for m in gateway.models if m.get('id') == chosen), None)
     if not model or not access_policy.eligible(model, policy):
         raise ValueError('Choose a cached eligible free or included reviewer; refresh shared connection metadata if needed')
-    cfg = validate_provider({**current, 'model': chosen, 'input_rate': 0, 'output_rate': 0}, 'reviewer')
+    selected = {**current, 'model': chosen, 'input_rate': 0, 'output_rate': 0}
+    selected.pop('provider', None)
+    if model.get('provider'):
+        selected['provider'] = model['provider']
+    cfg = validate_provider(selected, 'reviewer')
     if policy is not None:
         cfg['access_binding'] = copy.deepcopy(policy)
     if access_policy.classify(model, policy) == 'included':

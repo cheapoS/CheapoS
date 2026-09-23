@@ -185,6 +185,19 @@ class TaskSettingsTests(unittest.TestCase):
         self.assertEqual(saved['branch_run']['authorization']['contract']['check_scope'], ['original'])
         self.assertEqual(saved['providers']['reviewer']['model'], 'new-review')
 
+    def test_reviewer_provider_metadata_belongs_to_new_route(self):
+        from cheapos.request_pacer import provider_identity
+        self.task['providers']['reviewer']['provider'] = 'nvidia'
+        gateway = self.engine.connection_for({})
+        for metadata in ({'provider': 'groq'}, {}):
+            gateway.models = [{'id': 'groq/new-review', 'free': True, 'tool_calling': True, **metadata}]
+            with self.subTest(metadata=metadata):
+                cfg = task_settings.reviewer_config(self.engine, self.task,
+                    {'strategy': 'only', 'model': 'groq/new-review', 'connection_id': 'default'})
+                self.assertEqual(provider_identity(cfg), 'groq')
+                self.assertEqual(cfg.get('provider'), metadata.get('provider'))
+                self.assertEqual(self.task['providers']['reviewer']['provider'], 'nvidia')
+
     def test_persisted_pending_continuation_dispatches_once_after_restart(self):
         task_settings.save(self.engine, 'a', self.request())
         task = self.engine.store.get('a')
