@@ -287,9 +287,85 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     # invalidate already reviewed evidence during continuation.
     scope = progress if progress is not None else packet.get('scope', {})
     display = {k: scope[k] for k in ('chunk_index', 'chunk_total') if k in scope} if not criterion_ids else {}
+    readers = {'read_review_evidence', 'read_check_output', 'read_final_context',
+               'inspect_image', 'read_merge_context', 'read_context_evidence'}
+    offered = {t['function']['name'] for t in tools}
+
+    def read_context(name, result):
+        if name == 'read_review_evidence' and proof is not None:
+            try:
+                # The catalog grows as evidence is read; never cache a stale listing.
+                excerpt = review_assessment.read(proof, **result)
+            except TypeError as error:
+                raise ValueError(str(error)) from None
+            excerpt = recovery.context_read(engine, runtime, key, state,
+                {'tool': name, 'arguments': result, 'content_digest': _hash(excerpt)}, lambda: excerpt)
+            return excerpt
+        if name == 'read_check_output':
+            excerpt = read_check_output(engine, runtime.task, packet['check_output_sources'], result)
+            excerpt = recovery.context_read(engine, runtime, key, state,
+                {'tool': name, 'arguments': result, 'content_digest': _hash(excerpt)}, lambda: excerpt)
+            if proof is not None:
+                excerpt = review_assessment.observation(proof, name, result, excerpt)
+            return excerpt
+        if name == 'read_final_context':
+            excerpt=recovery.context_read(engine,runtime,key,state,result,
+                lambda:context_reader(result) if context_reader else review_context.read(runtime.task['branch_run'],manifest,result))
+            if proof is not None:
+                excerpt = review_assessment.observation(proof, name, result, excerpt)
+            packet['context_references']=copy.deepcopy(state['context_references'])
+            return excerpt
+        if name == 'inspect_image' and proof is not None:
+            from .vision import inspect_image_tool
+            excerpt = recovery.context_read(engine, runtime, key, state, {'tool': name, 'arguments': result},
+                lambda: inspect_image_tool(engine, runtime.task, result, runtime=runtime, role='reviewer'))
+            excerpt = review_assessment.observation(proof, name, result, excerpt)
+            return excerpt
+        if name=='read_merge_context':
+            from .branch_conflicts import read
+            excerpt=recovery.context_read(engine,runtime,key,state,{'tool':name,'arguments':result},
+                lambda:read(runtime.task,**result))
+            return excerpt
+        if name == 'read_context_evidence':
+            from .context_evidence import read
+            excerpt = recovery.context_read(engine, runtime, key, state,
+                {'tool': name, 'arguments': result}, lambda: read(runtime.task, **result))
+            return excerpt
+
+    def drain_read_batch():
+        batch = state['pending_read_batch']
+        calls = batch['message']['tool_calls']
+        for call in calls[len(batch['results']):]:
+            recovery.guard(runtime)
+            name, result = engine.parse_call(call)
+            if name.startswith('functions.'):
+                name = name[len('functions.'):]
+            from .metrics import tool_action
+            tool_action(runtime.task)
+            try:
+                if name not in readers or name not in offered:
+                    raise ValueError('This saved read is not available in the current review; no tool was executed.')
+                excerpt = read_context(name, result)
+            except (ValueError, ToolArgumentsError) as error:
+                if getattr(error, 'pause_cause', None):
+                    raise
+                attempts[key] = attempts.get(key, 0) + 1
+                excerpt = {'error': str(error), 'attempt': attempts[key], **getattr(error, 'correction', {})}
+                engine.event(runtime.task, 'review_feedback', 'Final review read needs correction', excerpt)
+            recovery.guard(runtime)
+            batch['results'].append({'role': 'tool', 'tool_call_id': call['id'], 'content': _json(excerpt)})
+            engine.store.save(runtime.task)
+        messages.append(batch['message'])
+        messages.extend(batch['results'])
+        state.pop('pending_read_batch')
+        recovery.persist(engine, runtime.task, state, messages)
+
     engine.store.save(runtime.task)
     while True:
         recovery.guard(runtime)
+        if state.get('pending_read_batch'):
+            drain_read_batch()
+            continue
         if recovery.needed(runtime.task,key,state):
             recovery.recover(engine,runtime,key,state,messages)
         label = 'item' if manifest.get('kind') == 'item' else 'final'
@@ -299,8 +375,17 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         state['reviewer_model']=recovery.model(runtime.task)
         calls = message.get('tool_calls', [])
         try:
+            if len(calls) > 1:
+                parsed = [engine.parse_call(call) for call in calls]
+                names = [name[len('functions.'):] if name.startswith('functions.') else name for name, _ in parsed]
+                ids = [call.get('id') for call in calls]
+                if len(set(ids)) == len(ids) and all(name in readers and name in offered for name in names):
+                    state['pending_read_batch'] = {'message': copy.deepcopy(message), 'results': []}
+                    engine.store.save(runtime.task)
+                    continue
+                raise ValueError('Batch only offered evidence readers with unique call IDs. Submit a single final_review_decision after reading their results; a mixed batch cannot approve.')
             if len(calls) != 1:
-                raise ValueError('Return exactly one offered tool call: read missing evidence or submit final_review_decision.')
+                raise ValueError('Return an offered evidence reader or a single final_review_decision. Evidence readers may be batched; decisions must be separate.')
             name, result = engine.parse_call(calls[0])
             # Some tool-capable models emit the conventional functions.
             # namespace. Accept only an exact alias of a tool offered here;
@@ -319,54 +404,9 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                     raise ValueError('Report a context blocker only after a recorded unavailable read of this exact candidate/path.')
                 from .branch_pause import PauseError
                 raise PauseError('review_context_unavailable',stage='finalizing')
-            if name == 'read_review_evidence' and proof is not None:
-                try:
-                    # The catalog grows as evidence is read; never cache a stale listing.
-                    excerpt = review_assessment.read(proof, **result)
-                except TypeError as error:
-                    raise ValueError(str(error)) from None
-                excerpt = recovery.context_read(engine, runtime, key, state,
-                    {'tool': name, 'arguments': result, 'content_digest': _hash(excerpt)}, lambda: excerpt)
-                messages.append(message); messages.append({'role': 'tool', 'tool_call_id': calls[0]['id'], 'content': _json(excerpt)})
-                recovery.persist(engine, runtime.task, state, messages)
-                continue
-            if name == 'read_check_output':
-                excerpt = read_check_output(engine, runtime.task, packet['check_output_sources'], result)
-                excerpt = recovery.context_read(engine, runtime, key, state,
-                    {'tool': name, 'arguments': result, 'content_digest': _hash(excerpt)}, lambda: excerpt)
-                if proof is not None:
-                    excerpt = review_assessment.observation(proof, name, result, excerpt)
-                messages.append(message); messages.append({'role': 'tool', 'tool_call_id': calls[0]['id'], 'content': _json(excerpt)})
-                recovery.persist(engine, runtime.task, state, messages)
-                continue
-            if name == 'read_final_context':
-                excerpt=recovery.context_read(engine,runtime,key,state,result,
-                    lambda:context_reader(result) if context_reader else review_context.read(runtime.task['branch_run'],manifest,result))
-                if proof is not None:
-                    excerpt = review_assessment.observation(proof, name, result, excerpt)
-                messages.append(message);messages.append({'role':'tool','tool_call_id':calls[0]['id'],'content':_json(excerpt)})
-                packet['context_references']=copy.deepcopy(state['context_references'])
-                recovery.persist(engine,runtime.task,state,messages)
-                continue
-            if name == 'inspect_image' and proof is not None:
-                from .vision import inspect_image_tool
-                excerpt = recovery.context_read(engine, runtime, key, state, {'tool': name, 'arguments': result},
-                    lambda: inspect_image_tool(engine, runtime.task, result, runtime=runtime, role='reviewer'))
-                excerpt = review_assessment.observation(proof, name, result, excerpt)
-                messages.append(message); messages.append({'role': 'tool', 'tool_call_id': calls[0]['id'], 'content': _json(excerpt)})
-                recovery.persist(engine, runtime.task, state, messages)
-                continue
-            if name=='read_merge_context':
-                from .branch_conflicts import read
-                excerpt=recovery.context_read(engine,runtime,key,state,{'tool':name,'arguments':result},
-                    lambda:read(runtime.task,**result))
-                messages.append(message);messages.append({'role':'tool','tool_call_id':calls[0]['id'],'content':_json(excerpt)})
-                recovery.persist(engine,runtime.task,state,messages)
-                continue
-            if name == 'read_context_evidence':
-                from .context_evidence import read
-                excerpt = recovery.context_read(engine, runtime, key, state,
-                    {'tool': name, 'arguments': result}, lambda: read(runtime.task, **result))
+            if name in readers and name in offered:
+                excerpt = read_context(name, result)
+                recovery.guard(runtime)
                 messages.append(message); messages.append({'role': 'tool', 'tool_call_id': calls[0]['id'], 'content': _json(excerpt)})
                 recovery.persist(engine, runtime.task, state, messages)
                 continue
@@ -393,7 +433,8 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             feedback = {'error':str(error),'attempt':attempts[key], **getattr(error, 'correction', {})}
             engine.event(runtime.task,'review_feedback','Final review response needs correction',feedback)
             engine.store.save(runtime.task)
-            if calls and all(isinstance(call,dict) and isinstance(call.get('id'),str) and call['id'] for call in calls):
+            if (calls and all(isinstance(call,dict) and isinstance(call.get('id'),str) and call['id'] for call in calls)
+                    and len({call['id'] for call in calls}) == len(calls)):
                 messages.append(message)
                 for call in calls:
                     messages.append({'role':'tool','tool_call_id':call['id'],'content':_json(feedback)})
