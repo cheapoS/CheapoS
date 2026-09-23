@@ -5,8 +5,6 @@ import json
 import shlex
 import hashlib
 
-import time
-
 from . import branch_evidence as evidence
 from . import branch_runs, branch_disagreement as disagreement
 from .measurement import enabled as measuring

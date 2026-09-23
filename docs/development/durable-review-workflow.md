@@ -45,6 +45,27 @@ matching current command receipt. Models must explain the evidence's limits.
 Provenance validation cannot determine whether a model's judgment is correct.
 Visual and interaction checks remain necessary for claims that depend on them.
 
+## Shared paths retained after the unit migration
+
+The unit migration replaces full final review for evidence-enabled tasks. It
+does not replace every packet-review caller or saved receipt format:
+
+| Path | Current responsibility |
+| --- | --- |
+| `branch_final.final_check_review` legacy chunk/synthesis branch | Tasks without the evidence contract, including demo tasks. Evidence-enabled tasks enter units directly. |
+| `branch_final.review_paged` | Large target-update reviews in `branch_review_reuse.finalize`, plus legacy final review. |
+| `branch_final._review` | Shared evidence readers, explicit decisions, correction, batching and continuation for units, item packets and target-update reviews. |
+| `branch_review_pages.prepare` | Oversized item review before the ordinary item criterion decision; it calls the shared packet reviewer directly. |
+| `review_progress` and the `final_review_progress` instruction profile | Provisional assessments for item review and non-unit final synthesis, including target-update review. Units also reuse the assessment validator. |
+| `branch_final.validate_record` and `branch_review_reuse` | Validation of version 1 legacy, version 2 reused and version 3 unit-composed readiness receipts. |
+
+Manifest chunks still identify bound evidence and coverage in unit receipts;
+their presence does not mean legacy chunk reviews ran. Full assessment parsing
+also remains necessary for ordinary item decisions and saved response
+compatibility, even where the offered schema uses smaller assessment records.
+Remove these paths only with an explicit migration of their callers and saved
+state, preserving the evidence and authority checks.
+
 ## Persistence and recovery
 
 `review_workflow.py` owns deterministic unit definitions, scheduling and receipt
