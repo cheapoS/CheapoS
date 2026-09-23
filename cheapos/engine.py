@@ -1539,6 +1539,7 @@ class Engine:
             print(f"cheapoS shutdown error in connections: {e}", file=sys.stderr)
 
     def initial_messages(self, task):
+        from .worker_context import active_events, context_events, repeated_read_guidance, read_notice
         from .discussion import opening_greeting, greeting_messages
         if opening_greeting(task):
             return greeting_messages(task)
@@ -1566,8 +1567,8 @@ class Engine:
         # Keep completed observations across compaction/restart. Replaying an old
         # assistant tool call could repeat an edit, so carry this as data instead.
         activity, size, seen_reads, sources = [], 0, set(), []
-        boundary = max((i for i, e in enumerate(task["events"]) if e["kind"] == "user"), default=-1)
-        for event in reversed(task["events"][boundary+1:]):
+        events = active_events(task)
+        for event in reversed(events):
             if event["kind"] == "tool" and event["title"] == "read url":
                 result = event["detail"].get("result") or {}
                 source = {k: result[k] for k in ("source_url", "start_line", "end_line", "has_more") if k in result}
@@ -1577,7 +1578,7 @@ class Engine:
                     break
         if sources:
             summary["web_reads_this_request"] = list(reversed(sources))
-        for event in reversed(task["events"]):
+        for event in reversed(context_events(task)):
             if event["kind"] not in {"tool", "tool_error", "assistant", "checks", "steer"}:
                 continue
             detail = copy.deepcopy(event["detail"])
@@ -1622,7 +1623,8 @@ class Engine:
             summary["continuation"] = "Continue from these completed observations and the current diff. Use targeted reads for missing context. This is a partial history; do not repeat completed edits or assume earlier checks are still current."
         messages = [{"role": "system", "content": worker_system(task)}, {"role": "user", "content": json.dumps(summary)}]
         if task.get("loop_guidance"):
-            messages.append({"role": "user", "content": "Controller direction: " + execution_context.guidance(task, task["loop_guidance"])})
+            guidance = repeated_read_guidance(task) if read_notice(task['loop_guidance']) else task['loop_guidance']
+            messages.append({"role": "user", "content": "Controller direction: " + execution_context.guidance(task, guidance)})
         if task.get("steer_guidance"):
             messages.append({"role": "user", "content": "User direction: " + task["steer_guidance"]})
         return messages
@@ -1807,10 +1809,11 @@ class Engine:
 
     def action_messages(self, task):
         """Supply bounded, fresh evidence instead of old overlapping read excerpts."""
+        from .worker_context import active_events
         workspace = Workspace(task["workspace"])
         changed = [f["path"] for f in task["changes"]]
-        boundary = max((i for i, e in enumerate(task["events"]) if e["kind"] == "user"), default=-1)
-        recent = [e["detail"]["arguments"]["path"] for e in reversed(task["events"][boundary + 1:])
+        events = active_events(task)
+        recent = [e["detail"]["arguments"]["path"] for e in reversed(events)
                   if e["kind"] == "tool" and e["title"] == "read file"
                   and e.get("detail", {}).get("arguments", {}).get("path")]
         files, remaining = [], 24000
@@ -1822,7 +1825,7 @@ class Engine:
             try:
                 if compact:
                     from .handoff_context import file_excerpt
-                    requests = [e['detail']['arguments'] for e in reversed(task['events'][boundary + 1:])
+                    requests = [e['detail']['arguments'] for e in reversed(events)
                                 if e.get('kind') == 'tool' and e.get('title') == 'read file'
                                 and e.get('detail', {}).get('arguments', {}).get('path') == path]
                     file = file_excerpt(path, workspace.text_bytes(path), requests, maximum)
@@ -1870,7 +1873,7 @@ class Engine:
             # Do not replay the malformed assistant call. Preserve bounded tool
             # evidence and errors so rebuilding context does not cause a new loop.
             activity = []
-            for event in reversed(task["events"][boundary + 1:]):
+            for event in reversed(events):
                 if event["kind"] not in {"tool", "tool_error"}:
                     continue
                 detail = copy.deepcopy(event.get("detail"))
@@ -1956,6 +1959,7 @@ class Engine:
         base = self.compact_context(runtime) if task.get('compact_edits') else self.initial_messages(task)
         limit = info['target_characters'] or max(12000, len(json.dumps(previous)) // 2)
         task['messages'] = compact(task, base, previous, limit=limit)
+        self.deliver_loop_guidance(task)
         from .handoff_context import note_delivery
         note_delivery(runtime, json.loads(task['messages'][1]['content']).get('current_files', []), observed_file_lines)
         self.event(task, 'context', 'Compacted context after provider rejection' if rejected else 'Compacted context near route token capacity',
@@ -1964,8 +1968,8 @@ class Engine:
     @staticmethod
     def deliver_loop_guidance(task):
         """A recovery notice is useful only if the worker actually receives it."""
-        from .worker_conversation import append_direction
-        append_direction(task.setdefault('messages', []), 'CURRENT RECOVERY DIRECTION: ', task.get('loop_guidance'))
+        from .worker_context import refresh_read_guidance
+        refresh_read_guidance(task)
 
     def prepare_loop_recovery(self, task):
         from .continuation_policy import record
@@ -3960,6 +3964,9 @@ class Engine:
                         elif name == "run_checks":
                             result = self.worker_checks(runtime, args, last_call=call_index == len(calls) - 1)
                             coordinator_applied = bool(result.get('handoff_queued'))
+                            if not result.get('error'):
+                                from .worker_context import clear_read_guidance
+                                clear_read_guidance(task)
                         elif name == "report_blocker" and execution_context.mode(task) == 'unattended':
                             detail = execution_context.blocker(args)
                             question = detail['question']
@@ -3991,14 +3998,18 @@ class Engine:
                             if name in MUTATIONS and result.get('changed', result.get('updated', True)) and not result.get('error'):
                                 runtime.observations.clear()
                                 runtime.file_observations.clear()
+                                from .worker_context import clear_read_guidance
+                                clear_read_guidance(task)
                             elif name not in MUTATIONS:
                                 observations = record_observation(runtime, name, args, result)
-                                if observations == 2:
-                                    task["loop_guidance"] = "This read returned the same information twice. Answer the user's question from the evidence, use read_url for a supplied web link, or ask_user to explain what is missing. Do not edit just to reset the loop guard. Another identical read ends research for this run."
-                                    task["loop_guidance"] = execution_context.guidance(task, task["loop_guidance"])
-                                    if developing(task):task["loop_guidance"] = "This read returned unchanged evidence twice. Follow the operator direction and choose a useful next action; further inspection remains available when needed."
+                                if observations == 1 and not (isinstance(result, dict) and result.get('error')):
+                                    from .worker_context import clear_read_guidance
+                                    clear_read_guidance(task)
+                                elif observations == 2:
+                                    from .worker_context import repeated_read_guidance
+                                    task["loop_guidance"] = repeated_read_guidance(task)
                                     result = {"observation": result, "guidance": task["loop_guidance"]}
-                                    self.event(task, "guard", "Asking the worker to use what it found", "The same read returned unchanged information twice. cheapoS asked for an answer, a relevant web read, or a clear explanation of what is missing.")
+                                    self.event(task, "guard", "Asking the worker to use what it found", task['loop_guidance'])
                                 elif observations >= 3:
                                     if recovering or observations >= 4:
                                         blocker = 'Recovery repeated already available file evidence.' if recovering else 'Repeated unchanged file evidence.'

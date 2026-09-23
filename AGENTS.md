@@ -25,6 +25,9 @@ as signals to change strategy; do not add arbitrary stop counters. Verify the
 path to completion without operator rescue using small deterministic cases.
 
 Final review uses [durable review units](docs/development/durable-review-workflow.md).
+Exercise the final-review entry point, not only the unit scheduler: evidence-enabled
+tasks must enter units directly without a duplicate legacy chunk-review prerequisite.
+Verify full readiness and reuse receipts still reject missing integration or coverage.
 Keep coverage, scheduling and completion in the controller. Models judge bounded
 requirements and integration; never require another monolithic rewrite of valid
 unit decisions. Preserve validated units across interruption and handoff, reject
@@ -43,6 +46,11 @@ Reviewer attempt exclusions belong to the candidate being reviewed, not the
 task lifetime. Preserve and restore each candidate's history on Resume; final
 review chunks share their manifest scope. Migrate older state only from recorded
 request provenance, without clearing current or unscoped failures.
+An attempted route is not necessarily a failed identity check. Keep successful
+actual responses distinct from exclusions; protocol changes must not inherit
+unrelated format failures through an identity-recovery list. Restore eligibility
+only from recorded same-connection evidence, never probe success, and reapply
+current format failures, cooldowns, model authority and response identity gates.
 
 Provider handoffs must preserve saved evidence and tool-call/reply pairing while
 projecting history into the destination's accepted wire schema. A successful
@@ -56,6 +64,15 @@ Final review must bound the conversation actually sent to providers as well as
 saved history. Retain omitted complete exchanges by reference and keep the
 latest correction available across Resume/handoff, even when a rejected verdict
 is larger than the conversation window. Preserve tool-call/result pairing.
+
+Worker continuation must keep the active item's goal and evidence ownership.
+Do not turn an implementation/repair warning into question answering or label
+earlier items' edits as current work. Scope active snapshots by recorded item
+ownership; retain historical records and original check identities. Refresh
+obsolete controller notices across Resume, handoff and compaction without
+duplicating instructions or resetting recovery history and authority.
+Preserve bounded Interactive conversation history across follow-ups; current-request
+observation boundaries must not erase prior replies or substitute history for proof.
 
 A transport retry must be separately accounted and preserve actual response
 identity checks. Never infer reviewer identity from a successful probe or a

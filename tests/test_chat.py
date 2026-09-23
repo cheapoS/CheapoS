@@ -61,8 +61,16 @@ class ChatTests(LocalCase):
         context=json.loads(requests[-1][0][-1]['content'])
         self.assertEqual(context['latest_message'],'What about the lower bound?')
         self.assertIn('It caps the upper bound.',json.dumps(context))
+        self.assertEqual(context['recovery_continuation']['prior_worker_statements_unverified'],
+                         ['It caps the upper bound.'])
+        self.assertIn('math_utils.py', [f['path'] for f in context['continuation_record']['files']])
         restored=Store(self.engine.store.root).get(task['id'])
         self.assertEqual(restored['requests'], ['Explain clamp.','What about the lower bound?'])
+        rebuilt=json.loads(self.engine.initial_messages(restored)[1]['content'])
+        self.assertIn('It caps the upper bound.',json.dumps(rebuilt))
+        self.assertIn('The lower bound is currently ignored.',json.dumps(rebuilt))
+        self.assertEqual(restored['checks'],[])
+        self.assertEqual(restored['review_count'],0)
 
     def test_edits_cannot_finish_as_a_plain_answer_or_skip_review(self):
         task=self.chat('Fix the lower bound.')

@@ -21,7 +21,52 @@ def review_scope(task):
     return 'checkpoint:' + evidence['scope'] if evidence.get('scope') else None
 
 
+def restore_verified_routes(task, saved):
+    """Migrate successful attempts without forgiving failed or unknown routes.
+
+    Older recovery records mixed successful identity checks with exclusions.
+    Only an actual, identified response on this saved connection can restore
+    eligibility. This is not review approval; current policy, health, format
+    exclusions and every new response's independence gate still apply.
+    """
+    if not saved or 'verified_routes' in saved:
+        return saved
+    fresh = {**saved, 'verified_routes': {}}
+    cfg = task.get('providers', {}).get('reviewer') or {}
+    revision = (cfg.get('access_binding') or {}).get('connection_revision')
+    if not revision or task.get('served_identity_version') != 1:
+        return fresh
+    latest = {}
+    for record in task.get('request_metrics', []):
+        if record.get('role') != 'reviewer':
+            continue
+        # A successful probe never replaces an actual response or clears a
+        # later failure. Failed/in-flight probes conservatively invalidate it.
+        if record.get('purpose') == 'probe' and record.get('status') == 'responded':
+            continue
+        latest[record.get('model')] = record
+    for model in saved.get('attempted', []):
+        record = latest.get(model, {})
+        scope = record.get('dispatch_scope') or {}
+        if (record.get('purpose') == 'probe' or record.get('status') != 'responded'
+                or record.get('error_code') or record.get('synthetic') is not False
+                or not record.get('dispatched') or not record.get('id')
+                or record.get('identity_provenance') != 'response_model' or not record.get('served_model')
+                or scope != {'base_url': cfg.get('base_url'), 'connection_revision': revision,
+                             'model': model, 'role': 'reviewer'}):
+            continue
+        fresh['verified_routes'][model] = {'request_id': record['id']}
+    return fresh
+
+
 def bind_recovery(task):
+    saved = restore_verified_routes(task, _bind_scope(task))
+    if saved is not None:
+        task['reviewer_identity_recovery'] = saved
+    return saved
+
+
+def _bind_scope(task):
     """Keep exclusions with their reviewed candidate, including after restart.
 
     Legacy attempts expire only when actual request records prove that they
@@ -195,7 +240,8 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
     # Continuing a verified route still revalidates access, independence and
     # live cooldowns; it is not another identity failure/replacement event.
     available = candidates(engine, task)
-    choices = [m['id'] for m in available if m['id'] not in recovery['attempted']]
+    verified = recovery.setdefault('verified_routes', {})
+    choices = [m['id'] for m in available if m['id'] not in recovery['attempted'] or m['id'] in verified]
     pending = recovery.get('next_action', {})
     if pending.get('status') == 'selected' and pending.get('model') in {m['id'] for m in available}:
         choices.insert(0, pending['model'])
@@ -205,7 +251,7 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
         # A review-format handoff or operator selection may have replaced the
         # reviewer since identity recovery began. Dispatch that authorized route
         # before the old recovery list; do not let stale selection override it.
-        if current_model in {m['id'] for m in available} and current_model not in recovery['attempted']:
+        if current_model in {m['id'] for m in available} and (current_model not in recovery['attempted'] or current_model in verified):
             choices.insert(0, current_model)
         elif selected == current_model and selected in {m['id'] for m in available}:
             choices.insert(0, selected)
@@ -225,6 +271,9 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
                 continue
         if model_id not in recovery['attempted']:
             recovery['attempted'].append(model_id)
+        # An interrupted or failed replacement must not keep an older success
+        # eligible. A new successful actual response restores it below.
+        verified.pop(model_id, None)
         reusing = model_id == selected and continuing
         recovery.pop('selected', None)
         recovery['next_action'] = {'model': model_id, 'status': 'selected'}
@@ -284,6 +333,10 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
         recovery.pop('outage', None)
         recovery['next_action']['status'] = 'completed'
         recovery['selected'] = model_id
+        record = next((r for r in reversed(task.get('request_metrics', []))
+                       if r.get('role') == 'reviewer' and r.get('purpose') != 'probe'
+                       and r.get('model') == model_id), {})
+        verified[model_id] = {'request_id': record.get('id')}
         engine.store.save(task)
         return result
     if last_outage is not None or recovery.get('outage'):

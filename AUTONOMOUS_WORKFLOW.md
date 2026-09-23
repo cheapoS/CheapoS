@@ -60,6 +60,14 @@ item attempts are released only when request records prove they belong to older
 candidates. Unknown provenance stays conservative. Provider health and actual
 response independence still gate every replacement.
 
+Successful actual reviewer responses remain eligible after an authorized handoff
+unless the current protocol, live health or operator policy excludes them.
+Attempt history remains intact; it is not itself a list of identity failures.
+Legacy eligibility requires actual same-connection response provenance and is
+restored once. New failures revoke it; tiny probes cannot restore it. A small
+deterministic replay covers migration through all review units and integration
+approval without rerunning worker edits or checks.
+
 ## Implemented: durable final review units
 
 Evidence-enabled final review now schedules small requirement units followed by

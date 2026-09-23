@@ -190,7 +190,9 @@ def read(state, source=None, offset=0, search=None):
     value = state['sources'][source]
     content = value['content']
     if type(offset) is not int or not 0 <= offset <= len(content):
-        raise ValueError('Offset must be a character position within this review source.')
+        raise ValueError(f'Offset must be a character position within this review source: '
+                         f'{source} has {len(content)} characters; valid offsets are 0 through {len(content)}. '
+                         'Start at offset 0 or use next_offset from a returned page; stop paging when has_more is false.')
     if search is not None:
         if not isinstance(search, str) or not 1 <= len(search) <= 500:
             raise ValueError('Search must be 1–500 literal characters.')

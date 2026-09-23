@@ -157,6 +157,43 @@ class ReviewWorkflowTests(unittest.TestCase):
         engine.checks.assert_not_called()
         workflow.validate(result, manifest, task)
 
+    def test_legacy_identity_attempts_do_not_block_new_protocol_completion(self):
+        from cheapos import reviewer_recovery as identity
+        from cheapos.served_identity import ensure_independent
+        task, engine, rt, manifest, packet = self.fixture(5)
+        binding = {'connection_revision': 'saved'}
+        task.update(served_identity_version=1, execution={'mode': 'remote'}, route={'base_url': 'gateway'})
+        task['providers']['reviewer'].update(gateway='omniroute', base_url='gateway', access_binding=binding)
+        record = {'id': 'previous', 'role': 'reviewer', 'model': 'reviewer', 'requested_model': 'reviewer',
+            'status': 'responded', 'dispatched': True, 'synthetic': False, 'purpose': 'branch_final',
+            'served_model': 'actual/reviewer', 'identity_provenance': 'response_model',
+            'dispatch_scope': {'base_url': 'gateway', 'connection_revision': 'saved', 'model': 'reviewer', 'role': 'reviewer'}}
+        task['request_metrics'] = [record]
+        task['reviewer_identity_recovery'] = {'scope': 'manifest:manifest', 'attempted': ['reviewer', 'unknown']}
+        task['branch_run']['final_review_recovery'] = {'manifest': {'failed_models': ['reviewer']}}
+        engine.gateway = SimpleNamespace(settings={'base_url': 'gateway'},
+            catalog=lambda **kw: {'models': [{'id': 'reviewer', 'free': True, 'tool_calling': True}]})
+        def routed(runtime, messages, tools, role, override=None, purpose=None, **kw):
+            ensure_independent(runtime.task, record)
+            return self.approve(runtime, messages, tools, role, **kw)
+        engine._request_routed = Mock(side_effect=routed)
+        engine.request.side_effect = lambda *a, **kw: identity.request(engine, *a, **kw)
+        before = copy.deepcopy(task)
+        with patch.object(identity, 'qualify', return_value=True), patch.object(identity, 'config',
+                return_value=copy.deepcopy(task['providers']['reviewer'])):
+            result = self.run_workflow(engine, rt, manifest, packet)
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertEqual(engine._request_routed.call_count, 3)
+        workflow.validate(result, manifest, task)
+        for key in ('usage', 'limits', 'checks', 'request_metrics'):
+            self.assertEqual(task[key], before[key])
+        self.assertEqual(task['reviewer_identity_recovery']['attempted'], ['reviewer', 'unknown'])
+        self.assertEqual(task['branch_run']['final_review_recovery']['manifest'], before['branch_run']['final_review_recovery']['manifest'])
+        # Verified identity cannot override a failure in the CURRENT protocol.
+        task['branch_run']['final_review_recovery']['manifest:review-units:1'] = {'failed_models': ['reviewer']}
+        self.assertEqual(identity.candidates(engine, task), [])
+        engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+
     def test_oversized_rejected_exchange_is_retained_and_resume_request_is_compact(self):
         task, engine, rt, manifest, packet = self.fixture(1)
         oversized = 'Rejected explanation. ' * 3000

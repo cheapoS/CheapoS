@@ -61,6 +61,29 @@ their existing request-boundary coverage. See the
 
 ## Runtime entry points
 
+Worker repeated-read notices select registered `recovery.repeated_read_work` or
+`recovery.repeated_read_research` from the active item and existing work policy.
+Implementation and repair keep their checkpoint objective; read-only questions
+keep their answer objective and existing tools. Before dispatch, legacy notices
+are retained by reference and replaced by one current direction. New evidence,
+successful edits or completed verification clear that read notice without
+clearing other recovery guidance, attempts, operator directions or check receipts.
+Compaction refreshes the direction again so its base and tail cannot duplicate it.
+
+Initial, action, repair and compacted worker snapshots select recent activity
+from explicit current-item event ownership, with an item-start boundary for
+legacy untagged events. Unowned older events are not current-item work. Completed
+items remain historical summaries and the original journal remains intact.
+Interactive follow-ups keep bounded prior replies, actions and current snapshots
+of previously read files. The latest user-message boundary limits current-request
+observations, not conversation memory. Historical claims do not become passing
+checks or review approval. The existing chat-continuity test exercises the actual
+follow-up request and reconstruction from saved state alongside item-isolation tests.
+The catalog's `recovery.working_memory` rule distinguishes the snapshot's patch
+from the historical versions in action/check receipts. Small in-memory tests
+inspect initial/action snapshots and provider-boundary requests across JSON
+Resume, compaction and handoff, including read-only authority and tool pairing.
+
 Item review selects the registered `review_progress` profile when the evidence
 contract is enabled. Its `record_review_progress` tool validates one assessment
 with the same claim validator used by final approval, then returns the remaining
@@ -138,6 +161,7 @@ coordinator, which have different tools and output contracts.
 | Runtime entry point | Catalog profile or rules |
 | --- | --- |
 | Worker system, including restarted/handoff requests | `worker`, `interactive`, `unattended`; scoped validation and command policy |
+| Repeated reads and compacted worker memory | `recovery.repeated_read_work`, `recovery.repeated_read_research`, `recovery.working_memory` |
 | Finish review and worker stages | `recovery.finish_review`, `stage.*` |
 | Opening chat / connection greeting | `greeting`, `startup_greeting` |
 | Discussion during an existing task | `discussion` |
