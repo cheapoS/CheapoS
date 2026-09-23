@@ -7,7 +7,7 @@ class RecoveryContextTests(unittest.TestCase):
         task={'prompt':'Original bug','patch':'fixed','workspace_generation':2,
               'branch_run':{'current_item_id':'repair','guidance':[{'item_id':'repair','message':'Verify the focused route test'}],
                             'items':[{'id':'fix','status':'committed','outcome_summary':'Route fixed'}]},
-              'events':[{'kind':'assistant','detail':'Frontend and backend routes already match.'}]*5,
+              'events':[{'kind':'assistant','item_id':'repair','detail':'Frontend and backend routes already match.'}]*5,
               'checks':[{'command':['python3','-m','unittest','tests.test_empty_trash'],'passed':True,
                          'digest':hashlib.sha256(b'fixed').hexdigest(),'verification_identity':'identity','generation':2}]}
         result=packet(task)

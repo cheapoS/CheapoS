@@ -81,7 +81,8 @@ def continuation(task):
         raise BudgetError('The retained user requirements exceed the 48 KB continuation allowance. Start a focused task with the requirements to carry forward; saved requests remain intact.')
     workspace=Workspace(task['workspace'])
     paths=[c['path'] for c in task.get('changes',[])]
-    for event in reversed(task.get('events',[])):
+    from .worker_context import active_events
+    for event in reversed(active_events(task)):
         if event['kind']=='tool' and event['title']=='read file':
             name=event.get('detail',{}).get('arguments',{}).get('path')
             if name:paths.append(name)

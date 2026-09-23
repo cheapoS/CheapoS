@@ -48,6 +48,9 @@ class AnswerRecoveryTests(LocalCase):
         self.engine.start(t['id']);result=self.finish(t)
         self.assertEqual(result['status'],'approved',result['error'])
         self.assertEqual(len(requests),7)
+        from cheapos.instructions.runtime import text
+        self.assertIn(text('recovery.repeated_read_work'), str(requests[2][0]))
+        self.assertNotIn("Answer the user's question", str(requests[2][0]))
         self.assertIn('read_file',{tool['function']['name'] for tool in requests[3][1]})
         self.assertEqual(len(result['checks']),1)
         self.assertEqual(result['checkpoints'][-1]['decision'],'APPROVE')

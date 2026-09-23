@@ -1,6 +1,7 @@
 """Bounded continuation evidence; prior model statements are not verification."""
 from .instructions.runtime import text as instruction
 import hashlib
+from .worker_context import active_events
 
 TEST_POLICY = instruction('validation.recovery')
 
@@ -13,7 +14,7 @@ def packet(task):
               (task.get('requests') or [task.get('prompt', '')])[-1])
     statements = []
     seen = set()
-    for event in reversed(task.get('events', [])):
+    for event in reversed(active_events(task)):
         if event.get('kind') != 'assistant' or not isinstance(event.get('detail'), str):
             continue
         text = event['detail'][:1800]

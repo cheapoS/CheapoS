@@ -62,6 +62,13 @@ saved history. Retain omitted complete exchanges by reference and keep the
 latest correction available across Resume/handoff, even when a rejected verdict
 is larger than the conversation window. Preserve tool-call/result pairing.
 
+Worker continuation must keep the active item's goal and evidence ownership.
+Do not turn an implementation/repair warning into question answering or label
+earlier items' edits as current work. Scope active snapshots by recorded item
+ownership; retain historical records and original check identities. Refresh
+obsolete controller notices across Resume, handoff and compaction without
+duplicating instructions or resetting recovery history and authority.
+
 A transport retry must be separately accounted and preserve actual response
 identity checks. Never infer reviewer identity from a successful probe or a
 configured route when the review response itself lacks required identity.

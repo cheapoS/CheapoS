@@ -316,6 +316,49 @@ RULES: List[InstructionRule] = [
     # Recovery & Steering Rules (Dynamic / Trigger-based)
     # --------------------------------------------------------------------------
     InstructionRule(
+        id="recovery.working_memory",
+        audience=AgentAudience.CHEAPOS_WORKER,
+        category=InstructionCategory.RECOVERY,
+        roles=("worker",),
+        priority=50,
+        text=(
+            "Continue the active item from these findings and actions. Findings are model claims, not verified facts. "
+            "The patch/generation describe this snapshot; each action and check retains its own historical receipt, not current verification. "
+            "Use recovery_continuation.next_step and current check identity before choosing verification or checkpoint."
+        ),
+        rationale="A compacted snapshot must not rebind earlier actions or checks to the current candidate."
+    ),
+    InstructionRule(
+        id="recovery.repeated_read_work",
+        audience=AgentAudience.CHEAPOS_WORKER,
+        category=InstructionCategory.RECOVERY,
+        roles=("worker",),
+        priority=80,
+        state_triggers=("loop_detected",),
+        text=(
+            "This read returned unchanged evidence twice. Continue the active implementation or repair item from the saved findings. "
+            "Identify the smallest unfinished requirement, fix a supported defect, or document evidence that disputes an unsupported finding. "
+            "Inspect a specific missing fact with the offered tools when needed; do not repeat unchanged investigation or edit merely to reset a guard. "
+            "When the item is ready, use its current authorized verification and submit checkpoint for independent review. "
+            "A conversational answer does not complete this work. The objective, permissions and limits remain unchanged."
+        ),
+        rationale="Keeps an implementation read warning aligned with the active item rather than turning it into question answering."
+    ),
+    InstructionRule(
+        id="recovery.repeated_read_research",
+        audience=AgentAudience.CHEAPOS_WORKER,
+        category=InstructionCategory.RECOVERY,
+        roles=("worker",),
+        priority=80,
+        state_triggers=("loop_detected",),
+        text=(
+            "This read returned unchanged evidence twice. Answer the current question from the saved findings. "
+            "If a specific fact is missing, inspect only that fact using the offered tools, or explain the remaining uncertainty. "
+            "Do not edit files merely to reset a guard. This notice grants no new authority and does not change the user's request."
+        ),
+        rationale="Keeps read-only investigation focused without directing implementation work or promising unavailable tools."
+    ),
+    InstructionRule(
         id="recovery.edit_guidance",
         audience=AgentAudience.CHEAPOS_WORKER,
         category=InstructionCategory.RECOVERY,

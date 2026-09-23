@@ -2,6 +2,8 @@
 import copy
 import hashlib
 import json
+from .worker_context import active_events
+from .instructions.runtime import text
 
 LIMIT = 44000
 
@@ -43,12 +45,11 @@ def compact(task, base, previous, limit=LIMIT):
             if len(notes) == 3:
                 break
     actions = []
-    for event in reversed(task.get('events', [])):
-        if event.get('kind') == 'user':
-            break
+    for event in reversed(active_events(task)):
         if event.get('kind') == 'tool' and event.get('title') in {'replace text', 'replace lines', 'write file', 'run checks'}:
             detail = event.get('detail') or {}
-            actions.append({'action': event['title'], 'path': detail.get('arguments', {}).get('path'),
+            actions.append({'event_id': event.get('id'), 'item_id': event.get('item_id'),
+                            'action': event['title'], 'path': detail.get('arguments', {}).get('path'),
                             'result': bounded(detail.get('result'), 800)})
             if len(actions) == 4:
                 break
@@ -56,7 +57,8 @@ def compact(task, base, previous, limit=LIMIT):
               'workspace_generation': task.get('workspace_generation', 0),
               'recent_worker_findings_unverified': list(reversed(notes)),
               'recent_completed_actions': list(reversed(actions)),
-              'rule': 'Continue the current approach from these findings and completed actions. Do not rediscover or undo them without new evidence. Findings are model claims, not verified facts. They refer to the recorded patch/generation; revalidate only affected facts after changes. Use recovery_continuation.next_step and current check identity before choosing verification or checkpoint.'}
+              'item_id': (task.get('branch_run') or {}).get('current_item_id'),
+              'rule': text('recovery.working_memory')}
     from .working_state import project
     from .context_evidence import retain
     from .providers import BudgetError
