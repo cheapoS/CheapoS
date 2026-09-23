@@ -55,6 +55,11 @@ non-chat models, honor rejected probes, and verify unknown candidates with the
 small probe before sending task context. Reuse valid scoped proof across Resume
 without replacing actual response identity checks or clearing work failures.
 
+Final review may batch offered read-only evidence tools. Keep every call/result
+paired, retain completed reads across interruption, and invalidate pending reads
+when scope or guidance changes. Never apply a decision mixed with evidence reads;
+require a separate validated decision after delivering their results.
+
 Review evidence must match the claim. Command-result-only criteria can use the
 exact captured check receipt; behavioral criteria and regression assessment
 still require source/document or visual evidence. Do not force code citations

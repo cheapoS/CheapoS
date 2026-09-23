@@ -25,7 +25,7 @@ class FinalRecoveryTests(unittest.TestCase):
         self.assertEqual(result['decision'], 'APPROVE')
         self.assertEqual(engine.request.call_args.kwargs['tool_choice'], 'required')
         delivered = engine.request.call_args.args[1]
-        self.assertTrue(any('Return exactly one offered tool call' in m.get('content', '') for m in delivered))
+        self.assertTrue(any('Return an offered evidence reader' in m.get('content', '') for m in delivered))
         for key in ('checks', 'usage', 'providers', 'limits'):
             self.assertEqual(runtime.task[key], before[key])
         engine.checks.assert_not_called()

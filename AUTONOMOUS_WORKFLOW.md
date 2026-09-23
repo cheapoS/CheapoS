@@ -892,3 +892,19 @@ readers: the reviewer still selects the appropriate tool and supplies validated
 evidence and coverage. The assembled catalog contract reflects required-tool
 mode; read-only chat without tools continues to use ordinary text. Small
 provider-boundary and saved-review tests cover this without live inference.
+
+## Implemented: finish useful final-review evidence batches
+
+Final review accepts batches consisting entirely of its offered evidence readers,
+with valid argument objects and unique call IDs. Reads execute sequentially under
+normal guards. Their receipts are saved as they complete; Resume continues the
+uncompleted reads without another model request or replaying successful reads.
+The original assistant batch and paired results are delivered together, retaining
+provider metadata. Changed scope or operator guidance invalidates the pending
+batch through the existing packet binding.
+
+A batch containing a decision or any unoffered tool executes nothing. Approval
+still needs a separate explicit decision with current evidence, exact coverage
+and independent identity. Per-read errors remain error receipts, never evidence
+of success. Small deterministic cases cover completion, cancellation/Resume,
+pairing, mixed batches, malformed arguments, failed reads and changed guidance.
