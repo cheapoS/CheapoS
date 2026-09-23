@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import shlex
+from .check_specs import same
 
 VERSION = 1
 INSTRUCTION = instruction('reviewer.assessment')
@@ -82,7 +83,7 @@ def labeled_commands(criteria):
     return commands
 
 
-def refresh_check_claims(state, packet):
+def refresh_check_claims(state, packet, *, criterion_check_specs=None):
     """Bind narrowly stated command-result claims to controller check receipts.
 
     This is deliberately a full match, not a keyword classifier: behavioral or
@@ -93,6 +94,17 @@ def refresh_check_claims(state, packet):
     texts.update({row['id']: row['criterion'] for row in packet.get('requirements', []) if row['id'] in texts})
     # Unit tests of a validator cannot prove it ran on real inputs.
     missing_commands = labeled_commands(texts)
+    # A named result-only check can use the sole check explicitly required by
+    # its approved item. This mapping comes from the controller, never the model
+    # or whichever command happened to pass. Ambiguity stays unresolved.
+    named = {}
+    for key, specs in (criterion_check_specs or {}).items():
+        criterion = texts.get(key)
+        if (isinstance(criterion, str) and len(specs) == 1
+                and re.fullmatch(r'(?:The )?(?:[\w-]+ ){1,4}check passes\.?', criterion.strip(), re.IGNORECASE)
+                and not re.search(r'\b(?:and|or)\b', criterion, re.IGNORECASE)):
+            named[key] = specs[0]
+            missing_commands[key] = specs[0]['command']
     bindings = {key: [] for key in missing_commands}
     checks = packet.get('checks') or []
     if isinstance(checks, dict):
@@ -109,7 +121,8 @@ def refresh_check_claims(state, packet):
         pattern = r'`?' + re.escape(shlex.join(command)) + r'`?\s+' + suffix
         for key, criterion in texts.items():
             labeled = r'[\w./-]+ (?:tests passed|passed structural validation) \(`?' + re.escape(shlex.join(command)) + r'`?\)\.?'
-            if not isinstance(criterion, str) or not (re.fullmatch(pattern, criterion.strip()) or re.fullmatch(labeled, criterion.strip())):
+            named_match = key in named and same(record, named[key]) and same(bound, named[key])
+            if not isinstance(criterion, str) or not (named_match or re.fullmatch(pattern, criterion.strip()) or re.fullmatch(labeled, criterion.strip())):
                 continue
             source = 'check:' + digest(bound)[:20]
             add(state, source, 'check', json.dumps(bound, ensure_ascii=False, sort_keys=True))
