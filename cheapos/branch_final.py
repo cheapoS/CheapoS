@@ -302,7 +302,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     incremental = proof is not None and bool(criterion_ids)
     if incremental:
         review_progress.bind(proof, {'packet_binding': state['binding']})
-        tools = review_progress.tools(tools, proof, 'final_review_decision')
+        tools = review_progress.tools(tools, proof, 'final_review_decision', recorded_only=True)
     messages.extend(copy.deepcopy(state.get('messages',[])))
     packet['context_references']=copy.deepcopy(state.get('context_references',[]))
     # Display metadata stays outside packet bindings so a label change cannot

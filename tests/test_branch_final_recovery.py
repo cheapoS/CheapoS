@@ -132,8 +132,9 @@ class FinalRecoveryTests(unittest.TestCase):
             old = next(iter(saved['branch_run']['final_review_packets'].values()))
             self.assertEqual(proof['excerpts'], old['evidence_review']['excerpts'])
             source, = proof['criterion_checks']['one:1']
-            schema = tools[0]['function']['parameters']['properties']['review_assessment']
-            self.assertIn(source, schema['properties']['criteria']['properties']['one:1']['description'])
+            current = next(json.loads(m['content'])['review_progress'] for m in messages
+                           if m.get('role') == 'user' and m.get('content', '').startswith('{"review_progress":'))
+            self.assertEqual(current['criterion_checks']['one:1'], [source])
             self.assertEqual(sum(t['function']['name'] == 'read_review_evidence' for t in tools), 1)
             self.assertTrue(any('return max' in m.get('content', '') for m in messages if m['role'] == 'tool'))
             result = self.approval()['tool_calls'][0]['result']
@@ -188,8 +189,9 @@ class FinalRecoveryTests(unittest.TestCase):
                 raise InterruptedError('Saved review interrupted')
             contract = json.loads(messages[1]['content'])['review_evidence']
             source, = contract['criterion_checks']['one:1']
-            schema = tools[0]['function']['parameters']['properties']['review_assessment']
-            self.assertIn(source, schema['properties']['criteria']['properties']['one:1']['description'])
+            current = next(json.loads(m['content'])['review_progress'] for m in messages
+                           if m.get('role') == 'user' and m.get('content', '').startswith('{"review_progress":'))
+            self.assertEqual(current['criterion_checks']['one:1'], [source])
             return self.call('read_review_evidence', {'source': source})
         engine.request.side_effect = initial
         with self.assertRaises(InterruptedError):
@@ -231,6 +233,9 @@ class FinalRecoveryTests(unittest.TestCase):
                 'use_recorded_assessment': True}))
         def status(messages, tools):
             self.assertEqual(audit_tools('final_review_progress', tools), [])
+            decision = tools[0]['function']['parameters']['properties']
+            self.assertIn('use_recorded_assessment', decision)
+            self.assertNotIn('review_assessment', decision)
             self.assertEqual(messages[0]['content'].count(prompt('final_review_progress')), 1)
             updates = [json.loads(m['content'])['review_progress'] for m in messages
                        if m.get('role') == 'user' and m.get('content', '').startswith('{"review_progress":')]

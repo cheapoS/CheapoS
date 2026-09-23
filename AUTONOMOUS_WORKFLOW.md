@@ -944,3 +944,9 @@ still needs a separate explicit decision with current evidence, exact coverage
 and independent identity. Per-read errors remain error receipts, never evidence
 of success. Small deterministic cases cover completion, cancellation/Resume,
 pairing, mixed batches, malformed arguments, failed reads and changed guidance.
+
+New synthesis requests advertise the concise recorded-assessment confirmation
+without duplicating the full per-criterion assessment schema. Current check
+source mappings travel in the progress checklist. Older complete assessments
+remain accepted only through the unchanged evidence validator; request
+reservations and authorized limits are not increased.

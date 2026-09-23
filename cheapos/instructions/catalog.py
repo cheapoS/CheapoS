@@ -702,7 +702,7 @@ RULES: List[InstructionRule] = [
             'that an earlier reviewer was correct. Inspect inherited claims before confirming them. '
             'Once every target is recorded, use the offered decision tool explicitly. On APPROVE, '
             'use_recorded_assessment: true confirms the complete recorded assessment; omit '
-            'review_assessment in that form. A complete full review_assessment is also accepted. '
+            'review_assessment in that form. '
             'Request changes for a supported defect; report concrete evidence gaps through the offered tools. '
             'Further reading must answer an unresolved question; a different query alone is not progress. '
             'The controller still enforces independence, evidence, current checks and operator authority.'

@@ -209,3 +209,9 @@ reviewer through an explicit validated decision. Stale scope, mixed
 record/decision batches and changed directions cannot inherit approval. Existing
 item-progress, final read-batch and instruction-runtime cases cover the unchanged
 paths. These are in-memory tests without model requests, waits or Git fixtures.
+
+New synthesis requests advertise the concise recorded-assessment confirmation
+without duplicating the full per-criterion assessment schema. Current check
+source mappings travel in the progress checklist. Older complete assessments
+remain accepted only through the unchanged evidence validator; request
+reservations and authorized limits are not increased.
