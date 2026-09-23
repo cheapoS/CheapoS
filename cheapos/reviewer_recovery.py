@@ -30,15 +30,32 @@ def candidates(engine, task):
     for worker in workers(task):
         used.update(normalized(worker.get(k)) for k in ('model', 'requested_model', 'served_model'))
     catalog = gateway.catalog(fresh=True)
+    from . import route_health, route_schedule
     result = []
     for model in catalog.get('models', []):
         if not access_policy.eligible(model, policy) or opaque(model['id']) or normalized(model['id']) in used:
             continue
         pool = getattr(gateway, 'pool', None)
-        if pool and pool.observation(current['base_url'], model['id'], (policy or {}).get('connection_revision')).get('cooling_down'):
+        revision = (policy or {}).get('connection_revision')
+        health = pool.observation(current['base_url'], model['id'], revision) if pool else {}
+        identity = route_health.probe_identity(current['base_url'], model, revision)
+        rejected = task.get('route', {}).get('rejected_probes', {}).get('reviewer:' + identity)
+        if health.get('cooling_down') or health.get('probe_rejected') or route_schedule.rejected(rejected):
             continue
-        result.append({'id': model['id'], 'label': model.get('name') or model['id']})
+        result.append({**model, 'label': model.get('name') or model['id']})
+    pool = getattr(gateway, 'pool', None)
+    if pool and hasattr(pool, 'interleave'):
+        result = pool.interleave(current['base_url'], result, 'reviewer',
+                                 connection_revision=(policy or {}).get('connection_revision'))
     return result
+
+
+def qualify(engine, runtime, cfg, model):
+    from .routing import qualify as qualify_route
+    gateway = engine.connection_for(cfg) if hasattr(engine, 'connection_for') else engine.gateway
+    task = runtime.task
+    policy = access_policy.for_config(task, cfg) if task.get('gateway_connections') is not None else (task.get('route') or {}).get('access_policy', task.get('branch_run', {}).get('model_policy', {}).get('gateway_access'))
+    return qualify_route(engine, runtime, gateway, model, cfg, 'reviewer', policy)
 
 
 def config(engine, task, model_id):
@@ -159,7 +176,12 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
         if not reusing:
             engine.event(task, 'reviewer_recovery', 'I couldn’t verify reviewer independence. I’m trying another reviewer and checking its identity.', {'model': model_id})
         engine.store.save(task)
+        probing = True
         try:
+            if not qualify(engine, runtime, selected_config, next(m for m in available if m['id'] == model_id)):
+                recovery['attempted'].remove(model_id)
+                continue
+            probing = False
             # _request retains accounting, permission and identity gates. The
             # recovery flag also requires actual response identity before tools.
             recovery['next_action']['status'] = 'dispatching'
@@ -167,6 +189,12 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
             result = engine._request_routed(runtime, messages, tools, role, selected_config, purpose, tool_choice=tool_choice)
         except ProviderError as error:
             recovery['next_action'].update(status='failed', error_code=error.code)
+            if probing:
+                from . import route_health
+                gateway = engine.connection_for(selected_config) if hasattr(engine, 'connection_for') else engine.gateway
+                gateway.pool.record(selected_config['base_url'], model_id, role, error=error, probe=True,
+                    connection_revision=(selected_config.get('access_binding') or {}).get('connection_revision'),
+                    failure_context={'candidate_rejected': route_health.candidate_probe_rejection(error)})
             from .provider_recovery import OUTAGES
             if error.code in OUTAGES:
                 last_outage = error
@@ -175,12 +203,12 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
                 # Availability is not an identity/quality failure. Its cooldown
                 # owns the next eligible attempt; keep accounting and candidate.
                 recovery['attempted'].remove(model_id)
-                if hasattr(engine, 'connection_for'):
+                if not probing and hasattr(engine, 'connection_for'):
                     gateway = engine.connection_for(selected_config)
                     gateway.pool.record(selected_config['base_url'], model_id, role, error=error, connection_revision=(selected_config.get('access_binding') or {}).get('connection_revision'))
                 engine.store.save(task)
                 continue
-            if not replacement_failure(error):
+            if not replacement_failure(error) and not (probing and error.code == 'probe_failed'):
                 raise
             engine.event(task, 'reviewer_recovery', 'The replacement reviewer could not complete this request. Trying another authorized reviewer.',
                          {'model': model_id, 'error_code': error.code})

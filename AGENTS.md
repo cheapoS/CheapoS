@@ -31,6 +31,12 @@ models; malformed requests and model-quality failures are not provider outages.
 Cover saved-connection scoping, restart, authorized failover and automatic retry
 through a completed decision with a fake clock, preserving model pins and usage.
 
+Every automatic recovery route must use the same scoped tool qualification as
+initial routing. Catalog tool flags alone are not qualification; reject known
+non-chat models, honor rejected probes, and verify unknown candidates with the
+small probe before sending task context. Reuse valid scoped proof across Resume
+without replacing actual response identity checks or clearing work failures.
+
 Review evidence must match the claim. Command-result-only criteria can use the
 exact captured check receipt; behavioral criteria and regression assessment
 still require source/document or visual evidence. Do not force code citations

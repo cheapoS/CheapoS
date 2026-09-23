@@ -46,6 +46,7 @@ def eligible(model, policy=None):
     if model.get('local') or model['id'].startswith('auto/'):
         return False
     return (classify(model, policy) in {'public_free', 'included'}
+            and model.get('chat_completion') is not False
             and model.get('tool_calling') is True)
 
 
