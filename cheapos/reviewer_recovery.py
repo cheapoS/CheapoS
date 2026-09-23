@@ -1,5 +1,6 @@
 """Recover reviewer identity failures without replaying exhausted routes or work."""
 import copy
+from time import monotonic
 from . import access_policy
 from .served_identity import normalized, opaque, review_workers
 from .providers import ProviderError, validate_provider
@@ -240,6 +241,7 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
             # recovery flag also requires actual response identity before tools.
             recovery['next_action']['status'] = 'dispatching'
             engine.store.save(task)
+            started = monotonic()
             result = engine._request_routed(runtime, messages, tools, role, selected_config, purpose, tool_choice=tool_choice)
         except ProviderError as error:
             recovery['next_action'].update(status='failed', error_code=error.code)
@@ -268,6 +270,14 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
                          {'model': model_id, 'error_code': error.code})
             engine.store.save(task)
             continue
+        # Explicit recovery configurations bypass the automatic router's health
+        # accounting. A real response can clear an expired failure; its tiny
+        # qualification probe must not do that on its own.
+        if hasattr(engine, 'connection_for'):
+            gateway = engine.connection_for(selected_config)
+            gateway.pool.record(selected_config['base_url'], model_id, role,
+                seconds=monotonic() - started,
+                connection_revision=(selected_config.get('access_binding') or {}).get('connection_revision'))
         task['providers']['reviewer'] = selected_config
         if task.get('route'):
             task['route'].setdefault('preferred', {})['reviewer'] = model_id

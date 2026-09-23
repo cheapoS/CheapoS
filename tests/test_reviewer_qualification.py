@@ -78,6 +78,32 @@ class QualificationTests(unittest.TestCase):
         self.assertTrue(recovery.qualify(engine, runtime, cfg, model))
         engine.request.assert_called_once()
 
+    def test_real_recovery_response_reuses_probe_after_expired_failure_and_restart(self):
+        engine, runtime, models = self.fixture()
+        models.pop(0)
+        model = models[0]; pool = engine.gateway.pool
+        endpoint = runtime.task['providers']['reviewer']['base_url']
+        with patch('cheapos.model_pool.time.time', return_value=1):
+            pool.record(endpoint, model['id'], 'reviewer', error=ProviderError('Bad response', code='invalid_response'))
+        engine.request.return_value = self.marker()
+        def response(*args, **kwargs):
+            if engine._request_routed.call_count == 1:
+                # Qualification alone must retain the actual failure.
+                self.assertTrue(pool.observation(endpoint, model['id'])['last_error'])
+            return {'content': 'Inspecting the saved evidence.'}
+        engine._request_routed.side_effect = response
+        with patch('cheapos.model_pool.time.time', return_value=1000):
+            recovery.request(engine, runtime, [], [], 'reviewer')
+            health = pool.observation(endpoint, model['id'])
+            self.assertFalse(health['last_error'])
+            self.assertEqual(health['reviewer_responses'], 1)
+            engine.gateway.pool = FreeModelPool(pool.path.parent)
+            runtime.task = json.loads(json.dumps(runtime.task))
+            recovery.request(engine, runtime, [], [], 'reviewer')
+        self.assertEqual(engine.request.call_count, 1)
+        self.assertEqual(engine._request_routed.call_count, 2)
+        self.assertEqual(runtime.task['progress_state']['route_probes']['reviewer'], 1)
+
     def test_cancelled_probe_never_dispatches_task_or_leaves_inflight_claim(self):
         engine, runtime, models = self.fixture()
         engine.request.side_effect = InterruptedError('Operator pause')
