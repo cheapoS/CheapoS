@@ -1,5 +1,6 @@
 """Network-free request boundary tests: no repository or live inference fixture."""
 import io
+import copy
 import json
 import threading
 import unittest
@@ -14,6 +15,53 @@ from cheapos.providers import guard_inference_route, ChatProvider
 
 
 class TransportTests(unittest.TestCase):
+    def test_saved_reasoning_history_is_compatible_with_groq_without_losing_evidence(self):
+        from email.message import Message
+        history = [
+            {'role': 'user', 'content': 'Review the saved change and checks.'},
+            {'role': 'assistant', 'content': None, 'reasoning': 'Inspect the evidence.',
+             'reasoning_details': [{'type': 'reasoning.encrypted', 'data': 'opaque-fixture'}],
+             'reasoning_fallback': False,
+             'tool_calls': [{'id': 'read-1', 'type': 'function', 'function': {
+                 'name': 'read_file', 'arguments': '{"path":"example.py"}'}}]},
+            {'role': 'tool', 'tool_call_id': 'read-1', 'content': 'Current source evidence.'}]
+        before = copy.deepcopy(history)
+        for role in ('worker', 'reviewer', 'planner', 'coordinator'):
+            for model, provider_tag, strips in (('groq/fixture', None, True),
+                                               ('no-think/groq/fixture', None, True),
+                                               ('opaque-route', 'groq', True),
+                                               ('openrouter/fixture:free', None, False)):
+                with self.subTest(role=role, model=model):
+                    engine, runtime, _ = self.harness()
+                    config = {**runtime.task['providers']['worker'], 'model': model,
+                              'gateway': 'omniroute', 'provider': provider_tag, 'pacing_interval': 0}
+                    runtime.task['providers'][role] = config
+                    provider = ChatProvider(config)
+                    engine.provider_factory = lambda *args: provider
+                    captured = []
+                    def respond(request, **kwargs):
+                        body = json.loads(request.data)
+                        captured.append(body)
+                        assistant = next(m for m in body['messages'] if m['role'] == 'assistant')
+                        if strips and 'reasoning_details' in assistant:
+                            raise AssertionError('Groq rejects this assistant-message property')
+                        response = io.BytesIO(json.dumps({'model': model, 'choices': [{'message': {
+                            'role': 'assistant', 'content': 'Evidence received.'}}],
+                            'usage': {'prompt_tokens': 2, 'completion_tokens': 3}}).encode())
+                        response.headers = Message(); response.headers['Content-Type'] = 'application/json'
+                        return response
+                    with patch('cheapos.providers.build_opener') as opener:
+                        opener.return_value.open.side_effect = respond
+                        result = engine._request_attempt(runtime, history, [], role, transport_override='json')
+                        opener.return_value.open.assert_called_once()
+                    self.assertEqual(result['content'], 'Evidence received.')
+                    expected = copy.deepcopy(before)
+                    expected[1].pop('reasoning_fallback')
+                    if strips: expected[1].pop('reasoning_details')
+                    self.assertEqual(captured[0]['messages'][0]['role'], 'system')
+                    self.assertEqual(captured[0]['messages'][1:], expected)
+                    self.assertEqual(history, before)
+
     def test_complete_json_thinking_is_retained_for_each_role_and_transport(self):
         from email.message import Message
         for role in ('worker', 'reviewer', 'planner', 'coordinator'):
