@@ -388,7 +388,8 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             recovery.recover(engine,runtime,key,state,messages)
         label = 'item' if manifest.get('kind') == 'item' else 'final'
         engine.event(runtime.task,'review_request',f'Requesting {label} packet review',{'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'stage':'synthesis' if criterion_ids else 'chunk',**display})
-        message = engine.request(runtime, messages, tools, 'reviewer', purpose='branch_final', tool_choice='required')
+        request_messages = recovery.request_context(engine, runtime.task, state, messages, direction=direction)
+        message = engine.request(runtime, request_messages, tools, 'reviewer', purpose='branch_final', tool_choice='required')
         recovery.guard(runtime)  # A reply to superseded guidance cannot approve this packet.
         state['reviewer_model']=recovery.model(runtime.task)
         calls = message.get('tool_calls', [])
@@ -449,6 +450,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             if getattr(error,'pause_cause',None):raise
             attempts[key] = attempts.get(key,0) + 1
             feedback = {'error':str(error),'attempt':attempts[key], **getattr(error, 'correction', {})}
+            recovery.remember_feedback(runtime.task, state, feedback)
             engine.event(runtime.task,'review_feedback','Final review response needs correction',feedback)
             engine.store.save(runtime.task)
             if (calls and all(isinstance(call,dict) and isinstance(call.get('id'),str) and call['id'] for call in calls)

@@ -44,6 +44,10 @@ Rejected argument JSON must not make later requests invalid: project historical
 malformations as explicit diagnostic objects, retain raw arguments and paired
 error receipts, and reserve usage against the projected request. Never repair
 or execute a malformed new call merely to satisfy a transport validator.
+Final review must bound the conversation actually sent to providers as well as
+saved history. Retain omitted complete exchanges by reference and keep the
+latest correction available across Resume/handoff, even when a rejected verdict
+is larger than the conversation window. Preserve tool-call/result pairing.
 
 A transport retry must be separately accounted and preserve actual response
 identity checks. Never infer reviewer identity from a successful probe or a

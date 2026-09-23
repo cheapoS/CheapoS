@@ -1,5 +1,11 @@
 # Complete the work without operator rescue
 
+Final review retains complete oversized exchanges by local reference and bounds
+the conversation sent on every request. The latest correction remains visible
+even when its rejected verdict exceeds the saved conversation window. Resume
+and handoff preserve those references, current evidence and cumulative attempts;
+the ordinary explicit decision and independent-evidence gates remain required.
+
 Result-only named checks in final synthesis use the same approved item's sole
 required command and working directory. The reviewer must cite its actual
 passing receipt for the current candidate. Ambiguous labels, mixed behavioral
