@@ -34,6 +34,13 @@ not establish reviewer independence, and actual review responses must still pass
 the served-identity gate. Cancellation preserves saved review work and releases
 the shared probe claim.
 
+Reviewer recovery exclusions follow the current candidate rather than the task
+lifetime. Older candidates retain their attempt histories, which are restored
+if revisited; chunks and synthesis share the final manifest's history. Legacy
+item attempts are released only when request records prove they belong to older
+candidates. Unknown provenance stays conservative. Provider health and actual
+response independence still gate every replacement.
+
 ## Implemented: review command results using check evidence
 
 Item reviewers can now record individual evidence-backed assessments and see

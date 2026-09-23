@@ -7,6 +7,54 @@ from .providers import ProviderError, validate_provider
 IDENTITY_ERRORS = {'review_identity_unknown', 'review_identity_conflict'}
 
 
+def review_scope(task):
+    run = task.get('branch_run') or {}
+    active = run.get('active_final_review') or {}
+    if active.get('manifest_id') and (run.get('current_item_id') is None or active.get('kind') == 'item'):
+        return 'manifest:' + active['manifest_id']
+    pending = task.get('pending_review') or {}
+    candidate = pending.get('branch_candidate_id')
+    if candidate:
+        return 'item:' + candidate
+    evidence = pending.get('evidence_review') or {}
+    return 'checkpoint:' + evidence['scope'] if evidence.get('scope') else None
+
+
+def bind_recovery(task):
+    """Keep exclusions with their reviewed candidate, including after restart.
+
+    Legacy attempts expire only when actual request records prove that they
+    belong to older candidates. Unknown provenance remains conservative.
+    """
+    saved = task.get('reviewer_identity_recovery')
+    scope = review_scope(task)
+    if not saved or not scope or saved.get('scope') == scope:
+        return saved
+    history = saved.get('history', {}).copy()
+    old_scope = saved.get('scope') or 'legacy'
+    history[old_scope] = copy.deepcopy({k: v for k, v in saved.items() if k != 'history'})
+    fresh = copy.deepcopy(history.get(scope, {'attempted': []}))
+    if old_scope == 'legacy' and scope.startswith('item:') and scope not in history:
+        fresh = copy.deepcopy(history['legacy'])
+        candidate = scope.removeprefix('item:')
+        removed = set()
+        for model in saved['attempted']:
+            records = [r for r in task.get('request_metrics', []) if r.get('role') == 'reviewer'
+                       and r.get('purpose') != 'probe' and r.get('model') == model]
+            if records and all(r.get('review_candidate_id') and r['review_candidate_id'] != candidate for r in records):
+                removed.add(model)
+        fresh['attempted'] = [m for m in saved['attempted'] if m not in removed]
+        if fresh.get('selected') in removed:
+            fresh.pop('selected', None)
+        if (fresh.get('next_action') or {}).get('model') in removed:
+            fresh.pop('next_action', None)
+    elif old_scope == 'legacy' and scope not in history:
+        fresh = copy.deepcopy(history['legacy'])
+    fresh.update(scope=scope, history=history)
+    task['reviewer_identity_recovery'] = fresh
+    return fresh
+
+
 def workers(task):
     scope = (task.get('pending_review') or {}).get('identity_scope') or {}
     return review_workers(task, {'review_candidate_id': scope.get('candidate_id')})
@@ -114,11 +162,17 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
     task = runtime.task
     if role != 'reviewer' or purpose == 'probe' or config_override is not None:
         return engine._request_routed(runtime, messages, tools, role, config_override, purpose, tool_choice=tool_choice)
-    recovery = task.get('reviewer_identity_recovery')
+    old_recovery = task.get('reviewer_identity_recovery')
+    recovery = bind_recovery(task)
+    if recovery is not old_recovery:
+        engine.store.save(task)
     if not recovery:
         previous = next((r for r in reversed(task.get('request_metrics', [])) if r.get('role') == 'reviewer' and r.get('purpose') != 'probe'), {})
-        if previous.get('error_code') in IDENTITY_ERRORS and previous.get('model') == (task.get('providers', {}).get('reviewer') or {}).get('model'):
-            recovery = task['reviewer_identity_recovery'] = {'attempted': [previous['model']]}
+        scope = review_scope(task)
+        same_candidate = not (scope and scope.startswith('item:') and previous.get('review_candidate_id')
+                              and scope != 'item:' + previous['review_candidate_id'])
+        if same_candidate and previous.get('error_code') in IDENTITY_ERRORS and previous.get('model') == (task.get('providers', {}).get('reviewer') or {}).get('model'):
+            recovery = task['reviewer_identity_recovery'] = {'attempted': [previous['model']], 'scope': scope}
             engine.store.save(task)
     if not recovery:
         try:
@@ -126,7 +180,7 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
         except ProviderError as error:
             if error.code not in IDENTITY_ERRORS:
                 raise
-            recovery = task['reviewer_identity_recovery'] = {'attempted': [task['providers']['reviewer']['model']]}
+            recovery = task['reviewer_identity_recovery'] = {'attempted': [task['providers']['reviewer']['model']], 'scope': review_scope(task)}
             engine.store.save(task)
     if unknown_workers(task):
         raise ProviderError('Historical worker identity is missing. A different reviewer cannot reconstruct it. Open Choose reviewer for the saved provenance limitation; no work or checks were discarded.', code='reviewer_recovery_required')
