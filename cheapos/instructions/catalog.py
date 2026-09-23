@@ -590,7 +590,9 @@ RULES: List[InstructionRule] = [
         text=(
             'The schemas supplied on this request define the available tools and allowed decision '
             'values. Use only those tools. Earlier tool calls and general guidance do not make an absent '
-            'tool available. Retrieve missing evidence through an offered reader; never invent a result '
+            'tool available. When tool_call_required is true, return a call to an available tool; '
+            'choose an evidence reader when needed rather than an unsupported decision. '
+            'Retrieve missing evidence through an offered reader; never invent a result '
             'or approval. If no tools are listed, answer in the requested text/JSON format without tool '
             'calls. This inventory grants no additional command, spending, model or workspace authority.'
         ),

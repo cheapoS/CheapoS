@@ -866,3 +866,14 @@ reviewer recovery can select another authorized route. Both attempts retain
 usage, current spending/request limits, cancellation and permission checks.
 Synthetic stream/JSON cases cover recovery, persistent reuse and identity
 rejection without extra live inference or expensive workflow fixtures.
+
+## Implemented: align final-review transport with its tool contract
+
+Final review only advances through an offered evidence reader or decision tool.
+Its API requests now explicitly require a tool call, matching the controller's
+existing validation. This applies to packets, item packets and synthesis,
+including correction, handoff and Resume. It does not force approval or remove
+readers: the reviewer still selects the appropriate tool and supplies validated
+evidence and coverage. The assembled catalog contract reflects required-tool
+mode; read-only chat without tools continues to use ordinary text. Small
+provider-boundary and saved-review tests cover this without live inference.

@@ -162,15 +162,21 @@ class RuntimeInstructionTests(unittest.TestCase):
         transport_runtime.task['limits']['reviewer_tokens'] = 50000  # final-review schema reservation
         received = []
         class Provider:
-            def complete(self, messages, available, maximum):
-                received.append((copy.deepcopy(messages), available))
+            def complete(self, messages, available, maximum, tool_choice=None):
+                received.append((copy.deepcopy(messages), available, tool_choice))
                 return fixture.approval(), {'prompt_tokens': 2, 'completion_tokens': 3, 'cost': 0}
         app.provider_factory = lambda *args: Provider()
         controller.request.side_effect = lambda rt, messages, available, role, **kw: app._request_attempt(
             transport_runtime, messages, available, role, **kw)
         result = fixture.review(controller, runtime)
         self.assertEqual(result['decision'], 'APPROVE')
-        sent, available = received[0]
+        sent, available, selected = received[0]
+        self.assertEqual(selected, 'required')
+        contract = json.loads(sent[0]['content'].rsplit('\n', 1)[1])
+        self.assertTrue(contract['tool_call_required'])
+        self.assertNotIn('required_call', contract)
+        self.assertIn('read_final_context', contract['available_tools'])
+        self.assertEqual(contract['decision_values']['final_review_decision'], ['APPROVE', 'REQUEST_CHANGES'])
         self.assertEqual(sent[0]['content'].count(text('workflow.ui_completeness')), 1)
         self.assertEqual(audit_tools('final_review', available), [])
         self.assertIn('exact source', sent[1]['content'])
@@ -178,6 +184,23 @@ class RuntimeInstructionTests(unittest.TestCase):
         self.assertEqual(fixture.review(controller, runtime), result)
         self.assertEqual(len(received), 1)
         self.assertEqual(task, before)
+
+    def test_required_tool_contract_refreshes_without_forcing_approval_or_chat_tools(self):
+        messages = [{'role': 'system', 'content': prompt('final_review')},
+                    {'role': 'user', 'content': 'Retained review evidence'}]
+        before = copy.deepcopy(messages)
+        first = with_tools(messages, tools.REVIEW_TOOLS, 'required')
+        second = with_tools(first, tools.REVIEW_TOOLS, 'required')
+        self.assertEqual(first, second)
+        contract = json.loads(second[0]['content'].rsplit('\n', 1)[1])
+        self.assertTrue(contract['tool_call_required'])
+        self.assertNotIn('required_call', contract)
+        for choice in ('auto', None, 'required'):
+            refreshed = with_tools(second, [], choice)
+            current = json.loads(refreshed[0]['content'].rsplit('\n', 1)[1])
+            self.assertNotIn('tool_call_required', current)
+            self.assertEqual(current['available_tools'], [])
+        self.assertEqual(messages, before)
 
     def test_validation_text_follows_authority_not_elapsed_seconds(self):
         self.assertEqual(validation({}), text('validation.change_scoped'))

@@ -11,6 +11,26 @@ from tests.test_review_assessment import assessment
 
 
 class FinalRecoveryTests(unittest.TestCase):
+    def test_required_tool_choice_survives_correction_and_resume_with_saved_evidence(self):
+        task, engine, runtime = self.fixture()
+        before = copy.deepcopy(task)
+        engine.request.side_effect = [{'role': 'assistant', 'content': 'Still reviewing.'},
+                                      InterruptedError('pause at next request')]
+        with self.assertRaises(InterruptedError): self.review(engine, runtime)
+        self.assertTrue(all(call.kwargs['tool_choice'] == 'required' for call in engine.request.call_args_list))
+        runtime.task = json.loads(json.dumps(task))
+        engine.request.reset_mock(side_effect=True)
+        engine.request.return_value = self.approval()
+        result = self.review(engine, runtime)
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_args.kwargs['tool_choice'], 'required')
+        delivered = engine.request.call_args.args[1]
+        self.assertTrue(any('Return exactly one offered tool call' in m.get('content', '') for m in delivered))
+        for key in ('checks', 'usage', 'providers', 'limits'):
+            self.assertEqual(runtime.task[key], before[key])
+        engine.checks.assert_not_called()
+        engine.file_tool.assert_not_called()
+
     def test_paged_synthesis_resumes_command_claim_with_retained_receipt_and_code(self):
         task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
         bound = self.bound_check(task)
