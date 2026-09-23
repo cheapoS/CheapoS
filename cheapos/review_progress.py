@@ -93,12 +93,14 @@ def instruction():
 def complete(state, result):
     if result.get('use_recorded_assessment') is not True:
         return  # Existing full decisions still use the unchanged evidence gate.
+    # Never fill a partly supplied, contradictory final assessment implicitly.
+    if 'review_assessment' in result:
+        raise ValueError('Either confirm recorded assessments or supply a full review_assessment, not both. '
+                         'To submit a full review_assessment, omit use_recorded_assessment or set it to false. '
+                         'Set it to true only to confirm already recorded assessments, without review_assessment.')
     recorded = current(state)
     if any(key not in recorded for key in targets(state)):
         raise ValueError('Recorded review is incomplete. Resolve the remaining review_progress targets before approval.')
-    # Never fill a partly supplied, contradictory final assessment implicitly.
-    if 'review_assessment' in result:
-        raise ValueError('Either confirm recorded assessments or supply a full review_assessment, not both.')
     result['review_assessment'] = {
         'criteria': {key: recorded[f'criterion:{i + 1}'] for i, key in enumerate(state['criteria'])},
         **{key: recorded[key] for key in ('regressions', 'verification', 'limitations')}}
