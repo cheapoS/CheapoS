@@ -31,6 +31,11 @@ models; malformed requests and model-quality failures are not provider outages.
 Cover saved-connection scoping, restart, authorized failover and automatic retry
 through a completed decision with a fake clock, preserving model pins and usage.
 
+Reviewer attempt exclusions belong to the candidate being reviewed, not the
+task lifetime. Preserve and restore each candidate's history on Resume; final
+review chunks share their manifest scope. Migrate older state only from recorded
+request provenance, without clearing current or unscoped failures.
+
 Every automatic recovery route must use the same scoped tool qualification as
 initial routing. Catalog tool flags alone are not qualification; reject known
 non-chat models, honor rejected probes, and verify unknown candidates with the

@@ -24,6 +24,87 @@ class ReviewerRecoveryTests(unittest.TestCase):
         task['route'] = {'base_url': 'gateway'}
         return engine, SimpleNamespace(task=task, guard=Mock())
 
+    def test_new_candidate_can_use_prior_route_without_erasing_failed_attempt(self):
+        engine, runtime = self.fixture()
+        task = runtime.task
+        task['pending_review']['branch_candidate_id'] = 'first'
+        engine._request.side_effect = ProviderError('identity', code='review_identity_unknown')
+        with patch.object(recovery, 'candidates', return_value=[{'id': 'next'}]), patch.object(
+                recovery, 'config', return_value={'model': 'next'}):
+            for _ in range(2):
+                with self.assertRaises(ProviderError): recovery.request(engine, runtime, [], [], 'reviewer')
+                runtime.task = copy.deepcopy(runtime.task)
+            self.assertEqual(engine._request.call_count, 1)
+            runtime.task['pending_review']['branch_candidate_id'] = 'second'
+            before = copy.deepcopy(runtime.task)
+            engine._request.side_effect = None
+            engine._request.return_value = {'content': 'approved'}
+            self.assertEqual(recovery.request(engine, runtime, ['saved evidence'], [], 'reviewer')['content'], 'approved')
+            state = runtime.task['reviewer_identity_recovery']
+            self.assertEqual(state['scope'], 'item:second')
+            self.assertEqual(state['history']['item:first']['attempted'], ['old', 'next'])
+            for key in ('patch', 'checks', 'pending_review', 'execution'):
+                self.assertEqual(runtime.task[key], before[key])
+            # Returning to the old candidate restores its exclusions, not a new allowance.
+            runtime.task['pending_review']['branch_candidate_id'] = 'first'
+            with self.assertRaises(ProviderError): recovery.request(engine, runtime, [], [], 'reviewer')
+            self.assertEqual(engine._request.call_count, 2)
+
+    def test_legacy_candidate_migration_retains_unknown_and_current_failures(self):
+        engine, runtime = self.fixture()
+        task = runtime.task
+        task['pending_review']['branch_candidate_id'] = 'current'
+        task['reviewer_identity_recovery'] = {'attempted': ['next', 'unknown', 'current-failure'],
+            'next_action': {'model': 'next', 'status': 'selected'}}
+        task['request_metrics'] = [
+            {'role': 'reviewer', 'model': 'next', 'review_candidate_id': 'older'},
+            {'role': 'reviewer', 'model': 'next', 'purpose': 'probe'},
+            {'role': 'reviewer', 'model': 'current-failure', 'review_candidate_id': 'current'}]
+        old = copy.deepcopy(task['reviewer_identity_recovery'])
+        with patch.object(recovery, 'candidates', return_value=[{'id': 'next'}]), patch.object(
+                recovery, 'config', return_value={'model': 'next'}):
+            recovery.request(engine, runtime, [], [], 'reviewer')
+        state = task['reviewer_identity_recovery']
+        self.assertEqual(state['history']['legacy'], old)
+        self.assertEqual(state['attempted'], ['unknown', 'current-failure', 'next'])
+        self.assertEqual(state['selected'], 'next')
+        engine._request.assert_called_once()
+
+    def test_manifest_scope_stays_fixed_across_chunks_and_resume(self):
+        _, runtime = self.fixture()
+        task = runtime.task
+        task['branch_run'] = {'current_item_id': None,
+                              'active_final_review': {'manifest_id': 'tree', 'key': 'chunk1'}}
+        task['reviewer_identity_recovery'] = {'attempted': ['failed'], 'scope': 'manifest:tree'}
+        for key in ('chunk2', 'synthesis'):
+            task = copy.deepcopy(task)
+            task['branch_run']['active_final_review']['key'] = key
+            self.assertIs(recovery.bind_recovery(task), task['reviewer_identity_recovery'])
+            self.assertEqual(task['reviewer_identity_recovery']['attempted'], ['failed'])
+        task['branch_run']['active_final_review']['manifest_id'] = 'new-tree'
+        self.assertEqual(recovery.bind_recovery(task)['attempted'], [])
+        self.assertEqual(task['reviewer_identity_recovery']['history']['manifest:tree']['attempted'], ['failed'])
+
+    def test_unknown_legacy_provenance_never_clears_attempts(self):
+        _, runtime = self.fixture()
+        task = runtime.task
+        task['reviewer_identity_recovery'] = {'attempted': ['failed']}
+        task['pending_review']['branch_candidate_id'] = 'current'
+        task['request_metrics'] = [{'role': 'reviewer', 'model': 'failed'}]
+        self.assertEqual(recovery.bind_recovery(task)['attempted'], ['failed'])
+
+    def test_older_identity_error_does_not_seed_current_candidate_exclusion(self):
+        engine, runtime = self.fixture()
+        task = runtime.task
+        task['pending_review']['branch_candidate_id'] = 'current'
+        task['request_metrics'] = [{'role': 'reviewer', 'model': 'old',
+            'error_code': 'review_identity_unknown', 'review_candidate_id': 'older'}]
+        engine._request_routed.side_effect = None
+        engine._request_routed.return_value = {'content': 'review'}
+        self.assertEqual(recovery.request(engine, runtime, [], [], 'reviewer')['content'], 'review')
+        self.assertNotIn('reviewer_identity_recovery', task)
+        engine._request_routed.assert_called_once()
+
     def test_recovery_preserves_work_and_reuses_verified_selection(self):
         engine, runtime = self.fixture()
         before = copy.deepcopy(runtime.task)
