@@ -26,6 +26,14 @@ requests, response-quality failures, cancellations and failed probes do not
 establish shared outages. Restart preserves the local observations. No public
 statistics, limits, model pins or spending authority change.
 
+Reviewer identity recovery uses the same tool-qualification function as initial
+routing. Known non-chat models and rejected probes are excluded; unknown catalog
+entries receive only the small capability check until they qualify. Existing
+scoped qualification and observed role evidence guide selection. A probe does
+not establish reviewer independence, and actual review responses must still pass
+the served-identity gate. Cancellation preserves saved review work and releases
+the shared probe claim.
+
 ## Implemented: review command results using check evidence
 
 Item reviewers can now record individual evidence-backed assessments and see

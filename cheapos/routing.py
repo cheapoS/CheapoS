@@ -33,6 +33,44 @@ class RoutingPause(Exception):
         self.scope = scope
 
 
+def qualify(engine, runtime, gateway, model, cfg, role, policy, *, trace=None, before_probe=None):
+    """Shared scoped tool qualification for initial routing and recovery."""
+    base_url = cfg['base_url']
+    revision = (policy or {}).get('connection_revision')
+    identity = route_health.probe_identity(base_url, model, revision)
+    def note(reason):
+        if trace is not None:
+            routing_trace.candidate(trace, model['id'], reason)
+    if gateway.pool.fresh_probe(base_url, model['id'], revision, identity):
+        note('cached_probe')
+        return True
+    owner, pending = gateway.pool.claim_probe(identity)
+    if pending is None and not owner:
+        raise RoutingPause('Connection checks are busy. Your task will retry automatically.',
+                           retry_at=time.time()+route_schedule.ROUND_SECONDS, scope='probe_capacity')
+    try:
+        if not owner:
+            note('shared_probe')
+            while not pending.wait(.1):
+                runtime.guard()
+                if runtime.stop.is_set(): raise InterruptedError('Task stopped')
+            access_policy.validate_current(policy, access_policy.effective_settings(runtime.task, gateway.settings))
+            return gateway.pool.fresh_probe(base_url, model['id'], revision, identity)
+        if not gateway.pool.fresh_probe(base_url, model['id'], revision, identity):
+            note('probe_required')
+            if before_probe is not None: before_probe()
+            probes = runtime.task.setdefault('progress_state', {}).setdefault('route_probes', {})
+            probes[role] = probes.get(role, 0) + 1
+            message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role,
+                                     config_override=cfg, purpose='probe')
+            route_health.validate_probe(message, engine.parse_call)
+            gateway.pool.record(base_url, model['id'], role, probe=True,
+                                connection_revision=revision, probe_identity=identity)
+        return True
+    finally:
+        if owner: gateway.pool.release_probe(identity, pending)
+
+
 def catalog_pause(status):
     if status == 'auth_required':
         return RoutingPause('OmniRoute needs a valid client API key. Open Models and update the gateway key; saved work is kept.')
@@ -349,34 +387,12 @@ def _select_remote(engine, runtime, role="worker", replace=False, gateway=None, 
         try:
             if text_only:
                 routing_trace.candidate(trace, model['id'], 'text_reply_no_tools')
-            elif not cached:
-                owner, pending = gateway.pool.claim_probe(identity)
-                if pending is None and not owner:
-                    raise RoutingPause('Connection checks are busy. Your task will retry automatically.', retry_at=time.time()+route_schedule.ROUND_SECONDS, scope='probe_capacity')
-                try:
-                    if not owner:
-                        routing_trace.candidate(trace, model['id'], 'shared_probe')
-                        while not pending.wait(.1):
-                            runtime.guard()
-                            if runtime.stop.is_set(): raise InterruptedError('Task stopped')
-                        access_policy.validate_current(policy, access_policy.effective_settings(task, gateway.settings))
-                        cached = gateway.pool.fresh_probe(base_url, model['id'], connection_revision, identity)
-                        if not cached: continue
-                    else:
-                        # A previous owner may have finished between lookup and claim.
-                        cached = gateway.pool.fresh_probe(base_url, model['id'], connection_revision, identity)
-                        if not cached:
-                            routing_trace.candidate(trace, model['id'], 'probe_required')
-                            probes[role] = probes.get(role, 0) + 1
-                            round_state['probes'] += 1
-                            message = engine.request(runtime, PROBE_MESSAGES, [PROBE_TOOL], role, config_override=cfg, purpose='probe')
-                            route_health.validate_probe(message, engine.parse_call)
-                            gateway.pool.record(base_url, model['id'], role, probe=True,
-                                                connection_revision=connection_revision, probe_identity=identity)
-                finally:
-                    if owner: gateway.pool.release_probe(identity, pending)
             else:
-                routing_trace.candidate(trace, model['id'], 'cached_probe')
+                def count_probe():
+                    round_state['probes'] += 1
+                if not qualify(engine, runtime, gateway, model, cfg, role, policy,
+                               trace=trace, before_probe=count_probe):
+                    continue
             routing_trace.selected(trace, model['id'])
             observed=gateway.pool.observation(base_url,model['id'],connection_revision).get('role_evidence',{}).get(role,{})
             engine.event(task,'routing','Observed completion evidence' if observed.get('completed',0) else 'No prior completion evidence',

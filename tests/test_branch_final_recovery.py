@@ -321,6 +321,7 @@ class FinalRecoveryTests(unittest.TestCase):
         engine._request_routed=Mock(side_effect=routed)
         engine.request=lambda *a,**kw:reviewer_recovery.request(engine,*a,**kw)
         with patch.object(reviewer_recovery,'candidates',return_value=[{'id':'rejected'},{'id':'independent'}]), \
+             patch.object(reviewer_recovery,'qualify',return_value=True), \
              patch.object(reviewer_recovery,'config',side_effect=lambda e,t,m:{'model':m}):
             result=self.review(engine,runtime)
         self.assertEqual(result['decision'],'APPROVE');self.assertEqual(result['reviewer_model'],'independent')
@@ -364,6 +365,12 @@ class FinalRecoveryTests(unittest.TestCase):
                 {'evidence':f'exact source {chunk[0]}'},[f'diff:{chunk[0]}'],[])
         with tempfile.TemporaryDirectory() as directory:
             pool=FreeModelPool(directory)
+            # These fixtures test full-request outages after tool qualification.
+            pool.interleave=lambda endpoint,candidates,role,**kw:candidates  # Deterministic fault sequence.
+            from cheapos.route_health import probe_identity
+            for model in models:
+                pool.record(endpoint,model['id'],'reviewer',probe=True,
+                            probe_identity=probe_identity(endpoint,model,None))
             engine.gateway=SimpleNamespace(settings={'base_url':endpoint},pool=pool,
                 catalog=lambda **kw:{'models':models})
             engine.connection_for=lambda cfg:engine.gateway
@@ -397,6 +404,7 @@ class FinalRecoveryTests(unittest.TestCase):
         engine._request_routed=Mock(side_effect=routed)
         engine.request=lambda *a,**kw:reviewer_recovery.request(engine,*a,**kw)
         with patch.object(reviewer_recovery,'candidates',return_value=[{'id':'denied'},{'id':'reviewer'},{'id':'replacement'}]), \
+             patch.object(reviewer_recovery,'qualify',return_value=True), \
              patch.object(reviewer_recovery,'config',side_effect=lambda e,t,m:{'model':m}), \
              patch.object(routing,'select_remote',side_effect=self.select) as select:
             result=self.review(engine,runtime)
@@ -446,6 +454,11 @@ class FinalRecoveryTests(unittest.TestCase):
             pool=FreeModelPool(directory)
             engine.gateway=SimpleNamespace(settings={'base_url':endpoint},pool=pool,
                 catalog=lambda **kw:{'models':models})
+            pool.interleave=lambda endpoint,candidates,role,**kw:candidates  # Deterministic fault sequence.
+            from cheapos.route_health import probe_identity
+            for model in models:
+                pool.record(endpoint,model['id'],'reviewer',probe=True,
+                            probe_identity=probe_identity(endpoint,model,None))
             engine.connection_for=lambda cfg:engine.gateway
             self.assertEqual(review()['decision'],'APPROVE')
             runtime.task=json.loads(json.dumps(task))

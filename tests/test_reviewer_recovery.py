@@ -9,6 +9,9 @@ from cheapos.served_identity import ensure_independent, metadata
 
 class ReviewerRecoveryTests(unittest.TestCase):
     def fixture(self):
+        # These cases exercise identity/availability recovery after qualification.
+        qualification = patch.object(recovery, 'qualify', return_value=True)
+        qualification.start(); self.addCleanup(qualification.stop)
         task = {'execution': {'mode': 'remote'}, 'route': {},
                 'providers': {'worker': {'model': 'worker'}, 'reviewer': {'model': 'old'}},
                 'patch': 'saved', 'checks': [{'passed': True}], 'pending_review': {'messages': ['saved']}}
