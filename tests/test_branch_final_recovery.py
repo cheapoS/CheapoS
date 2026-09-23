@@ -11,6 +11,71 @@ from tests.test_review_assessment import assessment
 
 
 class FinalRecoveryTests(unittest.TestCase):
+    def test_oversized_rejection_remains_retrievable_through_continuation_and_resume(self):
+        from cheapos import context_evidence
+        for resume in (False, True):
+            with self.subTest(resume=resume):
+                task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+                original = copy.deepcopy(task)
+                packet = {'diff': '+return max(lower, min(value, upper))', 'checks': task['checks']}
+                manifest = {'id': 'm', 'requirements': [{'id': 'one:1'}]}
+                oversized = self.approval()['tool_calls'][0]['result']
+                oversized['criteria_ids'] = ['one:1']
+                oversized['feedback'] = 'rejected-long-verdict ' * 4000
+                def finish(rt, messages, tools, role, **kw):
+                    self.assertLess(len(json.dumps(messages)), 80000)
+                    update = json.loads(messages[2]['content'])['final_review_continuation']
+                    self.assertIn('feedback must be', update['latest_feedback']['validation']['error'])
+                    refs = update['retained_review_history']
+                    retained = [json.loads(rt.task['context_evidence'][ref]['text']) for ref in refs]
+                    self.assertIn(oversized['feedback'], json.dumps(retained))
+                    self.assertTrue(context_evidence.read(rt.task, refs[0])['historical'])
+                    state = next(iter(rt.task['branch_run']['final_review_packets'].values()))
+                    self.assertTrue(state['evidence_review']['excerpts'])
+                    self.assertEqual(list(rt.task['branch_run']['final_review_corrections'].values()), [1])
+                    if resume and engine.request.call_count == 3:
+                        raise InterruptedError('Saved oversized correction')
+                    result = self.approval()['tool_calls'][0]['result']
+                    result.update(criteria_ids=['one:1'], review_assessment=assessment(['one:1']))
+                    return self.call('final_review_decision', result)
+                def respond(rt, messages, tools, role, **kw):
+                    if engine.request.call_count == 1:
+                        return self.call('read_review_evidence', {'source': 'diff'})
+                    if engine.request.call_count == 2:
+                        return self.call('final_review_decision', copy.deepcopy(oversized))
+                    return finish(rt, messages, tools, role, **kw)
+                engine.request.side_effect = respond
+                if resume:
+                    with self.assertRaises(InterruptedError):
+                        final._review(engine, runtime, manifest, packet, ['diff:1'], ['one:1'])
+                    runtime.task = json.loads(json.dumps(task))
+                    runtime.task['providers']['reviewer'] = {'model': 'replacement'}
+                    engine.request.reset_mock(side_effect=True); engine.request.side_effect = finish
+                result = final._review(engine, runtime, manifest, packet, ['diff:1'], ['one:1'])
+                self.assertEqual(result['decision'], 'APPROVE')
+                self.assertEqual(engine.request.call_count, 1 if resume else 3)
+                for key in ('usage', 'checks', 'limits'):
+                    self.assertEqual(runtime.task[key], original[key])
+                engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+
+    def test_large_correction_preview_retains_full_diagnostics_without_wire_bloat(self):
+        from cheapos import branch_final_recovery as recovery, context_evidence
+        task, engine, _ = self.fixture()
+        state = {}; messages = [{'role': 'system', 'content': 'rules'}, {'role': 'user', 'content': 'candidate'}]
+        feedback = {'error': 'Repeated diagnostic. ' * 5000, 'attempt': 9, 'code': 'review_evidence_missing'}
+        recovery.remember_feedback(task, state, feedback)
+        preview = state['latest_feedback']
+        self.assertLess(len(json.dumps(preview)), 8000)
+        retained = json.loads(task['context_evidence'][preview['context_reference']]['text'])
+        self.assertEqual(retained['validation'], feedback)
+        before = copy.deepcopy(task)
+        first = recovery.request_context(engine, task, state, messages)
+        second = recovery.request_context(engine, task, state, messages)
+        self.assertEqual(first, second)
+        self.assertEqual(len(messages), 2)  # No accumulating policy/data messages.
+        self.assertEqual(task, before)
+        self.assertTrue(context_evidence.read(task, preview['context_reference'])['historical'])
+
     def test_saved_named_check_refresh_finishes_without_resetting_review(self):
         task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
         bound = self.bound_check(task)

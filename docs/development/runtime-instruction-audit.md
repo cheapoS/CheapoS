@@ -73,6 +73,13 @@ The outgoing decision schema refreshes after saved proof is restored, outside
 the packet binding, so upgrading does not discard reads, completed packets or
 attempt history. The small saved-review fixture checks the actual tool schema
 through Resume and a reviewer handoff to a validated decision.
+Final-review continuation also bounds the actual outgoing conversation to its
+saved complete exchanges. Omitted exchanges remain retrievable through the
+existing context reader. A compact current correction survives oversized rejected
+verdicts; it is request data outside the packet binding, not new authority or
+approval. Deterministic request-boundary tests cover continued review and
+Resume/handoff through a valid decision, with evidence, attempts and check
+receipts retained and no accumulating continuation messages.
 An omitted source-ID prefix resolves only when its full 20-character suffix
 matches one current source, and returns that source's canonical citation.
 

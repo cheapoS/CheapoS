@@ -1,5 +1,6 @@
 """Durable final-packet continuation within the saved routing/usage authority."""
 import copy
+import json
 
 from .branch_authorization import digest
 from .branch_review import save_history
@@ -31,8 +32,29 @@ def begin(task, manifest, key, packet, messages):
 
 
 def persist(engine, task, state, messages):
-    save_history(state,messages)
+    save_history(state,messages,task)
     engine.store.save(task)
+
+
+def request_context(engine, task, state, messages):
+    """Bound actual continuation, retaining complete omitted exchanges locally."""
+    persist(engine, task, state, messages)
+    messages[2:] = copy.deepcopy(state['messages'])
+    current = {}
+    if state.get('history_references'):
+        current['retained_review_history'] = state['history_references']
+    if state.get('latest_feedback'):
+        current['latest_feedback'] = state['latest_feedback']
+    if not current:
+        return messages
+    return messages[:2] + [{'role': 'user', 'content': json.dumps({'final_review_continuation': current})}] + messages[2:]
+
+
+def remember_feedback(task, state, feedback):
+    from .context_evidence import preview
+    # The wrapper avoids duplicating a long top-level error in preview.error.
+    # The full structured correction remains available through its reference.
+    state['latest_feedback'] = preview(task, {'validation': feedback})
 
 
 def needed(task, key, state):
