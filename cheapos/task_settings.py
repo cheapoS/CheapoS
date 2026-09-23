@@ -179,6 +179,7 @@ def prepare(engine, task, patch):
         if not isinstance(selection, dict):
             raise ValueError('Provide a reviewer selection')
         config = reviewer_config(engine, task, selection)
+        reviewer_changed = config != task['providers']['reviewer']
         updated.setdefault('operator_model_history', []).append({'role': 'reviewer', 'provider': copy.deepcopy(task['providers']['reviewer'])})
         updated['providers']['reviewer'] = config
         if selection['strategy'] == 'only':
@@ -190,11 +191,12 @@ def prepare(engine, task, patch):
         if updated.get('pending_review'):
             updated.setdefault('operator_review_history', []).append(copy.deepcopy(updated['pending_review']))
             updated['pending_review']['reviewer_model'] = config['model']
-        updated['fresh_review'] = True
+        if reviewer_changed:
+            updated['fresh_review'] = True
         if updated.get('route'):
             updated['route'].setdefault('preferred', {})['reviewer'] = config['model']
         run = updated.get('branch_run')
-        if run:
+        if run and reviewer_changed:
             if run.get('final_review_packets'):
                 run.setdefault('final_review_packet_history', []).extend(copy.deepcopy(list(run['final_review_packets'].values())))
             run['final_review_packets'] = {}

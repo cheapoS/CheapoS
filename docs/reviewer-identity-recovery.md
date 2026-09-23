@@ -26,4 +26,9 @@ and [OpenRouter continuation guidance](https://openrouter.ai/openrouter/free/app
 
 Unknown historical authorship is different: another reviewer cannot recreate a missing worker identity. The app reports this as an app-level provenance repair, retains the diagnostic evidence, and does not fabricate independence or silently waive the check. The existing narrowly scoped unchanged-committed-revision rule still applies.
 
+Recovery dispatches use explicit route configurations, so they record their own
+successful real responses in connection-scoped route health. This clears an
+expired failure and allows subsequent exchanges to reuse the current capability
+proof. A successful probe alone still cannot clear a real-request failure.
+
 Validation uses deterministic recovery, identity, operator-action, transport and pause tests; no live model request or full test suite is needed for these regression cases.
