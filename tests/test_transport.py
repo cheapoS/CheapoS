@@ -15,6 +15,88 @@ from cheapos.providers import guard_inference_route, ChatProvider
 
 
 class TransportTests(unittest.TestCase):
+    def identity_harness(self, reported='independent/reviewer', hook=None):
+        from email.message import Message
+        from cheapos.served_identity import metadata
+        engine, runtime, _ = self.harness()
+        config = {**runtime.task['providers']['worker'], 'pacing_interval': 0, 'gateway': 'omniroute'}
+        runtime.task['providers']['reviewer'] = config
+        runtime.task.update(served_identity_version=1, reviewer_identity_recovery={'attempted': [config['model']]})
+        worker = {'id': 'author', 'role': 'worker', 'purpose': 'work', 'dispatched': True,
+                  **metadata('author/model', 'author/model')}
+        runtime.task['request_metrics'] = [worker]
+        response_message = {'role': 'assistant', 'content': None, 'tool_calls': [
+            {'id': 'decision', 'type': 'function', 'function': {
+                'name': 'final_review_decision', 'arguments': '{"decision":"APPROVE"}'}}]}
+        frames = [{'model': 'independent/reviewer', 'choices': [{'delta': {
+            'tool_calls': [{**response_message['tool_calls'][0], 'index': 0}]}}]},
+            {'model': None, 'choices': [{'delta': {}, 'finish_reason': 'tool_calls'}]}]
+        requests = []
+        def respond(request, **kwargs):
+            body = json.loads(request.data); requests.append(body)
+            if body['stream']:
+                raw = ''.join('data: ' + json.dumps(f) + '\n\n' for f in frames) + 'data: [DONE]\n\n'
+                kind = 'text/event-stream'
+                if hook: hook(runtime)
+            else:
+                raw = json.dumps({'model': reported, 'choices': [{'message': response_message}],
+                                  'usage': {'prompt_tokens': 2, 'completion_tokens': 3}})
+                kind = 'application/json'
+            response = io.BytesIO(raw.encode()); response.headers = Message()
+            response.headers['Content-Type'] = kind
+            return response
+        engine.provider_factory = lambda *args: ChatProvider(config)
+        opener = patch('cheapos.providers.build_opener'); mocked = opener.start(); self.addCleanup(opener.stop)
+        mocked.return_value.open.side_effect = respond
+        return engine, runtime, requests
+
+    def test_missing_stream_identity_retries_json_and_keeps_working_transport_on_resume(self):
+        engine, runtime, requests = self.identity_harness()
+        messages = [{'role': 'user', 'content': 'Review the retained evidence'}]
+        result = engine._request(runtime, messages, [], 'reviewer', purpose='branch_final')
+        self.assertEqual(result['tool_calls'][0]['function']['name'], 'final_review_decision')
+        first, second = runtime.task['request_metrics'][-2:]
+        self.assertEqual((first['error_code'], first['status']), ('review_identity_unknown', 'failed'))
+        self.assertEqual(second['served_model'], 'independent/reviewer')
+        self.assertEqual((second['retry_of'], second['status']), (first['id'], 'responded'))
+        self.assertEqual([r['stream'] for r in requests], [True, False])
+        self.assertEqual(requests[0]['messages'], requests[1]['messages'])
+        event = next(e['detail'][2] for e in runtime.task['events'] if e['detail'][0] == 'transport')
+        self.assertEqual(event['reason'], 'review_identity_unknown')
+        self.assertEqual(runtime.task['usage']['uncertain_requests'], 1)
+        self.assertEqual(runtime.task['reviewer_identity_recovery']['attempted'], ['example/model'])
+        runtime.task = json.loads(json.dumps(runtime.task))
+        engine._request(runtime, messages, [], 'reviewer', purpose='branch_final')
+        self.assertEqual([r['stream'] for r in requests], [True, False, False])
+        self.assertEqual(len(runtime.task['transport_retries']), 1)
+
+    def test_json_identity_still_must_be_reported_and_independent(self):
+        for reported, code in ((None, 'review_identity_unknown'), ('author/model', 'review_identity_conflict')):
+            with self.subTest(reported=reported):
+                engine, runtime, requests = self.identity_harness(reported)
+                with self.assertRaises(ProviderError) as caught:
+                    engine._request(runtime, [], [], 'reviewer', purpose='branch_final')
+                self.assertEqual(caught.exception.code, code)
+                self.assertEqual([r['stream'] for r in requests], [True, False])
+                self.assertTrue(all(r['status'] == 'failed' for r in runtime.task['request_metrics'][-2:]))
+                self.assertIsNone(transport.json_preference(runtime.task, runtime.task['providers']['reviewer'], 'reviewer', 'branch_final'))
+                runtime.task = json.loads(json.dumps(runtime.task))
+                with self.assertRaises(ProviderError) as caught:
+                    engine._request(runtime, [], [], 'reviewer', purpose='branch_final')
+                self.assertEqual(caught.exception.code, 'transport_retry_exhausted')
+                self.assertEqual([r['stream'] for r in requests], [True, False, True])
+
+    def test_identity_transport_retry_obeys_authority_and_does_not_hide_conflicts(self):
+        record = {'role': 'reviewer', 'purpose': 'branch_final', 'dispatched': True, 'transport': 'sse'}
+        for code, change in [('review_identity_conflict', {}), ('review_identity_unknown', {'served_model': 'known/reviewer'}),
+                             ('review_identity_unknown', {'transport': 'json'}), ('review_identity_unknown', {'role': 'worker'})]:
+            self.assertFalse(transport.eligible(ProviderError('identity', code=code), {**record, **change}))
+        for hook in (lambda r: r.stop.set(), lambda r: r.task['limits'].update(dollars=0)):
+            engine, runtime, requests = self.identity_harness(hook=hook)
+            with self.assertRaises((InterruptedError, BudgetError)):
+                engine._request(runtime, [], [], 'reviewer', purpose='branch_final')
+            self.assertEqual([r['stream'] for r in requests], [True])
+
     def test_saved_reasoning_history_is_compatible_with_groq_without_losing_evidence(self):
         from email.message import Message
         history = [

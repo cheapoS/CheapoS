@@ -2473,7 +2473,7 @@ class Engine:
                 raise
             attempts = task.setdefault('transport_retries', {})
             if key in attempts:
-                raise ProviderError('Streaming is unsupported and this route has already used its one transport retry. Saved work and both attempt outcomes are retained.', code='transport_retry_exhausted') from None
+                raise ProviderError('The streamed reply could not be used and this route has already used its one transport retry. Saved work and both attempt outcomes are retained.', code='transport_retry_exhausted') from None
             # Persist consumption before the second request boundary. Failure,
             # cancellation or restart cannot silently renew this allowance.
             attempts[key] = record['id']
@@ -2667,8 +2667,9 @@ class Engine:
             raise InterruptedError("Task stopped before dispatch")
         runtime.guard()
         if record.get('retry_of'):
+            original = next((r for r in reversed(task['request_metrics']) if r.get('id') == record['retry_of']), {})
             self.event(task, 'transport', 'The streamed reply failed; retrying without streaming',
-                       {'attempt_id': record['id'], 'retry_of': record['retry_of'], 'role': role, 'reason': 'streaming_unsupported'})
+                       {'attempt_id': record['id'], 'retry_of': record['retry_of'], 'role': role, 'reason': original.get('error_code') or original.get('post_validation_error') or 'streaming_unsupported'})
         from .worker_conversation import receipt
         record['conversation'] = {**receipt(messages), 'transition': task.get('conversation_state', {}).get('last_transition')}
         from .continuation_policy import dispatched_strategy
