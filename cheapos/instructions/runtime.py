@@ -20,6 +20,7 @@ PROFILES = {
     'final_review': ('reviewer.final', 'workflow.ui_completeness'),
     'review_reassessment': ('reviewer.reassessment',),
     'review_progress': ('reviewer.progress',),
+    'final_review_progress': ('reviewer.progress',),
     'review_decision_coaching': ('reviewer.decision_coaching',),
     'coordinator_recovery': ('coordinator.base',),
     'coordinator_chat': ('coordinator.chat',),
@@ -39,6 +40,7 @@ REQUIRED_TOOLS = {
     'final_review': {'final_review_decision', 'read_final_context'},
     'review_reassessment': {'review_decision'},
     'review_progress': {'review_decision', 'record_review_progress', 'read_review_evidence'},
+    'final_review_progress': {'final_review_decision', 'record_review_progress', 'read_review_evidence'},
     'review_decision_coaching': {'review_decision'},
     'coordinator_chat': {'delegate_work'},
 }

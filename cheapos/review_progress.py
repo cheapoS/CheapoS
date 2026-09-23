@@ -65,9 +65,9 @@ def record(state, candidate_id, target, reason=None, citations=None, limitations
     return {'recorded': target, 'advanced': advanced, 'review_progress': display(state)}
 
 
-def tools(tools, state):
+def tools(tools, state, decision_name='review_decision'):
     tools = copy.deepcopy(tools)
-    decision = next(t for t in tools if t['function']['name'] == 'review_decision')['function']['parameters']
+    decision = next(t for t in tools if t['function']['name'] == decision_name)['function']['parameters']
     decision['properties']['use_recorded_assessment'] = {
         'type': 'boolean', 'description': 'On APPROVE, true explicitly confirms every recorded assessment, including inherited assessments. The controller revalidates all claims; incomplete progress cannot approve. Otherwise supply the full review_assessment.'}
     decision['properties']['review_assessment']['description'] = (

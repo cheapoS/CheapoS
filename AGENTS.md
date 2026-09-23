@@ -83,6 +83,11 @@ evidence retrievable and candidate-bound citations intact. Verify distinct usefu
 reads can continue and stalled reviews can hand off to a validated decision
 without resetting checks, spending authority or cumulative attempts.
 
+Final synthesis must support the same small, resumable assessment records as
+item review. Recording a batch never grants approval; validate each target and
+require a separate explicit decision over complete current evidence. Keep the
+progress profile outside saved packet bindings so older approved chunks survive.
+
 Incremental review assessments are provisional, candidate-bound evidence claims.
 Keep validated claims across Resume and reviewer handoff, invalidate them when
 scope or operator directions change, and revalidate their citations and current

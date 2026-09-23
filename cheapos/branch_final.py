@@ -212,7 +212,7 @@ def criterion_check_specs(run, packet):
 
 def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None, progress=None, check_packet=None):
     from .engine import tool, ToolArgumentsError
-    from . import pr_description, review_assessment
+    from . import pr_description, review_assessment, review_progress
     packet = copy.deepcopy(packet)
     packet['check_output_sources'] = check_sources(packet)
     proof = None
@@ -299,6 +299,10 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             if proof is not None and cached['decision'] == 'APPROVE':
                 review_assessment.retained(cached, proof['scope'])
             return copy.deepcopy(cached)
+    incremental = proof is not None and bool(criterion_ids)
+    if incremental:
+        review_progress.bind(proof, {'packet_binding': state['binding']})
+        tools = review_progress.tools(tools, proof, 'final_review_decision')
     messages.extend(copy.deepcopy(state.get('messages',[])))
     packet['context_references']=copy.deepcopy(state.get('context_references',[]))
     # Display metadata stays outside packet bindings so a label change cannot
@@ -308,8 +312,19 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     readers = {'read_review_evidence', 'read_check_output', 'read_final_context',
                'inspect_image', 'read_merge_context', 'read_context_evidence'}
     offered = {t['function']['name'] for t in tools}
+    batchable = readers | ({'record_review_progress'} if incremental else set())
 
     def read_context(name, result):
+        if name == 'record_review_progress' and incremental:
+            try:
+                recorded = review_progress.record(proof, **result)
+            except TypeError as error:
+                raise ValueError(str(error)) from None
+            state['repeated_reads'] = 0 if recorded['advanced'] else state['repeated_reads'] + 1
+            engine.event(runtime.task, 'review_progress', 'Recorded final review assessment', {
+                'manifest_id': manifest['id'], 'target': recorded['recorded'],
+                'remaining': len(recorded['review_progress']['remaining']), 'approved': False})
+            return recorded
         if name == 'read_review_evidence' and proof is not None:
             try:
                 # The catalog grows as evidence is read; never cache a stale listing.
@@ -361,7 +376,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             from .metrics import tool_action
             tool_action(runtime.task)
             try:
-                if name not in readers or name not in offered:
+                if name not in batchable or name not in offered:
                     raise ValueError('This saved read is not available in the current review; no tool was executed.')
                 excerpt = read_context(name, result)
             except (ValueError, ToolArgumentsError) as error:
@@ -369,6 +384,9 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                     raise
                 attempts[key] = attempts.get(key, 0) + 1
                 excerpt = {'error': str(error), 'attempt': attempts[key], **getattr(error, 'correction', {})}
+                if incremental:
+                    excerpt['review_progress'] = review_progress.display(proof)
+                    excerpt['next_action'] = 'Continue from the remaining review_progress targets. Correct invalid claims; keep valid records and submit the final decision separately.'
                 engine.event(runtime.task, 'review_feedback', 'Final review read needs correction', excerpt)
             recovery.guard(runtime)
             batch['results'].append({'role': 'tool', 'tool_call_id': call['id'], 'content': _json(excerpt)})
@@ -389,6 +407,11 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         label = 'item' if manifest.get('kind') == 'item' else 'final'
         engine.event(runtime.task,'review_request',f'Requesting {label} packet review',{'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'stage':'synthesis' if criterion_ids else 'chunk',**display})
         request_messages = recovery.request_context(engine, runtime.task, state, messages, direction=direction)
+        if incremental:
+            request_messages = copy.deepcopy(request_messages)
+            request_messages[0]['content'] += '\n' + instruction_prompt('final_review_progress')
+            request_messages.insert(2, {'role': 'user', 'content': _json({
+                'review_progress': review_progress.display(proof)})})
         message = engine.request(runtime, request_messages, tools, 'reviewer', purpose='branch_final', tool_choice='required')
         recovery.guard(runtime)  # A reply to superseded guidance cannot approve this packet.
         state['reviewer_model']=recovery.model(runtime.task)
@@ -398,11 +421,11 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                 parsed = [engine.parse_call(call) for call in calls]
                 names = [name[len('functions.'):] if name.startswith('functions.') else name for name, _ in parsed]
                 ids = [call.get('id') for call in calls]
-                if len(set(ids)) == len(ids) and all(name in readers and name in offered for name in names):
+                if len(set(ids)) == len(ids) and all(name in batchable and name in offered for name in names):
                     state['pending_read_batch'] = {'message': copy.deepcopy(message), 'results': []}
                     engine.store.save(runtime.task)
                     continue
-                raise ValueError('Batch only offered evidence readers with unique call IDs. Submit a single final_review_decision after reading their results; a mixed batch cannot approve.')
+                raise ValueError('Batch only offered evidence readers or assessment records with unique call IDs. Submit a single final_review_decision after reading their results; a mixed batch cannot approve.')
             if len(calls) != 1:
                 raise ValueError('Return an offered evidence reader or a single final_review_decision. Evidence readers may be batched; decisions must be separate.')
             name, result = engine.parse_call(calls[0])
@@ -423,7 +446,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                     raise ValueError('Report a context blocker only after a recorded unavailable read of this exact candidate/path.')
                 from .branch_pause import PauseError
                 raise PauseError('review_context_unavailable',stage='finalizing')
-            if name in readers and name in offered:
+            if name in batchable and name in offered:
                 excerpt = read_context(name, result)
                 recovery.guard(runtime)
                 messages.append(message); messages.append({'role': 'tool', 'tool_call_id': calls[0]['id'], 'content': _json(excerpt)})
@@ -439,6 +462,8 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                 raise ValueError('feedback must be a nonempty string of at most 4000 characters.')
             result['decision'] = disagreement.decision(result)
             if proof is not None:
+                if incremental and result['decision'] == 'APPROVE':
+                    review_progress.complete(proof, result)
                 review_assessment.validate(proof, result)
             if result['decision'] == 'REQUEST_CHANGES':
                 try:
@@ -450,6 +475,9 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             if getattr(error,'pause_cause',None):raise
             attempts[key] = attempts.get(key,0) + 1
             feedback = {'error':str(error),'attempt':attempts[key], **getattr(error, 'correction', {})}
+            if incremental:
+                feedback['review_progress'] = review_progress.display(proof)
+                feedback['next_action'] = 'Continue from the remaining review_progress targets. Correct invalid claims; keep valid records and submit the final decision separately.'
             recovery.remember_feedback(runtime.task, state, feedback)
             engine.event(runtime.task,'review_feedback','Final review response needs correction',feedback)
             engine.store.save(runtime.task)
