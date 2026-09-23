@@ -26,7 +26,9 @@ class ReviewerRecoveryTests(unittest.TestCase):
         before = copy.deepcopy(runtime.task)
         with patch.object(recovery, 'candidates', return_value=[{'id': 'next'}]), patch.object(recovery, 'config', return_value={'model': 'next'}):
             recovery.request(engine, runtime, ['review context'], [], 'reviewer')
+            runtime.task = copy.deepcopy(runtime.task)  # Saved selection survives Resume.
             recovery.request(engine, runtime, ['review context'], [], 'reviewer')
+        engine.event.assert_called_once()
         self.assertEqual(engine._request_routed.call_count, 3)
         self.assertEqual(engine._request.call_count, 2)
         for key in ('patch', 'checks', 'pending_review'):

@@ -211,6 +211,9 @@ class RuntimeInstructionTests(unittest.TestCase):
                 app._request_attempt(runtime, original, offered, role, purpose=purpose)
                 messages, actual = received[0]
                 self.assertTrue(messages[0]['content'].startswith(prompt(profile)))
+                if profile == 'planner':
+                    self.assertIn('same item\'s required_checks', messages[0]['content'])
+                    self.assertIn('not a substitute for running that validator', messages[0]['content'])
                 contract = json.loads(messages[0]['content'].rsplit('\n', 1)[1])
                 self.assertEqual(contract['available_tools'], [t['function']['name'] for t in actual])
                 self.assertEqual(audit_tools(profile, actual), [])

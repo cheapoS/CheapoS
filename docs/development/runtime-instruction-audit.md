@@ -30,6 +30,17 @@ not replace its provenance checks or grant an approval.
 
 ## Runtime entry points
 
+Planning requires commands explicitly promised by acceptance criteria to appear
+in that item's checks with the discovered working directory. This is delivered
+through the existing `planner` profile, including refreshed saved proposals;
+the provider-boundary test checks its actual outgoing request. For older plans,
+item repair recognizes previously executed checks explicitly named in unresolved
+criteria. A current failure returns its captured output through worker check
+recovery before another reviewer call; stale receipts run through ordinary check
+authorization. Passing receipts become candidate-bound `repair_checks` evidence
+for independent review. Reviewer snippets never become commands, and neither
+the approved plan nor its permissions are rewritten.
+
 Scheduled occurrences reuse `BranchController.prepare` and its ordinary Unattended
 worker/reviewer entry points with the operator-approved plan and settings snapshot.
 There is no scheduler-authored system prompt, new role or model-callable scheduling
