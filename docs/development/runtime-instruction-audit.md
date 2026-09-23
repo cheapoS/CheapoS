@@ -28,6 +28,18 @@ same-candidate evidence across reviewer handoffs, and keeps saved-evidence reads
 available during decision coaching. This audit centralizes its prose; it does
 not replace its provenance checks or grant an approval.
 
+Uncapped item review now continues selecting the existing `review_reassessment`
+profile after the usual investigation window. The nudge stays at the end of the
+outgoing request once, while all authorized read tools remain available; it is
+not a new work cap or an instruction to approve. The in-memory recovery tests
+inspect these assembled messages and tool sets beyond eight distinct reads.
+Repeated-read detection survives Resume and compares individual results across
+different batches, ignoring only web cache/fetch-time metadata. The existing
+authorized reviewer handoff then retains evidence and reaches a validated
+decision. Older complete exchanges are retained through `read_context_evidence`
+while both live and saved history use the same size bound; the evidence catalog
+refreshes each request so an omitted exchange does not hide its source IDs.
+
 ## Runtime entry points
 
 Planning requires commands explicitly promised by acceptance criteria to appear
