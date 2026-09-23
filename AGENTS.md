@@ -40,6 +40,10 @@ Provider handoffs must preserve saved evidence and tool-call/reply pairing while
 projecting history into the destination's accepted wire schema. A successful
 small probe does not prove that provider-specific continuation metadata is
 portable. Cover the assembled request and retain original diagnostic history.
+Rejected argument JSON must not make later requests invalid: project historical
+malformations as explicit diagnostic objects, retain raw arguments and paired
+error receipts, and reserve usage against the projected request. Never repair
+or execute a malformed new call merely to satisfy a transport validator.
 
 A transport retry must be separately accounted and preserve actual response
 identity checks. Never infer reviewer identity from a successful probe or a
