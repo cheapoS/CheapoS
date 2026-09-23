@@ -70,10 +70,10 @@ class ReviewReuseTests(unittest.TestCase):
         return result
 
     def respond(self, runtime, messages, tools, role, **kw):
-        params = tools[0]['function']['parameters']['properties']
-        args = {'decision': 'APPROVE', 'manifest_id': params['manifest_id']['enum'][0],
-                'chunk_ids': params['chunk_ids'].get('enum', [[]])[0],
-                'criteria_ids': params['criteria_ids'].get('enum', [[]])[0], 'feedback': 'Inspected integration impact.'}
+        packet = json.loads(messages[1]['content'])
+        args = {'decision': 'APPROVE', 'manifest_id': packet['manifest_id'],
+                'chunk_ids': packet['chunk_ids'],
+                'criteria_ids': packet['criteria_ids'], 'feedback': 'Inspected integration impact.'}
         message = {'tool_calls': [{'id': 'decision', 'function': {'name': 'final_review_decision', 'arguments': json.dumps(args)}}]}
         return fixture_review_call(message, messages)
 
@@ -106,14 +106,14 @@ class ReviewReuseTests(unittest.TestCase):
         task, engine, runtime, manifest, current, _ = self.fixture()
         task['branch_run'].pop('previous_readiness')
         before_checks = copy.deepcopy(task['checks'])
-        review = final.review_paged
+        review = final._review
         def completed(*args, **kwargs):
             result = review(*args, **kwargs)
-            if args[5]:  # Guidance arrives after the final synthesis reply.
+            if args[3].get('review_unit', {}).get('kind') in ('integration', 'complete'):  # Direction after final decision.
                 task['steer_guidance'] = 'Check the required styles too.'
                 runtime.guard.side_effect = OperatorRedirect('New guidance')
             return result
-        with patch.object(final, 'review_paged', side_effect=completed):
+        with patch.object(final, '_review', side_effect=completed):
             with self.assertRaises(OperatorRedirect):
                 self.run_final(task, engine, runtime, manifest, current)
         self.assertNotIn('readiness', task['branch_run'])
@@ -184,7 +184,7 @@ class ReviewReuseTests(unittest.TestCase):
         result = self.run_final(task, engine, runtime, manifest, current)
         self.assertNotIn('reuse', result['readiness'])
         self.assertEqual(result['readiness']['review_input_digest'], reuse.input_digest(task))
-        self.assertEqual(engine.request.call_count, 2)
+        self.assertEqual(engine.request.call_count, 2)  # chunk + complete small-task unit
 
     def test_multiple_updates_preserve_chain_and_old_approvals(self):
         task, engine, runtime, old, current, basis = self.fixture(); manifest, current = self.update(task, old)

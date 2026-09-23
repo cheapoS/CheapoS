@@ -53,7 +53,7 @@ class BranchFinalTests(unittest.TestCase):
         packet = json.loads(messages[1]['content']); self.requests.append(packet)
         result = {'decision':'REQUEST_CHANGES' if self.request_changes else 'APPROVE', 'manifest_id':packet['manifest_id'],
                   'chunk_ids':[] if self.omit_coverage else packet['chunk_ids'], 'criteria_ids':packet['criteria_ids'], 'feedback':'Read all supplied contents and checked the evidence.'}
-        if runtime.task.get('review_contract_version') == 1 and not self.request_changes:
+        if runtime.task.get('review_contract_version') == 1 and not self.request_changes and not packet.get('review_unit'):
             state = review_assessment.prepare('fixture', packet, packet['criteria_ids'], partial=not packet['criteria_ids'])
             for value in packet['review_evidence']['sources']:
                 if value.get('content'):
@@ -65,10 +65,14 @@ class BranchFinalTests(unittest.TestCase):
             result['defects'] = [{'criterion': 'one:1', 'location': 'code:1', 'kind': 'static',
                                   'expected': 'Required content', 'observed': 'Missing edge handling',
                                   'support': 'The code path has no edge guard.', 'reproduction': ''}]
-        if packet['criteria_ids'] and getattr(self, 'publication', None):
+        if (packet.get('review_unit', {}).get('kind') in ('integration', 'complete') or packet['criteria_ids'] and not packet.get('review_unit')) and getattr(self, 'publication', None):
             self.assertIn('publication_drafts', packet)
             result['pull_request'] = self.publication
-        return {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
+        message = {'tool_calls':[{'id':'review', 'function':{'name':'final_review_decision','arguments':json.dumps(result)}}]}
+        if packet.get('review_unit'):
+            from tests.test_review_assessment import fixture_review_call
+            return fixture_review_call(message, messages)
+        return message
 
     def test_cumulative_diff_clean_private_copy_and_actual_final_check(self):
         self.task['review_contract_version'] = 1

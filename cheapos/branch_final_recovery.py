@@ -15,6 +15,8 @@ def model(task):
 def begin(task, manifest, key, packet, messages):
     run=task['branch_run']
     run['active_final_review']={'manifest_id':manifest['id'],'key':key}
+    if packet.get('review_unit', {}).get('version') == 1:
+        run['active_final_review']['recovery_scope'] = manifest['id'] + ':review-units:1'
     if manifest.get('kind') == 'item':
         run['active_final_review']['kind'] = 'item'
     packets=run.setdefault('final_review_packets',{})
@@ -32,7 +34,7 @@ def begin(task, manifest, key, packet, messages):
 
 
 def persist(engine, task, state, messages):
-    save_history(state,messages,task)
+    save_history(state,messages,task,max_chars=16000 if state.get('unit_protocol') == 1 else 60000)
     engine.store.save(task)
 
 
@@ -107,7 +109,8 @@ def recover(engine, runtime, key, state, messages):
     if reviewer_recovery.unknown_workers(task):
         raise PauseError('review_identity_unknown',stage='finalizing')
     manifest_id=run['active_final_review']['manifest_id']
-    recovery=run.setdefault('final_review_recovery',{}).setdefault(manifest_id,{'failed_models':[],'history':[]})
+    recovery_scope=run['active_final_review'].get('recovery_scope',manifest_id)
+    recovery=run.setdefault('final_review_recovery',{}).setdefault(recovery_scope,{'failed_models':[],'history':[]})
     selection=recovery.get('selection')
     if not selection:
         failed_model=state.get('reviewer_model') or current

@@ -42,6 +42,23 @@ decision. Older complete exchanges are retained through `read_context_evidence`
 while both live and saved history use the same size bound; the evidence catalog
 refreshes each request so an omitted exchange does not hide its source IDs.
 
+## Durable final review profile
+
+Evidence-enabled final requirement/integration units select `review_unit`, with
+`reviewer.unit` and shared `workflow.ui_completeness`. The controller supplies
+coverage; models return explicit judgments with delivered evidence handles. The
+tool set retains exact-candidate/source/check readers and provisional records.
+Small complete units have the same evidence obligations as the combined large
+workflow. Independent identity and readiness gates remain outside model control.
+
+`test_review_units` inspects actual prompts, tools, forced-tool dispatch and
+non-accumulation through correction, JSON Resume and automatic handoff. It reaches
+validated composition, tests integration rejection after requirement approval,
+and preserves the old recovery history while sharing new protocol failures across
+units. Legacy item/Interactive/read-only profiles remain unchanged and retain
+their existing request-boundary coverage. See the
+[design record](durable-review-workflow.md) for the protocol and research basis.
+
 ## Runtime entry points
 
 Item review selects the registered `review_progress` profile when the evidence
@@ -127,7 +144,8 @@ coordinator, which have different tools and output contracts.
 | Proposal planning, including Resume | `planner` |
 | Checkpoint / unattended item review | `reviewer`, `reviewer.item_*` |
 | Review correction / decision coaching | `review_reassessment`, `review_decision_coaching` |
-| Final packet, page and synthesis review | `final_review`, current coverage data and `reviewer.original_scope` |
+| Durable final requirement/integration units | `review_unit`; controller-owned coverage and short delivered evidence handles |
+| Legacy final packet, page and synthesis review | `final_review`, current coverage data and `reviewer.original_scope` |
 | Evidence reads / citation correction | `reviewer.assessment`, `reviewer.evidence_catalog`, `reviewer.delivered_excerpt`, `reviewer.correct_citation` |
 | Review findings / worker repair | `reviewer.defects`, `recovery.disagreement` |
 | Recovery coordinator / local chat delegation | `coordinator_recovery`, `coordinator_chat` |

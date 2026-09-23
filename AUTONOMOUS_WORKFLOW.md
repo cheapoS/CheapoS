@@ -60,7 +60,22 @@ item attempts are released only when request records prove they belong to older
 candidates. Unknown provenance stays conservative. Provider health and actual
 response independence still gate every replacement.
 
-## Implemented: incremental final assessment
+## Implemented: durable final review units
+
+Evidence-enabled final review now schedules small requirement units followed by
+one integration review. Small tasks combine these in one complete review. Each
+explicit independent approval is saved before dispatching the next unit; Resume
+and authorized handoff continue unresolved work. The controller composes complete
+coverage without another model rewriting every decision. Integration can still
+reject the whole change, and passing checks alone cannot establish behavior.
+
+The versioned short-handle protocol supplies exact delivered evidence and keeps
+coverage identity in the controller. Changed inputs invalidate reuse without
+erasing history, usage or authority. Legacy chunk approvals and completed task
+receipts remain supported. See the [design and research record](docs/development/durable-review-workflow.md)
+for persistence boundaries, verification, rollout and remaining limitations.
+
+## Implemented: incremental assessment within review
 
 Final synthesis can record small batches of evidence-backed criterion,
 regression, verification and limitation assessments using the same validator as

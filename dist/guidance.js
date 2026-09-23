@@ -721,6 +721,10 @@ const CheapOSConversation = (() => {
   function reviewProgress(events, history) {
     const event=events.findLast(e=>['review_request','review'].includes(e.kind));
     const d=event?.detail||{};
+    if(d.stage==='unit'){
+      const label=d.unit_kind==='requirements'?'Requirements':d.unit_kind==='integration'?'Integration and regressions':'Requirements and integration';
+      return Number.isInteger(d.unit_index)&&Number.isInteger(d.unit_total)&&d.unit_index>0&&d.unit_index<=d.unit_total?`${label} · review ${d.unit_index} of ${d.unit_total}`:label;
+    }
     if(d.stage==='synthesis')return 'Combining review findings';
     if(!d.chunk_ids?.length)return '';
     let index=d.chunk_index,total=d.chunk_total;

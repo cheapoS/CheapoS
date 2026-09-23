@@ -40,6 +40,21 @@ def fixture_review_call(message, messages):
         contract = packet.get('review_evidence')
         if not contract:
             continue
+        if packet.get('review_unit'):
+            current = next(value for m in messages if m.get('role') == 'user' and m.get('content', '').startswith('{')
+                           for value in [json.loads(m['content'])] if 'delivered_evidence' in value)
+            kinds = {e['kind']: e['evidence_handle'] for e in current['delivered_evidence']}
+            assert 'code' in kinds, 'Fixture must supply implementation evidence'
+            records = []
+            for target in current['review_progress']['remaining']:
+                if target == 'limitations':
+                    records.append({'target': target, 'limitations': []})
+                else:
+                    records.append({'target': target, 'reason': 'Inspected fixture behavior and current checks.',
+                        'evidence': [kinds['check' if target == 'verification' else 'code']]})
+            result['assessments'] = records
+            call['function']['arguments'] = json.dumps(result)
+            continue
         partial = not packet.get('criteria_ids') and 'chunk' in packet
         state = review.prepare('fixture', packet, contract['criteria'], partial=partial)
         for value in contract['sources']:

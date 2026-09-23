@@ -212,13 +212,17 @@ def criterion_check_specs(run, packet):
 
 def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None, progress=None, check_packet=None):
     from .engine import tool, ToolArgumentsError
-    from . import pr_description, review_assessment, review_progress
+    from . import pr_description, review_assessment, review_progress, review_unit
     packet = copy.deepcopy(packet)
     packet['check_output_sources'] = check_sources(packet)
+    unit = packet.get('review_unit')
     proof = None
     if review_assessment.enabled(runtime.task):
         scope = _hash({'manifest_id': manifest['id'], 'chunk_ids': chunk_ids, 'criteria_ids': criterion_ids, 'page': packet.get('page_index')})
-        proof = review_assessment.prepare(scope, packet, criterion_ids, partial=not criterion_ids)
+        if unit:
+            from .review_workflow import scope as unit_scope
+            scope = unit_scope(manifest['id'], chunk_ids, criterion_ids, unit['id'])
+        proof = review_assessment.prepare(scope, packet, criterion_ids, partial=not criterion_ids and not unit)
         if check_packet is not None:
             review_assessment.refresh_check_claims(proof, check_packet)
         packet = copy.deepcopy(packet)
@@ -238,7 +242,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                    'feedback': {'type': 'string', 'description': 'Nonempty string of at most 4000 characters summarizing your evaluation.'}, 'defects': disagreement.schema([r['id'] for r in manifest.get('requirements', []) if isinstance(r, dict) and 'id' in r] or None)},
                   ['decision', 'manifest_id', 'chunk_ids', 'criteria_ids', 'feedback'])]
     tools[0]['function']['parameters']['properties']['suggestions']={'type':'array','maxItems':8,'items':{'type':'string'}}
-    publication = bool(criterion_ids) and pr_description.enabled(runtime.task)
+    publication = (unit['kind'] in ('integration', 'complete') if unit else bool(criterion_ids)) and pr_description.enabled(runtime.task)
     if publication:
         tools[0]['function']['parameters']['properties']['pull_request'] = pr_description.SCHEMA
     tools.append(tool('read_final_context','Read up to 200 numbered lines from this exact candidate; larger ranges return a page with next_start_line. Never approval or coverage.', {'manifest_id':{'type':'string','enum':[manifest['id']]},'path':{'type':'string'},'start_line':{'type':'integer','minimum':1},'end_line':{'type':'integer','minimum':1}}, ['manifest_id','path','start_line']))
@@ -265,7 +269,9 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     coverage_instruction = f" Finish review with final_review_decision after inspecting the evidence, using exact coverage arguments: decision matching the evidence ('APPROVE' or 'REQUEST_CHANGES'), manifest_id={json.dumps(manifest['id'])}, chunk_ids={json.dumps(chunk_ids)}, criteria_ids={json.dumps(criterion_ids)}, and a nonempty feedback string summarizing your decision with concrete reasons for the selected decision."
     messages = [{'role': 'system', 'content': instruction_prompt("final_review") + instruction('reviewer.final_context') + coverage_instruction + disagreement.REVIEW_INSTRUCTION},
                 {'role': 'user', 'content': encoded}]
-    if proof is not None:
+    if unit:
+        messages[0]['content'] = instruction_prompt('review_unit') + instruction('reviewer.final_context') + disagreement.REVIEW_INSTRUCTION
+    if proof is not None and not unit:
         messages[0]['content'] += '\n' + review_assessment.INSTRUCTION
     if publication:
         messages[0]['content'] += pr_description.FINAL
@@ -277,6 +283,8 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     identity = {'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'criteria_ids':criterion_ids}
     if 'page_index' in packet:
         identity.update(packet_digest=packet['packet_digest'], page_index=packet['page_index'])
+    if unit:
+        identity['unit_id'] = unit['id']
     key = _hash(identity)
     state=recovery.begin(runtime.task,manifest,key,packet,messages)
     if proof is not None:
@@ -299,25 +307,36 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             if proof is not None and cached['decision'] == 'APPROVE':
                 review_assessment.retained(cached, proof['scope'])
             return copy.deepcopy(cached)
-    incremental = proof is not None and bool(criterion_ids)
+    incremental = proof is not None and (bool(criterion_ids) or bool(unit))
     if incremental:
         review_progress.bind(proof, {'packet_binding': state['binding']})
         tools = review_progress.tools(tools, proof, 'final_review_decision', recorded_only=True)
+    if unit:
+        state['unit_protocol'] = 1
+        tools = review_unit.tools(tools, proof)
+        seed_evidence = review_unit.initial_evidence(proof)
     messages.extend(copy.deepcopy(state.get('messages',[])))
     packet['context_references']=copy.deepcopy(state.get('context_references',[]))
     # Display metadata stays outside packet bindings so a label change cannot
     # invalidate already reviewed evidence during continuation.
     scope = progress if progress is not None else packet.get('scope', {})
     display = {k: scope[k] for k in ('chunk_index', 'chunk_total') if k in scope} if not criterion_ids else {}
+    if unit:
+        display = {**{k: scope[k] for k in ('unit_index', 'unit_total') if k in scope},
+                   'stage': 'unit', 'unit_kind': unit['kind']}
     readers = {'read_review_evidence', 'read_check_output', 'read_final_context',
                'inspect_image', 'read_merge_context', 'read_context_evidence'}
     offered = {t['function']['name'] for t in tools}
     batchable = readers | ({'record_review_progress'} if incremental else set())
 
     def read_context(name, result):
+        excerpt = perform_read(name, result)
+        return review_unit.delivered(proof, excerpt) if unit else excerpt
+
+    def perform_read(name, result):
         if name == 'record_review_progress' and incremental:
             try:
-                recorded = review_progress.record(proof, **result)
+                recorded = review_progress.record(proof, **(review_unit.expand(proof, result) if unit else result))
             except TypeError as error:
                 raise ValueError(str(error)) from None
             state['repeated_reads'] = 0 if recorded['advanced'] else state['repeated_reads'] + 1
@@ -409,9 +428,12 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         request_messages = recovery.request_context(engine, runtime.task, state, messages, direction=direction)
         if incremental:
             request_messages = copy.deepcopy(request_messages)
-            request_messages[0]['content'] += '\n' + instruction_prompt('final_review_progress')
+            if not unit:
+                request_messages[0]['content'] += '\n' + instruction_prompt('final_review_progress')
             request_messages.insert(2, {'role': 'user', 'content': _json({
-                'review_progress': review_progress.display(proof)})})
+                'review_progress': review_progress.display(proof),
+                **({'review_unit': unit, 'delivered_evidence': seed_evidence,
+                    'evidence_handles': review_unit.handles(proof)} if unit else {})})})
         message = engine.request(runtime, request_messages, tools, 'reviewer', purpose='branch_final', tool_choice='required')
         recovery.guard(runtime)  # A reply to superseded guidance cannot approve this packet.
         state['reviewer_model']=recovery.model(runtime.task)
@@ -453,6 +475,8 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                 recovery.persist(engine, runtime.task, state, messages)
                 continue
             expected = {'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'criteria_ids':criterion_ids}
+            if unit and name == 'final_review_decision':
+                result = review_unit.decision(proof, result, expected, unit['id'])
             wrong = [field for field,value in expected.items() if result.get(field) != value]
             if name != 'final_review_decision':
                 raise ValueError('Use final_review_decision, not another tool.')
@@ -504,6 +528,11 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                  else f'{label.capitalize()} packet review completed')
         engine.event(runtime.task,'review',title,{'decision':result['decision'],'feedback':review_assessment.visible_feedback(result),'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'defects':result.get('defects'),**display})
         return result
+
+
+def review_assessment_enabled(task):
+    from .review_assessment import enabled
+    return enabled(task)
 
 
 def _independent(task, reviewer):
@@ -592,7 +621,11 @@ def final_check_review(engine, runtime):
     from . import pr_description
     if pr_description.enabled(task):
         packet['publication_drafts'] = pr_description.item_drafts(manifest)
-    overall = review_paged(engine, runtime, manifest, packet, chunks, criteria)
+    if review_assessment_enabled(task):
+        from . import review_workflow
+        overall = review_workflow.run(engine, runtime, manifest, packet, _review)
+    else:
+        overall = review_paged(engine, runtime, manifest, packet, chunks, criteria)
     current_manifest = build_manifest(run)
     manifest_match = dict(current_manifest, target_tip=manifest['target_tip']) == dict(manifest, target_tip=manifest['target_tip'])
     if overall['decision'] != 'APPROVE':
@@ -648,6 +681,9 @@ def validate_record(readiness, task, seen=None):
         raise ValueError('Final requirement coverage is incomplete')
     if evidence.model_identity(saved['worker_model']) == evidence.model_identity(saved['reviewer_model']):
         raise ValueError('Final reviewer is not independent')
+    if 'workflow' in overall:
+        from . import review_workflow
+        review_workflow.validate(overall, manifest, task)
     if current.get('review_contract_version') == 1:
         from .review_assessment import retained
         for review in [*reviews, overall]:

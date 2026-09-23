@@ -51,6 +51,12 @@ def prepare(scope, packet, criteria, *, partial=False):
         checks = (checks if isinstance(checks, list) else [checks] if checks else []) + packet['repair_checks']
     if checks:
         add(state, 'checks', 'check', json.dumps(checks, ensure_ascii=False, sort_keys=True))
+    unit = packet.get('review_unit')
+    if isinstance(unit, dict) and unit.get('version') == 1:
+        state['criteria'] = list(criteria)
+        state['assessment_fields'] = (['criteria'] if unit['kind'] == 'requirements' else
+                                      ['regressions', 'verification', 'limitations'] if unit['kind'] == 'integration' else
+                                      ['criteria', 'regressions', 'verification', 'limitations'])
     chunk = packet.get('chunk')
     if isinstance(chunk, dict):
         add(state, 'packet', 'code' if chunk.get('kind') == 'diff' else 'packet', chunk.get('content'),
@@ -203,6 +209,16 @@ def read(state, source=None, offset=0, search=None):
 def packet_for_model(packet):
     """Keep source excerpts in the catalog once; full receipts remain saved."""
     result = copy.deepcopy(packet)
+    if packet.get('review_unit'):
+        # Full coverage remains in complete_task_reference and the proof store.
+        # Send source metadata once; exact small excerpts arrive with handles.
+        result.pop('checks', None)  # Exact check excerpts/handles are delivered separately.
+        result.pop('diff', None)  # Full current diff stays available through the evidence reader.
+        result['chunk_coverage'] = [{'chunk_id': row.get('chunk_id'), 'digest': row.get('digest'),
+                                     'decision': row.get('review', {}).get('decision')}
+                                    for row in result.pop('coverage', [])]
+        for row in result.get('review_evidence', {}).get('sources', []):
+            row.pop('content', None)
     for row in result.get('coverage', []):
         prior = row.get('review', {})
         if prior.get('_review_evidence', {}).get('version') != VERSION:
@@ -225,12 +241,20 @@ def schema(state):
     for key, sources in state.get('criterion_checks', {}).items():
         criteria[key]['description'] = ('Command-result-only claim. Cite its current check receipt: ' + ', '.join(sources) if sources else
             'No matching passing command receipt is available. Request the missing focused check; other checks or source code cannot prove this command passed.')
-    return {'type': 'object', 'description': 'Required for APPROVE. Supply all four fields; each claim needs a nonempty reason and citations. Use [] for no verification limitations.', 'properties': {
+    result = {'type': 'object', 'description': 'Required for APPROVE. Supply all four fields; each claim needs a nonempty reason and citations. Use [] for no verification limitations.', 'properties': {
         'criteria': {'type': 'object', 'properties': criteria,
                      'required': state['criteria'], 'additionalProperties': False},
         'regressions': copy.deepcopy(claim), 'verification': copy.deepcopy(claim),
         'limitations': {'type': 'array', 'items': {'type': 'string'}}},
         'required': ['criteria', 'regressions', 'verification', 'limitations'], 'additionalProperties': False}
+    fields = assessment_fields(state)
+    result['properties'] = {k: v for k, v in result['properties'].items() if k in fields}
+    result['required'] = fields
+    return result
+
+
+def assessment_fields(state):
+    return state.get('assessment_fields', ['criteria', 'regressions', 'verification', 'limitations'])
 
 
 def tools_with_contract(tools, state, name='review_decision'):
@@ -414,10 +438,11 @@ def validate(state, result):
     if not isinstance(result.get('feedback'), str) or not result['feedback'].strip():
         issue('feedback', 'Approval needs a nonempty explanation of the actual change.')
     assessment = result.get('review_assessment')
-    if not isinstance(assessment, dict) or set(assessment) != {'criteria', 'regressions', 'verification', 'limitations'}:
-        issue('review_assessment', 'Supply review_assessment with criteria, regressions, verification and limitations.')
+    fields = assessment_fields(state)
+    if not isinstance(assessment, dict) or set(assessment) != set(fields):
+        issue('review_assessment', 'Supply review_assessment with exactly: ' + ', '.join(fields))
     assessment = assessment if isinstance(assessment, dict) else {}
-    claims = assessment.get('criteria')
+    claims = assessment.get('criteria', {} if 'criteria' not in fields else None)
     if not isinstance(claims, dict) or set(claims) != set(state['criteria']):
         issue('review_assessment.criteria', 'Assess every exact criterion: ' + json.dumps(state['criteria']))
     claims = claims if isinstance(claims, dict) else {}
@@ -427,9 +452,9 @@ def validate(state, result):
     for key in state['criteria']:
         sources = state.get('criterion_checks', {}).get(key)
         claim(claims.get(key), key, 'review_assessment.criteria.' + key, implementation=sources is None, required_sources=sources)
-    claim(assessment.get('regressions'), 'Regression assessment', 'review_assessment.regressions', implementation=True)
-    claim(assessment.get('verification'), 'Verification assessment', 'review_assessment.verification', verification=True)
-    limitations = assessment.get('limitations')
+    if 'regressions' in fields: claim(assessment.get('regressions'), 'Regression assessment', 'review_assessment.regressions', implementation=True)
+    if 'verification' in fields: claim(assessment.get('verification'), 'Verification assessment', 'review_assessment.verification', verification=True)
+    limitations = assessment.get('limitations', [] if 'limitations' not in fields else None)
     if not isinstance(limitations, list) or any(not isinstance(v, str) or not v.strip() for v in limitations):
         issue('review_assessment.limitations', 'limitations must be an array of concrete verification limitations; use [] when none remain.')
     if issues:

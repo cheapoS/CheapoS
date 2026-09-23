@@ -55,7 +55,7 @@ def context(run, item):
                 item_id=item['id'], item_revision=item.get('revision', 1), feature_parent=run['expected_feature_tip'])
 
 
-def save_history(pending, messages, task=None):
+def save_history(pending, messages, task=None, *, max_chars=60000):
     """Keep completed review exchanges, bounded by whole tool-call groups."""
     groups = []
     for message in messages[2:]:
@@ -74,7 +74,7 @@ def save_history(pending, messages, task=None):
     kept, size, kept_groups = [], 0, 0
     for group in reversed(complete):
         length = len(json.dumps(group))
-        if size + length > 60000:
+        if size + length > max_chars:
             pending['history_partial'] = True
             break
         kept[:0] = copy.deepcopy(group)
