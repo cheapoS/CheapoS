@@ -64,6 +64,61 @@ def fixture_review_call(message, messages):
 
 
 class ReviewAssessmentTests(unittest.TestCase):
+    def test_named_check_uses_only_same_item_command_and_directory(self):
+        criterion = 'The structural validator check passes'
+        spec = {'command': ['node', 'validate.mjs'], 'directory': 'app'}
+        item = {'id': 'one', 'acceptance_criteria': [criterion], 'required_checks': [spec]}
+        packet = {'requirements': [{'id': 'one:1', 'item_id': 'one', 'criterion': criterion}],
+                  'checks': [{**spec, 'candidate_id': 'current', 'record': {
+                      **spec, 'passed': True, 'exit_code': 0}}]}
+        run = {'plan': {'items': [item]}}
+        specs = branch_final.criterion_check_specs(run, packet)
+        state = review.prepare('current', packet, ['one:1'])
+        self.assertNotIn('one:1', state['criterion_checks'])
+        review.refresh_check_claims(state, packet, criterion_check_specs=specs)
+        self.assertEqual(len(state['criterion_checks']['one:1']), 1)
+        for field, value in (('command', ['node', 'different.mjs']), ('directory', '.'),
+                             ('passed', False), ('exit_code', 1), ('reason', 'cancelled')):
+            changed = copy.deepcopy(packet)
+            changed['checks'][0]['record'][field] = value
+            review.refresh_check_claims(state, changed, criterion_check_specs=specs)
+            self.assertEqual(state['criterion_checks']['one:1'], [])
+            self.assertEqual(state['missing_criterion_checks']['one:1'], spec['command'])
+        changed = copy.deepcopy(packet); changed['requirements'][0]['item_id'] = 'other'
+        self.assertEqual(branch_final.criterion_check_specs(run, changed), {})
+        changed['requirements'][0].update(item_id='one', criterion='Another validator check passes')
+        self.assertEqual(branch_final.criterion_check_specs(run, changed), {})
+        # Multiple checks cannot be assigned to a named label by guesswork.
+        for values in ([], [spec, {'command': ['node', 'test.mjs'], 'directory': 'app'}]):
+            item['required_checks'] = values
+            review.refresh_check_claims(state, packet,
+                criterion_check_specs=branch_final.criterion_check_specs(run, packet))
+            self.assertNotIn('one:1', state['criterion_checks'])
+        for mixed in ('The structural check passes and the menu works',
+                      'The accessibility and layout check passes', 'The page displays correctly'):
+            changed = copy.deepcopy(packet); changed['requirements'][0]['criterion'] = mixed
+            review.refresh_check_claims(state, changed, criterion_check_specs=specs)
+            self.assertNotIn('one:1', state['criterion_checks'])
+
+    def test_named_receipt_requires_current_citation_and_regression_evidence(self):
+        key = 'The schema check passes'
+        spec = {'command': ['node', 'validate.mjs'], 'directory': '.'}
+        packet = {'diff': '+return max(lower, min(value, upper))',
+                  'checks': [{**spec, 'record': {**spec, 'passed': True, 'exit_code': 0}}]}
+        state = review.prepare('current', packet, [key])
+        review.refresh_check_claims(state, packet, criterion_check_specs={key: [spec]})
+        source, = state['criterion_checks'][key]
+        ref = review.read(state, source)['citation']
+        result = self.approval(); result['review_assessment'] = assessment([key])
+        result['review_assessment']['criteria'][key]['citations'] = [ref]
+        review.validate(state, result)
+        new = review.prepare('new', packet, [key])
+        review.refresh_check_claims(new, packet, criterion_check_specs={key: [spec]})
+        with self.assertRaises(review.EvidenceError): review.validate(new, result)
+        result['review_assessment']['regressions']['citations'] = [ref]
+        with self.assertRaisesRegex(review.EvidenceError, 'Regression assessment needs code'):
+            review.validate(state, result)
+
     def command_packet(self):
         criteria = ['npm run check passes with zero diagnostics', 'npm run build completes without errors',
                     'npm run verify outputs result PASS with all assertions satisfied']

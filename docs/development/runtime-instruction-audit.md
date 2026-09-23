@@ -66,6 +66,13 @@ prove it ran against the current inputs. If the reviewer requests that check,
 the next review binds its actual worker-executed receipt, including for legacy
 plans whose required-check list omitted it. No command is executed from criterion
 prose, and ambiguous captured working directories remain unresolved.
+Final synthesis also binds a result-only named check (for example, "The schema
+check passes") to the same approved item's sole required command and directory.
+Multiple checks or mixed behavioral claims remain unresolved by this rule.
+The outgoing decision schema refreshes after saved proof is restored, outside
+the packet binding, so upgrading does not discard reads, completed packets or
+attempt history. The small saved-review fixture checks the actual tool schema
+through Resume and a reviewer handoff to a validated decision.
 An omitted source-ID prefix resolves only when its full 20-character suffix
 matches one current source, and returns that source's canonical citation.
 

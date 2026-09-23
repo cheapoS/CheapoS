@@ -198,6 +198,18 @@ def review_paged(engine, runtime, manifest, packet, chunk_ids, criterion_ids):
     return _review(engine, runtime, manifest, summary, chunk_ids, criterion_ids, check_packet=packet)
 
 
+def criterion_check_specs(run, packet):
+    """Checks owned by the same approved item and exact criterion, not prose."""
+    from .check_specs import specifications
+    items = {item['id']: item for item in run.get('plan', {}).get('items', [])}
+    result = {}
+    for row in packet.get('requirements', []):
+        item = items.get(row.get('item_id'))
+        if item and row.get('criterion') in item.get('acceptance_criteria', []):
+            result[row['id']] = specifications(item.get('required_checks', []))
+    return result
+
+
 def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, context_reader=None, progress=None, check_packet=None):
     from .engine import tool, ToolArgumentsError
     from . import pr_description, review_assessment
@@ -269,7 +281,13 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
     state=recovery.begin(runtime.task,manifest,key,packet,messages)
     if proof is not None:
         proof = state.setdefault('evidence_review', proof)
-        review_assessment.refresh_check_claims(proof, check_packet if check_packet is not None else packet)
+        basis = check_packet if check_packet is not None else packet
+        review_assessment.refresh_check_claims(proof, basis,
+            criterion_check_specs=criterion_check_specs(runtime.task['branch_run'], basis))
+        # Refresh the outgoing contract after loading saved evidence, outside
+        # the packet binding. Existing candidate reads, approvals and attempts
+        # remain valid; no duplicate reader or policy messages are appended.
+        tools[0]['function']['parameters']['properties']['review_assessment'] = review_assessment.schema(proof)
     recovery.guard(runtime)
     cached=state.get('result')
     if cached and state.get('result_digest')==_hash(cached):

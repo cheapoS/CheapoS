@@ -11,6 +11,53 @@ from tests.test_review_assessment import assessment
 
 
 class FinalRecoveryTests(unittest.TestCase):
+    def test_saved_named_check_refresh_finishes_without_resetting_review(self):
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        bound = self.bound_check(task)
+        criterion = 'The structural validator check passes'
+        task['branch_run']['plan']['items'] = [{'id': 'one', 'acceptance_criteria': [criterion],
+                                               'required_checks': [bound['command']]}]
+        packet = {'checks': [bound], 'diff': '+return max(lower, min(value, upper))',
+                  'requirements': [{'id': 'one:1', 'item_id': 'one', 'criterion': criterion}]}
+        manifest = {'id': 'm', 'requirements': packet['requirements']}
+        engine.request.side_effect = [self.call('read_review_evidence', {'source': 'diff'}),
+                                      InterruptedError('pause')]
+        with patch.object(final, 'criterion_check_specs', return_value={}):
+            with self.assertRaises(InterruptedError):
+                final._review(engine, runtime, manifest, packet, ['diff:1'], ['one:1'])
+        saved = copy.deepcopy(task)
+        runtime.task = json.loads(json.dumps(task))
+        runtime.task['providers']['reviewer'] = {'model': 'replacement'}
+        def finish(rt, messages, tools, role, **kw):
+            state = next(iter(rt.task['branch_run']['final_review_packets'].values()))
+            proof = state['evidence_review']
+            old = next(iter(saved['branch_run']['final_review_packets'].values()))
+            self.assertEqual(proof['excerpts'], old['evidence_review']['excerpts'])
+            source, = proof['criterion_checks']['one:1']
+            schema = tools[0]['function']['parameters']['properties']['review_assessment']
+            self.assertIn(source, schema['properties']['criteria']['properties']['one:1']['description'])
+            self.assertEqual(sum(t['function']['name'] == 'read_review_evidence' for t in tools), 1)
+            self.assertTrue(any('return max' in m.get('content', '') for m in messages if m['role'] == 'tool'))
+            result = self.approval()['tool_calls'][0]['result']
+            result.update(criteria_ids=['one:1'], review_assessment=assessment(['one:1']))
+            result['review_assessment']['criteria']['one:1'] = {
+                'reason': 'The approved validator command passed on this candidate.',
+                'citations': [{'source': source, 'quote': '"passed": true'}]}
+            return self.call('final_review_decision', result)
+        engine.request.reset_mock(side_effect=True); engine.request.side_effect = finish
+        result = final._review(engine, runtime, manifest, packet, ['diff:1'], ['one:1'])
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertEqual(result['reviewer_model'], 'replacement')
+        self.assertEqual(engine.request.call_count, 1)
+        after = next(iter(runtime.task['branch_run']['final_review_packets'].values()))
+        before = next(iter(saved['branch_run']['final_review_packets'].values()))
+        self.assertEqual(after['binding'], before['binding'])
+        self.assertNotIn('final_review_packet_history', runtime.task['branch_run'])
+        for key in ('checks', 'limits', 'usage'): self.assertEqual(runtime.task[key], saved[key])
+        for key in ('items', 'final_review_corrections'):
+            self.assertEqual(runtime.task['branch_run'][key], saved['branch_run'][key])
+        engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+
     def test_required_tool_choice_survives_correction_and_resume_with_saved_evidence(self):
         task, engine, runtime = self.fixture()
         before = copy.deepcopy(task)

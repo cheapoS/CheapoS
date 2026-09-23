@@ -1,5 +1,12 @@
 # Complete the work without operator rescue
 
+Result-only named checks in final synthesis use the same approved item's sole
+required command and working directory. The reviewer must cite its actual
+passing receipt for the current candidate. Ambiguous labels, mixed behavioral
+claims and regression assessments still need their appropriate evidence.
+Refreshing this contract on Resume preserves completed reviews, evidence reads,
+attempts and authority; it does not run commands or approve work automatically.
+
 cheapoS should feel like working with agents that remember the task and finish
 it. An unattended task succeeds when it reaches a trustworthy, reviewable result
 within the operator's authorization. Displaying an understandable error and a

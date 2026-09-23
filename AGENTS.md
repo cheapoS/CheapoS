@@ -64,6 +64,9 @@ Review evidence must match the claim. Command-result-only criteria can use the
 exact captured check receipt; behavioral criteria and regression assessment
 still require source/document or visual evidence. Do not force code citations
 for a command exit result, or treat passing commands as proof of UI correctness.
+Named check-result claims may bind only to the same approved item's unambiguous
+required command and working directory. Refresh saved evidence contracts without
+discarding current-candidate reads, completed packets or attempt history.
 
 Uncapped work must retain review reassessment and non-progress recovery. Compare
 repeated evidence per read, not only identical tool batches or volatile web fetch
