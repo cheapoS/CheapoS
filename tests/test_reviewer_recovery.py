@@ -8,6 +8,82 @@ from cheapos.served_identity import ensure_independent, metadata
 
 
 class ReviewerRecoveryTests(unittest.TestCase):
+    def recorded_success(self, model='next', **extra):
+        return {'id': 'request-' + model, 'role': 'reviewer', 'model': model, 'purpose': 'branch_final',
+                'status': 'responded', 'dispatched': True, 'synthetic': False,
+                'served_model': 'actual/' + model, 'identity_provenance': 'response_model',
+                'dispatch_scope': {'base_url': 'gateway', 'connection_revision': 'saved',
+                                   'model': model, 'role': 'reviewer'}, **extra}
+
+    def recorded_fixture(self):
+        engine, runtime = self.fixture()
+        task = runtime.task
+        task['served_identity_version'] = 1
+        task['providers']['reviewer'].update(base_url='gateway', access_binding={'connection_revision': 'saved'})
+        task['reviewer_identity_recovery'] = {'attempted': ['old', 'next'], 'scope': 'manifest:tree'}
+        task['branch_run'] = {'current_item_id': None, 'active_final_review': {'manifest_id': 'tree'}}
+        task['request_metrics'] = [self.recorded_success()]
+        return engine, runtime
+
+    def test_legacy_success_survives_resume_without_erasing_attempt_history(self):
+        engine, rt = self.recorded_fixture()
+        before = copy.deepcopy(rt.task)
+        with patch.object(recovery, 'candidates', return_value=[{'id': 'next'}]), patch.object(
+                recovery, 'config', return_value={'model': 'next'}):
+            self.assertEqual(recovery.request(engine, rt, ['current evidence'], [], 'reviewer')['content'], 'review')
+            rt.task = copy.deepcopy(rt.task)
+            recovery.request(engine, rt, ['current evidence'], [], 'reviewer')
+        self.assertEqual(engine._request.call_count, 2)
+        self.assertEqual(rt.task['reviewer_identity_recovery']['attempted'], ['old', 'next'])
+        self.assertEqual(rt.task['reviewer_identity_recovery']['verified_routes']['next'], {'request_id': 'request-next'})
+        for key in ('patch', 'checks', 'request_metrics', 'pending_review', 'execution'):
+            self.assertEqual(rt.task[key], before[key])
+
+    def test_migration_never_uses_probe_unknown_or_other_connection_as_identity_proof(self):
+        variants = [{'purpose': 'probe'}, {'status': 'pending'}, {'status': 'failed'},
+            {'error_code': 'review_identity_conflict'}, {'synthetic': True}, {'synthetic': None},
+            {'served_model': None}, {'identity_provenance': 'configured_named_routes'},
+            {'dispatched': False}, {'dispatch_scope': {}},
+            {'dispatch_scope': {'base_url': 'other', 'connection_revision': 'saved', 'model': 'next', 'role': 'reviewer'}},
+            {'dispatch_scope': {'base_url': 'gateway', 'connection_revision': 'old', 'model': 'next', 'role': 'reviewer'}}]
+        for extra in variants:
+            with self.subTest(record=extra):
+                _, rt = self.recorded_fixture()
+                rt.task['request_metrics'] = [self.recorded_success(**extra)]
+                self.assertEqual(recovery.bind_recovery(rt.task)['verified_routes'], {})
+
+    def test_later_failures_survive_successful_probe_and_restart(self):
+        for code in ('review_identity_unknown', 'review_identity_conflict', 'http_400', 'invalid_response_json'):
+            with self.subTest(code=code):
+                engine, rt = self.recorded_fixture()
+                rt.task['request_metrics'] += [self.recorded_success(status='failed', error_code=code),
+                                               self.recorded_success(purpose='probe')]
+                with patch.object(recovery, 'candidates', return_value=[{'id': 'next'}]):
+                    for _ in range(2):
+                        with self.assertRaises(ProviderError): recovery.request(engine, rt, [], [], 'reviewer')
+                        rt.task = copy.deepcopy(rt.task)
+                engine._request.assert_not_called()
+
+    def test_new_identity_failure_revokes_restored_success_without_remigration(self):
+        engine, rt = self.recorded_fixture()
+        engine._request.side_effect = ProviderError('identity', code='review_identity_conflict')
+        with patch.object(recovery, 'candidates', return_value=[{'id': 'next'}]), patch.object(
+                recovery, 'config', return_value={'model': 'next'}):
+            for _ in range(2):
+                with self.assertRaises(ProviderError): recovery.request(engine, rt, [], [], 'reviewer')
+                rt.task = copy.deepcopy(rt.task)
+        engine._request.assert_called_once()
+        self.assertEqual(rt.task['reviewer_identity_recovery']['verified_routes'], {})
+
+    def test_verified_route_still_respects_manual_selection_and_cooldown(self):
+        for blocked in ('manual', 'cooldown'):
+            with self.subTest(blocked=blocked):
+                engine, rt = self.recorded_fixture()
+                if blocked == 'manual': rt.task['execution']['mode'] = 'manual'
+                with patch.object(recovery, 'candidates', return_value=[] if blocked == 'cooldown' else [{'id': 'next'}]):
+                    with self.assertRaises(ProviderError): recovery.request(engine, rt, [], [], 'reviewer')
+                engine._request.assert_not_called()
+
     def fixture(self):
         # These cases exercise identity/availability recovery after qualification.
         qualification = patch.object(recovery, 'qualify', return_value=True)

@@ -43,6 +43,11 @@ Reviewer attempt exclusions belong to the candidate being reviewed, not the
 task lifetime. Preserve and restore each candidate's history on Resume; final
 review chunks share their manifest scope. Migrate older state only from recorded
 request provenance, without clearing current or unscoped failures.
+An attempted route is not necessarily a failed identity check. Keep successful
+actual responses distinct from exclusions; protocol changes must not inherit
+unrelated format failures through an identity-recovery list. Restore eligibility
+only from recorded same-connection evidence, never probe success, and reapply
+current format failures, cooldowns, model authority and response identity gates.
 
 Provider handoffs must preserve saved evidence and tool-call/reply pairing while
 projecting history into the destination's accepted wire schema. A successful

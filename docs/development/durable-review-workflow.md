@@ -62,6 +62,15 @@ units and Resume. Legacy format failures remain archived. Provider health,
 served identity, model pins, spending and command permissions remain enforced.
 An operator-pinned model is not silently replaced.
 
+Identity recovery retains its full attempted-route history and separately records
+routes that returned a valid actual response. A later failure or interrupted
+dispatch revokes that eligibility. Older records may restore it once from the
+latest actual, identified response on the same saved connection revision; missing
+provenance, later failures, synthetic records and probe success cannot establish
+it. The current protocol's format exclusions and live health still filter every
+selection, and every new response must establish independence again. This avoids
+carrying an old format failure into a new protocol as a permanent identity ban.
+
 Outgoing unit conversation history retains up to 16,000 characters of complete
 exchanges; older exchanges remain readable by local reference. Initial delivered
 evidence is at most 12,000 characters, with individual excerpts at most 4,000.
