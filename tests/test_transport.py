@@ -97,6 +97,46 @@ class TransportTests(unittest.TestCase):
                 engine._request(runtime, [], [], 'reviewer', purpose='branch_final')
             self.assertEqual([r['stream'] for r in requests], [True])
 
+    def test_rejected_history_is_projected_before_reservation_and_corrected_reply_remains_live(self):
+        from email.message import Message
+        from cheapos.request_history import project
+        history = [{'role': 'assistant', 'content': None, 'tool_calls': [
+            {'id': 'rejected', 'type': 'function', 'function': {
+                'name': 'final_review_decision', 'arguments': '{"decision":"APPROVE"} trailing'}}]},
+            {'role': 'tool', 'tool_call_id': 'rejected', 'content': 'Invalid JSON; call not executed'}]
+        before = copy.deepcopy(history)
+        for role in ('reviewer', 'worker', 'planner', 'coordinator'):
+            for mode in ('json', 'sse'):
+                with self.subTest(role=role, mode=mode):
+                    engine, runtime, _ = self.harness()
+                    config = {**runtime.task['providers']['worker'], 'pacing_interval': 0}
+                    runtime.task['providers'][role] = config
+                    engine.provider_factory = lambda *args: ChatProvider(config)
+                    captured = []
+                    reply = {'role': 'assistant', 'content': None, 'tool_calls': [
+                        {'id': 'corrected', 'type': 'function', 'function': {
+                            'name': 'final_review_decision', 'arguments': '{"decision":"REQUEST_CHANGES"}'}}]}
+                    def respond(request, **kwargs):
+                        body = json.loads(request.data); captured.append(body)
+                        for message in body['messages']:
+                            for call in message.get('tool_calls', []):
+                                self.assertIsInstance(json.loads(call['function']['arguments']), dict)
+                        response = io.BytesIO(json.dumps({'choices': [{'message': reply}],
+                            'usage': {'prompt_tokens': 2, 'completion_tokens': 3}}).encode())
+                        response.headers = Message(); response.headers['Content-Type'] = 'application/json'
+                        return response
+                    with patch('cheapos.providers.build_opener') as opener:
+                        opener.return_value.open.side_effect = respond
+                        result = engine._request_attempt(runtime, history, [], role, transport_override=mode)
+                    self.assertEqual(result['tool_calls'], reply['tool_calls'])
+                    self.assertEqual(captured[0]['messages'][1:], project(history))
+                    reservation = runtime.task['request_metrics'][-1]['reservation']
+                    self.assertEqual(reservation['prompt_bytes'], len(json.dumps({
+                        'messages': captured[0]['messages'], 'tools': []}, ensure_ascii=False).encode()))
+                    self.assertEqual(history, before)
+                    self.assertEqual(len(captured), 1)
+                    self.assertEqual(runtime.task['usage'][role]['tokens'], 5)
+
     def test_saved_reasoning_history_is_compatible_with_groq_without_losing_evidence(self):
         from email.message import Message
         history = [

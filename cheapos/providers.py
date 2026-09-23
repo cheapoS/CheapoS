@@ -289,7 +289,8 @@ class ChatProvider:
     def _complete(self, messages, tools, max_tokens, emit=None, stopped=lambda: False, timeout_seconds=REQUEST_TIMEOUT_SECONDS, stream_seconds=600, brief=False, tool_choice=None):
         if not brief and self.config.get("_request_seconds"):
             timeout_seconds = stream_seconds = self.config["_request_seconds"]
-        clean_messages = [{k: v for k, v in m.items() if k != 'reasoning_fallback'} for m in messages]
+        from .request_history import project as project_request_history
+        clean_messages = [{k: v for k, v in m.items() if k != 'reasoning_fallback'} for m in project_request_history(messages)]
         # Groq accepts its parsed `reasoning` field, but rejects OpenRouter's
         # `reasoning_details` extension on saved assistant/tool exchanges.
         # Project only the wire copy; keep original history and other routes'

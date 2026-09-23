@@ -47,6 +47,10 @@ class ToolArgumentTests(LocalCase):
         requests=[]
         def respond(request,**kwargs):
             requests.append(json.loads(request.data))
+            # Real providers validate saved calls too, before accepting the next request.
+            for message in requests[-1]['messages']:
+                for previous in message.get('tool_calls', []):
+                    self.assertIsInstance(json.loads(previous['function']['arguments']), dict)
             if len(requests)==2:
                 self.assertFalse((Path(task['workspace'])/'unsafe.txt').exists())
                 self.assertIn('return min(value, upper)',(Path(task['workspace'])/'math_utils.py').read_text())

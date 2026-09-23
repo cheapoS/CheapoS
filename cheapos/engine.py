@@ -2584,6 +2584,8 @@ class Engine:
             messages.append({'role':'user','content':json.dumps({'active_item':{k:item[k] for k in ('id','title','instructions','acceptance_criteria','required_checks')},'completed_items':[{'id':i['id'],'outcome':i['outcome_summary'][:500]} for i in run['items'] if i['status'] in branch_runs.DONE]})})
             if item.get('clarification_history'):messages.append({'role':'user','content':'Previous questions and operator guidance for this item: '+json.dumps(item['clarification_history'])})
             if run.get('guidance'):messages.append({'role':'user','content':'Operator guidance within the accepted item scope (does not authorize extra scope): '+json.dumps(run['guidance'])})
+        from .request_history import project as project_request_history
+        messages = project_request_history(messages)  # Account for the actual diagnostic envelope before dispatch.
         from .instructions.runtime import with_tools
         if purpose != 'probe':
             messages = with_tools(messages, tools, tool_choice)
