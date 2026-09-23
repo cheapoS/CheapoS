@@ -301,6 +301,10 @@ test('review chunk progress uses controller totals and names the synthesis stage
  t.status='paused';assert.equal(step().reviewProgress,'Chunk 8 of 12');assert.equal(step().outcome,'revision');
  t.events.push(event(4,'review_request','Requesting final packet review',{chunk_ids:['diff:1','diff:2'],stage:'synthesis'}));
  assert.equal(step().reviewProgress,'Combining review findings');
+ for(const [kind,label,index] of [['requirements','Requirements',2],['integration','Integration and regressions',7],['complete','Requirements and integration',1]]){
+  t.events.push(event(t.events.length+1,'review_request','Requesting review',{stage:'unit',unit_kind:kind,unit_index:index,unit_total:7}));
+  assert.equal(step().reviewProgress,`${label} · review ${index} of 7`);
+ }
  for(const pair of [[0,12],[13,12],[8,undefined],['8',12]]){
   t.events.push(event(t.events.length+1,'review_request','Requesting review',{chunk_ids:['diff:2'],stage:'chunk',chunk_index:pair[0],chunk_total:pair[1]}));
   assert.equal(step().reviewProgress,'');

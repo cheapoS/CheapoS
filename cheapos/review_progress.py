@@ -6,14 +6,16 @@ from .instructions.runtime import prompt
 
 
 def targets(state):
-    return {**{f'criterion:{i + 1}': key for i, key in enumerate(state['criteria'])},
-            'regressions': 'Regression assessment', 'verification': 'Verification assessment',
-            'limitations': 'Verification limitations'}
+    fields = evidence.assessment_fields(state)
+    return {**({f'criterion:{i + 1}': key for i, key in enumerate(state['criteria'])} if 'criteria' in fields else {}),
+            **{key: label for key, label in (('regressions', 'Regression assessment'),
+               ('verification', 'Verification assessment'), ('limitations', 'Verification limitations')) if key in fields}}
 
 
 def bind(state, directions):
     basis = evidence.digest({'scope': state['scope'], 'criteria': state['criteria'],
-                             'directions': directions, 'criterion_checks': state.get('criterion_checks', {})})
+                             'directions': directions, 'criterion_checks': state.get('criterion_checks', {}),
+                             **({'assessment_fields': state['assessment_fields']} if 'assessment_fields' in state else {})})
     if state.get('progress', {}).get('basis') != basis:
         state['progress'] = {'basis': basis, 'assessments': {}}
 
@@ -81,7 +83,7 @@ def tools(tools, state, decision_name='review_decision', *, recorded_only=False)
         decision['properties']['use_recorded_assessment']['description'] = (
             'On APPROVE set true to explicitly confirm every recorded assessment, including inherited claims. '
             'The controller revalidates complete current evidence; recording targets alone never approves.')
-    claim = evidence.schema(state)['properties']['regressions']['properties']
+    claim = evidence.schema({k: v for k, v in state.items() if k != 'assessment_fields'})['properties']['regressions']['properties']
     tools.append({'type': 'function', 'function': {
         'name': 'record_review_progress',
         'description': 'Record one evidence-backed assessment for this candidate. Use target IDs from review_progress. This saves review work but never approves, edits files, runs commands or changes scope. For limitations, supply limitations instead of reason/citations.',
@@ -109,8 +111,9 @@ def complete(state, result):
     recorded = current(state)
     if any(key not in recorded for key in targets(state)):
         raise ValueError('Recorded review is incomplete. Resolve the remaining review_progress targets before approval.')
+    fields = evidence.assessment_fields(state)
     result['review_assessment'] = {
-        'criteria': {key: recorded[f'criterion:{i + 1}'] for i, key in enumerate(state['criteria'])},
-        **{key: recorded[key] for key in ('regressions', 'verification', 'limitations')}}
+        **({'criteria': {key: recorded[f'criterion:{i + 1}'] for i, key in enumerate(state['criteria'])}} if 'criteria' in fields else {}),
+        **{key: recorded[key] for key in ('regressions', 'verification', 'limitations') if key in fields}}
     # The ordinary final gate validates this again and creates the receipt only
     # after candidate/check revalidation and an explicit independent decision.

@@ -24,6 +24,14 @@ the operator's spending/model/command authority. Treat non-progress thresholds
 as signals to change strategy; do not add arbitrary stop counters. Verify the
 path to completion without operator rescue using small deterministic cases.
 
+Final review uses [durable review units](docs/development/durable-review-workflow.md).
+Keep coverage, scheduling and completion in the controller. Models judge bounded
+requirements and integration; never require another monolithic rewrite of valid
+unit decisions. Preserve validated units across interruption and handoff, reject
+stale bindings, and require explicit integration approval. Short evidence handles
+identify delivered excerpts, not proof of correctness. Exercise assembled requests
+and automatic continuation through a completed decision with deterministic cases.
+
 Keep tiny capability probes separate from actual task responses. Probe success
 must not erase a real-request outage or reset its backoff. Shared provider
 backoff requires explicit provider evidence or recent failures across distinct
