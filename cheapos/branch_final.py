@@ -294,7 +294,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
             recovery.recover(engine,runtime,key,state,messages)
         label = 'item' if manifest.get('kind') == 'item' else 'final'
         engine.event(runtime.task,'review_request',f'Requesting {label} packet review',{'manifest_id':manifest['id'],'chunk_ids':chunk_ids,'stage':'synthesis' if criterion_ids else 'chunk',**display})
-        message = engine.request(runtime, messages, tools, 'reviewer', purpose='branch_final')
+        message = engine.request(runtime, messages, tools, 'reviewer', purpose='branch_final', tool_choice='required')
         recovery.guard(runtime)  # A reply to superseded guidance cannot approve this packet.
         state['reviewer_model']=recovery.model(runtime.task)
         calls = message.get('tool_calls', [])

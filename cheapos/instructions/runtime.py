@@ -106,6 +106,8 @@ def with_tools(messages, tools, tool_choice=None):
         required = tool_choice.get('function', {}).get('name')
         if required in offered:
             contract['required_call'] = required
+    elif tool_choice == 'required' and offered:
+        contract['tool_call_required'] = True
     content = TOOL_CONTRACT + text('runtime.tool_contract') + '\n' + json.dumps(contract)
     result = copy.deepcopy(messages)
     if result and result[0].get('role') == 'system':
