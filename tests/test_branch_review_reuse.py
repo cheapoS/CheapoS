@@ -184,7 +184,7 @@ class ReviewReuseTests(unittest.TestCase):
         result = self.run_final(task, engine, runtime, manifest, current)
         self.assertNotIn('reuse', result['readiness'])
         self.assertEqual(result['readiness']['review_input_digest'], reuse.input_digest(task))
-        self.assertEqual(engine.request.call_count, 2)  # chunk + complete small-task unit
+        self.assertEqual(engine.request.call_count, 1)  # Complete unit, no duplicate legacy chunk review.
 
     def test_multiple_updates_preserve_chain_and_old_approvals(self):
         task, engine, runtime, old, current, basis = self.fixture(); manifest, current = self.update(task, old)

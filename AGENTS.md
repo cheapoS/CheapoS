@@ -25,6 +25,9 @@ as signals to change strategy; do not add arbitrary stop counters. Verify the
 path to completion without operator rescue using small deterministic cases.
 
 Final review uses [durable review units](docs/development/durable-review-workflow.md).
+Exercise the final-review entry point, not only the unit scheduler: evidence-enabled
+tasks must enter units directly without a duplicate legacy chunk-review prerequisite.
+Verify full readiness and reuse receipts still reject missing integration or coverage.
 Keep coverage, scheduling and completion in the controller. Models judge bounded
 requirements and integration; never require another monolithic rewrite of valid
 unit decisions. Preserve validated units across interruption and handoff, reject

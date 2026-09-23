@@ -11,6 +11,12 @@ whether a model could finish that report.
 
 Evidence-enabled final review now has a versioned, durable workflow:
 
+The final-review entry point dispatches these units directly. Legacy chunk
+reviews are not a prerequisite. Version 3 readiness binds the complete unit
+composition and requires explicit integration approval; version 1 legacy and
+version 2 reused receipts remain verifiable. Old chunk attempts remain in the
+diagnostic history without blocking the new workflow.
+
 1. Freeze the current candidate, original requirements, operator directions,
    verification receipts and verification environment through the existing
    manifest/readiness machinery.
@@ -52,8 +58,10 @@ receipts, active unit and outcome. The basis includes the manifest, current
 review inputs, checks, protocol version and unit definitions. Resume validates
 completed receipts and continues the first unresolved unit. Changed code, scope,
 directions or check bindings create a separate workflow; old records remain.
-Existing exact chunk approvals remain reusable. Historical repair descriptions
-do not become fresh requirements.
+Existing legacy readiness receipts remain reusable. An unfinished legacy review
+enters the unit workflow; its old chunk approvals and attempts remain in history
+but do not stand in for unit decisions. Historical repair descriptions do not
+become fresh requirements.
 
 Authorized model handoff retains evidence, provisional claims, completed units,
 usage and cumulative failures. Format failures for this materially different
@@ -105,6 +113,12 @@ scripted responses. They establish control flow and authority, not model quality
 Existing Git execution, final-readiness and recovery tests cover repository and
 check integration. The twelve new cases take approximately 0.08 seconds
 combined locally, without Git, network calls, sleeps or paid inference.
+
+The existing Git final-review fixture also exercises the public controller entry
+point through a version 3 readiness receipt and its reuse, asserting that only
+the complete unit is dispatched. Captured requests must deliver the bound command
+receipts; missing workflow proof is rejected even with a recomputed outer digest.
+This extends existing coverage without adding another Git workflow fixture.
 
 Legacy review receipts remain supported. Already-running legacy final synthesis
 can enter the new workflow without erasing its history; prior chunk approvals,

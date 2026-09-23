@@ -246,6 +246,13 @@ class ReviewAssessmentTests(unittest.TestCase):
         self.assertEqual(found['evidence_id'], 'long')
         self.assertEqual(found['digest'], state['sources']['long']['digest'])
         self.assertFalse(review.read(state, 'long', search='absent')['found'])
+        for bad_offset in (len(content) + 1, 400000000000000, -1, '8000'):
+            with self.assertRaises(ValueError) as error:
+                review.read(state, 'long', offset=bad_offset)
+            self.assertIn(f'long has {len(content)} characters', str(error.exception))
+            self.assertIn(f'0 through {len(content)}', str(error.exception))
+            self.assertIn('next_offset', str(error.exception))
+        self.assertFalse(review.read(state, 'long', offset=len(content))['has_more'])
         self.assertEqual({k: v for k, v in state.items() if k != 'excerpts'}, before)
         result = self.approval()
         result['review_assessment'] = assessment(source=found['evidence_id'], quote='needle: exact source')

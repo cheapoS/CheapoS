@@ -593,8 +593,11 @@ def final_check_review(engine, runtime):
                              ('run_id', 'output', 'truncated', 'raw_output') if key in bound['record']},
                           'record_digest': evidence._digest(bound['record'])} for bound in checks],
     }
+    # Evidence-enabled units already cover requirements and the complete change.
+    # Do not put the legacy chunk/synthesis pipeline in front of that workflow.
+    use_units = review_assessment_enabled(task)
     reviews = []
-    for index, chunk in enumerate(manifest['chunks'], 1):
+    for index, chunk in enumerate([] if use_units else manifest['chunks'], 1):
         packet = {'manifest_id': manifest['id'], 'chunk_ids': [chunk['id']], 'criteria_ids': [], 'chunk': chunk, 'review_context': review_context, 'location_index':manifest['files'],
                   'scope': {'kind': chunk['kind'], 'chunk_index': index, 'chunk_total': len(manifest['chunks']),
                             'context_role': 'global_background', 'criterion_completion_required': False},
@@ -621,8 +624,9 @@ def final_check_review(engine, runtime):
     from . import pr_description
     if pr_description.enabled(task):
         packet['publication_drafts'] = pr_description.item_drafts(manifest)
-    if review_assessment_enabled(task):
+    if use_units:
         from . import review_workflow
+        packet['repair_history'] = review_context['repair_history']
         overall = review_workflow.run(engine, runtime, manifest, packet, _review)
     else:
         overall = review_paged(engine, runtime, manifest, packet, chunks, criteria)
@@ -642,7 +646,7 @@ def final_check_review(engine, runtime):
     blocker = None
     try: work.source_git(run['workspace_mapping']['source'], 'merge-base', '--is-ancestor', current_manifest['target_tip'], manifest['feature_tip'])
     except ValueError: blocker = 'The target branch has new commits. Choose Update branch & recheck to combine them with the saved task before merging.'
-    readiness = {'version': 1, 'manifest': current_manifest, 'candidate': current, 'checks': checks, 'reviews': reviews,
+    readiness = {'version': 3 if use_units else 1, 'manifest': current_manifest, 'candidate': current, 'checks': checks, 'reviews': reviews,
                  'review': overall, 'worker_model': worker, 'reviewer_model': overall.get('reviewer_model',recovery.model(task)), 'integration_blocker': blocker,
                  'review_input_digest': review_inputs}
     readiness['id'] = _hash(readiness)
@@ -663,13 +667,16 @@ def validate_record(readiness, task, seen=None):
         from . import branch_review_reuse
         branch_review_reuse.validate(readiness, task, seen)
         return True
-    if saved.get('version', 1) != 1:
+    if saved.get('version', 1) not in {1, 3}:
         raise ValueError('Unsupported final readiness version')
     manifest = saved['manifest']
     chunks = [c['id'] for c in manifest['chunks']]
     criteria = [r['id'] for r in manifest['requirements']]
     reviews = saved['reviews']
-    if len(reviews) != len(chunks) or any(r.get('manifest_id') != manifest['id'] or r.get('decision') != 'APPROVE' or r.get('chunk_ids') != [chunk] or r.get('criteria_ids') != [] for chunk, r in zip(chunks, reviews)):
+    unit_only = saved.get('version') == 3
+    if unit_only and (reviews or current.get('review_contract_version') != 1 or 'workflow' not in saved['review']):
+        raise ValueError('Final readiness requires the complete evidence-backed review workflow')
+    if not unit_only and (len(reviews) != len(chunks) or any(r.get('manifest_id') != manifest['id'] or r.get('decision') != 'APPROVE' or r.get('chunk_ids') != [chunk] or r.get('criteria_ids') != [] for chunk, r in zip(chunks, reviews))):
         raise ValueError('Final chunk coverage is incomplete')
     for review in reviews:
         disagreement.decision(review)

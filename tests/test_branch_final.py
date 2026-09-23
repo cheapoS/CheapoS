@@ -85,15 +85,20 @@ class BranchFinalTests(unittest.TestCase):
         # Empty directory avoids altering the manifest asserted below.
         specs.append({'command':specs[0], 'directory':'component'})
         original=self.engine.request
+        delivered = []
         def request(*args,**kwargs):
             self.task['providers']['reviewer']['model']='replacement'
+            for message in args[1]:
+                if message.get('role') == 'user':
+                    delivered.extend(json.loads(message['content']).get('delivered_evidence', []))
             return original(*args,**kwargs)
         self.engine.request=request
         result = final.final_check_review(self.engine, self.runtime)
         self.assertEqual(result['readiness']['review']['pull_request'], self.publication)
-        self.assertTrue(all('pull_request' not in r for r in result['readiness']['reviews']))
+        self.assertEqual(result['readiness']['version'], 3)
+        self.assertEqual(result['readiness']['reviews'], [])
         self.assertEqual(result['readiness']['reviewer_model'],'replacement')
-        self.assertTrue(all(r['reviewer_model']=='replacement' for r in result['readiness']['reviews']))
+        self.assertEqual(result['readiness']['review']['reviewer_model'], 'replacement')
         manifest = result['readiness']['manifest']
         from cheapos.review_context import read
         excerpt=read(self.run,manifest,{'manifest_id':manifest['id'],'path':'code','start_line':1,'end_line':10})
@@ -108,8 +113,11 @@ class BranchFinalTests(unittest.TestCase):
         self.assertEqual(len(self.task['checks']),2)
         self.assertEqual(self.task['checks'][1]['directory'],'component')
         self.assertNotEqual(self.task['checks'][0]['verification_identity'],self.task['checks'][1]['verification_identity'])
-        packet=next(p for p in self.requests if 'chunk' in p)
-        self.assertEqual(packet['review_context']['final_checks'][1]['directory'],'component')
+        self.assertTrue(all('review_unit' in p and 'chunk' not in p for p in self.requests))
+        self.assertEqual(len(self.requests), 1)  # One complete unit, no legacy pre-review.
+        check_excerpt = next(row for row in delivered if row['evidence_id'] == 'checks')
+        self.assertFalse(check_excerpt['has_more'])
+        self.assertEqual(json.loads(check_excerpt['content'])[1]['directory'], 'component')
         count = len(self.requests)
         # Exercise composed readiness against this existing real Git fixture,
         # without another workspace, command or model request.
@@ -127,6 +135,11 @@ class BranchFinalTests(unittest.TestCase):
         tampered.pop('id'); tampered['id'] = final._hash(tampered)
         with self.assertRaisesRegex(ValueError, 'Review evidence'):
             final.validate(tampered, self.task)
+        missing = copy.deepcopy(result['readiness'])
+        missing['review'].pop('workflow')
+        missing.pop('id'); missing['id'] = final._hash(missing)
+        with self.assertRaisesRegex(ValueError, 'complete evidence-backed review workflow'):
+            final.validate(missing, self.task)
 
     def test_chunk_context_contains_bound_checks_and_still_allows_rejection(self):
         result = final.final_check_review(self.engine, self.runtime)
