@@ -19,6 +19,7 @@ PROFILES = {
     'reviewer': ('reviewer.base', 'workflow.ui_completeness', 'reviewer.decisions'),
     'final_review': ('reviewer.final', 'workflow.ui_completeness'),
     'review_reassessment': ('reviewer.reassessment',),
+    'review_progress': ('reviewer.progress',),
     'review_decision_coaching': ('reviewer.decision_coaching',),
     'coordinator_recovery': ('coordinator.base',),
     'coordinator_chat': ('coordinator.chat',),
@@ -37,6 +38,7 @@ REQUIRED_TOOLS = {
     'reviewer': {'review_decision'},
     'final_review': {'final_review_decision', 'read_final_context'},
     'review_reassessment': {'review_decision'},
+    'review_progress': {'review_decision', 'record_review_progress', 'read_review_evidence'},
     'review_decision_coaching': {'review_decision'},
     'coordinator_chat': {'delegate_work'},
 }
@@ -45,7 +47,7 @@ ONLY_TOOLS = {
     'coordinator_chat': {'delegate_work'},
     'coordinator_recovery': set(), 'greeting': set(), 'startup_greeting': set(),
     'discussion': {'list_files', 'read_file', 'search', 'outline_file'},
-    'review_decision_coaching': {'review_decision', 'read_review_evidence'},
+    'review_decision_coaching': {'review_decision', 'read_review_evidence', 'record_review_progress'},
 }
 
 

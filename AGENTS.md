@@ -43,6 +43,13 @@ evidence retrievable and candidate-bound citations intact. Verify distinct usefu
 reads can continue and stalled reviews can hand off to a validated decision
 without resetting checks, spending authority or cumulative attempts.
 
+Incremental review assessments are provisional, candidate-bound evidence claims.
+Keep validated claims across Resume and reviewer handoff, invalidate them when
+scope or operator directions change, and revalidate their citations and current
+checks before an explicit independent approval. Completing a checklist never
+approves a task by itself. Test incomplete confirmation, stale evidence and
+cancellation as well as the path to a completed decision.
+
 # Validation while iterating
 
 ## Agent instruction changes

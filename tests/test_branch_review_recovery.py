@@ -187,7 +187,7 @@ class ItemReviewRecoveryTests(unittest.TestCase):
         engine.parse_call = Engine.parse_call
         def respond(rt, messages, tools, role):
             if engine.request.call_count == 1:
-                self.assertEqual({t['function']['name'] for t in tools}, {'review_decision', 'read_review_evidence'})
+                self.assertEqual({t['function']['name'] for t in tools}, {'review_decision', 'read_review_evidence', 'record_review_progress'})
                 from cheapos.instructions.runtime import audit_tools, prompt
                 self.assertEqual(audit_tools('review_decision_coaching', tools), [])
                 self.assertEqual(messages[-1]['content'], prompt('review_decision_coaching'))
@@ -238,6 +238,114 @@ class ItemReviewRecoveryTests(unittest.TestCase):
         for key in ('checks', 'usage', 'limits'):
             self.assertEqual(task[key], before[key])
         self.assertEqual(task['branch_run']['plan'], before['branch_run']['plan'])
+
+    def test_requested_missing_command_receipt_reaches_the_next_review(self):
+        from cheapos import review_assessment
+        from tests.test_review_assessment import assessment
+        task, engine, runtime = self.automatic_fixture()
+        task['review_contract_version'] = 1
+        engine.parse_call = Engine.parse_call
+        criterion = 'Ledger passed structural validation (node check-ledger.mjs)'
+        item = task['branch_run']['items'][0]
+        item['acceptance_criteria'] = [criterion]
+        task['branch_run']['plan']['items'][0]['acceptance_criteria'] = [criterion]
+        original_plan = copy.deepcopy(task['branch_run']['plan'])
+        def respond(rt, messages, tools, role):
+            state = task['pending_review']['evidence_review']
+            if engine.request.call_count == 1:
+                self.assertEqual(state['missing_criterion_checks'][criterion], ['node', 'check-ledger.mjs'])
+                return {'tool_calls': [self.wire_call('review_decision', json.dumps({
+                    'decision': 'REQUEST_TESTS', 'candidate_id': 'candidate',
+                    'feedback': 'Run node check-ledger.mjs against the actual ledger through the check tool.'}))]}
+            self.assertFalse(state['missing_criterion_checks'])
+            result = self.approval()['tool_calls'][0]['result']
+            result.pop('criteria_outcomes')
+            result['review_assessment'] = assessment([criterion], quote='saved diff', checks=False)
+            ref = review_assessment.read(state, state['criterion_checks'][criterion][0])['citation']
+            for claim in (result['review_assessment']['criteria'][criterion], result['review_assessment']['verification']):
+                claim['citations'] = [ref]
+            return {'tool_calls': [self.wire_call('review_decision', json.dumps(result))]}
+        engine.request.side_effect = respond
+        self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'REQUEST_TESTS')
+        engine.checks.assert_not_called()  # Criterion prose cannot execute a new command.
+        self.assertNotIn('ready_receipt', item)
+        # Simulate the worker's authorized check receipt, then normal Resume.
+        task['checks'].append({'command': ['node', 'check-ledger.mjs'], 'directory': '.',
+            'passed': True, 'exit_code': 0, 'outcome': 'passed', 'output': 'Ledger structure passed.',
+            'input_identity': 'current', 'verification_identity': 'current'})
+        runtime.task = task = json.loads(json.dumps(task))
+        with patch('cheapos.verification.evidence_identity', return_value='current'):
+            self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 2)
+        engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+        self.assertEqual(task['branch_run']['plan'], original_plan)
+        branch_review.evidence.ready_receipt.assert_called_once()
+
+    def test_incremental_assessments_survive_resume_and_handoff_to_explicit_approval(self):
+        from cheapos.instructions.runtime import audit_tools, prompt
+        task, engine, runtime = self.automatic_fixture()
+        task['review_contract_version'] = 1
+        task['branch_run']['plan']['uncapped_work'] = True
+        engine.parse_call = Engine.parse_call
+        before = copy.deepcopy(task)
+        def record(target):
+            args = {'candidate_id': 'candidate', 'target': target}
+            if target == 'limitations': args['limitations'] = ['Static source inspection']
+            else: args.update(reason='Checked the exact current implementation.', citations=[{'source': 'diff', 'quote': 'saved diff'}])
+            return {'role': 'assistant', 'tool_calls': [self.wire_call('record_review_progress', json.dumps(args))]}
+        decision = {'decision': 'APPROVE', 'candidate_id': 'candidate', 'feedback': 'Confirmed every saved assessment against current evidence.',
+                    'defects': [], 'use_recorded_assessment': True}
+        engine.request.side_effect = [record('criterion:1'), InterruptedError('Restart')]
+        with self.assertRaises(InterruptedError): branch_review.checkpoint(engine, runtime, {})
+        runtime.task = task = json.loads(json.dumps(task))
+        def respond(rt, messages, tools, role):
+            self.assertEqual(audit_tools('review_progress', tools), [])
+            self.assertEqual(messages[0]['content'].count(prompt('review_progress')), 1)
+            decision_tool = next(t['function'] for t in tools if t['function']['name'] == 'review_decision')
+            self.assertIn('unless use_recorded_assessment is true', decision_tool['parameters']['properties']['review_assessment']['description'])
+            state = json.loads(messages[1]['content'])['review_progress']
+            self.assertIn('criterion:1', state['recorded_assessments'])
+            self.assertFalse(state['approved'])
+            self.assertNotIn('ready_receipt', task['branch_run']['items'][0])
+            self.assertFalse(task['checkpoints'])
+            if task['providers']['reviewer']['model'] == 'reviewer':
+                # An incomplete confirmation must not convert partial progress
+                # into approval; normal invalid-response recovery hands off.
+                self.assertIn('regressions', state['remaining'])
+                return {'tool_calls': [self.wire_call('review_decision', json.dumps(decision))]}
+            if state['next_target']:
+                return record(state['next_target'])
+            return {'tool_calls': [self.wire_call('review_decision', json.dumps(decision))]}
+        engine.request.side_effect = respond
+        with patch.object(routing, 'select_remote', side_effect=self.selector(task)) as select:
+            self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 9)
+        select.assert_called_once(); engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+        branch_review.evidence.ready_receipt.assert_called_once()
+        final = branch_review.evidence.ready_receipt.call_args.args[2]
+        self.assertEqual(final['review_assessment']['limitations'], ['Static source inspection'])
+        self.assertIn('_review_evidence', final)
+        for key in ('checks', 'usage', 'limits'):
+            self.assertEqual(task[key], before[key])
+        self.assertEqual(task['branch_run']['plan'], before['branch_run']['plan'])
+
+    def test_complete_recorded_progress_without_final_decision_cannot_approve(self):
+        from cheapos import review_progress
+        task, engine, runtime = self.automatic_fixture()
+        task['review_contract_version'] = 1
+        engine.parse_call = Engine.parse_call
+        calls = []
+        for target in ('criterion:1', 'regressions', 'verification', 'limitations'):
+            args = {'candidate_id': 'candidate', 'target': target}
+            if target == 'limitations': args['limitations'] = []
+            else: args.update(reason='Inspected exact fixture evidence.', citations=[{'source': 'diff', 'quote': 'saved diff'}])
+            calls.append(self.wire_call('record_review_progress', json.dumps(args), target))
+        engine.request.side_effect = [{'tool_calls': calls}, InterruptedError('Operator paused')]
+        with self.assertRaises(InterruptedError): branch_review.checkpoint(engine, runtime, {})
+        state = review_progress.display(task['pending_review']['evidence_review'])
+        self.assertTrue(state['ready_for_final_decision']); self.assertFalse(state['approved'])
+        self.assertFalse(task['checkpoints']); branch_review.evidence.ready_receipt.assert_not_called()
+        self.assertNotIn('ready_receipt', task['branch_run']['items'][0])
 
     def test_uncapped_live_history_is_bounded_and_old_evidence_remains_retrievable(self):
         from cheapos.context_evidence import read

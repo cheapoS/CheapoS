@@ -663,7 +663,9 @@ RULES: List[InstructionRule] = [
         category=InstructionCategory.WORKFLOW, roles=('reviewer',),
         state_triggers=("runtime_profile",),
         text=(
-            'Approval needs review_assessment, not just passing checks. For every criterion explain how '
+            'Approval needs an evidence-backed review_assessment, not just passing checks. When the '
+            'current tool contract offers explicit confirmation of recorded assessments, the controller '
+            'can assemble that assessment from the saved claims. For every criterion explain how '
             'the requested behavior follows from actual code/document evidence. For command-result-only '
             'criteria listed in review_evidence.criterion_checks, cite the listed matching check receipt; '
             'code is still required for behavioral claims and regression assessment. Reuse citation objects '
@@ -682,6 +684,27 @@ RULES: List[InstructionRule] = [
             'amendments remain authoritative.'
         ),
         rationale="Canonical runtime guidance selected by an explicit instruction profile."
+    ),
+    InstructionRule(
+        id='reviewer.progress', audience=AgentAudience.CHEAPOS_INTERNAL,
+        category=InstructionCategory.WORKFLOW, roles=('reviewer',),
+        state_triggers=("runtime_profile",),
+        text=(
+            'Use review_progress as the checklist for this candidate. Focus on next_target and read '
+            'only evidence needed to resolve that question or a concrete regression concern. Record '
+            'each supported assessment with record_review_progress rather than rebuilding a large '
+            'decision on every request. Reuse returned citation objects. A conditional requirement '
+            'needs evidence explaining which condition applies; do not invent a missing requirement. '
+            'Recorded assessments have validated evidence references, not final approval or proof '
+            'that an earlier reviewer was correct. Inspect inherited claims before confirming them. '
+            'Once every target is recorded, make an explicit review_decision. On APPROVE, '
+            'use_recorded_assessment: true confirms the complete recorded assessment; omit '
+            'review_assessment in that form. A complete full review_assessment is also accepted. '
+            'Request changes for a supported defect, or focused tests for a concrete evidence gap. '
+            'Further reading must answer an unresolved question; a different query alone is not progress. '
+            'The controller still enforces independence, evidence, current checks and operator authority.'
+        ),
+        rationale="Save small evidence-backed assessments without granting approval or new execution authority."
     ),
     InstructionRule(
         id='reviewer.defects', audience=AgentAudience.CHEAPOS_INTERNAL,

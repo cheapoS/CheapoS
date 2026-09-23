@@ -153,7 +153,7 @@ def checkpoint(engine, runtime, args):
 
 def _checkpoint(engine, runtime, args):
     from .engine import REVIEW_TOOLS, REVIEW_SYSTEM, ProgressPause, ToolArgumentsError
-    from . import review_assessment
+    from . import review_assessment, review_progress
     task = runtime.task
     if not task.get('pending_review'):
         from .work_budgets import guard
@@ -375,6 +375,8 @@ def _checkpoint(engine, runtime, args):
         messages[0]['content'] += '\n' + review_assessment.INSTRUCTION
         messages[1]['content'] = json.dumps(packet)
         tools = review_assessment.tools_with_contract(tools, proof)
+        tools = review_progress.tools(tools, proof)
+        messages[0]['content'] += '\n' + review_progress.instruction()
     messages.extend(copy.deepcopy(pending.get('messages', [])))
     if pending.get('history_partial'):
         messages.append({'role':'user','content':'Older review exchanges were omitted from this bounded history. The current candidate and checks above are authoritative. Read only context still needed for a decision.'})
@@ -426,7 +428,7 @@ def _checkpoint(engine, runtime, args):
         messages = review_inventories(task, messages)
         # Decision coaching must not revoke the tool needed to repair citations
         # in evidence already gathered. This does not restart inspection or checks.
-        decision_tools = {'review_decision', 'read_review_evidence'} if proof is not None else {'review_decision'}
+        decision_tools = {'review_decision', 'read_review_evidence', 'record_review_progress'} if proof is not None else {'review_decision'}
         offered = [t for t in tools if t['function']['name'] in decision_tools] if deciding else tools
         tool_choice = {'type': 'function', 'function': {'name': 'review_decision'}} if deciding and proof is None else None
         save_history(pending, messages, task)
@@ -440,6 +442,10 @@ def _checkpoint(engine, runtime, args):
                 # exchanges; the approved plan still defines execution authority.
                 packet['operator_guidance'] = guidance[-1]['message']
         if proof is not None or pending.get('history_partial'):
+            if proof is not None:
+                review_progress.bind(proof, {'request': task.get('prompt'), 'directions': task.get('requests', []),
+                    'guidance': [g for g in run.get('guidance', []) if g.get('item_id') == item['id']]})
+                packet['review_progress'] = review_progress.display(proof)
             messages[1] = {'role': 'user', 'content': json.dumps(packet)}
         request_messages = messages
         if pending.get('history_references'):
@@ -512,6 +518,9 @@ def _checkpoint(engine, runtime, args):
                         params['pull_request'] = draft
                     try:
                         if proof is not None:
+                            review_progress.bind(proof, {'request': task.get('prompt'), 'directions': task.get('requests', []),
+                                'guidance': [g for g in run.get('guidance', []) if g.get('item_id') == item['id']]})
+                            review_progress.complete(proof, params)
                             review_assessment.validate(proof, params)
                             params.setdefault('criteria_outcomes', {
                                 key: {'passed': True, 'evidence': value['reason']}
@@ -565,6 +574,19 @@ def _checkpoint(engine, runtime, args):
                         engine.store.save(task)
                         return result
                 else: result = {'error':'Return a valid independent review decision.'}
+            elif name == 'record_review_progress' and proof is not None:
+                try:
+                    if evidence.candidate(task, ctx, specs, criteria) != current:
+                        raise ValueError('Candidate changed during review. No assessment was recorded.')
+                    result = review_progress.record(proof, **params)
+                except (ValueError, TypeError) as error:
+                    result = disagreement.unsupported(engine, task, current['id'], params, error)
+                    result['review_progress'] = review_progress.display(proof)
+                    result['next_action'] = 'Correct this target using its current evidence; valid recorded assessments remain saved. No approval was granted.'
+                else:
+                    engine.event(task, 'review_progress', 'Recorded review assessment', {
+                        'item_id': item['id'], 'candidate_id': current['id'], 'target': result['recorded'],
+                        'remaining': len(result['review_progress']['remaining']), 'approved': False})
             elif name == 'read_review_evidence' and proof is not None:
                 try: result = review_assessment.read(proof, **params)
                 except (ValueError, TypeError) as error: result = {'error': str(error)}
