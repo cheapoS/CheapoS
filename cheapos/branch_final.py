@@ -4,17 +4,14 @@ import copy
 import hashlib
 import json
 import shlex
-import time
 
 from . import branch_evidence as evidence, branch_workspace as work, branch_runs, branch_disagreement as disagreement
 from .workspace import Workspace, git
 from .unattended_items import completion_order
-from .providers import ProviderError
-from . import review_context, review_disputes
+from . import review_context
 from . import branch_final_recovery as recovery
 
 CHUNK_SIZE = 20000
-MAX_CONTENT = 1000000
 
 
 def _json(value):
@@ -530,11 +527,6 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         return result
 
 
-def review_assessment_enabled(task):
-    from .review_assessment import enabled
-    return enabled(task)
-
-
 def _independent(task, reviewer):
     worker=task.get('providers',{}).get('worker')
     if worker and reviewer and evidence.model_identity(worker)==evidence.model_identity(reviewer):
@@ -542,7 +534,7 @@ def _independent(task, reviewer):
 
 
 def final_check_review(engine, runtime):
-    from . import branch_review_reuse
+    from . import branch_review_reuse, review_assessment
     task = runtime.task; run = task['branch_run']; manifest = build_manifest(run)
     review_inputs = branch_review_reuse.input_digest(task)
     worker = evidence.model_identity(task['providers']['worker']); reviewer = evidence.model_identity(task['providers']['reviewer'])
@@ -595,7 +587,7 @@ def final_check_review(engine, runtime):
     }
     # Evidence-enabled units already cover requirements and the complete change.
     # Do not put the legacy chunk/synthesis pipeline in front of that workflow.
-    use_units = review_assessment_enabled(task)
+    use_units = review_assessment.enabled(task)
     reviews = []
     for index, chunk in enumerate([] if use_units else manifest['chunks'], 1):
         packet = {'manifest_id': manifest['id'], 'chunk_ids': [chunk['id']], 'criteria_ids': [], 'chunk': chunk, 'review_context': review_context, 'location_index':manifest['files'],
