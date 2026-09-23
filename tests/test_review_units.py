@@ -100,6 +100,26 @@ class ReviewWorkflowTests(unittest.TestCase):
         workflow.validate(result, manifest, rt.task)
         for key in ('usage', 'checks', 'limits'): self.assertEqual(rt.task[key], original[key])
 
+    def test_large_current_diff_is_readable_but_not_duplicated_in_initial_request(self):
+        task, engine, rt, manifest, packet = self.fixture(5)
+        packet.pop('diff')
+        manifest['diff'] = '+return min(max(value, low), high)\n' * 5000
+        manifest['files'] = [{'path': 'src/bounds.py'}]
+        def respond(*args, **kw):
+            primary = json.loads(args[1][1]['content'])
+            self.assertNotIn('diff', primary)
+            self.assertEqual(primary['location_index'], manifest['files'])
+            self.assertLess(len(json.dumps(args[1])), 35000)
+            delivered = self.context(args[1])['delivered_evidence']
+            code = next(e for e in delivered if e['kind'] == 'code')
+            self.assertTrue(code['has_more'])
+            self.assertEqual(code['content'], manifest['diff'][:4000])
+            return self.approve(*args, **kw)
+        engine.request.side_effect = respond
+        result = self.run_workflow(engine, rt, manifest, packet)
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 3)
+
     def test_automatic_handoff_finishes_only_unresolved_unit_and_keeps_failures(self):
         from cheapos import routing, branch_review_recovery
         task, engine, rt, manifest, packet = self.fixture(5)

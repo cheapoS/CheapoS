@@ -94,7 +94,7 @@ checks, integration rejection, mixed read/decision batches, and retained oversiz
 responses. They invoke the actual request assembly and decision validators with
 scripted responses. They establish control flow and authority, not model quality.
 Existing Git execution, final-readiness and recovery tests cover repository and
-check integration. The eleven initial new cases take approximately 0.06 seconds
+check integration. The twelve new cases take approximately 0.08 seconds
 combined locally, without Git, network calls, sleeps or paid inference.
 
 Legacy review receipts remain supported. Already-running legacy final synthesis

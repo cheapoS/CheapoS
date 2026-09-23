@@ -141,6 +141,9 @@ def run(engine, runtime, manifest, packet, review):
         current = copy.deepcopy(packet)
         current.update(review_unit=unit, criteria_ids=unit['criteria_ids'], requirements=unit['requirements'],
                        complete_task_reference=whole)
+        if manifest.get('diff'):
+            current['diff'] = manifest['diff']
+        current['location_index'] = manifest.get('files', [])
         current.pop('instruction', None)
         if unit['kind'] in ('integration', 'complete'):
             current['requirements'] = packet['requirements']

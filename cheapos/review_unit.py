@@ -31,7 +31,8 @@ def initial_evidence(state):
     """Deliver actual small excerpts, never infer that a check proves behavior."""
     result, size = [], 0
     required = [source for sources in state.get('criterion_checks', {}).values() for source in sources]
-    candidates = list(dict.fromkeys(required + list(state['sources'])))
+    code = [key for key, value in state['sources'].items() if value['kind'] == 'code']
+    candidates = list(dict.fromkeys(required + code + list(state['sources'])))
     for source in candidates:
         if size >= 12000:
             break

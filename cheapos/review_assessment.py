@@ -213,6 +213,7 @@ def packet_for_model(packet):
         # Full coverage remains in complete_task_reference and the proof store.
         # Send source metadata once; exact small excerpts arrive with handles.
         result.pop('checks', None)  # Exact check excerpts/handles are delivered separately.
+        result.pop('diff', None)  # Full current diff stays available through the evidence reader.
         result['chunk_coverage'] = [{'chunk_id': row.get('chunk_id'), 'digest': row.get('digest'),
                                      'decision': row.get('review', {}).get('decision')}
                                     for row in result.pop('coverage', [])]
