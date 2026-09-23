@@ -60,6 +60,23 @@ item attempts are released only when request records prove they belong to older
 candidates. Unknown provenance stays conservative. Provider health and actual
 response independence still gate every replacement.
 
+## Implemented: incremental final assessment
+
+Final synthesis can record small batches of evidence-backed criterion,
+regression, verification and limitation assessments using the same validator as
+item review. Each valid target survives cancellation and authorized reviewer
+handoff; an invalid target does not erase its valid siblings. Current progress
+and remaining targets accompany every request without accumulating in history.
+Repeated records trigger the existing strategy-change mechanism.
+
+A separate final decision must explicitly confirm the complete recorded
+assessment, its exact manifest and coverage. The ordinary citation, current-check
+and independent-review gates still apply. Changed candidate bindings, directions
+or evidence invalidate inherited claims. Existing approved chunks remain valid;
+full final assessments remain supported. No response limit, spending authority
+or execution permission is increased. Deterministic in-memory cases cover
+interruption, handoff, incomplete approval and stale/mixed submissions.
+
 ## Implemented: review command results using check evidence
 
 Item reviewers can now record individual evidence-backed assessments and see
@@ -927,3 +944,9 @@ still needs a separate explicit decision with current evidence, exact coverage
 and independent identity. Per-read errors remain error receipts, never evidence
 of success. Small deterministic cases cover completion, cancellation/Resume,
 pairing, mixed batches, malformed arguments, failed reads and changed guidance.
+
+New synthesis requests advertise the concise recorded-assessment confirmation
+without duplicating the full per-criterion assessment schema. Current check
+source mappings travel in the progress checklist. Older complete assessments
+remain accepted only through the unchanged evidence validator; request
+reservations and authorized limits are not increased.

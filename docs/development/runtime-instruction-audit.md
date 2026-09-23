@@ -51,8 +51,9 @@ questions. Decision coaching retains this tool alongside saved-evidence reads.
 Current source IDs and recorded assessments refresh in every outgoing item
 request. The successor reviewer receives provisional claims and must explicitly
 confirm them; recording every target never creates an approval receipt.
-Interactive checkpoint and final/chunk review retain their existing full
-assessment contract and do not promise the item-only progress tool.
+Interactive checkpoint and partial chunk review retain their full assessment
+contract. Final synthesis now selects the explicit final_review_progress profile
+and offers incremental records, as documented below.
 
 The basis includes candidate, criteria, command-receipt bindings and current
 operator directions. Missing or changed evidence cannot be confirmed. Small
@@ -192,3 +193,25 @@ workflows, network requests or real-time waits. These checks demonstrate prompt
 wiring and preservation of authority/state. They do not establish that a live
 model will interpret every instruction correctly, produce a good review or
 finish in fewer calls. Live task outcomes still need observation.
+
+## Final synthesis assessment progress
+
+`branch_final._review` offers `record_review_progress` for evidence-contract
+synthesis with criterion coverage. The explicit `final_review_progress` profile
+shares catalog behavior with item review while auditing its own
+`final_review_decision` tool. The controller adds the profile and current checklist
+to a fresh provider request after restoring saved evidence; neither becomes part
+of completed packet bindings or accumulates across requests.
+
+`test_branch_final_recovery` captures the assembled request, exercises batched
+records, rejects incomplete confirmation, then cancels and resumes with another
+reviewer through an explicit validated decision. Stale scope, mixed
+record/decision batches and changed directions cannot inherit approval. Existing
+item-progress, final read-batch and instruction-runtime cases cover the unchanged
+paths. These are in-memory tests without model requests, waits or Git fixtures.
+
+New synthesis requests advertise the concise recorded-assessment confirmation
+without duplicating the full per-criterion assessment schema. Current check
+source mappings travel in the progress checklist. Older complete assessments
+remain accepted only through the unchanged evidence validator; request
+reservations and authorized limits are not increased.

@@ -55,7 +55,8 @@ class FinalRecoveryTests(unittest.TestCase):
                 oversized['feedback'] = 'rejected-long-verdict ' * 4000
                 def finish(rt, messages, tools, role, **kw):
                     self.assertLess(len(json.dumps(messages)), 80000)
-                    update = json.loads(messages[2]['content'])['final_review_continuation']
+                    update = next(json.loads(m['content'])['final_review_continuation'] for m in messages
+                                  if m.get('role') == 'user' and 'final_review_continuation' in m.get('content', ''))
                     self.assertEqual(update['operator_direction'], task['steer_guidance'])
                     self.assertIn('feedback must be', update['latest_feedback']['validation']['error'])
                     refs = update['retained_review_history']
@@ -131,8 +132,9 @@ class FinalRecoveryTests(unittest.TestCase):
             old = next(iter(saved['branch_run']['final_review_packets'].values()))
             self.assertEqual(proof['excerpts'], old['evidence_review']['excerpts'])
             source, = proof['criterion_checks']['one:1']
-            schema = tools[0]['function']['parameters']['properties']['review_assessment']
-            self.assertIn(source, schema['properties']['criteria']['properties']['one:1']['description'])
+            current = next(json.loads(m['content'])['review_progress'] for m in messages
+                           if m.get('role') == 'user' and m.get('content', '').startswith('{"review_progress":'))
+            self.assertEqual(current['criterion_checks']['one:1'], [source])
             self.assertEqual(sum(t['function']['name'] == 'read_review_evidence' for t in tools), 1)
             self.assertTrue(any('return max' in m.get('content', '') for m in messages if m['role'] == 'tool'))
             result = self.approval()['tool_calls'][0]['result']
@@ -187,8 +189,9 @@ class FinalRecoveryTests(unittest.TestCase):
                 raise InterruptedError('Saved review interrupted')
             contract = json.loads(messages[1]['content'])['review_evidence']
             source, = contract['criterion_checks']['one:1']
-            schema = tools[0]['function']['parameters']['properties']['review_assessment']
-            self.assertIn(source, schema['properties']['criteria']['properties']['one:1']['description'])
+            current = next(json.loads(m['content'])['review_progress'] for m in messages
+                           if m.get('role') == 'user' and m.get('content', '').startswith('{"review_progress":'))
+            self.assertEqual(current['criterion_checks']['one:1'], [source])
             return self.call('read_review_evidence', {'source': source})
         engine.request.side_effect = initial
         with self.assertRaises(InterruptedError):
@@ -210,6 +213,118 @@ class FinalRecoveryTests(unittest.TestCase):
         self.assertEqual(engine.request.call_count, 1)
         self.assertEqual(runtime.task['checks'], task['checks'])
         self.assertEqual(runtime.task['usage'], task['usage'])
+        engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+
+    def test_incremental_final_assessment_survives_cancel_and_reviewer_handoff(self):
+        from cheapos import review_assessment, review_progress
+        from cheapos.engine import Engine
+        from cheapos.instructions.runtime import audit_tools, prompt
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        before = copy.deepcopy(task); engine.parse_call = Engine.parse_call
+        packet = {'diff': '+return value', 'checks': task['checks']}
+        manifest = {'id': 'm', 'requirements': [{'id': 'one:1'}, {'id': 'one:2'}]}
+        criteria = ['one:1', 'one:2']; saved_scope = None; citations = {}
+        def call(name, args, id='call'):
+            return {'id': id, 'function': {'name': name, 'arguments': json.dumps(args)}}
+        def message(*calls): return {'role': 'assistant', 'tool_calls': list(calls)}
+        def confirmation():
+            return message(call('final_review_decision', {'decision': 'APPROVE', 'manifest_id': 'm',
+                'chunk_ids': ['diff:1'], 'criteria_ids': criteria, 'feedback': 'Confirmed every saved claim.',
+                'use_recorded_assessment': True}))
+        def status(messages, tools):
+            self.assertEqual(audit_tools('final_review_progress', tools), [])
+            decision = tools[0]['function']['parameters']['properties']
+            self.assertIn('use_recorded_assessment', decision)
+            self.assertNotIn('review_assessment', decision)
+            self.assertEqual(messages[0]['content'].count(prompt('final_review_progress')), 1)
+            updates = [json.loads(m['content'])['review_progress'] for m in messages
+                       if m.get('role') == 'user' and m.get('content', '').startswith('{"review_progress":')]
+            self.assertEqual(len(updates), 1)
+            return updates[0]
+        def first(rt, messages, tools, role, **kw):
+            nonlocal saved_scope
+            progress = status(messages, tools); saved_scope = progress['scope']
+            self.assertEqual(kw['tool_choice'], 'required')
+            count = engine.request.call_count
+            if count == 1:
+                return message(call('read_review_evidence', {'source': 'diff'}, 'source'),
+                               call('read_review_evidence', {'source': 'checks'}, 'checks'))
+            if count == 2:
+                citations.update({json.loads(m['content'])['evidence_id']: json.loads(m['content'])['citation']
+                                  for m in messages if m.get('role') == 'tool'})
+                return confirmation()  # Incomplete records must not approve.
+            if count == 3:
+                self.assertIn('incomplete', messages[-1]['content'])
+                records = [call('record_review_progress', {'candidate_id': saved_scope,
+                    'target': target, 'reason': 'Inspected the actual current source and checks.',
+                    'citations': [citations['checks' if target == 'verification' else 'diff']]}, target)
+                    for target in ('criterion:1', 'criterion:2', 'regressions', 'verification')]
+                records.append(call('record_review_progress', {'candidate_id': 'stale',
+                    'target': 'limitations', 'limitations': []}, 'invalid'))
+                return message(*records)
+            self.assertEqual(progress['remaining'], ['limitations'])
+            self.assertFalse(progress['approved'])
+            raise InterruptedError('Cancel before the explicit decision')
+        engine.request.side_effect = first
+        with self.assertRaises(InterruptedError):
+            final._review(engine, runtime, manifest, packet, ['diff:1'], criteria)
+        state = next(iter(task['branch_run']['final_review_packets'].values()))
+        self.assertNotIn('result', state)
+        self.assertEqual(len(review_progress.current(state['evidence_review'])), 4)
+        self.assertEqual(list(task['branch_run']['final_review_corrections'].values()), [2])
+        runtime.task = json.loads(json.dumps(task)); runtime.task['providers']['reviewer'] = {'model': 'replacement'}
+        engine.request.reset_mock(side_effect=True)
+        def resumed(rt, messages, tools, role, **kw):
+            progress = status(messages, tools)
+            self.assertEqual(progress['scope'], saved_scope)
+            self.assertEqual(len(progress['recorded_assessments']), 4 if engine.request.call_count == 1 else 5)
+            if engine.request.call_count == 1:
+                return message(call('record_review_progress', {'candidate_id': saved_scope,
+                    'target': 'limitations', 'limitations': ['Static source and captured checks only.']}))
+            self.assertTrue(progress['ready_for_final_decision']); self.assertFalse(progress['approved'])
+            return confirmation()
+        engine.request.side_effect = resumed
+        result = final._review(engine, runtime, manifest, packet, ['diff:1'], criteria)
+        self.assertEqual(result['decision'], 'APPROVE'); self.assertEqual(result['reviewer_model'], 'replacement')
+        review_assessment.retained(result, saved_scope)
+        self.assertEqual(final._review(engine, runtime, manifest, packet, ['diff:1'], criteria), result)
+        self.assertEqual(engine.request.call_count, 2)
+        for key in ('checks', 'usage', 'limits'):
+            self.assertEqual(runtime.task[key], before[key])
+        engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+
+    def test_final_progress_rejects_stale_and_mixed_calls_and_changed_direction(self):
+        from cheapos import review_progress
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        packet = {'diff': '+return value', 'checks': task['checks']}
+        manifest = {'id': 'm', 'requirements': [{'id': 'one:1'}]}
+        def respond(rt, messages, tools, role, **kw):
+            state = next(iter(rt.task['branch_run']['final_review_packets'].values()))['evidence_review']
+            count = engine.request.call_count
+            if count == 1:
+                return self.call('record_review_progress', {'candidate_id': 'stale', 'target': 'limitations', 'limitations': []})
+            if count == 2:
+                self.assertIn('stale candidate', messages[-1]['content'])
+                record = self.call('record_review_progress', {'candidate_id': state['scope'], 'target': 'limitations', 'limitations': []})
+                approve = self.approval()['tool_calls'][0]; approve['id'] = 'decision'
+                record['tool_calls'].append(approve)
+                return record
+            if count == 3:
+                self.assertFalse(review_progress.current(state))
+                return self.call('record_review_progress', {'candidate_id': state['scope'], 'target': 'limitations', 'limitations': []})
+            raise InterruptedError('Saved partial review')
+        engine.request.side_effect = respond
+        with self.assertRaises(InterruptedError): final._review(engine, runtime, manifest, packet, ['diff:1'], ['one:1'])
+        old = next(iter(task['branch_run']['final_review_packets'].values()))
+        self.assertEqual(list(review_progress.current(old['evidence_review'])), ['limitations'])
+        self.assertNotIn('result', old)
+        runtime.task = json.loads(json.dumps(task)); runtime.task['steer_guidance'] = 'Check the boundary behavior as well.'
+        def changed(rt, messages, tools, role, **kw):
+            state = rt.task['branch_run']['final_review_packets'][rt.task['branch_run']['active_final_review']['key']]
+            self.assertFalse(review_progress.current(state['evidence_review']))
+            raise InterruptedError('No decision for changed scope')
+        engine.request.side_effect = changed
+        with self.assertRaises(InterruptedError): final._review(engine, runtime, manifest, packet, ['diff:1'], ['one:1'])
         engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
 
     def fixture(self):
