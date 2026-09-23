@@ -2,7 +2,7 @@
 import copy
 import hashlib
 import json
-from .worker_context import active_events
+from .worker_context import context_events
 from .instructions.runtime import text
 
 LIMIT = 44000
@@ -45,7 +45,7 @@ def compact(task, base, previous, limit=LIMIT):
             if len(notes) == 3:
                 break
     actions = []
-    for event in reversed(active_events(task)):
+    for event in reversed(context_events(task)):
         if event.get('kind') == 'tool' and event.get('title') in {'replace text', 'replace lines', 'write file', 'run checks'}:
             detail = event.get('detail') or {}
             actions.append({'event_id': event.get('id'), 'item_id': event.get('item_id'),

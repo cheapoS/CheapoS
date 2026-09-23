@@ -74,6 +74,11 @@ Initial, action, repair and compacted worker snapshots select recent activity
 from explicit current-item event ownership, with an item-start boundary for
 legacy untagged events. Unowned older events are not current-item work. Completed
 items remain historical summaries and the original journal remains intact.
+Interactive follow-ups keep bounded prior replies, actions and current snapshots
+of previously read files. The latest user-message boundary limits current-request
+observations, not conversation memory. Historical claims do not become passing
+checks or review approval. The existing chat-continuity test exercises the actual
+follow-up request and reconstruction from saved state alongside item-isolation tests.
 The catalog's `recovery.working_memory` rule distinguishes the snapshot's patch
 from the historical versions in action/check receipts. Small in-memory tests
 inspect initial/action snapshots and provider-boundary requests across JSON

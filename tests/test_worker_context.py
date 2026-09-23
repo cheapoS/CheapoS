@@ -10,7 +10,7 @@ from cheapos.engine import Engine, worker_system
 from cheapos.instructions.runtime import text
 from cheapos.recovery_context import packet
 from cheapos.tools import CHAT_TOOLS, UNATTENDED_TOOLS, WORKER_TOOLS
-from cheapos.worker_context import active_events, clear_read_guidance, repeated_read_guidance
+from cheapos.worker_context import active_events, context_events, clear_read_guidance, repeated_read_guidance
 from cheapos.worker_conversation import continue_session
 
 
@@ -46,11 +46,14 @@ class WorkerContextTests(unittest.TestCase):
     def test_events_require_current_item_provenance_and_preserve_journal(self):
         task = self.task(); original = copy.deepcopy(task)
         self.assertEqual([e['id'] for e in active_events(task)], [4, 5])
+        self.assertEqual(context_events(task), active_events(task))
         task['events'].pop(2)  # No boundary: only explicitly owned evidence is current.
         self.assertEqual([e['id'] for e in active_events(task)], [5])
+        self.assertEqual(context_events(task), active_events(task))
         task['events'] = original['events']; task.pop('branch_run')
         task['events'].insert(4, {'id': 7, 'kind': 'user', 'detail': 'Next question'})
         self.assertEqual([e['id'] for e in active_events(task)], [5, 6])
+        self.assertEqual(context_events(task), task['events'])
         self.assertEqual(len(task['events']), 7)
 
     def test_initial_action_and_compacted_snapshots_do_not_claim_old_item_edits(self):

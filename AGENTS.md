@@ -71,6 +71,8 @@ earlier items' edits as current work. Scope active snapshots by recorded item
 ownership; retain historical records and original check identities. Refresh
 obsolete controller notices across Resume, handoff and compaction without
 duplicating instructions or resetting recovery history and authority.
+Preserve bounded Interactive conversation history across follow-ups; current-request
+observation boundaries must not erase prior replies or substitute history for proof.
 
 A transport retry must be separately accounted and preserve actual response
 identity checks. Never infer reviewer identity from a successful probe or a

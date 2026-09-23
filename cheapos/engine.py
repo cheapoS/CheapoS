@@ -1539,7 +1539,7 @@ class Engine:
             print(f"cheapoS shutdown error in connections: {e}", file=sys.stderr)
 
     def initial_messages(self, task):
-        from .worker_context import active_events, repeated_read_guidance, read_notice
+        from .worker_context import active_events, context_events, repeated_read_guidance, read_notice
         from .discussion import opening_greeting, greeting_messages
         if opening_greeting(task):
             return greeting_messages(task)
@@ -1578,7 +1578,7 @@ class Engine:
                     break
         if sources:
             summary["web_reads_this_request"] = list(reversed(sources))
-        for event in reversed(events):
+        for event in reversed(context_events(task)):
             if event["kind"] not in {"tool", "tool_error", "assistant", "checks", "steer"}:
                 continue
             detail = copy.deepcopy(event["detail"])

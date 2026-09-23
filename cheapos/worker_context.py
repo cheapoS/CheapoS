@@ -4,13 +4,12 @@ import json
 from .instructions.runtime import text
 
 
-def active_events(task):
-    """Explicit item ownership wins; legacy events need an item-start boundary."""
+def context_events(task):
+    """Keep conversation history; scope branch work to the current item's history."""
     events = task.get('events', [])
     item = (task.get('branch_run') or {}).get('current_item_id')
     if not item:
-        boundary = max((i for i, e in enumerate(events) if e.get('kind') == 'user'), default=-1)
-        return events[boundary + 1:]
+        return events
     boundary = max((i for i, e in enumerate(events)
                     if e.get('kind') == 'branch_item'
                     and isinstance(e.get('detail'), dict)
@@ -18,6 +17,15 @@ def active_events(task):
     return [event for i, event in enumerate(events)
             if event.get('item_id') == item or
             (not event.get('item_id') and i > boundary)]
+
+
+def active_events(task):
+    """Current-request observations exclude earlier interactive turns, not history."""
+    events = context_events(task)
+    if (task.get('branch_run') or {}).get('current_item_id'):
+        return events
+    boundary = max((i for i, e in enumerate(events) if e.get('kind') == 'user'), default=-1)
+    return events[boundary + 1:]
 
 
 def repeated_read_guidance(task):
