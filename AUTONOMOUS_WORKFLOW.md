@@ -1,5 +1,11 @@
 # Complete the work without operator rescue
 
+A valid excerpt reference with an invalid optional quote is a response-format
+problem, not missing source evidence. Review still rejects it, but supplies the
+verified citation object with guidance to keep paraphrases in the explanation.
+An explicit corrected decision is required. Stale or fabricated references never
+receive a manufactured replacement, and provenance is not proof of correctness.
+
 Final review retains complete oversized exchanges by local reference and bounds
 the conversation sent on every request. The latest correction remains visible
 even when its rejected verdict exceeds the saved conversation window. Resume

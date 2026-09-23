@@ -11,6 +11,36 @@ from tests.test_review_assessment import assessment
 
 
 class FinalRecoveryTests(unittest.TestCase):
+    def test_valid_excerpt_with_bad_quote_is_corrected_without_another_evidence_read(self):
+        task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+        packet = {'diff': '+return max(lower, min(value, upper))', 'checks': task['checks']}
+        manifest = {'id': 'm', 'requirements': [{'id': 'one:1'}]}
+        reference = None
+        def respond(rt, messages, tools, role, **kw):
+            nonlocal reference
+            if engine.request.call_count == 1:
+                return self.call('read_review_evidence', {'source': 'diff'})
+            response = json.loads(messages[-1]['content'])
+            result = self.approval()['tool_calls'][0]['result']
+            result.update(criteria_ids=['one:1'], review_assessment=assessment(['one:1']))
+            if engine.request.call_count == 2:
+                reference = response['citation']
+                citation = {**reference, 'quote': 'The function clamps the value.'}
+            else:
+                issue, = response['issues']
+                self.assertEqual(issue['citation'], reference)
+                self.assertIn('paraphrases in reason', issue['instruction'])
+                citation = issue['citation']
+            result['review_assessment']['criteria']['one:1']['citations'] = [citation]
+            return self.call('final_review_decision', result)
+        engine.request.side_effect = respond
+        result = final._review(engine, runtime, manifest, packet, ['diff:1'], ['one:1'])
+        self.assertEqual(result['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 3)
+        self.assertEqual(sum(c.args[1] == 'review_context' for c in engine.event.call_args_list), 1)
+        self.assertEqual(list(task['branch_run']['final_review_corrections'].values()), [1])
+        engine.checks.assert_not_called(); engine.file_tool.assert_not_called()
+
     def test_oversized_rejection_remains_retrievable_through_continuation_and_resume(self):
         from cheapos import context_evidence
         for resume in (False, True):

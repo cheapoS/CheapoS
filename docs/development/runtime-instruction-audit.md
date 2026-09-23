@@ -82,6 +82,13 @@ Resume/handoff through a valid decision, with evidence, attempts and check
 receipts retained and no accumulating continuation messages.
 An omitted source-ID prefix resolves only when its full 20-character suffix
 matches one current source, and returns that source's canonical citation.
+The shared citation validator distinguishes a valid delivered excerpt ID with an
+invalid optional quote from missing or stale evidence. Its registered
+`reviewer.correct_quote` diagnostic returns the verified citation object and asks
+for an explicit corrected response; it never accepts the bad quote automatically.
+The final-review request-boundary fixture receives that correction and completes
+without another read. Shared validator tests keep fabricated, mismatched and
+stale references rejected without manufacturing replacement citations.
 
 Planning requires commands explicitly promised by acceptance criteria to appear
 in that item's checks with the discovered working directory. This is delivered

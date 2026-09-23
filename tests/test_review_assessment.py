@@ -64,6 +64,30 @@ def fixture_review_call(message, messages):
 
 
 class ReviewAssessmentTests(unittest.TestCase):
+    def test_invalid_optional_quote_returns_only_a_verified_current_reference(self):
+        state = self.state(); ref = review.read(state, 'diff')['citation']
+        result = self.approval()
+        result['review_assessment']['criteria']['requested_change']['citations'] = [
+            {**ref, 'quote': 'A paraphrase of the bounds behavior.'}]
+        before = copy.deepcopy(state)
+        with self.assertRaises(review.EvidenceError) as caught: review.validate(state, result)
+        issue, = caught.exception.correction['issues']
+        self.assertEqual(issue['citation'], ref)
+        self.assertIn('quote is not literal', issue['error'])
+        self.assertIn('paraphrases in reason', issue['instruction'])
+        self.assertNotIn('_review_evidence', result)
+        self.assertEqual(state, before)
+        result['review_assessment']['criteria']['requested_change']['citations'] = [issue['citation']]
+        review.validate(state, result)
+        for bad in ({**ref, 'excerpt_id': 'excerpt:invented'}, {**ref, 'source': 'checks'}):
+            changed = self.approval()
+            changed['review_assessment']['criteria']['requested_change']['citations'] = [bad]
+            with self.assertRaises(review.EvidenceError) as invalid: review.validate(state, changed)
+            self.assertFalse(any('citation' in i for i in invalid.exception.correction['issues']))
+        stale = review.prepare('changed', {'diff': state['sources']['diff']['content']}, ['requested_change'])
+        with self.assertRaises(review.EvidenceError) as invalid: review.validate(stale, result)
+        self.assertFalse(any('citation' in i for i in invalid.exception.correction['issues']))
+
     def test_named_check_uses_only_same_item_command_and_directory(self):
         criterion = 'The structural validator check passes'
         spec = {'command': ['node', 'validate.mjs'], 'directory': 'app'}
