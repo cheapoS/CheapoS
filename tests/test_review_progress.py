@@ -65,9 +65,13 @@ class ProgressTests(unittest.TestCase):
         self.assertFalse(progress.display(original)['recorded_assessments'])
 
     def test_ambiguous_final_submission_cannot_hide_disagreement(self):
-        state = self.state(); self.fill(state)
-        with self.assertRaisesRegex(ValueError, 'not both'):
-            progress.complete(state, {'use_recorded_assessment': True, 'review_assessment': {}})
+        for has_progress in (False, True):
+            state = self.state()
+            if has_progress: self.fill(state)
+            before = copy.deepcopy(state)
+            with self.subTest(has_progress=has_progress), self.assertRaisesRegex(ValueError, 'not both.*omit use_recorded_assessment'):
+                progress.complete(state, {'use_recorded_assessment': True, 'review_assessment': {}})
+            self.assertEqual(state, before)
         result = {'decision': 'APPROVE', 'feedback': 'No confirmation'}
         progress.complete(state, result)
         with self.assertRaises(evidence.EvidenceError): evidence.validate(state, result)

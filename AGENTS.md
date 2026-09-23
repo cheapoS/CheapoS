@@ -36,6 +36,11 @@ task lifetime. Preserve and restore each candidate's history on Resume; final
 review chunks share their manifest scope. Migrate older state only from recorded
 request provenance, without clearing current or unscoped failures.
 
+Provider handoffs must preserve saved evidence and tool-call/reply pairing while
+projecting history into the destination's accepted wire schema. A successful
+small probe does not prove that provider-specific continuation metadata is
+portable. Cover the assembled request and retain original diagnostic history.
+
 Every automatic recovery route must use the same scoped tool qualification as
 initial routing. Catalog tool flags alone are not qualification; reject known
 non-chat models, honor rejected probes, and verify unknown candidates with the

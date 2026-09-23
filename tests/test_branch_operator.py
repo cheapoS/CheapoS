@@ -340,8 +340,8 @@ class BranchOperatorTests(unittest.TestCase):
     def test_reviewer_only_amendment_preserves_checkpoint_item_and_messages_without_development(self):
         endpoint='http://127.0.0.1:20128/v1'
         self.engine.gateway.settings={'base_url':endpoint}
-        self.engine.gateway.catalog=lambda **kwargs:{'models':[{'id':'fresh-reviewer','free':True,'tool_calling':True}]}
-        self.saved['providers']['reviewer'].update(gateway='omniroute',base_url=endpoint)
+        self.engine.gateway.catalog=lambda **kwargs:{'models':[{'id':'fresh-reviewer','free':True,'tool_calling':True,'provider':'groq'}]}
+        self.saved['providers']['reviewer'].update(gateway='omniroute',base_url=endpoint,provider='nvidia')
         self.saved['pending_checkpoint']={'candidate_id':'candidate','checks':['saved']}
         self.saved['pending_review']={'id':'old-review','identity_scope':{'candidate_id':'candidate'}}
         self.saved['messages']=[{'role':'assistant','content':'Preserved work'}]
@@ -356,5 +356,6 @@ class BranchOperatorTests(unittest.TestCase):
         self.assertNotIn('pending_review',task)
         self.assertEqual(task['operator_review_history'][-1],before['pending_review'])
         self.assertEqual(task['providers']['reviewer']['model'],'fresh-reviewer')
+        self.assertEqual(task['providers']['reviewer']['provider'],'groq')
         self.assertNotEqual(revision_token(task['branch_run'],task),revision_token(before['branch_run'],before))
         self.controller.message.assert_not_called()

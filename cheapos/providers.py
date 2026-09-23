@@ -290,6 +290,15 @@ class ChatProvider:
         if not brief and self.config.get("_request_seconds"):
             timeout_seconds = stream_seconds = self.config["_request_seconds"]
         clean_messages = [{k: v for k, v in m.items() if k != 'reasoning_fallback'} for m in messages]
+        # Groq accepts its parsed `reasoning` field, but rejects OpenRouter's
+        # `reasoning_details` extension on saved assistant/tool exchanges.
+        # Project only the wire copy; keep original history and other routes'
+        # continuation metadata (including encrypted reasoning) untouched.
+        from .request_pacer import provider_identity
+        if provider_identity(self.config) == 'groq':
+            for message in clean_messages:
+                if message.get('role') == 'assistant':
+                    message.pop('reasoning_details', None)
         body = {"model": self.config["model"], "messages": clean_messages, "stream": emit is not None}
         if max_tokens is not None:
             body["max_tokens"] = max_tokens

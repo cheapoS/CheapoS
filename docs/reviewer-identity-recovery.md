@@ -16,6 +16,14 @@ non-probe requests all identify earlier candidates. Missing provenance and
 current-candidate failures stay excluded. This does not discard reviews, reset
 usage, change limits or manufacture approval.
 
+Provider request schemas also differ. For Groq routes, the outgoing assistant
+messages omit OpenRouter's `reasoning_details` extension, which Groq rejects.
+Saved history, visible reasoning, tool-call IDs and evidence replies stay intact;
+OpenRouter continuations keep their original metadata. This is a wire projection,
+not a reset of the reviewer conversation or a change to response validation.
+See the [Groq assistant-message schema](https://github.com/groq/groq-python/blob/main/src/groq/types/chat/chat_completion_assistant_message_param.py)
+and [OpenRouter continuation guidance](https://openrouter.ai/openrouter/free/apps).
+
 Unknown historical authorship is different: another reviewer cannot recreate a missing worker identity. The app reports this as an app-level provenance repair, retains the diagnostic evidence, and does not fabricate independence or silently waive the check. The existing narrowly scoped unchanged-committed-revision rule still applies.
 
 Validation uses deterministic recovery, identity, operator-action, transport and pause tests; no live model request or full test suite is needed for these regression cases.

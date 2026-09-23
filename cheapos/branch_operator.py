@@ -150,6 +150,8 @@ def amend(controller, task_id, values):
             for field in ('access','access_binding','pricing_source','catalog_pricing'):cfg.pop(field,None)
             if access is not None:cfg['access_binding']=copy.deepcopy(access)
             model=next(m for m in gateway.catalog(fresh=False)['models'] if m['id']==chosen)
+            cfg.pop('provider', None)
+            if model.get('provider'):cfg['provider']=model['provider']
             if access_policy.classify(model,access)=='included':cfg=access_policy.bind_provider(cfg,access,model)
             task.setdefault('operator_model_history',[]).append({'provider':copy.deepcopy(current),'route_recovery':copy.deepcopy((task.get('route') or {}).get('recovery',{}))})
             task['providers'][role]=cfg
