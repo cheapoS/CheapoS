@@ -55,7 +55,7 @@ def context(run, item):
                 item_id=item['id'], item_revision=item.get('revision', 1), feature_parent=run['expected_feature_tip'])
 
 
-def save_history(pending, messages):
+def save_history(pending, messages, task=None):
     """Keep completed review exchanges, bounded by whole tool-call groups."""
     groups = []
     for message in messages[2:]:
@@ -63,20 +63,53 @@ def save_history(pending, messages):
             groups[-1].append(message)
         else:
             groups.append([message])
-    kept, size = [], 0
-    for group in reversed(groups):
+    complete = []
+    for group in groups:
         head = group[0]
         calls = {call['id'] for call in head.get('tool_calls', [])}
         results = {m.get('tool_call_id') for m in group[1:] if m.get('role') == 'tool'}
         if calls != results:
             continue  # An interrupted tool exchange must never be replayed.
+        complete.append(group)
+    kept, size, kept_groups = [], 0, 0
+    for group in reversed(complete):
         length = len(json.dumps(group))
         if size + length > 60000:
             pending['history_partial'] = True
             break
         kept[:0] = copy.deepcopy(group)
         size += length
+        kept_groups += 1
     pending['messages'] = kept
+    if task is not None and kept_groups < len(complete):
+        # Keep the complete old evidence retrievable without resending it on
+        # every turn. Incomplete tool exchanges are never replayed as history.
+        from .context_evidence import retain
+        reference = retain(task, complete[:len(complete) - kept_groups], 'review_history')
+        references = pending.setdefault('history_references', [])
+        if reference not in references:
+            references.append(reference)
+
+
+def repeated_reads(pending):
+    return max([0, *pending.get('observations', {}).values(),
+                *pending.get('read_observations', {}).values()])
+
+
+def record_reads(pending, observations):
+    """Compare each delivered read, independent of batch order or web cache age."""
+    counts = pending.setdefault('read_observations', {})
+    seen = set()
+    for observation in observations:
+        if observation['name'] == 'review_decision':
+            continue  # Invalid decisions have their own durable recovery count.
+        value = copy.deepcopy(observation)
+        if value['name'] == 'read_url' and isinstance(value['result'], dict):
+            for key in ('fetched_at', 'cached'):
+                value['result'].pop(key, None)
+        seen.add(hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest())
+    for fingerprint in seen:
+        counts[fingerprint] = counts.get(fingerprint, 0) + 1
 
 
 def extract_embedded_decision(text, candidate_id, criteria):
@@ -326,9 +359,11 @@ def _checkpoint(engine, runtime, args):
                                'messages':messages_restored,
                                'observations':recovered.get('observations', {}),
                                'reviewer_model':current_reviewer}
-        for field in ('history_partial', 'worker_summary', 'uncertainties', 'repair_dispositions', 'pull_request'):
+        for field in ('history_partial', 'history_references', 'worker_summary', 'uncertainties', 'repair_dispositions', 'pull_request'):
             if field in recovered:
                 task['pending_review'][field] = recovered[field]
+        if old_id == current['id'] and 'read_observations' in recovered:
+            task['pending_review']['read_observations'] = recovered['read_observations']
     pending = task['pending_review']
     pending['identity_scope']={'candidate_id':current['id'],'item_id':item['id'],
                                'no_change':current['patch']=='','feature_parent':ctx['feature_parent']}
@@ -365,7 +400,7 @@ def _checkpoint(engine, runtime, args):
         pending = task['pending_review']
         if pending.get('stop_diagnostic'):
             _stop(engine, task, pending['stop_diagnostic']['reason'])
-        if any(count >= 3 for count in pending.get('observations', {}).values()):
+        if repeated_reads(pending) >= 3:
             _stop(engine, task, 'repeated_evidence')
         from .branch_review_recovery import invalid_attempts
         if invalid_attempts(task, pending) >= 3:
@@ -382,6 +417,11 @@ def _checkpoint(engine, runtime, args):
                     or needs_decision)
         if deciding:
             _coach(engine, task, messages, 'request_limit' if turns >= max_rounds - 1 else 'missing_decision')
+        # Uncapped work permits useful investigation; it does not disable the
+        # decision nudge. Keep all read tools available for genuinely new evidence.
+        reassessing = measuring(task) and max(turns, rounds - 1) >= max_rounds - 1 and not deciding
+        if reassessing:
+            _coach(engine, task, messages, 'request_limit')
         from .context_evidence import review_inventories
         messages = review_inventories(task, messages)
         # Decision coaching must not revoke the tool needed to repair citations
@@ -389,11 +429,29 @@ def _checkpoint(engine, runtime, args):
         decision_tools = {'review_decision', 'read_review_evidence'} if proof is not None else {'review_decision'}
         offered = [t for t in tools if t['function']['name'] in decision_tools] if deciding else tools
         tool_choice = {'type': 'function', 'function': {'name': 'review_decision'}} if deciding and proof is None else None
+        save_history(pending, messages, task)
+        messages = messages[:2] + copy.deepcopy(pending['messages'])
+        if proof is not None:
+            packet['review_evidence'] = review_assessment.display(proof)
+        if pending.get('history_partial'):
+            guidance = [g for g in run.get('guidance', []) if g.get('item_id') == item['id']]
+            if guidance:
+                # Current operator direction must not disappear with old tool
+                # exchanges; the approved plan still defines execution authority.
+                packet['operator_guidance'] = guidance[-1]['message']
+        if proof is not None or pending.get('history_partial'):
+            messages[1] = {'role': 'user', 'content': json.dumps(packet)}
         request_messages = messages
+        if pending.get('history_references'):
+            request_messages = request_messages + [{'role': 'user', 'content': json.dumps({
+                'retained_review_history': pending['history_references']})}]
+        if reassessing:
+            coaching = pending['coaching']['content']
+            request_messages = [m for m in request_messages if m.get('content') != coaching]
+            request_messages = request_messages + [{'role': 'user', 'content': coaching}]
         if deciding:
-            request_messages = messages + [{'role':'user','content':
+            request_messages = request_messages + [{'role':'user','content':
                 instruction_prompt('review_decision_coaching')}]
-        save_history(pending, messages)
         engine.store.save(task)
         engine.event(task,'review_request','Requesting item review',{'item_id':item['id'],'candidate_id':current['id']})
         try:
@@ -431,7 +489,7 @@ def _checkpoint(engine, runtime, args):
                             'then continue this review with the saved evidence. Do not edit code to repair a response format error.')
             for call in calls:
                 messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result)})
-            save_history(pending, messages)
+            save_history(pending, messages, task)
             engine.store.save(task)
             continue  # Existing durable invalid-attempt recovery chooses the next strategy.
         observations = []
@@ -525,16 +583,17 @@ def _checkpoint(engine, runtime, args):
         fingerprint = hashlib.sha256(json.dumps(observations,sort_keys=True).encode()).hexdigest()
         repeated = task['pending_review'].setdefault('observations',{})
         repeated[fingerprint] = repeated.get(fingerprint,0) + 1
-        save_history(task['pending_review'], messages)
+        record_reads(pending, observations)
+        save_history(task['pending_review'], messages, task)
         engine.store.save(task)
         invalid = invalid_attempts(task, task['pending_review'])
         repeated_reason = ('repeated_tool_error' if any(isinstance(o['result'],dict) and o['result'].get('error') for o in observations)
                            else 'repeated_evidence' if observations else 'missing_decision')
         if invalid >= 3:
             _stop(engine, task, 'invalid_decision')
-        if repeated[fingerprint] >= 3:
+        if repeated_reads(pending) >= 3:
             _stop(engine, task, repeated_reason)
-        if invalid >= 2 or repeated[fingerprint] >= 2 or rounds == max_rounds - 1:
+        if invalid >= 2 or repeated_reads(pending) >= 2 or rounds == max_rounds - 1:
             _coach(engine, task, messages, 'invalid_decision' if invalid >= 2 else
-                   repeated_reason if repeated[fingerprint] >= 2 else 'request_limit')
+                   repeated_reason if repeated_reads(pending) >= 2 else 'request_limit')
     _stop(engine, task, 'request_limit')

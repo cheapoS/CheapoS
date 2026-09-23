@@ -36,6 +36,13 @@ exact captured check receipt; behavioral criteria and regression assessment
 still require source/document or visual evidence. Do not force code citations
 for a command exit result, or treat passing commands as proof of UI correctness.
 
+Uncapped work must retain review reassessment and non-progress recovery. Compare
+repeated evidence per read, not only identical tool batches or volatile web fetch
+metadata. Bound the live provider history as well as saved history, keeping older
+evidence retrievable and candidate-bound citations intact. Verify distinct useful
+reads can continue and stalled reviews can hand off to a validated decision
+without resetting checks, spending authority or cumulative attempts.
+
 # Validation while iterating
 
 ## Agent instruction changes

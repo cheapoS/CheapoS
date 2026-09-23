@@ -206,6 +206,94 @@ class ItemReviewRecoveryTests(unittest.TestCase):
         self.assertEqual(engine.request.call_count, 2)
         engine.file_tool.assert_not_called(); engine.checks.assert_not_called(); select.assert_not_called()
 
+    def test_uncapped_rebatched_web_reads_handoff_after_resume_and_finish(self):
+        task, engine, runtime = self.automatic_fixture()
+        task['branch_run']['plan']['uncapped_work'] = True
+        task['review_contract_version'] = 1
+        engine.parse_call = Engine.parse_call
+        before = copy.deepcopy(task)
+        web = self.wire_call('read_url', '{"url":"https://example.invalid/guide"}', 'web')
+        engine.read_url = Mock(side_effect=[
+            {'url': 'https://example.invalid/guide', 'content': 'Same official guidance',
+             'cached': bool(i % 2), 'fetched_at': str(i)} for i in range(3)])
+        engine.request.side_effect = [{'tool_calls': [web]}, InterruptedError('Restart')]
+        with self.assertRaises(InterruptedError):
+            branch_review.checkpoint(engine, runtime, {})
+        runtime.task = task = json.loads(json.dumps(task))
+        self.assertEqual(list(task['pending_review']['read_observations'].values()), [1])
+        def respond(rt, messages, tools, role):
+            if task['providers']['reviewer']['model'] != 'reviewer':
+                return self.wire_approval()
+            extra = self.wire_call('read_file', json.dumps({'path': f'context{engine.request.call_count}.py'}), 'extra')
+            return {'tool_calls': [web, extra] if engine.request.call_count == 3 else [extra, web]}
+        engine.request.side_effect = respond
+        with patch.object(routing, 'select_remote', side_effect=self.selector(task)) as select:
+            self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 5)
+        self.assertEqual(engine.read_url.call_count, 3)
+        select.assert_called_once(); engine.checks.assert_not_called()
+        branch_review.evidence.ready_receipt.assert_called_once()
+        archived = task['branch_run']['review_recovery']['candidate']['history'][0]['review']
+        self.assertEqual(max(archived['read_observations'].values()), 3)
+        for key in ('checks', 'usage', 'limits'):
+            self.assertEqual(task[key], before[key])
+        self.assertEqual(task['branch_run']['plan'], before['branch_run']['plan'])
+
+    def test_uncapped_live_history_is_bounded_and_old_evidence_remains_retrievable(self):
+        from cheapos.context_evidence import read
+        from cheapos.instructions.runtime import prompt
+        task, engine, runtime = self.automatic_fixture()
+        task['branch_run']['plan']['uncapped_work'] = True
+        task['branch_run']['guidance'] = [{'item_id': 'one', 'message': 'Keep the documented rounding behavior.'}]
+        task['review_contract_version'] = 1
+        engine.parse_call = Engine.parse_call
+        engine.file_tool.side_effect = lambda t, name, args, **kw: {
+            'path': args['path'], 'content': args['path'] + '\n' + 'exact source ' * 1500}
+        before = copy.deepcopy(task)
+        def respond(rt, messages, tools, role):
+            pending = task['pending_review']
+            pending['review_requests'] = pending.get('review_requests', 0) + 1
+            names = {t['function']['name'] for t in tools}
+            self.assertIn('read_file', names)
+            self.assertIn('read_context_evidence', names)
+            self.assertIn('read_review_evidence', names)
+            self.assertIn('review_decision', names)
+            self.assertIn('Keep the documented rounding behavior.', json.dumps(messages))
+            self.assertLess(len(json.dumps(messages)), 80000)
+            calls = [c['id'] for m in messages for c in m.get('tool_calls', [])]
+            results = [m['tool_call_id'] for m in messages if m.get('role') == 'tool']
+            self.assertEqual(calls, results)
+            if engine.request.call_count >= 8:
+                self.assertEqual(json.dumps(messages).count(prompt('review_reassessment')), 1)
+                self.assertIn('current candidate', messages[-1]['content'])
+            if engine.request.call_count <= 9:
+                return {'tool_calls': [self.wire_call('read_file', json.dumps({'path': f'part{engine.request.call_count}.py'}),
+                                                    f'read{engine.request.call_count}')]}
+            restored = json.loads(json.dumps(task))
+            retained = ''
+            for ref in pending['history_references']:
+                offset = 0
+                while True:
+                    page = read(restored, ref, offset)
+                    retained += page['content']; offset = page['next_offset']
+                    if not page['has_more']: break
+            self.assertIn('part1.py', retained)
+            proof = pending['evidence_review']
+            self.assertEqual(len([s for s in proof['sources'] if s.startswith('read:')]), 9)
+            # Delivered evidence stays visible to the reviewer after its raw
+            # exchange leaves the prompt; no new check or fabricated approval.
+            catalog = json.loads(messages[1]['content'])['review_evidence']['sources']
+            self.assertTrue(any(s.get('path') == 'part1.py' for s in catalog))
+            return self.wire_approval()
+        engine.request.side_effect = respond
+        with patch.object(routing, 'select_remote') as select:
+            self.assertEqual(branch_review.checkpoint(engine, runtime, {})['decision'], 'APPROVE')
+        self.assertEqual(engine.request.call_count, 10)
+        engine.checks.assert_not_called(); select.assert_not_called()
+        branch_review.evidence.ready_receipt.assert_called_once()
+        for key in ('checks', 'usage', 'limits'):
+            self.assertEqual(task[key], before[key])
+
     def test_malformed_review_cannot_override_pin_pause_or_budget(self):
         for boundary in ('pin', 'stop', 'budget'):
             with self.subTest(boundary=boundary):

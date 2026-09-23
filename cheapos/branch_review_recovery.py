@@ -68,7 +68,7 @@ def recover(engine, runtime, diagnostic):
     recovery['history'].append({'from': selection['from'], 'to': current,
                                 'reason': selection['reason'], 'review': copy.deepcopy(pending)})
     fresh = {key: copy.deepcopy(pending[key]) for key in
-             ('branch_candidate_id', 'identity_scope', 'worker_summary', 'uncertainties', 'repair_dispositions', 'pull_request') if key in pending}
+             ('branch_candidate_id', 'identity_scope', 'worker_summary', 'uncertainties', 'repair_dispositions', 'pull_request', 'history_references') if key in pending}
     proof = pending.get('evidence_review') or {}
     from .review_assessment import VERSION
     if proof.get('version') == VERSION and proof.get('scope') == candidate:
