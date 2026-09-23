@@ -198,6 +198,26 @@ class TaskSettingsTests(unittest.TestCase):
                 self.assertEqual(cfg.get('provider'), metadata.get('provider'))
                 self.assertEqual(self.task['providers']['reviewer']['provider'], 'nvidia')
 
+    def test_restoring_automatic_review_keeps_same_route_packet_progress(self):
+        self.make_branch()
+        task = self.engine.store.get('a')
+        task['operator_reviewer_model'] = task['providers']['reviewer']['model']
+        task['route'] = {'base_url': task['providers']['reviewer']['base_url']}
+        task['branch_run']['active_final_review'] = {'key': 'chunk:2'}
+        task['branch_run']['final_review_packets']['chunk:2'] = {'messages': ['Read exact evidence'], 'invalid_baseline': 2}
+        self.engine.store.save(task)
+        result = task_settings.save(self.engine, 'a', self.request(
+            {'roles.reviewer': {'strategy': 'automatic'}}, intent='apply-and-continue'))
+        saved = self.engine.store.get('a')
+        self.assertTrue(result['continuing'])
+        self.assertNotIn('operator_reviewer_model', saved)
+        self.assertNotIn('fresh_review', saved)
+        self.assertEqual(saved['providers'], task['providers'])
+        for key in ('final_review_packets', 'active_final_review', 'final_evidence'):
+            self.assertEqual(saved['branch_run'][key], task['branch_run'][key])
+        for key in ('usage', 'checks', 'findings', 'command_grants'):
+            self.assertEqual(saved[key], task[key])
+
     def test_persisted_pending_continuation_dispatches_once_after_restart(self):
         task_settings.save(self.engine, 'a', self.request())
         task = self.engine.store.get('a')
