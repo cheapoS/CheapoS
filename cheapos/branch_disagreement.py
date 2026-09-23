@@ -173,6 +173,32 @@ def pending(task,item):
     return repair
 
 
+def repair_check_specs(task, item):
+    """Previously executed commands explicitly named by an unresolved criterion.
+
+    This never treats reviewer snippets as executable commands or infers a cwd.
+    Existing runs can predate planner guidance aligning criteria and check lists.
+    """
+    import shlex
+    from .check_specs import specifications
+    repair = pending(task, item)
+    criteria = {finding['criterion'] for finding in repair.get('defects', [])}
+    result = []
+    for record in reversed(task.get('checks', [])):
+        command = record.get('command')
+        if not isinstance(command, list) or not command or not all(isinstance(arg, str) for arg in command):
+            continue
+        named = r'(?<![\w/.-])' + re.escape(shlex.join(command)) + r'(?=$|[`).,]|\s+(?:passes|passed|completes|outputs)\b)'
+        if not any(re.search(named, criterion) for criterion in criteria):
+            continue
+        spec = specifications([{'command': command, 'directory': record.get('directory', '.')}])[0]
+        if spec not in result:
+            result.append(spec)
+    # A bare command in prose cannot choose among multiple captured components.
+    # Explicit required_checks already handle such commands with their own cwd.
+    return [spec for spec in result if sum(other['command'] == spec['command'] for other in result) == 1]
+
+
 def before_write(task, path):
     """Executable claims require an actual check failure before implementation edits.
 

@@ -116,9 +116,13 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
     from .model_pool import automatic
     if not automatic(task, 'reviewer') and not task.get('operator_reviewer_model'):
         raise ProviderError('Your manual reviewer could not establish independence. Choose reviewer to approve an eligible replacement.', code='reviewer_recovery_required')
-    available = candidates(engine, task)
     selected = recovery.get('selected')
     chosen = task.get('operator_reviewer_model')
+    current_model = (task.get('providers', {}).get('reviewer') or {}).get('model')
+    continuing = bool(selected and selected == current_model and (not chosen or chosen == selected))
+    # Continuing a verified route still revalidates access, independence and
+    # live cooldowns; it is not another identity failure/replacement event.
+    available = candidates(engine, task)
     choices = [m['id'] for m in available if m['id'] not in recovery['attempted']]
     pending = recovery.get('next_action', {})
     if pending.get('status') == 'selected' and pending.get('model') in {m['id'] for m in available}:
@@ -149,9 +153,11 @@ def _request_once(engine, runtime, messages, tools, role, config_override=None, 
                 continue
         if model_id not in recovery['attempted']:
             recovery['attempted'].append(model_id)
+        reusing = model_id == selected and continuing
         recovery.pop('selected', None)
         recovery['next_action'] = {'model': model_id, 'status': 'selected'}
-        engine.event(task, 'reviewer_recovery', 'I couldn’t verify reviewer independence. I’m trying another reviewer and checking its identity.', {'model': model_id})
+        if not reusing:
+            engine.event(task, 'reviewer_recovery', 'I couldn’t verify reviewer independence. I’m trying another reviewer and checking its identity.', {'model': model_id})
         engine.store.save(task)
         try:
             # _request retains accounting, permission and identity gates. The

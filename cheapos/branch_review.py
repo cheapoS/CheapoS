@@ -156,6 +156,38 @@ def _checkpoint(engine, runtime, args):
                         'handoff_queued':bool(feedback.get('handoff_queued'))}
     current = evidence.candidate(task, ctx, specs, criteria)
     checks = evidence.current_checks(current, task['checks'])
+    repair_checks = []
+    # A legacy plan may name a test in a criterion but omit it from required_checks.
+    # Reuse actual current receipts or run the previously executed command through
+    # the normal permission path. Never pay for a full review of a known failure.
+    from .verification import evidence_identity
+    for spec in disagreement.repair_check_specs(task, item):
+        if any(evidence.same(bound, spec) for bound in checks):
+            continue
+        expected = evidence_identity({**task, 'check_command': spec['command'], 'check_directory': spec['directory']})
+        record = next((r for r in reversed(task['checks']) if evidence.same(r, spec)), {})
+        from .check_output import complete_output
+        if (not expected or record.get('input_identity') != expected or record.get('reason')
+                or not complete_output(record) or type(record.get('passed')) is not bool
+                or (record.get('passed') and (record.get('verification_identity') != expected
+                    or record.get('exit_code') != 0 or record.get('outcome', 'passed') != 'passed'))):
+            record = engine.checks(runtime, shlex.join(spec['command']), directory=spec['directory'])
+        if not record['passed']:
+            branch_runs.transition_item(run, item['id'], 'working')
+            feedback = engine.worker_check_feedback(runtime, record)
+            return {'decision': 'REQUEST_CHANGES', 'feedback': 'The check named in the unresolved finding still fails.',
+                    'checks': feedback, 'handoff_queued': bool(feedback.get('handoff_queued'))}
+        repair_checks.append({'candidate_id': current['id'], **spec, 'record': copy.deepcopy(record)})
+    if repair_checks:
+        # Commands may change verification inputs. Rebind both sets after the
+        # last command; a stale receipt cannot enter review as a passing check.
+        current = evidence.candidate(task, ctx, specs, criteria)
+        checks = evidence.current_checks(current, task['checks'])
+        repair_checks = [evidence.bind_check({**current, 'checks': [{
+            'command': bound['command'], 'directory': bound['directory'],
+            'verification_identity': evidence_identity({**task, 'check_command': bound['command'],
+                'check_directory': bound['directory']})}]},
+            bound['command'], bound['record'], bound['directory']) for bound in repair_checks]
     from . import review_disputes
     if item.get('review_repair'):
         disagreement.pending(task,item)
@@ -192,6 +224,8 @@ def _checkpoint(engine, runtime, args):
         plan_for_review['items'] = trimmed_items
     item_for_review = {k: v for k, v in item.items() if k != 'review_repair'}
     packet = evidence.review_packet(current, item_for_review, plan_for_review, checks, str(args.get('uncertainties', ''))[:2000])
+    if repair_checks:
+        packet['repair_checks'] = repair_checks
     from . import pr_description
     if review_assessment.enabled(task):
         packet['original_request'] = review_assessment.original_request(task)

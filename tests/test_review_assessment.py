@@ -111,7 +111,12 @@ class ReviewAssessmentTests(unittest.TestCase):
 
     def test_command_contract_refresh_preserves_old_reads_and_maps_final_requirement_ids(self):
         criteria, packet = self.command_packet()
+        # Check evidence from a repaired legacy criterion uses the same reader
+        # and provenance contract without changing the approved required list.
+        packet['repair_checks'] = [packet['checks'].pop()]
         state = review.prepare('candidate', packet, criteria)
+        self.assertEqual(set(state['criterion_checks']), set(criteria))
+        self.assertIn('npm', state['sources']['checks']['content'])
         citation = review.read(state, 'diff')['citation']
         state.pop('criterion_checks')  # older saved review, including a handoff
         review.refresh_check_claims(state, packet)

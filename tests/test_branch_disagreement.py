@@ -149,6 +149,79 @@ class DisagreementTests(unittest.TestCase):
 
 
 class ReviewCoachingTests(unittest.TestCase):
+    def test_failed_criterion_check_repairs_before_review_and_survives_resume(self):
+        task, engine, runtime = self.fixture()
+        run = task['branch_run']; item = run['items'][0]
+        criterion = 'Component tests passed (npm run test:component)'
+        item['acceptance_criteria'] = [criterion]
+        run['plan']['items'][0]['acceptance_criteria'] = [criterion]
+        finding = dict(defect(), criterion=criterion)
+        disagreement.attach(task, item, {'candidate_id': 'claim', 'source_patch': 'saved diff', 'defects': [finding]})
+        failed = {'command': ['npm', 'run', 'test:component'], 'directory': 'component',
+                  'passed': False, 'exit_code': 1, 'outcome': 'test_failure',
+                  'output': 'Cannot resolve path containing %20',
+                  'input_identity': 'before', 'verification_identity': None}
+        task['checks'] = [failed]
+        engine.worker_check_feedback = Mock(side_effect=lambda rt, result: result)
+        engine.checks.return_value = {**failed, 'passed': True, 'exit_code': 0, 'outcome': 'passed',
+                                     'output': 'All tests passed', 'input_identity': 'after', 'verification_identity': 'after'}
+        engine.request.return_value = {'tool_calls': [{'id': 'decision', 'name': 'review_decision', 'result': {
+            'decision': 'APPROVE', 'candidate_id': 'candidate', 'feedback': 'Inspected repair and exact passing check.',
+            'criteria_outcomes': {criterion: {'passed': True, 'evidence': 'Current component check and inspected source.'}}}}]}
+        original_plan = copy.deepcopy(run['plan'])
+        with patch('cheapos.verification.evidence_identity', return_value='before') as identity:
+            for _ in range(2):
+                result = branch_review.checkpoint(engine, runtime, {})
+                self.assertEqual(result['decision'], 'REQUEST_CHANGES')
+                self.assertEqual(result['checks']['output'], failed['output'])
+                engine.request.assert_not_called(); engine.checks.assert_not_called()
+                runtime.task = task = copy.deepcopy(task)  # Resume keeps the same failure.
+            # A worker edit makes the old receipt stale. Re-execute through the
+            # ordinary check/permission path, then reach independent approval.
+            identity.return_value = 'after'
+            result = branch_review.checkpoint(engine, runtime, {})
+        self.assertEqual(result['decision'], 'APPROVE')
+        engine.checks.assert_called_once_with(runtime, 'npm run test:component', directory='component')
+        engine.request.assert_called_once()
+        packet = json.loads(engine.request.call_args.args[1][1]['content'])
+        self.assertEqual(packet['repair_checks'][0]['record']['output'], 'All tests passed')
+        self.assertEqual(task['branch_run']['plan'], original_plan)
+        branch_review.evidence.ready_receipt.assert_called_once()
+
+    def test_repair_check_selection_requires_explicit_criterion_and_captured_directory(self):
+        criterion = 'npm run check passes'
+        item = {'acceptance_criteria': [criterion], 'review_repair': {'defects': [dict(defect(), criterion=criterion)]}}
+        matching = {'command': ['npm', 'run', 'check'], 'directory': 'component'}
+        task = {'checks': [matching, matching, {'command': ['npm', 'run', 'test']},
+                           {'command': ['npm', 'run', 'check', '--other']}]}
+        self.assertEqual(disagreement.repair_check_specs(task, item), [matching])
+        task['checks'].append({**matching, 'directory': 'another-component'})
+        self.assertEqual(disagreement.repair_check_specs(task, item), [])
+        for changed in ('npm run check:other passes', 'npm run check --other passes', 'The layout is responsive'):
+            item['acceptance_criteria'] = [changed]
+            item['review_repair']['defects'][0]['criterion'] = changed
+            task['checks'] = [matching]
+            self.assertEqual(disagreement.repair_check_specs(task, item), [])
+        task['checks'] = []
+        item['review_repair']['defects'][0]['reproduction'] = 'npm run check'
+        self.assertEqual(disagreement.repair_check_specs(task, item), [])  # Reviewer text is not authority.
+
+    def test_stale_repair_check_cannot_bypass_command_authorization(self):
+        task, engine, runtime = self.fixture()
+        item = task['branch_run']['items'][0]
+        criterion = 'npm run check passes'
+        item['acceptance_criteria'] = [criterion]
+        task['branch_run']['plan']['items'][0]['acceptance_criteria'] = [criterion]
+        disagreement.attach(task, item, {'candidate_id': 'claim', 'defects': [dict(defect(), criterion=criterion)]})
+        task['checks'] = [{'command': ['npm', 'run', 'check'], 'directory': 'component',
+                          'passed': True, 'exit_code': 0, 'input_identity': 'old', 'verification_identity': 'old'}]
+        engine.checks.side_effect = InterruptedError('Command approval declined')
+        with patch('cheapos.verification.evidence_identity', return_value='current'), self.assertRaises(InterruptedError):
+            branch_review.checkpoint(engine, runtime, {})
+        engine.checks.assert_called_once_with(runtime, 'npm run check', directory='component')
+        engine.request.assert_not_called()
+        branch_review.evidence.ready_receipt.assert_not_called()
+
     def test_fourth_final_finding_continues_to_counterevidence_and_independent_approval(self):
         from cheapos import branch_completion as completion
         task,engine,runtime=self.fixture();run=task['branch_run']

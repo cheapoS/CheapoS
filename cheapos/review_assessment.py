@@ -46,6 +46,8 @@ def prepare(scope, packet, criteria, *, partial=False):
              'partial': partial, 'sources': {}}
     add(state, 'diff', 'code', packet.get('diff'), format='diff')
     checks = packet.get('checks') or packet.get('review_context', {}).get('final_checks')
+    if packet.get('repair_checks'):
+        checks = (checks if isinstance(checks, list) else [checks] if checks else []) + packet['repair_checks']
     if checks:
         add(state, 'checks', 'check', json.dumps(checks, ensure_ascii=False, sort_keys=True))
     chunk = packet.get('chunk')
@@ -78,6 +80,7 @@ def refresh_check_claims(state, packet):
     checks = packet.get('checks') or []
     if isinstance(checks, dict):
         checks = [checks]  # Interactive checkpoints carry one result.
+    checks = checks + packet.get('repair_checks', [])
     for bound in checks:
         record = bound.get('record', bound)
         command = record.get('command', bound.get('command'))
