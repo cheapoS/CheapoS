@@ -1010,6 +1010,19 @@ RULES: List[InstructionRule] = [
     ),
 
     InstructionRule(
+        id='reviewer.correct_quote', audience=AgentAudience.CHEAPOS_INTERNAL,
+        category=InstructionCategory.WORKFLOW, roles=("reviewer",),
+        state_triggers=("runtime_profile",),
+        text=(
+            'The returned citation identifies the exact evidence already read. Reassess whether '
+            'that evidence supports your claim, then copy citation unchanged if it does. Put '
+            'interpretation or paraphrases in reason, not quote. Do not reread unchanged evidence '
+            'solely to fix this formatting error; no approval has been granted.'
+        ),
+        rationale="Correct an invalid optional quote without claiming that a valid delivered reference is missing."
+    ),
+
+    InstructionRule(
         id='workflow.active_item', audience=AgentAudience.CHEAPOS_INTERNAL,
         category=InstructionCategory.WORKFLOW, roles=("worker",),
         state_triggers=("runtime_profile",),

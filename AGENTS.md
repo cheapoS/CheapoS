@@ -71,6 +71,10 @@ for a command exit result, or treat passing commands as proof of UI correctness.
 Named check-result claims may bind only to the same approved item's unambiguous
 required command and working directory. Refresh saved evidence contracts without
 discarding current-candidate reads, completed packets or attempt history.
+Citation corrections must distinguish a missing reference from an invalid optional
+quote attached to a valid delivered excerpt. Reject the bad response, return only
+the verified current citation, and require explicit correction; do not invent
+quotes, silently drop invalid claims or force unchanged evidence to be reread.
 
 Uncapped work must retain review reassessment and non-progress recovery. Compare
 repeated evidence per read, not only identical tool batches or volatile web fetch

@@ -373,6 +373,16 @@ def assess_claim(state, value, label, field, *, issues, excerpts, implementation
         source = state['sources'].get(ref['source'])
         quote = cited_excerpt(state, ref) if isinstance(ref.get('excerpt_id'), str) else matched_quote(ref['source'], source, ref.get('quote'))
         if quote is None:
+            canonical = {'source': ref['source'], 'excerpt_id': ref.get('excerpt_id')}
+            if isinstance(ref.get('excerpt_id'), str) and cited_excerpt(state, canonical) is not None:
+                issue(location, 'The excerpt reference is valid, but the supplied quote is not literal.',
+                      citation=canonical, instruction=instruction('reviewer.correct_quote'))
+                # Identify the actual evidence kind without accepting the bad
+                # quote or saving an approval excerpt. The issue still rejects
+                # this decision; only an explicit corrected response can pass.
+                kinds.add(source['kind'])
+                matched_sources.add(ref['source'])
+                continue
             matches = [key for key, value in state['sources'].items()
                        if matched_quote(key, value, ref.get('quote')) is not None]
             issue(location, 'Citation not found in delivered current-candidate evidence: ' + ref['source'],
