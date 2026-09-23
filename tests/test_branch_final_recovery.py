@@ -16,6 +16,7 @@ class FinalRecoveryTests(unittest.TestCase):
         for resume in (False, True):
             with self.subTest(resume=resume):
                 task, engine, runtime = self.fixture(); task['review_contract_version'] = 1
+                task['steer_guidance'] = 'Keep the current keyboard behavior accessible.'
                 original = copy.deepcopy(task)
                 packet = {'diff': '+return max(lower, min(value, upper))', 'checks': task['checks']}
                 manifest = {'id': 'm', 'requirements': [{'id': 'one:1'}]}
@@ -25,6 +26,7 @@ class FinalRecoveryTests(unittest.TestCase):
                 def finish(rt, messages, tools, role, **kw):
                     self.assertLess(len(json.dumps(messages)), 80000)
                     update = json.loads(messages[2]['content'])['final_review_continuation']
+                    self.assertEqual(update['operator_direction'], task['steer_guidance'])
                     self.assertIn('feedback must be', update['latest_feedback']['validation']['error'])
                     refs = update['retained_review_history']
                     retained = [json.loads(rt.task['context_evidence'][ref]['text']) for ref in refs]

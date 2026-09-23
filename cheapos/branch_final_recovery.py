@@ -36,7 +36,7 @@ def persist(engine, task, state, messages):
     engine.store.save(task)
 
 
-def request_context(engine, task, state, messages):
+def request_context(engine, task, state, messages, *, direction=None):
     """Bound actual continuation, retaining complete omitted exchanges locally."""
     persist(engine, task, state, messages)
     messages[2:] = copy.deepcopy(state['messages'])
@@ -45,6 +45,8 @@ def request_context(engine, task, state, messages):
         current['retained_review_history'] = state['history_references']
     if state.get('latest_feedback'):
         current['latest_feedback'] = state['latest_feedback']
+    if direction and state.get('history_partial'):
+        current['operator_direction'] = direction[:8000]
     if not current:
         return messages
     return messages[:2] + [{'role': 'user', 'content': json.dumps({'final_review_continuation': current})}] + messages[2:]
