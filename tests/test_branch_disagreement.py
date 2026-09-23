@@ -205,6 +205,12 @@ class ReviewCoachingTests(unittest.TestCase):
         task['checks'] = []
         item['review_repair']['defects'][0]['reproduction'] = 'npm run check'
         self.assertEqual(disagreement.repair_check_specs(task, item), [])  # Reviewer text is not authority.
+        item = {'acceptance_criteria': ['Component tests passed (npm run check)']}
+        self.assertEqual(disagreement.repair_check_specs(task, item), [])
+        task['checks'] = [matching]
+        self.assertEqual(disagreement.repair_check_specs(task, item), [matching])
+        task['checks'].append({**matching, 'directory': 'another-component'})
+        self.assertEqual(disagreement.repair_check_specs(task, item), [])
 
     def test_stale_repair_check_cannot_bypass_command_authorization(self):
         task, engine, runtime = self.fixture()

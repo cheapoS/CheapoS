@@ -67,6 +67,21 @@ def prepare(scope, packet, criteria, *, partial=False):
     return state
 
 
+def labeled_commands(criteria):
+    """Only result-only labels; parsing a command does not authorize execution."""
+    commands = {}
+    for key, criterion in criteria.items():
+        match = re.fullmatch(r'[\w./-]+ (?:tests passed|passed structural validation) \(([^()]+)\)\.?', criterion.strip()) if isinstance(criterion, str) else None
+        if match:
+            try:
+                command = shlex.split(match[1].strip('`'))
+            except ValueError:
+                continue
+            if command:
+                commands[key] = command
+    return commands
+
+
 def refresh_check_claims(state, packet):
     """Bind narrowly stated command-result claims to controller check receipts.
 
@@ -76,7 +91,9 @@ def refresh_check_claims(state, packet):
     """
     texts = {key: key for key in state['criteria']}
     texts.update({row['id']: row['criterion'] for row in packet.get('requirements', []) if row['id'] in texts})
-    bindings = {}
+    # Unit tests of a validator cannot prove it ran on real inputs.
+    missing_commands = labeled_commands(texts)
+    bindings = {key: [] for key in missing_commands}
     checks = packet.get('checks') or []
     if isinstance(checks, dict):
         checks = [checks]  # Interactive checkpoints carry one result.
@@ -91,12 +108,14 @@ def refresh_check_claims(state, packet):
         suffix = r'(?:passes(?: with zero diagnostics)?|completes without errors|outputs result PASS(?: with all assertions satisfied)?)\.?'
         pattern = r'`?' + re.escape(shlex.join(command)) + r'`?\s+' + suffix
         for key, criterion in texts.items():
-            if not isinstance(criterion, str) or not re.fullmatch(pattern, criterion.strip()):
+            labeled = r'[\w./-]+ (?:tests passed|passed structural validation) \(`?' + re.escape(shlex.join(command)) + r'`?\)\.?'
+            if not isinstance(criterion, str) or not (re.fullmatch(pattern, criterion.strip()) or re.fullmatch(labeled, criterion.strip())):
                 continue
             source = 'check:' + digest(bound)[:20]
             add(state, source, 'check', json.dumps(bound, ensure_ascii=False, sort_keys=True))
             bindings.setdefault(key, []).append(source)
     state['criterion_checks'] = bindings
+    state['missing_criterion_checks'] = {key: command for key, command in missing_commands.items() if not bindings[key]}
 
 
 def display(state):
@@ -109,6 +128,7 @@ def display(state):
         sources.append(row)
     return {'version': VERSION, 'scope': state['scope'], 'criteria': state['criteria'], 'sources': sources,
             'criterion_checks': state.get('criterion_checks', {}),
+            'missing_criterion_checks': state.get('missing_criterion_checks', {}),
             'instruction': instruction('reviewer.evidence_catalog')}
 
 
@@ -142,6 +162,10 @@ def read(state, source=None, offset=0, search=None):
     """Page only this candidate's delivered evidence, including after handoff."""
     if source is None:
         return display(state)
+    if isinstance(source, str) and source not in state['sources'] and re.fullmatch(r'[a-f0-9]{20}', source):
+        matches = [key for key in state['sources'] if key.rsplit(':', 1)[-1] == source]
+        if len(matches) == 1:
+            source = matches[0]  # Recover an omitted prefix only for one exact current source.
     if not isinstance(source, str) or source not in state['sources']:
         return {'error': 'Unknown current review source. Use one of the listed IDs.', **display(state)}
     value = state['sources'][source]
@@ -186,7 +210,8 @@ def schema(state):
              'citations': {'type': 'array', 'minItems': 1, 'items': citation}}, 'required': ['reason', 'citations'], 'additionalProperties': False}
     criteria = {key: copy.deepcopy(claim) for key in state['criteria']}
     for key, sources in state.get('criterion_checks', {}).items():
-        criteria[key]['description'] = 'Command-result-only claim. Cite its current check receipt: ' + ', '.join(sources)
+        criteria[key]['description'] = ('Command-result-only claim. Cite its current check receipt: ' + ', '.join(sources) if sources else
+            'No matching passing command receipt is available. Request the missing focused check; other checks or source code cannot prove this command passed.')
     return {'type': 'object', 'description': 'Required for APPROVE. Supply all four fields; each claim needs a nonempty reason and citations. Use [] for no verification limitations.', 'properties': {
         'criteria': {'type': 'object', 'properties': criteria,
                      'required': state['criteria'], 'additionalProperties': False},
@@ -314,6 +339,46 @@ class EvidenceError(ValueError):
             'review_evidence': display(state)}
 
 
+def assess_claim(state, value, label, field, *, issues, excerpts, implementation=False, verification=False, required_sources=None):
+    def issue(field, error, **details):
+        issues.append({"field": field, "error": error, **details})
+    if not isinstance(value, dict) or not isinstance(value.get('reason'), str) or not value['reason'].strip():
+        issue(field + '.reason', label + ' needs a reason grounded in the cited evidence.')
+    if not isinstance(value, dict):
+        return
+    citations = value.get('citations')
+    if not isinstance(citations, list) or not citations:
+        issue(field + '.citations', label + ' needs exact evidence citations. Reuse delivered sources; read only missing evidence.')
+        return
+    kinds = set()
+    matched_sources = set()
+    for index, ref in enumerate(citations):
+        location = field + f'.citations[{index}]'
+        if not isinstance(ref, dict) or not isinstance(ref.get('source'), str):
+            issue(location, 'Each citation needs a source ID and a returned excerpt_id or literal quote.')
+            continue
+        source = state['sources'].get(ref['source'])
+        quote = cited_excerpt(state, ref) if isinstance(ref.get('excerpt_id'), str) else matched_quote(ref['source'], source, ref.get('quote'))
+        if quote is None:
+            matches = [key for key, value in state['sources'].items()
+                       if matched_quote(key, value, ref.get('quote')) is not None]
+            issue(location, 'Citation not found in delivered current-candidate evidence: ' + ref['source'],
+                  matching_source_ids=matches,
+                  instruction=instruction('reviewer.correct_citation'))
+            continue
+        kinds.add(source['kind'])
+        matched_sources.add(ref['source'])
+        entry = excerpts.setdefault(ref['source'], {'kind': source['kind'], 'content': '', 'source_digest': source['digest']})
+        if quote not in entry['content']:
+            entry['content'] += ('\n' if entry['content'] else '') + quote
+    if implementation and not state['partial'] and not kinds.intersection({'code', 'image'}):
+        issue(field + '.citations', label + ' needs code/document or visual evidence; passing checks and prior approvals alone are insufficient.')
+    if verification and not state['partial'] and any(s['kind'] == 'check' for s in state['sources'].values()) and 'check' not in kinds:
+        issue(field + '.citations', 'Verification assessment must cite the actual check evidence and explain its coverage/limitations.')
+    if required_sources is not None and not matched_sources.intersection(required_sources):
+        issue(field + '.citations', 'Command-result claim must cite its matching current check receipt.', matching_source_ids=required_sources)
+
+
 def validate(state, result):
     """Reject unsupported positive claims, never manufacture review evidence."""
     from .branch_disagreement import decision
@@ -334,45 +399,11 @@ def validate(state, result):
         issue('review_assessment.criteria', 'Assess every exact criterion: ' + json.dumps(state['criteria']))
     claims = claims if isinstance(claims, dict) else {}
     excerpts = {}
-    def claim(value, label, field, implementation=False, verification=False, required_sources=None):
-        if not isinstance(value, dict) or not isinstance(value.get('reason'), str) or not value['reason'].strip():
-            issue(field + '.reason', label + ' needs a reason grounded in the cited evidence.')
-        if not isinstance(value, dict):
-            return
-        citations = value.get('citations')
-        if not isinstance(citations, list) or not citations:
-            issue(field + '.citations', label + ' needs exact evidence citations. Reuse delivered sources; read only missing evidence.')
-            return
-        kinds = set()
-        matched_sources = set()
-        for index, ref in enumerate(citations):
-            location = field + f'.citations[{index}]'
-            if not isinstance(ref, dict) or not isinstance(ref.get('source'), str):
-                issue(location, 'Each citation needs a source ID and a returned excerpt_id or literal quote.')
-                continue
-            source = state['sources'].get(ref['source'])
-            quote = cited_excerpt(state, ref) if isinstance(ref.get('excerpt_id'), str) else matched_quote(ref['source'], source, ref.get('quote'))
-            if quote is None:
-                matches = [key for key, value in state['sources'].items()
-                           if matched_quote(key, value, ref.get('quote')) is not None]
-                issue(location, 'Citation not found in delivered current-candidate evidence: ' + ref['source'],
-                      matching_source_ids=matches,
-                      instruction=instruction('reviewer.correct_citation'))
-                continue
-            kinds.add(source['kind'])
-            matched_sources.add(ref['source'])
-            entry = excerpts.setdefault(ref['source'], {'kind': source['kind'], 'content': '', 'source_digest': source['digest']})
-            if quote not in entry['content']:
-                entry['content'] += ('\n' if entry['content'] else '') + quote
-        if implementation and not state['partial'] and not kinds.intersection({'code', 'image'}):
-            issue(field + '.citations', label + ' needs code/document or visual evidence; passing checks and prior approvals alone are insufficient.')
-        if verification and not state['partial'] and any(s['kind'] == 'check' for s in state['sources'].values()) and 'check' not in kinds:
-            issue(field + '.citations', 'Verification assessment must cite the actual check evidence and explain its coverage/limitations.')
-        if required_sources and not matched_sources.intersection(required_sources):
-            issue(field + '.citations', 'Command-result claim must cite its matching current check receipt.', matching_source_ids=required_sources)
+    def claim(value, label, field, **options):
+        assess_claim(state, value, label, field, issues=issues, excerpts=excerpts, **options)
     for key in state['criteria']:
         sources = state.get('criterion_checks', {}).get(key)
-        claim(claims.get(key), key, 'review_assessment.criteria.' + key, implementation=not sources, required_sources=sources)
+        claim(claims.get(key), key, 'review_assessment.criteria.' + key, implementation=sources is None, required_sources=sources)
     claim(assessment.get('regressions'), 'Regression assessment', 'review_assessment.regressions', implementation=True)
     claim(assessment.get('verification'), 'Verification assessment', 'review_assessment.verification', verification=True)
     limitations = assessment.get('limitations')

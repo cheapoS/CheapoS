@@ -42,6 +42,31 @@ refreshes each request so an omitted exchange does not hide its source IDs.
 
 ## Runtime entry points
 
+Item review selects the registered `review_progress` profile when the evidence
+contract is enabled. Its `record_review_progress` tool validates one assessment
+with the same claim validator used by final approval, then returns the remaining
+questions. Decision coaching retains this tool alongside saved-evidence reads.
+Current source IDs and recorded assessments refresh in every outgoing item
+request. The successor reviewer receives provisional claims and must explicitly
+confirm them; recording every target never creates an approval receipt.
+Interactive checkpoint and final/chunk review retain their existing full
+assessment contract and do not promise the item-only progress tool.
+
+The basis includes candidate, criteria, command-receipt bindings and current
+operator directions. Missing or changed evidence cannot be confirmed. Small
+in-memory cases inspect offered tools and assembled prompts across Resume,
+invalid confirmation and handoff, then reach an ordinary validated receipt.
+Separate cases retain a complete checklist through cancellation without approval.
+Single-label command-result criteria such as `Components tests passed (npm test)`
+can cite the exact matching receipt; mixed behavioral clauses remain excluded.
+Missing named receipts are shown explicitly: a validator's unit tests do not
+prove it ran against the current inputs. If the reviewer requests that check,
+the next review binds its actual worker-executed receipt, including for legacy
+plans whose required-check list omitted it. No command is executed from criterion
+prose, and ambiguous captured working directories remain unresolved.
+An omitted source-ID prefix resolves only when its full 20-character suffix
+matches one current source, and returns that source's canonical citation.
+
 Planning requires commands explicitly promised by acceptance criteria to appear
 in that item's checks with the discovered working directory. This is delivered
 through the existing `planner` profile, including refreshed saved proposals;

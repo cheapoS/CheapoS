@@ -174,22 +174,26 @@ def pending(task,item):
 
 
 def repair_check_specs(task, item):
-    """Previously executed commands explicitly named by an unresolved criterion.
+    """Previously executed commands named by a finding or result-only criterion.
 
     This never treats reviewer snippets as executable commands or infers a cwd.
     Existing runs can predate planner guidance aligning criteria and check lists.
     """
     import shlex
     from .check_specs import specifications
+    from .review_assessment import labeled_commands
     repair = pending(task, item)
     criteria = {finding['criterion'] for finding in repair.get('defects', [])}
+    # REQUEST_TESTS can add a receipt without adding a defect or amending the
+    # approved check list. Carry that check into review after the worker runs it.
+    result_commands = list(labeled_commands({c: c for c in item.get('acceptance_criteria', [])}).values())
     result = []
     for record in reversed(task.get('checks', [])):
         command = record.get('command')
         if not isinstance(command, list) or not command or not all(isinstance(arg, str) for arg in command):
             continue
         named = r'(?<![\w/.-])' + re.escape(shlex.join(command)) + r'(?=$|[`).,]|\s+(?:passes|passed|completes|outputs)\b)'
-        if not any(re.search(named, criterion) for criterion in criteria):
+        if command not in result_commands and not any(re.search(named, criterion) for criterion in criteria):
             continue
         spec = specifications([{'command': command, 'directory': record.get('directory', '.')}])[0]
         if spec not in result:

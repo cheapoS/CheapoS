@@ -28,6 +28,15 @@ statistics, limits, model pins or spending authority change.
 
 ## Implemented: review command results using check evidence
 
+Item reviewers can now record individual evidence-backed assessments and see
+which requirements, regression analysis, verification assessment and limitations
+remain. This record survives Resume and authorized reviewer handoff. It is a
+provisional assessment, never approval: a final reviewer explicitly confirms it,
+and the controller revalidates every claim, candidate and current check before
+creating the normal approval receipt. Changed scope or operator directions
+invalidate the recorded progress; changed evidence cannot silently support an
+old claim. Full review decisions remain supported for existing integrations.
+
 The controller recognizes narrowly stated command-result-only criteria that
 exactly name a captured check, such as `npm run check passes with zero
 diagnostics`. It supplies matching candidate-bound receipts in the review
