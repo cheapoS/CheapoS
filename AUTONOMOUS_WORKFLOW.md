@@ -850,3 +850,19 @@ checks, and text-capable multimodal models remain eligible. These are capability
 checks, not provider/model allowlists or new work limits. Small offline cases
 cover valid proposal completion, saved-history repair and routing to a qualified
 model without probing image, speech or embedding entries.
+
+## Implemented: retain reviewers when streamed identity is unavailable
+
+A reviewer response whose stream lacks usable model identity uses the existing
+accounted transport fallback before changing models: repeat the same request as
+complete JSON once for that route, role and purpose. No tool from the rejected
+stream executes. The JSON response must independently pass the same actual-model
+identity gate; missing identity or a worker/reviewer conflict still rejects it.
+A known reviewer cannot repair missing historical worker provenance this way.
+
+Successful JSON compatibility is reused on later requests and Resume, scoped to
+the saved connection. Failed retries remain consumed across reloads and ordinary
+reviewer recovery can select another authorized route. Both attempts retain
+usage, current spending/request limits, cancellation and permission checks.
+Synthetic stream/JSON cases cover recovery, persistent reuse and identity
+rejection without extra live inference or expensive workflow fixtures.

@@ -41,6 +41,10 @@ projecting history into the destination's accepted wire schema. A successful
 small probe does not prove that provider-specific continuation metadata is
 portable. Cover the assembled request and retain original diagnostic history.
 
+A transport retry must be separately accounted and preserve actual response
+identity checks. Never infer reviewer identity from a successful probe or a
+configured route when the review response itself lacks required identity.
+
 Every automatic recovery route must use the same scoped tool qualification as
 initial routing. Catalog tool flags alone are not qualification; reject known
 non-chat models, honor rejected probes, and verify unknown candidates with the

@@ -85,5 +85,14 @@ def json_preference(task, config, role, purpose):
 
 
 def eligible(error, record):
-    return (getattr(error, 'code', None) in {'streaming_unsupported', 'empty_response', 'malformed_tool_call'}
+    code = getattr(error, 'code', None)
+    # A complete stream can still lack usable response identity (including
+    # conflicting frame identities). Retry the same request as JSON before
+    # changing reviewers; the normal identity gate must validate that response.
+    # A known reviewer plus missing worker provenance cannot be repaired here.
+    missing_reviewer = (code == 'review_identity_unknown'
+                        and record.get('role') == 'reviewer'
+                        and record.get('purpose') != 'probe'
+                        and not record.get('served_model'))
+    return ((code in {'streaming_unsupported', 'empty_response', 'malformed_tool_call'} or missing_reviewer)
             and record.get('dispatched') and record.get('transport') == 'sse')
