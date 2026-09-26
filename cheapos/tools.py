@@ -76,14 +76,14 @@ COMPACT_WRITE = tool(
 
 BROWSER_TOOL = tool(
     "browser_preview",
-    "Use the operator-authorized local preview configuration. start freezes the current task files; status reports setup/logs; open connects the browser when running. Navigate and interact only with this disposable local preview. observe returns visible text and console/errors; screenshot retains a viewport PNG. stop closes owned processes. Observations are candidate-bound evidence, never passing checks or approval.",
+    "Authorized local preview: start freezes current files; status gives setup/logs; open connects when running. observe gives text/controls/errors; screenshot saves a PNG; stop closes processes. Interactions stay on the granted origin. Evidence never passes checks or approves work.",
     {"action": {"type": "string", "enum": ["start", "status", "open", "stop", "navigate", "click", "fill", "press", "select", "viewport", "observe", "screenshot"]},
      "url": TEXT, "selector": TEXT, "value": TEXT,
      "width": {"type": "integer", "minimum": 320, "maximum": 1920},
      "height": {"type": "integer", "minimum": 240, "maximum": 1200}}, ["action"])
 
 READ_TOOLS = [
-    tool("read_browser_evidence", "List the latest 100 retained browser observations, or read an exact current-candidate evidence_id. A returned browser: image reference can be independently inspected with inspect_image. No browser actions or commands execute; stale evidence is rejected.",
+    tool("read_browser_evidence", "List retained browser observations, or read current evidence_id. Inspect returned browser: images with inspect_image. Read-only; rejects stale evidence.",
          {"evidence_id": TEXT}),
     tool(
         "read_edit_history",

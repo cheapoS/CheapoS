@@ -312,3 +312,10 @@ approval. Existing unit, batch, progress and permission checks preserve review c
 integration requirements and model/check authority. Browser lifecycle tests use small
 file and in-memory fixtures; real Chromium verification is a separate disposable smoke
 check, not a new mandatory heavyweight test.
+
+Browser tool descriptions and the shared UI rule avoid repeating the same lifecycle
+and evidence instructions. Serialized schemas and prompt prose count toward the
+conservative request reservation; the existing sample and multi-item branch
+execution tests exercise these assembled requests under their captured allowances.
+Compacting this guidance does not change reservation accounting, permission
+validation, check requirements or independent approval.
