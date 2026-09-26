@@ -31,6 +31,83 @@ class CheckOutputCompletenessTests(unittest.TestCase):
 
 
 class CheckOutputTests(LocalCase):
+    def test_diagnostics_follow_capture_persistence_and_bound_review_reads(self):
+        from unittest.mock import patch
+        from cheapos import check_output, branch_evidence, branch_final
+        task = self.fixture()
+        task.update(status='running', auto_approve_checks=True)
+        data = b'a.py:2:3: F401 unused import\n'
+        spool = self.root / 'captured.log'
+        spool.write_bytes(data)
+        def run(argv, stop, **kwargs):
+            kwargs['on_raw_file'](spool, False)
+            return {'command': argv, 'passed': True, 'exit_code': 0,
+                    'output': data.decode(), 'reason': None, 'duration': .01, 'truncated': False}
+        with patch.object(Workspace, 'run_checks', side_effect=run):
+            result = self.engine.checks(Runtime(task))
+        self.assertTrue(result['passed'], 'Reporter text must not override process status')
+        self.assertEqual(result['exit_code'], 0)
+        self.assertEqual(result['output'], data.decode())
+        self.assertEqual(len(result['diagnostics']['items']), 1)
+        self.engine.store.save(task)
+        loaded_store = Store(self.engine.store.root)
+        loaded = loaded_store.get(task['id'])
+        record = loaded['checks'][-1]
+        read = check_output.read(loaded_store, task['id'], result['run_id'])
+        self.assertEqual(check_output.raw(loaded_store, task['id'], result['run_id']), data)
+        self.assertEqual(read['receipt']['diagnostics'], result['diagnostics'])
+        for key in ('command','input_identity','verification_identity','digest','generation','exit_code'):
+            self.assertEqual(read['receipt'][key], result[key])
+        current = {'id': 'candidate-one', 'checks': [{'command': result['command'], 'verification_identity': result['verification_identity']}]}
+        bound = branch_evidence.bind_check(current, result['command'], record)
+        sources = [{'candidate_id': bound['candidate_id'], 'run_id': record['run_id'], 'record_digest': branch_evidence._digest(record)}]
+        review = branch_final.read_check_output(self.engine, task, sources, {'run_id':record['run_id']})
+        self.assertEqual(review['candidate_id'], 'candidate-one')
+        self.assertEqual(review['receipt']['diagnostics'], result['diagnostics'])
+        # The existing read tool delivers the bound receipt at the request boundary;
+        # it remains data across worker/reviewer and read-only chat assembly.
+        from cheapos.tools import READ_TOOLS
+        from test_engine import CONFIG
+        messages = [{'role':'system', 'content':'Inspect saved evidence.'},
+                    {'role':'assistant', 'content':None, 'tool_calls':[{'id':'read-one','type':'function','function':{'name':'read_check_output','arguments':json.dumps({'run_id':record['run_id']})}}]},
+                    {'role':'tool', 'tool_call_id':'read-one', 'content':json.dumps(read)}]
+        task['demo'] = False
+        for role, purpose in (('worker',None), ('reviewer',None), ('worker','chat_reply')):
+            with self.subTest(role=role,purpose=purpose), patch.object(self.engine, '_perform_request', return_value={'role':'assistant','content':'Evidence inspected.'}) as request:
+                self.engine._request_attempt(Runtime(task), messages, READ_TOOLS, role, config_override=CONFIG, purpose=purpose)
+                delivered = request.call_args.args[1]
+                self.assertEqual(json.loads(delivered[-1]['content'])['receipt']['diagnostics'], result['diagnostics'])
+                self.assertEqual(delivered[-1]['tool_call_id'], 'read-one')
+                self.assertIn('read_check_output', [t['function']['name'] for t in request.call_args.args[2]])
+        self.assertEqual(messages[0]['content'], 'Inspect saved evidence.')
+        read['receipt']['diagnostics']['items'].clear()
+        self.assertEqual(len(record['diagnostics']['items']), 1)
+        for changes in ({'verification_identity':'stale'}, {'input_identity':'stale'}, {'exit_code':1}, {'passed':False}, {'directory':'other'}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                branch_evidence.bind_check(current, result['command'], {**record, **changes})
+        with self.assertRaises(ValueError):
+            branch_final.read_check_output(self.engine, task, [], {'run_id':record['run_id']})
+        task['checks'][-1]['diagnostics']['items'][0]['message'] = 'changed'
+        with self.assertRaises(ValueError):
+            branch_final.read_check_output(self.engine, task, sources, {'run_id':record['run_id']})
+
+    def test_unrecognized_failure_diagnostics_do_not_change_failure_or_original_output(self):
+        from unittest.mock import patch
+        task = self.fixture()
+        task.update(status='running', auto_approve_checks=True)
+        spool = self.root / 'unknown.log'
+        spool.write_bytes(b'custom checker says no\n')
+        def run(argv, stop, **kwargs):
+            kwargs['on_raw_file'](spool, False)
+            return {'command':argv, 'passed':False, 'exit_code':7, 'output':spool.read_text(),
+                    'reason':None, 'duration':.01, 'truncated':False}
+        with patch.object(Workspace, 'run_checks', side_effect=run):
+            result = self.engine.checks(Runtime(task))
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['exit_code'], 7)
+        self.assertEqual(result['diagnostics']['status'], 'unparsed')
+        self.assertEqual(result['output'], spool.read_text())
+
     def test_stdout_stderr_and_split_utf8_arrive_before_exit(self):
         workspace = Workspace(self.fixture()['workspace'])
         stop, seen_first_byte, seen_character = threading.Event(), threading.Event(), threading.Event()

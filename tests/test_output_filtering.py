@@ -37,6 +37,8 @@ class OutputTests(unittest.TestCase):
 
     def test_optional_payload_preserves_controller_fields_tools_and_raw(self):
         raw=self.log();check={'run_id':'a'*32,'raw_output':{'bytes':len(raw)},'command':['python','-m','unittest'],'exit_code':1,'passed':False,'reason':'cancelled','duration':1,'output':raw,'truncated':False}
+        from cheapos.check_diagnostics import parse
+        check['diagnostics'] = parse(b'FAIL: test_one (fixture.Tests)\n', check['run_id'])
         task={'check_output_filter':'unittest','checks':[check],'requests':['original instruction']}
         config={'base_url':'http://127.0.0.1:11434/v1'}
         original=[{'role':'user','content':json.dumps({'checks':check,'source':'exact code','request':'original instruction'})},
