@@ -128,13 +128,11 @@ READ_TOOLS = [
     ),
     tool(
         "search",
-        "Search LOCAL eligible Git-inventory files for a case-insensitive literal on one line. Returns matches and explicit pagination/skip metadata. Scope with path (file/directory) and glob (case-sensitive fnmatch of whole workspace-relative paths; * includes /). Ignored files, secrets and symlinks stay excluded. Pass next_cursor with identical arguments while has_more; changed sources reject stale cursors, so restart without cursor. limit defaults to 60 (1–60); context_lines defaults to 0 (0–5 on each side). Match/context text clips at 300 characters with text_truncated; use read_file for full lines. Pages also stop at 20000 serialized match characters. Not internet search; use read_url for web links.",
-        {"query": {"type": "string", "minLength": 1, "maxLength": 200},
-         "path": {"type": "string", "minLength": 1, "maxLength": 1000},
-         "glob": {"type": "string", "minLength": 1, "maxLength": 200},
+        "Find case-insensitive literal lines in eligible local files. path scopes a file/directory; glob uses case-sensitive fnmatch on full relative paths (* spans /). Defaults: limit 60, context_lines 0 per side. Continue next_cursor with identical args. For text_truncated, use read_file.",
+        {"query": TEXT, "path": TEXT, "glob": TEXT,
          "limit": {"type": "integer", "minimum": 1, "maximum": 60},
          "context_lines": {"type": "integer", "minimum": 0, "maximum": 5},
-         "cursor": {"type": "string", "minLength": 1, "maxLength": 512}},
+         "cursor": TEXT},
         ["query"],
     ),
     tool(

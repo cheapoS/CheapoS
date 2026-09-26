@@ -277,3 +277,10 @@ validated decision. Existing runtime/review recovery checks cover phases that
 filter search out, including decision coaching and final review; the conditional
 prose never grants it back. See [local code search](local-code-search.md) for the
 response migration, consumer audit, bounds and filesystem consistency limits.
+
+Search descriptions and repeated contract guidance stay concise because the
+conservative reservation counts serialized request bytes, including schemas.
+The sample and multi-item branch-execution regressions exercise the assembled
+reviewer request under their original 20,000/30,000-token allowances. Compacting
+redundant descriptions restores those paths without raising limits, changing
+reservation accounting, or removing server-side argument validation.
