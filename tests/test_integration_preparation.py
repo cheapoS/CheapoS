@@ -178,6 +178,23 @@ class IntegrationPreparationTests(unittest.TestCase):
         with patch.object(prep,'_launch'):prep.start(engine,'task',values)
         return values
 
+    def test_ready_stage_clears_obsolete_operator_decision(self):
+        engine,task=self.fixture();self.accepted(engine,task)
+        task['integration_preparation'].update(reason={'code':'operator_decision','message':'Review this decision'},error='old failure')
+        prep._publish(engine,task,'ready','ready')
+        self.assertNotIn('reason',task['integration_preparation'])
+        self.assertNotIn('error',task['integration_preparation'])
+
+    def test_same_tip_on_another_branch_is_a_new_preparation(self):
+        engine,task=self.fixture(branch=False);values=self.accepted(engine,task)
+        task['integration_preparation']['status']='ready'
+        with patch.object(prep,'_launch'):
+            with self.assertRaisesRegex(ValueError,'different captured'):
+                prep.start(engine,'task',{**values,'target_ref':'refs/heads/other'})
+            updated=prep.start(engine,'task',{**values,'operation_id':'new','target_ref':'refs/heads/other'})
+        self.assertEqual(updated['integration_preparation']['target_ref'],'refs/heads/other')
+        self.assertEqual(len(updated['integration_preparation_history']),1)
+
     def test_acknowledges_before_git_and_duplicate_does_not_replace_receipt(self):
         engine,task=self.fixture();values=self.accepted(engine,task)
         original=copy.deepcopy(task['integration_preparation'])

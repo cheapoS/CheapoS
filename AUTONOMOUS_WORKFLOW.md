@@ -973,3 +973,21 @@ without duplicating the full per-criterion assessment schema. Current check
 source mappings travel in the progress checklist. Older complete assessments
 remain accepted only through the unchanged evidence validator; request
 reservations and authorized limits are not increased.
+
+
+## Deleted pull-request destinations
+
+A saved publication keeps its approved destination even if the checkout changes.
+When that remote base no longer exists and no PR was created, Changes offers an
+explicit preparation against the displayed current branch and commit. The old
+publication and any pushed branch remain retained. Preparation invalidates old
+publication previews and uses the existing reconciliation, checks and independent
+review flow; a separate approval is required to publish the resulting candidate
+on a new task branch. Lost create responses and unavailable GitHub reads cannot
+be treated as permission to replace an existing publication.
+
+Publication failures inspect publication recovery rather than local-merge
+readiness. Completed preparation clears obsolete decision notices, including in
+older saved displays. Deterministic cases cover stale approval, lost acknowledgements,
+retained history, continued preparation and a newly approved publication without
+live model calls or repeated Git fixtures.

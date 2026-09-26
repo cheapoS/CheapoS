@@ -95,6 +95,57 @@ def _candidate(engine, task):
             'patch': task['patch'], 'files': [f['path'] for f in task['changes']]}
 
 
+def missing_remote_base(operation):
+    ref = 'refs/heads/' + operation['base']
+    return not work.source_git(operation['source'], 'ls-remote', '--refs', operation['push_url'], ref)
+
+
+def publication_recovery(engine, task_id):
+    """Read-only recovery offer; a checkout change never retargets publication."""
+    engine.require_active_task(task_id)
+    engine.admission.require_idle(task_id)
+    task = engine.store.get(task_id)
+    saved = task.get('pull_request')
+    if not enabled(task):
+        return None
+    if not saved:
+        from .integration_preparation import readiness
+        return readiness(engine, task_id)
+    if saved.get('url') or task.get('branch_run') or task.get('follow_up'):
+        return None
+    if github.destination(task['source'], saved['remote']) != (saved['repo'], saved['push_url']):
+        raise ValueError('The saved publication destination changed; restore it before recovery.')
+    # A lost create response must finish the original publication, not replace it.
+    if github.find_pull(saved['repo'], saved['branch']) or not missing_remote_base(saved):
+        return None
+    from .integration_preparation import candidate
+    engine.reviewed_patch(task)
+    state = commits.source_state(task['source'])
+    if state['branch'] == 'refs/heads/' + saved['base']:
+        raise ValueError('The saved PR base no longer exists on GitHub. Check out the intended destination branch, then retry the preview; saved work is intact.')
+    if missing_remote_base({**saved, 'base': state['branch'].removeprefix('refs/heads/')}):
+        raise ValueError('The current project branch is also missing on GitHub. Check out an existing destination branch before preparing this publication.')
+    return {'code': 'publication_target_missing', 'publication_id': saved['id'],
+            'previous_base': saved['base'], 'target_ref': state['branch'], 'target_tip': state['head'],
+            'candidate': candidate(task), 'actions': ['update_resolve'], 'files': [],
+            'message': 'The saved PR destination no longer exists on GitHub.'}
+
+
+def retire_publication(engine, task, values):
+    """Called by explicitly approved preparation, before its single durable save."""
+    offer = publication_recovery(engine, task['id'])
+    keys = ('publication_id', 'target_ref', 'target_tip', 'candidate')
+    if not offer or any(values.get(key) != offer[key] for key in keys):
+        raise ValueError('The publication or destination changed. Refresh the recovery preview.')
+    saved = task['pull_request']
+    retained = copy.deepcopy(saved)
+    retained['state'] = 'superseded'
+    task.setdefault('pull_request_history', []).append(retained)
+    # A separate branch preserves any already pushed commit and lost responses.
+    task['publication_generation'] = task.get('publication_generation', 0) + 1
+    task.pop('pull_request')
+
+
 def preview(engine, task_id):
     with engine.lock:
         engine.require_active_task(task_id)
@@ -116,7 +167,8 @@ def preview(engine, task_id):
         if saved and saved.get('ci', {}).get('state') in {'merged','closed','changed'}:
             raise ValueError('This PR was closed or changed outside cheapoS. Start a new task from the updated project for further work.')
         repo, push_url = github.destination(candidate['source'], policy(task)['remote'])
-        head_branch = 'cheapos/task-' + hashlib.sha256(task_id.encode()).hexdigest()[:24]
+        branch_seed = task_id + (':' + str(task['publication_generation']) if task.get('publication_generation') else '')
+        head_branch = 'cheapos/task-' + hashlib.sha256(branch_seed.encode()).hexdigest()[:24]
         message = re.sub(r'\s+', ' ', task.get('title') or 'cheapoS changes')[:200]
         operation = {**candidate, 'repo': repo, 'branch': head_branch, 'message': message,
                      'remote': policy(task)['remote'], 'push_url': push_url, 'id': uuid.uuid4().hex, 'created': time.time()}
@@ -187,6 +239,8 @@ def publish(engine, task_id, values):
         pull = github.find_pull(operation['repo'], operation['branch'], operation['base'])
         if pull and (pull.get('state') == 'closed' or pull.get('merged_at')):
             raise ValueError('The pull request is closed. Saved changes will not reopen or overwrite it.')
+        if pull is None and missing_remote_base(operation):
+            raise ValueError('The saved PR destination no longer exists on GitHub. Prepare the saved work against the current destination in Changes; publication still requires your approval.')
         destination = operation['push_url']
         ref = 'refs/heads/' + operation['branch']
         remote = work.source_git(source, 'ls-remote', '--refs', destination, ref)

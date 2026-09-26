@@ -42,11 +42,14 @@ def api(repo, endpoint, data=None, *, method=None):
     return json.loads(result.stdout)
 
 
-def find_pull(repo, head, base):
-    values = api(repo, 'pulls?' + urlencode({'state': 'all', 'head': repo.split('/')[0] + ':' + head, 'base': base, 'per_page': 100}))
+def find_pull(repo, head, base=None):
+    query = {'state': 'all', 'head': repo.split('/')[0] + ':' + head, 'per_page': 100}
+    if base is not None:
+        query['base'] = base
+    values = api(repo, 'pulls?' + urlencode(query))
     if not isinstance(values, list):
         raise ValueError('GitHub returned an invalid pull request listing')
-    matches = [p for p in values if p.get('head', {}).get('ref') == head and p.get('base', {}).get('ref') == base
+    matches = [p for p in values if p.get('head', {}).get('ref') == head and (base is None or p.get('base', {}).get('ref') == base)
                and (p.get('head', {}).get('repo') or {}).get('full_name', '').lower() == repo.lower()]
     if len(matches) > 1:
         raise ValueError('Multiple pull requests reference this task branch; inspect them on GitHub')

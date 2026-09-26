@@ -124,7 +124,7 @@ test('publication failures expose controller recovery and the update uses captur
   setAttribute(){},removeAttribute(){},querySelectorAll(){return [];},
   querySelector(selector){const attr=selector.slice(1,-1);return this.innerHTML.includes(attr)?(this.controls[selector]??={disabled:false}):null;},
   append(child){this.children.push(child);},insertAdjacentHTML(_,html){this.innerHTML+=html;}};}
- for(const stage of ['preview','update','publish']){
+ for(const stage of ['preview','update','publish','retry','unavailable']){
   const panel=element(),container={querySelector:s=>s==='[data-pull-request]'?panel:null};
   const saved={...task,status:'paused',integration_preparation:{status:'running',stage:'accepted'}};
   const context={CheapOSGitWorkflow:workflow,CheapOSIntegration:integration,state:{task},commitPreviews:new Map(),
@@ -132,10 +132,12 @@ test('publication failures expose controller recovery and the update uses captur
    api:async(url,body)=>{calls.push({url,body});
     if(url.endsWith('pull-request-preview')){
      if(stage==='preview')throw Error('The project branch changed since this chat started.');
+     if(stage==='retry'||stage==='unavailable')return {repo:'org/repo',branch:'task',base:'main',id:'preview',retry:true};
      return stage==='update'?{url:'https://github.com/org/repo/pull/7',number:7,update_blocker:'Branch changed'}:{repo:'org/repo',branch:'task',base:'main',id:'preview'};
     }
     if(url.endsWith('pull-request-publish'))throw Error('Branch changed after preview');
-    if(url.endsWith('integration-readiness'))return readiness;
+    if(url.endsWith('integration-readiness')){assert.ok(stage==='preview'||stage==='update');return readiness;}
+    if(url.endsWith('pull-request-recovery'))return stage==='unavailable'?null:stage==='retry'?{...readiness,publication_id:'saved',previous_base:'deleted'}:readiness;
     if(url.endsWith('integration-prepare'))return saved;
     throw Error('Unexpected API '+url);
    }};
@@ -147,10 +149,13 @@ test('publication failures expose controller recovery and the update uses captur
   context.bindCommitDecision(task);
   await new Promise(resolve=>setImmediate(resolve));
   if(stage==='publish')await panel.querySelector('[data-pr-publish]').onclick({currentTarget:panel.querySelector('[data-pr-publish]')});
+  if(stage==='unavailable'){assert.equal(panel.children.length,0);continue;}
   assert.equal(panel.children.length,1,stage);
+  if(stage==='retry')assert.equal(panel.querySelector('[data-pr-publish]').disabled,true);
+  if(stage==='publish'||stage==='retry')assert.ok(calls.at(-1).url.endsWith('pull-request-recovery'));
   const recovery=panel.children[0];
   assert.match(recovery.innerHTML,/Update &amp; resolve/);
-  assert.match(recovery.innerHTML,/fresh review/);
+  assert.match(recovery.innerHTML,/fresh.*review/);
   if(stage==='preview'){
    await recovery.querySelector('[data-integration-prepare]').onclick();
    const sent=calls.find(c=>c.url.endsWith('integration-prepare')).body;
