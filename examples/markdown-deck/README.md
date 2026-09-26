@@ -6,9 +6,10 @@ MarkdownDeck is a lightweight, zero‑dependency tool for turning a plain Markdo
 
 * **Slide separator** – `---` splits the document into individual slides.
 * **Presenter notes** – Comments in the form `<!-- note: ... -->` are extracted and shown in the notes pane.
-* **Keyboard navigation** – Left/Right arrow keys, Space, Home/End jump between slides.
+* **Keyboard navigation** – ArrowLeft/ArrowRight/Space jump between slides.
 * **Fullscreen toggle** – Press `F` to enter/exit fullscreen mode.
 * **Theme toggle** – Press `T` to switch between light and dark themes.
+* **Document title** – Taken from the first '# H1' line; falls back to 'Markdown Deck'.
 
 All resources (CSS & JavaScript) are embedded inline, so the output file is self‑contained.
 
