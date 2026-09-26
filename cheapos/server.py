@@ -615,7 +615,9 @@ class LocalHandler(SimpleHTTPRequestHandler):
                               'branch-resolve-conflicts', 'branch-operator-control', 'integration-prepare', 'reconcile', 'operator-recovery'}:
                     from .pr_followup import check_before_work
                     check_before_work(engine, task_id)
-                if action in {"preview-start", "preview-stop", "preview-status"}:
+                if action == "browser-permission":
+                    result = engine.browsers.permission(task_id, values)
+                elif action in {"preview-start", "preview-stop", "preview-status"}:
                     result = engine.previews.action(task_id, action, values)
                 elif action in {"trash", "restore"}:
                     if values:

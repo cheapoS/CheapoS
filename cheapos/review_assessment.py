@@ -283,6 +283,9 @@ def observation(state, name, args, result):
     if not isinstance(result, dict) or result.get('error') or result.get('available') is False:
         return result
     kind = 'code' if name in {'read_file', 'read_final_context', 'get_diff'} else 'check' if name == 'read_check_output' else None
+    if name == 'read_browser_evidence' and result.get('candidate') and not result.get('result', {}).get('error'):
+        kind = 'browser'
+        result = {**result, 'content': json.dumps(result, sort_keys=True)}
     content = result.get('content') or (result.get('output') if name == 'read_check_output' else None)
     if name == 'inspect_image' and result.get('status') == 'success':
         kind = 'code' if result.get('format') == 'svg' else 'image'

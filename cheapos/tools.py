@@ -74,7 +74,17 @@ COMPACT_WRITE = tool(
     ["path", "content"],
 )
 
+BROWSER_TOOL = tool(
+    "browser_preview",
+    "Authorized local preview: start freezes current files; status gives setup/logs; open connects when running. observe gives text/controls/errors; screenshot saves a PNG; stop closes processes. Interactions stay on the granted origin. Evidence never passes checks or approves work.",
+    {"action": {"type": "string", "enum": ["start", "status", "open", "stop", "navigate", "click", "fill", "press", "select", "viewport", "observe", "screenshot"]},
+     "url": TEXT, "selector": TEXT, "value": TEXT,
+     "width": {"type": "integer", "minimum": 320, "maximum": 1920},
+     "height": {"type": "integer", "minimum": 240, "maximum": 1200}}, ["action"])
+
 READ_TOOLS = [
+    tool("read_browser_evidence", "List retained browser observations, or read current evidence_id. Inspect returned browser: images with inspect_image. Read-only; rejects stale evidence.",
+         {"evidence_id": TEXT}),
     tool(
         "read_edit_history",
         "Inspect recent completed text edits and their undo IDs, current-version status, and Python symbol changes. Optional workspace-relative path. History is evidence, not permission.",
@@ -128,8 +138,11 @@ READ_TOOLS = [
     ),
     tool(
         "search",
-        "Search LOCAL repository files for a literal string, symbol name, or code snippet. Fast, recursive, respects ignore patterns, and capped. Prefer this to discover function/class definitions and references across the codebase instead of running custom find/grep scripts. Not internet search; use read_url for web links.",
-        {"query": TEXT},
+        "Find case-insensitive literal lines in eligible local files. path scopes a file/directory; glob uses case-sensitive fnmatch on full relative paths (* spans /). Defaults: limit 60, context_lines 0 per side. Continue next_cursor with identical args. For text_truncated, use read_file.",
+        {"query": TEXT, "path": TEXT, "glob": TEXT,
+         "limit": {"type": "integer", "minimum": 1, "maximum": 60},
+         "context_lines": {"type": "integer", "minimum": 0, "maximum": 5},
+         "cursor": TEXT},
         ["query"],
     ),
     tool(
@@ -147,7 +160,7 @@ READ_TOOLS = [
     ),
 ]
 
-WORKER_TOOLS = READ_TOOLS + [
+WORKER_TOOLS = READ_TOOLS + [BROWSER_TOOL,
     tool(
         "run_command",
         "Execute a setup or diagnostic command in this task copy under operator task-command permission. Direct argv syntax; no pipes or shell operators. Optional task-relative directory (default .). Output is retained; success does not count as verification. Use run_checks for required tests and builds. Do not run custom scripts to search or list files: use the provided search and list_files tools.",
@@ -328,6 +341,13 @@ def dispatch_file_tool(engine, task, name, args, runtime=None):
         task["tool_actions"] += 1
         engine.event(task, "tool", "read check output", {"arguments": args, "result": result})
         return result
+    if name == "browser_preview":
+        result = engine.browsers.action(task, args, active_runtime)
+        task["tool_actions"] += 1
+        engine.event(task, "tool", "browser preview", {"arguments": args, "result": result})
+        return result
+    if name == "read_browser_evidence":
+        return engine.browsers.read(task, args.get("evidence_id"))
     if name == "inspect_image":
         from .vision import inspect_image_tool
         result = inspect_image_tool(engine, task, args, runtime=active_runtime)

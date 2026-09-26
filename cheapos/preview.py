@@ -152,10 +152,14 @@ class Previews:
             profile = root / 'profile'
             profile.mkdir()
             env = os.environ.copy()
-            if not self.execute(run, ['git', 'clone', '--no-hardlinks', '--no-checkout', '--', workspace, str(copy)], root, env):
-                return
-            if not self.execute(run, ['git', 'checkout', '--detach', run['tip']], copy, env):
-                return
+            if run.get('prepared'):
+                env = {k: v for k, v in env.items() if k in {'PATH', 'SystemRoot', 'LANG', 'LC_ALL'}}
+                env['HOME'] = str(profile)
+            else:
+                if not self.execute(run, ['git', 'clone', '--no-hardlinks', '--no-checkout', '--', workspace, str(copy)], root, env):
+                    return
+                if not self.execute(run, ['git', 'checkout', '--detach', run['tip']], copy, env):
+                    return
             cfg = run['config']
             cwd = (copy / (cfg['directory'] or '.')).resolve()
             if not cwd.is_relative_to(copy.resolve()) or not cwd.is_dir():

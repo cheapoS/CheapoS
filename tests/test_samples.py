@@ -31,7 +31,12 @@ class SampleTests(LocalCase):
         return task,requests
 
     def test_real_sample_runs_tools_checks_and_separate_local_review(self):
+        self.engine.save_preferences({'limits': {'reviewer_tokens': 48000}})
         task,requests=self.sample();source=Path(task['source']);head=git(source,'rev-parse','HEAD');original=(source/'math_utils.py').read_text()
+        self.assertEqual(task['limits']['reviewer_tokens'], 48000)
+        # A later preference change must not rewrite the captured sample allowance.
+        self.engine.save_preferences({'limits': {'reviewer_tokens': 12000}})
+        self.assertEqual(self.engine.store.get(task['id'])['limits']['reviewer_tokens'], 48000)
         self.engine.start(task['id']);result=self.finish(task)
         self.assertEqual(result['status'],'approved',result['error'])
         self.assertTrue(result['sample']);self.assertFalse(result['demo'])

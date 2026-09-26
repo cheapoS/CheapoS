@@ -588,7 +588,7 @@ def _checkpoint(engine, runtime, args):
             elif name == 'read_review_evidence' and proof is not None:
                 try: result = review_assessment.read(proof, **params)
                 except (ValueError, TypeError) as error: result = {'error': str(error)}
-            elif name in {'read_file','outline_file','get_project_context','search','list_files','get_diff','read_check_output','read_merge_context','read_context_evidence','read_edit_history','inspect_image'}:
+            elif name in {'read_file','outline_file','get_project_context','search','list_files','get_diff','read_check_output','read_merge_context','read_context_evidence','read_edit_history','inspect_image','read_browser_evidence'}:
                 try: result = engine.file_tool(task,name,params,runtime=runtime)
                 except (ValueError,OSError,TypeError,UnicodeError) as error: result = {'error':str(error)[:1000]}
             elif name == 'read_url': result = engine.read_url(runtime,params)

@@ -268,3 +268,65 @@ and reject stale final-review record digests. Output-filter tests preserve the
 index while shortening eligible unittest output. Diagnostics never grant a
 verification result, review decision or permission. See
 [the diagnostic contract](check-diagnostics.md).
+
+## Scoped local search
+
+`READ_TOOLS.search` now offers `path`, `glob`, `limit`, `context_lines` and
+`cursor` alongside the existing literal `query`. It returns bounded matches,
+continuation and explicit clipping/skip metadata; stale source bindings require
+a fresh search. The existing `runtime.tool_contract` catalog rule carries the
+conditional search-completeness guidance at the provider boundary. No new prompt
+entry point, tool authority, review citation or approval path is introduced.
+
+`test_search` inspects the actual `_request_attempt` provider boundary for worker,
+Interactive, Unattended, reviewer, read-only work and discussion tools. It executes
+returned calls through the real file dispatcher, corrects invalid arguments,
+JSON-restores saved state, changes the provider, and completes pagination with
+paired replies, preserved checks/grants/attempts and one current contract. A
+separate real item-review entry-point test delivers both pages before an explicit
+validated decision. Existing runtime/review recovery checks cover phases that
+filter search out, including decision coaching and final review; the conditional
+prose never grants it back. See [local code search](local-code-search.md) for the
+response migration, consumer audit, bounds and filesystem consistency limits.
+
+Search descriptions and repeated contract guidance stay concise because the
+conservative reservation counts serialized request bytes, including schemas.
+Compacting redundant descriptions restored sample and multi-item execution under
+their original 20,000/30,000-token allowances without changing reservation
+accounting or removing server-side argument validation. The sample's special
+20,000-token override was subsequently removed: new samples capture the saved
+reviewer allowance, while existing tasks keep their captured limit. The sample
+regression verifies capture and independence from later preference changes;
+spending and the shared reservation guard remain unchanged.
+
+## Authorized local browser verification
+
+The existing `workflow.ui_completeness` catalog rule now describes optional browser
+verification and retained evidence. Worker/Interactive/Unattended tool sets offer
+`browser_preview`; read-only chat filters it out. Dispatch separately enforces the
+operator's saved task/workspace and exact preview-configuration grant. Neither tool
+arguments nor saved model messages can create consent. Current request assembly still
+refreshes the single catalog rule through correction, handoff and Resume.
+
+Item/Interactive/final review offer `read_browser_evidence` and the existing
+`inspect_image` reader. Final review units include these in read-only evidence batches;
+no reviewer phase receives browser execution authority. Screenshot references resolve
+only after current candidate and image digest validation; image assessment retains the
+reviewer's normal identity, budget and cancellation path. Text/console observations are
+supporting evidence and do not relax code/visual or named-command citation requirements.
+
+`test_runtime_instructions` checks actual provider tool assembly for Interactive,
+Unattended and read-only requests without policy accumulation. `test_browser` exercises
+consent, startup, changed inputs/configuration, cancellation, restart and the final review
+entry through retained evidence, independent image inspection and a separate validated
+approval. Existing unit, batch, progress and permission checks preserve review coverage,
+integration requirements and model/check authority. Browser lifecycle tests use small
+file and in-memory fixtures; real Chromium verification is a separate disposable smoke
+check, not a new mandatory heavyweight test.
+
+Browser tool descriptions and the shared UI rule avoid repeating the same lifecycle
+and evidence instructions. Serialized schemas and prompt prose count toward the
+conservative request reservation; the existing sample and multi-item branch
+execution tests exercise these assembled requests under their captured allowances.
+Compacting this guidance does not change reservation accounting, permission
+validation, check requirements or independent approval.
