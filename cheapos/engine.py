@@ -75,7 +75,9 @@ def worker_system(task):
     from .task_commands import POLICY, allowed
     from .instructions.runtime import validation
     from . import pr_description
-    return _worker_system(task) + "\n" + validation(task) + "\n" + POLICY + "\nTask command permission: " + ('enabled' if allowed(task) else 'not granted; existing check permissions still apply') + ('\n' + pr_description.WORKER if pr_description.enabled(task) else '')
+    from .command_backend import captured, descriptor
+    backend_context = "\nCommand execution environment: " + json.dumps(descriptor(captured(task)), sort_keys=True)
+    return _worker_system(task) + "\n" + validation(task) + "\n" + POLICY + backend_context + "\nTask command permission: " + ('enabled' if allowed(task) else 'not granted; existing check permissions still apply') + ('\n' + pr_description.WORKER if pr_description.enabled(task) else '')
 
 
 def _worker_system(task):
@@ -464,6 +466,8 @@ class Engine:
     def __init__(self, data_directory, provider_factory=None, fixture_delay=0.12):
         if isinstance(fixture_delay, bool) or not isinstance(fixture_delay, (int, float)) or not math.isfinite(fixture_delay) or not 0 <= fixture_delay <= 1:
             raise ValueError("Fixture pacing must be between zero and one second")
+        from .command_backend import select
+        self.command_backend_default = select(os.environ.get("CHEAPOS_COMMAND_BACKEND", "host"))
         self.fixture_delay = fixture_delay
         self.store = Store(data_directory)
         self.lock = threading.RLock()
@@ -755,6 +759,8 @@ class Engine:
         return task
 
     def create(self, values, demo=False, snapshot_override=None, task_id=None, settings_snapshot=None, initial_fields=None):
+        from .command_backend import select
+        command_backend = select(values.get("command_backend", getattr(self, "command_backend_default", "host")))
         prompt = values.get("prompt", "")
         conversational = values.get("conversational", False)
         if not isinstance(conversational, bool):
@@ -804,6 +810,7 @@ class Engine:
                                           "target_tip": branch_workspace._tip(source, target_ref)}
         if initial_fields:
             task.update(copy.deepcopy(initial_fields))
+        task["command_backend"] = command_backend
         task["checkpoint_policy"] = "soft"
         task['metrics_schema'] = 1
         metrics.initialize_actions(task, fresh=True)
@@ -1286,7 +1293,7 @@ class Engine:
         with self.lock:
             task = self.store.get(task_id)
             commands = [list(argv) for directory, argv in self.command_permissions.get(task_id, set()) if directory == task["workspace"]]
-            return {"commands": sorted(commands), "directory": task["workspace"], "expires": "server_restart", "project_grants": self.project_test_grants.visible(task), "task_commands": allowed(task)}
+            return {"commands": sorted(commands), "directory": task["workspace"], "expires": "server_restart", "project_grants": self.project_test_grants.visible(task), "task_commands": allowed(task), "command_backend": task.get("command_backend", "host")}
 
     def set_task_command_permission(self, task_id, values):
         from .task_commands import grant
@@ -2990,6 +2997,9 @@ class Engine:
                 self.event(task, 'check_command', 'Using the approved verification command',
                            {'requested_command': argv, 'command': approved})
                 argv = approved
+        from .command_backend import captured, available, descriptor
+        backend = captured(task)
+        available(backend)
         readiness = environment.inspect(check_task, argv) if not general else {"status": "ready"}
         if readiness['status'] == 'missing':
             task['environment_setup'] = readiness
@@ -3099,7 +3109,7 @@ class Engine:
             with self.admission.resource("checks", runtime):
                 runtime.guard()
                 try:
-                    result = workspace.run_checks(argv, runtime if developing(task) else runtime.stop, timeout=effective, on_output=emit, on_raw_file=retain_raw, **({'directory': directory} if general or directory != '.' else {}))
+                    result = workspace.run_checks(argv, runtime if developing(task) else runtime.stop, timeout=effective, on_output=emit, on_raw_file=retain_raw, **({'directory': directory} if general or directory != '.' else {}), **({'backend': backend} if backend != 'host' else {}))
                 except OSError as error:
                     if not general: raise
                     result = {'command': argv, 'passed': False, 'exit_code': None, 'output': str(error), 'reason': 'process could not start', 'duration': 0}
@@ -3108,6 +3118,7 @@ class Engine:
             task["updated_at"] = now()
             self.store.publish(task)
         if directory != '.': result['directory'] = directory
+        result["execution_environment"] = descriptor(backend)
         result["run_id"] = live["run_id"]
         result["raw_output"] = raw_info
         if diagnostics:

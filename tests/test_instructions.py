@@ -1029,7 +1029,9 @@ class PromptParityTests(unittest.TestCase):
         """Delivered worker systems select catalog profiles and scoped validation across modes."""
         from cheapos import engine, unattended_setup, task_commands
         from cheapos.instructions.runtime import prompt, validation
-        command_policy = task_commands.POLICY + "\nTask command permission: not granted; existing check permissions still apply"
+        import json
+        from cheapos.command_backend import descriptor
+        command_policy = task_commands.POLICY + "\nCommand execution environment: " + json.dumps(descriptor("host"), sort_keys=True) + "\nTask command permission: not granted; existing check permissions still apply"
 
         # 1. Interactive mode without finish_review
         task_interactive = {"conversational": True}

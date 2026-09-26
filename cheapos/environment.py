@@ -33,6 +33,18 @@ def inspect(task,argv):
     state={'version':1,'status':'ready','workspace':task['workspace'],'directory':str(root),'command':list(argv),'missing':None,
            'evidence':'Only directly observable prerequisites were inspected; installed dependencies and test correctness are otherwise unverified.',
            'next_step':'Run the selected verification command with its normal permission checks.','setup_commands':[],'sources':[]}
+    from .command_backend import captured, available, executable, descriptor
+    backend = captured(task)
+    state['execution_environment'] = descriptor(backend)
+    try:
+        available(backend)
+    except ValueError as error:
+        state.update(status='missing', missing='command_backend', evidence=str(error),
+                     next_step='The operator must provide the selected Linux backend; no host fallback or installation is authorized.')
+        return state
+    if backend != 'host':
+        found = executable(value, Path(task['workspace']).resolve(), root)
+        selected = Path(found) if found else None
     if not root.is_dir():
         state.update(status='missing', missing='directory', evidence='The verification working directory does not exist: '+task.get('check_directory', '.'), next_step='Create the planned component in this task copy before running its checks.')
     elif selected is None or not selected.is_file() or not os.access(selected,os.X_OK):

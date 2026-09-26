@@ -83,6 +83,8 @@ class Previews:
         with self.lock:
             task = self.engine.store.get(task_id)
             if action == 'preview-start':
+                from .command_backend import require_host_preview
+                require_host_preview(task)
                 if task.get('workspace_cleanup', {}).get('state') in {'reclaiming', 'reclaimed'}:
                     raise ValueError('This merged task copy has been reclaimed. Preview the merged project or continue in a new task.')
             run = self.runs.get(task_id)

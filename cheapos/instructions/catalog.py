@@ -799,8 +799,10 @@ RULES: List[InstructionRule] = [
             'successful setup command is NOT verification: run_checks and independent checkpoint review '
             'are still required. Do not change required checks or package scripts merely to hide missing '
             'dependencies. Do not deploy, push, commit, access credentials, or modify other checkouts. '
-            "Dependency scripts execute with the host user's permissions; the task copy is not a "
-            'security sandbox.'
+            'The controller reports the captured command backend. Host mode executes with the host user permissions; '
+            'a task copy alone is not a security sandbox. Bubblewrap mode is Linux-only and offline; '
+            'home/temp are ephemeral, so prepare persistent dependencies in the task copy. '
+            'Do not request a backend change or bypass isolation to fix setup failures.'
         ),
         rationale="Canonical runtime guidance selected by an explicit instruction profile."
     ),

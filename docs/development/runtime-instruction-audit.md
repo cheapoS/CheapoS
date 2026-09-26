@@ -330,3 +330,13 @@ conservative request reservation; the existing sample and multi-item branch
 execution tests exercise these assembled requests under their captured allowances.
 Compacting this guidance does not change reservation accounting, permission
 validation, check requirements or independent approval.
+## Captured command backend
+
+`workflow.task_commands` describes host and offline Bubblewrap execution without
+granting backend changes. `worker_system` appends the controller's current
+`execution_environment` descriptor once as task data. Existing provider-boundary
+refresh replaces stale system text in Interactive, Unattended and read-only
+requests, including repeated assembly after correction, Resume or handoff. No
+backend tool or model-selectable argument is offered. The deterministic
+`test_runtime_instructions` transport cases cover both backends and preserve
+saved evidence while checking actual schemas and non-accumulation.

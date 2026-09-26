@@ -16,6 +16,7 @@ from urllib.parse import urljoin, urlsplit
 
 from . import task_commands, work_policy
 from .preview import config
+from .command_backend import require_host_preview
 from .workspace import Workspace, git
 
 
@@ -130,6 +131,7 @@ class Browsers:
             if type(values.get('enabled')) is not bool:
                 raise ValueError('Provide an explicit browser permission decision')
             if values['enabled']:
+                require_host_preview(task)
                 if values.get('directory') != task['workspace']:
                     raise ValueError('Task copy changed; reopen browser permission before authorizing')
                 if running:
@@ -149,6 +151,7 @@ class Browsers:
         return {'enabled': values['enabled']}
 
     def authorized(self, task):
+        require_host_preview(task)
         grant = task.get('browser_permission') or {}
         if grant.get('binding') != task_commands.binding(task):
             raise ValueError('Authorize agent browser verification in Session permissions or the task preview panel first')
@@ -277,6 +280,7 @@ class Browsers:
         return request
 
     def start(self, task, cfg, guard):
+        require_host_preview(task)
         self.stop(task['id'])
         url = urlsplit(cfg['url'])
         with socket.socket(socket.AF_INET6 if ':' in url.hostname else socket.AF_INET) as probe:

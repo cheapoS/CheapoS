@@ -282,7 +282,7 @@ The current evidence includes a **completed live delegation loop**: a local Gemm
 
 The implementation is documented feature by feature: [**workspace, permissions, onboarding, recovery, context, and model selection**](docs/archive/TASKS.md) · [**planning, feature-branch commits, final review, and local merge**](docs/archive/BRANCH_RUNS.md). Each card records its scope and validation. [Task metrics](docs/development/task-metrics.md) and [optimization experiments](docs/experiments/context-compression.md) make the underlying measurements inspectable.
 
-**Know the boundaries:** checks execute project code on your computer; a separate task copy is not an operating-system sandbox. Remote models receive the context sent to them. Budget caps are estimates. Workers can prepare dependencies when you enable [task command permission](docs/development/task-command-execution.md); otherwise setup remains manual. Read the [user guide](docs/USER_GUIDE.md) and [security notes](SECURITY.md) before using an unfamiliar repository.
+**Know the boundaries:** checks execute project code on your computer (host mode by default, with optional [Linux command isolation](docs/development/command-isolation.md)); a separate task copy is not an operating-system sandbox. Remote models receive the context sent to them. Budget caps are estimates. Workers can prepare dependencies when you enable [task command permission](docs/development/task-command-execution.md); otherwise setup remains manual. Read the [user guide](docs/USER_GUIDE.md) and [security notes](SECURITY.md) before using an unfamiliar repository.
 
 ## Why CheapoS exists
 

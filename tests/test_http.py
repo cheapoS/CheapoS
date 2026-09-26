@@ -493,10 +493,15 @@ class HTTPTests(unittest.TestCase):
             self.assertEqual(self.request('GET', path)[0], 404, path)
 
     def test_task_creation_and_keys_redacted(self):
+        self.engine.command_backend_default = 'bubblewrap'
         status, _, body = self.post('/api/demo', {})
         self.assertEqual(status, 200)
         task = json.loads(body)
         self.assertEqual(task['status'], 'ready')
+        self.assertEqual(task['command_backend'], 'bubblewrap')
+        self.engine.command_backend_default = 'host'
+        stored = json.loads(self.request('GET', '/api/tasks/'+task['id'])[2])
+        self.assertEqual(stored['command_backend'], 'bubblewrap')
         self.assertNotIn('messages', task)
         self.assertEqual(self.request('GET', '/api/tasks/'+task['id'])[0], 200)
         status, headers, body = self.request('GET', '/api/tasks/'+task['id']+'/patch')

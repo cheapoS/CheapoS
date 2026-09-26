@@ -67,7 +67,7 @@ class Schedules:
             self.engine.settings_policy(snapshot)
             if run['plan']['limits'].get('dollars') != 0:
                 raise ValueError('Scheduled tasks currently require a $0 API spending allowance. Approve a zero-spend plan first.')
-            template = {'repository': task['source'], 'project': inspect_source(task['source']),
+            template = {'command_backend': task.get('command_backend', 'host'), 'repository': task['source'], 'project': inspect_source(task['source']),
                         'prompt': task['prompt'], 'plan': validate_plan(run['plan']),
                         'inputs': copy.deepcopy(run.get('inputs', {})),
                         'target_ref': run['target_ref'], 'settings_snapshot': copy.deepcopy(snapshot)}
@@ -304,6 +304,7 @@ class Schedules:
             self.engine.admission.pending[task_id] = 'unattended'
         try:
             template = copy.deepcopy(record['template'])
+            template.setdefault('command_backend', 'host')
             if template['plan']['limits'].get('dollars') != 0:
                 raise ValueError('Scheduled tasks require a $0 API spending allowance')
             if inspect_source(template['repository']) != template.pop('project'):

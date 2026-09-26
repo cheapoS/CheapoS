@@ -39,6 +39,7 @@ class ScheduleTests(unittest.TestCase):
         self.schedules = Schedules(self.engine, lambda: self.now)
 
     def prepare(self, values, *, captured_settings, reserved_task_id):
+        self.assertEqual(values['command_backend'], self.task.get('command_backend', 'host'))
         # A fresh receipt must be requested even though the template was approved.
         self.assertEqual(self.engine.admission.pending[reserved_task_id], 'unattended')
         task = {'id': reserved_task_id, 'branch_run': {'status': 'awaiting_authorization'}}
@@ -129,6 +130,7 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(self.tasks['original']['branch_run']['status'], 'merged')
 
     def test_due_run_retains_settings_and_gets_fresh_authority_without_overlap(self):
+        self.task['command_backend'] = 'bubblewrap'
         key = self.create()
         self.schedules.tick(); self.engine.branch.prepare.assert_not_called()
         self.task['settings_snapshot']['values']['roles']['worker']['model'] = 'later-default'

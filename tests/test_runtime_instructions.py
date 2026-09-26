@@ -112,11 +112,12 @@ class RuntimeInstructionTests(unittest.TestCase):
 
     def test_final_provider_receives_fresh_worker_policy_and_actual_tools_once(self):
         from tests.test_transport import TransportTests
-        for unattended, read_only in ((False, False), (False, True), (True, False)):
+        for unattended, read_only, backend in ((False, False, 'host'), (False, False, 'bubblewrap'), (False, True, 'bubblewrap'), (True, False, 'bubblewrap')):
             with self.subTest(unattended=unattended, read_only=read_only):
                 app, runtime, _ = TransportTests().harness()
                 task = runtime.task
                 task['conversational'] = True
+                task['command_backend'] = backend
                 if unattended:
                     task['branch_run'] = {'authorization_ref': {'id': 'approved'}}
                 if read_only:
@@ -141,6 +142,10 @@ class RuntimeInstructionTests(unittest.TestCase):
                 self.assertEqual(policy.count(text('workflow.ui_completeness')), 1)
                 self.assertEqual(policy.count(TOOL_CONTRACT), 1)
                 self.assertIn(engine.worker_system(task), policy)
+                self.assertEqual(policy.count('Command execution environment:'), 1)
+                self.assertIn('\"backend\": \"' + backend + '\"', policy)
+                for tool in actual:
+                    self.assertNotIn('command_backend', tool['function'].get('parameters', {}).get('properties', {}))
                 if unattended:
                     self.assertEqual(policy.count(text('workflow.unattended_policy')), 1)
                     self.assertNotIn('Approve & commit', policy)

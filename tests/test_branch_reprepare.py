@@ -41,9 +41,12 @@ class BranchReprepareTests(unittest.TestCase):
             with patch('cheapos.branch_controller.work._tip',side_effect=tips),self.assertRaisesRegex(ValueError,message):
                 self.engine.branch.prepare(values,planning_task=saved)
             self.assertEqual(self.engine.store.get(task_id)['usage'],saved['usage'])
+        saved.pop('command_backend', None)  # legacy planning capture means host
+        self.engine.command_backend_default = 'bubblewrap'
         with patch('cheapos.branch_controller.work.prepare', side_effect=AssertionError('Existing snapshot must be reused')):
             replanned=self.engine.branch.prepare(values,planning_task=saved)
         after=self.engine.store.get(task_id)
+        self.assertEqual(after['command_backend'], 'host')
         self.assertEqual(after['workspace'],saved['workspace'])
         self.assertEqual(after['usage'],saved['usage'])
         self.assertEqual(after['branch_run']['consumption'],saved['branch_run']['consumption'])

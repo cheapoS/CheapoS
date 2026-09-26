@@ -81,12 +81,15 @@ class SnapshotTests(unittest.TestCase):
         self.tip = git(self.source, 'rev-parse', 'HEAD').strip()
 
     def test_only_later_edits_survive_and_fresh_task_needs_new_review(self):
+        self.task['command_backend'] = 'bubblewrap'
+        self.engine.store.save(self.task)
         before = git(self.workspace, 'status', '--porcelain')
         git(self.source, 'checkout', '--detach', '-q')
         (self.source / 'local-draft.txt').write_text('never copy my draft\n')
         receipt = {'state':'updated', 'remote_head':self.tip, 'retryable':False}
         with patch.object(git_sync, 'synchronize', return_value=receipt) as sync:
             child = follow.create(self.engine, self.task['id'], {})
+            self.assertEqual(child['command_backend'], 'bubblewrap')
             sync.assert_called_once()
             again = follow.create(self.engine, self.task['id'], {})
             self.assertEqual(child['id'], again['id'])

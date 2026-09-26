@@ -64,6 +64,9 @@ class ProjectTestGrants:
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
     def proposal(self, task, argv):
+        from .command_backend import captured
+        if captured(task) != 'host':
+            return None
         try:
             self.binding(task)
             executable = executable_identity(argv[0], task['workspace'])
@@ -89,6 +92,9 @@ class ProjectTestGrants:
             return None
 
     def authorize(self, task, argv):
+        from .command_backend import captured
+        if captured(task) != 'host':
+            return None, 'Isolated checks require exact or task command permission'
         reason = 'No project-session test grant covers this command'
         for grant in self.grants.values():
             profile = grant['profile']
@@ -119,6 +125,9 @@ class ProjectTestGrants:
         return grant
 
     def visible(self, task):
+        from .command_backend import captured
+        if captured(task) != 'host':
+            return []
         result = []
         for grant in self.grants.values():
             if grant['profile']['project'] != task['source']:

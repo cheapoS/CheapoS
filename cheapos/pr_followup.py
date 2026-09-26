@@ -211,7 +211,7 @@ def create(engine, task_id, values):
         if settings and settings['values'].get('keep_up_to_date'):
             initial['integration_policy'] = {'keep_up_to_date': True,
                 'target_ref': 'refs/heads/' + p['base'], 'target_tip': base}
-        child = engine.create({'repository': p['source'], 'prompt': prompt[:8000], 'conversational': True},
+        child = engine.create({'command_backend': parent.get('command_backend', 'host'), 'repository': p['source'], 'prompt': prompt[:8000], 'conversational': True},
             task_id=child_id, snapshot_override=(workspace, snapshot), settings_snapshot=settings, initial_fields=initial)
         engine.refresh_changes(child)
         child['follow_up']['ready'] = True
