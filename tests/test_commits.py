@@ -29,7 +29,10 @@ class CommitTests(CommitCase):
         self.assertEqual(pr['base'], git(self.source,'branch','--show-current').strip())
         original_git = git_workflow.work.source_git
         def local_only(source, *args, **kwargs):
-            if args[0] in {'ls-remote','push'}:return ''
+            if args[0] == 'ls-remote':
+                base_ref = 'refs/heads/' + pr['base']
+                return self.head + '\t' + base_ref if args[-1] == base_ref else ''
+            if args[0] == 'push':return ''
             return original_git(source, *args, **kwargs)
         def created(*args):
             saved = self.engine.store.get(self.task['id'])['pull_request']
