@@ -49,3 +49,9 @@ No additional tools, prompt entry points or policy instructions are introduced.
 Focused coverage lives in `test_check_diagnostics.py`, `test_check_output.py`, and
 `test_check_diagnostics.js`, with existing verification, output filtering, receipt
 and review tests covering the surrounding contracts.
+
+Empty indexes retain status and scan bounds without repeated explanatory prose.
+Their serialized size is regression-checked because check receipts also enter
+budgeted review requests. Existing multi-item execution coverage must still reach
+independent final approval under its captured reviewer allowance; this feature
+must not require increasing that allowance or weakening reservation accounting.

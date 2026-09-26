@@ -89,10 +89,13 @@ def parse(data, run_id, *, truncated=False):
             items.append(item)
             formats.add(kind)
         offset = end
-    return {'version': VERSION, 'status': 'partial' if limited else 'recognized' if items else 'unparsed',
-            'formats': sorted(formats), 'items': items, 'scanned_bytes': offset,
-            'limited': limited, 'note': 'Best-effort diagnostic index, not a verdict or exhaustive failure list. '
-            'Use this run’s original output and authoritative status; paths are reporter text relative to its working directory.'}
+    result = {'version': VERSION, 'status': 'partial' if limited else 'recognized' if items else 'unparsed',
+              'formats': sorted(formats), 'items': items, 'scanned_bytes': offset, 'limited': limited}
+    # Empty indexes recur in review packets. Keep their explicit status and scan
+    # bounds, without charging every passing check for redundant explanatory prose.
+    if items:
+        result['note'] = 'Non-exhaustive index; status is authoritative; paths relative to command cwd.'
+    return result
 
 
 def from_file(path, run_id, truncated=False):

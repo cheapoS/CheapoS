@@ -44,6 +44,8 @@ class DiagnosticTests(unittest.TestCase):
                 self.assertEqual(result['status'], 'unparsed')
                 self.assertEqual(result['items'], [])
                 self.assertNotIn('passed', result)
+                self.assertLessEqual(len(json.dumps(result).encode()), 160,
+                                     'Empty indexes must not crowd out review request headroom')
 
     def test_item_text_and_serialized_index_budgets(self):
         result = parse(b'a.py:1:2: F401 unused\n' * (MAX_ITEMS+1), RUN)
