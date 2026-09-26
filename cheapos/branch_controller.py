@@ -146,6 +146,7 @@ class BranchController:
         return result
 
     def prepare(self, values, planning_task=None, *, captured_settings=None, reserved_task_id=None):
+        from .command_backend import captured
         # Recurrence is controller-owned standing authority, never model input.
         fresh_settings = copy.deepcopy(captured_settings)
         git_sync = None
@@ -212,7 +213,7 @@ class BranchController:
             run['model_policy']=policy
             limits=run['limits']
             task=self.engine.create({'repository':mapping['source'],'prompt':original or 'Complete '+str((inputs.get('document') or {}).get('path') or 'the proposed work')+': '+plan['items'][0]['title'], 'conversational':True,
-                                     'check_command':shlex.join(commands[0]['command']),'limits':{'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),
+                                     'command_backend': captured(planning_task) if planning_task is not None else values.get('command_backend', getattr(self.engine, 'command_backend_default', 'host')), 'check_command':shlex.join(commands[0]['command']),'limits':{'dollars':limits['dollars'],'run_minutes':min(720,max(1,(limits['working_seconds']+59)//60)),
                                      'worker_turns':200,'iterations':20,'reviewer_tokens':limits['reviewer_tokens'],'check_seconds':limits['check_seconds'],'output_tokens':limits['output_tokens']}},
                                     snapshot_override=(Workspace(mapping['workspace']),mapping['snapshot']),task_id=task_id,
                                     **({'settings_snapshot':settings_snapshot} if settings_snapshot is not None else {}))
@@ -288,6 +289,9 @@ class BranchController:
         if 'gateway_access' not in run.get('model_policy', {}): policy.pop('gateway_access', None)
         policy = policy_for_saved(policy, run.get('model_policy', {}))
         workspace = run['authorization_workspace'] if run.get('authorization_workspace') is not None else (run.get('workspace_mapping') or {})
+        from .command_backend import captured, descriptor
+        if captured(task) != 'host':
+            policy['command_backend'] = descriptor(captured(task))
         return contract_builder(authorization_run(run), workspace, policy, run.get('check_scope', []))
 
     def authorize(self, task_id, values, *, background=False):
@@ -701,7 +705,7 @@ class BranchController:
             else:
                 task_id=uuid.uuid4().hex;source=inputs['source']
                 directory=self.engine.store.root/'tasks'/task_id/'workspace'
-                task=self.engine.create({'repository':source,'prompt':inputs['prompt'] or 'Plan work from '+inputs['document']['path'], 'conversational':True,
+                task=self.engine.create({'command_backend': values.get('command_backend', getattr(self.engine, 'command_backend_default', 'host')), 'repository':source,'prompt':inputs['prompt'] or 'Plan work from '+inputs['document']['path'], 'conversational':True,
                                           'limits':{'dollars':limits['dollars'],'run_minutes':max(1,(limits['working_seconds']+59)//60),'reviewer_tokens':limits['reviewer_tokens'],'output_tokens':limits['output_tokens']}},
                                          task_id=task_id,snapshot_override=(Workspace(directory),{'source':source,'files':0,'skipped':[]}),
                                          **({'settings_snapshot':settings_snapshot} if settings_snapshot is not None else {}))

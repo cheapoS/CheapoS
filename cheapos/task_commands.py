@@ -1,6 +1,6 @@
 """Operator-granted command execution in one task copy, independent of test evidence.
 
-This is a host process permission, not a sandbox. Only trusted controller entry
+This permission is independent of the selected command isolation backend. Only trusted controller entry
 points may grant it; model arguments and project files cannot create grants.
 """
 from .instructions.runtime import text as instruction
@@ -26,7 +26,11 @@ def binding(task):
         raise ValueError('Commands require a separate task copy')
     if root.name != 'workspace' or root.parent.name != task['id'] or root.parent.parent.name != 'tasks':
         raise ValueError('Commands require the registered task workspace')
-    return {'task_id': task['id'], 'source': identity(source), 'workspace': identity(root)}
+    from .command_backend import captured, descriptor
+    result = {'task_id': task['id'], 'source': identity(source), 'workspace': identity(root)}
+    if captured(task) != 'host':
+        result['command_backend'] = descriptor(captured(task))
+    return result
 
 
 def grant(task, enabled):

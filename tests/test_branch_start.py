@@ -83,10 +83,21 @@ class BranchStartTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.engine.branch.validate_authority(self.engine.store.get(task['id']),self.engine.store.get(task['id'])['branch_run'])
 
     def test_tampering_forgery_and_changed_scope_do_not_create_branch(self):
+        self.values['command_backend'] = 'bubblewrap'
+        for mock in (patch('cheapos.command_backend.available'),
+                     patch('cheapos.command_backend.identity', return_value={'backend': 'bubblewrap'}),
+                     patch('cheapos.command_backend.executable', return_value=sys.executable)):
+            mock.start(); self.addCleanup(mock.stop)
         proposal=self.engine.branch.prepare(self.values);task_id=proposal['task_id']
         for values in ({'proposal_id':'forged','approved':True},{'proposal_id':proposal['proposal_id'],'approved':False}):
             with self.assertRaises(ValueError):self.engine.branch.authorize(task_id,values)
-        task=self.engine.store.get(task_id);task['branch_run']['plan']['items'][0]['instructions']='Different work';self.engine.store.save(task)
+        task=self.engine.store.get(task_id)
+        self.assertEqual(task['command_backend'], 'bubblewrap')
+        task['command_backend'] = 'host'
+        self.engine.store.save(task)
+        with self.assertRaises(ValueError): self.engine.branch.authorize(task_id, {'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True})
+        task['command_backend'] = 'bubblewrap'
+        task['branch_run']['plan']['items'][0]['instructions']='Different work';self.engine.store.save(task)
         with self.assertRaises(ValueError):self.engine.branch.authorize(task_id,{'proposal_id':proposal['proposal_id'],'approved':True,'full_suite_approved':True})
         self.assertIsNone(_tip(self.source,'refs/heads/feature/job'))
 

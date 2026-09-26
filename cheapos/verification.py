@@ -81,7 +81,16 @@ def evidence_identity(task):
         workspace = Workspace(task['workspace'])
         from .check_specs import cwd
         working = cwd(task)
-        runner = runner_identity(task['check_command'], working)
+        from .command_backend import captured, identity as backend_identity, executable
+        backend = captured(task)
+        isolation = backend_identity(backend, workspace.root, working)
+        argv = task['check_command']
+        if backend != 'host':
+            resolved = executable(argv[0], workspace.root, working)
+            if not resolved:
+                return None
+            argv = [resolved, *argv[1:]]
+        runner = runner_identity(argv, working)
         if runner is None:
             return None
         value = {'version': 1, 'workspace': str(workspace.root),
@@ -90,6 +99,8 @@ def evidence_identity(task):
                  'patch': hashlib.sha256(workspace.patch(validate="branch_run" in task).encode()).hexdigest(),
                  'command': task['check_command'], 'runner': runner,
                  'config': config_identity(workspace.root)}
+        if isolation is not None:
+            value['command_backend'] = isolation
         if task.get('check_directory', '.') != '.':
             stat = working.stat()
             value['check_directory'] = [task['check_directory'], str(working), stat.st_dev, stat.st_ino]

@@ -138,10 +138,16 @@ not mutated. A projected scope must equal the materialized prepare() result.
         working = cwd(task, directory, allow_missing=allow_missing)
         scoped = {'check_directory': directory} if directory != '.' else {}
         profile = self.project_grants.proposal(task, argv) if directory == '.' else None
-        executable = executable_identity(argv[0], working) if working.is_dir() else None
+        from .command_backend import captured, executable as isolated_executable, identity as backend_identity
+        backend = captured(task)
+        isolation = backend_identity(backend, Path(task['workspace']).resolve(), working)
+        executable = (isolated_executable(argv[0], Path(task['workspace']).resolve(), working) if backend != 'host'
+                      else executable_identity(argv[0], working)) if working.is_dir() else None
         if not executable and allow_missing:
             binding = {'task_id': task['id'], 'source': identity(task['source']),
                        'workspace': identity(task['workspace']), 'command': argv, **scoped}
+            if isolation is not None:
+                binding['command_backend'] = isolation
             return {'command': list(argv), 'directory': str(working), 'profile': None, **scoped,
                     'setup_required': True, 'fingerprint': digest(binding)}
         if not executable:
@@ -153,6 +159,8 @@ not mutated. A projected scope must equal the materialized prepare() result.
                    'source_config': config_identity(task['source']), 'workspace_config': config_identity(task['workspace']),
                    'venv_config': config_identity(Path(executable).parent.parent),
                    'revision': self.project_grants.revisions.get(task['source'], 0)}
+        if isolation is not None:
+            binding['command_backend'] = isolation
         if scoped:
             binding.update(check_directory=directory, directory_identity=[str(working), working.stat().st_dev, working.stat().st_ino], directory_config=config_identity(working))
         return {'command': list(argv), 'directory': str(working), 'profile': profile, **scoped,

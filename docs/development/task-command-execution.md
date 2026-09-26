@@ -21,12 +21,15 @@ directories are not included in repository snapshots and may need local setup.
 A missing runner discovered during planning remains visible in the proposal; a
 valid task command grant allows the worker to prepare it before verification.
 
-Commands and dependency scripts execute as the local OS user. A private task copy
+In default host mode, commands and dependency scripts execute as the local OS user. A private task copy
 is **not a security sandbox**. The runner limits inherited environment variables,
 uses a separate HOME, and validates working-directory containment, but arbitrary
 programs can access host resources. This permission covers task-local work, not
 deployment, publishing, credential access, Git mutations, or edits to other checkouts.
-Those boundaries are instructions and authorization, not a claim of OS isolation.
+Those host-mode boundaries are instructions and authorization, not a claim of OS isolation.
+New Linux tasks can explicitly select the [offline Bubblewrap backend](command-isolation.md),
+which applies the same command permission inside restricted OS mounts and namespaces.
+It never falls back to host; see that guide for setup, unsupported previews and limitations.
 
 Command results are recorded separately from test evidence. Every general command
 invalidates prior verification identity, including when only ignored dependencies

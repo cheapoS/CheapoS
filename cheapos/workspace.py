@@ -1,4 +1,4 @@
-"""Repository snapshots and constrained file tools. Check commands are NOT OS-sandboxed."""
+"""Repository snapshots and constrained file tools. Command isolation is selected explicitly by the controller."""
 
 import base64
 import codecs
@@ -636,7 +636,7 @@ class Workspace:
                 Path(temp_path).unlink(missing_ok=True)
         return self.changes()
 
-    def run_checks(self, argv, stop_event, timeout=90, on_output=None, on_raw=None, on_raw_file=None, directory="."):
+    def run_checks(self, argv, stop_event, timeout=90, on_output=None, on_raw=None, on_raw_file=None, directory=".", backend="host"):
         if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 2**53-1):
             raise ValueError("Verification timeout must be a finite positive duration")
         if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a and "\x00" not in a for a in argv):
@@ -645,7 +645,8 @@ class Workspace:
         cwd = command_directory(self.root, directory)
         started = time.monotonic()
         home = self.root.parent / "process-home"
-        home.mkdir(exist_ok=True)
+        if backend == "host":
+            home.mkdir(exist_ok=True)
         env = {k: v for k, v in os.environ.items() if k in {"PATH", "SystemRoot", "WINDIR", "LANG", "LC_ALL", "PYTHONPATH"}}
         pythonpaths = []
         if cwd != self.root:
@@ -660,12 +661,14 @@ class Workspace:
         deduped = [p for p in pythonpaths if not (p in seen or seen.add(p))]
         env["PYTHONPATH"] = os.pathsep.join(deduped)
         env.update({"HOME": str(home), "TMPDIR": str(home), "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1", "CI": "1", "NO_COLOR": "1", "GIT_TERMINAL_PROMPT": "0"})
+        from .command_backend import launch, descriptor
+        process_argv, env = launch(backend, argv, self.root, cwd, env)
         # Independent handles keep preview reads from moving the child's write
         # position. A disk spool avoids blocking a noisy child on a full pipe.
         with tempfile.TemporaryDirectory(prefix="cheapos-check-") as spool:
             path = Path(spool) / "output"
             with path.open("wb") as output, path.open("rb") as reader:
-                process = subprocess.Popen(argv, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
+                process = subprocess.Popen(process_argv, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
                 reason, text, published, last_publish = None, "", None, 0
                 decoder = codecs.getincrementaldecoder("utf-8")("replace")
 
@@ -690,8 +693,9 @@ class Workspace:
                         if reason:
                             break
                 finally:
-                    # Also reap the process if publishing the preview fails.
-                    if process.poll() is None:
+                    # Reap on errors and stop remaining group members even
+                    # after the leader exits. Bubblewrap also owns a PID namespace.
+                    if os.name != "nt" or process.poll() is None:
                         try:
                             if os.name != "nt":
                                 os.killpg(process.pid, signal.SIGKILL)
@@ -713,4 +717,4 @@ class Workspace:
                     with path.open("rb") as raw:
                         captured=raw.read(2_000_001)
                     on_raw(captured[:2_000_000], len(captured)>2_000_000)
-        return {"command": argv, "exit_code": process.returncode, "passed": process.returncode == 0 and reason is None, "output": text, "truncated": truncated, "duration": round(time.monotonic() - started, 2), "reason": reason}
+        return {"execution_environment": descriptor(backend), "command": argv, "exit_code": process.returncode, "passed": process.returncode == 0 and reason is None, "output": text, "truncated": truncated, "duration": round(time.monotonic() - started, 2), "reason": reason}

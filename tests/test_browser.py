@@ -56,6 +56,23 @@ class BrowserTests(unittest.TestCase):
             with self.assertRaises(ValueError): self.manager.authorized(self.task)
         self.engine.previews.launch.assert_not_called()
 
+    def test_isolated_task_cannot_grant_or_launch_host_browser_preview(self):
+        self.grant()
+        self.task['command_backend'] = 'bubblewrap'
+        with self.assertRaisesRegex(ValueError, 'host fallback is disabled'):
+            self.grant()
+        for action in ('start', 'open', 'observe'):
+            with self.subTest(action=action), self.assertRaisesRegex(ValueError, 'host fallback is disabled'):
+                self.manager.action(self.task, {'action': action}, self.runtime)
+        with patch('cheapos.browser.socket.socket') as socket, patch('cheapos.browser.threading.Thread') as thread:
+            with self.assertRaisesRegex(ValueError, 'host fallback is disabled'):
+                self.manager.start(self.task, self.cfg, self.runtime.guard)
+            socket.assert_not_called()
+            thread.assert_not_called()
+        self.engine.previews.launch.assert_not_called()
+        self.manager.permission('task', {'enabled': False})
+        self.assertNotIn('browser_permission', self.task)
+
     def test_grant_is_exact_and_revoke_stops_both_processes(self):
         session = self.session()
         self.assertEqual(self.task['browser_permission']['config'], self.cfg)
