@@ -306,6 +306,29 @@ class IntegrationPreparationTests(unittest.TestCase):
         self.assertEqual(state['code'],'dirty_destination')
         self.assertEqual(state['files'],['notes.md'])
 
+    def test_pr_readiness_detects_captured_branch_and_snapshot_drift(self):
+        from cheapos import git_workflow, commits
+        engine,task=self.fixture(branch=False)
+        task.update(workspace='/task',settings_snapshot={'values':{'git':{'workflow':'pull_request'}}})
+        engine.reviewed_patch=Mock()
+        def git(source,*args,**kwargs):
+            return 'refs/heads/main' if args[0]=='symbolic-ref' else b'' if args[0]=='status' else ''
+        with patch.object(prep.work,'_tip',return_value='target'),patch.object(prep.work,'source_git',side_effect=git), \
+                patch.object(commits,'prepare'),patch.object(git_workflow,'_baseline_entries',return_value={'a':'blob'}) as entries:
+            for captured in ({'branch':'refs/heads/main','head':'old'}, {'branch':'refs/heads/other','head':'target'}):
+                task['git_target']=captured
+                state=prep.readiness(engine,'task')
+                self.assertEqual(state['code'],'target_advanced')
+                self.assertIn('update_resolve',state['actions'])
+            task['git_target']={'branch':'refs/heads/main','head':'target'}
+            entries.side_effect=[{'a':'draft'},{'a':'blob'}]
+            self.assertEqual(prep.readiness(engine,'task')['code'],'target_advanced')
+            entries.side_effect=None
+            self.assertEqual(prep.readiness(engine,'task')['code'],'ready')
+            entries.side_effect=[{'a':'blob'},{'a':'blob','ignored':'blob'}]
+            task['snapshot']={'skipped':['ignored']}
+            self.assertEqual(prep.readiness(engine,'task')['code'],'ready')
+
     def test_dirty_destination_does_not_bypass_authority_or_owned_workspace(self):
         for failure in ('authority_changed','ownership_changed','work_remaining'):
             with self.subTest(failure=failure):

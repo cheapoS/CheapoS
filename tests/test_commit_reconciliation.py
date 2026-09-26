@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cheapos import commits, reconciliation
+from cheapos import commits, reconciliation, git_workflow, integration_preparation as prep
 from cheapos.verification import evidence_identity
 from cheapos.engine import Engine, Runtime, needs_patch_review
 from cheapos.workspace import Workspace, git
@@ -66,9 +66,23 @@ class CommitReconciliationTests(CommitCase):
         self.assertIn('nothing left to commit', task['events'][-1]['detail'])
 
     def test_same_patch_on_new_project_baseline_requires_fresh_checks_and_review(self):
+        self.task.update(demo=False, git_target=commits.source_state(self.source))
+        self.task['settings_snapshot'] = {'values': {'git': {'workflow': 'pull_request'}}}
+        self.engine.store.save(self.task)
         self.source_change('other.txt', 'new project context\n')
         old_patch = self.task['patch']
-        self.task = self.reconcile()
+        with self.assertRaisesRegex(ValueError, 'branch changed'):
+            git_workflow.preview(self.engine, self.task['id'])
+        state = prep.readiness(self.engine, self.task['id'])
+        self.assertEqual(state['code'], 'target_advanced')
+        self.assertIn('update_resolve', state['actions'])
+        with patch.object(prep, '_launch'):
+            prep.start(self.engine, self.task['id'], {'approved': True,
+                **{key: state[key] for key in ('target_ref', 'target_tip', 'candidate')}})
+        with patch.object(self.engine, 'start') as resume:
+            prep._drive(self.engine, self.task['id'])
+        resume.assert_called_once_with(self.task['id'])
+        self.task = self.engine.store.get(self.task['id'])
         self.assertEqual(self.task['patch'], old_patch)
         self.assertEqual((Path(self.task['workspace']) / 'other.txt').read_text(), 'new project context\n')
         self.assertTrue(needs_patch_review(self.task))
@@ -85,6 +99,14 @@ class CommitReconciliationTests(CommitCase):
         self.task['checkpoints'][-1]['generation'] = 1
         self.task['checkpoints'][-1]['verification_identity'] = evidence_identity(self.task)
         self.assertFalse(needs_patch_review(self.task))
+        self.task.update(error=None, error_code=None)
+        self.engine.store.save(self.task)
+        prep.observe(self.engine, self.task)
+        self.assertEqual(self.task['integration_preparation']['status'], 'ready')
+        with patch.object(git_workflow.github, 'destination', return_value=('org/repo', 'https://github.com/org/repo.git')):
+            published_candidate = git_workflow.preview(self.engine, self.task['id'])
+        self.assertEqual(published_candidate['parent'], git(self.source, 'rev-parse', 'HEAD').strip())
+        self.assertEqual(published_candidate['patch'], old_patch)
 
     def test_reconciliation_merges_nonoverlapping_edits_and_preserves_source_deletion(self):
         text = ''.join(f'line {i}\n' for i in range(40))

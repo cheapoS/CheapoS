@@ -90,6 +90,16 @@ def _readiness(engine, task_id):
             return blocked('review_required','Verify the already included work against the current project.',('update_resolve',))
         try:engine.reviewed_patch(task)
         except (ValueError,OSError) as error:return blocked('review_required',str(error))
+        from . import git_workflow
+        if git_workflow.enabled(task) and not task.get('follow_up'):
+            captured=task.get('git_target',{})
+            if captured and (captured.get('head')!=tip or captured.get('branch')!=target):
+                return blocked('target_advanced','The project branch changed since this chat started.',('update_resolve','keep_saved_work'))
+            baseline_entries=git_workflow._baseline_entries(task['workspace'],'HEAD')
+            skipped=set(task.get('snapshot',{}).get('skipped',[]))
+            expected={path:entry for path,entry in git_workflow._baseline_entries(source,tip).items() if path not in skipped}
+            if baseline_entries!=expected:
+                return blocked('target_advanced','The task baseline differs from the committed project.',('update_resolve','keep_saved_work'))
         baseline=task.get('reconciliation',{}).get('source_head') or task.get('integration_policy',{}).get('target_tip')
         if baseline and baseline!=tip:return blocked('target_advanced','The project changed since this task copy was captured.',('update_resolve','keep_saved_work'))
         try:commits.prepare(task)
