@@ -80,6 +80,16 @@ class MarkdownDeck:
         self.notes: List[str] = []           # Extracted presenter notes per slide
         self._parse()
 
+    def _get_document_title(self) -> str:
+        # Scan for the first H1 in the document
+        for line in self.raw.splitlines():
+            # Stop if we hit a slide separator
+            if SLIDE_SEPARATOR.match(line):
+                break
+            if line.startswith("# "):
+                return html.escape(line[2:].strip())
+        return "Markdown Deck"
+
     def _parse(self) -> None:
         # Split on lines that consist solely of three dashes.
         raw_slides = SLIDE_SEPARATOR.split(self.raw)
@@ -102,7 +112,7 @@ class MarkdownDeck:
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Markdown Deck</title>
+<title>{title}</title>
 <style>{css}</style>
 </head>
 <body>
@@ -167,7 +177,7 @@ show(0);
             parts.append("</section>")
             slide_html_parts.append("\n".join(parts))
         slides_combined = "\n".join(slide_html_parts)
-        return self._HTML_TEMPLATE.format(css=self._CSS, js=self._JS, slides=slides_combined)
+        return self._HTML_TEMPLATE.format(css=self._CSS, js=self._JS, slides=slides_combined, title=self._get_document_title())
 
     # ---------------------------------------------------------------------
     # Static convenience helpers used by the CLI

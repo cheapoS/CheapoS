@@ -86,3 +86,41 @@ class TestMarkdownDeckExtended(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class TestMarkdownDeckTitles(unittest.TestCase):
+    def test_title_from_h1(self):
+        md = "# My Title\nContent"
+        deck = MarkdownDeck(md)
+        html = deck.render()
+        self.assertIn('<title>My Title</title>', html)
+        self.assertNotIn('<title>Markdown Deck</title>', html)
+        self.assertNotIn('Markdown Deck', html)
+
+    def test_no_h1_fallback(self):
+        md = "## Only H2"
+        deck = MarkdownDeck(md)
+        html = deck.render()
+        self.assertIn('<title>Markdown Deck</title>', html)
+
+    def test_empty_deck_title(self):
+        md = ""
+        deck = MarkdownDeck(md)
+        html = deck.render()
+        self.assertIn('<title>Markdown Deck</title>', html)
+        self.assertEqual(len(deck.slides), 0)
+
+    def test_h1_on_second_slide_does_not_set_title(self):
+        # The document title is taken from the first H1 in document order, 
+        # so this should use the fallback.
+        md = "Content\n---\n# Second slide title"
+        deck = MarkdownDeck(md)
+        html = deck.render()
+        self.assertIn('<title>Markdown Deck</title>', html)
+        self.assertNotIn('<title>Second slide title</title>', html)
+
+    def test_h1_with_special_characters(self):
+        md = "# A & B <C>"
+        deck = MarkdownDeck(md)
+        html = deck.render()
+        # html.escape should escape & and <
+        self.assertIn('<title>A &amp; B &lt;C&gt;</title>', html)
