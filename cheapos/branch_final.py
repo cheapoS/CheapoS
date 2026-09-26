@@ -253,7 +253,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         'Read retained output for a check in this packet\'s check_output_sources. Use the saved output preview first; read missing details with run_id and offset (8000 bytes per page). Read-only; does not rerun checks or approve the work.',
         {'run_id': {'type': 'string'}, 'offset': {'type': 'integer', 'minimum': 0}}, ['run_id']))
     if proof is not None:
-        tools.extend(t for t in READ_TOOLS if t['function']['name'] == 'inspect_image')
+        tools.extend(t for t in READ_TOOLS if t['function']['name'] in {'inspect_image', 'read_browser_evidence'})
         tools = review_assessment.tools_with_contract(tools, proof, 'final_review_decision')
     encoded = _json(review_assessment.packet_for_model(packet) if proof is not None else packet)
     if len(encoded) > 60000:
@@ -322,7 +322,7 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
         display = {**{k: scope[k] for k in ('unit_index', 'unit_total') if k in scope},
                    'stage': 'unit', 'unit_kind': unit['kind']}
     readers = {'read_review_evidence', 'read_check_output', 'read_final_context',
-               'inspect_image', 'read_merge_context', 'read_context_evidence'}
+               'inspect_image', 'read_browser_evidence', 'read_merge_context', 'read_context_evidence'}
     offered = {t['function']['name'] for t in tools}
     batchable = readers | ({'record_review_progress'} if incremental else set())
 
@@ -364,6 +364,11 @@ def _review(engine, runtime, manifest, packet, chunk_ids, criterion_ids, *, cont
                 excerpt = review_assessment.observation(proof, name, result, excerpt)
             packet['context_references']=copy.deepcopy(state['context_references'])
             return excerpt
+        if name == 'read_browser_evidence' and proof is not None:
+            excerpt = engine.browsers.read(runtime.task, result.get('evidence_id'))
+            excerpt = recovery.context_read(engine, runtime, key, state,
+                {'tool': name, 'arguments': result, 'content_digest': _hash(excerpt)}, lambda: excerpt)
+            return review_assessment.observation(proof, name, result, excerpt)
         if name == 'inspect_image' and proof is not None:
             from .vision import inspect_image_tool
             excerpt = recovery.context_read(engine, runtime, key, state, {'tool': name, 'arguments': result},

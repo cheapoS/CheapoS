@@ -305,6 +305,10 @@ def observation_key(name, args, result):
         evidence = [name, result.get("source_url", args.get("url")), result.get("content")]
     elif name == "read_file" and isinstance(result, dict):
         evidence = [name, args.get("path"), result.get("content")]
+    elif name == "browser_preview" and isinstance(result, dict) and 'result' in result:
+        # A new receipt ID/time is not a new observation of the same candidate.
+        evidence = [name, args, {key: result.get(key) for key in
+                    ('candidate', 'config_digest', 'result', 'image_digest')}]
     else:
         evidence = [name, args, result]
     return hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
@@ -467,6 +471,8 @@ class Engine:
         self.route_restore_stop = threading.Event()
         from .preview import Previews
         self.previews = Previews(self)
+        from .browser import Browsers
+        self.browsers = Browsers(self)
         from .carto import Carto
         self.carto = Carto(self.store.root)
         from .admission import Admission
@@ -1157,6 +1163,8 @@ class Engine:
                 runtime.task["integration_preparation"]["label"] = "Integration update paused"
             runtime.task["route_resume_on_start"] = False
             runtime.stop.set()
+            if getattr(self, 'browsers', None):
+                self.browsers.stop(task_id)
             runtime.task["status"] = "stopping"
             self.event(runtime.task, "state", "Stop requested; waiting for the current operation to finish")
             runtime.approval.set()
@@ -1521,7 +1529,7 @@ class Engine:
             return task
 
     def shutdown(self):
-        for name, comp in [('schedules', getattr(self, 'schedules', None)), ('storage', getattr(self, 'storage_maintenance', None)), ('club', getattr(self.store, 'club', None)), ('previews', self.previews), ('readiness', self.readiness), ('startup', self.startup)]:
+        for name, comp in [('schedules', getattr(self, 'schedules', None)), ('storage', getattr(self, 'storage_maintenance', None)), ('club', getattr(self.store, 'club', None)), ('browsers', self.browsers), ('previews', self.previews), ('readiness', self.readiness), ('startup', self.startup)]:
             if comp and hasattr(comp, 'shutdown'):
                 try: comp.shutdown()
                 except Exception as e: print(f"cheapoS shutdown error in {name}: {e}", file=sys.stderr)
@@ -2830,8 +2838,8 @@ class Engine:
             previous = task.get('edit_recovery', {}).get(path, {})
             if previous.get('fingerprint') == fingerprint(args):
                 raise FileRangeError('This exact edit was already rejected for this file version. It was not executed again. Correct the range using the supplied current lines.')
-        if name == "inspect_image":
-            # Vision is a metered model request, not a local file mutation.
+        if name in {"inspect_image", "browser_preview"}:
+            # Vision and browser operations can wait on external processes.
             # Never hold the app-wide lock while waiting for a provider slot
             # or response: other tasks and the operator's Pause need it too.
             runtime.guard()
@@ -3433,7 +3441,7 @@ class Engine:
                         result = review_assessment.read(proof, **params)
                     except (ValueError, TypeError) as error:
                         result = {'error': str(error)}
-                elif name in {"read_file", "outline_file", "get_project_context", "search", "list_files", "get_diff", "read_url", "read_check_output", "read_merge_context", "read_context_evidence", "read_edit_history", "inspect_image"}:
+                elif name in {"read_file", "outline_file", "get_project_context", "search", "list_files", "get_diff", "read_url", "read_check_output", "read_merge_context", "read_context_evidence", "read_edit_history", "inspect_image", "read_browser_evidence"}:
                     try:
                         result = self.read_url(runtime, params) if name == "read_url" else self.file_tool(task, name, params, runtime=runtime)
                     except InterruptedError:
@@ -4123,6 +4131,8 @@ class Engine:
             task["error"] = str(error)[:1000] if isinstance(error, (ProviderError, ValueError, OSError)) else "Unexpected execution error; saved work is available for inspection."
             self.event(task, "error", "Task stopped with an error", task["error"])
         finally:
+            if getattr(self, 'browsers', None):
+                self.browsers.stop(task['id'])
             if task.get('status') not in ACTIVE:
                 from .continuation_policy import record
                 record(task, 'settled')

@@ -27,3 +27,23 @@ test('review preview controls send exact revision and preserve operator checklis
   await q('[data-stop]').onclick();assert.match(calls.at(-1).path,/preview-stop$/);
  }finally{Object.assign(global,saved);}
 });
+
+
+test('agent browser permission is separate from manual preview and project defaults',async()=>{
+ const nodes=new Map(),q=s=>{if(!nodes.has(s))nodes.set(s,{innerHTML:'',textContent:'',insertAdjacentHTML(){}});return nodes.get(s);};
+ const section={querySelector:q,isConnected:true,open:false};
+ const saved={document:global.document,setInterval:global.setInterval,FormData:global.FormData};
+ global.document={createElement:()=>section};global.setInterval=()=>0;
+ global.FormData=class{*[Symbol.iterator](){yield ['command','python app.py'];yield ['url','http://127.0.0.1:5174'];}};
+ const calls=[];const api=async(path,body)=>{calls.push({path,body});return {status:'stopped',config:{}};};
+ try{
+  preview.mount({append(){}},{id:'task',source:'/repo',workspace:'/task-copy'},api,'abc');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.match(section.innerHTML,/disposable test services/);
+  await q('[data-browser-allow]').onclick();
+  assert.deepEqual(calls.at(-1),{path:'/tasks/task/browser-permission',body:{enabled:true,directory:'/task-copy',config:{command:'python app.py',url:'http://127.0.0.1:5174'}}});
+  await q('[data-browser-revoke]').onclick();
+  assert.deepEqual(calls.at(-1),{path:'/tasks/task/browser-permission',body:{enabled:false}});
+  assert.equal(calls.filter(c=>c.path.endsWith('preview-start')).length,0);
+ }finally{Object.assign(global,saved);}
+});
