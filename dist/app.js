@@ -1519,9 +1519,7 @@ function requestChanges() {
 }
 function bindCommitDecision(task) {
   if(task.archived_at||task.trashed_at)return;
-  if(CheapOSGitWorkflow.enabled(task)){CheapOSGitWorkflow.mount($('#changes-view'),task,api,()=>{void refresh();});return;}
-  const integrationState=commitPreviews.get(task.id)?.integration_readiness;
-  CheapOSIntegration.bind($('#changes-view'),task,integrationState,api,async saved=>{
+  const bindIntegration=(host,readiness)=>CheapOSIntegration.bind(host,task,readiness,api,async saved=>{
     commitPreviews.delete(task.id);
     if(state.task?.id===task.id){
       if(state.task===task||Date.parse(saved.updated_at)>Date.parse(state.task.updated_at))state.task=saved;
@@ -1529,6 +1527,20 @@ function bindCommitDecision(task) {
     }
     await refresh();
   },()=>setView('chat'));
+  if(CheapOSGitWorkflow.enabled(task)){
+    bindIntegration($('#changes-view'));
+    CheapOSGitWorkflow.mount($('#changes-view'),task,api,()=>{void refresh();},async panel=>{
+      try{
+        const readiness=await api('/tasks/'+task.id+'/integration-readiness');
+        if(!panel.isConnected)return;
+        const recovery=document.createElement('div');
+        recovery.innerHTML=CheapOSIntegration.markup(task,readiness);
+        panel.append(recovery);bindIntegration(recovery,readiness);
+      }catch(error){if(panel.isConnected)panel.insertAdjacentHTML('beforeend','<p role="alert">Could not check project recovery: '+esc(error.message)+'</p>');}
+    });
+    return;
+  }
+  bindIntegration($('#changes-view'),commitPreviews.get(task.id)?.integration_readiness);
   $$('[data-commit-action]').forEach(b=>b.onclick=async()=>{
     const action=b.dataset.commitAction;
     if(action==='change'){requestChanges();return}

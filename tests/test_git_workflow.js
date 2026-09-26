@@ -112,3 +112,50 @@ test('new-chat snapshot warning distinguishes pending sync from completed work',
  assert.match(html,/Started from local production/);assert.match(html,/remote sync was pending/);
  assert.match(html,/original snapshot/);assert.match(html,/Draft &lt;preserved&gt;/);
 });
+
+test('publication failures expose controller recovery and the update uses captured readiness',async()=>{
+ const fs=require('node:fs'),vm=require('node:vm');
+ const integration=require('../dist/integration.js');
+ const source=fs.readFileSync('dist/app.js','utf8');
+ const task={id:'pr-recovery',status:'approved',settings_snapshot:{values:{git:{workflow:'pull_request'}}}};
+ const readiness={code:'target_advanced',message:'Branch changed',actions:['update_resolve','keep_saved_work'],target_tip:'new-head',target_ref:'refs/heads/main',candidate:'patch-digest'};
+ const calls=[],views=[];
+ function element(){return {dataset:{},isConnected:true,innerHTML:'',children:[],controls:{},
+  setAttribute(){},removeAttribute(){},querySelectorAll(){return [];},
+  querySelector(selector){const attr=selector.slice(1,-1);return this.innerHTML.includes(attr)?(this.controls[selector]??={disabled:false}):null;},
+  append(child){this.children.push(child);},insertAdjacentHTML(_,html){this.innerHTML+=html;}};}
+ for(const stage of ['preview','update','publish']){
+  const panel=element(),container={querySelector:s=>s==='[data-pull-request]'?panel:null};
+  const saved={...task,status:'paused',integration_preparation:{status:'running',stage:'accepted'}};
+  const context={CheapOSGitWorkflow:workflow,CheapOSIntegration:integration,state:{task},commitPreviews:new Map(),
+   document:{createElement:element},$:()=>container,esc:s=>s,setView:v=>views.push(v),refresh:async()=>{},
+   api:async(url,body)=>{calls.push({url,body});
+    if(url.endsWith('pull-request-preview')){
+     if(stage==='preview')throw Error('The project branch changed since this chat started.');
+     return stage==='update'?{url:'https://github.com/org/repo/pull/7',number:7,update_blocker:'Branch changed'}:{repo:'org/repo',branch:'task',base:'main',id:'preview'};
+    }
+    if(url.endsWith('pull-request-publish'))throw Error('Branch changed after preview');
+    if(url.endsWith('integration-readiness'))return readiness;
+    if(url.endsWith('integration-prepare'))return saved;
+    throw Error('Unexpected API '+url);
+   }};
+  // Use the actual Changes-tab binding, publication panel and recovery controls.
+  vm.runInNewContext(source.slice(source.indexOf('function bindCommitDecision('),source.indexOf('function renderTests(')),context);
+  // The publish button uses addEventListener while recovery uses onclick.
+  const original=panel.querySelector;
+  panel.querySelector=function(s){const e=original.call(this,s);if(e)e.addEventListener=(_,fn)=>{e.onclick=fn;};return e;};
+  context.bindCommitDecision(task);
+  await new Promise(resolve=>setImmediate(resolve));
+  if(stage==='publish')await panel.querySelector('[data-pr-publish]').onclick({currentTarget:panel.querySelector('[data-pr-publish]')});
+  assert.equal(panel.children.length,1,stage);
+  const recovery=panel.children[0];
+  assert.match(recovery.innerHTML,/Update &amp; resolve/);
+  assert.match(recovery.innerHTML,/fresh review/);
+  if(stage==='preview'){
+   await recovery.querySelector('[data-integration-prepare]').onclick();
+   const sent=calls.find(c=>c.url.endsWith('integration-prepare')).body;
+   assert.equal(sent.approved,true);assert.equal(sent.target_tip,'new-head');assert.equal(sent.candidate,'patch-digest');assert.equal(sent.target_ref,'refs/heads/main');
+   assert.equal(context.state.task,saved);assert.deepEqual(views,['chat']);
+  }
+ }
+});

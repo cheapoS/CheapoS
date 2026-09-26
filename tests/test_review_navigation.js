@@ -54,9 +54,9 @@ test('accepted integration update publishes progress and opens Chat before backg
    integration,CheapOSIntegration:integration,commitPreviews:new Map(),$:()=>({}),
    getState:()=>state,options:{receiveUpdatedTask:t=>{state.task=t;events.push('published');},showChat:()=>events.push('chat')},
    setView:view=>{assert.equal(state.task,saved);events.push(view);},refresh:()=>new Promise(resolve=>{events.push('refresh');finish=resolve;})};
-  const text=unattended?branch:app,start=text.indexOf(unattended?'  integration.bind(d,task,preview.integration_readiness':'  CheapOSIntegration.bind($(\'#changes-view\'),task,integrationState');
-  const end=text.indexOf(unattended?'  const leave=':'  $$(\'[data-commit-action]\'',start);
-  assert.ok(start>=0&&end>start);vm.runInNewContext(text.slice(start,end),context);
+  const text=unattended?branch:app,start=text.indexOf(unattended?'  integration.bind(d,task,preview.integration_readiness':'  const bindIntegration=(host,readiness)=>');
+  const end=text.indexOf(unattended?'  const leave=':'  if(CheapOSGitWorkflow.enabled(task))',start);
+  assert.ok(start>=0&&end>start);vm.runInNewContext(text.slice(start,end)+(unattended?'':'bindIntegration({},{});'),context);
   const pending=callback(saved);
   assert.deepEqual(events,changedSelection?['refresh']:unattended?['published','chat','refresh']:['chat','refresh']);
   if(changedSelection)assert.equal(state.task.id,'other');

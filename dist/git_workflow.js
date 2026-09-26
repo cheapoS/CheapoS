@@ -69,7 +69,7 @@ function content(p,task){
  if(p.url)return `<h3>Pull request opened.</h3><p><a class="primary-button" href="${esc(safeURL(p.url)||'#')}" target="_blank" rel="noopener noreferrer">Open pull request #${Number(p.number)}</a></p><p role="status">${esc(p.ci?.message||'Your local destination branch is unchanged. Check GitHub CI and review before merging.')}</p>${p.local_sync?'<p role="status">'+esc(p.local_sync.message)+'</p>':''}${p.ci?.checks?.length?'<ul>'+p.ci.checks.map(c=>`<li>${esc(c.name)} · ${esc(c.state)}</li>`).join('')+'</ul>':''}${p.ci?`<p>${p.ci.protected===true?'GitHub branch protection is enabled.':p.ci.protected===false?'This destination has no GitHub branch protection. Configure required checks and PR rules in GitHub settings.':'Branch protection status is unavailable.'}</p>`:''}<button type="button" data-pr-refresh>Refresh GitHub status</button><p class="small muted">GitHub enforces this repository’s required checks, reviews and branch rules. Green local checks alone do not approve a remote merge.</p>`;
  return `<h3>${p.retry?'Finish publishing your reviewed branch.':p.update?'Ready to update your pull request.':'Ready to open a pull request.'}</h3><p><strong>${esc(p.repo)}</strong> · ${esc(p.branch)} → ${esc(p.base)}</p><p>${p.update?'Publishes the newly reviewed commit to the same pull request.':'Publishes the reviewed commit and opens a GitHub pull request.'} Your destination checkout stays unchanged. GitHub checks and your final merge decision follow.</p>${descriptionMarkup(p)}<button type="button" class="primary-button" data-pr-publish>${p.retry?'Finish publishing':p.update?'Approve & update pull request':'Approve & open pull request'}</button>`;
 }
-function mount(container,task,api,onPublished=()=>{}){
+function mount(container,task,api,onPublished=()=>{},onBlocked=async()=>{}){
  const panel=container.querySelector('[data-pull-request]');if(!panel)return;
  if(panel.dataset.mounted)return;panel.dataset.mounted='true';
  let current=null,busy=false;
@@ -78,9 +78,9 @@ function mount(container,task,api,onPublished=()=>{}){
   panel.setAttribute('aria-busy','true');
   if(status){const button=panel.querySelector('[data-pr-refresh]');if(button){button.disabled=true;button.textContent='Checking GitHub & syncing…';}}
   try{current=status?await checkStatus(task,api,{force:true}):await api('/tasks/'+task.id+'/pull-request-preview',{});if(status)onPublished(current);if(!panel.isConnected)return;panel.innerHTML=content(current,task);bind();
-   if(current.update_blocker)panel.insertAdjacentHTML('beforeend','<p role="status">New changes are not ready to publish: '+esc(current.update_blocker)+'</p>');
+   if(current.update_blocker){panel.insertAdjacentHTML('beforeend','<p role="status">New changes are not ready to publish: '+esc(current.update_blocker)+'</p>');await onBlocked(panel);}
   }
-  catch(error){if(panel.isConnected){panel.innerHTML='<h3>Pull request</h3><p role="alert">'+esc(error.message)+'</p><button type="button" data-pr-retry>Retry publication preview</button>';panel.querySelector('[data-pr-retry]').onclick=()=>load(status);}}
+  catch(error){if(panel.isConnected){panel.innerHTML='<h3>Pull request</h3><p role="alert">'+esc(error.message)+'</p><button type="button" data-pr-retry>Retry publication preview</button>';panel.querySelector('[data-pr-retry]').onclick=()=>load(status);if(!status)await onBlocked(panel);}}
   finally{busy=false;panel.removeAttribute('aria-busy');}
  }
  function bind(){
@@ -91,7 +91,7 @@ function mount(container,task,api,onPublished=()=>{}){
    if(busy)return;busy=true;e.currentTarget.disabled=true;e.currentTarget.textContent='Publishing reviewed branch…';
    panel.insertAdjacentHTML('beforeend','<p role="status">Sending your approved branch to GitHub. This can take a moment.</p>');
    try{current=await api('/tasks/'+task.id+'/pull-request-publish',{approved:true,id:current.id,...(!current.retry?fields():{})});descriptionDrafts.delete(descriptionKey(current));if(panel.isConnected){panel.innerHTML=content(current,task);bind();}onPublished(current);}
-   catch(error){if(panel.isConnected){panel.innerHTML='<p role="alert">'+esc(error.message)+'</p><button type="button" data-pr-retry>Retry saved publication</button>';panel.querySelector('[data-pr-retry]').onclick=()=>load();}}
+   catch(error){if(panel.isConnected){panel.innerHTML='<p role="alert">'+esc(error.message)+'</p><button type="button" data-pr-retry>Retry saved publication</button>';panel.querySelector('[data-pr-retry]').onclick=()=>load();await onBlocked(panel);}}
    finally{busy=false;}
   });
  }
