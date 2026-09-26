@@ -87,7 +87,11 @@ def read(store, task_id, run_id, offset=0):
             total=min(path.stat().st_size,RAW_LIMIT)
             stream.seek(offset);chunk=stream.read(min(8000,max(0,total-offset)))
     except FileNotFoundError: raise ValueError('Raw output expired; only the latest 8 runs are retained') from None
-    return {'run_id':run_id,'offset':offset,'next_offset':offset+len(chunk),
+    record = next(c for c in [*task.get('checks', []), *task.get('command_runs', [])] if c.get('run_id') == run_id)
+    receipt = {key: copy.deepcopy(record[key]) for key in (
+        'kind', 'command', 'directory', 'exit_code', 'passed', 'reason', 'outcome', 'time', 'input_identity',
+        'verification_identity', 'digest', 'generation', 'raw_output', 'diagnostics') if key in record}
+    return {'run_id':run_id,'receipt':receipt,'offset':offset,'next_offset':offset+len(chunk),
             'has_more':offset+len(chunk)<total,'output':chunk.decode('utf-8','replace'),
             'retained_bytes':total,'note':'Unfiltered retained output; see check result for truncation and authoritative status.'}
 

@@ -34,7 +34,7 @@ from . import project_context
 from . import work_policy
 from . import environment
 from . import metrics
-from . import check_output
+from . import check_output, check_diagnostics
 from . import edit_history
 from .edit_history import MUTATIONS
 from .measurement import enabled as measuring, is_measurement
@@ -3091,8 +3091,10 @@ class Engine:
             self.store.publish(task)
 
         raw_info={}
+        diagnostics={}
         def retain_raw(path,truncated):
             raw_info.update(check_output.retain_file(self.store.root,task["id"],live["run_id"],path,truncated))
+            diagnostics.update(check_diagnostics.from_file(path, live["run_id"], truncated))
         try:
             with self.admission.resource("checks", runtime):
                 runtime.guard()
@@ -3108,6 +3110,8 @@ class Engine:
         if directory != '.': result['directory'] = directory
         result["run_id"] = live["run_id"]
         result["raw_output"] = raw_info
+        if diagnostics:
+            result["diagnostics"] = diagnostics
         result['allowed_seconds'] = effective
         result['outcome'] = {'cancelled': 'user_paused', 'timed out': 'task_deadline' if work_deadline or (not measuring(task) and remaining <= allowed) else 'process_timeout', 'output limit exceeded': 'output_limit'}.get(result.get('reason'), 'passed' if result['passed'] else 'test_failure')
         result['next_action'] = {'user_paused': 'Resume when ready.', 'task_deadline': 'Review saved work or increase the task time limit before resuming.', 'process_timeout': 'Inspect output; choose a focused check or increase the verification timeout.', 'output_limit': 'Reduce test verbosity or select a focused command.', 'test_failure': 'Inspect the failing assertion or process error before changing code.', 'passed': 'Only this command was verified.'}[result['outcome']]

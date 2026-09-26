@@ -258,6 +258,17 @@ source mappings travel in the progress checklist. Older complete assessments
 remain accepted only through the unchanged evidence validator; request
 reservations and authorized limits are not increased.
 
+### Check diagnostic receipt projection
+
+Structured check diagnostics add data to existing command/check receipts and
+`read_check_output` responses; they introduce no prompt entry point or offered
+tool. Capture/persistence tests inspect worker, reviewer and read-only chat
+request-boundary assembly, retain call/reply pairing and original input bindings,
+and reject stale final-review record digests. Output-filter tests preserve the
+index while shortening eligible unittest output. Diagnostics never grant a
+verification result, review decision or permission. See
+[the diagnostic contract](check-diagnostics.md).
+
 ## Scoped local search
 
 `READ_TOOLS.search` now offers `path`, `glob`, `limit`, `context_lines` and
