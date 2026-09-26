@@ -280,7 +280,10 @@ response migration, consumer audit, bounds and filesystem consistency limits.
 
 Search descriptions and repeated contract guidance stay concise because the
 conservative reservation counts serialized request bytes, including schemas.
-The sample and multi-item branch-execution regressions exercise the assembled
-reviewer request under their original 20,000/30,000-token allowances. Compacting
-redundant descriptions restores those paths without raising limits, changing
-reservation accounting, or removing server-side argument validation.
+Compacting redundant descriptions restored sample and multi-item execution under
+their original 20,000/30,000-token allowances without changing reservation
+accounting or removing server-side argument validation. The sample's special
+20,000-token override was subsequently removed: new samples capture the saved
+reviewer allowance, while existing tasks keep their captured limit. The sample
+regression verifies capture and independence from later preference changes;
+spending and the shared reservation guard remain unchanged.

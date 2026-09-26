@@ -843,7 +843,8 @@ class Engine:
         command = [sys.executable, '-m', 'unittest', 'discover', '-v']
         values = {"prompt": "Fix clamp so it handles both bounds and rejects an inverted range.", "repository": str(root), "check_command": shlex.join(command), "auto_approve_checks": scripted}
         if not scripted:
-            values.update(conversational=True, limits={"dollars":min(self.preferences()['limits']['dollars'],0.25), "run_minutes":5,"worker_turns":20,"iterations":3,"reviewer_tokens":20000,"check_seconds":30})
+            saved_limits = self.preferences()['limits']
+            values.update(conversational=True, limits={"dollars":min(saved_limits['dollars'],0.25), "run_minutes":5,"worker_turns":20,"iterations":3,"reviewer_tokens":saved_limits['reviewer_tokens'],"check_seconds":30})
         task = self.create(values, demo=scripted)
         if not scripted:
             task['sample'] = True
