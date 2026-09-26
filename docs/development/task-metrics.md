@@ -36,3 +36,8 @@ not redistributed. Missing role history stays unknown. Session identity prefers
 the saved provider-reported model, falling back to the recorded requested route.
 Planner compatibility observations do not imply a validated plan outcome;
 `plans_completed` is not used for ranking without a durable outcome contract.
+
+For explicit paired cases, completion assessments, intervention/read/repair
+observations and worker/reviewer totals, use the
+[local trial comparison workflow](agent-effectiveness-trials.md). It reads saved
+task snapshots or existing scripted benchmark exports without starting inference.
