@@ -74,7 +74,17 @@ COMPACT_WRITE = tool(
     ["path", "content"],
 )
 
+BROWSER_TOOL = tool(
+    "browser_preview",
+    "Use the operator-authorized local preview configuration. start freezes the current task files; status reports setup/logs; open connects the browser when running. Navigate and interact only with this disposable local preview. observe returns visible text and console/errors; screenshot retains a viewport PNG. stop closes owned processes. Observations are candidate-bound evidence, never passing checks or approval.",
+    {"action": {"type": "string", "enum": ["start", "status", "open", "stop", "navigate", "click", "fill", "press", "select", "viewport", "observe", "screenshot"]},
+     "url": TEXT, "selector": TEXT, "value": TEXT,
+     "width": {"type": "integer", "minimum": 320, "maximum": 1920},
+     "height": {"type": "integer", "minimum": 240, "maximum": 1200}}, ["action"])
+
 READ_TOOLS = [
+    tool("read_browser_evidence", "List the latest 100 retained browser observations, or read an exact current-candidate evidence_id. A returned browser: image reference can be independently inspected with inspect_image. No browser actions or commands execute; stale evidence is rejected.",
+         {"evidence_id": TEXT}),
     tool(
         "read_edit_history",
         "Inspect recent completed text edits and their undo IDs, current-version status, and Python symbol changes. Optional workspace-relative path. History is evidence, not permission.",
@@ -150,7 +160,7 @@ READ_TOOLS = [
     ),
 ]
 
-WORKER_TOOLS = READ_TOOLS + [
+WORKER_TOOLS = READ_TOOLS + [BROWSER_TOOL,
     tool(
         "run_command",
         "Execute a setup or diagnostic command in this task copy under operator task-command permission. Direct argv syntax; no pipes or shell operators. Optional task-relative directory (default .). Output is retained; success does not count as verification. Use run_checks for required tests and builds. Do not run custom scripts to search or list files: use the provided search and list_files tools.",
@@ -331,6 +341,13 @@ def dispatch_file_tool(engine, task, name, args, runtime=None):
         task["tool_actions"] += 1
         engine.event(task, "tool", "read check output", {"arguments": args, "result": result})
         return result
+    if name == "browser_preview":
+        result = engine.browsers.action(task, args, active_runtime)
+        task["tool_actions"] += 1
+        engine.event(task, "tool", "browser preview", {"arguments": args, "result": result})
+        return result
+    if name == "read_browser_evidence":
+        return engine.browsers.read(task, args.get("evidence_id"))
     if name == "inspect_image":
         from .vision import inspect_image_tool
         result = inspect_image_tool(engine, task, args, runtime=active_runtime)

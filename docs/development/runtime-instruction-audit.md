@@ -287,3 +287,28 @@ accounting or removing server-side argument validation. The sample's special
 reviewer allowance, while existing tasks keep their captured limit. The sample
 regression verifies capture and independence from later preference changes;
 spending and the shared reservation guard remain unchanged.
+
+## Authorized local browser verification
+
+The existing `workflow.ui_completeness` catalog rule now describes optional browser
+verification and retained evidence. Worker/Interactive/Unattended tool sets offer
+`browser_preview`; read-only chat filters it out. Dispatch separately enforces the
+operator's saved task/workspace and exact preview-configuration grant. Neither tool
+arguments nor saved model messages can create consent. Current request assembly still
+refreshes the single catalog rule through correction, handoff and Resume.
+
+Item/Interactive/final review offer `read_browser_evidence` and the existing
+`inspect_image` reader. Final review units include these in read-only evidence batches;
+no reviewer phase receives browser execution authority. Screenshot references resolve
+only after current candidate and image digest validation; image assessment retains the
+reviewer's normal identity, budget and cancellation path. Text/console observations are
+supporting evidence and do not relax code/visual or named-command citation requirements.
+
+`test_runtime_instructions` checks actual provider tool assembly for Interactive,
+Unattended and read-only requests without policy accumulation. `test_browser` exercises
+consent, startup, changed inputs/configuration, cancellation, restart and the final review
+entry through retained evidence, independent image inspection and a separate validated
+approval. Existing unit, batch, progress and permission checks preserve review coverage,
+integration requirements and model/check authority. Browser lifecycle tests use small
+file and in-memory fixtures; real Chromium verification is a separate disposable smoke
+check, not a new mandatory heavyweight test.

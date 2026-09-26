@@ -71,7 +71,13 @@ def inspect_image_tool(engine: Any, task: Dict[str, Any], args: Dict[str, Any], 
     path_arg = args.get("path", "")
     query = args.get("query") or "Describe this image in detail, including layout, components, text, styling, and any visible defects or errors."
 
-    image_path = resolve_image_path(task, path_arg, engine.store.root)
+    if isinstance(path_arg, str) and path_arg.startswith('browser:'):
+        try:
+            image_path = engine.browsers.image_path(task, path_arg)
+        except (ValueError, OSError) as error:
+            return {'error': str(error)}
+    else:
+        image_path = resolve_image_path(task, path_arg, engine.store.root)
     if not image_path or not image_path.is_file():
         return {"error": f"Image file not found or inaccessible: {path_arg}"}
 
@@ -155,6 +161,8 @@ def inspect_image_tool(engine: Any, task: Dict[str, Any], args: Dict[str, Any], 
             res = provider.complete_brief(messages, [], 1024, None, cancel_fn)
             content = res.get("content", "") if isinstance(res, dict) else str(res)
 
+        if isinstance(path_arg, str) and path_arg.startswith('browser:'):
+            engine.browsers.image_path(task, path_arg)  # Revalidate after inference/cancellation.
         return {
             "image": image_path.name,
             "mime_type": mime,

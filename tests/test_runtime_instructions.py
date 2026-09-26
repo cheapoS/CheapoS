@@ -147,6 +147,7 @@ class RuntimeInstructionTests(unittest.TestCase):
                 if read_only:
                     self.assertIn('read-only explanation', policy)
                     self.assertNotIn('checkpoint', {t['function']['name'] for t in actual})
+                self.assertEqual('browser_preview' in {t['function']['name'] for t in actual}, not read_only)
                 contract = json.loads(policy.rsplit('\n', 1)[1])
                 self.assertEqual(contract['available_tools'], [t['function']['name'] for t in actual])
                 self.assertEqual(saved, before)
