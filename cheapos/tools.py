@@ -128,8 +128,11 @@ READ_TOOLS = [
     ),
     tool(
         "search",
-        "Search LOCAL repository files for a literal string, symbol name, or code snippet. Fast, recursive, respects ignore patterns, and capped. Prefer this to discover function/class definitions and references across the codebase instead of running custom find/grep scripts. Not internet search; use read_url for web links.",
-        {"query": TEXT},
+        "Find case-insensitive literal lines in eligible local files. path scopes a file/directory; glob uses case-sensitive fnmatch on full relative paths (* spans /). Defaults: limit 60, context_lines 0 per side. Continue next_cursor with identical args. For text_truncated, use read_file.",
+        {"query": TEXT, "path": TEXT, "glob": TEXT,
+         "limit": {"type": "integer", "minimum": 1, "maximum": 60},
+         "context_lines": {"type": "integer", "minimum": 0, "maximum": 5},
+         "cursor": TEXT},
         ["query"],
     ),
     tool(

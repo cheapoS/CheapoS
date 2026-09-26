@@ -1,7 +1,10 @@
 """Repository snapshots and constrained file tools. Check commands are NOT OS-sandboxed."""
 
+import base64
 import codecs
+import fnmatch
 import hashlib
+import json
 import math
 import os
 import signal
@@ -330,20 +333,143 @@ class Workspace:
                 "has_more": len(selected) > len(page),
                 "next_start_line": selected[100][0] if len(selected) > 100 else None}
 
-    def search(self, query):
-        if not isinstance(query, str) or not query or len(query) > 200:
-            raise ValueError("Search query must contain 1–200 characters")
-        matches = []
-        for name in self.list_files():
-            try:
-                for line_number, line in enumerate(self.text_bytes(name).decode('utf-8').splitlines(), 1):
-                    if query.casefold() in line.casefold():
-                        matches.append({"path": name, "line": line_number, "text": line[:300]})
-                        if len(matches) >= 60:
-                            return matches
-            except (OSError, UnicodeError, ValueError):
+    def _search_names(self, path, glob):
+        # Do not use list_files: its 5,000-file display cap must not hide evidence.
+        names = git(self.root, "ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0")
+        selected = []
+        for name in sorted(set(filter(None, names))):
+            if path != "." and name != path and not name.startswith(path + "/"):
                 continue
-        return matches
+            if glob is not None and not fnmatch.fnmatchcase(name, glob):
+                continue
+            if not allowed_name(name):
+                continue
+            try:
+                target = self.path(name)
+                if not target.is_file():
+                    continue
+            except (OSError, ValueError):
+                continue
+            selected.append(name)
+            if len(selected) > MAX_FILES:
+                raise ValueError("Search scope exceeds 5,000 files; narrow path or glob")
+        return selected
+
+    def search(self, query, path=".", glob=None, limit=60, context_lines=0, cursor=None):
+        """Return one bounded page; continuation is bound to scope and source bytes.
+
+        Query-only calls remain valid, but all calls now return an envelope rather
+        than the old silently capped list. Globs use case-sensitive fnmatch over
+        whole workspace-relative POSIX names (so '*' can match '/').
+        """
+        if not isinstance(query, str) or not 1 <= len(query) <= 200 or "\x00" in query or "\n" in query or "\r" in query:
+            raise ValueError("Search query must contain 1–200 characters on one line")
+        if not isinstance(path, str) or not path or len(path) > 1000 or "\x00" in path or "\\" in path:
+            raise ValueError("Search path must be a workspace-relative file or directory")
+        if path != ".":
+            target = self.path(path)
+            if not target.exists():
+                raise ValueError("Search path does not exist")
+            path = target.relative_to(self.root).as_posix()
+        if glob is not None and (not isinstance(glob, str) or not 1 <= len(glob) <= 200
+                or "\x00" in glob or "\\" in glob or PurePosixPath(glob).is_absolute()
+                or ".." in PurePosixPath(glob).parts):
+            raise ValueError("Search glob must be a workspace-relative pattern of 1–200 characters")
+        if type(limit) is not int or not 1 <= limit <= 60:
+            raise ValueError("Search limit must be an integer from 1 to 60")
+        if type(context_lines) is not int or not 0 <= context_lines <= 5:
+            raise ValueError("context_lines must be an integer from 0 to 5")
+        binding = [str(self.root), query, path, glob, limit, context_lines]
+        digest = hashlib.sha256(json.dumps(binding, ensure_ascii=True).encode())
+        offset, previous = 0, None
+        if cursor is not None:
+            try:
+                if not isinstance(cursor, str) or not 1 <= len(cursor) <= 512:
+                    raise ValueError()
+                previous = json.loads(base64.b64decode(cursor, altchars=b"-_", validate=True))
+                if (not isinstance(previous, dict) or set(previous) != {"version", "offset", "fingerprint"}
+                        or type(previous["version"]) is not int or previous["version"] != 1
+                        or type(previous["offset"]) is not int or previous["offset"] < 1
+                        or not isinstance(previous["fingerprint"], str) or len(previous["fingerprint"]) != 64):
+                    raise ValueError()
+                offset = previous["offset"]
+            except (ValueError, TypeError, UnicodeError):
+                raise ValueError("Invalid search cursor; restart without cursor") from None
+        names = self._search_names(path, glob)
+        matches, skipped, versions = [], {}, []
+        total, scanned_bytes, page_chars, files_searched = 0, 0, 0, 0
+        page_full = False
+        folded = query.casefold()
+
+        def version(name):
+            info = self.path(name).stat()
+            return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+        def excerpt(lines, index):
+            line = lines[index]
+            return {"line": index + 1, "text": line[:300], "text_truncated": len(line) > 300}
+
+        for name in names:
+            digest.update(json.dumps(name, ensure_ascii=True).encode())
+            try:
+                before = version(name)
+                versions.append((name, before))
+                data = self.text_bytes(name)
+                if version(name) != before:
+                    raise FileVersionError("Search source changed during scanning; restart without cursor")
+            except FileVersionError:
+                raise
+            except (OSError, UnicodeError, ValueError) as error:
+                # Excluded text is visible in completeness metadata, without leaking it.
+                reason = "unreadable" if isinstance(error, OSError) else "non_text_or_oversized"
+                skipped[reason] = skipped.get(reason, 0) + 1
+                digest.update(reason.encode())
+                continue
+            files_searched += 1
+            scanned_bytes += len(data)
+            if scanned_bytes > MAX_SNAPSHOT_BYTES:
+                raise ValueError("Search scope exceeds 100 MB; narrow path or glob")
+            digest.update(hashlib.sha256(data).digest())
+            lines = data.decode("utf-8").splitlines()
+            for index, line in enumerate(lines):
+                if folded not in line.casefold():
+                    continue
+                total += 1
+                if total <= offset or page_full:
+                    continue
+                match = {"path": name, **excerpt(lines, index)}
+                if context_lines:
+                    match["context_before"] = [excerpt(lines, n) for n in range(max(0, index - context_lines), index)]
+                    match["context_after"] = [excerpt(lines, n) for n in range(index + 1, min(len(lines), index + context_lines + 1))]
+                size = len(json.dumps(match, ensure_ascii=False)) + 2
+                if len(matches) >= limit or page_chars + size > 20000:
+                    page_full = True
+                    continue
+                matches.append(match)
+                page_chars += size
+        # Catch ordinary concurrent edits, removals, renames and inventory changes.
+        try:
+            changed = names != self._search_names(path, glob) or any(version(name) != saved for name, saved in versions)
+        except (OSError, ValueError):
+            changed = True
+        if changed:
+            raise FileVersionError("Search source changed during scanning; restart without cursor")
+        fingerprint = digest.hexdigest()
+        if previous and previous["fingerprint"] != fingerprint:
+            raise FileVersionError("Search source or parameters changed; restart without cursor")
+        if previous and offset >= total:
+            raise ValueError("Search cursor is beyond the available matches; restart without cursor")
+        next_offset = offset + len(matches)
+        more = next_offset < total
+        if more and not matches:
+            raise ValueError("Search excerpt exceeds the page bound; narrow path or context_lines")
+        following = base64.urlsafe_b64encode(json.dumps({
+            "version": 1, "offset": next_offset, "fingerprint": fingerprint,
+        }, separators=(",", ":")).encode()).decode() if more else None
+        return {"matches": matches, "returned": len(matches), "total_matches": total,
+                "offset": offset, "has_more": more, "truncated": more, "next_cursor": following,
+                "skipped_files": sum(skipped.values()), "skip_reasons": skipped,
+                "files_searched": files_searched, "snapshot": fingerprint}
 
     def write_file(self, path, content):
         if not isinstance(content, str) or len(content.encode("utf-8")) > MAX_CREATE_FILE_BYTES:
