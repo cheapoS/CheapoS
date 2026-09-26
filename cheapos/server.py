@@ -701,13 +701,13 @@ class LocalHandler(SimpleHTTPRequestHandler):
                 elif action == "pull-request-follow-up":
                     from . import pr_followup
                     result = public_task(pr_followup.create(engine, task_id, values))
-                elif action in {"pull-request-preview", "pull-request-publish", "pull-request-status"}:
+                elif action in {"pull-request-preview", "pull-request-publish", "pull-request-status", "pull-request-recovery"}:
                     from . import git_workflow
                     if action == "pull-request-publish":
                         result = git_workflow.publish(engine, task_id, values)
                     else:
                         if values: raise ValueError('This request accepts no fields')
-                        result = (git_workflow.preview if action == "pull-request-preview" else git_workflow.status)(engine, task_id)
+                        result = {"pull-request-preview": git_workflow.preview, "pull-request-status": git_workflow.status, "pull-request-recovery": git_workflow.publication_recovery}[action](engine, task_id)
                 elif action == "reconcile":
                     result = public_task(engine.reconcile_project(task_id, values))
                 elif action == "environment-recheck":

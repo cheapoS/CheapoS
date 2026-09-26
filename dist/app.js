@@ -1529,10 +1529,15 @@ function bindCommitDecision(task) {
   },()=>setView('chat'));
   if(CheapOSGitWorkflow.enabled(task)){
     bindIntegration($('#changes-view'));
-    CheapOSGitWorkflow.mount($('#changes-view'),task,api,()=>{void refresh();},async panel=>{
+    CheapOSGitWorkflow.mount($('#changes-view'),task,api,()=>{void refresh();},async (panel,context={})=>{
       try{
-        const readiness=await api('/tasks/'+task.id+'/integration-readiness');
+        const readiness=await api('/tasks/'+task.id+(context.publication?'/pull-request-recovery':'/integration-readiness'),context.publication?{}:undefined);
+        if(!readiness)return;
         if(!panel.isConnected)return;
+        if(readiness.publication_id){
+          const publish=panel.querySelector('[data-pr-publish]');
+          if(publish){publish.disabled=true;publish.textContent='Saved destination unavailable';}
+        }
         const recovery=document.createElement('div');
         recovery.innerHTML=CheapOSIntegration.markup(task,readiness);
         panel.append(recovery);bindIntegration(recovery,readiness);

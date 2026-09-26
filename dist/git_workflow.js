@@ -78,6 +78,7 @@ function mount(container,task,api,onPublished=()=>{},onBlocked=async()=>{}){
   panel.setAttribute('aria-busy','true');
   if(status){const button=panel.querySelector('[data-pr-refresh]');if(button){button.disabled=true;button.textContent='Checking GitHub & syncing…';}}
   try{current=status?await checkStatus(task,api,{force:true}):await api('/tasks/'+task.id+'/pull-request-preview',{});if(status)onPublished(current);if(!panel.isConnected)return;panel.innerHTML=content(current,task);bind();
+   if(current.retry)await onBlocked(panel,{publication:true});
    if(current.update_blocker){panel.insertAdjacentHTML('beforeend','<p role="status">New changes are not ready to publish: '+esc(current.update_blocker)+'</p>');await onBlocked(panel);}
   }
   catch(error){if(panel.isConnected){panel.innerHTML='<h3>Pull request</h3><p role="alert">'+esc(error.message)+'</p><button type="button" data-pr-retry>Retry publication preview</button>';panel.querySelector('[data-pr-retry]').onclick=()=>load(status);if(!status)await onBlocked(panel);}}
@@ -91,7 +92,7 @@ function mount(container,task,api,onPublished=()=>{},onBlocked=async()=>{}){
    if(busy)return;busy=true;e.currentTarget.disabled=true;e.currentTarget.textContent='Publishing reviewed branch…';
    panel.insertAdjacentHTML('beforeend','<p role="status">Sending your approved branch to GitHub. This can take a moment.</p>');
    try{current=await api('/tasks/'+task.id+'/pull-request-publish',{approved:true,id:current.id,...(!current.retry?fields():{})});descriptionDrafts.delete(descriptionKey(current));if(panel.isConnected){panel.innerHTML=content(current,task);bind();}onPublished(current);}
-   catch(error){if(panel.isConnected){panel.innerHTML='<p role="alert">'+esc(error.message)+'</p><button type="button" data-pr-retry>Retry saved publication</button>';panel.querySelector('[data-pr-retry]').onclick=()=>load();await onBlocked(panel);}}
+   catch(error){if(panel.isConnected){panel.innerHTML='<p role="alert">'+esc(error.message)+'</p><button type="button" data-pr-retry>Retry saved publication</button>';panel.querySelector('[data-pr-retry]').onclick=()=>load();await onBlocked(panel,{publication:true});}}
    finally{busy=false;}
   });
  }

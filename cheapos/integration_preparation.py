@@ -123,6 +123,8 @@ def _publish(engine,task,stage,status='running',**values):
             task['integration_preparation']=copy.deepcopy(current)
             return False
         op=task['integration_preparation'];op.update(stage=stage,status=status,label=LABELS[stage],**values)
+        if stage=='ready':
+            op.pop('reason',None);op.pop('error',None)
         engine.store.save(task)
         return True
 
@@ -174,16 +176,16 @@ def continuing(task):
 
 
 def start(engine,task_id,values,*,renew_checks=True):
-    allowed={'approved','target_tip','candidate','operation_id','target_ref'}
+    allowed={'approved','target_tip','candidate','operation_id','target_ref','publication_id'}
     if set(values)-allowed or values.get('approved') is not True or not all(isinstance(values.get(k),str) and values[k] for k in ('target_tip','candidate')):
         raise ValueError('Approve preparation of the displayed target and candidate.')
     with engine.lock:
         engine.require_active_task(task_id)
         task=engine.store.get(task_id);saved=task.get('integration_preparation')
-        if saved and saved.get('id')==values.get('operation_id') and (saved.get('requested_target_tip',saved.get('target_tip'))!=values['target_tip'] or saved.get('candidate')!=values['candidate']):
+        if saved and saved.get('id')==values.get('operation_id') and (saved.get('requested_target_tip',saved.get('target_tip'))!=values['target_tip'] or saved.get('candidate')!=values['candidate'] or (values.get('target_ref') and saved.get('target_ref')!=values['target_ref']) or saved.get('publication_id')!=values.get('publication_id')):
             raise ValueError('That operation ID belongs to a different captured candidate or target.')
         retry_failed=bool(saved and saved.get('status') in {'failed','cancelled'} and values.get('operation_id') and values['operation_id']!=saved.get('id'))
-        if saved and not retry_failed and (saved.get('id')==values.get('operation_id') or (saved.get('requested_target_tip',saved.get('target_tip'))==values['target_tip'] and saved.get('candidate')==values['candidate'])):
+        if saved and not retry_failed and (saved.get('id')==values.get('operation_id') or (saved.get('requested_target_tip',saved.get('target_tip'))==values['target_tip'] and saved.get('candidate')==values['candidate'] and (not values.get('target_ref') or saved.get('target_ref')==values['target_ref']) and saved.get('publication_id')==values.get('publication_id'))):
             if renew_checks and saved.get('authorized') and saved.get('status')=='decision' and saved.get('reason',{}).get('code')=='command_permission_required':
                 engine.admission.require_idle(task_id)
                 _renew_unchanged_checks(engine,task)
@@ -198,10 +200,16 @@ def start(engine,task_id,values,*,renew_checks=True):
         opid=values.get('operation_id') or uuid.uuid4().hex
         if not isinstance(opid,str) or len(opid)>100:raise ValueError('Invalid operation ID')
         if renew_checks:_renew_unchanged_checks(engine,task)
+        if values.get('publication_id'):
+            from .git_workflow import retire_publication
+            retire_publication(engine,task,values)
+        elif task.get('pull_request') and not task['pull_request'].get('url'):
+            raise ValueError('Finish the saved publication or approve its destination recovery before updating this task.')
         if saved:task.setdefault('integration_preparation_history',[]).append(copy.deepcopy(saved))
         task['integration_preparation']={'id':opid,'candidate':values['candidate'],'target_tip':values['target_tip'],'requested_target_tip':values['target_tip'],
             'target_ref':values.get('target_ref') or task.get('branch_run',{}).get('target_ref') or task.get('integration_target_ref'),
             'status':'running','stage':'accepted','label':LABELS['accepted'],'authorized':True,
+            **({'publication_id':values['publication_id']} if values.get('publication_id') else {}),
             'workspace_generation':task.get('workspace_generation',0),'workspace':task.get('workspace')}
         same_assignment=bool(saved and saved.get('candidate')==values['candidate']
             and saved.get('requested_target_tip',saved.get('target_tip'))==values['target_tip']
@@ -211,6 +219,8 @@ def start(engine,task_id,values,*,renew_checks=True):
         if retry_failed and same_assignment and saved.get('dispatched'):
             task['integration_preparation']['dispatched']=True
         engine.store.save(task)
+        if values.get('publication_id'):
+            getattr(engine,'pull_request_previews',{}).pop(task_id,None)
         receipt=copy.deepcopy(task)
         _launch(engine,task_id)
         return receipt

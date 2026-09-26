@@ -59,3 +59,16 @@ test('update explains exact check renewal and required permission is actionable 
  task.integration_preparation.status='running';assert.doesNotMatch(integration.markup(task),/data-integration-permission/);
  task.integration_preparation.status='cancelled';assert.doesNotMatch(integration.markup(task),/data-integration-permission/);
 });
+
+test('deleted publication target names both branches and requires bound explicit preparation',async()=>{
+ const task={id:'retarget',integration_preparation:{status:'ready',label:'Ready for your review',reason:{message:'Review the specific decision in this chat.'}}};
+ const readiness={publication_id:'saved-publication',previous_base:'old-branch',target_ref:'refs/heads/main',target_tip:'new-tip',candidate:'patch',actions:['update_resolve']};
+ const html=integration.markup(task,readiness);
+ assert.match(html,/old-branch/);assert.match(html,/<strong>main<\/strong>/);
+ assert.match(html,/fresh checks and independent review/);assert.match(html,/separate approval/);
+ assert.doesNotMatch(html,/Ready for your review|Review the specific decision/);
+ assert.doesNotMatch(integration.markup(task),/Review the specific decision/);
+ let sent;
+ await integration.prepare(async(url,body)=>{sent={url,body};return task;},task,readiness);
+ assert.equal(sent.body.publication_id,'saved-publication');assert.equal(sent.body.target_ref,'refs/heads/main');assert.equal(sent.body.approved,true);
+});

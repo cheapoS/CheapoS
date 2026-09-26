@@ -24,12 +24,93 @@ class GitWorkflowTests(unittest.TestCase):
         self.candidate_mock = patch.object(flow, '_candidate', return_value=self.candidate).start()
         self.git = patch.object(flow.work, 'source_git', return_value='').start()
         self.find = patch.object(github, 'find_pull', return_value=None).start()
+        self.missing_base = patch.object(flow, 'missing_remote_base', return_value=False).start()
         self.create = patch.object(github, 'api', return_value={'number': 7, 'head': {'sha': 'a'*40}, 'base': {'ref': 'production'}}).start()
         self.sync = patch.object(git_sync, 'synchronize', return_value={'state':'updated', 'retryable':False, 'message':'Updated local production.'}).start()
         self.addCleanup(patch.stopall)
 
     def approve(self, preview):
         return flow.publish(self.engine, 'task', {'approved': True, 'id': preview['id']})
+
+    def test_failure_before_publication_intent_uses_candidate_readiness(self):
+        from cheapos import integration_preparation as prep
+        with patch.object(prep,'readiness',return_value={'code':'target_advanced'}) as readiness:
+            self.assertEqual(flow.publication_recovery(self.engine,'task'),{'code':'target_advanced'})
+        readiness.assert_called_once_with(self.engine,'task')
+        self.find.assert_not_called()
+
+    def test_missing_base_preserves_intent_and_does_not_push_or_create(self):
+        preview = flow.preview(self.engine, 'task')
+        self.missing_base.return_value = True
+        with self.assertRaisesRegex(ValueError, 'destination no longer exists'):
+            self.approve(preview)
+        self.assertEqual(self.saved['pull_request']['state'], 'publishing')
+        self.assertFalse(any(call.args[1] == 'push' for call in self.git.call_args_list))
+        self.create.assert_not_called()
+
+    def test_deleted_destination_recovery_preserves_candidate_and_requires_new_publication(self):
+        from cheapos import integration_preparation as prep
+        preview = flow.preview(self.engine, 'task')
+        self.missing_base.return_value = True
+        with self.assertRaises(ValueError):self.approve(preview)
+        original = copy.deepcopy(self.saved['pull_request'])
+        self.saved.update(workspace='/copy',patch='reviewed patch',checks=[{'passed':True}],usage={'tokens':42})
+        self.saved['integration_preparation'] = {'id':'old-update','status':'ready','target_ref':'refs/heads/production'}
+        self.engine.reviewed_patch = Mock()
+        self.engine.runtimes = {}
+        self.engine.route_restore_stop = threading.Event()
+        self.missing_base.side_effect = lambda p: p['base'] == 'production'
+        state = {'source':'/project','branch':'refs/heads/main','head':'new-target'}
+        with patch.object(flow.commits,'source_state',return_value=state):
+            offer = flow.publication_recovery(self.engine, 'task')
+            self.assertEqual(offer['previous_base'],'production')
+            values = {'approved':True,'operation_id':'replacement',**{k:offer[k] for k in ('publication_id','candidate','target_ref','target_tip')}}
+            before = copy.deepcopy(self.saved)
+            with patch.object(prep,'_launch') as launch:
+                with self.assertRaisesRegex(ValueError,'changed'):
+                    prep.start(self.engine,'task',{**values,'publication_id':'stale'})
+                self.assertEqual(self.saved,before)
+                accepted = prep.start(self.engine,'task',values)
+                prep.start(self.engine,'task',values)  # Lost acknowledgement reuses the operation.
+            self.assertNotIn('pull_request',accepted)
+            self.assertEqual(accepted['pull_request_history'][0]['head'],original['head'])
+            self.assertEqual(accepted['pull_request_history'][0]['state'],'superseded')
+            self.assertEqual(accepted['usage'],{'tokens':42})
+            self.assertEqual(accepted['checks'],before['checks'])
+            self.assertEqual(accepted['publication_generation'],1)
+            self.assertNotIn('task',self.engine.pull_request_previews)
+        # Saved preparation dispatches reconciliation and continuation, retaining authority.
+        self.engine.admission.snapshot = Mock(return_value={'interactive':{'allowed':True}})
+        self.engine.admission.operations = {}
+        self.engine.reconcile_project = Mock()
+        self.engine.start = Mock()
+        with patch.object(prep,'readiness',return_value={'code':'target_advanced','target_tip':'new-target'}):
+            prep._drive(self.engine,'task')
+        self.engine.reconcile_project.assert_called_once_with('task',{'patch_digest':offer['candidate']})
+        self.engine.start.assert_called_once_with('task')
+        # Controller completion uses new review evidence; old publication approval is rejected.
+        self.candidate_mock.return_value = {**self.candidate,'base':'main','evidence':'new review','head':'d'*40}
+        next_preview = flow.preview(self.engine,'task')
+        self.assertNotEqual(next_preview['branch'],original['branch'])
+        self.assertEqual(next_preview['base'],'main')
+        with self.assertRaises(ValueError):self.approve(preview)
+        self.create.return_value = {'number':8,'head':{'sha':'d'*40},'base':{'ref':'main'}}
+        self.git.return_value = ''
+        self.assertEqual(self.approve(next_preview)['number'],8)
+
+    def test_recovery_does_not_replace_existing_pr_or_available_base(self):
+        preview = flow.preview(self.engine,'task')
+        self.missing_base.return_value=True
+        with self.assertRaises(ValueError):self.approve(preview)
+        before=copy.deepcopy(self.saved)
+        self.find.return_value={'number':7}
+        self.assertIsNone(flow.publication_recovery(self.engine,'task'))
+        self.find.return_value=None
+        self.missing_base.return_value=False
+        self.assertIsNone(flow.publication_recovery(self.engine,'task'))
+        self.find.side_effect=ValueError('GitHub unavailable')
+        with self.assertRaises(ValueError):flow.publication_recovery(self.engine,'task')
+        self.assertEqual(self.saved,before)
 
     def test_local_is_default_and_rejects_unknown_policy(self):
         self.assertEqual(flow.policy({}), {'workflow': 'local', 'remote': 'origin'})
@@ -203,6 +284,14 @@ class GitWorkflowTests(unittest.TestCase):
 
 
 class GitHubStatusTests(unittest.TestCase):
+    def test_recovery_lookup_finds_a_pr_even_if_its_base_changed(self):
+        from urllib.parse import parse_qs, urlsplit
+        pull={'number':7,'base':{'ref':'new-main'},'head':{'ref':'task','repo':{'full_name':'org/repo'}}}
+        with patch.object(github,'api',return_value=[pull]) as api:
+            self.assertEqual(github.find_pull('org/repo','task'),pull)
+            self.assertNotIn('base',parse_qs(urlsplit(api.call_args.args[1]).query))
+            self.assertIsNone(github.find_pull('org/repo','task','old-base'))
+
     def test_only_supported_remote_destinations_are_accepted(self):
         for url in ('git@github.com:org/repo.git', 'https://github.com/org/repo.git', 'ssh://git@github.com/org/repo'):
             with patch.object(github, 'source_git', return_value=url):self.assertEqual(github.repository('/x','origin'),'org/repo')

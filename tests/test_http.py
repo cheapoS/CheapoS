@@ -531,7 +531,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.engine.store.get(task['id'])['status'], 'approved')
         path = '/api/tasks/' + task['id']
         from cheapos import git_workflow
-        for action, method in [('preview','preview'),('publish','publish'),('status','status')]:
+        for action, method in [('preview','preview'),('publish','publish'),('status','status'),('recovery','publication_recovery')]:
             publication = {'id':'publication-not-task-id', 'title':'Reviewed PR title', 'description':'Reviewed changes'}
             with patch.object(git_workflow,method,return_value=publication) as handler:
                 route=path+'/pull-request-'+action
