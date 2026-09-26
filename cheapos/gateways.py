@@ -160,7 +160,8 @@ class OpenAICompatibleGateway(ChatProvider):
         except HTTPError as error:
             if error.code in {401, 403}:
                 raise ProviderError("The gateway requires a valid client API key. Its dashboard password is separate.", code="client_key_rejected") from None
-            raise ProviderError(f"Model discovery returned HTTP {error.code}") from None
+            raise ProviderError(f"Model discovery returned HTTP {error.code}",
+                                code="catalog_unavailable" if error.code in {404, 405} else "catalog_error") from None
         except (URLError, TimeoutError, OSError):
             raise ProviderError("The model endpoint is not reachable", code="endpoint_unavailable") from None
         except (ValueError, TypeError):

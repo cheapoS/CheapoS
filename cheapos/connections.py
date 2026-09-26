@@ -81,6 +81,8 @@ class Connections:
         result['selected_connection'] = self.selected_id
         result['connections'] = [{'id':identity, 'name':m.settings['name'],
                                   'enabled':m.settings['enabled'], 'gateway_type':m.settings['gateway_type'],
+                                  'automatic':m.settings.get('automatic', True),
+                                  'models':[{'id':model['id'], 'label':model.get('name',model['id'])} for model in m.models],
                                   'status':m.state} for identity,m in tuple(self.managers.items())]
         return result
 
@@ -100,7 +102,7 @@ class Connections:
             if len(self.managers) >= 20: raise ValueError('Up to 20 gateway connections are supported')
             identity = uuid.uuid4().hex
             manager = OmniRouteManager(self.root / 'connections' / identity, use_environment=False)
-            manager.configure({**values, 'auto_start':False})
+            manager.configure({'automatic': values.get('gateway_type') != 'direct', **values, 'auto_start':False})
             manager.connection_id = identity
             manager.pool = self.pool
             self.managers[identity] = manager
@@ -124,10 +126,11 @@ class Connections:
         if not manager.settings['enabled']: raise ValueError('This gateway connection is disabled in Models')
         return manager
 
-    def capture(self):
+    def capture(self, include=()):
         return [{**access_policy.snapshot(m.settings), 'connection_id':identity,
-                 'gateway_type':m.settings['gateway_type'], 'name':m.settings['name']}
-                for identity,m in tuple(self.managers.items()) if m.settings['enabled']]
+                 'gateway_type':m.settings['gateway_type'], 'name':m.settings['name'],
+                 'automatic':m.settings.get('automatic', True)}
+                for identity,m in tuple(self.managers.items()) if m.settings['enabled'] and (m.settings.get('automatic', True) or identity in include)]
 
     def for_policy(self, policy):
         manager = self.managers.get(policy['connection_id'])

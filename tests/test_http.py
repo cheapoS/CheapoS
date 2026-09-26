@@ -235,6 +235,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(json.loads(body)['current']['revision'], saved['revision'])
         self.assertEqual(self.post('/api/projects/settings', {**request, 'project': '/not/registered'})[0], 400)
         self.assertEqual(self.request('GET', '/settings.js')[0], 200)
+        self.assertEqual(self.request('GET', '/connection_setup.js')[0], 200)
         self.assertEqual(self.request('GET', '/storage.js')[0], 200)
         self.assertEqual(self.request('GET', '/settings.css')[0], 200)
 

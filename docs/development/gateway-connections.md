@@ -100,3 +100,43 @@ including actual request failover after authentication failure, preserved messag
 and usage, separate keys, captured access and shared-account cooldowns. Browser
 verification used a disposable fake catalog to add a second gateway and save
 worker/reviewer choices on different connections. No live provider requests ran.
+
+## Direct APIs and pasted setup text
+
+**Add model or provider** offers **Enter manually** and **Paste setup text**.
+Both use the same editable connection form. Direct API connections use HTTPS
+and OpenAI-compatible chat completions without a local gateway process. Local
+adapter validation and OmniRoute process ownership remain separate.
+
+Pasted posts, documentation and API snippets are parsed locally without inference,
+link fetching or command execution. The parser extracts explicit API addresses
+and quoted exact model IDs. Multiple addresses require a choice; ordinary website
+links and shortened links are not guessed into API endpoints. Marketing model
+names, free-access claims, context sizes and tool claims grant no authority.
+Keys are entered separately and use the existing per-connection credential store.
+
+Saving does not run inference. Refresh models to discover the catalog. An exact
+manual ID can supplement discovery or stand in for a missing `/models` endpoint
+(HTTP 404/405); authentication and transport failures are still errors. Manual
+IDs have unknown prices and tools until catalog evidence or explicit existing
+account/tool declarations supply them. Tool qualification still runs through the
+normal task routing path; no new standalone inference test is introduced.
+
+New direct connections default to manual selection. **Allow automatic selection
+in future chats** is separate from enabling the connection. Scoped setup captures
+explicitly pinned connections as well as opted-in automatic connections. A later
+opt-in does not expand a saved task's automatic authority. Legacy connections keep
+their existing automatic behavior.
+
+The connection model picker offers **Use as worker in this chat**, which opens a
+reviewable chat setup draft. Planner and reviewer choices remain separate; current
+pause/apply, spending, qualification and response-identity checks still apply.
+Role settings display connection names and suggest exact IDs from that connection.
+
+Validation uses synthetic catalogs and responses, including a captured HTTPS
+request with retained tool-call/result pairing and the connection's own key.
+Browser acceptance covers pasted and manual setup, discovery, scoped worker choice,
+and embedded-settings save behavior with disposable data. No provider signup,
+real credentials or live inference is part of this validation. Seven new backend
+cases took approximately 0.024 seconds; parsing cases are included in the existing
+JavaScript test command. Existing HTTP/routing fixtures provide integration coverage.

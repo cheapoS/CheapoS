@@ -185,7 +185,7 @@ def policy(engine, snapshot):
 def _capture_policy(engine, snapshot):
     values = snapshot['values']
     config = {}
-    entries = engine.connections.capture()
+    entries = engine.connections.capture(include=[selection.get("connection_id") for selection in values["roles"].values() if selection["strategy"] == "only"])
     if 'allowed_connections' in values:
         allowed = values['allowed_connections']
         entries = [entry for entry in entries if entry['connection_id'] in allowed]
