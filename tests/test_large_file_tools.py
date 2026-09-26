@@ -35,8 +35,8 @@ class LargeFileToolsTests(unittest.TestCase):
         self.assertIn('method_119', second['outline'])
         self.assertEqual(first['hash'], original_hash)
         self.assertLessEqual(len(first['outline']), 20000)
-        with patch.object(Workspace, 'list_files', return_value=['large.py']):
-            matches = self.workspace.search('def method_119')
+        with patch.object(Workspace, '_search_names', return_value=['large.py']):
+            matches = self.workspace.search('def method_119')['matches']
         self.assertEqual(len(matches), 1)
         line = matches[0]['line']
         excerpt = self.workspace.read_file('large.py', line, line + 1)

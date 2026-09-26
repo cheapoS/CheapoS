@@ -257,3 +257,23 @@ without duplicating the full per-criterion assessment schema. Current check
 source mappings travel in the progress checklist. Older complete assessments
 remain accepted only through the unchanged evidence validator; request
 reservations and authorized limits are not increased.
+
+## Scoped local search
+
+`READ_TOOLS.search` now offers `path`, `glob`, `limit`, `context_lines` and
+`cursor` alongside the existing literal `query`. It returns bounded matches,
+continuation and explicit clipping/skip metadata; stale source bindings require
+a fresh search. The existing `runtime.tool_contract` catalog rule carries the
+conditional search-completeness guidance at the provider boundary. No new prompt
+entry point, tool authority, review citation or approval path is introduced.
+
+`test_search` inspects the actual `_request_attempt` provider boundary for worker,
+Interactive, Unattended, reviewer, read-only work and discussion tools. It executes
+returned calls through the real file dispatcher, corrects invalid arguments,
+JSON-restores saved state, changes the provider, and completes pagination with
+paired replies, preserved checks/grants/attempts and one current contract. A
+separate real item-review entry-point test delivers both pages before an explicit
+validated decision. Existing runtime/review recovery checks cover phases that
+filter search out, including decision coaching and final review; the conditional
+prose never grants it back. See [local code search](local-code-search.md) for the
+response migration, consumer audit, bounds and filesystem consistency limits.

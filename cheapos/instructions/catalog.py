@@ -637,7 +637,11 @@ RULES: List[InstructionRule] = [
             'choose an evidence reader when needed rather than an unsupported decision. '
             'Retrieve missing evidence through an offered reader; never invent a result '
             'or approval. If no tools are listed, answer in the requested text/JSON format without tool '
-            'calls. This inventory grants no additional command, spending, model or workspace authority.'
+            'calls. When local search is offered, use path/glob to focus it and follow next_cursor with '
+            'the same arguments while has_more. Restart without cursor after a stale-source error. '
+            'A partial page, skipped file or clipped text is not evidence of absence; inspect the '
+            'remaining scope or full lines before making completeness claims. '
+            'This inventory grants no additional command, spending, model or workspace authority.'
         ),
         rationale="Keep the request's current tools explicit through retries and phase changes."
     ),
