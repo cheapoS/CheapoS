@@ -32,11 +32,12 @@ def is_local_ollama(config):
 
 
 def guard_inference_route(config, gateway_url):
-    """Development policy: remote inference uses the configured local OmniRoute.
-
-    This also checks captured task settings; labels or an old provider API key
-    cannot turn a direct remote endpoint into an authorized gateway.
-    """
+    """Require the exact configured saved connection before remote dispatch."""
+    if config.get('gateway') == 'omniroute' and config.get('gateway_type') == 'direct' and config.get('connection_id'):
+        parsed = urlsplit(config.get('base_url', ''))
+        if (parsed.scheme == 'https' and parsed.hostname and not any((parsed.username, parsed.password, parsed.query, parsed.fragment))
+                and config.get('base_url', '').rstrip('/') == gateway_url.rstrip('/')):
+            return
     if is_local_ollama(config):
         return
     def identity(url):
@@ -56,7 +57,7 @@ def guard_inference_route(config, gateway_url):
     except (TypeError, ValueError):
         pass
     raise ValueError('Remote models must use the configured OmniRoute or compatible gateway connection. '
-                     'Open Models and select the configured gateway; direct provider endpoints are disabled. '
+                     'Open Connections and select the saved gateway or direct API; unsaved provider endpoints are disabled. '
                      'Saved tasks keep their original connection and edits; start a new chat with the gateway model choices.')
 
 

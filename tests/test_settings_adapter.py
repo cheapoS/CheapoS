@@ -29,7 +29,7 @@ class SettingsAdapterTests(unittest.TestCase):
                       'included_models': [], 'connection_id': 'default', 'gateway_type': 'omniroute', 'name': 'gateway'}
         self.gateway = SimpleNamespace(settings={**self.entry, 'enabled': True}, models=[
             {'id': 'worker', 'free': True, 'tool_calling': True}, {'id': 'reviewer', 'free': True, 'tool_calling': True}])
-        self.engine.connections = SimpleNamespace(capture=lambda: [copy.deepcopy(self.entry)], selected_id='default',
+        self.engine.connections = SimpleNamespace(capture=lambda include=(): [copy.deepcopy(self.entry)], selected_id='default',
             for_policy=lambda entry: self.gateway, resolve=lambda cfg, fallback: self.gateway)
         self.engine.gateway = self.gateway
         initialize(self.engine)

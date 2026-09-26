@@ -91,6 +91,23 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(runtime.task['messages'],before)
         self.assertEqual(engine.request.call_count,1)
 
+    def test_manual_connection_is_not_an_automatic_fallback_or_new_authority(self):
+        engine,runtime=self.harness()
+        self.other.configure({'automatic':False})
+        runtime.task['gateway_connections']=self.registry.capture(include=[self.other_id])
+        self.default.catalog=Mock(return_value={'status':'offline','models':[]})
+        with self.assertRaises(RoutingPause):
+            _select_connections(engine,runtime,'worker',False)
+        engine.request.assert_not_called()
+        self.other.configure({'automatic':True})
+        # Opting in affects new captures, not the saved task's authority.
+        with self.assertRaises(RoutingPause):
+            _select_connections(engine,runtime,'worker',False)
+        engine.request.assert_not_called()
+        runtime.task['gateway_connections']=self.registry.capture()
+        _select_connections(engine,runtime,'worker',False)
+        self.assertEqual(runtime.task['providers']['worker']['connection_id'],self.other_id)
+
     def test_exhausted_shared_account_is_skipped_before_probe(self):
         engine,runtime=self.harness()
         for manager in (self.default,self.other):

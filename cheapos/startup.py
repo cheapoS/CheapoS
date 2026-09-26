@@ -153,6 +153,8 @@ class StartupManager:
     def _omni(self):
         self._set(message="Connecting to OmniRoute…")
         gateway = self.engine.gateway
+        if not gateway.settings.get("automatic", True):
+            return []
         if not gateway.snapshot()["busy"]:
             gateway.startup()
         deadline = time.monotonic() + 45
@@ -164,6 +166,8 @@ class StartupManager:
         candidates = catalog_candidates(catalog["models"], gateway.settings["base_url"], "omniroute") if catalog["status"] == "ready" else []
         for candidate in candidates:
             candidate["config"]["gateway_type"] = gateway.settings.get("gateway_type", "omniroute")
+            if getattr(gateway, "connection_id", None):
+                candidate["config"]["connection_id"] = gateway.connection_id
             candidate["transport"] = gateway.settings.get("gateway_type", "omniroute")
         return candidates
 

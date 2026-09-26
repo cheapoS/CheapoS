@@ -31,6 +31,7 @@ GATEWAY_TYPES = {
     "lmstudio": "LM Studio",
     "localai": "LocalAI",
     "compatible": "OpenAI-compatible",
+    "direct": "Direct API (OpenAI-compatible)",
 }
 
 GATEWAY_DEFAULT_URLS = {
@@ -43,6 +44,7 @@ GATEWAY_DEFAULT_URLS = {
     "lmstudio": "http://127.0.0.1:1234/v1",
     "localai": "http://127.0.0.1:8080/v1",
     "compatible": "http://127.0.0.1:8000/v1",
+    "direct": "",
 }
 
 
@@ -56,7 +58,7 @@ def gateway_types_catalog():
     return [{"id": k, "label": label, "default_url": GATEWAY_DEFAULT_URLS.get(k, "http://127.0.0.1:8000/v1"), "default_name": label}
             for k, label in GATEWAY_TYPES.items()]
 
-DEFAULT_SETTINGS = {"name": "OmniRoute", "enabled": True, "quota_groups": {}, "gateway_type": "omniroute", "base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True, "remember_key": False}
+DEFAULT_SETTINGS = {"name": "OmniRoute", "enabled": True, "automatic": True, "manual_models": [], "quota_groups": {}, "gateway_type": "omniroute", "base_url": "http://127.0.0.1:20128/v1", "auto_start": True, "keep_running": True, "remember_key": False}
 
 
 def validate_settings(values):
@@ -79,10 +81,15 @@ def validate_settings(values):
         port = parsed.port if parsed.port is not None else 80
     except ValueError:
         raise ValueError("Invalid gateway port") from None
-    if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+    if settings['gateway_type'] == 'direct':
+        if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
+                or parsed.query or parsed.fragment or not 1 <= port <= 65535):
+            raise ValueError('Use an HTTPS API base URL without credentials, query parameters or fragments')
+    elif (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
             or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path != "/v1" or not 1 <= port <= 65535):
         raise ValueError("Use a loopback gateway URL such as http://127.0.0.1:20128/v1")
-    for key in ("auto_start", "keep_running", "remember_key", "enabled"):
+    settings['manual_models'] = access_policy.model_ids(settings['manual_models'])
+    for key in ("auto_start", "keep_running", "remember_key", "enabled", "automatic"):
         if not isinstance(settings[key], bool):
             raise ValueError("Gateway startup preferences must be true or false")
     if settings["gateway_type"] != "omniroute":
@@ -138,7 +145,7 @@ class OmniRouteManager:
         self.revision = 0
         self.checked_at = 0
         self.state = "unchecked"
-        self.message = "Checking your local model gateway"
+        self.message = "Connection saved. Refresh models to check availability."
         self.diagnostic_code = None
 
     def _restore_key(self):
@@ -160,7 +167,7 @@ class OmniRouteManager:
     def matches(self, url):
         def identity(value):
             parsed = urlsplit(value)
-            return (parsed.scheme, "loopback" if parsed.hostname in {"localhost", "127.0.0.1"} else parsed.hostname, parsed.port or 80, parsed.path.rstrip("/"))
+            return (parsed.scheme, "loopback" if parsed.hostname in {"localhost", "127.0.0.1"} else parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), parsed.path.rstrip("/"))
         return identity(url) == identity(self.settings["base_url"])
 
     def snapshot(self):
@@ -252,7 +259,7 @@ class OmniRouteManager:
         with self.lock:
             if self.closed.is_set() or (self.thread and self.thread.is_alive()):
                 return self.snapshot()
-            self.state, self.message = "checking", "Checking the local " + GATEWAY_TYPES[self.settings["gateway_type"]] + " endpoint"
+            self.state, self.message = "checking", "Checking the " + GATEWAY_TYPES[self.settings["gateway_type"]] + " endpoint"
             self.thread = threading.Thread(target=self._connect, args=(start,), daemon=True)
             self.thread.start()
             return self.snapshot()
@@ -264,7 +271,19 @@ class OmniRouteManager:
         self._restore_key()
         config = {"base_url": self.settings["base_url"], "key_env": "CHEAPOS_GATEWAY_API_KEY", "gateway_type": self.settings["gateway_type"]}
         adapter = OmniRouteGateway if self.settings["gateway_type"] == "omniroute" else OpenAICompatibleGateway
-        models = adapter(config, self.api_key).list_models()
+        try:
+            models = adapter(config, self.api_key).list_models()
+        except ProviderError as error:
+            if error.code != 'catalog_unavailable' or not self.settings.get('manual_models'):
+                raise
+            models = []
+        from .gateways import normalize_models
+        known = {model['id'] for model in models}
+        for model_id in self.settings.get('manual_models', []):
+            if model_id not in known:
+                model = normalize_models({'data': [{'id': model_id}]}, infer_access=False)[0]
+                model['catalog_source'] = 'operator_model_id'
+                models.append(model)
         for model in models:
             if model["id"] in self.settings.get("tool_models", []) and model.get("tool_calling") is None:
                 model.update(tool_calling=True, tool_support_source="operator")
@@ -303,7 +322,7 @@ class OmniRouteManager:
                 if self.closed.is_set():
                     return
                 detail = str(error)
-                if self._port_open():
+                if self.settings["gateway_type"] == "direct" or self._port_open():
                     state = "auth_required" if error.code == "client_key_rejected" else "unavailable"
                     self._set_state(state, detail, code=error.code)
                     return

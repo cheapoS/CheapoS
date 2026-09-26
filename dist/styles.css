@@ -1767,3 +1767,11 @@ details:not(.thinking-panel):not(.command-panel):not(.workflow-stream):not(.chat
 /* Scheduling stays beside New chat on every project and saved-chat view. */
 .new-schedule-trigger{flex-shrink:0;gap:10px;margin:3px 0 8px;text-align:left}
 .new-schedule-trigger svg{flex:none}
+
+/* Direct API setup shares one form between pasted instructions and manual entry. */
+.gateway-add-form [data-paste]:not([hidden]){display:grid;gap:12px}
+.gateway-add-form [data-paste]>label{display:flex;flex-direction:column;gap:8px;font-size:.875rem;color:var(--secondary)}
+.gateway-add-form textarea{box-sizing:border-box;width:100%;min-width:0;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;line-height:1.5;resize:vertical}
+.gateway-add-form>label.checkbox-field{flex-direction:row;align-items:flex-start;gap:10px}
+.gateway-add-form .checkbox-field input{width:16px;min-height:16px;flex-shrink:0;margin-top:3px}
+.gateway-add-form [data-entry][aria-pressed="true"]{border-color:var(--mint);color:var(--mint)}

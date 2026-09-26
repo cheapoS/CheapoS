@@ -73,7 +73,7 @@ class PlannerConfigurationTests(unittest.TestCase):
         changed=copy.deepcopy(current);changed['gateway_access']['connection_revision']='new'
         self.assertNotEqual(policy_for_saved(changed,old),old)
 
-    def test_direct_settings_are_rejected_atomically_and_legacy_settings_are_visible(self):
+    def test_unsaved_direct_settings_are_rejected_atomically_and_legacy_settings_are_visible(self):
         e=self.engine
         e.configure({'worker':dict(self.provider, model='fixture-worker'),'reviewer':self.provider})
         saved=(e.store.root/'settings.json').read_text()
@@ -84,6 +84,7 @@ class PlannerConfigurationTests(unittest.TestCase):
             self.assertEqual((e.store.root/'settings.json').read_text(),saved)
         e.config={**e.config, 'planner':remote}
         result=e.configuration()['planner']
-        self.assertIn('direct provider',result['route_error'])
+        self.assertIn('unsaved provider endpoints are disabled',result['route_error'])
+        self.assertIn('saved gateway or direct API',result['route_error'])
         self.assertFalse(result['key_configured'])
         self.assertEqual(e.config['planner'],remote)

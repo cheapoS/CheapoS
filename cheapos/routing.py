@@ -237,6 +237,8 @@ def _select_connections(engine, runtime, role, replace):
     entries = sorted(entries, key=lambda e:e['connection_id'] != current)
     pauses = []
     for entry in entries:
+        if not entry.get("automatic", True):
+            continue
         gateway = engine.connections.for_policy(entry)
         if gateway is None: continue
         try:
