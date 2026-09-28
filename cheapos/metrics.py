@@ -38,7 +38,7 @@ def token_accounting(task):
     evidence stays unclassified, even when the session cost happens to be zero.
     """
     from .routing_trace import model_label
-    roles = {role: {'reported': 0, 'reserved': 0,
+    roles = {role: {'reported': 0, 'reserved': 0, 'input_tokens': 0, 'output_tokens': 0,
                    'accounted': number((task.get('usage', {}).get(role) or {}).get('tokens'))}
              for role in ('coordinator', 'planner', 'worker', 'reviewer')}
     pending = []
@@ -50,6 +50,8 @@ def token_accounting(task):
             counts = [number(record.get(k)) for k in ('input_tokens', 'output_tokens')]
             if all(v is not None for v in counts):
                 bucket['reported'] += sum(counts)
+                bucket['input_tokens'] += counts[0]
+                bucket['output_tokens'] += counts[1]
             continue
         reservation = record.get('reservation') or {}
         total = number(reservation.get('tokens'))
