@@ -1615,8 +1615,12 @@ function tokenUsageLabel(task,role=null) {
 }
 function tokenUsageSplitLabel(task,role=null) {
   const usage = role?task.usage?.[role]:null;
-  if (!usage || (usage.input_tokens === undefined && usage.output_tokens === undefined)) return tokenUsageLabel(task, role);
-  return `${(usage.input_tokens||0).toLocaleString()} in / ${(usage.output_tokens||0).toLocaleString()} out`;
+  const account = (role && task.token_accounting) ? task.token_accounting.roles?.[role] : null;
+  const input = account?.input_tokens ?? usage?.input_tokens;
+  const output = account?.output_tokens ?? usage?.output_tokens;
+
+  if (input === undefined && output === undefined) return tokenUsageLabel(task, role);
+  return `${(input||0).toLocaleString()} in / ${(output||0).toLocaleString()} out`;
 }
 function tokenReservationDetails(task) {
   const a=task.token_accounting;
