@@ -35,6 +35,21 @@ class JobEvidenceTests(unittest.TestCase):
         t=self.task();t['branch_run'].update(status='merged',readiness={'id':'new'},final_evidence={'candidate_id':'old','review_candidate_id':'old','checks_passed':True,'review_approved':True,'acceptance_satisfied':True},merge_receipt={'id':'x'})
         j={};jobs.observe(j,t);self.assertIsNone(j[t['coding_job_id']]['acceptance_id']);self.assertEqual(j[t['coding_job_id']]['state'],'stopped')
 
+    def github_merged(self, **changes):
+        t=self.task();ready=dict(candidate_id='candidate',review_candidate_id='candidate',checks_passed=True,review_approved=True,acceptance_satisfied=True)
+        t['branch_run'].update(status='merged',authorization_ref='auth',readiness={'id':'candidate'},final_evidence=ready,expected_feature_tip='tip',
+            merge_receipt={'id':'pr-op','kind':'github','feature_tip':'tip'})
+        t['pull_request']={'id':'pr-op','evidence':'candidate','head':'tip','merged_head':'tip'}
+        for key,value in changes.items():t['pull_request'][key]=value
+        j={};jobs.observe(j,t,'2020-01-01T00:00:00+00:00');return j[t['coding_job_id']]
+
+    def test_approved_github_pull_request_merge_accepts_the_reviewed_candidate(self):
+        x=self.github_merged();self.assertEqual(x['state'],'accepted');self.assertEqual(x['acceptance_id'],jobs.opaque('pr-op'))
+
+    def test_github_merge_of_other_work_is_not_acceptance(self):
+        for change in ({'evidence':'older'},{'id':'other-op'},{'merged_head':'moved'},{'head':'moved'}):
+            x=self.github_merged(**change);self.assertEqual(x['state'],'stopped',change);self.assertIsNone(x['acceptance_id'])
+
     def test_journal_survives_request_eviction_cleanup_and_restart(self):
         t=self.task();rid=t['coding_job_id'];t['request_metrics']=[record('request',job_id=rid,reported_cost_exact='0.00000001',reported_currency='USD',status='failed')]
         with tempfile.TemporaryDirectory() as d:
