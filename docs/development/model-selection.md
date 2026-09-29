@@ -33,13 +33,14 @@ There is no model-name matching or transfer of scores between aliases/routes.
 
 After operator preferences, observed outcomes and compatibility, automatic
 workers and reviewers prefer the coding index; planners prefer the agentic
-index. The intelligence index is displayed only. This is an initial prior, not
-proof of task quality. Missing or malformed scores remain unknown; zero is a
-real reported value. Scored candidates lead unscored candidates within otherwise
-equal evidence tiers, but no model is excluded for lacking scores. Stale metadata
-does not contribute a benchmark preference. Name/capability hints, observed
-response latency and model ID resolve remaining ties. Name and size are not
-measured quality; latency is not end-to-end task time. Conversation-only routing
+index. The intelligence index breaks ties between candidates with the same
+role-specific score. These are initial priors, not proof of task quality.
+Missing or malformed scores remain unknown; zero is a real reported value.
+Scored candidates lead unscored candidates within otherwise equal evidence
+tiers, but no model is excluded for lacking scores. Stale metadata does not
+contribute a benchmark preference. Name/capability hints, observed response
+latency and model ID resolve remaining ties. Name and size are not measured
+quality; latency is not end-to-end task time. Conversation-only routing
 continues to use observed responsiveness rather than coding benchmarks.
 
 Settings → Connections → Authorized remote model pool shows these scores alongside

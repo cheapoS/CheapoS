@@ -9,8 +9,11 @@ from cheapos.model_pool import FreeModelPool
 from cheapos.omniroute import OmniRouteManager
 
 
-def benchmark(coding=50, agentic=40):
-    return {'source': 'Artificial Analysis', 'coding': coding, 'agentic': agentic}
+def benchmark(coding=50, agentic=40, intelligence=None):
+    values = {'source': 'Artificial Analysis', 'coding': coding, 'agentic': agentic}
+    if intelligence is not None:
+        values['intelligence'] = intelligence
+    return values
 
 
 class BenchmarkTests(unittest.TestCase):
@@ -75,8 +78,23 @@ class BenchmarkTests(unittest.TestCase):
                 ordered = pool.interleave(url, models, role)
                 self.assertEqual(ordered[0]['id'], expected)
                 self.assertCountEqual(ordered, models)
-            self.assertEqual(model_benchmarks.preference({'benchmarks': benchmark(0)}, 'worker'), (0, 0))
-            self.assertEqual(model_benchmarks.preference({'benchmarks': benchmark(99), 'metadata_evidence': {'stale': True}}, 'worker'), (1, 0))
+            self.assertEqual(model_benchmarks.preference({'benchmarks': benchmark(0)}, 'worker'), (0, 0, 1, 0))
+            self.assertEqual(model_benchmarks.preference({'benchmarks': benchmark(99), 'metadata_evidence': {'stale': True}}, 'worker'), (1, 0, 1, 0))
+
+    def test_intelligence_breaks_equal_role_score_ties_but_role_score_stays_primary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pool = FreeModelPool(directory); url = 'http://localhost:1234/v1'
+            models = [
+                {'id': 'coding-high-intelligence-low', 'benchmarks': benchmark(80, 80, 20)},
+                {'id': 'coding-low-intelligence-high', 'benchmarks': benchmark(70, 70, 99)},
+                {'id': 'coding-tie-intelligence-high', 'benchmarks': benchmark(80, 80, 90)},
+            ]
+            for role in ('worker', 'reviewer', 'planner'):
+                with self.subTest(role=role):
+                    ordered = pool.interleave(url, models, role)
+                    self.assertEqual([m['id'] for m in ordered], [
+                        'coding-tie-intelligence-high', 'coding-high-intelligence-low',
+                        'coding-low-intelligence-high'])
 
     def test_preferences_compatibility_and_observed_outcomes_beat_benchmarks(self):
         with tempfile.TemporaryDirectory() as directory:
