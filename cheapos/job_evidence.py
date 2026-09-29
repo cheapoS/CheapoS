@@ -73,7 +73,13 @@ def observe(jobs, task, at=None):
             j.update(candidate_id=opaque(candidate), ready_at=at, accepted_at=None, acceptance_id=None)
         receipt = run.get('merge_receipt') or {}
         contract = (run.get('merge_authorization') or {}).get('contract') or {}
-        if state == 'merged' and receipt.get('id') and contract.get('readiness_id') == candidate and contract.get('operation', {}).get('id') == receipt['id']:
+        local = contract.get('readiness_id') == candidate and contract.get('operation', {}).get('id') == receipt.get('id')
+        # A GitHub merge is authorized by the operator's approved publication
+        # of this exact reviewed candidate, confirmed merged at its published head.
+        pull = task.get('pull_request') or {}
+        remote = (receipt.get('kind') == 'github' and pull.get('id') == receipt.get('id') and pull.get('evidence') == candidate
+                  and pull.get('head') == receipt.get('feature_tip') == run.get('expected_feature_tip') == pull.get('merged_head'))
+        if state == 'merged' and receipt.get('id') and (local or remote):
             j['accepted_at'] = j.get('accepted_at') or at
             j['acceptance_id'] = opaque(receipt['id'])
     if j['state'] == 'accepted' and not j['acceptance_id']:
