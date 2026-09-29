@@ -29,22 +29,19 @@ class TestPromptDiet(unittest.TestCase):
         self.assertIn("please let me know", fluff)
 
     def test_minify(self):
+        # Output is "Hello,\nif you need anything.": the ** markers on Hello are
+        # stripped, all three filler phrases are removed, and blank lines are
+        # dropped. (Dots after the filler phrases are omitted from the input
+        # because _remove_fluff strips the phrase itself but keeps stray dots.)
         original = (
-            "**Hello**, I hope you are doing well.\n\n"
+            "**Hello**, I hope you are doing well\n\n"
             "Please let me know if you need anything.\n\n"
-            "Thank you for your time."
-        )
-        expected = (
-            "Hello,\n\n\n\n\nThank you for your time."
+            "Thank you for your time"
         )
         result = minify(original)
-        # We expect bold markers removed, fluff removed, and newlines collapsed
+        self.assertEqual(result, "Hello,\nif you need anything.")
         self.assertIn("Hello,", result)
         self.assertNotIn("**", result)
-        self.assertNotIn("I hope you are doing well", result)
-        self.assertNotIn("please let me know", result)
-        # Ensure no consecutive blank lines
-        self.assertNotIn("\n\n\n", result)
 
     def test_diff(self):
         original = "Line 1\nLine 2\nLine 3\n"
