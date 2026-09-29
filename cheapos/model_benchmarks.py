@@ -26,9 +26,18 @@ def normalize(raw, catalog, refreshed_at):
 
 
 def preference(model, role):
-    """A starting preference only; callers rank real outcomes ahead of this."""
+    """A role-aware catalog prior; callers rank real outcomes ahead of this.
+
+    The role-specific benchmark stays primary (coding for workers/reviewers,
+    agentic for planners). General intelligence breaks ties between models
+    with the same primary score; it does not replace evidence from CheapOS runs.
+    """
     data = model.get('benchmarks') or {}
     metric = 'agentic' if role == 'planner' else 'coding'
-    score = data.get(metric) if isinstance(data, dict) and data.get('source') == SOURCE else None
-    known = valid_score(score) and not (model.get('metadata_evidence') or {}).get('stale')
-    return (0, -score) if known else (1, 0)
+    trusted = isinstance(data, dict) and data.get('source') == SOURCE and not (model.get('metadata_evidence') or {}).get('stale')
+    score = data.get(metric) if trusted else None
+    intelligence = data.get('intelligence') if trusted else None
+    known = valid_score(score)
+    known_intelligence = valid_score(intelligence)
+    return (0 if known else 1, -score if known else 0,
+            0 if known_intelligence else 1, -intelligence if known_intelligence else 0)
