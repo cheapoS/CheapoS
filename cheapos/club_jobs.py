@@ -36,7 +36,7 @@ def sync_jobs(manager, lifetime):
                     member.update(cost=r['reported_cost_exact'], currency=r.get('reported_currency'), provenance='provider_reported')
                 members.append(member)
             fingerprint = hashlib.sha256(json.dumps([header, members], sort_keys=True).encode()).hexdigest()
-            if s.get('jobs_sent', {}).get(job['job_id']) == fingerprint:
+            if fingerprint in (s.get('jobs_sent', {}).get(job['job_id']), s.get('jobs_rejected', {}).get(job['job_id'])):
                 continue
             revision = s.setdefault('job_revisions', {}).get(job['job_id'], 0) + 1
             pages = [members[n:n+20] for n in range(0, len(members), 20)] or [[]]
@@ -53,6 +53,29 @@ def sync_jobs(manager, lifetime):
                    index=index, members=snapshot['pages'][index]))
     manager._flush()
     return 1
+
+
+def set_aside(manager, pending, error):
+    """Drop a job page the Club definitely rejected so later usage can sync.
+
+    Only a conflict on a page-only upload qualifies, and only while the Club
+    cursor proves the page was not accepted. The job is retried if its evidence
+    changes (a new fingerprint gets a new revision).
+    """
+    s = manager.state
+    message = json.loads(pending['envelope']['payload'])
+    snapshot = s.get('job_upload')
+    if (error.code != 'conflict' or not message.get('job_page') or message.get('events') or message.get('request_attempts')
+            or not snapshot or snapshot['header'] != message['job_page']['header']):
+        return False
+    remote = manager._call('status')
+    if remote.get('sequence') != s['sequence'] or remote.get('previous_hash') != s['previous_hash']:
+        return False
+    s.setdefault('jobs_rejected', {})[snapshot['header']['job_id']] = snapshot['fingerprint']
+    s.update(pending=None, job_upload=None,
+             jobs_message='The Club rejected finished-work evidence for one job. Token usage keeps syncing; that job is retried only if its evidence changes.')
+    manager._save()
+    return True
 
 
 def acknowledge(state, message):

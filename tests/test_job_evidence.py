@@ -95,3 +95,31 @@ class JobSyncTests(unittest.TestCase):
             m._request=lambda e:{k:v for k,v in original(e).items() if k!='job_pages_accepted'}
             with self.assertRaisesRegex(ValueError,'acknowledge'):sync_jobs(m,ledger)
             self.assertIsNotNone(m.state['pending']);self.assertEqual(m.state['sequence'],0)
+
+    def test_rejected_page_is_set_aside_only_when_cursor_proves_it(self):
+        from cheapos.club import ClubRejected
+        from cheapos.club_jobs import sync_jobs
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as d:
+            m=self.manager(d);t=JobEvidenceTests().task();j={};jobs.observe(j,t,'2020-01-01T00:00:00+00:00')
+            ledger=Mock();ledger.job_export.side_effect=lambda:jobs.export(j,[])
+            cursor={}
+            def reply(envelope):
+                data=json.loads(envelope['payload'])
+                if data['action']=='status':return {'capabilities':['accepted_jobs_v1'],**cursor}
+                raise ClubRejected('rejected',code=reply.code,status=409)
+            m._request=reply
+            # Other rejections, or a cursor that cannot prove non-acceptance, keep the outbox.
+            reply.code='paused'
+            with self.assertRaises(ClubRejected):sync_jobs(m,ledger)
+            self.assertIsNotNone(m.state['pending'])
+            reply.code='conflict';cursor.update(sequence=5,previous_hash='other')
+            with self.assertRaises(ClubRejected):m._flush()
+            self.assertIsNotNone(m.state['pending'])
+            cursor.update(sequence=0,previous_hash='');m._flush()
+            self.assertIsNone(m.state['pending']);self.assertIsNone(m.state['job_upload']);self.assertIn('rejected',m.state['jobs_message'])
+            self.assertEqual(sync_jobs(m,ledger),0,'unchanged evidence is not retried')
+            m._request=self.manager(d)._request
+            j[t['coding_job_id']]['state']='stopped';self.assertEqual(sync_jobs(m,ledger),1)
+            job=t['coding_job_id'];self.assertNotEqual(m.state['jobs_sent'][job],m.state['jobs_rejected'][job])
+            self.assertEqual(m.state['sequence'],1);self.assertEqual(m.state['job_revisions'][t['coding_job_id']],2)

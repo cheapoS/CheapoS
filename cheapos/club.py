@@ -83,6 +83,13 @@ def extract_telemetry(summ, share_models=False):
         tasks_by_role=roles_clean
     )
 
+class ClubRejected(ValueError):
+    """The Club answered with a definite rejection, not an uncertain outage."""
+    def __init__(self, message, code=None, status=None):
+        super().__init__(message)
+        self.code = code
+        self.status = status
+
 class ClubManager:
     def __init__(self, data_directory, leaderboard_url=None, credentials=None):
         self.directory=Path(data_directory)
@@ -170,7 +177,8 @@ class ClubManager:
                 'key_mismatch':'The saved signing key does not match this installation. Restore its original credential; local work is unaffected.',
                 'rate_limit':'Too many connection attempts. Try again in an hour; local work is unaffected.',
             }
-            raise ValueError(messages.get(code,'Club setup or saved usage state needs attention. Check the website migration and server key, then retry. Local work is unaffected.')) from None
+            detail=f'HTTP {error.code}'+(f', {code}' if isinstance(code,str) and re.fullmatch(r'[a-z_]{1,40}',code) else '')
+            raise ClubRejected(messages.get(code,f'Club rejected the request ({detail}). Check the website migration and server key, then retry. Local work is unaffected.'),code=code,status=error.code) from None
         except (OSError,ValueError,urllib.error.URLError):
             raise ValueError('Club is unavailable or rejected the connection. Saved usage is retained. Check your account connection and try again; local work can continue.') from None
 
@@ -304,7 +312,13 @@ class ClubManager:
     def _flush(self):
         pending=self.state['pending']
         if not pending: return
-        result=self._request(pending['envelope'])
+        try:
+            result=self._request(pending['envelope'])
+        except ClubRejected as error:
+            # A rejected finished-work page must not block token usage behind it.
+            from .club_jobs import set_aside
+            if not set_aside(self, pending, error): raise
+            return
         payload=pending['envelope']['payload'];message=json.loads(payload)
         expected=hashlib.sha256(payload.encode()).hexdigest()
         if result.get('status')!='accepted' or result.get('sequence')!=message['sequence'] or result.get('hash')!=expected:
@@ -504,7 +518,7 @@ class ClubManager:
             if self.state['pairing_id']:
                 result=self._call('disconnect')
                 if result.get('status')!='disconnected': raise ValueError('Club did not confirm disconnection. Sharing remains stopped.')
-            self.state.update(identity=None,pairing_id=None,pending=None,sent={},attempts_sent={},baseline=[],revoking=False,error=None,share_models=False,share_jobs=False,jobs_since=None,job_upload=None,jobs_sent={},job_revisions={})
+            self.state.update(identity=None,pairing_id=None,pending=None,sent={},attempts_sent={},baseline=[],revoking=False,error=None,share_models=False,share_jobs=False,jobs_since=None,job_upload=None,jobs_sent={},job_revisions={},jobs_rejected={})
             self._save()
             with self._remote_profile_lock:
                 self._remote_profile_cache=None

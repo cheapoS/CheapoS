@@ -209,6 +209,18 @@ class ClubTests(unittest.TestCase):
         self.assertIsNone(self.club._remote_profile_cache)
         self.assertEqual(self.club._remote_profile_cache_time,0)
 
+    def test_rejection_names_status_and_code_without_echoing_server_text(self):
+        import io, urllib.error
+        from unittest.mock import patch
+        from cheapos.club import ClubRejected
+        club=ClubManager(self.temp.name,credentials=Mock())
+        body=io.BytesIO(json.dumps({'code':'conflict','error':'<private detail>'}).encode())
+        error=urllib.error.HTTPError(club.leaderboard_url,409,'Conflict',hdrs={},fp=body)
+        with patch('urllib.request.urlopen',side_effect=error), self.assertRaises(ClubRejected) as caught:
+            club._request({'payload':'{}'})
+        self.assertEqual((caught.exception.code,caught.exception.status),('conflict',409))
+        self.assertIn('HTTP 409, conflict',str(caught.exception));self.assertNotIn('private',str(caught.exception))
+
     def test_remote_profile_self_heals_when_handle_renamed(self):
         import urllib.error
         from unittest.mock import patch, MagicMock
