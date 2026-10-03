@@ -24,3 +24,10 @@ Run unit tests with:
 ```bash
 python3 -m unittest examples/log-whisperer/test_whisperer.py
 ```
+
+You can also run the CLI against the included `sample.log` fixture:
+```bash
+python3 examples/log-whisperer/whisperer.py cluster examples/log-whisperer/sample.log
+python3 examples/log-whisperer/whisperer.py detect examples/log-whisperer/sample.log
+```
+
